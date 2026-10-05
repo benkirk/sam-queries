@@ -56,6 +56,7 @@ from ._shared import (
     _parse_activity_window, _parse_xras_filters,
     _submitted_since,
 )
+from webapp.utils.faceted_log import build_facet_strip
 from webapp.utils.htmx import read_flag, read_sort, read_tab, sort_rows
 
 
@@ -172,35 +173,16 @@ def xras_fragment():
     type_facet = summarize_xras_actions(
         db.session, status=filters['status'], **_facet_common)
 
-    # Every status renders, including at zero -- an absent bucket reads as "not
-    # measured" rather than "none". `summarize_xras_actions` seeds the five, so
-    # iterating its dict gives that for free, in vocabulary order.
-    #
-    # WARNING: iterated, NOT re-derived from XRAS_ACTION_STATUSES. That spelling
-    # drops any status outside the vocabulary -- which the query layer goes out
-    # of its way to keep, being a bug worth surfacing -- while the headline
-    # total still counts it, so the strip disagrees with its own total. A stray
-    # appends rather than reshuffles: the five are a stable strip an operator
-    # scans by position.
-    #
-    # A stray chip still filters even though `all_statuses` offers only the
-    # five, because `set-filter-submit` synthesizes a missing <option> before
-    # setting the value. The offer list is deliberately NOT widened the way
-    # `_xras_action_types` widens its own: an unsampled action type is normal
-    # traffic, a stray status is only ever a bad write, and offering it as a
-    # standing filter choice would dress a bug up as a category.
-    status_facets = [{'value': s, 'count': n}
-                     for s, n in status_facet['by_status'].items()]
-
-    # A NULL action_type is a real count — a body that would not parse has none —
-    # but it is not a filterable value: there is no way to express "IS NULL"
-    # through the form's multi-select. Dropped rather than rendered as a chip
-    # that cannot work, the same rule the jobs facet strip applies.
-    action_type_facets = sorted(
-        ({'value': t, 'count': n}
-         for t, n in type_facet['by_action_type'].items() if t),
-        key=lambda r: (-r['count'], r['value']),
-    )
+    # Every declared status renders, including at zero, and a status outside
+    # the vocabulary (only ever a bad write) appends after them, so the strip
+    # agrees with the headline total. A stray chip still filters although
+    # `all_statuses` offers only the declared ones: `set-filter-submit` adds a
+    # missing <option>. That offer list is deliberately not widened.
+    status_facets = build_facet_strip(status_facet['by_status'],
+                                      XRAS_ACTION_STATUSES)
+    # A NULL action_type is a real count (an unparseable body has none) but
+    # not a filterable value, so the observed-only strip drops it.
+    action_type_facets = build_facet_strip(type_facet['by_action_type'])
 
     # `configured` gates the Request # -> detail-modal link: the modal needs a
     # live outbound read, so a site with XRAS incoming-only degrades to the

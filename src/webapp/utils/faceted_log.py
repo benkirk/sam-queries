@@ -5,8 +5,8 @@ things every one of these pages does identically, and nothing else — the
 per-page filter parsing stays in its own route module, because what a page
 filters on *is* the page.
 
-Consumers: ``dashboards/admin/notifications_routes.py``,
-``dashboards/admin/tasks_routes.py``.
+Consumers: the notification and task-run logs (both), plus the Last seen page
+and the XRAS action log (``build_facet_strip`` only).
 """
 
 from __future__ import annotations
