@@ -217,6 +217,48 @@
         htmx.trigger(form, 'submit');
     });
 
+    /* multiselect_filter (form_fields.html): a dropdown checklist whose button
+     * text summarizes the checked boxes. The same rule renders it server-side. */
+    function checklistPaint(root) {
+        var boxes = root.querySelectorAll('input[type="checkbox"]');
+        var on = Array.prototype.filter.call(boxes, function (b) { return b.checked; });
+        var text;
+        if (!on.length) {
+            text = root.dataset.noneLabel;
+        } else if (on.length === boxes.length) {
+            text = 'All';
+        } else if (on.length === 1) {
+            text = on[0].value;
+        } else {
+            text = on.length + ' of ' + boxes.length;
+        }
+        root.querySelector('.filter-checklist-summary').textContent = text;
+    }
+
+    document.addEventListener('change', function (evt) {
+        var root = evt.target.closest && evt.target.closest('[data-filter-checklist]');
+        if (root) { checklistPaint(root); }
+    });
+
+    /* A form reset restores the boxes but not the painted summary, and the
+     * event fires BEFORE the values change, hence the deferral. */
+    document.addEventListener('reset', function (evt) {
+        var form = evt.target;
+        setTimeout(function () {
+            Array.prototype.forEach.call(
+                form.querySelectorAll('[data-filter-checklist]'), checklistPaint);
+        }, 0);
+    });
+
+    window.registerAction('checklist-clear', function (el) {
+        var root = el.closest('[data-filter-checklist]');
+        if (!root) { return; }
+        Array.prototype.forEach.call(
+            root.querySelectorAll('input[type="checkbox"]'),
+            function (box) { box.checked = false; });
+        checklistPaint(root);
+    });
+
     /* Sortable column header: write sort_by + sort_dir into the filter form's
      * hidden fields, then submit it — so sort is form state and survives every
      * facet/window change, exactly like a chip. The form must carry hidden

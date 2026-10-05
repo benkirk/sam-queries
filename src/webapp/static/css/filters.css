@@ -526,6 +526,57 @@
     color: var(--text-tertiary);
 }
 
+/* multiselect_filter: a dropdown checklist. The toggle borrows .form-select so
+   it is the same height and chevron as the selects beside it; the menu is an
+   ordinary dropdown surface, so its ink is the dropdown's, not the panel's. */
+.filter-checklist-toggle {
+    overflow: hidden;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.filter-sidebar .filter-checklist-toggle {
+    background-color: var(--surface-raised);
+    color: var(--text-heading);
+}
+
+.filter-checklist-menu {
+    min-width: 100%;
+    max-height: 20rem;
+    overflow-y: auto;
+}
+
+.filter-checklist-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.filter-checklist-item .form-check-input {
+    flex: none;
+    margin-top: 0;
+}
+
+.filter-checklist-clear {
+    display: block;
+    width: 100%;
+    padding: 0.125rem 1rem 0.375rem;
+    margin-bottom: 0.25rem;
+    background: none;
+    border: 0;
+    border-bottom: 1px solid var(--border-default);
+    font-size: 0.8125rem;
+    text-align: left;
+    color: var(--text-link);
+}
+
+.filter-checklist-clear:hover,
+.filter-checklist-clear:focus-visible {
+    text-decoration: underline;
+}
+
 /* fk-pickers embedded in a horizontal align-items-end filter row (jobs +
    disk-scans panels, which pass wrapper_class='' to drop the stacked-form
    mb-3): the empty typeahead dropdown's mt-1 still makes the cell 4px
@@ -546,7 +597,8 @@
 
     .filter-sidebar input.form-control,
     .filter-sidebar select.form-control,
-    .filter-sidebar select.form-select {
+    .filter-sidebar select.form-select,
+    .filter-sidebar .filter-checklist-toggle {
         width: 100% !important;
     }
 }

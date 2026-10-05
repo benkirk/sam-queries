@@ -1,5 +1,5 @@
 {% extends 'dashboards/allocations/base_allocations.html' %}
-{% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
+{% from 'dashboards/fragments/filter_panel.html' import filter_apply, filter_panel_shell %}
 {% from 'dashboards/fragments/form_fields.html' import multiselect_filter %}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_roots_only %}
@@ -27,8 +27,10 @@
         {{ multiselect_filter('Facilities', 'facilities', allowed_facility_names,
                               selected_facilities, width='200px', id='facilities') }}
 
+        {# No box checked falls back to the route's default set, not to all. #}
         {{ multiselect_filter('Resources', 'resources', all_resources,
-                              selected_resources, width='240px', id='resources') }}
+                              selected_resources, width='240px', id='resources',
+                              none_label='Default') }}
 
         {# Hidden 0 before the box: a GET form omits an unchecked box, and
            this switch defaults ON (read_switch takes the last value). #}
@@ -41,7 +43,7 @@
             {{ help_icon(g_roots_only(), rich=True, title='Roots only') }}
         </div>
 
-        <button type="submit" class="btn btn-outline-white align-self-end">Update</button>
+        {{ filter_apply() }}
         {# formaction submits the current filter selections to the export route,
            so the download matches what is on screen. No JS needed. #}
         <button type="submit" class="btn btn-outline-white align-self-end"

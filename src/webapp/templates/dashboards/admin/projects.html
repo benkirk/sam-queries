@@ -1,6 +1,6 @@
 {% extends 'dashboards/admin/base_admin_projects.html' %}
 {% from 'dashboards/fragments/search_box.html' import active_toggle_search %}
-{% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
+{% from 'dashboards/fragments/filter_panel.html' import filter_apply, filter_panel_shell %}
 {% from 'dashboards/fragments/form_fields.html' import multiselect_filter %}
 
 {% block title %}Admin: Projects - SAM{% endblock %}
@@ -77,42 +77,39 @@
                             {{ multiselect_filter('Facilities', 'facilities',
                                                   allowed_facility_names,
                                                   default_selected_facilities,
-                                                  width='200px', id='facilities-filter') }}
+                                                  width='200px', id='facilities-filter',
+                                                  none_label='Tab default') }}
 
                             <div>
-                                <label for="resource-filter" class="form-label"><strong>Resource</strong> <span class="fw-normal">(optional)</span></label>
+                                <label for="resource-filter" class="form-label"><strong>Resource</strong></label>
                                 <input type="text" class="form-control" id="resource-filter"
                                        name="resource"
-                                       placeholder="e.g., Derecho, GLADE"
+                                       placeholder="All, or e.g. Derecho"
                                        style="width: 200px;">
-                                <small class="form-text">Leave blank for all</small>
                             </div>
 
                             <div>
-                                <label for="time-range-filter" class="form-label"><strong>Time Range</strong></label>
-                                <select class="form-control" id="time-range-filter"
+                                <label for="time-range-filter" class="form-label"><strong>Time range</strong> <span class="fw-normal">(upcoming)</span></label>
+                                <select class="form-select" id="time-range-filter"
                                         name="time_range" style="width: 160px;">
                                     <option value="7days">Next 7 days</option>
                                     <option value="31days" selected>Next 31 days</option>
                                     <option value="60days">Next 60 days</option>
                                 </select>
-                                <small class="form-text">For upcoming</small>
                             </div>
 
                             <div>
-                                <label for="not-seen-since-filter" class="form-label"><strong>Not Seen Since</strong></label>
-                                <select class="form-control" id="not-seen-since-filter"
+                                <label for="not-seen-since-filter" class="form-label"><strong>Not seen since</strong> <span class="fw-normal">(abandoned)</span></label>
+                                <select class="form-select" id="not-seen-since-filter"
                                         name="not_seen_since" style="width: 160px;">
                                     <option value="" selected>All</option>
                                     <option value="6m">6 months</option>
                                     <option value="1y">1 year</option>
                                     <option value="2y">2 years</option>
                                 </select>
-                                <small class="form-text">For abandoned users</small>
                             </div>
 
-                            <button type="submit" class="btn btn-outline-white align-self-end">Apply Filters
-                            </button>
+                            {{ filter_apply() }}
                             <button type="button" class="btn btn-outline-white align-self-end"
                                     data-action="expirations-export-csv">Export CSV
                             </button>

@@ -19,10 +19,8 @@ from webapp.utils.rbac import (
 from sam.queries.xras_actions import (
     XRAS_ACTION_SORT_COLUMNS,
     XRAS_ACTION_STATUSES,
-    XRAS_ACTION_TYPES,
     XRAS_REQUEST_TOKEN_EXAMPLE,
     count_recent_xras_actions,
-    get_observed_action_types,
     get_projects_by_ids,
     get_recent_xras_actions,
     summarize_xras_actions,
@@ -88,22 +86,6 @@ _ACCOUNTS_SORT = {
 # a malformed body has none at all. See rbac.py's USER_FACILITY_PERMISSIONS.
 
 
-def _xras_action_types():
-    """Filter vocabulary: the known types plus anything actually in the table.
-
-    ``XrasActionSchema`` applies no enum to ``actionType`` on purpose — Transfer,
-    Renewal and Advance still have zero samples and no co-PI role has ever been
-    sampled — so a type we have never seen must still be filterable rather than
-    invisible. Union, don't replace.
-
-    Observed values are folded onto their canonical spelling first, so an alias pair
-    offers **one** entry: ``Adjust`` and ``Adjustment`` are the same action and
-    filtering on either returns both (``XRAS_ACTION_TYPE_ALIASES``). Two chips that
-    filter identically would read as two distinct action types.
-    """
-    return sorted(set(XRAS_ACTION_TYPES) | set(get_observed_action_types(db.session)))
-
-
 #: Deep-link targets (?view=) for the XRAS page. The two tab panes plus the two
 #: sibling cards (remediations/logs) — not a uniform tablist, so the two cards
 #: are reached by a scroll-into-view handler (data-deeplink), not the tab
@@ -132,8 +114,6 @@ def xras():
         window_pill_choices=_ACTIVITY_WINDOW_PILLS,
         form_id='xras-window-filters',
         **_window_control_context(end_date, start_str, end_str),
-        all_statuses=list(XRAS_ACTION_STATUSES),
-        all_action_types=_xras_action_types(),
         activity_facets=ACTIVITY_FACETS,
         account_facets=ACCOUNT_FACETS,
         remediation_facets=REMEDIATION_FACETS,

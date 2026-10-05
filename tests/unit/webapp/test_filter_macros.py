@@ -85,3 +85,79 @@ class TestActiveSwitch:
         assert 'role="switch"' in tag and 'name="active_only"' in tag
         assert 'value="1"' in tag and 'checked' in tag
         assert 'hx-trigger="change"' in tag
+
+
+class TestMultiselectChecklist:
+    """multiselect_filter: one line tall, same wire format as a <select multiple>."""
+
+    @staticmethod
+    def _render(app, **kwargs):
+        from flask import render_template_string
+
+        template = (
+            "{% from 'dashboards/fragments/form_fields.html' import multiselect_filter %}"
+            "{{ multiselect_filter('Facilities', 'facilities', values, selected, **kw) }}")
+        with app.test_request_context():
+            return render_template_string(
+                template, values=['NCAR', 'UNIV', 'WNA'],
+                selected=kwargs.pop('selected', []), kw=kwargs)
+
+    @staticmethod
+    def _summary(html):
+        return re.search(r'filter-checklist-summary">\s*([^<]*?)\s*</span>', html).group(1)
+
+    @pytest.mark.parametrize('selected, expected', [
+        ([], 'All'),
+        (['UNIV'], 'UNIV'),
+        (['UNIV', 'WNA'], '2 of 3'),
+        (['NCAR', 'UNIV', 'WNA'], 'All'),
+        (['GONE'], 'All'),
+    ])
+    def test_the_button_summarizes_the_selection(self, app, selected, expected):
+        assert self._summary(self._render(app, selected=selected)) == expected
+
+    def test_an_empty_selection_can_mean_the_routes_default(self, app):
+        html = self._render(app, none_label='Default')
+        assert self._summary(html) == 'Default'
+        assert 'data-none-label="Default"' in html
+
+    def test_each_value_is_a_checkbox_under_the_one_name(self, app):
+        html = self._render(app, selected=['WNA'])
+        boxes = re.findall(
+            r'<input[^>]*type="checkbox"[^>]*name="facilities"\s+value="(\w+)"( checked)?', html)
+        assert boxes == [('NCAR', ''), ('UNIV', ''), ('WNA', ' checked')]
+        assert '<select' not in html and 'Hold Ctrl' not in html
+
+    def test_no_vocabulary_renders_no_control(self, app):
+        from flask import render_template_string
+
+        template = (
+            "{% from 'dashboards/fragments/form_fields.html' import multiselect_filter %}"
+            "{{ multiselect_filter('Facilities', 'facilities', []) }}")
+        with app.test_request_context():
+            assert render_template_string(template).strip() == ''
+
+
+class TestNavyPanels:
+
+    @pytest.mark.parametrize('url', [
+        '/allocations/projects', '/allocations/transactions',
+        '/allocations/xras', '/admin/projects',
+        '/admin/htmx/institutions-fragment',
+    ])
+    def test_one_primary_action_named_apply(self, auth_client, url):
+        html = auth_client.get(url).get_data(as_text=True)
+        panel = html.split('class="filter-sidebar', 1)[1].split('</form>', 1)[0]
+        submits = re.findall(r'<button type="submit"[^>]*>(.*?)</button>', panel, re.S)
+        labels = [re.sub(r'<[^>]+>', '', s).strip() for s in submits]
+        assert labels[0] == 'Apply', labels
+        assert 'Hold Ctrl' not in panel
+
+    def test_the_action_log_panel_does_not_repeat_its_chips(self, auth_client):
+        """Status and Action type are the chip strips under the panel; the form
+        only holds the hidden fields those chips write into."""
+        html = auth_client.get('/allocations/xras').get_data(as_text=True)
+        form = html.split('id="xras-filters"', 1)[1].split('</form>', 1)[0]
+        for name in ('status', 'action_type'):
+            assert re.search(rf'<select name="{name}" multiple hidden', form)
+        assert 'filter-checklist' not in form
