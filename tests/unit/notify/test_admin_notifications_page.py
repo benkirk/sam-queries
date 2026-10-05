@@ -207,7 +207,10 @@ class TestTheTemplatesTab:
     def test_a_kind_deep_link_preselects_the_log_facet(self, auth_client):
         html = auth_client.get(f'{PAGE}?tab=log&kind=expiration').data.decode()
         assert 'value="expiration" selected' in html
-        assert 'notifications/log?kind=expiration' in html
+        # The kind rides in the chip form the log includes, not in the log's
+        # URL, where a deselected chip could never remove it.
+        assert 'notifications/log?kind=' not in html
+        assert 'hx-include="#notificationsFilterForm"' in html
 
     def test_an_unknown_kind_is_ignored(self, auth_client):
         assert auth_client.get(f'{PAGE}?kind=nope').status_code == 200

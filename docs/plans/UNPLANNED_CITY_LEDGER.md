@@ -12,8 +12,8 @@ them. Tick an item when its fix merges.
 
 From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 
-| date | end commit | private imports (helpers / sites / package-private) | dup-function groups (extra copies) | py-dup-names (names / definitions) | dead CSS classes (dynamic stem) | CSS lines / `!important` / repeated blocks | inline styles (templates) | bs4-classes (uses / classes) | row-buttons | JS shared names / shared events | modal alerts (templates) |
-|---|---|---|---|---|---|---|---|---|---|---|---|
+| date | end commit | private imports (helpers / sites / package-private) | dup-function groups (extra copies) | py-dup-names (names / definitions) | dead CSS classes (dynamic stem) | CSS lines / `!important` / repeated blocks | inline styles (templates) | bs4-classes (uses / classes) | row-buttons | JS shared names / shared events | modal alerts (templates) | helper-bypass (sites) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 2026-10-03 | `79f1a147` | 70 / 88 / 33 | 9 (10) | — | 38 (17) | 4,789 / 70 / 14 | 405 (106) | — | — | 5 / 4 |
 | 2026-10-03 | `5254c65b` + js sweep | 70 / 88 / 33 | 9 (10) | — | 38 (17) | 4,817 / 70 / 14 | 404 (105) | — | — | 5 / 4 |
 | 2026-10-04 | `0515333f` + css sweep | 70 / 88 / 33 | 9 (10) | — | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | — | — | 5 / 4 |
@@ -25,6 +25,8 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-04 | `21e6bae5` + sweeps 5–7 | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,603 / 54 / 10 | 257 (93) | 0 / 0 | 0 | 5 / 4 |
 | 2026-10-04 | `a75b9db7` + project list + headers | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,617 / 54 / 10 | 255 (92) | 0 / 0 | 0 | 5 / 4 | 52 (23) |
 | 2026-10-04 | `ede454cf` + modal sweep | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,699 / 50 / 10 | 216 (80) | 0 / 0 | 0 | 5 / 4 | 20 (14) |
+| 2026-10-04 | `36e69595` (base, filters) | 61 / 70 / 33 | 3 (4) | 14 / 46 | 16 (16), 2 kept | 4,714 / 50 / 10 | 216 (80) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 39 |
+| 2026-10-05 | `36e69595` + filters sweep | 52 / 61 / 24 | 3 (4) | 14 / 46 | 16 (16), 2 kept | 4,810 / 50 / 10 | 210 (78) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -593,6 +595,110 @@ themes). Ben's calls: quiet accent headers everywhere; one PR; the three bugs fi
 - [x] `test_ticket_card::test_a_request_without_tickets_renders_no_ticket_row` reads only its
   own row, so another worker's ticketed request cannot reach it (sweep follow-ups).
 - [ ] `test_db_browser_killswitch` fails under xdist on some postgres-test runs.
+
+## 10. 2026-10-04: area sweep, `templates` + `py` (filters and facets)
+
+**Mode:** area, from `docs/plans/FILTERS_SWEEP_HANDOFF.md`. **Base:** `36e69595` (staging).
+**Branch:** `filters-sweep`. **PR:** #733 (draft).
+**Contract:** mixed, declared per commit. Items 7 and 8 must look identical; items 3b, 6 and 11
+are deliberate visual changes; items 1 and 9 change behavior to fix a bug.
+
+**Done**, one commit each:
+
+- [x] 1. `webapp/utils/facets.py`: `Facet` / `FacetSet`, one in-memory facet engine for account
+  requests and the three XRAS worklist cards.
+  - Fixes Pending Users: an Identity selection reached none of the other four strips, and a
+    Request selection reached no strip.
+  - A selected value always renders, so Readiness and Blocker chips can be deselected at zero.
+- [x] 2. `read_multi` replaces nine `getlist` comprehensions.
+- [x] 3. `facet_fields` / `facet_form` / `facet_grid_row`: about 20 hand-written hidden selects
+  go. Gate: `tests/unit/gates/test_facet_form_contract.py` (every chip resolves to a control;
+  every `FacetSet` dimension has one).
+- [x] 3b. Chips are multi-select toggles (`aria-pressed`). A single-value target (jobs explorer,
+  mnemonic Show, Last seen Source) still replaces.
+- [x] 4. One `sort_rows` in `utils/htmx.py`; mnemonic codes reads its sort through `read_sort`.
+- [x] 6. In-card atoms: `facet_clear_all`, `filter_search` (seven boxes, five triggers, now one),
+  `active_switch` (seven cards).
+- [x] 7. One pill markup (`btn-outline-secondary` + `active`); the second CSS rule goes. Gate:
+  `test_pill_markup.py`.
+- [x] 8. The Allocations and Expirations panels on `filter_panel_shell`, which gains a bare mode
+  for a form its page's script submits.
+- [x] 9. `webapp/utils/windows.py`: `read_days`, `read_log_window`, `read_chart_window`.
+  The audit default window loses its sub-second upper bound.
+- [x] 10. Eleven flag, sort and page reads move onto the shared helpers; first direct tests of
+  `read_flag`, `read_page`, `read_sort`, `build_facet_strip`, `parse_window`.
+- [x] 11. (Added by Ben at kickoff: ordering and packing of the older panels.)
+  `multiselect_filter` is a one-line dropdown checklist; the XRAS action log panel drops the two
+  lists its chips already cover; `filter_apply()` is the one primary action; the house field
+  order is written into `filter_panel.html`.
+
+- [x] Growth rule, from the friction this sweep met:
+  - `helper-bypass` detector (`sweep_inventory.py`, fixture test) and a "Bypassed helper"
+    heuristic in the sweep skill: request reads that hand-roll a shared reader. 39 sites at
+    the base, 6 now.
+  - `ui_snapshots.py --compare` counts a custom property that differs alone without failing
+    (`--strict` fails it) and takes `--px-tolerance`; `--element SEL` + `--compare-pixels`
+    prove a restructure, where every element path moves. Replayed on item 7's captures:
+    36 of 42 "differ" -> 6, all one live clock label.
+  - `wire-dashboard-feature`: the filter tiers and macros, and the `compose --watch` trap (a
+    module saved one edit before its import exits samuel-dev). Its length budget goes
+    250 -> 275.
+
+**Panel height**, before -> after (px), desktop / tablet / phone:
+
+| panel | 1440 | 1024 | 390 |
+|---|---|---|---|
+| Transactions / Adjustments | 279 -> 203 | 469 -> 289 | 996 -> 788 |
+| Allocations | 279 -> 175 | 349 -> 245 | 743 -> 535 |
+| Expirations | 279 -> 175 | 349 -> 245 | 749 -> 573 |
+| XRAS action log | 305 -> 203 | 521 -> 203 | 962 -> 530 |
+
+**Deviations from the handoff:**
+- Item 5 stopped at the strips (`build_facet_strip` in the action-log route). The `LogSpec`
+  retrofit is larger than "add a `LogSpec`": `facet_counts` groups on the raw column, so the
+  `Adjust` / `Adjustment` aliases would split; `_apply_action_filters` returns a query, not
+  terms; and `summarize_xras_actions` also feeds the CLI. `src/querykit/README.md` lists it as
+  deferred growth.
+- Last seen's Source stays one value. Choosing a source re-derives every row from that
+  source's sightings (`review()`), so it is a lens, not a filter. The buckets are multi-select.
+- Mnemonic Show stays one value: its values overlap and `all` is a sentinel.
+- Item 7's `--compare` is not literally zero: it reports the selected pill's own `--bs-btn-*`
+  custom properties and sub-pixel noise on live status charts. No rendered property differs.
+- Item 8's Expirations panel is not identical: its title gains the shell's collapse chevron.
+- Item 9's audit bug is latent. Both pages always send their form's explicit dates.
+- The handoff paths `xras/...`, `jobs/routes.py` and `disk_scans/routes.py` were wrong
+  (`allocations/xras/...`, `src/webapp/jobs`, `src/webapp/disk_scans`).
+
+**Tried and dropped:**
+- A solid-blue icon cell on the search box (the default `.input-group-text`): too loud beside
+  quiet chips. It takes the input's own surface; contrast 4.0:1 light, 7.3:1 dark.
+- Text-tertiary for that icon: 2.86:1.
+- Folding the Expirations hints into longer labels: "(abandoned users)" wrapped Export CSV to a
+  second row at 1440px. "(abandoned)" fits.
+
+**Open from this round:**
+
+- [ ] XRAS action log as querykit's third caller (see Deviations).
+- [ ] `observed_task_names` (`system_status/queries/task_runs.py`) has no caller outside its
+  tests since the tasks page stopped pre-filling its hidden select.
+- [ ] `get_observed_action_types` likewise, since the action-log panel dropped its list.
+- [ ] `/admin/organizations?tab=institutions` leaves the pane on "Loading institutions…": its
+  trigger is `shown.bs.tab ... once`, which never fires for a tab rendered active.
+- [x] The Notifications and Scheduled tasks Filter cards are gone: the search and the window
+  are rows of the log's chip grid (`search_box.filter_window`), and the summary is a one-row
+  `.stat-strip`. The log starts about 200px higher.
+- [ ] `tests/unit/queries/test_contract_audit.py` deadlocks on an `nsf_program` insert between
+  xdist workers (passes with `-n 0`).
+- [ ] A `ViewState`-like registry for the jobs explorer's five overlapping key lists (model:
+  `db_browser/params.py`); one macro for the notifications and tasks filter cards; a shared
+  uppercase-label CSS block. Ledger-only by Ben's call in the handoff.
+- [ ] The disk-scan directory sort is still hand-whitelisted (`read_sort` is not a drop-in).
+- [ ] The six `helper-bypass` leads left: `include_adjustments` (`api/v1/allocations.py`,
+  `api/v1/projects.py`), `strict` (`api/v1/health.py`), `sent` (`register/blueprint.py`), and
+  two `int(v) for v in form.getlist('resource_ids')` in `admin/projects_routes.py`, which is
+  a form POST and wants a schema, not `read_multi`.
+- [x] Option order in the Facilities and Resources checklists stays alphabetical, matching
+  the resource tabs (Ben, 2026-10-05).
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

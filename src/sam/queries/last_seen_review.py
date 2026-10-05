@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Mapping, Optional
+from typing import Iterable, Mapping, Optional, Union
 
 NEVER = 'never'
 CURRENT = 'current'
@@ -99,15 +99,18 @@ def _matches(row: ReviewRow, needle: str) -> bool:
 
 
 def review(directory: Mapping[str, tuple], ledger: Mapping[str, Mapping[str, tuple]], *,
-           now: datetime, kind: Optional[str] = None, bucket: Optional[str] = None,
+           now: datetime, kind: Optional[str] = None,
+           bucket: Union[str, Iterable[str], None] = None,
            search: Optional[str] = None, include_unlisted: bool = False,
            sort_by: str = 'last_seen', sort_dir: str = 'desc'):
     """Filter, count and sort; returns ``(rows, bucket_counts, kind_counts)``.
 
-    ``bucket_counts`` honor kind and search but not the bucket; ``kind_counts``
-    honor bucket and search but not the kind, each user bucketed on that kind
-    alone. With no bucket chosen, a kind counts the users ever seen on it.
+    ``bucket`` is one key or several (ORed). ``bucket_counts`` honor kind and
+    search but not the bucket; ``kind_counts`` honor bucket and search but not
+    the kind, each user bucketed on that kind alone. With no bucket chosen, a
+    kind counts the users ever seen on it.
     """
+    wanted = {bucket} if isinstance(bucket, str) else set(bucket or ())
     people = {u: (name, _status(active, locked)) for u, (name, active, locked) in directory.items()}
     if include_unlisted:
         for username in ledger.keys() - people.keys():
@@ -128,7 +131,7 @@ def review(directory: Mapping[str, tuple], ledger: Mapping[str, Mapping[str, tup
         for k in kinds:
             newest = _newest(per_kind, k)
             b = bucket_for(newest[0] if newest else None, now, k)
-            if (bucket is None and newest) or (bucket is not None and b == bucket):
+            if (b in wanted) if wanted else newest:
                 kind_counts[k] += 1
 
     bucket_counts = Counter()
@@ -141,7 +144,7 @@ def review(directory: Mapping[str, tuple], ledger: Mapping[str, Mapping[str, tup
         row.bucket = bucket_for(row.last_seen, now, row.kind)
         row.current = row.bucket == CURRENT
         bucket_counts[row.bucket] += 1
-        if bucket is None or row.bucket == bucket:
+        if not wanted or row.bucket in wanted:
             rows.append(row)
 
     _sort(rows, sort_by, sort_dir)

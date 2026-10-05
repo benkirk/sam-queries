@@ -1,6 +1,6 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
-{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_grid_row, facet_row %}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_xras_attention_queue with context %}
 {% from 'dashboards/fragments/project_bits.html' import project_link with context %}
@@ -20,10 +20,8 @@
     may_manage      bool
     window          {'days','since','until','start_date','end_date','custom'}
     window_pill_choices  ((days, label), ...)
-    tag_values      [{'value','label','count'}]  self-excluding
-    type_values     [{'value','count'}]          self-excluding
-    selected_tags   [str]
-    selected_types  [str]
+    facet_values    {'tag', 'activity_type'} -> [{'value','label','count'}]  self-excluding
+    selected        {'tag', 'activity_type'} -> [str]
     form_id, fragment_url, target_id
 
  ONE ROW PER ACTION, NOT PER PROJECT
@@ -90,8 +88,7 @@
             {# The queue toggle. Absent is the default: needs attention only.
                Bound to the hidden filter form with `form=`, so a chip click
                keeps the mode. #}
-            <div class="facet-grid-label">View</div>
-            <div class="facet-grid-values">
+            {% call facet_grid_row('View') %}
                 <div class="form-check form-switch small mb-0">
                     <input class="form-check-input" type="checkbox" role="switch"
                            id="xras-activity-show-all" name="show_all" value="1"
@@ -107,11 +104,12 @@
                     {{ help_icon(g_xras_attention_queue(recent_days or 3), rich=True,
                                  title='Needs attention vs. everything', placement='right') }}
                 </div>
-            </div>
-            {{ facet_row('State', tag_values, form_id, 'tag',
-                         active=selected_tags) }}
-            {{ facet_row('Action', type_values, form_id, 'activity_type',
-                         active=selected_types) }}
+            {% endcall %}
+            {{ facet_row('State', facet_values.tag, form_id, 'tag',
+                         active=selected.tag) }}
+            {{ facet_row('Action', facet_values.activity_type, form_id, 'activity_type',
+                         active=selected.activity_type) }}
+            {{ facet_clear_all(form_id, selected.values() | select | list) }}
         </div>
     </div>
 
@@ -362,6 +360,12 @@
     {% else %}
     <div class="card-body">
         <div class="alert alert-light border small mb-0">
+            {% set clear_link %}
+            {%- if selected.values() | select | list -%}
+            <button type="button" class="btn btn-link btn-sm p-0 align-baseline"
+                    data-action="facet-clear-all" data-form-id="{{ form_id }}">clear the filters</button>
+            {%- else %}clear any filters{% endif -%}
+            {% endset %}
             {% if show_all %}
             <strong>No XRAS activity in this window.</strong>
             {% elif attention_total %}
@@ -373,11 +377,11 @@
             the action log knows about, so an empty list here
             <strong>does not mean nothing is pending</strong>.
             {% if show_all %}
-            Widen the window, clear any filters, or check the action log below for failures.
+            Widen the window, {{ clear_link }}, or check the action log below for failures.
             {% else %}
             Switch on <strong>Everything in the window</strong> for the
-            {{ (window_total or 0) | fmt_number }} action(s) there, clear any
-            filters, or check the action log below for failures.
+            {{ (window_total or 0) | fmt_number }} action(s) there, {{ clear_link }},
+            or check the action log below for failures.
             {% endif %}
         </div>
     </div>

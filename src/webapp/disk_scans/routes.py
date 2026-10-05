@@ -60,7 +60,7 @@ from webapp.disk_scans.scope import resolve_scan_scope, resolve_scan_scope_group
 from webapp.disk_scans.session import get_module, is_enabled
 from webapp.extensions import db
 from webapp.utils import age_bands, ladders
-from webapp.utils.htmx import is_truthy, read_layout
+from webapp.utils.htmx import read_flag, read_layout
 from webapp.utils.rbac import Permission, require_permission
 
 bp = Blueprint('disk_scans', __name__)
@@ -113,23 +113,6 @@ def _limit() -> int:
     return max(1, min(n, _MAX_LIMIT))
 
 
-#: One spelling of "checked" for the whole app — the job-history
-#: histograms' log switch reads its ``?log=`` through the same predicate.
-_truthy = is_truthy
-
-
-def _atime_recursive_flag() -> bool:
-    """Read ``?recursive=`` for the access-date filter, defaulting to True.
-
-    True (default, and what every existing caller gets) compares the
-    accessed-before/after filters against the recursive subtree atime; the
-    access-history drill-down passes ``recursive=0`` for its non-recursive
-    (own-files) default view, matching the histogram bar.
-    """
-    raw = request.args.get('recursive')
-    return True if raw is None else _truthy(raw)
-
-
 def _query_date(name: str) -> Optional[datetime]:
     """Parse a ``?<name>=YYYY-MM-DD`` query arg to a datetime (or ``None``).
 
@@ -171,11 +154,13 @@ def _dir_filters() -> dict:
         'accessed_after': _query_date('accessed_after'),
         'accessed_before_str': (request.args.get('accessed_before') or '').strip(),
         'accessed_after_str': (request.args.get('accessed_after') or '').strip(),
-        'atime_recursive': _atime_recursive_flag(),
-        'outermost': _truthy(request.args.get('outermost')),
+        # Default ON: the filters compare the recursive subtree atime. The
+        # access-history drill passes recursive=0 for its own-files view.
+        'atime_recursive': read_flag(request.args, 'recursive', True),
+        'outermost': read_flag(request.args, 'outermost'),
         'min_avg_size': request.args.get('min_avg_size', type=int),
         'max_avg_size': request.args.get('max_avg_size', type=int),
-        'leaves_only': _truthy(request.args.get('leaves_only')),
+        'leaves_only': read_flag(request.args, 'leaves_only'),
     }
 
 
@@ -663,7 +648,7 @@ def _render_distribution(ctx, fragment_url, *, mode, scope_for, kind,
     metric = (request.args.get('metric') or 'data').strip().lower()
     if not metric_toggle or metric not in _METRIC_WHITELIST:
         metric = 'data'
-    log_on = log_toggle and _truthy(request.args.get('log'))
+    log_on = log_toggle and read_flag(request.args, 'log')
     extra = dict(kind=kind, metric=metric, metric_toggle=metric_toggle,
                  log_on=log_on, log_toggle=log_toggle,
                  bucket_header=bucket_header, fragment_url=fragment_url,
@@ -810,7 +795,7 @@ _PANELS = declare_panels((
         render=_render_directories_fragment,
         # ?browse= turns on the file-browser drill-down (clickable rows +
         # ancestry breadcrumb) — explorer page only, hence per-request.
-        extra=lambda ctx: {'browse': _truthy(request.args.get('browse'))},
+        extra=lambda ctx: {'browse': read_flag(request.args, 'browse')},
     ),
     PanelSpec(
         key='entities', rule='/entities',

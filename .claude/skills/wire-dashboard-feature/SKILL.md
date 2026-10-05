@@ -31,9 +31,20 @@ The families:
 - **Status** — `badges.status_badge` (its state vocab is the source of truth;
   an unknown state falls back to a neutral `bg-secondary` badge).
 - **Collapse** — `collapse.collapse_toggle`.
-- **Filters** — `facet_chips.facet_row`, `filter_panel.filter_panel_shell`,
-  `audit_filters` / `xras_filters`, the range sliders `ladder_range` /
-  `age_band_range`, `search_box.active_toggle_search`.
+- **Filters** — two tiers, pick one per surface (the rule is the `filters.css` header):
+  - *Page*: the navy panel. `filter_panel.filter_panel_shell` + `filter_apply()`, every control
+    one line tall: `form_fields.multiselect_filter` (a dropdown checklist), the sliders
+    `ladder_range` / `age_band_range`. Field order: when, what, who, scope, switches, rows,
+    actions. Never repeat as a panel control a dimension the chips below already filter.
+  - *Card*: a chip grid, live, no button. `facet_chips.facet_row` (multi-select toggles),
+    `facet_form` / `facet_fields` (the hidden controls, from the same dimension list),
+    `facet_grid_row`, `facet_clear_all`. Counts for rows held in memory come from
+    `webapp/utils/facets.py` (`Facet`, `FacetSet`); for a SQL log, `querykit.faceted` +
+    `faceted_log.build_facet_strip`.
+  - *Both*: `search_box.filter_search` (the one search box), `filter_window`, `active_switch`,
+    `active_toggle_search`, `window_pills`.
+  - *Reads*: `read_multi`, `read_flag`, `read_sort` + `sort_rows`, `read_page`
+    (`utils/htmx.py`); `read_days`, `read_log_window`, `read_chart_window` (`utils/windows.py`).
 - **Forms** — all of `form_fields.*` (`text_field`, `number_field`,
   `date_field`, `datetime_field`, `textarea_field`, `select_field`,
   `multiselect_filter`, `checkbox_field`, `readonly_display`, `fk_search_field`,
@@ -209,9 +220,13 @@ CLAUDE.md § Charts.
    per process, so a CSS/JS edit is served under the *old* URL until samuel-dev
    restarts — for a quick check, inject a fresh
    `<link href="/static/css/x.css?fresh=1">` from the console; for real,
-   restart. Measure "no change" against these before doubting the edit.
-   On a `dev_server_alt.sh` server: Redis DB `2 + port % 14`, and
-   `touch src/webapp/utils/static_assets.py` re-hashes CSS.
+   restart, or `touch src/webapp/utils/static_assets.py` (the reloader re-hashes).
+   Measure "no change" against these before doubting the edit.
+   On a `dev_server_alt.sh` server: Redis DB `2 + port % 14`.
+   WARNING: samuel-dev is often under Ben's `compose up --watch`, which syncs every
+   write at once. A module saved one edit before its import lands fails the reload
+   and the container EXITS: put a name and its import in the same write, check
+   `docker ps` after Python edits, and recover with `docker start samuel-dev`.
 2. Tab state persists: click the tab you are testing first — only the active
    pane is in the accessibility snapshot, and `find` matches nothing in a
    hidden one. Collapse state persists too: click a row only if its
@@ -238,9 +253,10 @@ CLAUDE.md § Charts.
    `pytest tests/unit/gates/test_modal_shell_contract.py tests/unit/gates/test_collapse_trigger_rows.py tests/unit/gates/test_action_cells_nowrap.py tests/unit/gates/test_static_assets.py tests/unit/gates/test_template_csp_lint.py tests/unit/gates/test_css_tokens.py tests/unit/gates/test_template_detectors.py tests/unit/gates/test_route_map_parity.py`
    plus the feature's own tests. For a visible change, `scripts/ui_snapshots.py` shoots
    before and after in all six states (a dialog: `--modal OPENER` or `--recipes`, with
-   its height). A change that must NOT be visible (a CSS move or dedupe) adds `--styles`
-   to both runs, then `--compare before after`: zero differing elements. Serve the
-   before side with `scripts/dev_server_alt.sh <worktree> <port>`. Quote a
+   its height). A change that must NOT be visible adds `--styles` to both runs, then
+   `--compare before after`: zero captures differ. Markup moved onto a macro shifts every
+   element path, so prove that with `--element SEL` on both and `--compare-pixels`. Serve
+   the before side with `scripts/dev_server_alt.sh <worktree> <port>`. Quote a
    `--page` with `?` (zsh globs it). Read pytest's rc, not a `| tail`.
 7. **Query counts.** No query per row in a route's loop: one `IN` query, and a
    pin in `tests/perf/test_route_query_counts.py` + `baselines.json`

@@ -11,11 +11,11 @@
 
   Context:
     summary       system_status.queries.task_runs.summarize_task_runs(...)
-    form_id       the filter form the facet chips write into
-    target_id     the swap target for the table fragment
+    form_id       the hidden form holding the chip state
+    target_id     the swap target for the log fragment
     fragment_url  GET .../tasks/log
-    all_task_names / all_states / all_triggers / default_days / window_hours
 #}
+{% from 'dashboards/fragments/facet_chips.html' import facet_form %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
@@ -64,82 +64,32 @@
 </div>
 {% endif %}
 
-<div class="row g-3 mb-3">
-    <div class="col-12 col-xl-4">
-        <div class="card h-100">
-            <div class="card-header py-2"><strong>Last {{ summary.window_hours }}h</strong></div>
-            <div class="card-body small">
-                <dl class="config-stats mb-0">
-                    <dt>Succeeded</dt>   <dd>{{ summary.succeeded | fmt_number }}</dd>
-                    <dt>Partial</dt>     <dd>{{ summary.partial | fmt_number }}</dd>
-                    <dt>Failed</dt>      <dd>{{ summary.failed | fmt_number }}</dd>
-                    <dt>Skipped</dt>     <dd>{{ summary.skipped | fmt_number }}</dd>
-                    <dt>Stuck running</dt><dd>{{ summary.stale_running | fmt_number }}</dd>
-                    {# max(claimed_at) — see the note on the Configuration
-                       tile. A dispatch that finds nothing due writes no row,
-                       so this is not a liveness check for the CronJob. #}
-                    <dt>Last recorded run</dt>
-                    <dd>{{ (summary.last_dispatch_age | fmt_ago ~ ' ago') if summary.last_dispatch_age else 'never' }}</dd>
-                </dl>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-12 col-xl-8">
-        <div class="card h-100">
-            <div class="card-header py-2"><strong>Filter</strong></div>
-            <div class="card-body">
-                {# Each dimension is a hidden multi-value control the facet
-                   chips write into; the visible controls are free text and
-                   the window. Same arrangement as the notification log. #}
-                <form id="{{ form_id }}"
-                      hx-get="{{ fragment_url }}"
-                      hx-target="#{{ target_id }}"
-                      hx-swap="innerHTML"
-                      hx-trigger="submit, change from:select"
-                      class="row g-2 align-items-end">
-                    <div class="col-12 col-md-5">
-                        <label class="form-label small mb-1" for="taskSearch">
-                            Task or runner
-                        </label>
-                        <input type="search" class="form-control form-control-sm"
-                               id="taskSearch" name="search"
-                               placeholder="cleanup_status_snapshots or samuel-tasks-…">
-                    </div>
-                    <div class="col-6 col-md-3">
-                        <label class="form-label small mb-1" for="taskDays">Window</label>
-                        <select class="form-select form-select-sm" id="taskDays" name="days">
-                            <option value="1">Last 24 hours</option>
-                            <option value="7">Last 7 days</option>
-                            <option value="30" selected>Last 30 days</option>
-                            <option value="365">Last year</option>
-                        </select>
-                    </div>
-                    <div class="col-6 col-md-4 d-flex gap-2">
-                        <button type="submit" class="btn btn-sm btn-primary">
-                            <i class="fa-solid fa-filter"></i> Apply
-                        </button>
-                    </div>
-
-                    {# Written by the facet chips (data-action set-filter-submit). #}
-                    <select name="state" multiple hidden>
-                        {% for s in all_states %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
-                    </select>
-                    <select name="trigger_type" multiple hidden>
-                        {% for t in all_triggers %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
-                    </select>
-                    <select name="task_name" multiple hidden>
-                        {% for t in all_task_names %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
-                    </select>
-                </form>
-            </div>
-        </div>
+<div class="card mb-3">
+    <div class="card-body py-2 small d-flex flex-wrap align-items-baseline gap-3">
+        <span class="text-muted">Last {{ summary.window_hours }}h</span>
+        <dl class="stat-strip">
+            <div><dt>Succeeded</dt><dd>{{ summary.succeeded | fmt_number }}</dd></div>
+            <div><dt>Partial</dt><dd>{{ summary.partial | fmt_number }}</dd></div>
+            <div><dt>Failed</dt><dd>{{ summary.failed | fmt_number }}</dd></div>
+            <div><dt>Skipped</dt><dd>{{ summary.skipped | fmt_number }}</dd></div>
+            <div><dt>Stuck running</dt><dd>{{ summary.stale_running | fmt_number }}</dd></div>
+            {# max(claimed_at) — see the note on the Configuration tile. A
+               dispatch that finds nothing due writes no row, so this is not a
+               liveness check for the CronJob. #}
+            <div><dt>Last recorded run</dt>
+                <dd>{{ (summary.last_dispatch_age | fmt_ago ~ ' ago') if summary.last_dispatch_age else 'never' }}</dd></div>
+        </dl>
     </div>
 </div>
 
+{# Chip state only. The search box and the window render inside the log's
+   chip grid and bind here with `form=`. #}
+{{ facet_form(form_id, ['state', 'trigger_type', 'task_name']) }}
+
 <div id="{{ target_id }}"
      hx-get="{{ fragment_url }}"
-     hx-trigger="load"
+     hx-trigger="load, submit from:#{{ form_id }}"
+     hx-include="#{{ form_id }}"
      hx-swap="innerHTML">
     <div class="text-muted small p-3">
         <i class="fa-solid fa-circle-notch fa-spin"></i> Loading run history…

@@ -1,4 +1,5 @@
-{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_grid_row, facet_row %}
+{% from 'dashboards/fragments/search_box.html' import filter_search, filter_window %}
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/pagination.html' import pagination %}
 {% from 'dashboards/fragments/project_bits.html' import project_link with context %}
@@ -11,7 +12,7 @@
     page            {'n', 'per_page', 'days'}
     filters         what the route parsed
     *_facets        [{'value','count'}], SELF-EXCLUDING (see the route)
-    form_id         the filter form the chips write into
+    form_id         the hidden chip form; the search box and window bind to it
     target_id       this container's id, for pagination swaps
     fragment_url    this endpoint
 
@@ -31,11 +32,20 @@
 </div>
 
 <div class="facet-grid mb-2">
+    {% call facet_grid_row('Search') %}
+    {{ filter_search('notifySearch', 'search', fragment_url, target_id, 'Recipient or project',
+                     value=filters.search, form_id=form_id,
+                     placeholder='name@example.edu or SCSG0001') }}
+    {% endcall %}
+    {% call facet_grid_row('Window') %}
+    {{ filter_window('notifyDays', fragment_url, target_id, form_id, page.days) }}
+    {% endcall %}
     {{ facet_row('Status', status_facets, form_id, 'status',
                  filters.statuses or [], badge=True) }}
     {{ facet_row('Kind', kind_facets, form_id, 'kind', filters.kinds or []) }}
     {{ facet_row('Channel', channel_facets, form_id, 'channel',
                  filters.channels or []) }}
+    {{ facet_clear_all(form_id, filters.statuses or filters.kinds or filters.channels or filters.search) }}
 </div>
 
 <div id="notificationsTable">

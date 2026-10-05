@@ -9,6 +9,8 @@ Tests for the performance optimization changes:
 - Extended allocation query edge cases
 """
 
+import re
+
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
@@ -1172,6 +1174,14 @@ class TestShowUsageToggle:
 # Facility-scoped RBAC on the allocations dashboard
 # ============================================================================
 
+def _facility_box(html, name):
+    """A facility's box in the filter checklist: 'checked', 'unchecked' or None."""
+    box = re.search(rf'<input[^>]*name="facilities"\s+value="{name}"([^>]*)>', html)
+    if box is None:
+        return None
+    return 'checked' if 'checked' in box.group(1) else 'unchecked'
+
+
 class TestAllocationsDashboardFacilityScope:
     """Route-level assertions for the facility-scope layer on
     ``/allocations``. Runs against the snapshot DB via ``auth_client``;
@@ -1209,13 +1219,12 @@ class TestAllocationsDashboardFacilityScope:
         response = auth_client.get('/allocations/projects')
         assert response.status_code == 200
         html = response.data.decode()
-        # Selector form + one option (WNA), selected.
+        # Selector form + one box (WNA), checked.
         assert 'id="allocations-facility-filter-form"' in html
-        assert '<option value="WNA"' in html
-        assert 'selected' in html.split('<option value="WNA"', 1)[1].split('</option>', 1)[0]
-        # Other facilities must not appear as options.
-        assert '<option value="NCAR"' not in html
-        assert '<option value="UNIV"' not in html
+        assert _facility_box(html, 'WNA') == 'checked'
+        # Other facilities must not appear as boxes.
+        assert _facility_box(html, 'NCAR') is None
+        assert _facility_box(html, 'UNIV') is None
 
     def test_index_selector_lists_every_facility_for_unscoped_user(self, auth_client):
         """Unscoped admin (benkirk default): selector shows the full
@@ -1225,8 +1234,8 @@ class TestAllocationsDashboardFacilityScope:
         html = response.data.decode()
         assert 'id="allocations-facility-filter-form"' in html
         # Snapshot has WNA and NCAR as active facilities.
-        assert '<option value="WNA"' in html
-        assert '<option value="NCAR"' in html
+        assert _facility_box(html, 'WNA') == 'checked'
+        assert _facility_box(html, 'NCAR') == 'checked'
 
     def test_index_clamps_out_of_scope_request_to_allowed_set(
         self, auth_client, monkeypatch,
@@ -1239,9 +1248,7 @@ class TestAllocationsDashboardFacilityScope:
         assert response.status_code == 200
         html = response.data.decode()
         # WNA is still in the selected state.
-        assert '<option value="WNA"' in html
-        wna_frag = html.split('<option value="WNA"', 1)[1].split('</option>', 1)[0]
-        assert 'selected' in wna_frag
+        assert _facility_box(html, 'WNA') == 'checked'
 
     def test_projects_fragment_403s_out_of_scope_facility(
         self, auth_client, monkeypatch,

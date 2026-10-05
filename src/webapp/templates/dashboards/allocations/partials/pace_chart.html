@@ -32,7 +32,7 @@
                     ('future', 'Projected Burn'),
                 ] %}
                 <button type="button"
-                        class="btn {% if sort_by == opt_val %}btn-secondary active{% else %}btn-outline-secondary{% endif %}"
+                        class="btn btn-outline-secondary{% if sort_by == opt_val %} active{% endif %}"
                         hx-get="{{ url_for('allocations_dashboard.htmx_pace_chart',
                                            resource_name=resource_name,
                                            **dict(selector_kwargs, sort_by=opt_val)) }}"

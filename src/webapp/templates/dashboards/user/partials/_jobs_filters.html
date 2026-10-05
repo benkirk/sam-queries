@@ -1,5 +1,5 @@
 {% from 'dashboards/fragments/form_fields.html' import fk_search_field %}
-{% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
+{% from 'dashboards/fragments/filter_panel.html' import filter_apply, filter_panel_shell %}
 {% from 'dashboards/fragments/age_band_range.html' import age_band_range %}
 {% from 'dashboards/fragments/ladder_range.html' import ladder_range %}
 {#
@@ -202,9 +202,7 @@
       <i class="fa-solid fa-sliders me-1"></i> Size &amp; runtime
     </button>
 
-    <button type="submit" class="btn btn-outline-white ms-auto">
-      <i class="fa-solid fa-filter me-1"></i> Apply
-    </button>
+    {{ filter_apply('ms-auto') }}
   </div>
 {% endcall %}
 {% endmacro %}

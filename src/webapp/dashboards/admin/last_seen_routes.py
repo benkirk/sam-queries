@@ -19,7 +19,9 @@ from system_status.queries.last_seen import get_last_seen_by_user
 from system_status.timeutil import utcnow_naive
 from webapp.extensions import db
 from webapp.utils.faceted_log import build_facet_strip
-from webapp.utils.htmx import read_active_only, read_flag
+from webapp.utils.htmx import (
+    read_active_only, read_flag, read_multi, read_page, read_sort,
+)
 from webapp.utils.rbac import Permission, require_permission_any_facility
 
 from .blueprint import bp
@@ -45,15 +47,14 @@ def ledger_missing():
 
 
 def _filters(args):
-    bucket = args.get('bucket') or None
     kind = args.get('kind') or None
-    sort_by = args.get('sort_by') if args.get('sort_by') in _SORTABLE else 'last_seen'
+    sort = read_sort(args, _SORTABLE)
     return {
-        'bucket': bucket if bucket in BUCKET_KEYS else None,
+        'bucket': [b for b in read_multi(args, 'bucket') if b in BUCKET_KEYS],
         'kind': kind if kind in SOURCE_KINDS else None,
         'search': (args.get('q') or '').strip() or None,
-        'sort_by': sort_by,
-        'sort_dir': 'asc' if args.get('sort_dir') == 'asc' else 'desc',
+        'sort_by': sort['sort_by'] or 'last_seen',
+        'sort_dir': sort['sort_dir'],
     }
 
 
@@ -84,7 +85,7 @@ def users_last_seen_table():
 
     filters = _filters(request.args)
     active_only = read_active_only(request.args)
-    page_n = max(1, request.args.get('page', type=int) or 1)
+    page_n = read_page(request.args)['n']
 
     rows, bucket_counts, kind_counts = review(
         get_user_directory(db.session, active_only=active_only),

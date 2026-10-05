@@ -54,7 +54,7 @@ def test_hpc_used_is_the_window_at_an_annual_rate_with_pills(auth_client, captur
     assert (query['end'] - query['start']).days == 89
     assert _values(captured) == {'UABC0001': pytest.approx(30.0 * 365 / 90)}
     assert body.count('hx-target="#chartExpandModalBody"') == 4
-    assert re.search(r'btn-secondary active"[^>]*hx-get="[^"]*days=90', body)
+    assert re.search(r'btn-outline-secondary active"[^>]*hx-get="[^"]*days=90', body)
     assert 'data-bs-toggle' not in body
 
 

@@ -553,7 +553,7 @@ def summarize_xras_actions(
     per dimension with that dimension's own filter omitted. Otherwise filtering to
     ``status='failed'`` drives every other status count to zero and the chips
     become dead ends rather than a way to move between statuses. See
-    ``webapp/dashboards/allocations/blueprint.py::xras_fragment``.
+    ``webapp/dashboards/allocations/xras/card_routes.py::xras_fragment``.
 
     Returns:
         ``{'total': int,

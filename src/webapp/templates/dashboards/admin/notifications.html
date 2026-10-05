@@ -13,14 +13,14 @@
   Context:
     summary       sam.queries.notifications.summarize_notifications(...)
     config        NotifyConfig.summary()
-    form_id       the filter form the facet chips write into
-    target_id     the swap target for the table fragment
+    form_id       the hidden form holding the chip state
+    target_id     the swap target for the log fragment
     fragment_url  GET .../notifications/log
-    initial_log_url  fragment_url, plus ?kind= when the editor deep-linked here
-    preselect_kind / all_statuses / all_kinds / default_days
+    preselect_kind  the ?kind= the editor deep-linked here with, or None
     active_tab    'log' | 'templates'
     template_rows / selected_name   for the Templates pane
 #}
+{% from 'dashboards/fragments/facet_chips.html' import facet_form %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
@@ -96,77 +96,29 @@
 <div class="tab-pane fade{{ ' show active' if active_tab == 'log' }}" id="log-pane"
      role="tabpanel" aria-labelledby="log-tab">
 
-<div class="row g-3 mb-3">
-    <div class="col-12 col-xl-4">
-        <div class="card h-100">
-            <div class="card-header py-2"><strong>Last {{ summary.window_hours }}h</strong></div>
-            <div class="card-body small">
-                <dl class="config-stats mb-0">
-                    <dt>Sent</dt>       <dd>{{ summary.sent | fmt_number }}</dd>
-                    <dt>Redirected</dt> <dd>{{ summary.redirected | fmt_number }}</dd>
-                    <dt>Failed</dt>     <dd>{{ summary.failed | fmt_number }}</dd>
-                    <dt>Suppressed</dt> <dd>{{ summary.suppressed | fmt_number }}</dd>
-                    <dt>Queued (stuck)</dt><dd>{{ summary.queued_stuck | fmt_number }}</dd>
-                </dl>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-12 col-xl-8">
-        <div class="card h-100">
-            <div class="card-header py-2"><strong>Filter</strong></div>
-            <div class="card-body">
-                {# Each dimension is a hidden multi-value control the facet
-                   chips write into; the visible controls are free text and
-                   the window. Same arrangement as the XRAS action log. #}
-                <form id="{{ form_id }}"
-                      hx-get="{{ fragment_url }}"
-                      hx-target="#{{ target_id }}"
-                      hx-swap="innerHTML"
-                      hx-trigger="submit, change from:select"
-                      class="row g-2 align-items-end">
-                    <div class="col-12 col-md-5">
-                        <label class="form-label small mb-1" for="notifySearch">
-                            Recipient or project
-                        </label>
-                        <input type="search" class="form-control form-control-sm"
-                               id="notifySearch" name="search"
-                               placeholder="name@example.edu or SCSG0001">
-                    </div>
-                    <div class="col-6 col-md-3">
-                        <label class="form-label small mb-1" for="notifyDays">Window</label>
-                        <select class="form-select form-select-sm" id="notifyDays" name="days">
-                            <option value="1">Last 24 hours</option>
-                            <option value="7">Last 7 days</option>
-                            <option value="30" selected>Last 30 days</option>
-                            <option value="365">Last year</option>
-                        </select>
-                    </div>
-                    <div class="col-6 col-md-4 d-flex gap-2">
-                        <button type="submit" class="btn btn-sm btn-primary">
-                            <i class="fa-solid fa-filter"></i> Apply
-                        </button>
-                    </div>
-
-                    {# Written by the facet chips (data-action set-filter-submit). #}
-                    <select name="status" multiple hidden>
-                        {% for s in all_statuses %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
-                    </select>
-                    <select name="kind" multiple hidden>
-                        {% for k in all_kinds %}<option value="{{ k }}"{{ ' selected' if k == preselect_kind }}>{{ k }}</option>{% endfor %}
-                    </select>
-                    <select name="channel" multiple hidden>
-                        <option value="email">email</option>
-                    </select>
-                </form>
-            </div>
-        </div>
+<div class="card mb-3">
+    <div class="card-body py-2 small d-flex flex-wrap align-items-baseline gap-3">
+        <span class="text-muted">Last {{ summary.window_hours }}h</span>
+        <dl class="stat-strip">
+            <div><dt>Sent</dt><dd>{{ summary.sent | fmt_number }}</dd></div>
+            <div><dt>Redirected</dt><dd>{{ summary.redirected | fmt_number }}</dd></div>
+            <div><dt>Failed</dt><dd>{{ summary.failed | fmt_number }}</dd></div>
+            <div><dt>Suppressed</dt><dd>{{ summary.suppressed | fmt_number }}</dd></div>
+            <div><dt>Queued (stuck)</dt><dd>{{ summary.queued_stuck | fmt_number }}</dd></div>
+        </dl>
     </div>
 </div>
 
+{# Chip state only. The search box and the window render inside the log's
+   chip grid and bind here with `form=`; `?kind=` (the editor's deep link)
+   arrives as a pre-selected chip field. #}
+{{ facet_form(form_id, ['status', 'kind', 'channel'],
+              selected={'kind': [preselect_kind]} if preselect_kind else {}) }}
+
 <div id="{{ target_id }}"
-     hx-get="{{ initial_log_url }}"
-     hx-trigger="load"
+     hx-get="{{ fragment_url }}"
+     hx-trigger="load, submit from:#{{ form_id }}"
+     hx-include="#{{ form_id }}"
      hx-swap="innerHTML">
     <div class="text-muted small p-3">
         <i class="fa-solid fa-circle-notch fa-spin"></i> Loading delivery log…

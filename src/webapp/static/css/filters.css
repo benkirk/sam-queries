@@ -2,13 +2,20 @@
  * SAM filter UI — facet chips, ladder ranges and the filter sidebar.
  * Shared components for any filter form on the site, loaded right after
  * dashboard.css in dashboards/base.html so the cascade order is unchanged.
+ *
+ * TWO TIERS, ONE VOCABULARY. A surface picks one tier:
+ *   - page-level: the navy .filter-sidebar panel (filter_panel_shell), with
+ *     an Apply button; every control one line tall.
+ *   - in-card: a .facet-grid of chips, live, with no button.
+ * Both build from the same atoms: search (filter_search), switch, window,
+ * chips, and a single clear. The chip grid with its counts is the one
+ * distinctive element; everything around it stays quiet.
  */
 
 /* ============================================================================
    FACET CHIPS — a live value-count strip whose chips double as filter
    controls. Every caller goes through the `facet_row` macro in
-   fragments/facet_chips.html: the jobs explorer (between its filter panel and
-   its tab strip), the XRAS action log, and the notification delivery log.
+   fragments/facet_chips.html (ten templates; grep for it).
 
    One grid row per dimension: the label column self-sizes to the widest
    label and the values wrap inside their own cell, so "Exit code" can
@@ -43,6 +50,43 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.25rem;
+}
+
+/* The grid's last row, present only while something is selected. Quiet on
+   purpose: a text button, not a chip, so it never reads as one more value. */
+.facet-clear {
+    padding: 0.125rem 0;
+    background: none;
+    border: 0;
+    font-size: 0.8125rem;
+    color: var(--text-link);
+}
+
+.facet-clear:hover,
+.facet-clear:focus-visible {
+    text-decoration: underline;
+}
+
+/* The one search box (filter_search). A fixed measure so it reads the same
+   in a chip grid, a card header and a filter row; it yields on a phone. */
+.filter-search {
+    width: 24rem;
+    max-width: 100%;
+}
+
+/* The icon is a hint, not a control: it joins the input's own border and
+   surface, where a form's unit addon (.input-group-text) is solid brand blue. */
+.filter-search .input-group-text {
+    padding-right: 0.25rem;
+    background-color: var(--bs-body-bg);
+    border: var(--bs-border-width) solid var(--bs-border-color);
+    border-right: 0;
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+
+.filter-search .form-control {
+    border-left: 0;
 }
 
 /* Deliberately not a .btn. The Unity button treatment above (uppercase,
@@ -476,6 +520,7 @@
 }
 
 .filter-sidebar select,
+.filter-sidebar .filter-checklist-toggle,
 .filter-sidebar input[type="date"],
 .filter-sidebar input[type="text"],
 .filter-sidebar input[type="search"],
@@ -487,6 +532,52 @@
 
 .filter-sidebar input::placeholder {
     color: var(--text-tertiary);
+}
+
+/* multiselect_filter: a dropdown checklist. The toggle borrows .form-select so
+   it is the same height and chevron as the selects beside it; the menu is an
+   ordinary dropdown surface, so its ink is the dropdown's, not the panel's. */
+.filter-checklist-toggle {
+    overflow: hidden;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.filter-checklist-menu {
+    min-width: 100%;
+    max-height: 20rem;
+    overflow-y: auto;
+}
+
+.filter-checklist-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.filter-checklist-item .form-check-input {
+    flex: none;
+    margin-top: 0;
+}
+
+.filter-checklist-clear {
+    display: block;
+    width: 100%;
+    padding: 0.125rem 1rem 0.375rem;
+    margin-bottom: 0.25rem;
+    background: none;
+    border: 0;
+    border-bottom: 1px solid var(--border-default);
+    font-size: 0.8125rem;
+    text-align: left;
+    color: var(--text-link);
+}
+
+.filter-checklist-clear:hover,
+.filter-checklist-clear:focus-visible {
+    text-decoration: underline;
 }
 
 /* fk-pickers embedded in a horizontal align-items-end filter row (jobs +
@@ -509,7 +600,8 @@
 
     .filter-sidebar input.form-control,
     .filter-sidebar select.form-control,
-    .filter-sidebar select.form-select {
+    .filter-sidebar select.form-select,
+    .filter-sidebar .filter-checklist-toggle {
         width: 100% !important;
     }
 }

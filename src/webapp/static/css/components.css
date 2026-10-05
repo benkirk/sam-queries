@@ -160,6 +160,25 @@ svg a, svg a:hover, svg a:focus, svg a:visited {
     word-break: break-word;
 }
 
+/* A summary's counters on one line above a log (notifications, task runs):
+   a <dl> of <div> pairs that wraps instead of stacking. */
+.stat-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 2rem;
+    margin: 0;
+}
+
+.stat-strip > div {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+}
+
+.stat-strip dt, .stat-strip dd {
+    margin: 0;
+}
+
 /* Kill Bootstrap's height animation on <tbody> — looks jittery on table-row-groups.
    Zero transition-duration makes Bootstrap's getTransitionDurationFromElement() return 0,
    so .collapsing is removed immediately and the toggle snaps (same visual as d-none). */

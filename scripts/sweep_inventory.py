@@ -33,7 +33,7 @@ TEMPLATE_ROOT = Path("src/webapp/templates")
 VENDOR_ROOT = Path("src/webapp/static/vendor")
 PLANS_ROOT = Path("docs/plans")
 AREAS = {
-    "py": ("private-imports", "dup-functions", "py-dup-names"),
+    "py": ("private-imports", "dup-functions", "py-dup-names", "helper-bypass"),
     "css": ("css-dead", "css-shape"),
     "templates": ("inline-styles", "bs4-classes", "row-buttons", "modal-alerts"),
     "js": ("js-dup", "js-dead"),
@@ -46,6 +46,19 @@ _STATUS = re.compile(r"^\*\*Status:?\*?\*?:?\s*(.+)$", re.M | re.I)
 OPEN_STATUS = ("unbuilt", "deferred", "brainstorm", "sketch", "in progress", "not started")
 MIN_FUNCTION_NODES = 40   # smaller bodies repeat by accident (getters, one-line guards)
 MIN_NAME_MODULES = 3      # py-dup-names: a helper name defined at module level in this many modules
+# helper-bypass: a hand-rolled spelling of what a shared request reader (webapp/utils/htmx.py) does.
+# Receivers are request mappings only, so os.environ and header reads stay out. Add a pattern here
+# in the PR that lifts a reader, so its remaining call sites show.
+WEBAPP_ROOT = Path("src/webapp")
+HELPER_HOMES = ("src/webapp/utils/htmx.py",)
+_ARGS = r"(?:request\.(?:args|form|values)|\bargs|\brequest_args|\bform)"
+HELPER_BYPASS = (
+    ("read_multi", re.compile(rf"for \w+ in {_ARGS}\.getlist\([^)]*\) if \w+\s*[\])]")),
+    ("read_multi", re.compile(rf"{_ARGS}\.getlist\([^)]*\) or None")),
+    ("read_flag", re.compile(rf"""{_ARGS}\.get\([^()]*\)(?:\.lower\(\))?\s*"""
+                             r"""(?:==\s*['"](?:1|true|on)['"]|in \(\s*['"]1['"])""")),
+    ("read_page", re.compile(rf"""{_ARGS}\.get\(\s*['"]page['"],\s*type=int\)""")),
+)
 GENERIC_NAMES = {"main", "register", "get", "create", "update", "run", "handle", "index", "validate", "setup",
                  "init_app"}
 _TOKEN = re.compile(r"[A-Za-z_][\w-]*")
@@ -173,6 +186,20 @@ def py_dup_names(py_files, min_modules=MIN_NAME_MODULES):
                 sites[name].append(f"{path.as_posix()}:{node.lineno}")
     rows = [{"name": n, "modules": len(s), "sites": s} for n, s in sites.items() if len(s) >= min_modules]
     return sorted(rows, key=lambda r: (-r["modules"], r["name"]))
+
+
+def helper_bypass(py_files, homes=HELPER_HOMES, patterns=HELPER_BYPASS):
+    """Request reads that hand-roll what a shared reader does, outside the reader's own module."""
+    rows = []
+    for path in py_files:
+        if path.as_posix() in homes:
+            continue
+        text = read(path)
+        for helper, pattern in patterns:
+            for m in pattern.finditer(text):
+                rows.append({"helper": helper, "file": path.as_posix(),
+                             "line": text.count("\n", 0, m.start()) + 1})
+    return sorted(rows, key=lambda r: (r["helper"], r["file"], r["line"]))
 
 
 def _css_rules(text):
@@ -429,6 +456,9 @@ def run(detectors, changed=None, use_gh=False):
         out["dup-functions"] = [r for r in dup_functions(py) if keep(r["sites"])]
     if "py-dup-names" in detectors:
         out["py-dup-names"] = [r for r in py_dup_names(py) if keep(r["sites"])]
+    if "helper-bypass" in detectors:
+        webapp = [p for p in py if WEBAPP_ROOT in p.parents]
+        out["helper-bypass"] = [r for r in helper_bypass(webapp) if keep([r["file"]])]
     if "css-dead" in detectors:
         dead = css_dead(css, corpus)
         out["css-dead"] = {"classes": [r for r in dead["classes"] if keep([r["file"]])],
@@ -483,6 +513,12 @@ def report(result, top):
         for r in rows[:top]:
             print(f"  {r['modules']:3d}  {r['name']}  " + ", ".join(r["sites"][:3]))
         print(f"  total: {len(rows)} names, {sum(r['modules'] for r in rows)} definitions")
+    if "helper-bypass" in result:
+        rows = result["helper-bypass"]
+        print("\n== helper-bypass: request reads that hand-roll a shared reader (webapp/utils/htmx.py)")
+        for r in rows[:top]:
+            print(f"  {r['helper']:10s}  {r['file']}:{r['line']}")
+        print(f"  total: {len(rows)} sites, {len({r['helper'] for r in rows})} readers")
     if "css-dead" in result:
         rows, stale = result["css-dead"]["classes"], result["css-dead"]["stale_keeps"]
         print("\n== css-dead: classes styled but never named (check dynamic names before deleting)")

@@ -1,4 +1,6 @@
 {% extends 'dashboards/admin/base_admin_users.html' %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_fields %}
+{% from 'dashboards/fragments/search_box.html' import filter_search %}
 {#
   Admin -> Users & Groups -> Last seen. The chips, sort headers and pagination
   in the fragment all write into this one form, so every control composes.
@@ -23,16 +25,14 @@
               hx-get="{{ fragment_url }}"
               hx-target="#{{ target_id }}"
               hx-swap="innerHTML"
-              hx-trigger="submit, change, input changed delay:300ms from:#lastSeenSearch"
-              class="row g-2 align-items-center">
-            <div class="col-12 col-md-6">
-                <label class="visually-hidden" for="lastSeenSearch">Username or name</label>
-                <input type="search" class="form-control form-control-sm"
-                       id="lastSeenSearch" name="q"
-                       value="{{ filters.search or '' }}"
-                       placeholder="Filter by username or name…">
+              hx-trigger="submit, change"
+              class="d-flex flex-wrap align-items-center gap-3">
+            <div>
+                {{ filter_search('lastSeenSearch', 'q', fragment_url, target_id,
+                                 'Username or name', value=filters.search,
+                                 placeholder='Username or name') }}
             </div>
-            <div class="col-12 col-md-6">
+            <div>
                 <div class="form-check form-switch mb-0">
                     <input type="checkbox" class="form-check-input"
                            id="lastSeenActiveOnly" name="active_only" value="1"
@@ -42,10 +42,9 @@
                 </div>
             </div>
             {# Written by the facet chips and sort headers. #}
-            <input type="hidden" name="bucket" value="{{ filters.bucket or '' }}">
-            <input type="hidden" name="kind" value="{{ filters.kind or '' }}">
-            <input type="hidden" name="sort_by" value="{{ filters.sort_by }}">
-            <input type="hidden" name="sort_dir" value="{{ filters.sort_dir }}">
+            {{ facet_fields(['bucket', 'kind'], single=['kind'], sort=filters,
+                            selected={'bucket': filters.bucket,
+                                      'kind': [filters.kind] if filters.kind else []}) }}
         </form>
     </div>
 </div>

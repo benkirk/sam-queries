@@ -817,14 +817,13 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    positive actions and btn-outline-primary for destructive/informational
    actions instead. */
 
-/* Toggle button groups (.btn-group with .btn-secondary / .btn-outline-secondary
-   pair, used by time_range_picker, date_range_picker, system_user_proj_chart_card,
-   and other quick-select preset rows). Match the Unity .nav-tabs invert pattern:
-   inactive = solid NCAR-blue, active = white with blue text. Scoped to .btn-group
-   so non-group .btn-secondary uses (modal Cancel, queue_history Back) keep their
-   existing treatments. The active vars also cover .btn-check radio toggles
-   (create-project projcode mode), which Bootstrap styles via
-   .btn-check:checked + .btn → --bs-btn-active-*. */
+/* Toggle button groups: every pill is `.btn-outline-secondary`, and `active`
+   alone marks the selected one (window_pills, time_range_picker,
+   date_range_picker, the chart toggles). Match the Unity .nav-tabs invert
+   pattern: unselected = solid NCAR-blue, selected = white with blue text.
+   Scoped to .btn-group so a lone outline button keeps its own treatment. The
+   active vars also cover .btn-check radio toggles (create-project projcode
+   mode), which Bootstrap styles via .btn-check:checked + .btn. */
 .btn-group .btn-outline-secondary {
     --bs-btn-bg: var(--ncar-blue);
     --bs-btn-border-color: var(--ncar-blue);
@@ -832,20 +831,6 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     --bs-btn-hover-bg: var(--ncar-navy);
     --bs-btn-hover-border-color: var(--ncar-navy);
     --bs-btn-hover-color: var(--text-on-brand);
-    --bs-btn-active-bg: var(--surface-card);
-    --bs-btn-active-border-color: var(--ncar-blue);
-    --bs-btn-active-color: var(--text-link);
-}
-
-.btn-group .btn-secondary,
-.btn-group .btn-secondary.active,
-.btn-group .btn-secondary:active {
-    --bs-btn-bg: var(--surface-card);
-    --bs-btn-border-color: var(--ncar-blue);
-    --bs-btn-color: var(--text-link);
-    --bs-btn-hover-bg: rgba(var(--ncar-teal-rgb), 0.08);
-    --bs-btn-hover-border-color: var(--ncar-blue);
-    --bs-btn-hover-color: var(--text-link);
     --bs-btn-active-bg: var(--surface-card);
     --bs-btn-active-border-color: var(--ncar-blue);
     --bs-btn-active-color: var(--text-link);

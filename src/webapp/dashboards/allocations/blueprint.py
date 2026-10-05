@@ -17,7 +17,8 @@ from typing import List, Dict
 from webapp.extensions import db, cache, user_aware_cache_key
 from webapp.utils import age_bands
 from webapp.utils.htmx import (
-    handle_htmx_form_post, read_flag, read_layout, read_page, read_switch,
+    handle_htmx_form_post, read_flag, read_layout, read_multi, read_page,
+    read_switch,
     read_sort, read_tab, read_theme, register_typeahead,
 )
 from sam.projects.projects import Project
@@ -41,6 +42,7 @@ from sam.queries.usage_cache import (
 )
 from sam import fmt
 from sam.dates import parse_ymd, parse_ymd_or, start_of_today
+from webapp.utils.windows import read_log_window
 from sam.queries.projects import project_panels, project_titles
 from sam.export import Column, build_workbook
 from sam.schemas.forms import CreateChargeAdjustmentForm
@@ -525,7 +527,7 @@ def projects():
         active_at = start_of_today()
 
     # Allow cache bypass for debugging / stale data
-    force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+    force_refresh = read_flag(request.args, 'force_refresh')
     # The table's row filter; the summaries and charts are always root-only.
     root_only = read_switch(request.args, 'root_only', default=True)
 
@@ -1028,7 +1030,7 @@ def projects_fragment():
     facility = request.args.get('facility')
     allocation_type = request.args.get('allocation_type')
     active_at_str = request.args.get('active_at')
-    force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+    force_refresh = read_flag(request.args, 'force_refresh')
     root_only = read_switch(request.args, 'root_only', default=True)
 
     # Validate required params
@@ -1191,24 +1193,13 @@ def _parse_audit_filters(request_args, sort_whitelist):
     - ``sort``: ``{'sort_by': str|None, 'sort_dir': 'asc'|'desc'}``.
     - ``page``: ``{'n': int ≥ 1, 'per_page': int clamped to [10, 200]}``.
 
-    Default 30-day window is applied iff **neither** ``start_date`` nor
-    ``end_date`` appears in the query string (empty bounds explicitly = all
-    time).
+    The window is ``read_log_window``: a 30-day lookback until either date
+    param appears in the query string.
     """
     projcode = (request_args.get('projcode') or '').strip() or None
-    resource_names = request_args.getlist('resource_name') or None
+    resource_names = read_multi(request_args, 'resource_name') or None
     username = (request_args.get('username') or '').strip() or None
-    start_date_str = (request_args.get('start_date') or '').strip()
-    end_date_str = (request_args.get('end_date') or '').strip()
-
-    if 'start_date' not in request_args and 'end_date' not in request_args:
-        # First-load default: last 30 days, ending now.
-        start_date = (start_of_today()
-                      - timedelta(days=30))
-        end_date = datetime.now()
-    else:
-        start_date = parse_ymd_or(start_date_str)
-        end_date = parse_ymd_or(end_date_str, end_of_day=True)
+    start_date, end_date = read_log_window(request_args, default_days=30)
 
     filters = {
         'projcode': projcode,

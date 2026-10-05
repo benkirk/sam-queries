@@ -14,7 +14,7 @@
         <div class="btn-group btn-group-sm" role="group" aria-label="Calendar shading">
             {% for m, label in (('used', 'Used'), ('burn', 'Burn')) %}
             <button type="button" aria-pressed="{{ 'true' if mode == m else 'false' }}"
-                    class="btn {% if mode == m %}btn-secondary active{% else %}btn-outline-secondary{% endif %}"
+                    class="btn btn-outline-secondary{% if mode == m %} active{% endif %}"
                     hx-get="{{ url_for('allocations_dashboard.htmx_calendar', resource_name=resource_name,
                                        active_at=active_at, facilities=requested_facilities, mode=m) }}"
                     hx-target="#{{ cal_id }}" hx-swap="outerHTML">{{ label }}</button>

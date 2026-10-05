@@ -1,7 +1,8 @@
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_xras_pending_work, g_xras_mnemonic_strip, g_xras_contract_strip, g_xras_identity_strip with context %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
-{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_grid_row, facet_row %}
+{% from 'dashboards/fragments/search_box.html' import filter_search %}
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {#
   XRAS Remediations — the operator WRITE surface.
@@ -12,7 +13,7 @@
     snapshot        the published index payload, or None
     configured      XRAS_OUTGOING_ENABLED + key;  write_enabled  + XRAS_WRITE_ENABLED
     has_worklist    a sweep has published the ACCOUNT worklist (see below)
-    *_values / selected_*  facet state
+    facet_values / selected  {dimension: chips} and {dimension: [str]}
     form_id, fragment_url, target_id
 
  EVERY BUTTON HERE WRITES TO PRODUCTION XRAS
@@ -256,8 +257,7 @@
                the same population as XRAS admin's Recent submissions. Bound to
                the hidden filter form like the search box, so a chip click keeps
                the mode. #}
-            <div class="facet-grid-label">View</div>
-            <div class="facet-grid-values">
+            {% call facet_grid_row('View') %}
                 <div class="form-check form-switch small mb-0">
                     <input class="form-check-input" type="checkbox" role="switch"
                            id="xras-remediation-show-all" name="show_all" value="1"
@@ -273,9 +273,8 @@
                     {{ help_icon(g_xras_pending_work(), rich=True,
                                  title='Pending work vs. everything', placement='right') }}
                 </div>
-            </div>
-            <div class="facet-grid-label">Search</div>
-            <div class="facet-grid-values">
+            {% endcall %}
+            {% call facet_grid_row('Search') %}
                 {# `form=`: the input lives here, next to the chips, but belongs
                    to the hidden filter form two files over, so a chip click
                    (which submits that form) carries the search term with it.
@@ -286,39 +285,35 @@
                    htmx restores focus and caret to the element with the same
                    id after the swap, which is what makes typing survive a
                    300 ms round trip. Hence the stable id. #}
-                <input type="search" class="form-control form-control-sm"
-                       id="xras-remediation-search" name="search"
-                       form="{{ form_id }}" value="{{ search or '' }}"
-                       autocomplete="off" style="width: 24rem; max-width: 100%;"
-                       placeholder="Request number, project code, or a name"
-                       title="The request number IS the projcode. Also matches the project lead and every roster member, by name or username — including the ones only visible once a row is expanded."
-                       hx-get="{{ fragment_url }}"
-                       hx-target="#{{ target_id }}"
-                       hx-swap="innerHTML"
-                       hx-trigger="input changed delay:300ms, search"
-                       hx-include="#xras-window-filters, #{{ form_id }}">
-            </div>
-            {{ facet_row('Status', status_values, form_id, 'status',
-                         active=selected_statuses) }}
-            {{ facet_row('Type', action_values, form_id, 'action_type',
-                         active=selected_actions) }}
-            {{ facet_row('Opportunity', opportunity_values, form_id, 'opportunity',
-                         active=selected_opportunities) }}
-            {{ facet_row('SAM project', push_values, form_id, 'push',
-                         active=selected_push) }}
-            {{ facet_row('Readiness', readiness_values, form_id, 'readiness',
-                         active=selected_readiness) }}
+                {{ filter_search('xras-remediation-search', 'search', fragment_url,
+                                 target_id, 'Search requests', value=search,
+                                 form_id=form_id,
+                                 include='#xras-window-filters, #' ~ form_id,
+                                 placeholder='Request number, project code, or a name',
+                                 title='The request number IS the projcode. Also matches the project lead and every roster member, by name or username — including the ones only visible once a row is expanded.') }}
+            {% endcall %}
+            {{ facet_row('Status', facet_values.status, form_id, 'status',
+                         active=selected.status) }}
+            {{ facet_row('Type', facet_values.action_type, form_id, 'action_type',
+                         active=selected.action_type) }}
+            {{ facet_row('Opportunity', facet_values.opportunity, form_id, 'opportunity',
+                         active=selected.opportunity) }}
+            {{ facet_row('SAM project', facet_values.push, form_id, 'push',
+                         active=selected.push) }}
+            {{ facet_row('Readiness', facet_values.readiness, form_id, 'readiness',
+                         active=selected.readiness) }}
             {# Blocker: which of the three data fixes each failing row is stuck on.
                A row counts under every category it cites, so these can sum past
                the row total. The strips above are the aggregate; this traces
                each aggregate down to its rows. #}
-            {{ facet_row('Blocker', blocker_values, form_id, 'blockers',
-                         active=selected_blockers) }}
-            {# Built in the route — Jinja has no list comprehension. Present
-               only when a request filter is active, which is how the action
-               log's "Show in action log" round-trip renders a clearable chip. #}
-            {{ facet_row('Request', request_values, form_id, 'request_number',
-                         active=selected_requests) }}
+            {{ facet_row('Blocker', facet_values.blockers, form_id, 'blockers',
+                         active=selected.blockers) }}
+            {# Present only when a request filter is active, which is how the
+               action log's "Show in action log" round-trip renders a clearable
+               chip. #}
+            {{ facet_row('Request', facet_values.request_number, form_id, 'request_number',
+                         active=selected.request_number) }}
+            {{ facet_clear_all(form_id, search or (selected.values() | select | list)) }}
         </div>
 
         {% if not groups %}
@@ -338,7 +333,9 @@
             <strong>{{ swept_total | fmt_number }} request(s) were swept, and
             the current filters hide all of them.</strong>
             On this card an older request is usually the <em>more</em> urgent
-            one — widen the date filter above, or clear the search and chips,
+            one — widen the date filter above, or
+            <button type="button" class="btn btn-link btn-sm p-0 align-baseline"
+                    data-action="facet-clear-all" data-form-id="{{ form_id }}">clear the search and chips</button>,
             to see them.
             {% endif %}
         </div>

@@ -12,6 +12,7 @@
   dimension the card offers a chip for needs a control here, or the chip
   writes into a field that does not exist and filters nothing.
 #}
+{% from 'dashboards/fragments/facet_chips.html' import facet_form %}
 
 {% block title %}Account requests — SAM admin{% endblock %}
 
@@ -28,15 +29,8 @@
     </div>
 </div>
 
-<form id="{{ form_id }}" class="d-none">
-    {% for dim in facets %}
-    <select name="{{ dim }}" multiple hidden></select>
-    {% endfor %}
-    {# Sort is form state (set-sort-submit writes these), so it survives
-       every facet change, not just a header click. #}
-    <input type="hidden" name="sort_by" value="">
-    <input type="hidden" name="sort_dir" value="">
-</form>
+{# Sort is form state too, so it survives every chip click. #}
+{{ facet_form(form_id, facets, sort=True) }}
 
 <div id="{{ target_id }}"
      hx-get="{{ initial_url }}"

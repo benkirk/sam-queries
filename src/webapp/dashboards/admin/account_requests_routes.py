@@ -39,10 +39,11 @@ from sam.queries.account_requests import (
 )
 from sam.schemas.forms import AccountRequestReasonForm
 from webapp.extensions import db
+from webapp.utils.facets import Facet, FacetSet
 from webapp.utils.form_handler import HtmxFormHandler
 from webapp.utils.htmx import (
     handle_htmx_form_post, htmx_modal_not_found, htmx_not_found, htmx_success,
-    htmx_success_message, modal_triggers, read_flag, read_sort,
+    htmx_success_message, modal_triggers, read_flag, read_sort, sort_rows,
 )
 from webapp.utils.email_preview import (
     email_preview_context, render_email_preview, render_preview_info,
@@ -71,7 +72,15 @@ _READINESS_LABELS = {'open': 'No account yet', 'ready': 'Account exists',
                      'inactive': 'Account inactive', 'ambiguous': 'Ambiguous email',
                      'failed': 'Enrollment failed', 'fulfilled': 'Fulfilled'}
 _READINESS_ORDER = ('ready', 'failed', 'inactive', 'ambiguous', 'open', 'fulfilled')
-_FACETS = ('state', 'purpose', 'origin', 'readiness', 'event')
+_FACETS = FacetSet(
+    Facet('state', order=ACCOUNT_REQUEST_STATES, hide_zero=True),
+    Facet('purpose', order=ACCOUNT_REQUEST_PURPOSES, hide_zero=True),
+    Facet('origin', order=tuple(_ORIGIN_LABELS), labels=_ORIGIN_LABELS,
+          hide_zero=True),
+    Facet('readiness', order=_READINESS_ORDER, labels=_READINESS_LABELS,
+          hide_zero=True),
+    Facet('event', key='event_code', hide_zero=True),
+)
 
 _SORT = {
     'person': lambda r: (r['last_name'].casefold(), r['first_name'].casefold()),
@@ -80,31 +89,6 @@ _SORT = {
     'deadline': lambda r: r['deadline'],
     'state': lambda r: r['state'],
 }
-
-
-def _apply(views, selected, *, skip=None):
-    """The chip selections, ANDed across dimensions; ``skip`` one for its facet."""
-    out = views
-    for dim in _FACETS:
-        if dim == skip or not selected.get(dim):
-            continue
-        wanted = set(selected[dim])
-        key = 'event_code' if dim == 'event' else dim
-        out = [v for v in out if v[key] in wanted]
-    return out
-
-
-def _facet(views, selected, dim, order=None, labels=None):
-    scoped = _apply(views, selected, skip=dim)
-    key = 'event_code' if dim == 'event' else dim
-    counts = {}
-    for v in scoped:
-        counts[v[key]] = counts.get(v[key], 0) + 1
-    if order is None:
-        order = sorted(k for k in counts if k)
-    return [{'value': k, 'count': counts.get(k, 0),
-             'label': (labels or {}).get(k, k)}
-            for k in order if k and (counts.get(k) or k in (selected.get(dim) or ()))]
 
 
 def _search(views, term):
@@ -116,17 +100,6 @@ def _search(views, term):
         v['row'].desired_username or '', v['row'].xras_username or '',
         v['project_code'], v['event_code'],
         v['sponsor'].display_name if v['sponsor'] else '')).casefold()]
-
-
-def _sort_views(views, sort):
-    keyfn = _SORT.get((sort or {}).get('sort_by'))
-    if not keyfn:
-        return views
-    reverse = (sort or {}).get('sort_dir') == 'desc'
-    present = [v for v in views if keyfn(v) is not None]
-    absent = [v for v in views if keyfn(v) is None]
-    present.sort(key=keyfn, reverse=reverse)
-    return present + absent
 
 
 @bp.route('/account-requests')
@@ -169,19 +142,11 @@ def account_requests_fragment():
 
     search = (request.args.get('search') or '').strip()
     views = _search(views, search)
-    selected = {dim: [x for x in request.args.getlist(dim) if x] for dim in _FACETS}
-    facet_values = {
-        'state': _facet(views, selected, 'state', ACCOUNT_REQUEST_STATES),
-        'purpose': _facet(views, selected, 'purpose', ACCOUNT_REQUEST_PURPOSES),
-        'origin': _facet(views, selected, 'origin', tuple(_ORIGIN_LABELS),
-                         _ORIGIN_LABELS),
-        'readiness': _facet(views, selected, 'readiness', _READINESS_ORDER,
-                            _READINESS_LABELS),
-        'event': _facet(views, selected, 'event'),
-    }
-    views = _apply(views, selected)
+    selected = _FACETS.read(request.args)
+    facet_values = _FACETS.strips(views, selected)
+    views = _FACETS.apply(views, selected)
     sort = read_sort(request.args, _SORT, default_dir='asc')
-    views = _sort_views(views, sort)
+    views = sort_rows(views, sort, _SORT)
 
     return render_template(
         _CARD,
