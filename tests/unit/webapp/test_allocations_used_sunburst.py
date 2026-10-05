@@ -46,7 +46,7 @@ def test_defaults_to_a_year_with_four_pills(auth_client, captured):
     body = auth_client.get(f'{_URL}?active_at=2026-10-03').get_data(as_text=True)
     assert 'data-test="used"' in body
     assert body.count('used-sunburst/Derecho?') == 4
-    assert re.search(r'class="btn btn-secondary active"[^>]*>\s*1 yr', body)
+    assert re.search(r'class="btn btn-outline-secondary active"[^>]*>\s*1 yr', body)
     assert (captured['query']['end'] - captured['query']['start']).days == 364
     assert captured['center'] == 'Use\nrate'
     assert 'Charges in the year to' in body

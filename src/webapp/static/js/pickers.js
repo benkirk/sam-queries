@@ -87,16 +87,12 @@
             root.querySelectorAll('[data-action="drp-days"]').forEach(function (btn) {
                 var d = new Date(today);
                 d.setDate(d.getDate() - parseInt(btn.dataset.days, 10));
-                if (fmtDate(d) === curStart) {
-                    btn.classList.remove('btn-outline-secondary');
-                    btn.classList.add('btn-secondary', 'active');
-                }
+                if (fmtDate(d) === curStart) { btn.classList.add('active'); }
             });
 
             if (root.dataset.epoch && curStart === root.dataset.epoch) {
                 root.querySelectorAll('[data-action="drp-epoch"]').forEach(function (btn) {
-                    btn.classList.remove('btn-outline-secondary');
-                    btn.classList.add('btn-secondary', 'active');
+                    btn.classList.add('active');
                 });
             }
         });

@@ -8,7 +8,7 @@
         <div class="btn-group btn-group-sm" role="group" aria-label="Usage window">
             {% for label, url, active in windows %}
             <button type="button"
-                    class="btn {% if active %}btn-secondary active{% else %}btn-outline-secondary{% endif %}"
+                    class="btn btn-outline-secondary{% if active %} active{% endif %}"
                     hx-get="{{ url }}" hx-target="#chartExpandModalBody" hx-swap="innerHTML">
                 {{ label }}
             </button>

@@ -14,7 +14,7 @@
         <div class="btn-group btn-group-sm" role="group" aria-label="Usage window">
             {% for d in window_days %}
             <button type="button"
-                    class="btn {% if days == d %}btn-secondary active{% else %}btn-outline-secondary{% endif %}"
+                    class="btn btn-outline-secondary{% if days == d %} active{% endif %}"
                     hx-get="{{ url_for('allocations_dashboard.htmx_used_sunburst',
                                        resource_name=resource_name, days=d, **selector_kwargs) }}"
                     hx-target="#{{ chart_dom_id }}"
