@@ -599,7 +599,7 @@ themes). Ben's calls: quiet accent headers everywhere; one PR; the three bugs fi
 ## 10. 2026-10-04: area sweep, `templates` + `py` (filters and facets)
 
 **Mode:** area, from `docs/plans/FILTERS_SWEEP_HANDOFF.md`. **Base:** `36e69595` (staging).
-**Branch:** `filters-sweep`, thirteen commits, local; no PR yet.
+**Branch:** `filters-sweep`, fourteen commits.
 **Contract:** mixed, declared per commit. Items 7 and 8 must look identical; items 3b, 6 and 11
 are deliberate visual changes; items 1 and 9 change behavior to fix a bug.
 
@@ -672,16 +672,17 @@ are deliberate visual changes; items 1 and 9 change behavior to fix a bug.
 - [ ] `get_observed_action_types` likewise, since the action-log panel dropped its list.
 - [ ] `/admin/organizations?tab=institutions` leaves the pane on "Loading institutions…": its
   trigger is `shown.bs.tab ... once`, which never fires for a tab rendered active.
-- [ ] The Notifications and Scheduled tasks Filter cards hold two controls in a card sized for
-  six; the search and window could move into the log's chip grid.
+- [x] The Notifications and Scheduled tasks Filter cards are gone: the search and the window
+  are rows of the log's chip grid (`search_box.filter_window`), and the summary is a one-row
+  `.stat-strip`. The log starts about 200px higher.
 - [ ] `tests/unit/queries/test_contract_audit.py` deadlocks on an `nsf_program` insert between
   xdist workers (passes with `-n 0`).
 - [ ] A `ViewState`-like registry for the jobs explorer's five overlapping key lists (model:
   `db_browser/params.py`); one macro for the notifications and tasks filter cards; a shared
   uppercase-label CSS block. Ledger-only by Ben's call in the handoff.
 - [ ] The disk-scan directory sort is still hand-whitelisted (`read_sort` is not a drop-in).
-- [ ] Option order in the Facilities and Resources checklists is alphabetical, matching the
-  resource tabs. Grouping resources by type is a possible follow-up; not built.
+- [x] Option order in the Facilities and Resources checklists stays alphabetical, matching
+  the resource tabs (Ben, 2026-10-05).
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

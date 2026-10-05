@@ -57,8 +57,8 @@ class TestFilterSearch:
         assert re.search(r'form="[\w-]+"', box.group(0))
 
     @pytest.mark.parametrize('url, name', [
-        ('/admin/htmx/notifications', 'search'),
-        ('/admin/htmx/tasks', 'search'),
+        ('/admin/htmx/notifications/log', 'search'),
+        ('/admin/htmx/tasks/log', 'search'),
         ('/admin/htmx/rate-limits', 'actor'),
         ('/admin/htmx/mnemonic-codes-table', 'q'),
     ])
@@ -161,3 +161,35 @@ class TestNavyPanels:
         for name in ('status', 'action_type'):
             assert re.search(rf'<select name="{name}" multiple hidden', form)
         assert 'filter-checklist' not in form
+
+
+class TestLogFilterRows:
+    """Notifications and task runs: search and window are rows of the log's
+    chip grid, bound to the page's hidden chip form."""
+
+    @pytest.mark.parametrize('page, log, form_id', [
+        ('/admin/htmx/notifications', '/admin/htmx/notifications/log',
+         'notificationsFilterForm'),
+        ('/admin/htmx/tasks', '/admin/htmx/tasks/log', 'scheduledTasksFilterForm'),
+    ])
+    def test_the_page_holds_only_the_hidden_chip_form(self, auth_client, page,
+                                                      log, form_id):
+        html = auth_client.get(page).get_data(as_text=True)
+        assert f'<form id="{form_id}" class="d-none">' in html
+        assert '<strong>Filter</strong>' not in html
+        assert 'class="stat-strip"' in html
+        assert f'submit from:#{form_id}' in html
+
+    @pytest.mark.parametrize('log, form_id', [
+        ('/admin/htmx/notifications/log', 'notificationsFilterForm'),
+        ('/admin/htmx/tasks/log', 'scheduledTasksFilterForm'),
+    ])
+    def test_the_window_select_shows_the_window_in_force(self, auth_client, log,
+                                                         form_id):
+        html = auth_client.get(f'{log}?days=7&search=zz').get_data(as_text=True)
+        select = re.search(r'<select[^>]*name="days"[^>]*>(.*?)</select>', html, re.S)
+        assert select and f'form="{form_id}"' in select.group(0)
+        assert re.search(r'<option value="7" selected>', select.group(1))
+        assert select.group(1).count('selected') == 1
+        box = re.search(r'<input type="search"[^>]*name="search"[^>]*>', html, re.S)
+        assert 'value="zz"' in box.group(0) and f'form="{form_id}"' in box.group(0)

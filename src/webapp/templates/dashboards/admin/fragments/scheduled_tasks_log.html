@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/clipboard.html' import copy_button %}
-{% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_row %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_grid_row, facet_row %}
+{% from 'dashboards/fragments/search_box.html' import filter_search, filter_window %}
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/pagination.html' import pagination %}
 {#
@@ -11,7 +12,7 @@
     page            {'n', 'per_page', 'days'}
     filters         what the route parsed
     *_facets        [{'value','count'}], SELF-EXCLUDING (see the route)
-    form_id         the filter form the chips write into
+    form_id         the hidden chip form; the search box and window bind to it
     target_id       this container's id, for pagination swaps
     fragment_url    this endpoint
 
@@ -42,6 +43,14 @@
 </div>
 
 <div class="facet-grid mb-2">
+    {% call facet_grid_row('Search') %}
+    {{ filter_search('taskSearch', 'search', fragment_url, target_id, 'Task or runner',
+                     value=filters.search, form_id=form_id,
+                     placeholder='cleanup_status_snapshots or samuel-tasks-…') }}
+    {% endcall %}
+    {% call facet_grid_row('Window') %}
+    {{ filter_window('taskDays', fragment_url, target_id, form_id, page.days) }}
+    {% endcall %}
     {{ facet_row('State', state_facets, form_id, 'state',
                  filters.states or [], badge=True) }}
     {{ facet_row('Trigger', trigger_facets, form_id, 'trigger_type',

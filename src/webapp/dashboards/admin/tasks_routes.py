@@ -32,7 +32,6 @@ from sqlalchemy import select
 
 from system_status.models.task_run import TASK_STATES, TASK_TRIGGERS, TaskRun
 from system_status.queries.task_runs import (
-    DEFAULT_WINDOW_HOURS,
     count_recent_task_runs,
     facet_task_runs,
     get_recent_task_runs,
@@ -118,8 +117,6 @@ def scheduled_tasks():
         form_id=_FORM_ID,
         target_id=_FRAGMENT_TARGET,
         fragment_url=url_for('admin_dashboard.scheduled_tasks_log'),
-        default_days=_DEFAULT_DAYS,
-        window_hours=DEFAULT_WINDOW_HOURS,
     )
 
 

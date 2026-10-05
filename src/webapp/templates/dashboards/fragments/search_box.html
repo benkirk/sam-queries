@@ -86,6 +86,27 @@
 {% endmacro %}
 
 {#
+  filter_window: the lookback select of a log's chip grid, bound to the hidden
+  chip form like the search box beside it. `days` is the window in force, so
+  the select re-renders showing it.
+#}
+{% macro filter_window(input_id, url, target_id, form_id, days,
+                       choices=[(1, 'Last 24 hours'), (7, 'Last 7 days'),
+                                (30, 'Last 30 days'), (365, 'Last year')]) %}
+<select class="form-select form-select-sm w-auto" id="{{ input_id }}" name="days"
+        form="{{ form_id }}" aria-label="Window"
+        hx-get="{{ url }}"
+        hx-target="#{{ target_id }}"
+        hx-swap="innerHTML"
+        hx-trigger="change"
+        hx-include="#{{ form_id }}">
+    {% for value, label in choices %}
+    <option value="{{ value }}"{{ ' selected' if value == days }}>{{ label }}</option>
+    {% endfor %}
+</select>
+{% endmacro %}
+
+{#
   active_switch: the "Active only" switch on a card. The route reads it with
   webapp.utils.htmx.read_active_only (absent means OFF). `checked` is the
   initial state; a card that re-renders its own switch passes the live value.
