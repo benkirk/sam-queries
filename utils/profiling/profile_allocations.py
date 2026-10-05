@@ -33,7 +33,7 @@ import sys
 import time
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict
 
 import sqlalchemy
 
@@ -59,17 +59,17 @@ from sam.resources.resources import Resource
 # Blueprint helpers (plain functions, no decorators)
 from webapp.dashboards.allocations.blueprint import (
     HIDDEN_RESOURCES,
+    _facility_index,
+    build_facility_trees,
     get_all_facility_overviews,
     get_all_facility_usage_overviews,
     get_resource_types,
     group_by_resource_facility,
+    sunburst_rows,
 )
 
-# Chart functions — public wrappers have .cache_clear() via _attach_cache_methods()
-from webapp.dashboards.charts import (
-    generate_allocation_type_pie_chart_matplotlib,
-    generate_facility_pie_chart_matplotlib,
-)
+# The chart view has .cache_clear() (webapp.caching.chart_cached)
+from webapp.dashboards.charts import generate_allocation_sunburst
 
 # Optional: line_profiler for line-by-line breakdown of the N+1 hotspot
 try:
@@ -122,8 +122,17 @@ def _print_cprofile(pr, label, top_n=20):
 # ---------------------------------------------------------------------------
 
 def _clear_chart_caches():
-    generate_facility_pie_chart_matplotlib.cache_clear()
-    generate_allocation_type_pie_chart_matplotlib.cache_clear()
+    generate_allocation_sunburst.cache_clear()
+
+
+def _sunbursts(grouped_data, overviews, type_rates, usage_overviews, usage_by_type,
+               resource_types, measures):
+    """Build the facility trees and render one sunburst per resource and measure."""
+    trees = build_facility_trees(grouped_data, overviews, type_rates, usage_overviews,
+                                 usage_by_type, resource_types, _facility_index())
+    for tree in trees.values():
+        for measure in measures:
+            generate_allocation_sunburst(sunburst_rows(tree, measure), center=measure)
 
 
 def run_scenario_no_usage(session, selected_resources, active_at) -> Dict[str, float]:
@@ -167,25 +176,12 @@ def run_scenario_no_usage(session, selected_resources, active_at) -> Dict[str, f
     )
     phases['get_all_facility_overviews  [2nd get_allocation_summary]'] = time.perf_counter() - t
 
-    # Phase 5 — facility pie charts (cold lru_cache)
+    # Phase 5 — facility trees + Allocated sunbursts (cold chart cache)
     _clear_chart_caches()
     t = time.perf_counter()
-    resource_overviews = {}
-    for rn in grouped_data.keys():
-        overview_data = all_overviews.get(rn, [])
-        resource_overviews[rn] = {
-            'table_data': overview_data,
-            'chart': generate_facility_pie_chart_matplotlib(overview_data),
-        }
-    phases['facility pie chart generation (lru cold)'] = time.perf_counter() - t
-
-    # Phase 6 — allocation type pie charts
-    t = time.perf_counter()
-    for resource_name, facilities in grouped_data.items():
-        for facility_name, types in facilities.items():
-            if len(types) > 1:
-                generate_allocation_type_pie_chart_matplotlib(types)
-    phases['alloc-type pie chart generation (lru cold)'] = time.perf_counter() - t
+    _sunbursts(grouped_data, all_overviews, type_annualized_rates, {}, {}, resource_types,
+               ('alloc',))
+    phases['facility trees + allocated sunbursts (cold)'] = time.perf_counter() - t
 
     phases['TOTAL'] = time.perf_counter() - t0
     return phases, grouped_data, resource_types
@@ -196,7 +192,7 @@ def run_scenario_with_usage(session, selected_resources, active_at) -> Dict[str,
     phases: Dict[str, float] = {}
     t0 = time.perf_counter()
 
-    # Phases 1-6 identical to no-usage scenario -------------------------
+    # Phases 1-4 identical to no-usage scenario -------------------------
     t = time.perf_counter()
     summary_data = get_allocation_summary(
         session=session,
@@ -223,24 +219,6 @@ def run_scenario_with_usage(session, selected_resources, active_at) -> Dict[str,
     )
     phases['get_all_facility_overviews  [2nd get_allocation_summary]'] = time.perf_counter() - t
 
-    _clear_chart_caches()
-    t = time.perf_counter()
-    resource_overviews = {}
-    for rn in grouped_data.keys():
-        overview_data = all_overviews.get(rn, [])
-        resource_overviews[rn] = {
-            'table_data': overview_data,
-            'chart': generate_facility_pie_chart_matplotlib(overview_data),
-        }
-    phases['facility pie chart generation (lru cold)'] = time.perf_counter() - t
-
-    t = time.perf_counter()
-    for resource_name, facilities in grouped_data.items():
-        for facility_name, types in facilities.items():
-            if len(types) > 1:
-                generate_allocation_type_pie_chart_matplotlib(types)
-    phases['alloc-type pie chart generation (lru cold)'] = time.perf_counter() - t
-
     # Phase 7 — per-project usage: single fetch (projcode=None), mirrors refactored blueprint
     t = time.perf_counter()
     per_project_usage = cached_allocation_usage(
@@ -260,30 +238,6 @@ def run_scenario_with_usage(session, selected_resources, active_at) -> Dict[str,
     usage_type_data = _aggregate_usage_to_total(per_project_usage)
     phases['_aggregate_usage_to_total (Python aggregation, derives TOTAL grouping)'] = time.perf_counter() - t
 
-    # Phase 8 — usage type pie charts
-    _clear_chart_caches()
-    t = time.perf_counter()
-    usage_by_rf: Dict[str, Dict[str, List]] = {}
-    for row in usage_type_data:
-        usage_by_rf.setdefault(row['resource'], {}).setdefault(row['facility'], []).append(row)
-    allocation_type_usage_charts: Dict[str, Dict] = {}
-    for resource_name, facilities in grouped_data.items():
-        allocation_type_usage_charts[resource_name] = {}
-        for facility_name, types in facilities.items():
-            usage_rows = usage_by_rf.get(resource_name, {}).get(facility_name, [])
-            chartable = [
-                {
-                    'allocation_type': row['allocation_type'],
-                    'total_amount': row.get('total_used', 0.0),
-                    'count': row.get('count', 0),
-                    'avg_amount': row.get('total_used', 0.0),
-                }
-                for row in usage_rows if row.get('total_used', 0.0) > 0
-            ]
-            if len(chartable) > 1:
-                generate_allocation_type_pie_chart_matplotlib(chartable)
-    phases['usage type pie chart generation'] = time.perf_counter() - t
-
     # Phase 9 — facility usage overviews from pre-fetched data (no DB call)
     t = time.perf_counter()
     all_usage_overviews = get_all_facility_usage_overviews(
@@ -291,14 +245,14 @@ def run_scenario_with_usage(session, selected_resources, active_at) -> Dict[str,
     )
     phases['get_all_facility_usage_overviews (from pre-fetched usage, no DB call)'] = time.perf_counter() - t
 
-    # Phase 10 — usage facility pie charts
+    # Phase 10 — facility trees + Allocated and Used sunbursts (cold chart cache)
+    _clear_chart_caches()
     t = time.perf_counter()
-    for rn in grouped_data.keys():
-        usage_overview_data = all_usage_overviews.get(rn, [])
-        chartable = [d for d in usage_overview_data if d.get('total_used', 0.0) > 0]
-        if chartable:
-            generate_facility_pie_chart_matplotlib(chartable)
-    phases['usage facility pie chart generation'] = time.perf_counter() - t
+    usage_by_type = {(r['resource'], r['facility'], r['allocation_type']): r.get('total_used', 0.0)
+                     for r in usage_type_data}
+    _sunbursts(grouped_data, all_overviews, type_annualized_rates, all_usage_overviews,
+               usage_by_type, resource_types, ('alloc', 'used'))
+    phases['facility trees + allocated and used sunbursts (cold)'] = time.perf_counter() - t
 
     phases['TOTAL'] = time.perf_counter() - t0
     return phases
@@ -366,7 +320,7 @@ def main():
             phases_no, grouped_data, resource_types = run_scenario_no_usage(
                 db.session, selected_resources, active_at
             )
-        _print_report("show_usage=False  (cold lru_cache, no TTL cache)", phases_no)
+        _print_report("show_usage=False  (cold chart cache, no TTL cache)", phases_no)
         _print_cprofile(pr1, "show_usage=False")
 
         # Scenario 2: show_usage=True
@@ -381,14 +335,14 @@ def main():
             with _cprofiled() as pr2:
                 phases_yes = lp_run(db.session, selected_resources, active_at)
 
-            _print_report("show_usage=True  (cold lru_cache, TTL cache disabled)", phases_yes)
+            _print_report("show_usage=True  (cold chart cache, TTL cache disabled)", phases_yes)
             print("\n--- line_profiler: get_allocation_summary_with_usage() ---")
             lp.print_stats()
             _print_cprofile(pr2, "show_usage=True")
         else:
             with _cprofiled() as pr2:
                 phases_yes = run_scenario_with_usage(db.session, selected_resources, active_at)
-            _print_report("show_usage=True  (cold lru_cache, TTL cache disabled)", phases_yes)
+            _print_report("show_usage=True  (cold chart cache, TTL cache disabled)", phases_yes)
             _print_cprofile(pr2, "show_usage=True")
 
         _detach(engine)

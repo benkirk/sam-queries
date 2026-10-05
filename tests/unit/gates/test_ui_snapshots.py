@@ -105,3 +105,25 @@ def test_parse_step_splits_fill_text_on_the_last_equals():
     for bad in ('hover:#x', 'click:', 'fill:#q'):
         with pytest.raises(ValueError):
             snap.parse_step(bad)
+
+
+def test_page_sets_have_unique_names_and_parseable_steps():
+    assert snap.parse_step('scroll:.pace-chart') == ('scroll', '.pace-chart', None)
+    for pages in snap.PAGE_SETS.values():
+        names = [name for name, _url, _steps in pages]
+        assert len(names) == len(set(names))   # a name is the screenshot's file name
+        for _name, url, steps in pages:
+            assert url.startswith('/')
+            [snap.parse_step(s) for s in steps]
+
+
+def test_chart_sheet_compare_names_the_differing_rendering(tmp_path, capsys):
+    spec = importlib.util.spec_from_file_location('chart_sheet', REPO / 'scripts' / 'chart_sheet.py')
+    sheet = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sheet)
+    for side, body in (('a', '<svg/>'), ('b', '<svg/>'), ('c', '<svg><g/></svg>')):
+        (tmp_path / side).mkdir()
+        (tmp_path / side / 'pace.small__desktop-light.svg').write_text(body)
+    assert sheet.main(['--compare', str(tmp_path / 'a'), str(tmp_path / 'b')]) == 0
+    assert sheet.main(['--compare', str(tmp_path / 'a'), str(tmp_path / 'c')]) == 1
+    assert 'pace.small__desktop-light.svg: differs' in capsys.readouterr().out
