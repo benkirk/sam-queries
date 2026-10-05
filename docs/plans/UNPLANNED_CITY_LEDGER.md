@@ -12,8 +12,8 @@ them. Tick an item when its fix merges.
 
 From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 
-| date | end commit | private imports (helpers / sites / package-private) | dup-function groups (extra copies) | py-dup-names (names / definitions) | dead CSS classes (dynamic stem) | CSS lines / `!important` / repeated blocks | inline styles (templates) | bs4-classes (uses / classes) | row-buttons | JS shared names / shared events | modal alerts (templates) |
-|---|---|---|---|---|---|---|---|---|---|---|---|
+| date | end commit | private imports (helpers / sites / package-private) | dup-function groups (extra copies) | py-dup-names (names / definitions) | dead CSS classes (dynamic stem) | CSS lines / `!important` / repeated blocks | inline styles (templates) | bs4-classes (uses / classes) | row-buttons | JS shared names / shared events | modal alerts (templates) | helper-bypass (sites) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 2026-10-03 | `79f1a147` | 70 / 88 / 33 | 9 (10) | — | 38 (17) | 4,789 / 70 / 14 | 405 (106) | — | — | 5 / 4 |
 | 2026-10-03 | `5254c65b` + js sweep | 70 / 88 / 33 | 9 (10) | — | 38 (17) | 4,817 / 70 / 14 | 404 (105) | — | — | 5 / 4 |
 | 2026-10-04 | `0515333f` + css sweep | 70 / 88 / 33 | 9 (10) | — | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | — | — | 5 / 4 |
@@ -25,8 +25,8 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-04 | `21e6bae5` + sweeps 5–7 | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,603 / 54 / 10 | 257 (93) | 0 / 0 | 0 | 5 / 4 |
 | 2026-10-04 | `a75b9db7` + project list + headers | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,617 / 54 / 10 | 255 (92) | 0 / 0 | 0 | 5 / 4 | 52 (23) |
 | 2026-10-04 | `ede454cf` + modal sweep | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,699 / 50 / 10 | 216 (80) | 0 / 0 | 0 | 5 / 4 | 20 (14) |
-| 2026-10-04 | `36e69595` (base, filters) | 61 / 70 / 33 | 3 (4) | 14 / 46 | 16 (16), 2 kept | 4,714 / 50 / 10 | 216 (80) | 0 / 0 | 0 | 5 / 4 | 33 (23) |
-| 2026-10-04 | `36e69595` + filters sweep | 52 / 61 / 24 | 3 (4) | 14 / 46 | 16 (16), 2 kept | 4,791 / 50 / 10 | 210 (78) | 0 / 0 | 0 | 5 / 4 | 33 (23) |
+| 2026-10-04 | `36e69595` (base, filters) | 61 / 70 / 33 | 3 (4) | 14 / 46 | 16 (16), 2 kept | 4,714 / 50 / 10 | 216 (80) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 39 |
+| 2026-10-05 | `36e69595` + filters sweep | 52 / 61 / 24 | 3 (4) | 14 / 46 | 16 (16), 2 kept | 4,810 / 50 / 10 | 210 (78) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -599,7 +599,7 @@ themes). Ben's calls: quiet accent headers everywhere; one PR; the three bugs fi
 ## 10. 2026-10-04: area sweep, `templates` + `py` (filters and facets)
 
 **Mode:** area, from `docs/plans/FILTERS_SWEEP_HANDOFF.md`. **Base:** `36e69595` (staging).
-**Branch:** `filters-sweep`, fourteen commits.
+**Branch:** `filters-sweep`. **PR:** #733 (draft).
 **Contract:** mixed, declared per commit. Items 7 and 8 must look identical; items 3b, 6 and 11
 are deliberate visual changes; items 1 and 9 change behavior to fix a bug.
 
@@ -631,6 +631,18 @@ are deliberate visual changes; items 1 and 9 change behavior to fix a bug.
   `multiselect_filter` is a one-line dropdown checklist; the XRAS action log panel drops the two
   lists its chips already cover; `filter_apply()` is the one primary action; the house field
   order is written into `filter_panel.html`.
+
+- [x] Growth rule, from the friction this sweep met:
+  - `helper-bypass` detector (`sweep_inventory.py`, fixture test) and a "Bypassed helper"
+    heuristic in the sweep skill: request reads that hand-roll a shared reader. 39 sites at
+    the base, 6 now.
+  - `ui_snapshots.py --compare` counts a custom property that differs alone without failing
+    (`--strict` fails it) and takes `--px-tolerance`; `--element SEL` + `--compare-pixels`
+    prove a restructure, where every element path moves. Replayed on item 7's captures:
+    36 of 42 "differ" -> 6, all one live clock label.
+  - `wire-dashboard-feature`: the filter tiers and macros, and the `compose --watch` trap (a
+    module saved one edit before its import exits samuel-dev). Its length budget goes
+    250 -> 275.
 
 **Panel height**, before -> after (px), desktop / tablet / phone:
 
@@ -681,6 +693,10 @@ are deliberate visual changes; items 1 and 9 change behavior to fix a bug.
   `db_browser/params.py`); one macro for the notifications and tasks filter cards; a shared
   uppercase-label CSS block. Ledger-only by Ben's call in the handoff.
 - [ ] The disk-scan directory sort is still hand-whitelisted (`read_sort` is not a drop-in).
+- [ ] The six `helper-bypass` leads left: `include_adjustments` (`api/v1/allocations.py`,
+  `api/v1/projects.py`), `strict` (`api/v1/health.py`), `sent` (`register/blueprint.py`), and
+  two `int(v) for v in form.getlist('resource_ids')` in `admin/projects_routes.py`, which is
+  a form POST and wants a schema, not `read_multi`.
 - [x] Option order in the Facilities and Resources checklists stays alphabetical, matching
   the resource tabs (Ben, 2026-10-05).
 
