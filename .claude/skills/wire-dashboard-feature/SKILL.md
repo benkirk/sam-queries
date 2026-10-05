@@ -58,6 +58,11 @@ The families:
   `tip=` on a `form_fields` label (its help), `action_buttons.edit_modal_button` /
   `delete_row_button`.
 - **Pickers** — `date_range_picker`, `time_range_picker`, `window_pills`.
+- **Charts** — `chart_bits.chart_figure(label)` around the SVG (the sizing class and the
+  chart's name), `chart_pills` for its controls (a list of dicts; `select` + `push` change a
+  whole page's window in place), `chart_loading`. A route calls a chart only through
+  `draw_chart`, and passes `titles=hover_titles(codes)` when it names projects
+  (`webapp/utils/charts.py`). Gates: `test_chart_frame.py`, `test_chart_errors.py`.
 - **Help** — `help.help_icon` / `help.term`, keyed to a `glossary.g_*` term.
 - **Queue-vs-everything switch** — a form-bound `show_all` checkbox inside
   the swap target (`xras_activity_card.html`, `xras_remediations_card.html`),
@@ -109,7 +114,9 @@ console. The layout:
 When a fragment references a modal shell id its host page must supply, add the
 fragment to `HTMX_FRAGMENT_SHELL_DEPS` in `test_modal_shell_contract.py`. That
 test's comment on the `_xras_remediation_actions.html` entry is the worked
-example of this exact rule.
+example of this exact rule. A shell whose opener is a shared macro (the chart expand
+button) goes in `dashboards/base.html` and in that test's `SITE_WIDE_SHELLS`: the gate
+cannot see which pages call a macro.
 
 **The inverse trap — a link opening a DIFFERENT modal inside a `data-bs-toggle`
 row** (the allocations ledgers). The link **must** carry its own
