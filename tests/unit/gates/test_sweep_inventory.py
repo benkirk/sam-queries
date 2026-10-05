@@ -59,6 +59,22 @@ def test_py_dup_names_strips_underscore_skips_generic_and_nested(tmp_path):
     assert [(r['name'], r['modules']) for r in inv.py_dup_names(paths)] == [('parse_day', 3)]
 
 
+def test_helper_bypass_finds_hand_rolled_request_reads_only(tmp_path):
+    route = _write(tmp_path, 'routes.py', (
+        "kinds = [k for k in request.args.getlist('kind') if k]\n"
+        "names = request_args.getlist('name') or None\n"
+        "on = request.args.get('active') == '1'\n"
+        "fresh = args.get('force', 'false').lower() == 'true'\n"
+        "page = max(1, args.get('page', type=int) or 1)\n"
+        "ok = read_multi(request.args, 'kind')\n"
+        "env = os.environ.get('DISABLE_AUTH') == '1'\n"
+        "hdr = request.headers.get('X-Fresh') == '1'\n"))
+    home = _write(tmp_path, 'home.py', "return [v for v in args.getlist(name) if v]\n")
+    rows = inv.helper_bypass([route, home], homes=(home.as_posix(),))
+    assert [(r['helper'], r['line']) for r in rows] == [
+        ('read_flag', 3), ('read_flag', 4), ('read_multi', 1), ('read_multi', 2), ('read_page', 5)]
+
+
 def test_css_dead_marks_dynamic_stems(tmp_path):
     css = _write(tmp_path, 'site.css', '/* .commented { } */\n.used { color: red }\n.gone, .burn-3 { margin: 0 }\n'
                  '@media (max-width: 10px) { .used .also-gone { padding: 0 } }\n'

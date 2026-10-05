@@ -10,7 +10,9 @@ from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Tuple
 
 from dbbrowse import MAX_FILTERS, RawFilter, url_value
-from webapp.utils.htmx import DEFAULT_PER_PAGE, PER_PAGE_CHOICES, read_page, read_sort
+from webapp.utils.htmx import (
+    DEFAULT_PER_PAGE, PER_PAGE_CHOICES, read_multi, read_page, read_sort,
+)
 
 
 @dataclass(frozen=True)
@@ -41,7 +43,7 @@ class ViewState:
             page=page['n'],
             per_page=min(PER_PAGE_CHOICES, key=lambda n: abs(n - page['per_page'])),
             after=args.get('after') or None,
-            cols=tuple(c for c in args.getlist('cols') if c),
+            cols=tuple(read_multi(args, 'cols')),
         )
 
     def with_(self, **changes) -> 'ViewState':
