@@ -76,13 +76,10 @@ class DualPanelTimeSeriesChart(BaseChart):
         in `make_figure` is what widens that gap to hold it.
         """
         if layout.legend_placement != 'below':
-            ax.legend(loc=loc, fontsize=self.legend_fontsize, frameon=True,
-                      facecolor=theme.legend_face, edgecolor='none',
-                      framealpha=0.9)
+            ax.legend(**self.legend_kwargs(layout, loc=loc, bbox_to_anchor=None), frameon=True,
+                      facecolor=theme.legend_face, edgecolor='none', framealpha=0.9)
             return
-        ax.legend(loc='lower center', bbox_to_anchor=(0.5, 1.03),
-                  ncol=self.legend_ncol_below,
-                  fontsize=layout.legend_fontsize or self.legend_fontsize,
+        ax.legend(**self.legend_kwargs(layout, loc='lower center', bbox_to_anchor=(0.5, 1.03)),
                   frameon=False)
 
     def count_axis(self, ax):

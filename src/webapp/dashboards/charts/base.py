@@ -209,13 +209,23 @@ class BaseChart:
         and aggregates are inert by construction.
         """
         entries = list(bands) if ordered else list(reversed(list(bands)))
-        patches, texts = legend.get_patches(), legend.get_texts()
-        for band, patch, text in zip(entries, patches, texts):
-            if not band.is_linkable:
-                continue
-            url = url_fn(band.link_key)
-            patch.set_url(url)
-            text.set_url(url)
+        self.link_legend_urls(legend, [url_fn(b.link_key) if b.is_linkable else None
+                                       for b in entries])
+
+    @staticmethod
+    def link_legend_urls(legend, urls):
+        """Put each URL on its legend row's swatch and text, in legend order; None is inert."""
+        for url, patch, text in zip(urls, legend.get_patches(), legend.get_texts()):
+            if url is not None:
+                patch.set_url(url)
+                text.set_url(url)
+
+    def legend_amount(self, value) -> str:
+        return fmt.number(value)
+
+    def legend_cells(self, label, value):
+        """Strings for one legend row: the name, then its number when it has one."""
+        return (label,) if value is None else (label, self.legend_amount(value))
 
     def draw_table_legend(self, ax, rows, colors, urls, layout, theme, indents=None) -> bool:
         """Legend as aligned columns: swatch + name left, numbers right-aligned so

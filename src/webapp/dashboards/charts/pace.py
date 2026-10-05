@@ -329,23 +329,20 @@ class PaceChart(BaseChart):
         ax.annotate('today', (self.active_at, ymax), xytext=(-4, -2), textcoords='offset points',
                     color=theme.accent, fontsize=8, va='top', ha='right')
 
-    def add_legend(self, ax, layout, theme):
-        # Deduplicated: one handle per top-N projcode + one Other. The number
-        # next to each project tracks the active sort_by. For rate sorts,
-        # scale per-day -> per-year so the number matches the axis units, and
-        # tag with "/yr" to keep that explicit.
+    def legend_amount(self, value):
+        # The number beside a project tracks the active sort. A rate sort scales
+        # per-day to per-year, matching the axis, and says so.
         if self.sort_by == 'size':
-            def _fmt(v):
-                return fmt.number(v)
-        else:
-            def _fmt(v):
-                return f'{fmt.number(v * _PACE_RATE_SCALE)}/yr'
+            return fmt.number(value)
+        return f'{fmt.number(value * _PACE_RATE_SCALE)}/yr'
 
-        rows = [(pc, _fmt(self.rank_metric[pc])) for pc in self.top_projs]
+    def add_legend(self, ax, layout, theme):
+        """One row per top-N project, linked to its modal, then the inert remainder."""
+        rows = [self.legend_cells(pc, self.rank_metric[pc]) for pc in self.top_projs]
         colors = [self.color_map[pc] for pc in self.top_projs]
         urls = [links.PROJECT_MODAL.url(pc) for pc in self.top_projs]
         if self.n_other_projs > 0:
-            rows.append((self.other_label, _fmt(self.group_sort_totals[OTHER_KEY])))
+            rows.append(self.legend_cells(self.other_label, self.group_sort_totals[OTHER_KEY]))
             colors.append(_pace_other_color(theme))
             urls.append(None)
         if self.table_legend and self.draw_table_legend(ax, rows, colors, urls, layout, theme):
@@ -353,16 +350,7 @@ class PaceChart(BaseChart):
         handles = [mpatches.Patch(color=c, label=cells_label(r)) for r, c in zip(rows, colors)]
         legend = ax.legend(handles=handles, frameon=False,
                            **self.legend_kwargs(layout))
-
-        # Tag each top-N legend entry with the project-modal URL. The trailing
-        # "Other" patch (if present) gets none — it is not a single project.
-        # NOTE this legend is built FORWARD over top_projs, unlike the
-        # StackedSeriesChart family's reversed legends, so it must not use
-        # `link_legend`.
-        for url, patch, text in zip(urls, legend.get_patches(), legend.get_texts()):
-            if url is not None:
-                patch.set_url(url)
-                text.set_url(url)
+        self.link_legend_urls(legend, urls)   # rows are already in legend order
 
     def decorate(self, ax, layout, theme):
         ax.set_xlim(self.window_start, self.window_end)

@@ -84,8 +84,9 @@ class StackedSeriesChart(BaseChart):
         """Plot-ready values for one band — the hook byte scaling uses."""
         return band.values
 
-    def legend_cells(self, band):
-        return (band.label,)
+    def band_value(self, band):
+        """The number a legend row shows beside the band's name, or None for none."""
+        return None
 
     def ylabel(self) -> str:
         raise NotImplementedError
@@ -170,7 +171,7 @@ class StackedSeriesChart(BaseChart):
         if not self.show_legend or layout.legend_placement == 'none':
             return
         entries, drill = self.legend_entries(layout), self.legend_drill
-        rows = [self.legend_cells(b) for b, _ in entries]
+        rows = [self.legend_cells(b.label, self.band_value(b)) for b, _ in entries]
         urls = [drill.url(b.link_key) if drill and b.is_linkable else None for b, _ in entries]
         if self.table_legend and self.draw_table_legend(
                 ax, rows, [c for _, c in entries], urls, layout, theme):
@@ -409,16 +410,12 @@ class UserProjAreaChart(StackedSeriesChart):
         return [series_mod.to_display_tz(d) if isinstance(d, datetime) else d
                 for d in (self.timeseries.get('dates') or [])]
 
-    def legend_cells(self, band):
+    def band_value(self, band):
         # The number tracks the active rank_by selector; 'Others' too, over its aggregate.
         vs = list(band.values)
         if not vs:
-            value = 0
-        elif self.rank_by == 'peak':
-            value = max(vs)
-        else:
-            value = vs[-1]
-        return band.label, fmt.number(value)
+            return 0
+        return max(vs) if self.rank_by == 'peak' else vs[-1]
 
     def ylabel(self):
         return self.timeseries.get('metric_label', 'Jobs')

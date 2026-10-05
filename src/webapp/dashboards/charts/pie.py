@@ -78,11 +78,8 @@ class PieChart(BaseChart):
         total = sum(self.values)
         return value * 100 / total if total else 0
 
-    def legend_amount(self, value) -> str:
-        return fmt.number(value)
-
     def legend_cells(self, label, value):
-        """Strings for one legend row: the name, then its numbers."""
+        """The name, its share of the pie, then its amount."""
         # Under 1% keeps two decimals, so a sliver never reads as 0.0%.
         share = self.percent(value)
         return label, fmt.pct(share, decimals=1 if share >= 1 else 2), self.legend_amount(value)

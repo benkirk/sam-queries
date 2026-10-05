@@ -46,9 +46,11 @@ class Layout:
     #:
     #: Charts honor this at whichever point keeps the picture *honest*, which
     #: is not the same point for every family: a pie caps its slices (capping
-    #: only the legend would leave unlabelled wedges), the pace chart and the
-    #: histogram clamp the "top N" they were already computing, and the
-    #: stacked family caps legend rows while still drawing every band.
+    #: only the legend would leave unlabelled wedges), the pace chart clamps
+    #: the "top N" it was already computing, and the stacked family caps legend
+    #: rows while still drawing every band. The sunbursts (one row per
+    #: facility) and the dual-panel charts (four lines at most) never cap: a
+    #: dropped row there is a facility or a line with no name.
     max_legend_entries: int | None
 
     #: Target tick count on the category/date axis.

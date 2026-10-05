@@ -48,3 +48,16 @@ def test_every_pie_layout_places_its_legend_at_the_right():
     assert len(pies) >= 7
     for cls in pies:
         assert {lay.legend_placement for lay in cls.LAYOUTS.values()} == {'right'}, cls.__name__
+
+
+def test_legend_cells_has_one_signature_across_the_families():
+    """`(label, value)` everywhere: a name alone when the row has no number."""
+    import inspect
+    from webapp.dashboards import charts
+    for fn in vars(charts).values():
+        cls = getattr(fn, 'chart_class', None)
+        if cls is not None:
+            assert list(inspect.signature(cls.legend_cells).parameters) == [
+                'self', 'label', 'value'], cls.__name__
+    assert BaseChart().legend_cells('alice', None) == ('alice',)
+    assert BaseChart().legend_cells('alice', 1234) == ('alice', '1,234')
