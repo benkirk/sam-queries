@@ -24,6 +24,7 @@ from webapp.utils.htmx import (
 from sam.integration.xras_api import XrasSourceUnavailable
 from sam.manage import xras_remediation as remediation
 from sam.queries.xras_actions import XRAS_ACTION_SORT_COLUMNS
+from sam.queries.xras_requests import BLOCKER_LABELS
 from sam.queries.xras_activation import ACTIVITY_TAGS
 from sam.queries.xras_accounts import (REMEDIES,
                                        REMEDY_MERGE,
@@ -461,6 +462,42 @@ ACCOUNT_FACETS = FacetSet(
           order=(SOURCE_ACTION_LOG, SOURCE_REPORTS)),
     Facet('request_number', key=_request_numbers, by_count=True,
           hide_zero=True, limit=_MAX_REQUEST_CHIPS),
+)
+
+
+#: Readiness chips, worst first; the icon matches the row badge so the strip is
+#: the column's legend. ``none`` is a real bucket: a swept request with no
+#: pending action checked (out of window, or all applied).
+_READINESS = (
+    ('failed', 'Would fail', 'fa-triangle-exclamation text-danger-emphasis'),
+    ('manual', 'Would park', 'fa-circle-pause text-warning-emphasis'),
+    ('incomplete', 'Incomplete', 'fa-circle-question text-secondary-emphasis'),
+    ('rechecked', 'Would land', 'fa-circle-check text-success-emphasis'),
+    ('none', 'Not checked', 'fa-rotate text-secondary-emphasis'),
+)
+
+#: Blocker chip icons, matching the row indicators (the chip strip is their legend).
+_BLOCKER_ICONS = {'mnemonic': 'fa-link-slash text-danger-emphasis',
+                  'contract': 'fa-file-contract text-danger-emphasis',
+                  'account': 'fa-user text-danger-emphasis'}
+
+#: The card's chips. A row counts under every blocker it is stuck on, so that
+#: strip sums past the row total by design. ``request_number`` draws only its
+#: selected values (``limit=0``): one chip per swept request would be a wall.
+REMEDIATION_FACETS = FacetSet(
+    Facet('status'),
+    Facet('action_type', key='latest_action_type'),
+    Facet('opportunity', key='opportunity_name'),
+    Facet('push', key=lambda r: 'pending' if r.get('pending_push') else 'pushed',
+          order=('pending', 'pushed'),
+          labels={'pending': 'No SAM project', 'pushed': 'Project exists'}),
+    Facet('readiness', key=lambda r: r.get('preflight_rollup') or 'none',
+          order=[v for v, _, _ in _READINESS], hide_zero=True,
+          labels={v: label for v, label, _ in _READINESS},
+          icons={v: icon for v, _, icon in _READINESS}),
+    Facet('blockers', order=[v for v, _ in BLOCKER_LABELS], hide_zero=True,
+          labels=dict(BLOCKER_LABELS), icons=_BLOCKER_ICONS),
+    Facet('request_number', hide_zero=True, limit=0),
 )
 
 

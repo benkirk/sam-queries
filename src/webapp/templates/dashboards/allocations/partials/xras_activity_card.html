@@ -1,6 +1,6 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
-{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_grid_row, facet_row %}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_xras_attention_queue with context %}
 {% from 'dashboards/fragments/project_bits.html' import project_link with context %}
@@ -88,8 +88,7 @@
             {# The queue toggle. Absent is the default: needs attention only.
                Bound to the hidden filter form with `form=`, so a chip click
                keeps the mode. #}
-            <div class="facet-grid-label">View</div>
-            <div class="facet-grid-values">
+            {% call facet_grid_row('View') %}
                 <div class="form-check form-switch small mb-0">
                     <input class="form-check-input" type="checkbox" role="switch"
                            id="xras-activity-show-all" name="show_all" value="1"
@@ -105,7 +104,7 @@
                     {{ help_icon(g_xras_attention_queue(recent_days or 3), rich=True,
                                  title='Needs attention vs. everything', placement='right') }}
                 </div>
-            </div>
+            {% endcall %}
             {{ facet_row('State', facet_values.tag, form_id, 'tag',
                          active=selected.tag) }}
             {{ facet_row('Action', facet_values.activity_type, form_id, 'activity_type',

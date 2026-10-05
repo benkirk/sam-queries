@@ -1,6 +1,7 @@
 {% extends 'dashboards/allocations/base_allocations.html' %}
 {% from 'dashboards/fragments/xras_filters.html' import xras_filters %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_form %}
 
 {% block title %}XRAS Action Log - SAM{% endblock %}
 
@@ -93,45 +94,13 @@
     <input type="hidden" name="days" value="">
 </form>
 
-{# Per-pane facet state. Multi-select so args.getlist() can grow to multi-value
-   chips later; set-filter-submit writes one at a time today. #}
-<form id="xras-activity-filters" class="d-none">
-    <select name="tag" multiple hidden></select>
-    <select name="activity_type" multiple hidden></select>
-</form>
-<form id="xras-accounts-filters" class="d-none">
-    <select name="remedy" multiple hidden></select>
-    <select name="role" multiple hidden></select>
-    {# WARNING: A facet_row whose `field` has no control here renders as chips that
-       silently do nothing — the click writes into a form field that does not
-       exist and the re-submit carries no value. Caught by the smoke, and the
-       macro says so in as many words. Every dimension the card offers needs a
-       line in this form. #}
-    <select name="origin" multiple hidden></select>
-    <select name="source" multiple hidden></select>
-    <select name="request_number" multiple hidden></select>
-    {# Sort is form state (set-sort-submit writes these), so it survives every
-       facet/window change, not just a header click. #}
-    <input type="hidden" name="sort_by" value="">
-    <input type="hidden" name="sort_dir" value="">
-</form>
+{# Per-pane chip state, built from the same FacetSet as the chips so a
+   dimension cannot have a chip without a control. Sort is form state too, so
+   it survives every chip and window change. #}
+{{ facet_form('xras-activity-filters', activity_facets) }}
+{{ facet_form('xras-accounts-filters', account_facets, sort=True) }}
 {% if has_permission(Permission.MANAGE_XRAS) %}
-{# The Remediations card's facet state. Same rule as the forms above: every
-   dimension the card offers a chip for needs a control here, or the chip
-   writes into a field that does not exist and filters nothing. #}
-<form id="xras-remediation-filters" class="d-none">
-    <select name="status" multiple hidden></select>
-    <select name="action_type" multiple hidden></select>
-    <select name="opportunity" multiple hidden></select>
-    <select name="push" multiple hidden></select>
-    <select name="readiness" multiple hidden></select>
-    <select name="blockers" multiple hidden></select>
-    <select name="request_number" multiple hidden></select>
-    {# Sort is form state (set-sort-submit writes these), so it survives every
-       facet/window change, not just a header click. #}
-    <input type="hidden" name="sort_by" value="">
-    <input type="hidden" name="sort_dir" value="">
-</form>
+{{ facet_form('xras-remediation-filters', remediation_facets, sort=True) }}
 {% endif %}
 
 <div class="tab-content mb-3">

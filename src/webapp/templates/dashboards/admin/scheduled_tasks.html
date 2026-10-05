@@ -14,8 +14,9 @@
     form_id       the filter form the facet chips write into
     target_id     the swap target for the table fragment
     fragment_url  GET .../tasks/log
-    all_task_names / all_states / all_triggers / default_days / window_hours
+    default_days / window_hours
 #}
+{% from 'dashboards/fragments/facet_chips.html' import facet_fields %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
@@ -122,15 +123,7 @@
                     </div>
 
                     {# Written by the facet chips (data-action set-filter-submit). #}
-                    <select name="state" multiple hidden>
-                        {% for s in all_states %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
-                    </select>
-                    <select name="trigger_type" multiple hidden>
-                        {% for t in all_triggers %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
-                    </select>
-                    <select name="task_name" multiple hidden>
-                        {% for t in all_task_names %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
-                    </select>
+                    {{ facet_fields(['state', 'trigger_type', 'task_name']) }}
                 </form>
             </div>
         </div>

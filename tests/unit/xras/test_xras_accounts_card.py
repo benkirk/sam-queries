@@ -510,19 +510,6 @@ class TestFacets:
         assert auth_client.get(f'{URL}?remedy=create').status_code == 200
         assert auth_client.get(f'{URL}?role=PI').status_code == 200
 
-    def test_every_facet_chip_has_a_control_in_the_hidden_form(self, auth_client):
-        """A chip whose field has no control writes into nothing and re-submits
-        nothing — the click looks dead. `xras.html` warns in prose; this pins it."""
-        import re
-
-        page = auth_client.get('/allocations/xras').get_data(as_text=True)
-        form = page.split('id="xras-accounts-filters"', 1)[1].split('</form>', 1)[0]
-        card = auth_client.get(URL).get_data(as_text=True)
-        fields = set(re.findall(r'data-field="([a-z_]+)"', card))
-        assert 'remedy' in fields, 'the Needs facet did not render'
-        missing = [f for f in fields if f'name="{f}"' not in form]
-        assert not missing, missing
-
 
 class TestTheHeaderDoesNotConflateTwoFacts:
     """WARNING: Caught by the local smoke, and only visible in a browser.

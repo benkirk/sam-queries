@@ -151,8 +151,6 @@ def notifications():
         initial_log_url=url_for('admin_dashboard.notifications_log',
                                 kind=preselect_kind),
         preselect_kind=preselect_kind,
-        all_statuses=list(NOTIFICATION_STATUSES),
-        all_kinds=sorted(NOTIFICATION_KINDS),
         default_days=_DEFAULT_DAYS,
         active_tab=read_tab('tab', _TABS, 'log'),
         template_rows=template_rows,

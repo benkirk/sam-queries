@@ -49,7 +49,7 @@ from ..blueprint import _window_control_context
 from ._shared import (
     _activity_in_window,
     scope_rows,
-    ACCOUNT_FACETS, ACTIVITY_FACETS,
+    ACCOUNT_FACETS, ACTIVITY_FACETS, REMEDIATION_FACETS,
     _ACCOUNTS_ENRICH_BUDGET, _ACCOUNTS_FORM_ID, _ACCOUNTS_TARGET,
     _ACTIVITY_WINDOW_PILLS, _XRAS_ACTIVITY_FORM_ID,
     _XRAS_ACTIVITY_TARGET, _XRAS_FORM_ID, _XRAS_FRAGMENT_TARGET,
@@ -133,6 +133,9 @@ def xras():
         **_window_control_context(end_date, start_str, end_str),
         all_statuses=list(XRAS_ACTION_STATUSES),
         all_action_types=_xras_action_types(),
+        activity_facets=ACTIVITY_FACETS,
+        account_facets=ACCOUNT_FACETS,
+        remediation_facets=REMEDIATION_FACETS,
         # Site-specific, so it lives with the token family rather than in the
         # template — see XRAS_REQUEST_TOKEN_PREFIXES.
         request_example=XRAS_REQUEST_TOKEN_EXAMPLE,

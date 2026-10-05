@@ -17,10 +17,11 @@
     target_id     the swap target for the table fragment
     fragment_url  GET .../notifications/log
     initial_log_url  fragment_url, plus ?kind= when the editor deep-linked here
-    preselect_kind / all_statuses / all_kinds / default_days
+    preselect_kind / default_days
     active_tab    'log' | 'templates'
     template_rows / selected_name   for the Templates pane
 #}
+{% from 'dashboards/fragments/facet_chips.html' import facet_fields %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
@@ -149,15 +150,8 @@
                     </div>
 
                     {# Written by the facet chips (data-action set-filter-submit). #}
-                    <select name="status" multiple hidden>
-                        {% for s in all_statuses %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
-                    </select>
-                    <select name="kind" multiple hidden>
-                        {% for k in all_kinds %}<option value="{{ k }}"{{ ' selected' if k == preselect_kind }}>{{ k }}</option>{% endfor %}
-                    </select>
-                    <select name="channel" multiple hidden>
-                        <option value="email">email</option>
-                    </select>
+                    {{ facet_fields(['status', 'kind', 'channel'],
+                                    selected={'kind': [preselect_kind]} if preselect_kind else {}) }}
                 </form>
             </div>
         </div>

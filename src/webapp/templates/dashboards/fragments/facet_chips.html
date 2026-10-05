@@ -14,7 +14,8 @@
   WARNING: The caller must compute counts with SELF-EXCLUSION — a dimension's rollup
   must omit its own filter. Scope a dimension by itself and every unselected
   value reads 0 the moment one is picked, which turns the strip from a switcher
-  into a dead end. See blueprint.py::xras_fragment.
+  into a dead end. `webapp/utils/facets.py` does it for rows held in memory;
+  `querykit.faceted` does it in SQL.
 
   WARNING: Values that cannot round-trip through the form must not become chips. A
   NULL is a real count but not a filterable value (there is no way to say
@@ -38,8 +39,47 @@
                a plain text span, preserving a color vocabulary the rows below
                already use. Chips get .has-badge so the CSS can mark selection
                with a ring rather than a fill that would overwrite the color.
+
+  facet_form / facet_fields emit the controls the chips write into. A chip whose
+  `field` has no control in its form does nothing and says nothing, so build the
+  form from the same dimension list as the chips; the gate is
+  tests/unit/gates/test_facet_form_contract.py.
+
+  facet_grid_row(label) is a call-macro for a non-chip row in the same grid (the
+  queue switch, a search box).
 #}
 {% from 'dashboards/fragments/badges.html' import status_badge %}
+
+{#- `facets`: dimension names, or Facet objects (a FacetSet iterates as them).
+    `selected`: {name: [values]} to pre-select, for a page that deep-links.
+    `sort`: truthy adds the sort_by / sort_dir pair set-sort-submit writes, so a
+    sort survives every chip click; pass the sort dict to seed it. -#}
+{% macro facet_fields(facets, selected={}, sort=False) %}
+{% for facet in facets %}
+{% set name = facet.name if facet.name is defined else facet %}
+<select name="{{ name }}" multiple hidden>
+    {%- for value in selected.get(name) or [] %}<option value="{{ value }}" selected>{{ value }}</option>{% endfor -%}
+</select>
+{% endfor %}
+{% if sort %}
+<input type="hidden" name="sort_by" value="{{ sort.sort_by or '' if sort is mapping }}">
+<input type="hidden" name="sort_dir" value="{{ sort.sort_dir or '' if sort is mapping }}">
+{% endif %}
+{% endmacro %}
+
+{#- A hidden form holding only chip state, for a card whose visible controls
+    bind to it with `form=`. The swap target listens with
+    `submit from:#<form_id>` and `hx-include`s it. -#}
+{% macro facet_form(form_id, facets, selected={}, sort=False) %}
+<form id="{{ form_id }}" class="d-none">
+    {{ facet_fields(facets, selected, sort) }}
+</form>
+{% endmacro %}
+
+{% macro facet_grid_row(label) %}
+<div class="facet-grid-label">{{ label }}</div>
+<div class="facet-grid-values">{{ caller() }}</div>
+{% endmacro %}
 
 {% macro facet_row(label, values, form_id, field, active=[], badge=False) %}
 {% if values %}

@@ -1,7 +1,7 @@
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_xras_pending_work, g_xras_mnemonic_strip, g_xras_contract_strip, g_xras_identity_strip with context %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
-{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_grid_row, facet_row %}
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {#
   XRAS Remediations — the operator WRITE surface.
@@ -256,8 +256,7 @@
                the same population as XRAS admin's Recent submissions. Bound to
                the hidden filter form like the search box, so a chip click keeps
                the mode. #}
-            <div class="facet-grid-label">View</div>
-            <div class="facet-grid-values">
+            {% call facet_grid_row('View') %}
                 <div class="form-check form-switch small mb-0">
                     <input class="form-check-input" type="checkbox" role="switch"
                            id="xras-remediation-show-all" name="show_all" value="1"
@@ -273,9 +272,8 @@
                     {{ help_icon(g_xras_pending_work(), rich=True,
                                  title='Pending work vs. everything', placement='right') }}
                 </div>
-            </div>
-            <div class="facet-grid-label">Search</div>
-            <div class="facet-grid-values">
+            {% endcall %}
+            {% call facet_grid_row('Search') %}
                 {# `form=`: the input lives here, next to the chips, but belongs
                    to the hidden filter form two files over, so a chip click
                    (which submits that form) carries the search term with it.
@@ -297,7 +295,7 @@
                        hx-swap="innerHTML"
                        hx-trigger="input changed delay:300ms, search"
                        hx-include="#xras-window-filters, #{{ form_id }}">
-            </div>
+            {% endcall %}
             {{ facet_row('Status', facet_values.status, form_id, 'status',
                          active=selected.status) }}
             {{ facet_row('Type', facet_values.action_type, form_id, 'action_type',

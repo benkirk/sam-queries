@@ -126,7 +126,7 @@ def account_requests():
         fragment_url=url_for('admin_dashboard.account_requests_fragment'),
         initial_url=url_for('admin_dashboard.account_requests_fragment',
                             request=pinned or None),
-        facets=_FACETS.names,
+        facets=_FACETS,
     )
 
 

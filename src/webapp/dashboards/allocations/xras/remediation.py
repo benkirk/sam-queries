@@ -48,7 +48,7 @@ from sam.manage import management_transaction
 from sam.manage import xras_remediation as remediation
 from sam.queries.mnemonic_console import search_mnemonic_codes
 from sam.dates import parse_wire_date
-from sam.queries.xras_requests import BLOCKER_LABELS, is_pending_work, row_blockers
+from sam.queries.xras_requests import is_pending_work, row_blockers
 from sam.schemas.forms import (
     XrasActionDatesForm,
     XrasActionFieldsForm,
@@ -62,7 +62,6 @@ from sam.schemas.forms import (
 )
 from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from webapp.extensions import db
-from webapp.utils.facets import Facet, FacetSet
 from webapp.utils.fk_validation import FKValidationError, validate_fk_existence
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import (htmx_modal_not_found, htmx_success_message,
@@ -71,7 +70,8 @@ from webapp.utils.rbac import Permission, require_permission
 
 from .. import bp
 from ._shared import (
-    _XRAS_MODAL_TRIGGERS, _degraded, _entry, _impersonation, _index,
+    REMEDIATION_FACETS, _XRAS_MODAL_TRIGGERS, _degraded, _entry, _impersonation,
+    _index,
     _live_family, _live_request, _parse_activity_window, _read_client,
     _role_options, _session_factory, scope_rows, sort_rows,
 )
@@ -162,8 +162,8 @@ def xras_remediations_fragment():
     search = (request.args.get('search') or '').strip()
     rows = _search(rows, search)
 
-    selected = _FACETS.read(request.args)
-    facet_values = _FACETS.strips(rows, selected)
+    selected = REMEDIATION_FACETS.read(request.args)
+    facet_values = REMEDIATION_FACETS.strips(rows, selected)
 
     # The final in-view set — identical to what the batch re-check acts on.
     rows = _filtered_rows(payload, request.args)
@@ -537,43 +537,7 @@ def _filtered_rows(payload, args):
     rows = _stamp_blockers(rows)
     rows = _scope_rows(rows, args)
     rows = _search(rows, (args.get('search') or '').strip())
-    return _FACETS.apply(rows, _FACETS.read(args))
-
-
-#: Readiness chips, worst first; the icon matches the row badge so the strip is
-#: the column's legend. ``none`` is a real bucket: a swept request with no
-#: pending action checked (out of window, or all applied).
-_READINESS = (
-    ('failed', 'Would fail', 'fa-triangle-exclamation text-danger-emphasis'),
-    ('manual', 'Would park', 'fa-circle-pause text-warning-emphasis'),
-    ('incomplete', 'Incomplete', 'fa-circle-question text-secondary-emphasis'),
-    ('rechecked', 'Would land', 'fa-circle-check text-success-emphasis'),
-    ('none', 'Not checked', 'fa-rotate text-secondary-emphasis'),
-)
-
-#: Blocker chip icons, matching the row indicators (the chip strip is their legend).
-_BLOCKER_ICONS = {'mnemonic': 'fa-link-slash text-danger-emphasis',
-                  'contract': 'fa-file-contract text-danger-emphasis',
-                  'account': 'fa-user text-danger-emphasis'}
-
-#: The card's chips. A row counts under every blocker it is stuck on, so that
-#: strip sums past the row total by design. ``request_number`` draws only its
-#: selected values (``limit=0``): one chip per swept request would be a wall.
-_FACETS = FacetSet(
-    Facet('status'),
-    Facet('action_type', key='latest_action_type'),
-    Facet('opportunity', key='opportunity_name'),
-    Facet('push', key=lambda r: 'pending' if r.get('pending_push') else 'pushed',
-          order=('pending', 'pushed'),
-          labels={'pending': 'No SAM project', 'pushed': 'Project exists'}),
-    Facet('readiness', key=lambda r: r.get('preflight_rollup') or 'none',
-          order=[v for v, _, _ in _READINESS], hide_zero=True,
-          labels={v: label for v, label, _ in _READINESS},
-          icons={v: icon for v, _, icon in _READINESS}),
-    Facet('blockers', order=[v for v, _ in BLOCKER_LABELS], hide_zero=True,
-          labels=dict(BLOCKER_LABELS), icons=_BLOCKER_ICONS),
-    Facet('request_number', hide_zero=True, limit=0),
-)
+    return REMEDIATION_FACETS.apply(rows, REMEDIATION_FACETS.read(args))
 
 
 #: Sortable non-facet columns -> row sort key. The facet columns (status / type /

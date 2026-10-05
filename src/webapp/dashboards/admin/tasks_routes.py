@@ -36,7 +36,6 @@ from system_status.queries.task_runs import (
     count_recent_task_runs,
     facet_task_runs,
     get_recent_task_runs,
-    observed_task_names,
     summarize_task_runs,
 )
 from system_status.timeutil import utcnow_naive
@@ -119,9 +118,6 @@ def scheduled_tasks():
         form_id=_FORM_ID,
         target_id=_FRAGMENT_TARGET,
         fragment_url=url_for('admin_dashboard.scheduled_tasks_log'),
-        all_task_names=observed_task_names(db.session),
-        all_states=list(TASK_STATES),
-        all_triggers=list(TASK_TRIGGERS),
         default_days=_DEFAULT_DAYS,
         window_hours=DEFAULT_WINDOW_HOURS,
     )
