@@ -14,6 +14,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional
 
+from webapp.utils.windows import read_days
+
 #: Hard ceiling on the lookback, so a hand-edited ``?days=`` cannot turn a
 #: paginated page into a full-table scan.
 MAX_DAYS = 365
@@ -35,8 +37,7 @@ def parse_window(args, *, default_days: int, per_page: int,
         ``days`` is in there because the fragments print "in the last N days"
         from it — a two-key page dict breaks the headline.
     """
-    days = args.get('days', type=int) or default_days
-    days = max(1, min(days, max_days))
+    days = read_days(args, default=default_days, maximum=max_days)
 
     since = (now or datetime.now()) - timedelta(days=days)
     page_n = max(1, args.get('page', type=int) or 1)

@@ -42,6 +42,7 @@ from sam.queries.usage_cache import (
 )
 from sam import fmt
 from sam.dates import parse_ymd, parse_ymd_or, start_of_today
+from webapp.utils.windows import read_log_window
 from sam.queries.projects import project_panels, project_titles
 from sam.export import Column, build_workbook
 from sam.schemas.forms import CreateChargeAdjustmentForm
@@ -1192,24 +1193,13 @@ def _parse_audit_filters(request_args, sort_whitelist):
     - ``sort``: ``{'sort_by': str|None, 'sort_dir': 'asc'|'desc'}``.
     - ``page``: ``{'n': int ≥ 1, 'per_page': int clamped to [10, 200]}``.
 
-    Default 30-day window is applied iff **neither** ``start_date`` nor
-    ``end_date`` appears in the query string (empty bounds explicitly = all
-    time).
+    The window is ``read_log_window``: a 30-day lookback until either date
+    param appears in the query string.
     """
     projcode = (request_args.get('projcode') or '').strip() or None
     resource_names = read_multi(request_args, 'resource_name') or None
     username = (request_args.get('username') or '').strip() or None
-    start_date_str = (request_args.get('start_date') or '').strip()
-    end_date_str = (request_args.get('end_date') or '').strip()
-
-    if 'start_date' not in request_args and 'end_date' not in request_args:
-        # First-load default: last 30 days, ending now.
-        start_date = (start_of_today()
-                      - timedelta(days=30))
-        end_date = datetime.now()
-    else:
-        start_date = parse_ymd_or(start_date_str)
-        end_date = parse_ymd_or(end_date_str, end_of_day=True)
+    start_date, end_date = read_log_window(request_args, default_days=30)
 
     filters = {
         'projcode': projcode,

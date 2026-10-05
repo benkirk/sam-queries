@@ -12,7 +12,8 @@ from ``xras_remediation_routes.py`` — ``git blame -C`` follows both moves.
 """
 
 from datetime import datetime, timedelta
-from sam.dates import parse_wire_date, parse_ymd_or, start_of_today
+from sam.dates import parse_wire_date, parse_ymd_or
+from webapp.utils.windows import read_days, read_log_window
 
 from flask import current_app, render_template
 
@@ -206,34 +207,14 @@ def _parse_xras_filters(request_args):
     Returns ``(filters, sort, page)`` with the same shapes ``_parse_audit_filters``
     returns, because the table fragment renders through the same macros.
 
-    Default 30-day window is applied iff **neither** ``start_date`` nor
-    ``end_date`` appears in the query string — explicitly empty bounds mean
-    "all time", which is a different intent from "I have not chosen".
+    The window is ``read_log_window``: a 30-day lookback until either date
+    param appears in the query string, and never bounded above by default.
     """
     statuses = read_multi(request_args, 'status') or None
     action_types = read_multi(request_args, 'action_type') or None
     request_number = (request_args.get('request_number') or '').strip() or None
 
-    start_date_str = (request_args.get('start_date') or '').strip()
-    end_date_str = (request_args.get('end_date') or '').strip()
-
-    if 'start_date' not in request_args and 'end_date' not in request_args:
-        start_date = (start_of_today()
-                      - timedelta(days=30))
-        # Deliberately UNBOUNDED above, where the sibling audit pages use
-        # datetime.now(). There are no future rows, so an upper bound buys
-        # nothing — and a sub-second one actively loses the newest row.
-        # `received_time` is a MySQL DATETIME with second resolution and MySQL
-        # ROUNDS rather than truncates, so a row written at 10:10:24.894 is
-        # stored as 10:10:25 and lands *after* an end_date captured microseconds
-        # earlier in the same request. On an audit surface whose whole job is
-        # answering "did my action get recorded?", the row most worth seeing is
-        # the one that just arrived. (_parse_audit_filters above still has the
-        # sub-second bound; same latent bug, left alone as pre-existing.)
-        end_date = None
-    else:
-        start_date = parse_ymd_or(start_date_str)
-        end_date = parse_ymd_or(end_date_str, end_of_day=True)
+    start_date, end_date = read_log_window(request_args, default_days=30)
 
     filters = {
         'status': statuses,
@@ -286,8 +267,8 @@ def _parse_activity_window(args) -> dict:
         return {'days': None, 'since': since, 'until': until,
                 'start_date': start_raw, 'end_date': end_raw, 'custom': True}
 
-    days = args.get('days', type=int) or _ACTIVITY_DEFAULT_DAYS
-    days = max(1, min(days, _ACTIVITY_MAX_DAYS))
+    days = read_days(args, default=_ACTIVITY_DEFAULT_DAYS,
+                     maximum=_ACTIVITY_MAX_DAYS)
     return {'days': days, 'since': datetime.now() - timedelta(days=days),
             'until': None, 'start_date': '', 'end_date': '', 'custom': False}
 

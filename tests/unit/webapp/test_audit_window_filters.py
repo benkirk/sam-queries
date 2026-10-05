@@ -44,11 +44,17 @@ class TestAuditParserDefaultWindow:
 
     def test_no_dates_at_all_gets_the_thirty_day_default(self):
         filters, _, _ = _parse_audit_filters(MultiDict(), SORTS)
-        assert filters['start_date'] is not None
-        assert filters['end_date'] is not None
-        span = filters['end_date'] - filters['start_date']
+        span = datetime.now() - filters['start_date']
         # 30 days plus however far into today the clock has run.
         assert timedelta(days=30) <= span < timedelta(days=31)
+
+    def test_the_default_window_has_no_upper_bound(self):
+        """Regression: the default ended at ``datetime.now()``. MySQL DATETIME
+        rounds to the second, so a row written at .894 is stored one second
+        later and fell after a bound taken in the same request: the newest
+        row, the one an operator came to check, was missing."""
+        filters, _, _ = _parse_audit_filters(MultiDict(), SORTS)
+        assert filters['end_date'] is None
 
     def test_present_but_empty_means_all_time(self):
         """The undocumented escape hatch, now documented by a test. This is the
