@@ -33,7 +33,7 @@
         {% endcall %}
 
         {# Render resources table — rows navigate to resource_details on click #}
-        {{ render_project_resources(project, resources, usage_warning_threshold, usage_critical_threshold, show_clickable_rows=true, can_edit_allocations=user_can_edit_allocations) }}
+        {{ render_project_resources(project, resources, show_clickable_rows=true, can_edit_allocations=user_can_edit_allocations) }}
 
         {# Render members section (collapsed by default, lazy loaded) #}
         {{ render_project_members(project, unique_id='modal') }}
