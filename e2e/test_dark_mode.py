@@ -54,6 +54,13 @@ PAGES = ['/user/info', '/allocations/transactions', '/status/derecho']
 #: runs without those plugins.
 CHART_PAGES = ['/allocations/projects', '/status/derecho']
 
+#: The one exception, (page, theme) -> why: the Allocations sunbursts label every wedge in
+#: white in light, where two inks read as noise (Ben, 2026-10-04), so a pale wedge (NSC,
+#: 2.85:1) is approved. Only labels inside `figure.sunburst-chart` are exempt.
+UNIFORM_SUNBURST_INK = {
+    ('/allocations/projects', 'light'): 'AllocationSunburst.label_ink: white in light',
+}
+
 #: Chart pages whose data comes from the collector-fed `system_status` tables
 #: rather than the SAM snapshot, and which therefore draw nothing on a stack
 #: that has never had a collector pointed at it.
@@ -240,7 +247,8 @@ _CHART_TEXT_COLOURS_JS = """
 
       let bg = { r: 255, g: 255, b: 255, a: 1 };   // the canvas, last resort
       for (let i = stack.length - 1; i >= 0; i--) bg = over(stack[i], bg);
-      out.push({ fg: [fg.r, fg.g, fg.b], bg: [bg.r, bg.g, bg.b], text: label });
+      out.push({ fg: [fg.r, fg.g, fg.b], bg: [bg.r, bg.g, bg.b], text: label,
+                 sunburst: !!svg.closest('figure.sunburst-chart') });
     }
   }
   return { figures: figures.length, samples: out };
@@ -286,8 +294,11 @@ def test_chart_text_is_legible(page, base_url, page_url, theme):
         f'text: `svg.fonttype` left "none" and every glyph is a path again — '
         f'in which case this test is silently vacuous.')
 
+    exempt_sunbursts = (page_url, theme) in UNIFORM_SUNBURST_INK
     failures = []
     for found in samples:
+        if exempt_sunbursts and found['sunburst']:
+            continue
         ratio = contrast_ratio(found['fg'], found['bg'])
         if ratio < MIN_CONTRAST:
             failures.append(

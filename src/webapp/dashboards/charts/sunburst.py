@@ -39,8 +39,8 @@ def facility_color(theme, slot):
 
 
 def label_wedges(ax, wedges, names, percents, colors, radius, minimum, size,
-                 orient='horizontal', band=0, weight='bold'):
-    """Name each wedge of ``minimum`` percent or more at ``radius``.
+                 orient='horizontal', band=0, weight='bold', ink=None):
+    """Name each wedge of ``minimum`` percent or more at ``radius``; ``ink`` None picks per wedge.
 
     ``orient``: 'horizontal'; 'tangent' (along the arc); 'radial' (along the radius,
     else the arc); 'arc' (the arc, else the radius). A label fitting neither is dropped.
@@ -59,7 +59,7 @@ def label_wedges(ax, wedges, names, percents, colors, radius, minimum, size,
         angle = math.radians(mid)
         text = ax.text(radius * math.cos(angle), radius * math.sin(angle), name,
                        ha='center', va='center', fontsize=size, fontweight=weight,
-                       color=autopct_color_for(color))
+                       color=ink or autopct_color_for(color))
         if orient == 'horizontal':
             continue
         width, height = _text_size(ax, text)
@@ -138,6 +138,10 @@ class TwoRingPie(PieChart):
         """Fill for a group's shortfall wedge; ``'none'`` draws it blank."""
         return 'none'
 
+    def label_ink(self, theme):
+        """One ink for every wedge label, or None to pick per wedge."""
+        return None
+
     def part_tooltip(self, row, name, value):
         """Hover text for one wedge: its legend cells; ``name`` None is the gap."""
         return ' · '.join(self.legend_cells(name, value)) if name else None
@@ -179,13 +183,15 @@ class TwoRingPie(PieChart):
             self.tooltip(wedge, self.part_tooltip(row, name, value))
 
         size = self.autopct_fontsize
+        ink = self.label_ink(theme)
         label_wedges(ax, inner, self.labels, [self.percent(v) for v in self.values], bases,
                     self.inner_radius - self.ring_width / 2, self.inner_label_min, size,
-                    self.inner_label_orient, self.ring_width)
+                    self.inner_label_orient, self.ring_width, ink=ink)
         if layout.name != 'mobile':   # a phone's outer ring is too narrow; the legend carries it
             label_wedges(ax, outer, outer_names, [self.percent(v) for v in outer_vals], outer_colors,
                         self.inner_radius + outer_width / 2 + 0.02, self.outer_label_min,
-                        self.outer_label_fontsize or size - 1, self.outer_label_orient, outer_width)
+                        self.outer_label_fontsize or size - 1, self.outer_label_orient, outer_width,
+                        ink=ink)
         if self.center_text:
             ax.text(0, 0, self.center_text, ha='center', va='center', fontsize=size + 1,
                     color=theme.text, alpha=0.7)
@@ -238,6 +244,13 @@ class AllocationSunburst(TwoRingPie):
     def cache_key(data, center=''):
         return content_hash([data, center])
 
+    def label_ink(self, theme):
+        """White in light, where two inks read as noise (Ben, 2026-10-04); dark keeps the per-wedge pick.
+
+        Light wedges such as NSC fall under 3:1; `e2e/test_dark_mode.py` exempts this chart there.
+        """
+        return '#fff' if theme.name == 'light' else None
+
 
 class JobsFacilitySunburst(AllocationSunburst):
     """Job history By Project, grouped: facilities inside, each one's top projects
@@ -259,6 +272,9 @@ class JobsFacilitySunburst(AllocationSunburst):
     outer_label_orient = 'radial'
     outer_label_fontsize = 6.5
     outer_label_min = 1
+
+    def label_ink(self, theme):
+        return None
 
     def prepare(self):
         super().prepare()
