@@ -14,6 +14,7 @@ from webapp.dashboards.charts import (
     generate_fair_share_sunburst,
     generate_jobs_facility_sunburst,
 )
+from webapp.dashboards.charts.pie import PieChart
 from webapp.dashboards.charts.base import BaseChart, fig_to_svg
 
 from chart_samples import CASES
@@ -73,6 +74,23 @@ def test_every_sunburst_wedge_names_itself(app, name, fn, args, kwargs):
     titles = re.findall(r'<title>([^<]+)</title>', svg)
     assert titles and len(titles) == len(chart._tooltips)
     assert all(' · ' in t for t in titles)
+
+
+_PIE_CASES = [c for c in CASES if issubclass(c[1].chart_class, PieChart)
+              and c[1] not in _SUNBURSTS and not c[0].endswith('.empty')
+              and 'panel_sunburst' not in c[0]]
+
+
+@pytest.mark.parametrize('name,fn,args,kwargs', _PIE_CASES, ids=[c[0] for c in _PIE_CASES])
+def test_every_pie_wedge_names_itself(app, name, fn, args, kwargs):
+    """A wedge under 5% carries no label, so its hover is the only thing naming it."""
+    with app.test_request_context('/'):
+        chart = fn.chart_class(*args, **kwargs)
+        svg = chart.render()
+    titles = re.findall(r'<title>([^<]+)</title>', svg)
+    assert len(titles) == len(chart.values) >= 2
+    assert [t.split(' · ')[0] for t in titles] == list(chart.labels)
+    assert all(t.count(' · ') == 2 for t in titles)     # name, share, amount
 
 
 def test_no_chart_leaks_a_tooltip_id(app):

@@ -128,6 +128,8 @@ class PieChart(BaseChart):
             at.set_color(autopct_color_for(wedge_color))
             at.set_fontweight('bold')
             at.set_fontsize(self.autopct_fontsize)
+        for wedge, label, value in zip(wedges, self.labels, self.values):
+            self.tooltip(wedge, self.tooltip_text(label, value))
         self.wedges = wedges
 
     def add_legend(self, ax, layout, theme):
