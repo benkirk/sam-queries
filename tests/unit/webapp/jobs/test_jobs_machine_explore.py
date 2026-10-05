@@ -127,6 +127,17 @@ def test_explore_machine_page_renders_filter_panel(app, auth_client, monkeypatch
     assert 'name="exit_status"' in body
 
 
+def test_explore_machine_page_has_the_expand_modal_its_by_project_panel_opens(
+        app, auth_client, monkeypatch):
+    """The By Project panel draws `expand_button` here; the shell must be on the page."""
+    _install_mock_plugin(app, monkeypatch, jobs_usage_by_return=_PROJECT_USAGE)
+    page = auth_client.get('/dashboards/user/jobs/machine/derecho/explore').get_data(as_text=True)
+    assert page.count('id="chartExpandModal"') == 1
+    panel = auth_client.get(
+        '/dashboards/user/jobs/machine/derecho/by-project?by_facility=1').get_data(as_text=True)
+    assert 'data-bs-target="#chartExpandModal"' in panel
+
+
 def test_explore_page_project_mode(app, auth_client, active_project, monkeypatch):
     _install_mock_plugin(app, monkeypatch)
     resp = auth_client.get(

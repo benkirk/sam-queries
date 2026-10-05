@@ -5,7 +5,6 @@
 {% block status_content %}
 {% if job_history_machines %}
     {% include 'dashboards/status/partials/job_history.html' %}
-    {% include 'dashboards/fragments/chart_expand_modal.html' %}
 {% else %}
 <div class="alert alert-info">
     <i class="fa-solid fa-circle-info"></i> No job-history data is currently available.

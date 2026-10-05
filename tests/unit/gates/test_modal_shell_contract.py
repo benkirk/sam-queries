@@ -395,13 +395,31 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'projectDetailsModal', 'projectDetailsModalBody'],
     'project_members/fragments/members_table.html': [
         'addMemberFormContainer', 'addMemberModal', 'userDetailsModal', 'userDetailsModalBody'],
-    # The sunburst expand opener renders in allocations/projects.html (charts and the
-    # lazy Used ring) and, under the facility switch, the status Job History page;
-    # both include fragments/chart_expand_modal.html. The body's window pills target
-    # the open modal's body and carry no toggle.
+    # The sunburst expand opener is a macro any chart host may call, so its shell is
+    # site-wide (SITE_WIDE_SHELLS below). The body's window pills target the open
+    # modal's body and carry no toggle.
     'dashboards/fragments/chart_expand.html': ['chartExpandModal', 'chartExpandModalBody'],
     'dashboards/fragments/chart_expanded.html': ['chartExpandModalBody'],
 }
+
+
+#: Shell template -> the ids it defines, for shells whose opener is a shared macro.
+#: A macro is reached by `{% from %}`, which the closure walk does not follow, so no
+#: check above can tell which hosts call it. The machine job explorer drew the
+#: expand button with no modal on the page: the shell lives in base.html instead.
+SITE_WIDE_SHELLS = {
+    'dashboards/fragments/chart_expand_modal.html': {
+        'chartExpandModal', 'chartExpandModalTitle', 'chartExpandModalBody'},
+}
+
+
+@pytest.mark.parametrize('shell', sorted(SITE_WIDE_SHELLS))
+def test_site_wide_shells_live_in_the_base_page_alone(shell):
+    assert SITE_WIDE_SHELLS[shell] <= _ids_defined_by(shell)
+    includers = sorted(t for t, src in TEMPLATES.items() if shell in _INCLUDE.findall(src))
+    assert includers == ['dashboards/base.html'], (
+        f'{shell} must be included by dashboards/base.html and nowhere else '
+        f'(a second include duplicates its ids): {includers}')
 
 
 def test_htmx_fragment_shell_deps_match_pin():

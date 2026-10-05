@@ -224,6 +224,8 @@
 
     {% from 'dashboards/fragments/modals.html' import confirm_modal %}
     {{ confirm_modal() }}
+    {# Site-wide: its opener is a macro any chart host may call (expand_button). #}
+    {% include 'dashboards/fragments/chart_expand_modal.html' %}
 
     <!-- Scripts -->
     {{ vendor_js(['bootstrap-js', 'htmx']) }}

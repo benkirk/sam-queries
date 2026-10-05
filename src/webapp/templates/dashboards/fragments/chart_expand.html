@@ -1,5 +1,5 @@
-{# Opener for #chartExpandModal (fragments/chart_expand_modal.html). It lives on the
-   card, where the modal is closed. A click on its [data-chart-expand] host's chart,
+{# Opener for #chartExpandModal (fragments/chart_expand_modal.html, in base.html so
+   every host has it). It lives on the card, where the modal is closed. A click on its [data-chart-expand] host's chart,
    off any drill link, clicks it too (svg-chart-links.js). Hidden below md. #}
 {% macro expand_button(url, include=None) %}
 <button type="button" class="btn btn-row chart-expand-btn d-none d-md-inline-flex"
