@@ -1,5 +1,5 @@
 {% from 'dashboards/fragments/clipboard.html' import copy_button %}
-{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_fields, facet_row %}
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {#
@@ -13,9 +13,8 @@
         hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_codes_table') }}"
         hx-target="#mnemonicCodesSection" hx-swap="innerHTML"
         hx-trigger="submit, keyup changed delay:300ms from:#mnemonicSearch, change from:#mnemonicActiveOnly">
-    <input type="hidden" name="filter" value="{{ facet }}">
-    <input type="hidden" name="sort_by" value="{{ sort.sort_by }}">
-    <input type="hidden" name="sort_dir" value="{{ sort.sort_dir }}">
+    {{ facet_fields(['filter'], single=['filter'], sort=sort,
+                    selected={'filter': [facet]}) }}
     <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
       <div class="input-group input-group-sm" style="max-width: 22rem;">
         <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>

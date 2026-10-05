@@ -1,4 +1,5 @@
 {% extends 'dashboards/admin/base_admin_users.html' %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_fields %}
 {#
   Admin -> Users & Groups -> Last seen. The chips, sort headers and pagination
   in the fragment all write into this one form, so every control composes.
@@ -42,10 +43,9 @@
                 </div>
             </div>
             {# Written by the facet chips and sort headers. #}
-            <input type="hidden" name="bucket" value="{{ filters.bucket or '' }}">
-            <input type="hidden" name="kind" value="{{ filters.kind or '' }}">
-            <input type="hidden" name="sort_by" value="{{ filters.sort_by }}">
-            <input type="hidden" name="sort_dir" value="{{ filters.sort_dir }}">
+            {{ facet_fields(['bucket', 'kind'], single=['kind'], sort=filters,
+                            selected={'bucket': filters.bucket,
+                                      'kind': [filters.kind] if filters.kind else []}) }}
         </form>
     </div>
 </div>

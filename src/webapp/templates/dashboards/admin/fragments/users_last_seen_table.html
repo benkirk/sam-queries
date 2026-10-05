@@ -23,8 +23,7 @@
 </div>
 
 <div class="facet-grid mb-2">
-    {{ facet_row('Last seen', bucket_facets, form_id, 'bucket',
-                 [filters.bucket] if filters.bucket else []) }}
+    {{ facet_row('Last seen', bucket_facets, form_id, 'bucket', filters.bucket) }}
     {{ facet_row('Source', kind_facets, form_id, 'kind',
                  [filters.kind] if filters.kind else []) }}
 </div>

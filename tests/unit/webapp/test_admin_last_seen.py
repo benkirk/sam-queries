@@ -43,7 +43,8 @@ class TestAccess:
 
     def test_page_seeds_the_form_from_the_query_string(self, auth_client, status_session):
         html = auth_client.get(f'{PAGE}?bucket=stale&kind=pbs&q=ben').get_data(as_text=True)
-        assert 'name="bucket" value="stale"' in html
+        assert re.search(r'<select name="bucket" multiple hidden>\s*'
+                         r'<option value="stale" selected>', html)
         assert 'name="kind" value="pbs"' in html
         assert 'value="ben"' in html
 
@@ -60,6 +61,17 @@ class TestTable:
         recent = auth_client.get(f'{TABLE}?active_only=1&q=benkirk&bucket=recent').get_data(as_text=True)
         assert 'pbs · cheyenne' in stale
         assert 'No users match these filters.' in recent
+
+    def test_two_bucket_chips_show_the_union_and_both_read_pressed(
+            self, auth_client, seen_on_cheyenne):
+        html = auth_client.get(
+            f'{TABLE}?active_only=1&q=benkirk&bucket=stale&bucket=recent'
+        ).get_data(as_text=True)
+        assert 'pbs · cheyenne' in html
+        pressed = dict(re.findall(
+            r'data-field="bucket"\s+data-value="(\w+)"\s+aria-pressed="(\w+)"', html))
+        assert pressed['stale'] == pressed['recent'] == 'true'
+        assert pressed['dormant'] == 'false'
 
     def test_a_fresh_sighting_reads_now(self, auth_client, seen_just_now):
         html = auth_client.get(f'{TABLE}?active_only=1&q=benkirk&bucket=current').get_data(as_text=True)

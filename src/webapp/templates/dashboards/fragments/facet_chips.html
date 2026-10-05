@@ -8,8 +8,10 @@
 
   A chip click writes its value into the named field of a filter form and
   re-submits it — data-action "set-filter-submit" in static/js/actions.js,
-  CSP-clean, no inline handlers. The active chip is marked and clicking it
-  CLEARS the filter (empty data-value), so it doubles as its own clear button.
+  CSP-clean, no inline handlers. A chip is a toggle (aria-pressed): on a
+  multi-value field it adds or removes its own value and leaves the others, so
+  values in one dimension are ORed; on a single-value field it sets the value
+  or, when pressed, clears it.
 
   WARNING: The caller must compute counts with SELF-EXCLUSION — a dimension's rollup
   must omit its own filter. Scope a dimension by itself and every unselected
@@ -52,14 +54,21 @@
 
 {#- `facets`: dimension names, or Facet objects (a FacetSet iterates as them).
     `selected`: {name: [values]} to pre-select, for a page that deep-links.
+    `single`: names that hold one value (as does a Facet with multi=False); a
+    chip on one of those replaces the value instead of adding to it.
     `sort`: truthy adds the sort_by / sort_dir pair set-sort-submit writes, so a
     sort survives every chip click; pass the sort dict to seed it. -#}
-{% macro facet_fields(facets, selected={}, sort=False) %}
+{% macro facet_fields(facets, selected={}, sort=False, single=[]) %}
 {% for facet in facets %}
 {% set name = facet.name if facet.name is defined else facet %}
+{% set chosen = selected.get(name) or [] %}
+{% if name in single or facet.multi is sameas false %}
+<input type="hidden" name="{{ name }}" value="{{ chosen | first | default('', true) }}">
+{% else %}
 <select name="{{ name }}" multiple hidden>
-    {%- for value in selected.get(name) or [] %}<option value="{{ value }}" selected>{{ value }}</option>{% endfor -%}
+    {%- for value in chosen %}<option value="{{ value }}" selected>{{ value }}</option>{% endfor -%}
 </select>
+{% endif %}
 {% endfor %}
 {% if sort %}
 <input type="hidden" name="sort_by" value="{{ sort.sort_by or '' if sort is mapping }}">
@@ -96,8 +105,9 @@
             data-action="set-filter-submit"
             data-form-id="{{ form_id }}"
             data-field="{{ field }}"
-            data-value="{{ '' if is_active else row.value }}"
-            title="{{ 'Clear this filter' if is_active else 'Filter by ' ~ label ~ ' ' ~ (row.label or row.value) }}">
+            data-value="{{ row.value }}"
+            aria-pressed="{{ 'true' if is_active else 'false' }}"
+            title="{{ ('Remove ' if is_active else 'Filter by ') ~ label ~ ' ' ~ (row.label or row.value) }}">
         {% if badge %}
         {# tooltip=False: the chip's own title already says what clicking does,
            and a live Bootstrap tooltip whose trigger htmx removes mid-transition

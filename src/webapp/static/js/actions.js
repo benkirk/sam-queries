@@ -148,29 +148,43 @@
         htmx.trigger(form, 'submit');
     });
 
-    /* Jobs-explorer facet chips: write the chip's value into the named
-     * field of the filter panel form, then re-submit it (the panel's
-     * hx-trigger="submit" refetches the table + OOB chip strip). An
-     * empty data-value clears the filter — the active chip doubles as
-     * its own clear button. A <select> target (the QoS dropdown) gets
-     * the option appended if the catalog doesn't already list it, so a
-     * facet value can never silently fail to apply. */
+    /* Write a value into the named field of a filter form, then re-submit it.
+     * Used by facet chips, window pills and "show only this" links.
+     *
+     * A facet chip carries aria-pressed and TOGGLES: on a <select multiple> it
+     * flips its own option and leaves the others, so values in one dimension
+     * accumulate; on a single-value field a pressed chip clears it. Anything
+     * without aria-pressed REPLACES the field's value. An empty data-value
+     * clears the field either way.
+     *
+     * A <select> gets the option appended if it does not list the value, so a
+     * chip can never silently fail to apply. */
     window.registerAction('set-filter-submit', function (el) {
         var form = document.getElementById(el.dataset.formId);
         if (!form) { return; }
         var field = form.elements[el.dataset.field];
         if (!field) { return; }
         var value = el.dataset.value || '';
-        if (field.tagName === 'SELECT' && value &&
-                !Array.prototype.some.call(field.options, function (o) {
-                    return o.value === value;
-                })) {
-            var opt = document.createElement('option');
-            opt.value = value;
-            opt.textContent = value;
-            field.appendChild(opt);
+        var pressed = el.getAttribute('aria-pressed');
+        var option = null;
+        if (field.tagName === 'SELECT' && value) {
+            option = Array.prototype.filter.call(field.options, function (o) {
+                return o.value === value;
+            })[0];
+            if (!option) {
+                option = document.createElement('option');
+                option.value = value;
+                option.textContent = value;
+                field.appendChild(option);
+            }
         }
-        field.value = value;
+        if (pressed !== null && field.multiple && option) {
+            option.selected = pressed !== 'true';
+        } else if (pressed === 'true') {
+            field.value = '';
+        } else {
+            field.value = value;
+        }
         /* data-clear-fields: blank these siblings before submitting. A window
          * pill sets `days`, but an explicit start/end range OUTRANKS `days`
          * server-side — so without clearing them the pill would submit and

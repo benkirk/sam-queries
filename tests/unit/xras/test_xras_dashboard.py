@@ -319,16 +319,18 @@ class TestFacetChips:
         chips = self._chips(html, 'action_type')
         assert ('xras-filters', 'Extension') in chips
 
-    def test_the_active_chip_clears_rather_than_reapplying(self, auth_client):
-        """An empty data-value is how set-filter-submit clears a filter, so the
-        selected chip doubles as its own clear button."""
+    def test_a_selected_chip_is_a_pressed_toggle_carrying_its_own_value(
+            self, auth_client):
+        """Chips are multi-select: set-filter-submit reads aria-pressed and
+        flips the chip's own option, so the value is always the chip's own."""
         html = auth_client.get(
-            '/allocations/xras_fragment?status=failed').data.decode()
-        chips = dict((v, f) for f, v in self._chips(html, 'status'))
-        # 'failed' is selected, so its chip carries the CLEAR value...
-        assert '' in [v for _, v in self._chips(html, 'status')]
-        # ...and is marked active.
-        assert 'is-active' in html
+            '/allocations/xras_fragment?status=failed&status=manual').data.decode()
+        pressed = dict(re.findall(
+            r'data-field="status"\s+data-value="([^"]*)"\s+aria-pressed="(\w+)"', html))
+        assert pressed['failed'] == 'true' and pressed['manual'] == 'true'
+        assert pressed['processed'] == 'false'
+        assert '' not in pressed
+        assert html.count('is-active') == 2
 
     def test_status_chips_keep_their_colour_coding(self, auth_client):
         """has-badge is what tells the CSS to mark selection with a ring rather

@@ -471,10 +471,12 @@ def test_explore_page_renders_facet_chips_with_counts(
 
     assert 'data-action="set-filter-submit"' in body
     assert 'data-form-id="jobs-filters-panel-jobs-explore-jobs"' in body
-    # Active chip (queue=cpu) fills in and clears on click.
+    # Active chip (queue=cpu) is a pressed toggle: the click handler clears a
+    # single-value field when the chip writing into it is pressed.
     cpu_chip = re.search(
-        r'<button[^>]*data-field="queue"[^>]*data-value=""[^>]*>', body)
+        r'<button[^>]*data-field="queue"[^>]*data-value="cpu"[^>]*>', body)
     assert cpu_chip is not None and 'facet-chip is-active' in cpu_chip.group(0)
+    assert 'aria-pressed="true"' in cpu_chip.group(0)
     # Inactive chip carries its value.
     assert 'data-value="gpu"' in body
     assert 'data-value="271"' in body

@@ -102,6 +102,15 @@ class TestReview:
         assert [r.username for r in rows] == ['bob']
         assert sum(buckets.values()) == 4
 
+    def test_several_buckets_are_ored(self):
+        one, _, _ = _review(bucket='stale')
+        other, _, _ = _review(bucket=NEVER)
+        both, buckets, _ = _review(bucket=['stale', NEVER])
+        assert {r.username for r in both} == (
+            {r.username for r in one} | {r.username for r in other})
+        assert sum(buckets.values()) == 4
+        assert _review(bucket=[])[0] == _review()[0]
+
     def test_kind_counts_are_self_excluding(self):
         _, _, kinds = _review()
         assert kinds == {'webapp': 1, 'pbs': 2, 'login': 1}

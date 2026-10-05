@@ -19,7 +19,7 @@ from system_status.queries.last_seen import get_last_seen_by_user
 from system_status.timeutil import utcnow_naive
 from webapp.extensions import db
 from webapp.utils.faceted_log import build_facet_strip
-from webapp.utils.htmx import read_active_only, read_flag
+from webapp.utils.htmx import read_active_only, read_flag, read_multi
 from webapp.utils.rbac import Permission, require_permission_any_facility
 
 from .blueprint import bp
@@ -45,11 +45,10 @@ def ledger_missing():
 
 
 def _filters(args):
-    bucket = args.get('bucket') or None
     kind = args.get('kind') or None
     sort_by = args.get('sort_by') if args.get('sort_by') in _SORTABLE else 'last_seen'
     return {
-        'bucket': bucket if bucket in BUCKET_KEYS else None,
+        'bucket': [b for b in read_multi(args, 'bucket') if b in BUCKET_KEYS],
         'kind': kind if kind in SOURCE_KINDS else None,
         'search': (args.get('q') or '').strip() or None,
         'sort_by': sort_by,
