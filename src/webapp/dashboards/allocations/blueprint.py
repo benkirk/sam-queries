@@ -897,9 +897,9 @@ def _calendar_rows(resource_name, active_at, selected_facilities):
 
 
 def _calendar_mode(resource_type):
-    """``(burnable, mode)``: ``mode`` is 'burn' only when asked for on an HPC/DAV resource."""
+    """``(burnable, mode)``: an HPC/DAV resource shows 'burn' unless 'used' is asked for."""
     burnable = resource_type in _BURN_RESOURCE_TYPES
-    return burnable, 'burn' if burnable and request.args.get('mode') == 'burn' else 'used'
+    return burnable, 'burn' if burnable and request.args.get('mode') != 'used' else 'used'
 
 
 def _burn_through(active_at):

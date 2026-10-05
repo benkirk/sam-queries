@@ -428,7 +428,8 @@ _CALENDAR = '/allocations/htmx/calendar/Derecho?active_at=2026-10-03'
 
 
 def test_allocations_calendar_route(auth_client, route_count_queries):
-    _route_within("allocations_calendar_route", auth_client, route_count_queries, _CALENDAR)
+    _route_within("allocations_calendar_route", auth_client, route_count_queries,
+                  _CALENDAR + '&mode=used')
 
 
 def test_allocations_calendar_burn_route(auth_client, route_count_queries):
