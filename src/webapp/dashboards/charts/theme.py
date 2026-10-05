@@ -238,6 +238,10 @@ class Theme:
     #: One base hue per facility slot (`facility_slots`); its types are shades.
     facility_palette: tuple
 
+    #: Opacity of secondary text in `text`'s color: a table legend's later
+    #: columns, a ring's center label.
+    muted_alpha: float = 0.7
+
     @property
     def is_dark(self) -> bool:
         return self.name == 'dark'

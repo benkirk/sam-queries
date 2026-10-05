@@ -79,6 +79,10 @@ class Layout:
     #: Tick-label size, or None for "the chart's own, else `base_fontsize`".
     tick_fontsize: int | None = None
 
+    #: Multiplier on a line chart's stroke widths: a 3pt line drawn for an
+    #: 18in figure is a slab on a 4in one.
+    line_scale: float = 1.0
+
 
 #: One size for every text role on a phone. The four `*_fontsize` fields are
 #: separate because *desktop* needs them separate — a family may label at 13pt
@@ -98,6 +102,7 @@ MOBILE_DEFAULTS = dict(
     max_legend_entries=6,
     max_ticks=5,
     label_rotation=45,
+    line_scale=2 / 3,
 )
 
 

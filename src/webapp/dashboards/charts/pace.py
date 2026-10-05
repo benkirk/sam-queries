@@ -47,12 +47,10 @@ PACE_WINDOW_DAYS = 180
 def _pace_other_color(theme):
     """The inert "N other" band.
 
-    Translucent so the ranked bands above it stay dominant, and derived from
-    the theme rather than fixed: `--ncar-gray-light` recedes on a white card
-    and is the *brightest* thing on a dark one, which is exactly backwards for
-    the band that means the least. See `Theme.muted_data`.
+    The theme's muted fill at the theme's area alpha, as the stacked family
+    draws its own remainder. See `Theme.muted_data` and `Theme.area_alpha`.
     """
-    return matplotlib.colors.to_rgba(theme.muted_data, 0.85)
+    return matplotlib.colors.to_rgba(theme.muted_data, theme.area_alpha)
 
 
 def _day(d, window_start, n):
@@ -149,6 +147,8 @@ class PaceChart(BaseChart):
     #: 9pt: this is a (10,4) figure, so the legend is proportionally larger
     #: than the same point size on an 18-inch chart. Same tier as the pies.
     legend_fontsize = 9
+    #: The "today" and "committed" notes: smaller than any tick.
+    annotation_fontsize = 8
 
     def __init__(self, allocations: List[Dict], active_at: datetime, top_n: int = 20,
                  resource_name: str = '', sort_by: str = 'size'):
@@ -321,13 +321,13 @@ class PaceChart(BaseChart):
             label = f'committed {fmt.number(now)}/yr'
             ax.annotate(label + (' \u2191' if now > ymax else ''), (self.active_at, min(now, ymax)),
                         xytext=(4, -2 if now > ymax * 0.9 else 3), textcoords='offset points',
-                        color=theme.text, fontsize=8, ha='left',
+                        color=theme.text, fontsize=self.annotation_fontsize, ha='left',
                         va='top' if now > ymax * 0.9 else 'bottom')
 
         ax.axvline(self.active_at, color=theme.accent, linestyle='--',
                    linewidth=1)
         ax.annotate('today', (self.active_at, ymax), xytext=(-4, -2), textcoords='offset points',
-                    color=theme.accent, fontsize=8, va='top', ha='right')
+                    color=theme.accent, fontsize=self.annotation_fontsize, va='top', ha='right')
 
     def legend_amount(self, value):
         # The number beside a project tracks the active sort. A rate sort scales

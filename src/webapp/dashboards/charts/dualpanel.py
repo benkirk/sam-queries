@@ -28,6 +28,11 @@ from webapp.dashboards.charts.theme import (
 class DualPanelTimeSeriesChart(BaseChart):
     """Shared skeleton: stacked upper panel, conditional lower panel."""
 
+    #: Stroke widths at desktop size, for a solid and a dashed series; the
+    #: layout scales them (`Layout.line_scale`).
+    line_width = 3
+    dashed_width = 2
+
     #: Two- and three-word labels ("Resources Available", "GPUs Pending"), so
     #: an outside legend gets two columns.
     legend_ncol_below = 2
@@ -81,6 +86,9 @@ class DualPanelTimeSeriesChart(BaseChart):
             return
         ax.legend(**self.legend_kwargs(layout, loc='lower center', bbox_to_anchor=(0.5, 1.03)),
                   frameon=False)
+
+    def stroke(self, layout, dashed=False) -> float:
+        return (self.dashed_width if dashed else self.line_width) * layout.line_scale
 
     def count_axis(self, ax):
         """Whole-number ticks from zero: nodes, jobs, cores and GPUs do not come in halves."""
@@ -136,24 +144,24 @@ class NodetypeHistoryChart(DualPanelTimeSeriesChart):
         if any(u is not None for u in utilization):
             times = [self.timestamps[i] for i, u in enumerate(utilization) if u is not None]
             ax2.plot(times, [u for u in utilization if u is not None],
-                     color=blue, linewidth=3, label='CPU/GPU Utilization')
+                     color=blue, linewidth=self.stroke(layout), label='CPU/GPU Utilization')
 
         if any(m is not None for m in memory):
             times = [self.timestamps[i] for i, m in enumerate(memory) if m is not None]
             ax2.plot(times, [m for m in memory if m is not None],
-                     color=teal, linewidth=3, label='Memory Utilization')
+                     color=teal, linewidth=self.stroke(layout), label='Memory Utilization')
 
     def decorate(self, axes, layout, theme):
         ax1, ax2 = axes
-        ax1.set_ylabel('Number of Nodes', fontsize=layout.base_fontsize)
+        ax1.set_ylabel('Number of Nodes', **self.label_kw(layout))
         self.count_axis(ax1)
         # Normalized: this panel used the literal 'gray' rather than the
         # themed gray-light every other chart uses. Undocumented, and the one
         # grid color a dark theme could not have swapped.
         self.apply_grid(ax1, theme)
 
-        ax2.set_ylabel('Utilization', fontsize=layout.base_fontsize)
-        ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', fontsize=layout.base_fontsize)
+        ax2.set_ylabel('Utilization', **self.label_kw(layout))
+        ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', **self.label_kw(layout))
         ax2.set_ylim(0, 100)
         ax2.yaxis.set_major_formatter(fmt.mpl_pct_formatter())
         self.apply_grid(ax2, theme)
@@ -184,36 +192,36 @@ class QueueHistoryChart(DualPanelTimeSeriesChart):
             [UNITY_NCAR_TEAL, UNITY_NCAR_ORANGE, UNITY_NCAR_VERMILION,
              UNITY_NCAR_BLUE])
         ax1.plot(ts, self.column('running_jobs'), color=teal,
-                 linewidth=3, label='Running')
+                 linewidth=self.stroke(layout), label='Running')
         ax1.plot(ts, self.column('pending_jobs'), color=orange,
-                 linewidth=3, label='Pending')
+                 linewidth=self.stroke(layout), label='Pending')
         ax1.plot(ts, self.column('held_jobs'), color=vermilion,
-                 linewidth=3, label='Held')
+                 linewidth=self.stroke(layout), label='Held')
         ax1.plot(ts, self.column('active_users'), color=blue,
-                 linestyle='--', linewidth=2, label='Active Users')
+                 linestyle='--', linewidth=self.stroke(layout, dashed=True), label='Active Users')
 
         gpus_alloc = self.column('gpus_allocated')
         gpus_pend = self.column('gpus_pending')
         if any(gpus_alloc) or any(gpus_pend):
-            ax2.plot(ts, gpus_alloc, color=blue, linewidth=3,
+            ax2.plot(ts, gpus_alloc, color=blue, linewidth=self.stroke(layout),
                      label='GPUs Running')
-            ax2.plot(ts, gpus_pend, color=teal, linewidth=3,
+            ax2.plot(ts, gpus_pend, color=teal, linewidth=self.stroke(layout),
                      label='GPUs Pending')
         else:
             ax2.plot(ts, self.column('cores_allocated'), color=blue,
-                     linewidth=3, label='Cores Running')
+                     linewidth=self.stroke(layout), label='Cores Running')
             ax2.plot(ts, self.column('cores_pending'), color=teal,
-                     linewidth=3, label='Cores Pending')
+                     linewidth=self.stroke(layout), label='Cores Pending')
 
     def decorate(self, axes, layout, theme):
         ax1, ax2 = axes
         self.count_axis(ax1)
-        ax1.set_ylabel('Count', fontsize=layout.base_fontsize)
+        ax1.set_ylabel('Count', **self.label_kw(layout))
         self.apply_grid(ax1, theme)
 
         self.count_axis(ax2)
-        ax2.set_ylabel('Resources', fontsize=layout.base_fontsize)
-        ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', fontsize=layout.base_fontsize)
+        ax2.set_ylabel('Resources', **self.label_kw(layout))
+        ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', **self.label_kw(layout))
         self.apply_grid(ax2, theme)
 
     def add_legend(self, axes, layout, theme):

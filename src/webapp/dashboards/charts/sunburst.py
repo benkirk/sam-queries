@@ -187,7 +187,7 @@ class TwoRingPie(PieChart):
                         ink=ink)
         if self.center_text:
             ax.text(0, 0, self.center_text, ha='center', va='center', fontsize=size + 1,
-                    color=theme.text, alpha=0.7)
+                    color=theme.text, alpha=theme.muted_alpha)
         ax.set_aspect('equal')
 
 
@@ -242,7 +242,7 @@ class AllocationSunburst(TwoRingPie):
 
         Light wedges such as NSC fall under 3:1; `e2e/test_dark_mode.py` exempts this chart there.
         """
-        return '#fff' if theme.name == 'light' else None
+        return None if theme.is_dark else theme.surface
 
 
 class JobsFacilitySunburst(AllocationSunburst):
@@ -431,7 +431,7 @@ class PanelSunburst(PieChart):
         total = sum(self.values)
         ax.text(0, 0, f'{self.center_text}\n{fmt.number(total)}' if self.center_text
                 else fmt.number(total), ha='center', va='center',
-                fontsize=self.facility_fontsize + 1, color=theme.text, alpha=0.8)
+                fontsize=self.facility_fontsize + 1, color=theme.text, alpha=theme.muted_alpha)
         ax.set_aspect('equal')
 
     def panel_colors(self, bases, theme):

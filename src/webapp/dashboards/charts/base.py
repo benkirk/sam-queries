@@ -255,7 +255,7 @@ class BaseChart:
                                      for r, c, u, i in zip(rows, colors, urls, indents)],
                            sep=sep, align='left')]
         for j in range(1, len(rows[0])):
-            columns.append(VPacker(children=[cell(r[j], u, alpha=1.0 if j == 1 else 0.7)
+            columns.append(VPacker(children=[cell(r[j], u, alpha=1.0 if j == 1 else theme.muted_alpha)
                                              for r, u in zip(rows, urls)],
                                    sep=sep, align='right'))
         table = AnchoredOffsetbox(loc='center left', child=HPacker(children=columns, sep=size * 1.1,

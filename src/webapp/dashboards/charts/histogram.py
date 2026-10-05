@@ -29,7 +29,7 @@ from webapp.dashboards.charts.jobs_metrics import (
 )
 from webapp.dashboards.charts.layout import profile
 from webapp.dashboards.charts.theme import (
-    UNITY_PALETTE_10, UNITY_STACK_10, scale_bytes, shade_family,
+    UNITY_NCAR_BLUE, UNITY_STACK_10, scale_bytes, shade_family,
 )
 
 #: Top-N owners drawn as their own stack segment per bar; the rest collapse
@@ -149,7 +149,7 @@ class CategoricalStackChart(BaseChart):
     def decorate(self, ax, layout, theme):
         ax.set_xticks(range(len(self.labels)))
         ax.set_xticklabels(self.labels, rotation=layout.label_rotation, ha='right')
-        ax.set_ylabel(self.ylabel())
+        ax.set_ylabel(self.ylabel(), **self.label_kw(layout))
         if self.log_y:
             ax.set_yscale('log')
         self.apply_grid(ax, theme)
@@ -306,14 +306,14 @@ class JobsHistogram(CategoricalStackChart):
 
     def flat_bar_color(self, i):
         # Without owners the whole chart is one series in the primary color
-        # (UNITY_PALETTE_10[0], the historical flat chart's color — NOT the
-        # stack palette's first entry, which is gold); with owners it keeps
+        # (NCAR blue, as the flat usage trend — NOT the stack palette's first
+        # entry, which is gold); with owners it keeps
         # the per-band palette its stack would have used.
         # `band_colors` is already lifted for the theme; the bare fallback is
         # not, so it needs the same treatment — ncar-blue is 2.27:1 on the
         # dark card, and this branch paints the entire chart with it.
         return (self.band_colors[i] if self._has_owners
-                else self.theme.data_color(UNITY_PALETTE_10[0]))
+                else self.theme.data_color(UNITY_NCAR_BLUE))
 
     def prepare(self):
         self._has_owners = any(b.get('owners')
