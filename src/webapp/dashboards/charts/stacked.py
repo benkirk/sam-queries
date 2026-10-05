@@ -1,18 +1,12 @@
 """Stacked time series — bars and areas.
 
-Five charts, one shape: bands accumulated bottom-to-top, a reversed
-proxy-`Patch` legend on the right so it reads top-to-bottom matching the
-visual stack, and drill links on the bars, the legend, or both.
+Five charts, one shape: bands accumulated bottom-to-top, a legend at the right
+reading top-to-bottom like the stack, and drill links on the bars, the legend,
+or both. Bar vs area is `stack_mode`, not a subclass: two short methods.
 
-**Bar vs area is `stack_mode`, not a subclass.** Three charts stack bars and
-two stack areas, but that is the only thing the two modes differ in — two
-~12-line private methods rather than a fourth level of hierarchy for a 3/2
-split.
-
-The legend is built from proxy `Patch` handles rather than the `BarContainer`s
-because that is what makes `get_patches()`/`get_texts()` positionally
-addressable for `set_url` — the whole reason these charts can have clickable
-legends at all.
+Where a table legend does not fit (a phone), the legend is built from proxy
+`Patch` handles, not the `BarContainer`s: that is what makes `get_patches()` /
+`get_texts()` positionally addressable for `set_url`.
 """
 
 import matplotlib.patches as mpatches
@@ -40,17 +34,12 @@ _USAGE_METRIC_YLABELS = {
 class StackedSeriesChart(BaseChart):
     """Bands accumulated bottom-to-top, with an optional clickable legend."""
 
-    #: `label_rotation` is unread by the *date* charts in this family — the
-    #: smart date axis shortens labels enough to leave them horizontal. It
-    #: survives for `JobsTimeseriesChart`, whose categorical axis falls back
-    #: to rotation when its period labels are a grain we cannot compact.
-    #: Tablet: 10in. This family has the widest legend labels in the package
-    #: — the status page's "WYOM0247 (33,408)" is a name *and* a value — so
-    #: its tight bbox runs ~130pt past what a sample payload predicts, and 11in
-    #: measured 8.4px in the narrowest card any chart sits in (625px, the
-    #: status page nests two card bodies). Proportionally taller than desktop:
-    #: 18:5 at 10in is a 2.8in strip, and the band count does not shrink with
-    #: the figure.
+    #: `label_rotation` is read only by `JobsTimeseriesChart`, when its period
+    #: labels are a grain the date compaction cannot shorten.
+    #: Tablet: 10in. A legend row here is a name and a value, so the tight bbox
+    #: runs ~130pt past what a sample predicts; 11in measured 8.4px in the
+    #: narrowest card (625px). Taller than desktop's ratio: the band count does
+    #: not shrink with the figure. Measurements: TABLET_CHARTS.md.
     LAYOUTS = profile((18, 5), (4.0, 2.8), (10, 3.4), label_rotation=30)
 
     #: 'bar' — discrete bars per x position; 'area' — filled stackplot.
@@ -165,17 +154,10 @@ class StackedSeriesChart(BaseChart):
         self.apply_grid(ax, theme)
 
     def legend_entries(self, layout):
-        """`[(band, color), ...]` in legend order, capped for the layout.
-
-        Reversed so the legend reads top-to-bottom matching the visual stack.
-
-        When the cap bites, the trailing remainder band — the gray aggregate
-        that sits at the bottom of every stack — is *kept* and the smallest
-        named bands are dropped instead. Dropping it would
-        leave a visible gray band with nothing in the legend explaining it,
-        which is worse than dropping a sliver that is already hard to see.
-        Every band is still drawn either way; only the legend is capped.
-        """
+        """`[(band, color), ...]` in legend order (top of the stack first), capped
+        for the layout. A cap drops the smallest named bands and keeps the
+        remainder: a gray band with no legend row explains nothing. Every band
+        is still drawn."""
         entries = list(zip(reversed(self.bands), reversed(self.colors)))
         cap = self.legend_entry_cap(layout, len(entries))
         if cap >= len(entries):
@@ -289,6 +271,11 @@ class UsageTrendStackedChart(_UsageTrend):
     cache_maxsize = 128
     empty_message = 'No usage data recorded for this period'
     legend_drill = links.USAGE_USER
+    table_legend = True
+    legend_ncol_below = 1
+
+    def band_value(self, band):
+        return sum(band.values)          # the window total the users are ranked by
 
     def __init__(self, timeseries, metric='charges'):
         self.timeseries = timeseries or {}
@@ -322,6 +309,14 @@ class DiskUsageAreaChart(StackedSeriesChart):
     empty_message = 'No disk-usage history for this period'
     stack_mode = 'area'
     legend_labelspacing = None
+    table_legend = True
+    legend_ncol_below = 1
+
+    def band_value(self, band):
+        return band.values[-1] if band.values else 0   # the latest scan, as ranked
+
+    def legend_amount(self, value):
+        return fmt.number(value) if self.metric == 'files' else fmt.size(value)
 
     def __init__(self, timeseries, link_kind=None, metric='bytes'):
         self.timeseries = timeseries or {}
@@ -457,6 +452,11 @@ class JobsTimeseriesChart(StackedSeriesChart):
     empty_message = 'No jobs in this range'
     grid = {'axis': 'y', 'alpha': 0.3}
     bar_width = 1.0
+    table_legend = True
+    legend_ncol_below = 1
+
+    def band_value(self, band):
+        return sum(band.values)          # the window total the owners are ranked by
 
     def __init__(self, ts, *, metric='jobs', period='day',
                  entity_kind='user', link_entities=True, titles=None):
@@ -528,12 +528,9 @@ class JobsTimeseriesChart(StackedSeriesChart):
         step = max(1, len(self.labels) // layout.max_ticks)
         ticks = list(range(0, len(self.labels), step))
         ax.set_xticks(ticks)
-        # This axis is categorical — band indices against period strings the
-        # plugin already formatted (`2026-07-26` / `2026-07` / `2026`), so a
-        # matplotlib date formatter cannot reach it. `compact_date_labels`
-        # applies the same vocabulary to the strings, which matters because
-        # this chart sits one tab away from ones that do use the date axis.
-        # A grain it cannot parse (week, quarter) comes back unchanged.
+        # A categorical axis of period strings the plugin formatted, so no date
+        # formatter reaches it: `compact_date_labels` applies the same vocabulary
+        # to the strings. A grain it cannot parse (week) comes back unchanged.
         shown = [self.labels[i] for i in ticks]
         compact = fmt.compact_date_labels(shown)
         # Rotation only if the labels are still long, i.e. nothing was
@@ -545,5 +542,4 @@ class JobsTimeseriesChart(StackedSeriesChart):
         super().decorate(ax, layout, theme)
 
     def finish(self, fig, axes, layout, theme):
-        # No autofmt_xdate: the x axis is categorical band indices, not dates.
-        pass
+        pass    # no date axis to apply: x is categorical band indices

@@ -61,3 +61,19 @@ def test_legend_cells_has_one_signature_across_the_families():
                 'self', 'label', 'value'], cls.__name__
     assert BaseChart().legend_cells('alice', None) == ('alice',)
     assert BaseChart().legend_cells('alice', 1234) == ('alice', '1,234')
+
+
+def test_the_stacked_legends_carry_the_figure_their_bands_are_ranked_by():
+    from webapp.dashboards.charts import stacked
+    from webapp.dashboards.charts.series import Series
+    band = Series('alice', [2 * 1024 ** 4, 3 * 1024 ** 4], 'alice')
+    trend = stacked.UsageTrendStackedChart({})
+    assert trend.table_legend and trend.legend_cells('alice', trend.band_value(Series('a', [5, 20, 30]))) == (
+        'alice', '55')                                        # the window total
+    timeline = stacked.JobsTimeseriesChart({})
+    assert timeline.table_legend and timeline.band_value(Series('a', [3, 4])) == 7
+    disk = stacked.DiskUsageAreaChart({}, metric='bytes')
+    assert disk.table_legend and disk.legend_cells('alice', disk.band_value(band)) == (
+        'alice', '3.00 TiB')                                  # the latest scan, as a size
+    files = stacked.DiskUsageAreaChart({}, metric='files')
+    assert files.legend_cells('alice', 1234) == ('alice', '1,234')

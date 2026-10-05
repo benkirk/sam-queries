@@ -515,16 +515,18 @@
   },
   "disk_area.bytes_linked": {
     "counts": {
-      "a": 4,
-      "g": 76,
+      "a": 6,
+      "g": 78,
       "path": 27,
-      "text": 20,
+      "text": 23,
       "use": 15
     },
     "drill_hrefs": [
       "/admin/user/bob",
       "/admin/user/bob",
       "/admin/user/alice",
+      "/admin/user/alice",
+      "/admin/user/bob",
       "/admin/user/alice"
     ],
     "fills": [
@@ -560,25 +562,30 @@
       "Disk usage (TiB)",
       "bob",
       "alice",
-      "Others"
+      "Others",
+      "1.45 TiB",
+      "2.90 TiB",
+      "410 GiB"
     ],
     "size": [
-      1143.6,
+      1173.4,
       331.6
     ]
   },
   "disk_area.bytes_linked@dark": {
     "counts": {
-      "a": 4,
-      "g": 76,
+      "a": 6,
+      "g": 78,
       "path": 27,
-      "text": 20,
+      "text": 23,
       "use": 15
     },
     "drill_hrefs": [
       "/admin/user/bob",
       "/admin/user/bob",
       "/admin/user/alice",
+      "/admin/user/alice",
+      "/admin/user/bob",
       "/admin/user/alice"
     ],
     "fills": [
@@ -614,10 +621,13 @@
       "Disk usage (TiB)",
       "bob",
       "alice",
-      "Others"
+      "Others",
+      "1.45 TiB",
+      "2.90 TiB",
+      "410 GiB"
     ],
     "size": [
-      1143.6,
+      1173.4,
       331.6
     ]
   },
@@ -659,13 +669,13 @@
       "3",
       "4",
       "Disk usage (TiB)",
-      "bob",
-      "alice",
-      "Others"
+      "bob (1.45 TiB)",
+      "alice (2.90 TiB)",
+      "Others (410 GiB)"
     ],
     "size": [
       266.9,
-      245.2
+      262.3
     ]
   },
   "disk_area.bytes_linked@mobile@dark": {
@@ -706,27 +716,29 @@
       "3",
       "4",
       "Disk usage (TiB)",
-      "bob",
-      "alice",
-      "Others"
+      "bob (1.45 TiB)",
+      "alice (2.90 TiB)",
+      "Others (410 GiB)"
     ],
     "size": [
       266.9,
-      245.2
+      262.3
     ]
   },
   "disk_area.bytes_linked@tablet": {
     "counts": {
-      "a": 4,
-      "g": 56,
+      "a": 6,
+      "g": 58,
       "path": 22,
-      "text": 15,
+      "text": 18,
       "use": 10
     },
     "drill_hrefs": [
       "/admin/user/bob",
       "/admin/user/bob",
       "/admin/user/alice",
+      "/admin/user/alice",
+      "/admin/user/bob",
       "/admin/user/alice"
     ],
     "fills": [
@@ -757,25 +769,30 @@
       "Disk usage (TiB)",
       "bob",
       "alice",
-      "Others"
+      "Others",
+      "1.45 TiB",
+      "2.90 TiB",
+      "410 GiB"
     ],
     "size": [
-      692.8,
+      722.6,
       242.9
     ]
   },
   "disk_area.bytes_linked@tablet@dark": {
     "counts": {
-      "a": 4,
-      "g": 56,
+      "a": 6,
+      "g": 58,
       "path": 22,
-      "text": 15,
+      "text": 18,
       "use": 10
     },
     "drill_hrefs": [
       "/admin/user/bob",
       "/admin/user/bob",
       "/admin/user/alice",
+      "/admin/user/alice",
+      "/admin/user/bob",
       "/admin/user/alice"
     ],
     "fills": [
@@ -806,10 +823,13 @@
       "Disk usage (TiB)",
       "bob",
       "alice",
-      "Others"
+      "Others",
+      "1.45 TiB",
+      "2.90 TiB",
+      "410 GiB"
     ],
     "size": [
-      692.8,
+      722.6,
       242.9
     ]
   },
@@ -820,9 +840,9 @@
   "disk_area.files": {
     "counts": {
       "a": 0,
-      "g": 96,
+      "g": 98,
       "path": 32,
-      "text": 25,
+      "text": 28,
       "use": 20
     },
     "drill_hrefs": [],
@@ -864,19 +884,22 @@
       "Number of files",
       "bob",
       "alice",
-      "Others"
+      "Others",
+      "1.59T",
+      "3.19T",
+      "440B"
     ],
     "size": [
-      1158.9,
+      1175.3,
       333.1
     ]
   },
   "disk_area.files@dark": {
     "counts": {
       "a": 0,
-      "g": 96,
+      "g": 98,
       "path": 32,
-      "text": 25,
+      "text": 28,
       "use": 20
     },
     "drill_hrefs": [],
@@ -918,10 +941,13 @@
       "Number of files",
       "bob",
       "alice",
-      "Others"
+      "Others",
+      "1.59T",
+      "3.19T",
+      "440B"
     ],
     "size": [
-      1158.9,
+      1175.3,
       333.1
     ]
   },
@@ -963,13 +989,13 @@
       "4.8T",
       "5.4T",
       "Number of files",
-      "bob",
-      "alice",
-      "Others"
+      "bob (1.59T)",
+      "alice (3.19T)",
+      "Others (440B)"
     ],
     "size": [
       279.3,
-      247.5
+      264.6
     ]
   },
   "disk_area.files@mobile@dark": {
@@ -1010,21 +1036,21 @@
       "4.8T",
       "5.4T",
       "Number of files",
-      "bob",
-      "alice",
-      "Others"
+      "bob (1.59T)",
+      "alice (3.19T)",
+      "Others (440B)"
     ],
     "size": [
       279.3,
-      247.5
+      264.6
     ]
   },
   "disk_area.files@tablet": {
     "counts": {
       "a": 0,
-      "g": 76,
+      "g": 78,
       "path": 27,
-      "text": 20,
+      "text": 23,
       "use": 15
     },
     "drill_hrefs": [],
@@ -1061,19 +1087,22 @@
       "Number of files",
       "bob",
       "alice",
-      "Others"
+      "Others",
+      "1.59T",
+      "3.19T",
+      "440B"
     ],
     "size": [
-      708.0,
+      724.5,
       245.8
     ]
   },
   "disk_area.files@tablet@dark": {
     "counts": {
       "a": 0,
-      "g": 76,
+      "g": 78,
       "path": 27,
-      "text": 20,
+      "text": 23,
       "use": 15
     },
     "drill_hrefs": [],
@@ -1110,10 +1139,13 @@
       "Number of files",
       "bob",
       "alice",
-      "Others"
+      "Others",
+      "1.59T",
+      "3.19T",
+      "440B"
     ],
     "size": [
-      708.0,
+      724.5,
       245.8
     ]
   },
@@ -6206,9 +6238,9 @@
   "jobs_ts.project_unlinked": {
     "counts": {
       "a": 32,
-      "g": 76,
+      "g": 79,
       "path": 55,
-      "text": 21,
+      "text": 25,
       "use": 15
     },
     "drill_hrefs": [
@@ -6282,19 +6314,23 @@
       "alice",
       "bob",
       "carol",
-      "Others"
+      "Others",
+      "299",
+      "224",
+      "179",
+      "194"
     ],
     "size": [
-      1156.8,
+      1166.0,
       331.6
     ]
   },
   "jobs_ts.project_unlinked@dark": {
     "counts": {
       "a": 32,
-      "g": 76,
+      "g": 79,
       "path": 55,
-      "text": 21,
+      "text": 25,
       "use": 15
     },
     "drill_hrefs": [
@@ -6368,10 +6404,14 @@
       "alice",
       "bob",
       "carol",
-      "Others"
+      "Others",
+      "299",
+      "224",
+      "179",
+      "194"
     ],
     "size": [
-      1156.8,
+      1166.0,
       331.6
     ]
   },
@@ -6446,14 +6486,14 @@
       "150",
       "200",
       "CPU-hours",
-      "alice",
-      "bob",
-      "carol",
-      "Others"
+      "alice (299)",
+      "bob (224)",
+      "carol (179)",
+      "Others (194)"
     ],
     "size": [
       277.7,
-      247.0
+      284.8
     ]
   },
   "jobs_ts.project_unlinked@mobile@dark": {
@@ -6527,22 +6567,22 @@
       "150",
       "200",
       "CPU-hours",
-      "alice",
-      "bob",
-      "carol",
-      "Others"
+      "alice (299)",
+      "bob (224)",
+      "carol (179)",
+      "Others (194)"
     ],
     "size": [
       277.7,
-      247.0
+      284.8
     ]
   },
   "jobs_ts.project_unlinked@tablet": {
     "counts": {
       "a": 32,
-      "g": 76,
+      "g": 79,
       "path": 55,
-      "text": 21,
+      "text": 25,
       "use": 15
     },
     "drill_hrefs": [
@@ -6616,19 +6656,23 @@
       "alice",
       "bob",
       "carol",
-      "Others"
+      "Others",
+      "299",
+      "224",
+      "179",
+      "194"
     ],
     "size": [
-      706.0,
+      715.2,
       242.9
     ]
   },
   "jobs_ts.project_unlinked@tablet@dark": {
     "counts": {
       "a": 32,
-      "g": 76,
+      "g": 79,
       "path": 55,
-      "text": 21,
+      "text": 25,
       "use": 15
     },
     "drill_hrefs": [
@@ -6702,19 +6746,23 @@
       "alice",
       "bob",
       "carol",
-      "Others"
+      "Others",
+      "299",
+      "224",
+      "179",
+      "194"
     ],
     "size": [
-      706.0,
+      715.2,
       242.9
     ]
   },
   "jobs_ts.user_linked": {
     "counts": {
-      "a": 38,
-      "g": 80,
+      "a": 41,
+      "g": 83,
       "path": 56,
-      "text": 22,
+      "text": 26,
       "use": 16
     },
     "drill_hrefs": [
@@ -6755,6 +6803,9 @@
       "/admin/user/bob",
       "/admin/user/bob",
       "/admin/user/carol",
+      "/admin/user/carol",
+      "/admin/user/alice",
+      "/admin/user/bob",
       "/admin/user/carol"
     ],
     "fills": [
@@ -6795,19 +6846,23 @@
       "alice",
       "bob",
       "carol",
-      "Others"
+      "Others",
+      "72",
+      "54",
+      "43",
+      "55"
     ],
     "size": [
-      1150.5,
+      1153.4,
       331.6
     ]
   },
   "jobs_ts.user_linked@dark": {
     "counts": {
-      "a": 38,
-      "g": 80,
+      "a": 41,
+      "g": 83,
       "path": 56,
-      "text": 22,
+      "text": 26,
       "use": 16
     },
     "drill_hrefs": [
@@ -6848,6 +6903,9 @@
       "/admin/user/bob",
       "/admin/user/bob",
       "/admin/user/carol",
+      "/admin/user/carol",
+      "/admin/user/alice",
+      "/admin/user/bob",
       "/admin/user/carol"
     ],
     "fills": [
@@ -6888,10 +6946,14 @@
       "alice",
       "bob",
       "carol",
-      "Others"
+      "Others",
+      "72",
+      "54",
+      "43",
+      "55"
     ],
     "size": [
-      1150.5,
+      1153.4,
       331.6
     ]
   },
@@ -6973,14 +7035,14 @@
       "40",
       "50",
       "Jobs",
-      "alice",
-      "bob",
-      "carol",
-      "Others"
+      "alice (72)",
+      "bob (54)",
+      "carol (43)",
+      "Others (55)"
     ],
     "size": [
       272.5,
-      247.0
+      284.8
     ]
   },
   "jobs_ts.user_linked@mobile@dark": {
@@ -7061,22 +7123,22 @@
       "40",
       "50",
       "Jobs",
-      "alice",
-      "bob",
-      "carol",
-      "Others"
+      "alice (72)",
+      "bob (54)",
+      "carol (43)",
+      "Others (55)"
     ],
     "size": [
       272.5,
-      247.0
+      284.8
     ]
   },
   "jobs_ts.user_linked@tablet": {
     "counts": {
-      "a": 38,
-      "g": 80,
+      "a": 41,
+      "g": 83,
       "path": 56,
-      "text": 22,
+      "text": 26,
       "use": 16
     },
     "drill_hrefs": [
@@ -7117,6 +7179,9 @@
       "/admin/user/bob",
       "/admin/user/bob",
       "/admin/user/carol",
+      "/admin/user/carol",
+      "/admin/user/alice",
+      "/admin/user/bob",
       "/admin/user/carol"
     ],
     "fills": [
@@ -7157,19 +7222,23 @@
       "alice",
       "bob",
       "carol",
-      "Others"
+      "Others",
+      "72",
+      "54",
+      "43",
+      "55"
     ],
     "size": [
-      699.7,
+      702.5,
       242.9
     ]
   },
   "jobs_ts.user_linked@tablet@dark": {
     "counts": {
-      "a": 38,
-      "g": 80,
+      "a": 41,
+      "g": 83,
       "path": 56,
-      "text": 22,
+      "text": 26,
       "use": 16
     },
     "drill_hrefs": [
@@ -7210,6 +7279,9 @@
       "/admin/user/bob",
       "/admin/user/bob",
       "/admin/user/carol",
+      "/admin/user/carol",
+      "/admin/user/alice",
+      "/admin/user/bob",
       "/admin/user/carol"
     ],
     "fills": [
@@ -7250,10 +7322,14 @@
       "alice",
       "bob",
       "carol",
-      "Others"
+      "Others",
+      "72",
+      "54",
+      "43",
+      "55"
     ],
     "size": [
-      699.7,
+      702.5,
       242.9
     ]
   },
@@ -14296,10 +14372,10 @@
   },
   "usage_stacked.core_hours": {
     "counts": {
-      "a": 28,
-      "g": 90,
+      "a": 30,
+      "g": 92,
       "path": 56,
-      "text": 22,
+      "text": 25,
       "use": 17
     },
     "drill_hrefs": [
@@ -14330,6 +14406,8 @@
       "#sam/user/bob",
       "#sam/user/bob",
       "#sam/user/alice",
+      "#sam/user/alice",
+      "#sam/user/bob",
       "#sam/user/alice"
     ],
     "fills": [
@@ -14367,19 +14445,22 @@
       "Core-Hours",
       "bob",
       "alice",
-      "7 other"
+      "7 other",
+      "151",
+      "158",
+      "15"
     ],
     "size": [
-      1152.2,
+      1158.6,
       331.6
     ]
   },
   "usage_stacked.core_hours@dark": {
     "counts": {
-      "a": 28,
-      "g": 90,
+      "a": 30,
+      "g": 92,
       "path": 56,
-      "text": 22,
+      "text": 25,
       "use": 17
     },
     "drill_hrefs": [
@@ -14410,6 +14491,8 @@
       "#sam/user/bob",
       "#sam/user/bob",
       "#sam/user/alice",
+      "#sam/user/alice",
+      "#sam/user/bob",
       "#sam/user/alice"
     ],
     "fills": [
@@ -14447,10 +14530,13 @@
       "Core-Hours",
       "bob",
       "alice",
-      "7 other"
+      "7 other",
+      "151",
+      "158",
+      "15"
     ],
     "size": [
-      1152.2,
+      1158.6,
       331.6
     ]
   },
@@ -14516,13 +14602,13 @@
       "60",
       "80",
       "Core-Hours",
-      "bob",
-      "alice",
-      "7 other"
+      "bob (151)",
+      "alice (158)",
+      "7 other (15)"
     ],
     "size": [
       272.6,
-      247.0
+      265.9
     ]
   },
   "usage_stacked.core_hours@mobile@dark": {
@@ -14587,21 +14673,21 @@
       "60",
       "80",
       "Core-Hours",
-      "bob",
-      "alice",
-      "7 other"
+      "bob (151)",
+      "alice (158)",
+      "7 other (15)"
     ],
     "size": [
       272.6,
-      247.0
+      265.9
     ]
   },
   "usage_stacked.core_hours@tablet": {
     "counts": {
-      "a": 28,
-      "g": 66,
+      "a": 30,
+      "g": 68,
       "path": 50,
-      "text": 16,
+      "text": 19,
       "use": 11
     },
     "drill_hrefs": [
@@ -14632,6 +14718,8 @@
       "#sam/user/bob",
       "#sam/user/bob",
       "#sam/user/alice",
+      "#sam/user/alice",
+      "#sam/user/bob",
       "#sam/user/alice"
     ],
     "fills": [
@@ -14663,19 +14751,22 @@
       "Core-Hours",
       "bob",
       "alice",
-      "7 other"
+      "7 other",
+      "151",
+      "158",
+      "15"
     ],
     "size": [
-      701.3,
+      707.7,
       242.9
     ]
   },
   "usage_stacked.core_hours@tablet@dark": {
     "counts": {
-      "a": 28,
-      "g": 66,
+      "a": 30,
+      "g": 68,
       "path": 50,
-      "text": 16,
+      "text": 19,
       "use": 11
     },
     "drill_hrefs": [
@@ -14706,6 +14797,8 @@
       "#sam/user/bob",
       "#sam/user/bob",
       "#sam/user/alice",
+      "#sam/user/alice",
+      "#sam/user/bob",
       "#sam/user/alice"
     ],
     "fills": [
@@ -14737,10 +14830,13 @@
       "Core-Hours",
       "bob",
       "alice",
-      "7 other"
+      "7 other",
+      "151",
+      "158",
+      "15"
     ],
     "size": [
-      701.3,
+      707.7,
       242.9
     ]
   },

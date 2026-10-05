@@ -146,7 +146,7 @@ def test_a_timeline_segment_names_its_period_label(app):
 
 def test_an_area_band_hovers_as_its_legend_row(app):
     assert _titles(app, 'user_proj_area.project_current')[-1] == 'PROJ0001 · 20'
-    assert 'alice' in _titles(app, 'disk_area.bytes_linked')
+    assert 'alice · 2.90 TiB' in _titles(app, 'disk_area.bytes_linked')
     pace = _titles(app, 'pace.size')
     assert pace[0] == 'PROJ0000 · 2.50M' and pace[-1].startswith('5 other · ')
 
