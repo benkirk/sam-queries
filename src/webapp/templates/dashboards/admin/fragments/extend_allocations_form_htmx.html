@@ -1,52 +1,36 @@
 {#
-  Intentional exception to the field-macro pattern: dominated by a bespoke
-  resource-checkbox table showing source period / current end / tree-size per
-  row. Only the date inputs at the top would benefit from macros. Leave as-is.
+  Admin: Edit Project — Extend Allocations modal form, loaded into
+  #extendAllocationsFormContainer by the Extend button. A bespoke resource table
+  (current end, tree size) carries most of the form.
 
-  Admin: Edit Project — Extend Allocations modal form.
-  Loaded lazily into #extendAllocationsFormContainer when the Extend button
-  is clicked.
-
-  Context variables:
-    project           — Project ORM object (the one being edited)
-    root              — Root of the project tree (what extension operates on)
-    candidates        — list of dicts from _build_alloc_candidates: one per
-                        root allocation, then one per sub-project-only resource.
-                        Keys: source_alloc, resource_id, resource_name,
-                              amount (None = varies), end_date,
-                              is_open_ended, descendant_count, child_only,
-                              anchor_projcodes
-    tree_size         — active projects in root's tree; None when opened on the root
-    source_active_at  — YYYY-MM-DD string (the "Active At" filter value)
-    default_end       — YYYY-MM-DD string — proposed new end date
-    errors            — list of validation error strings (on re-render)
-    form              — request.form on validation error re-render
+  Context: project, root (the tree root extension operates on), candidates (from
+  _build_alloc_candidates; keys source_alloc, resource_id, resource_name, amount
+  (None = varies), end_date, is_open_ended, descendant_count, child_only,
+  anchor_projcodes), tree_size (active projects in root's tree; None when opened on
+  the root), source_active_at, default_end (YYYY-MM-DD), errors, form.
 #}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
-{% from 'dashboards/fragments/email_preview.html' import preview_button %}
-{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{% from 'dashboards/fragments/form_fields.html' import date_field with context %}
+{% from 'dashboards/fragments/help.html' import term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_renew_vs_extend with context %}
+{% from 'dashboards/admin/fragments/allocation_notify_block.html' import notify_block with context %}
+
+{{ modal_title('extendAllocationsModalLabel', 'Extend ' ~ root.projcode, 'calendar-plus',
+               meta='active ' ~ source_active_at) }}
 
 {% call htmx_form(
     url_for('admin_dashboard.htmx_extend_allocations', projcode=project.projcode),
     '#extendAllocationsFormContainer',
-    'Extend Allocations',
+    'Extend',
     submit_icon='calendar-plus',
     submit_class='btn-primary',
     errors=errors
 ) %}
-
-  <div class="alert alert-info small mb-3">
-    <i class="fa-solid fa-circle-info"></i>
-    Extending allocations for <strong>{{ root.projcode }}</strong>
-    {% if root.project_id != project.project_id %}
-    (tree root of <code>{{ project.projcode }}</code>)
-    {% endif %}
-    based on allocations active at <strong>{{ source_active_at }}</strong>.
-    Extending moves the end date of the existing allocations — amounts are
-    unchanged.
-    {{ help_icon(g_renew_vs_extend(), rich=True, title='Renew vs. Extend', placement='right') }}
-  </div>
+  <p class="modal-lead">
+    {{ term('Extending', g_renew_vs_extend(), rich=True, title='Renew vs. Extend') }} moves the end
+    date of the existing allocations; amounts are unchanged.
+  </p>
 
   {% if tree_size %}
   <div class="alert alert-warning small mb-3" data-testid="extend-tree-scope">
@@ -62,128 +46,61 @@
 
   {% if not candidates %}
   <div class="alert alert-warning mb-0">
-    <i class="fa-solid fa-triangle-exclamation"></i>
-    No extendable allocations found for this project at
-    <strong>{{ source_active_at }}</strong>.
+    No extendable allocations found for this project at <strong>{{ source_active_at }}</strong>.
     Try a different "Active at" date on the Allocations tab.
   </div>
   {% else %}
 
-  <!-- New end date -->
   <div class="row">
     <div class="col-md-6">
-      <div class="mb-3">
-        <label for="extendEnd" class="form-label fw-semibold">
-          New End Date <span class="text-danger">*</span>
-        </label>
-        <input type="date" class="form-control" id="extendEnd"
-               name="new_end_date" required
-               value="{{ form.get('new_end_date', default_end) if form else default_end }}">
-        <small class="form-text text-muted">
-          Default: current end date plus the current period length.
-          Must be later than every selected resource's current end date.
-        </small>
-      </div>
+      {{ date_field('new_end_date', 'New End Date', required=True, default=default_end,
+                    help="Must be later than every selected resource's current end date.",
+                    tip='Default: the current end date plus the current period length.',
+                    id='extendEnd') }}
     </div>
   </div>
 
-  <!-- Resource checkboxes -->
-  <div class="mb-2">
-    <label class="form-label fw-semibold mb-1">Resources to extend</label>
-    <div class="form-text mt-0 mb-2">
-      Uncheck any resource you don't want to extend. Open-ended allocations
-      are skipped automatically.
-    </div>
-    <div class="border rounded table-responsive">
-      <table class="table table-sm mb-0">
+  <div class="mb-3">
+    <div class="form-label">Resources to extend</div>
+    <div class="table-responsive border">
+      <table class="table table-sm align-middle mb-0">
         <thead class="table-subtle">
           <tr>
-            <th style="width:2.5rem;"></th>
+            <th class="col-shrink"><span class="visually-hidden">Extend</span></th>
             <th>Resource</th>
-            <th class="text-end">Amount</th>
-            <th class="text-end">Current End</th>
-            <th class="text-end">Tree</th>
+            <th class="col-num">Amount</th>
+            <th class="col-num">Current end</th>
+            <th class="col-num">Tree</th>
           </tr>
         </thead>
         <tbody>
+          {%- set submitted_ids = form.getlist('resource_ids') if form else [] %}
+          {%- set verb = 'extended' %}
           {% for c in candidates %}
-          {%- set checked_default = not c.is_open_ended -%}
-          {%- set submitted_ids = form.getlist('resource_ids') if form else [] -%}
-          {%- if form and c.resource_id|string not in submitted_ids -%}
-            {%- set checked_default = false -%}
-          {%- endif -%}
-          <tr{% if c.is_open_ended %} class="text-muted"{% endif %}>
-            <td class="text-center" style="vertical-align:middle;">
-              <input class="form-check-input" type="checkbox"
-                     name="resource_ids"
-                     id="extendRes{{ c.resource_id }}"
-                     value="{{ c.resource_id }}"
-                     {% if checked_default %}checked{% endif %}
+          <tr{% if c.is_open_ended %} class="row-inactive"{% endif %}>
+            <td>
+              <input class="form-check-input" type="checkbox" name="resource_ids"
+                     id="extendRes{{ c.resource_id }}" value="{{ c.resource_id }}"
+                     {% if not c.is_open_ended and (not form or c.resource_id|string in submitted_ids) %}checked{% endif %}
                      {% if c.is_open_ended %}disabled{% endif %}>
             </td>
-            <td style="vertical-align:middle;">
-              <label class="mb-0 text-nowrap" for="extendRes{{ c.resource_id }}">
-                <i class="fa-solid fa-server me-1 small
-                          {% if c.is_open_ended %}text-muted{% else %}text-primary{% endif %}"></i>
-                <strong>{{ c.resource_name }}</strong>
-              </label>
+            <td><label class="mb-0 text-nowrap fw-semibold" for="extendRes{{ c.resource_id }}">{{ c.resource_name }}</label></td>
+            <td class="col-num small text-muted">{% if c.amount is none %}varies{% else %}{{ c.amount | fmt_number }}{% endif %}</td>
+            <td class="col-num small text-muted">
+              {% if c.is_open_ended %}<span class="fst-italic">open-ended, skipped</span>{% else %}{{ c.end_date | fmt_date }}{% endif %}
             </td>
-            <td class="text-end small text-muted" style="vertical-align:middle;">
-              {% if c.amount is none %}varies{% else %}{{ c.amount | fmt_number }}{% endif %}
-            </td>
-            <td class="text-end small text-muted" style="vertical-align:middle;">
-              {% if c.is_open_ended %}
-              <span class="fst-italic">(open-ended — skipped)</span>
-              {% else %}
-              {{ c.end_date | fmt_date }}
-              {% endif %}
-            </td>
-            <td class="text-end small text-muted" style="vertical-align:middle;">
-              {% if c.child_only %}
-              <span class="badge bg-secondary bg-opacity-25 text-body-emphasis border text-wrap"
-                    title="Only sub-projects hold this resource; each is renewed from its own allocation">
-                sub-project only:
-                {% if c.anchor_projcodes | length > 2 %}{{ c.anchor_projcodes | length }} projects{% else %}{{ c.anchor_projcodes | join(', ') }}{% endif %}
-              </span>
-              {% if c.descendant_count > 0 %}+ {{ c.descendant_count }} below{% endif %}
-              {% elif c.descendant_count > 0 %}
-              1 root + {{ c.descendant_count }} sub-project{{ 's' if c.descendant_count != 1 else '' }}
-              {% else %}
-              1 root
-              {% endif %}
+            <td class="col-num small text-muted">
+              {% include 'dashboards/admin/fragments/allocation_tree_size_cell.html' %}
             </td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+    <div class="form-text">Uncheck a resource to leave it out.</div>
   </div>
 
-  <!-- Optional email to each project's lead/admin (default on) -->
-  <div class="form-check mt-3 mb-0">
-    {%- set notify_checked = (form.get('notify_leads') == '1') if form else true -%}
-    <input class="form-check-input" type="checkbox"
-           name="notify_leads" id="extendNotifyLeads"
-           value="1"
-           {% if notify_checked %}checked{% endif %}>
-    <label class="form-check-label small" for="extendNotifyLeads">
-      <i class="fa-solid fa-envelope text-primary me-1"></i>
-      <strong>Email the lead and admin</strong> of each project in the tree
-      that it has been extended, with a link back to manage it.
-    </label>
-    {{ preview_button(url_for('admin_dashboard.htmx_extend_allocations_preview', projcode=project.projcode), 'extendPreviewPane') }}
-  </div>
-
-  <div class="mt-2 ms-4">
-    <label class="form-label small mb-1" for="extendOperatorComment">
-      Comments <span class="text-muted">(optional — included in the email)</span>
-    </label>
-    <textarea class="form-control form-control-sm" rows="2" maxlength="1000"
-              name="operator_comment" id="extendOperatorComment">{{ form.get('operator_comment', '') if form else '' }}</textarea>
-  </div>
-
-  <div id="extendPreviewPane" class="mt-2 ms-4"></div>
-
+  {{ notify_block('extend', 'extended',
+                  url_for('admin_dashboard.htmx_extend_allocations_preview', projcode=project.projcode)) }}
   {% endif %}
-
 {% endcall %}

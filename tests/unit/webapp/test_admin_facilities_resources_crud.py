@@ -20,7 +20,7 @@ import pytest
 from sqlalchemy import func, inspect as sa_inspect
 
 from sam.accounting.allocations import AllocationType
-from sam.resources.facilities import Facility, Panel, PanelSession
+from sam.resources.facilities import Facility, Panel
 from sam.resources.machines import Machine, Queue
 from sam.resources.resources import Resource, ResourceType
 
@@ -118,32 +118,29 @@ class TestFacilitiesResourcesCrud:
         assert resp.status_code in (302, 401)
 
 
-class TestPanelSessionEdit:
-    """Panel-session has an edit pair only (no create/delete) and stays a
-    bespoke handler — its cross-field check needs the loaded ORM object."""
+class TestCreateResourcePickers:
+    """The Primary Sysadmin / Responsible Organization pickers reach Resource.create."""
 
-    def test_edit_form_renders(self, auth_client, session):
-        entity_id = _snapshot_id(session, PanelSession)
-        resp = auth_client.get(f'/admin/htmx/panel-session-edit-form/{entity_id}')
-        assert resp.status_code == 200
-
-    def test_edit_form_missing_id_warns_at_200(self, auth_client):
-        resp = auth_client.get(f'/admin/htmx/panel-session-edit-form/{MISSING_ID}')
-        assert resp.status_code == 200
-        assert 'Panel session not found' in resp.get_data(as_text=True)
-
-    def test_edit_post_missing_id_404s(self, auth_client):
-        resp = auth_client.post(f'/admin/htmx/panel-session-edit/{MISSING_ID}',
-                                data={})
-        assert resp.status_code == 404
-
-    def test_edit_post_invalid_rerenders(self, auth_client, session):
-        entity_id = _snapshot_id(session, PanelSession)
-        resp = auth_client.post(f'/admin/htmx/panel-session-edit/{entity_id}',
-                                data={})   # start_date is required
+    def test_unknown_picker_ids_rerender_with_errors(self, auth_client, session):
+        resp = auth_client.post('/admin/htmx/resource-create', data={
+            'resource_name': 'PickerProbe',
+            'resource_type_id': _snapshot_id(session, ResourceType),
+            'prim_sys_admin_user_id': MISSING_ID,
+            'prim_responsible_org_id': MISSING_ID,
+        })
+        body = resp.get_data(as_text=True)
         assert resp.status_code == 200
         assert 'HX-Trigger' not in resp.headers
+        assert 'Selected primary sysadmin does not exist.' in body
+        assert 'Selected responsible organization does not exist.' in body
 
-    def test_non_admin_forbidden(self, non_admin_client):
-        assert non_admin_client.post(
-            '/admin/htmx/panel-session-edit/1', data={}).status_code == 403
+    def test_create_sets_both_relationships(self, session):
+        from factories import make_organization, make_resource_type, make_user
+        user, org = make_user(session), make_organization(session)
+        resource = Resource.create(
+            session, resource_name='PickerProbe',
+            resource_type_id=make_resource_type(session).resource_type_id,
+            prim_sys_admin_user_id=user.user_id,
+            prim_responsible_org_id=org.organization_id)
+        assert resource.prim_sys_admin is user
+        assert resource.prim_responsible_org is org

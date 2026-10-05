@@ -1,126 +1,55 @@
-{% from 'dashboards/fragments/badges.html' import status_badge %}
-{% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
+{#- One allocation type's projects, loaded under its row in the tree; rows are
+    resource dicts from projects_fragment (_as_resource_row). -#}
 {% from 'dashboards/fragments/project_bits.html' import project_link with context %}
-<!-- Project Details Table -->
-<table class="table table-sm table-striped">
-    <thead class="align-top">
+{% from 'dashboards/shared/project_tree.html' import allocation_cells with context %}
+{% from 'dashboards/fragments/table_bits.html' import state_tag %}
+{% set is_storage = resource_type in ('DISK', 'ARCHIVE') %}
+{% set unit = resource_type | alloc_unit %}
+<div class="table-responsive">
+<table class="table table-sm align-middle mb-0">
+    <thead>
         <tr>
-            <th class="sortable-header" data-sort="text">Project</th>
+            <th class="col-shrink sortable-header" data-sort="text">Project</th>
             <th class="sortable-header" data-sort="text">Title</th>
-            <th class="sortable-header sort-desc" data-sort="numeric">Total<br>Amount</th>
-            <th class="sortable-header" data-sort="numeric">
-                {% if resource_type in ['DISK', 'ARCHIVE'] %}
-                    Data<br>Volume
-                {% else %}
-                    Annual<br>Rate
-                {% endif %}
-            </th>
-            <th class="sortable-header text-center" data-sort="numeric" data-sort-attr="sort-usage">Usage %</th>
-            <th class="sortable-header text-center" data-sort="numeric" data-sort-attr="sort-alloc-remaining">Remaining</th>
-            <th class="sortable-header text-center" data-sort="date"    data-sort-attr="sort-start">Start</th>
-            <th class="sortable-header text-center" data-sort="date"    data-sort-attr="sort-end">End</th>
-            <th class="sortable-header text-center" data-sort="numeric" data-sort-attr="sort-duration">Dur<br><small class="fw-normal">(days)</small></th>
-            <th class="sortable-header text-center" data-sort="numeric" data-sort-attr="sort-remaining">Left<br><small class="fw-normal">(days)</small></th>
+            <th class="col-num sortable-header" data-sort="numeric"
+                {%- if not is_storage %} title="The tick: time elapsed"{% endif %}>% used</th>
+            <th class="col-num sortable-header" data-sort="numeric"{% if unit %} title="In {{ unit }}"{% endif %}>Allocated</th>
+            <th class="col-num sortable-header sort-desc" data-sort="numeric">Used</th>
+            <th class="col-num sortable-header" data-sort="numeric">Remaining</th>
+            {% if not is_storage %}<th class="col-num sortable-header" data-sort="numeric">Annual rate</th>{% endif %}
+            <th class="col-num sortable-header" data-sort="date">Start</th>
+            <th class="col-num sortable-header" data-sort="date">End</th>
+            <th class="col-num sortable-header" data-sort="numeric">Days left</th>
         </tr>
     </thead>
     <tbody>
         {% for project in projects %}
-        {% set pct = project.get('percent_used') or 0 %}
-        <tr>
-            <td data-sort-value="{{ project['projcode'] }}">
-                {{ project_link(project['projcode'], can_view_projects, stop_propagation=True) }}
+        {% set open_ended = project.bar_state == 'open-ended' %}
+        <tr{% if project.bar_state == 'expired' %} class="row-inactive"{% endif %}>
+            <td class="col-shrink" data-sort-value="{{ project.projcode }}">
+                {{- project_link(project.projcode, can_view_projects, stop_propagation=True) -}}
             </td>
-            <td data-sort-value="{{ project['title'] or '' }}">{{ project['title'] if project['title'] else 'N/A' }}</td>
-            <td data-sort-value="{{ project['total_amount'] }}">{{ project['total_amount'] | fmt_number }}</td>
-            <td data-sort-value="{{ project['annualized_rate'] if project['annualized_rate'] is not none else project['total_amount'] if resource_type in ['DISK', 'ARCHIVE'] else 0 }}">
-                {% if resource_type in ['DISK', 'ARCHIVE'] %}
-                    {{ project['total_amount'] | fmt_number }}
-                {% else %}
-                    {% if project['annualized_rate'] is not none %}
-                        {{ project['annualized_rate'] | fmt_number }}
-                    {% else %}
-                        N/A
-                    {% endif %}
-                {% endif %}
+            <td class="cell-truncate" data-sort-value="{{ project.title or '' }}" title="{{ project.title or '' }}">
+                {{- project.title or '—' -}}
             </td>
-            {# Duration / usage variables #}
-            {% set sd = project['start_date'] %}
-            {% set ed = project['end_date'] %}
-            {% set dd = project['duration_days'] %}
-            {% set open_ended = project['is_open_ended'] %}
-            {% set sort_start    = sd.strftime('%Y-%m-%d') if sd else '0000-00-00' %}
-            {% set sort_end      = ed.strftime('%Y-%m-%d') if ed else ('ZZZZ-ZZ-ZZ' if open_ended else '0000-00-00') %}
-            {% set sort_duration = dd|string if dd is not none else ('99999' if open_ended else '0') %}
-            {% if open_ended %}
-                {% set sort_remaining = '99999' %}
-            {% elif ed and ed >= active_at_dt %}
-                {% set sort_remaining = (ed - active_at_dt).days|string %}
-            {% else %}
-                {% set sort_remaining = '0' %}
+            {{ allocation_cells(project if project.used is not none else none, can_view_projects, sort=true, units=false) }}
+            {% if not is_storage %}
+            <td class="col-num{{ ' text-muted' if project.is_inheriting }}" data-sort-value="{{ project.annualized_rate or 0 }}"
+                {%- if project.is_inheriting %} title="{{ project.root_projcode }}'s pool"{% endif %}>{{ project.annualized_rate | fmt_number }}</td>
             {% endif %}
-            {% if not sd %}
-                {% set elapsed_pct = 0 %}{% set bar_state = 'no-dates' %}
-            {% elif open_ended %}
-                {% set elapsed_pct = 50 %}{% set bar_state = 'open-ended' %}
-            {% elif ed and ed < active_at_dt %}
-                {% set elapsed_pct = 100 %}{% set bar_state = 'expired' %}
-            {% elif dd and dd > 0 %}
-                {% set elapsed_pct = [[((active_at_dt - sd).days / dd * 100)|round(1), 100]|min, 0]|max %}
-                {% set bar_state = 'active' %}
-            {% else %}
-                {% set elapsed_pct = 0 %}{% set bar_state = 'no-duration' %}
-            {% endif %}
-            {# Combined usage + date cell #}
-            <td colspan="6" style="min-width:280px; padding:4px 8px;"
-                data-sort-usage="{{ pct }}"
-                data-sort-alloc-remaining="{{ (project['total_amount'] - project['total_used']) if project.get('total_used') is not none else 0 }}"
-                data-sort-start="{{ sort_start }}"
-                data-sort-end="{{ sort_end }}"
-                data-sort-duration="{{ sort_duration }}"
-                data-sort-remaining="{{ sort_remaining }}">
-                {% if project.get('total_used') is not none %}
-                    {% if bar_state != 'no-dates' %}
-                    <div class="d-flex justify-content-between small mb-1">
-                        <small class="text-muted">{{ sd | fmt_date if sd else '?' }}</small>
-                        <small>
-                            {% if bar_state == 'expired' %}{{ status_badge('expired', small=True) }}
-                            {% elif bar_state == 'open-ended' %}{{ status_badge('open-ended', small=True) }}
-                            {% elif bar_state == 'active' %}<span class="text-muted">{{ sort_remaining }}d left</span>
-                            {% endif %}
-                        </small>
-                        <small class="text-muted">{% if ed %}{{ ed | fmt_date }}{% elif open_ended %}∞{% else %}?{% endif %}</small>
-                    </div>
-                    {% endif %}
-                    <div class="position-relative">
-                        {{ render_usage_bar(pct,
-                                            project.get('self_percent_used'),
-                                            size_class='progress-large',
-                                            show_label=True) }}
-                        {% if bar_state == 'active' %}
-                        <div class="elapsed-tick"
-                             style="left: {{ elapsed_pct }}%;"
-                             title="{{ elapsed_pct | fmt_pct }} of allocation period elapsed"></div>
-                        {% endif %}
-                    </div>
-                    <div class="d-flex justify-content-between small mt-1">
-                        <span class="text-warning">
-                            {{ project['total_used'] | fmt_number }} used{% if project.get('is_inheriting') and project.get('self_used') is not none %}
-                            <span class="text-muted" title="This project's contribution to the shared pool">({{ project['self_used'] | fmt_number }} yours)</span>
-                            {% endif %}
-                        </span>
-                        <span class="text-success">{{ (project['total_amount'] - project['total_used']) | fmt_number }} remaining</span>
-                    </div>
-                {% else %}
-                <span class="text-muted small">No usage data</span>
-                {% endif %}
+            <td class="col-num" data-sort-value="{{ project.start_date | fmt_date(null='0000-00-00') }}">{{ project.start_date | fmt_date }}</td>
+            <td class="col-num" data-sort-value="{{ project.end_date | fmt_date(null='9999-99-99' if open_ended else '0000-00-00') }}"
+                {%- if project.duration_days %} title="{{ project.duration_days | fmt_plural('day', 'days') }}"{% endif %}>
+                {{- project.end_date | fmt_date -}}
+            </td>
+            <td class="col-num" data-sort-value="{{ 99999 if open_ended else project.days_left if project.days_left is not none else -1 }}">
+                {%- if project.bar_state in ('expired', 'open-ended') %}{{ state_tag(project.bar_state) }}
+                {%- elif project.bar_state == 'no-dates' %}{{ state_tag('no dates') }}
+                {%- else %}{{ project.days_left | fmt_number }}{% endif -%}
             </td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
-
-{% if projects|length > 0 %}
-<div class="text-muted small">
-    Showing {{ projects|length }} project{{ 's' if projects|length != 1 else '' }}
 </div>
-{% endif %}
+<div class="text-muted small mt-1">{{ projects | length | fmt_plural('project', 'projects') }}</div>

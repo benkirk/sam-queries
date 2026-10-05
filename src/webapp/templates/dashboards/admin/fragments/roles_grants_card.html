@@ -36,7 +36,7 @@
                 {% for g in grants %}
                 <tr{{ ' class="text-muted"' | safe if not g.is_active }}>
                     <td>
-                        <span class="badge {{ {'user': 'bg-info', 'group': 'bg-primary', 'apikey': 'bg-dark'}[g.subject_type] }}">{{ g.subject_type }}</span>
+                        <span class="badge {{ {'user': 'bg-info', 'group': 'bg-primary', 'apikey': 'bg-secondary'}[g.subject_type] }}">{{ g.subject_type }}</span>
                         <span class="font-monospace">{{ g.subject_name }}</span>
                     </td>
                     <td>

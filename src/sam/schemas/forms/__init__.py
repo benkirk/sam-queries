@@ -170,7 +170,6 @@ from .facilities import (
     CreateFacilityForm,
     CreatePanelForm,
     EditPanelForm,
-    EditPanelSessionForm,
     EditAllocationTypeForm,
     CreateAllocationTypeForm,
 )
@@ -303,7 +302,6 @@ __all__ = [
     'EditFacilityForm',
     'CreateFacilityForm',
     'CreatePanelForm',
-    'EditPanelSessionForm',
     'EditAllocationTypeForm',
     'CreateAllocationTypeForm',
     # Resources

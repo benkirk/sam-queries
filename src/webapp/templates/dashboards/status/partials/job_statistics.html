@@ -1,30 +1,11 @@
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_held, g_active_users with context %}
+{% from 'dashboards/status/partials/metric_card.html' import metric_card %}
 {% macro job_statistics(status) %}
 <div class="row mb-4">
-    <div class="col-md-3">
-        <div class="metric-card">
-            <h6>Running Jobs</h6>
-            <div class="value">{{ status.running_jobs | fmt_number }}</div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="metric-card">
-            <h6>Pending Jobs</h6>
-            <div class="value">{{ status.pending_jobs | fmt_number }}</div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="metric-card">
-            <h6>Held Jobs {{ help_icon(g_held(), placement='top') }}</h6>
-            <div class="value">{{ status.held_jobs | fmt_number }}</div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="metric-card">
-            <h6>Active Users {{ help_icon(g_active_users(), placement='top') }}</h6>
-            <div class="value">{{ status.active_users | fmt_number }}</div>
-        </div>
-    </div>
+    <div class="col-md-3">{{ metric_card('Running Jobs', status.running_jobs | fmt_number) }}</div>
+    <div class="col-md-3">{{ metric_card('Pending Jobs', status.pending_jobs | fmt_number) }}</div>
+    <div class="col-md-3">{{ metric_card('Held Jobs ' ~ help_icon(g_held(), placement='top'), status.held_jobs | fmt_number) }}</div>
+    <div class="col-md-3">{{ metric_card('Active Users ' ~ help_icon(g_active_users(), placement='top'), status.active_users | fmt_number) }}</div>
 </div>
 {% endmacro %}

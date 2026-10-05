@@ -1,4 +1,5 @@
 {% extends 'dashboards/base.html' %}
+{% from 'dashboards/fragments/page_header.html' import page_header %}
 
 {% block title %}Queue History - {{ queue_name }} ({{ system|upper }}) - SAM{% endblock %}
 
@@ -16,10 +17,7 @@
 {% endblock %}
 
 {% block content %}
-<!-- Page Header -->
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1><i class="fa-solid fa-list"></i> {{ queue_name }} Queue History ({{ system|upper }})</h1>
-</div>
+{{ page_header(queue_name ~ ' Queue History (' ~ system|upper ~ ')', icon='list') }}
 
 <!-- Current Status Card -->
 {% if latest_status %}

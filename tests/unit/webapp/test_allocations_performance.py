@@ -352,6 +352,21 @@ class TestRootsOnlySwitch:
         body = auth_client.get(self._url(pair, root_only=0)).data.decode()
         assert pair[0] in body and pair[1] in body
 
+    def test_a_pool_member_reads_from_its_root(self, auth_client, session):
+        pair = _a_pool_member(session)
+        body = auth_client.get(self._url(pair, root_only=0)).data.decode()
+        row = body[body.index(f'data-sort-value="{pair[1]}"'):]
+        row = row[:row.index('</tr>')]
+        assert '>from<' in row and pair[0] in row
+
+    def test_every_column_sorts_by_its_own_cell(self, auth_client, session):
+        body = auth_client.get(self._url(_a_pool_member(session))).data.decode()
+        assert 'data-sort-attr' not in body and 'colspan' not in body
+        head = body[body.index('<thead>'):body.index('</thead>')]
+        row = body[body.index('<tbody>'):]
+        row = row[:row.index('</tr>')]
+        assert head.count('sortable-header') == row.count('<td') == 10
+
     def test_the_page_renders_the_switch_on_and_threads_it(self, auth_client):
         body = auth_client.get('/allocations/projects').data.decode()
         assert 'name="root_only" value="1"' in body and 'checked' in body
@@ -364,29 +379,65 @@ class TestRootsOnlySwitch:
         assert 'root_only=0"' in body and 'root_only=1"' not in body
 
 
-class TestUsageModalRoute:
-    """Tests for GET /allocations/usage/<projcode>/<resource>."""
+class TestProjectListStates:
+    """The list's date states, rendered from _as_resource_row (no live snapshot row is expired)."""
 
-    def test_known_project_returns_200(self, auth_client):
-        response = auth_client.get('/allocations/usage/SCSG0001/Derecho')
-        assert response.status_code == 200
+    NOW = datetime(2026, 7, 1)
 
-    def test_nonexistent_project_returns_error(self, auth_client):
-        response = auth_client.get('/allocations/usage/FAKE9999/Derecho')
-        # Route is now guarded by @require_project_access, which returns a
-        # 404 JSON body via get_project_or_404 on unknown projcodes
-        # (replaces the prior hand-rolled inline early return).
-        assert response.status_code == 404
-        assert b'not found' in response.data
-        assert b'FAKE9999' in response.data
+    def _row(self, html, projcode):
+        row = html[html.index(f'data-sort-value="{projcode}"'):]
+        return html[:html.index(f'data-sort-value="{projcode}"')].rsplit('<tr', 1)[1] + row[:row.index('</tr>')]
 
-    def test_invalid_date_returns_error(self, auth_client):
-        response = auth_client.get('/allocations/usage/SCSG0001/Derecho?active_at=bad')
-        assert b'Invalid date format' in response.data
+    def test_states_tag_the_days_left_cell(self, app):
+        from flask import render_template
+        from webapp.dashboards.allocations.blueprint import _as_resource_row
+        base = {'total_amount': 100.0, 'total_used': 10.0, 'percent_used': 10.0}
+        rows = [_as_resource_row({**base, 'projcode': code, 'start_date': start, 'end_date': end},
+                                 'HPC', self.NOW)
+                for code, start, end in [
+                    ('XEXP0001', datetime(2025, 1, 1), datetime(2026, 1, 1)),
+                    ('XOPN0001', datetime(2026, 1, 1), None),
+                    ('XNOD0001', None, None),
+                    ('XACT0001', datetime(2026, 1, 1), datetime(2026, 12, 31)),
+                ]]
+        rows.append(_as_resource_row({'projcode': 'XNIL0001', 'total_amount': 5.0, 'total_used': None,
+                                      'start_date': datetime(2026, 1, 1), 'end_date': datetime(2026, 12, 31)},
+                                     'HPC', self.NOW))
+        with app.test_request_context():
+            html = render_template('dashboards/allocations/partials/project_table.html',
+                                   projects=rows, resource_type='HPC', can_view_projects=True)
+        expired, open_ended, no_dates, active, no_usage = (
+            self._row(html, c) for c in ('XEXP0001', 'XOPN0001', 'XNOD0001', 'XACT0001', 'XNIL0001'))
+        assert 'row-inactive' in expired and '>expired<' in expired
+        assert '>open-ended<' in open_ended and 'row-inactive' not in open_ended
+        assert '>no dates<' in no_dates
+        assert '>183<' in active and 'state-tag' not in active
+        assert no_usage.count('text-muted" data-sort-value="-1">—<') == 3
 
-    def test_no_allocation_returns_message(self, auth_client):
-        response = auth_client.get('/allocations/usage/SCSG0001/NonexistentResource')
-        assert response.status_code == 200
+    def test_first_paint_is_in_the_used_header_order(self, app):
+        """A pool member's Used cell shows its own use, so the initial sort must too."""
+        import re
+        from flask import render_template
+        from webapp.dashboards.allocations.blueprint import _as_resource_row, _shown_used
+        dates = {'start_date': datetime(2026, 1, 1), 'end_date': datetime(2026, 12, 31)}
+        rows = [
+            _as_resource_row({**dates, 'projcode': 'XMEM0001', 'total_amount': 1000.0,
+                              'total_used': 900.0, 'is_inheriting': True, 'self_used': 5.0,
+                              'self_percent_used': 0.5, 'root_projcode': 'XROO0001'},
+                             'HPC', self.NOW),
+            _as_resource_row({**dates, 'projcode': 'XSTA0001', 'total_amount': 200.0,
+                              'total_used': 100.0}, 'HPC', self.NOW),
+            _as_resource_row({**dates, 'projcode': 'XNIL0001', 'total_amount': 50.0,
+                              'total_used': None}, 'HPC', self.NOW),
+        ]
+        rows.sort(key=_shown_used, reverse=True)
+        assert [r['projcode'] for r in rows] == ['XSTA0001', 'XMEM0001', 'XNIL0001']
+        with app.test_request_context():
+            html = render_template('dashboards/allocations/partials/project_table.html',
+                                   projects=rows, resource_type='HPC', can_view_projects=True)
+        used_col = [float(re.findall(r'data-sort-value="([^"]*)"', tr)[4])
+                    for tr in html.split('<tbody>')[1].split('</tr>')[:-1]]
+        assert used_col == sorted(used_col, reverse=True) == [100.0, 5.0, -1.0]
 
 
 class TestTransactionsFragmentRoute:
@@ -1060,10 +1111,6 @@ class TestForceRefreshParameter:
         )
         assert response.status_code == 200
 
-    def test_usage_modal_force_refresh(self, auth_client):
-        response = auth_client.get('/allocations/usage/SCSG0001/Derecho?force_refresh=true')
-        assert response.status_code == 200
-
 
 # ============================================================================
 # active_at Midnight Normalization
@@ -1107,13 +1154,13 @@ class TestShowUsageToggle:
         assert response.status_code == 200
 
     def test_projects_fragment_usage_renders_progress_or_empty(self, auth_client):
-        """show_usage=true produces progress bars or the empty-state message."""
+        """show_usage=true produces usage meters or the empty-state message."""
         response = auth_client.get(
             '/allocations/htmx/project_table?resource=Derecho&facility=UNIV'
             '&allocation_type=Small&show_usage=true'
         )
         html = response.data.decode()
-        assert 'progress' in html or 'No active projects' in html
+        assert 'share-bar meter' in html or 'No active projects' in html
 
     def test_usage_no_crash_on_zero_usage_facilities(self, auth_client):
         """Facilities with zero usage must not crash the chart renderer."""

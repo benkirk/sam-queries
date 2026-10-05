@@ -1,12 +1,11 @@
 {% from 'dashboards/fragments/modals.html' import modal_scaffold %}
 {#
-  Admin: Wallclock Exemption Modals
-  These containers live in the page DOM so HTMX can load forms into them
-  when the user card buttons are clicked.
+  Wallclock exemption shells, included by user_details_modal.html so every page that
+  can open a user card has them; the admin Resources card's buttons use the same ids.
 #}
 
 {{ modal_scaffold('addExemptionModal', 'Add Wallclock Exemption',
                   icon='clock', container_id='addExemptionFormContainer') }}
 
 {{ modal_scaffold('editExemptionModal', 'Edit Wallclock Exemption',
-                  icon='edit', container_id='editExemptionFormContainer', variant='edit') }}
+                  icon='edit', container_id='editExemptionFormContainer') }}

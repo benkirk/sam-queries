@@ -18,7 +18,7 @@
     <span class="text-body-emphasis">{{ r.adjustment_date | fmt_date }}</span>
 </div>
 
-<div class="project-stats-box" style="grid-template-columns: auto minmax(0, 1fr);">
+<div class="project-stats-box stats-two-col">
     <h6><i class="fa-solid fa-circle-info"></i> Adjustment Information</h6>
 
     <div class="stat-item">
@@ -85,10 +85,9 @@
     </div>
 
     {% if r.comment %}
-    <div class="stat-item stat-item-block">
-        <span class="stat-label d-block mb-1">Comment:</span>
-        <pre class="stat-value mb-0 p-2 bg-body-tertiary border rounded"
-             style="white-space:pre-wrap; word-break:break-word; font-size:0.85rem; font-weight:normal;">{{ r.comment }}</pre>
+    <div class="stat-item stat-item-block stat-item-inline">
+        <span class="stat-label">Comment:</span>
+        <pre class="stat-value stat-pre mb-0 p-2 bg-body-tertiary border">{{ r.comment }}</pre>
     </div>
     {% endif %}
 

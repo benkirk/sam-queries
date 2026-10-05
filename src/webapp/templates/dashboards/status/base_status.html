@@ -9,6 +9,7 @@
 #}
 {% extends 'dashboards/base.html' %}
 {% from 'dashboards/fragments/page_tabs.html' import page_tabs %}
+{% from 'dashboards/fragments/page_header.html' import page_header %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/status.css') }}">
@@ -17,20 +18,13 @@
 {% block content %}
 <meta http-equiv="refresh" content="300">
 
-<!-- Page Header -->
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1><i class="fa-solid fa-server"></i> System Status Dashboard</h1>
-    <div class="d-flex align-items-center flex-column gap-2">
-        {% if has_permission(Permission.EDIT_SYSTEM_STATUS) %}
-        <button class="btn  btn-outline-danger" data-bs-toggle="modal" data-bs-target="#createOutageModal">
-            <i class="fa-solid fa-circle-exclamation"></i> Report Outage
-        </button>
-        {% endif %}
-        <div class="last-updated">
-            <i class="fa-solid fa-clock"></i> Auto-refresh every 5 minutes
-        </div>
-    </div>
-</div>
+{% call page_header('System Status Dashboard', icon='server', description='Refreshes every 5 minutes') %}
+    {% if has_permission(Permission.EDIT_SYSTEM_STATUS) %}
+    <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#createOutageModal">
+        <i class="fa-solid fa-circle-exclamation"></i> Report Outage
+    </button>
+    {% endif %}
+{% endcall %}
 
 <!-- Active Outages Banner -->
 {% if outages %}
@@ -43,7 +37,7 @@
                 <div>
                     <strong>{{ outage.system_name|upper }}</strong>
                     {% if outage.component %} - {{ outage.component }}{% endif %}
-                    <span class="badge bg-{{ 'danger' if outage.severity == 'critical' else 'warning' if outage.severity == 'major' else 'info' }} {{ '' if outage.severity == 'critical' else 'text-dark' }}">
+                    <span class="badge bg-{{ 'danger' if outage.severity == 'critical' else 'warning' if outage.severity == 'major' else 'info' }}">
                         {{ outage.severity }}
                     </span>
                 </div>
@@ -53,9 +47,9 @@
                        Convert back to display TZ for human reading. #}
                     <span class="text-muted small">{{ outage.start_time | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }}</span>
                     {% if has_permission(Permission.EDIT_SYSTEM_STATUS) %}
-                    <div class="btn-group btn-group-sm ms-2">
-                        <button class="btn btn-outline-secondary "
-                                title="Edit outage"
+                    <span class="row-actions ms-2">
+                        <button class="btn btn-row" type="button"
+                                title="Edit outage" aria-label="Edit outage"
                                 {# estimated_resolution is naive-UTC; mark with 'Z' so JS can
                                    parse it as a real instant and convert to operator-local
                                    for the datetime-local input (outage-edit action, modals.js). #}
@@ -68,8 +62,8 @@
                                 data-outage-title="{{ outage.title }}">
                             <i class="fa-solid fa-pen-to-square"></i>
                         </button>
-                        <button class="btn btn-primary "
-                                title="Mark resolved"
+                        <button class="btn btn-row btn-row-primary" type="button"
+                                title="Mark resolved" aria-label="Mark resolved"
                                 hx-post="{{ url_for('status_dashboard.htmx_resolve_outage', outage_id=outage.outage_id) }}"
                                 hx-confirm="Mark this outage as resolved?"
                                 data-confirm-title="Resolve outage"
@@ -77,15 +71,15 @@
                                 data-confirm-label="Mark resolved">
                             <i class="fa-solid fa-check"></i>
                         </button>
-                        <button class="btn btn-outline-danger "
-                                title="Delete outage"
+                        <button class="btn btn-row btn-row-danger" type="button"
+                                title="Delete outage" aria-label="Delete outage"
                                 hx-delete="{{ url_for('status_dashboard.htmx_delete_outage', outage_id=outage.outage_id) }}"
                                 hx-confirm="Delete outage: {{ outage.title }}?"
                                 data-confirm-title="Delete outage"
                                 data-confirm-label="Delete">
                             <i class="fa-solid fa-trash"></i>
                         </button>
-                    </div>
+                    </span>
                     {% endif %}
                 </div>
             </div>

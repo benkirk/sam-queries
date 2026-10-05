@@ -13,16 +13,19 @@
   resolves its preview span via closest('.mb-3') and would find row one's.
 #}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
 {% from 'dashboards/fragments/form_fields.html'
-    import date_field, text_field with context %}
-{% from 'dashboards/fragments/help.html' import help_icon with context %}
-{% from 'dashboards/fragments/glossary.html' import g_shared_alloc with context %}
+    import date_field, text_field, checkbox_field with context %}
+{% from 'dashboards/fragments/table_bits.html' import state_tag %}
+{% from 'dashboards/fragments/glossary.html' import g_propagate with context %}
+
+{{ modal_title('addAllocationModalLabel', 'Add allocations to ' ~ project.projcode, 'circle-plus') }}
 
 {% call htmx_form(
     url_for('admin_dashboard.htmx_add_allocation', projcode=project.projcode),
     '#addAllocationFormContainer',
-    'Create allocations',
-    submit_icon='plus-circle',
+    'Create',
+    submit_icon='circle-plus',
     submit_class='btn-success',
     errors=errors
 ) %}
@@ -31,7 +34,6 @@
     <div class="col-md-6">
       {{ date_field('start_date', 'Start Date',
                     required=True, default=today,
-                    label_class='form-label fw-semibold',
                     id='addAllocStart') }}
     </div>
     <div class="col-md-6">
@@ -48,7 +50,7 @@
 
   <div class="alloc-grid mb-2">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
-      <span class="form-label fw-semibold mb-0">
+      <span class="form-label mb-0">
         Resources <span class="text-danger">*</span>
       </span>
       {% if optional_count %}
@@ -67,11 +69,10 @@
     </div>
 
     {% if not any_available %}
-    <div class="alert alert-info py-2 small mb-2">
-      <i class="fa-solid fa-circle-info"></i>
+    <p class="small text-secondary mb-2">
       All active resources are already allocated on this project.
       To add a sub-project allocation, first create the sub-project.
-    </div>
+    </p>
     {% endif %}
 
     <div class="border rounded table-responsive">
@@ -86,17 +87,12 @@
           {%- set rid = row.resource.resource_id -%}
           <tr class="{{ 'alloc-optional' if row.optional }}">
             <td class="ps-3">
-              <label class="mb-0 text-nowrap{{ ' text-muted' if row.held }}" for="addAllocAmt{{ rid }}">
-                <i class="fa-solid fa-server text-primary me-1 small"></i>
-                <strong>{{ row.resource.resource_name }}</strong>
-              </label>
+              <label class="mb-0 text-nowrap fw-semibold{{ ' text-muted' if row.held }}" for="addAllocAmt{{ rid }}">{{ row.resource.resource_name }}</label>
             </td>
             <td>
               {% if row.held %}
-              <span class="badge bg-secondary bg-opacity-25 text-body-emphasis border text-wrap text-start">
-                has allocation ·
-                {% if row.existing_end %}to {{ row.existing_end | fmt_date }}{% else %}open-ended{% endif %}
-              </span>
+              {{ state_tag('has allocation') }}
+              <span class="small text-muted">{% if row.existing_end %}to {{ row.existing_end | fmt_date }}{% else %}open-ended{% endif %}</span>
               {% else %}
               <div class="d-flex flex-wrap align-items-center column-gap-2">
                 <input type="number" class="form-control form-control-sm text-end alloc-amount"
@@ -117,34 +113,16 @@
   </div>
 
   {% if project_has_children %}
-  <div class="mt-3 border rounded p-3 bg-body-tertiary">
-    <div class="form-check">
-      <input class="form-check-input" type="checkbox" id="applyToSubprojects"
-             name="apply_to_subprojects"
-             {% if form and form.get('apply_to_subprojects') == 'on' %}checked{% endif %}>
-      <label class="form-check-label fw-semibold" for="applyToSubprojects">
-        <i class="fa-solid fa-sitemap me-1 text-info"></i>
-        Apply to sub-projects
-        <span class="badge bg-info text-dark ms-1">
-          {{ child_count | fmt_plural('active sub-project', 'active sub-projects') }}
-        </span>
-      </label>
-      {{ help_icon(g_shared_alloc(), rich=True, title='Shared allocation', placement='right') }}
-    </div>
-    <div class="form-text mt-1 ms-4">
-      Creates a <strong>shared allocation</strong> for each active sub-project
-      from each new allocation, with the same amount and dates. The allocation
-      tree mirrors the project tree — each sub-project's allocation is linked to
-      its immediate parent's. Sub-projects that already have an allocation for a
-      resource are skipped.
-    </div>
+  <div class="mt-3">
+    {{ checkbox_field('apply_to_subprojects',
+                      'Share with its ' ~ (child_count | fmt_plural('active sub-project', 'active sub-projects')),
+                      tip=g_propagate(), tip_rich=True, id='applyToSubprojects') }}
   </div>
   {% else %}
-  <div class="alert alert-info py-2 mt-3 mb-0 small">
-    <i class="fa-solid fa-circle-info"></i>
+  <p class="small text-secondary mt-3 mb-0">
     To allocate to a sub-project, add the parent allocation here first,
     then return to add the sub-project's own allocation directly.
-  </div>
+  </p>
   {% endif %}
 
 {% endcall %}

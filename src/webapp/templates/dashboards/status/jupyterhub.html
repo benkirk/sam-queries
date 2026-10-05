@@ -1,232 +1,72 @@
 {% import 'dashboards/status/partials/system_header.html' as header %}
-{% import 'dashboards/status/partials/metric_card.html' as metric %}
 {% import 'dashboards/status/partials/no_data_message.html' as empty %}
 {% import 'dashboards/status/partials/stale_banner.html' as stale %}
+{% from 'dashboards/status/partials/metric_card.html' import metric_card, util_card %}
+{% from 'dashboards/fragments/table_bits.html' import alloc_meter %}
 
 {% if jupyterhub_status %}
+{% set js = jupyterhub_status %}
+{# A session holds two CPUs, so capacity in sessions is half the CPU count. #}
+{% set total_slots, used_slots = ((js.cpus_total or 0) / 2) | int, ((js.cpus_used or 0) / 2) | int %}
 {{ stale.stale_banner('JupyterHub', staleness) }}
 <div class="card mb-3">
-    {{ header.system_header('<i class="fa-solid fa-rocket"></i> JupyterHub Status', jupyterhub_status.timestamp) }}
+    {{ header.system_header('<i class="fa-solid fa-rocket"></i> JupyterHub Status', js.timestamp) }}
     <div class="card-body">
-        <!-- At a Glance -->
-        <h5 class="mb-3"><i class="fa-solid fa-eye"></i> At a Glance</h5>
+        <h6 class="mb-3"><i class="fa-solid fa-eye"></i> At a Glance</h6>
         <div class="row mb-4">
             <div class="col-md-3">
-                <div class="card inner-card h-100">
-                    <div class="card-body text-center d-flex flex-column justify-content-center">
-                        <div class="mb-3">
-                            {% if jupyterhub_status.available %}
-                            <i class="fa-solid fa-circle-check text-success icon-jumbo"></i>
-                            {% else %}
-                            <i class="fa-solid fa-circle-xmark text-danger icon-jumbo"></i>
-                            {% endif %}
-                        </div>
-                        <h6 class="text-muted mb-1">Service Status</h6>
-                        <div class="h5 mb-0">{{ 'Online' if jupyterhub_status.available else 'Offline' }}</div>
-                    </div>
+                {% call metric_card('Service', 'Online' if js.available else 'Offline') %}
+                <div class="small text-muted mt-1">
+                    <span class="status-dot {{ 'is-success' if js.available else 'is-danger' }}"></span>{{ 'Accepting sessions' if js.available else 'Not responding' }}
                 </div>
+                {% endcall %}
             </div>
-            <div class="col-md-3">
-                <div class="card inner-card h-100">
-                    <div class="card-body text-center d-flex flex-column justify-content-center">
-                        <div class="mb-3">
-                            <i class="fa-solid fa-users text-primary icon-jumbo"></i>
-                        </div>
-                        <h6 class="text-muted mb-1">Active Users</h6>
-                        <div class="h5 mb-0">{{ jupyterhub_status.active_users or 0 }}</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card inner-card h-100">
-                    <div class="card-body text-center d-flex flex-column justify-content-center">
-                        <div class="mb-3">
-                            <i class="fa-solid fa-desktop text-info icon-jumbo"></i>
-                        </div>
-                        <h6 class="text-muted mb-1">Active Sessions</h6>
-                        <div class="h5 mb-0">{{ jupyterhub_status.active_sessions or 0 }}</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                {% set cpus_total = jupyterhub_status.cpus_total or 0 %}
-                {% set cpus_used = jupyterhub_status.cpus_used or 0 %}
-                {% set total_slots = (cpus_total / 2)|int %}
-                {% set used_slots = (cpus_used / 2)|int %}
-                {% set available_slots = total_slots - used_slots %}
-                {% set slot_percent = ((used_slots / total_slots * 100)|round)|int if total_slots > 0 else 0 %}
-                <div class="card inner-card h-100">
-                    <div class="card-body text-center d-flex flex-column justify-content-center">
-                        <div style="height: 70px; display: flex; flex-direction: column; justify-content: center; margin-bottom: 1rem;">
-                            <div class="d-flex justify-content-end mb-1">
-                                <span class="fw-bold text-{{ 'danger' if slot_percent >= 90 else 'warning' if slot_percent >= 75 else 'success' }}" style="font-size: 1.5rem;">{{ slot_percent }}%</span>
-                            </div>
-                            <div class="progress" style="height: 12px;">
-                                <div class="progress-bar bg-{{ 'danger' if slot_percent >= 90 else 'warning' if slot_percent >= 75 else 'success' }}"
-                                     role="progressbar"
-                                     style="width: {{ slot_percent }}%"
-                                     aria-valuenow="{{ slot_percent }}"
-                                     aria-valuemin="0"
-                                     aria-valuemax="100">
-                                </div>
-                            </div>
-                        </div>
-                        <h6 class="text-muted mb-1">Session Capacity</h6>
-                        <div class="h5 mb-0">{{ used_slots }}/{{ total_slots }}</div>
-                    </div>
-                </div>
-            </div>
+            <div class="col-md-3">{{ metric_card('Active Users', (js.active_users or 0) | fmt_number) }}</div>
+            <div class="col-md-3">{{ metric_card('Active Sessions', (js.active_sessions or 0) | fmt_number) }}</div>
+            <div class="col-md-3">{{ util_card('Session Capacity', (used_slots / total_slots * 100) if total_slots else 0, used_slots, total_slots, 'sessions') }}</div>
         </div>
 
-        <!-- Session Breakouts -->
-        <h5 class="mb-3"><i class="fa-solid fa-table-cells"></i> Session Breakouts</h5>
+        <h6 class="mb-3"><i class="fa-solid fa-table-cells"></i> Session Breakouts</h6>
         <div class="row mb-4">
-            <div class="col-md-3">
-                <div class="card inner-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-3">
-                            <h6 class="text-muted mb-0">Casper Login Jobs</h6>
-                            <i class="fa-solid fa-right-to-bracket fa-2x text-success"></i>
-                        </div>
-                        <div class="h3 mb-0 text-success">{{ jupyterhub_status.casper_login_jobs or 0 }}</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card inner-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-3">
-                            <h6 class="text-muted mb-0">Casper Batch Jobs</h6>
-                            <i class="fa-solid fa-layer-group fa-2x text-info"></i>
-                        </div>
-                        <div class="h3 mb-0 text-info">{{ jupyterhub_status.casper_batch_jobs or 0 }}</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card inner-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-3">
-                            <h6 class="text-muted mb-0">Derecho Batch Jobs</h6>
-                            <i class="fa-solid fa-server fa-2x text-primary"></i>
-                        </div>
-                        <div class="h3 mb-0 text-primary">{{ jupyterhub_status.derecho_batch_jobs or 0 }}</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card inner-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-3">
-                            <h6 class="text-muted mb-0">Broken Jobs</h6>
-                            <i class="fa-solid fa-triangle-exclamation fa-2x text-warning"></i>
-                        </div>
-                        <div class="h3 mb-0 text-warning">{{ jupyterhub_status.jobs_suspended or 0 }}</div>
-                    </div>
-                </div>
-            </div>
+            <div class="col-md-3">{{ metric_card('Casper Login Jobs', (js.casper_login_jobs or 0) | fmt_number) }}</div>
+            <div class="col-md-3">{{ metric_card('Casper Batch Jobs', (js.casper_batch_jobs or 0) | fmt_number) }}</div>
+            <div class="col-md-3">{{ metric_card('Derecho Batch Jobs', (js.derecho_batch_jobs or 0) | fmt_number) }}</div>
+            <div class="col-md-3">{{ metric_card('Broken Jobs', (js.jobs_suspended or 0) | fmt_number, 'text-danger' if js.jobs_suspended) }}</div>
         </div>
 
-        {% if jupyterhub_status.nodes and jupyterhub_status.nodes|length > 0 %}
-        <!-- Casper JupyterHub Login Sessions -->
-        <h5 class="mb-3"><i class="fa-solid fa-server"></i> Casper JupyterHub Login Sessions</h5>
-
-        <!-- Resource Utilization -->
-        <h5 class="mb-3 mt-4"><i class="fa-solid fa-chart-bar"></i> Resource Utilization</h5>
+        {% if js.nodes %}
+        <h6 class="mb-3"><i class="fa-solid fa-chart-bar"></i> Resource Utilization</h6>
         <div class="row mb-4">
-            <div class="col-md-6">
-                {% set cpus_total = jupyterhub_status.cpus_total or 0 %}
-                {% set cpus_used = jupyterhub_status.cpus_used or 0 %}
-                {% set cpu_percent = ((cpus_used / cpus_total * 100)|round(1))|default(0, true) if cpus_total > 0 else 0 %}
-                <div class="card inner-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h6 class="mb-0">CPU Utilization</h6>
-                            <span class="fw-bold text-{{ 'danger' if cpu_percent >= 90 else 'warning' if cpu_percent >= 75 else 'success' }}" style="font-size: 1.5rem;">
-                                {{ cpu_percent }}%
-                            </span>
-                        </div>
-                        <div class="progress mb-2" style="height: 25px;">
-                            <div class="progress-bar bg-{{ 'danger' if cpu_percent >= 90 else 'warning' if cpu_percent >= 75 else 'success' }}"
-                                 role="progressbar"
-                                 style="width: {{ cpu_percent }}%"
-                                 aria-valuenow="{{ cpu_percent }}"
-                                 aria-valuemin="0"
-                                 aria-valuemax="100">
-                            </div>
-                        </div>
-                        <div class="text-muted">
-                            {{ cpus_used | fmt_number }} / {{ cpus_total | fmt_number }} cores in use
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6">
-                {% set mem_total = jupyterhub_status.memory_total_gb or 0 %}
-                {% set mem_used = jupyterhub_status.memory_used_gb or 0 %}
-                {% set mem_percent = ((mem_used / mem_total * 100)|round(1))|default(0, true) if mem_total > 0 else 0 %}
-                <div class="card inner-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h6 class="mb-0">Memory Utilization</h6>
-                            <span class="fw-bold text-{{ 'danger' if mem_percent >= 90 else 'warning' if mem_percent >= 75 else 'success' }}" style="font-size: 1.5rem;">
-                                {{ mem_percent }}%
-                            </span>
-                        </div>
-                        <div class="progress mb-2" style="height: 25px;">
-                            <div class="progress-bar bg-{{ 'danger' if mem_percent >= 90 else 'warning' if mem_percent >= 75 else 'success' }}"
-                                 role="progressbar"
-                                 style="width: {{ mem_percent }}%"
-                                 aria-valuenow="{{ mem_percent }}"
-                                 aria-valuemin="0"
-                                 aria-valuemax="100">
-                            </div>
-                        </div>
-                        <div class="text-muted">
-                            {{ mem_used | fmt_number }} / {{ mem_total | fmt_number }} GB in use
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <div class="col-md-6">{{ util_card('CPU Utilization', (js.cpus_used / js.cpus_total * 100) if js.cpus_total else 0,
+                                               js.cpus_used or 0, js.cpus_total or 0, 'cores') }}</div>
+            <div class="col-md-6">{{ util_card('Memory Utilization', (js.memory_used_gb / js.memory_total_gb * 100) if js.memory_total_gb else 0,
+                                               js.memory_used_gb or 0, js.memory_total_gb or 0, 'GB') }}</div>
         </div>
 
-        <!-- Node Details -->
-        <h5 class="mb-3 mt-4"><i class="fa-solid fa-list"></i> Node Details</h5>
+        <h6 class="mb-3"><i class="fa-solid fa-list"></i> Casper JupyterHub Nodes</h6>
         <div class="table-responsive">
-            <table class="table table-sm table-striped">
-                <thead>
+            <table class="table table-sm align-middle">
+                <thead class="table-subtle">
                     <tr>
                         <th>Node</th>
-                        <th>State</th>
-                        <th>Jobs</th>
-                        <th>CPUs</th>
-                        <th>Memory</th>
+                        <th class="col-shrink">State</th>
+                        <th class="col-num">Jobs</th>
+                        <th class="col-shrink">CPUs</th>
+                        <th class="col-shrink">Memory</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for node in jupyterhub_status.nodes|sort(attribute='name') %}
+                    {% for node in js.nodes | sort(attribute='name') %}
                     <tr>
                         <td><code>{{ node.name }}</code></td>
-                        <td>
-                            <span class="badge bg-{{ 'success' if node.state == 'free' else 'warning' if node.state == 'job-busy' else 'danger' }}">
-                                {{ node.state }}
-                            </span>
+                        <td class="col-shrink">
+                            <span class="badge bg-{{ 'secondary' if node.state == 'free' else 'info' if node.state == 'job-busy' else 'danger' if 'down' in node.state or 'offline' in node.state else 'warning' }}">{{ node.state }}</span>
                         </td>
-                        <td>{{ node.jobs_running }}</td>
-                        <td>
-                            <small>{{ node.cpus_used }}/{{ node.cpus_total }}</small>
-                            <div class="progress progress-small progress-narrow">
-                                <div class="progress-bar bg-{{ 'danger' if (node.cpus_used / node.cpus_total * 100) >= 90 else 'warning' if (node.cpus_used / node.cpus_total * 100) >= 75 else 'success' }}"
-                                     style="width: {{ (node.cpus_used / node.cpus_total * 100)|round }}%"></div>
-                            </div>
-                        </td>
-                        <td>
-                            <small>{{ node.memory_used_gb }}/{{ node.memory_total_gb }}GB</small>
-                            <div class="progress progress-small progress-narrow">
-                                <div class="progress-bar bg-{{ 'danger' if (node.memory_used_gb / node.memory_total_gb * 100) >= 90 else 'warning' if (node.memory_used_gb / node.memory_total_gb * 100) >= 75 else 'success' }}"
-                                     style="width: {{ (node.memory_used_gb / node.memory_total_gb * 100)|round }}%"></div>
-                            </div>
-                        </td>
+                        <td class="col-num">{{ node.jobs_running }}</td>
+                        <td class="col-shrink">{{ alloc_meter((node.cpus_used / node.cpus_total * 100) if node.cpus_total else none,
+                                                              title='%s / %s cores' % (node.cpus_used, node.cpus_total)) }}</td>
+                        <td class="col-shrink">{{ alloc_meter((node.memory_used_gb / node.memory_total_gb * 100) if node.memory_total_gb else none,
+                                                              title='%s / %s GB' % (node.memory_used_gb, node.memory_total_gb)) }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>

@@ -40,7 +40,7 @@
                     <td class="text-end">{{ r.holders | fmt_number }}</td>
                     <td class="small">{{ r.row.description or '' }}</td>
                     <td class="text-end text-nowrap">
-                        <button type="button" class="btn btn-sm btn-outline-primary" title="Edit"
+                        <button type="button" class="btn btn-row" title="Edit"
                                 aria-label="Edit {{ r.row.name }}"
                                 hx-get="{{ url_for('admin_dashboard.roles_role_edit_form', name=r.row.name) }}"
                                 hx-target="#roleEditor" hx-swap="innerHTML">

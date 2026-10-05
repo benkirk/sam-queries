@@ -532,11 +532,12 @@ body {
 }
 
 /* ============================================================================
-   HEADINGS — Unity NCAR typography. Sizes/weights/line-heights match Unity's
-   responsive scale. h1/h2 use ncar-navy in main content; h3-h6 inherit body.
+   HEADINGS — Unity's responsive scale, except h1: a page title is 1.75rem at
+   every width (Unity's 3rem desktop h1 cost a data page ~40px of height).
+   h1/h2 use ncar-navy in main content; h3-h6 inherit body.
    ========================================================================= */
 
-h1, .h1 { font-size: 1.875rem; line-height: 2.625rem; font-weight: var(--font-weight-semi-bold); }
+h1, .h1 { font-size: 1.75rem;  line-height: 2.25rem;  font-weight: var(--font-weight-bold); }
 h2, .h2 { font-size: 1.25rem;  line-height: 1.875rem; font-weight: var(--font-weight-semi-bold); }
 h3, .h3 { font-size: 1.125rem; line-height: 1.875rem; font-weight: var(--font-weight-semi-bold); }
 h4, .h4 { font-size: 1rem;     line-height: 1.5rem;   font-weight: var(--font-weight-semi-bold); }
@@ -544,7 +545,6 @@ h5, .h5 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-weight-semi-bold); }
 
 @media (min-width: 64rem) {
-    h1, .h1 { font-size: 3rem;     line-height: 3.75rem;  font-weight: var(--font-weight-bold); }
     h2, .h2 { font-size: 2.25rem;  line-height: 3rem;     font-weight: var(--font-weight-bold); }
     h3, .h3 { font-size: 1.875rem; line-height: 2.625rem; }
     h4, .h4 { font-size: 1.5rem;   line-height: 2.25rem; }
@@ -558,14 +558,27 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .page-header {
-    margin-bottom: 1.875rem;
-    padding-bottom: 1.25rem;
-    border-bottom: 3px solid var(--ncar-blue);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.5rem 1rem;
+    margin-bottom: 1rem;
+}
+
+.page-header h1 {
+    margin: 0;
 }
 
 .page-header p {
     color: var(--text-tertiary);
-    font-size: 1rem;
+    margin: 0.125rem 0 0;
+}
+
+.page-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 /* ============================================================================
@@ -704,6 +717,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     font-size: inherit;
     line-height: inherit;
     vertical-align: baseline;
+    border: 0;   /* a link in a button's clothes: Unity's 3px button border added 6px to every row */
 }
 
 .btn-primary {
@@ -1098,39 +1112,45 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     padding: 0.5rem;
 }
 
-/* Clickable table rows */
-.resource-row {
-    cursor: pointer;
-    transition: all var(--transition-fast);
-}
-
-.resource-row:hover {
-    background-color: rgba(var(--ncar-teal-rgb), 0.08) !important;
-    transform: scale(1.01);
-}
-
-/* Date-bounds group header row in resources table */
-.date-group-header td {
-    background-color: var(--surface-tertiary);
-    border-top: 2px solid var(--border-default) !important;
-}
-
 /* ============================================================================
    ALERTS
    ========================================================================= */
 
-/* Unity flat-fill treatment (source/scss/components/_alerts.scss): solid
-   color fill, no border, no left accent, 0 radius. Color carries the
-   semantic; text auto-picks for legibility. Info kept as NCAR blue rather
-   than Unity's literal yellow — most users expect info=blue, yellow reads
-   as warning. */
+/* Tinted surface plus a left rule in the status hue; text stays body ink, so
+   every variant reads in both themes. A deliberate departure from Unity's solid
+   fills, which the brand guide's own "no accent as a large block" rule argues
+   against. The hues are tier-2 tokens (variables.css, --status-*). */
 .alert {
+    --alert-hue: var(--status-info);
+    background-color: color-mix(in srgb, var(--alert-hue) var(--alert-tint), var(--surface-card));
     border: 0;
+    border-left: 4px solid var(--alert-hue);
     border-radius: 0;
     box-shadow: none;
-    color: var(--text-heading);
-    padding: 0.875rem 1rem;
+    color: var(--text-primary);
+    padding: 0.75rem 1rem;
 }
+
+.alert-warning { --alert-hue: var(--status-warning); }
+.alert-danger { --alert-hue: var(--status-danger); }
+.alert-success { --alert-hue: var(--status-success); }
+.alert-secondary,
+.alert-light { --alert-hue: var(--text-tertiary); }
+
+/* Toasts take the same recipe: they float, so they keep Bootstrap's shadow, and the close
+   button stays dark-on-tint (no btn-close-white). The variant is set by htmx-config.js. */
+.toast {
+    --alert-hue: var(--status-info);
+    background-color: color-mix(in srgb, var(--alert-hue) var(--alert-tint), var(--surface-card));
+    border: 0;
+    border-left: 4px solid var(--alert-hue);
+    border-radius: 0;
+    color: var(--text-primary);
+}
+
+.toast-success { --alert-hue: var(--status-success); }
+.toast-warning { --alert-hue: var(--status-warning); }
+.toast-danger { --alert-hue: var(--status-danger); }
 
 .alert a,
 .alert button {
@@ -1144,79 +1164,23 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     color: var(--text-title);
 }
 
-.alert-info {
-    background-color: var(--ncar-blue);
-    color: var(--text-on-brand);
-}
-
-.alert-info a,
-.alert-info button {
-    color: var(--text-on-brand);
-}
-
-/* The one alert whose fill is LIGHT, so it is the one that cannot take
- * `--text-on-brand`. It used `--text-heading`, which is space-blue in light and
- * near-white in dark — 1.77:1 on orange, found by the browser sweep on the
- * /status outage banner. `--text-on-brand-dark` IS that space-blue, pinned
- * invariant: light mode does not move, dark stops inheriting a flipped token
- * onto a fill that never flips. */
-.alert-warning {
-    background-color: var(--ncar-orange);
-    color: var(--text-on-brand-dark);
-}
-
-.alert-warning a,
-.alert-warning button {
-    color: var(--text-on-brand-dark);
-}
-
-/* Descendants that set their own colour have the same problem one level down:
- * `.text-muted` inside the outage banner resolved to rgba(222,226,230,.75),
- * i.e. 1.39:1 on orange. Inheriting the alert's ink and de-emphasising with
- * opacity keeps the "muted" intent without reintroducing a theme-dependent
- * colour on an invariant fill.
- *
- * `!important` because Bootstrap's colour utilities carry it — a plain
- * declaration here loses to `.text-muted` regardless of specificity, which is
- * how the first pass at this silently did nothing. */
-.alert .text-muted {
-    color: inherit !important;
-    opacity: 0.8;
-}
-
-.alert-danger {
-    background-color: var(--ncar-vermilion);
-    color: var(--text-on-brand);
-}
-
-.alert-danger a,
-.alert-danger button {
-    color: var(--text-on-brand);
-}
-
-.alert-success {
-    background-color: #10b981;
-    color: var(--text-on-brand);
-}
-
-.alert-success a,
-.alert-success button {
-    color: var(--text-on-brand);
-}
-
 /* ============================================================================
-   MODALS — Unity NCAR style. The HTMX modal system (modal_scaffold +
-   htmx_form macros) predates the Unity restyle, so templates still emit
-   Bootstrap utility classes (bg-success/warning/danger/primary/secondary on
-   .modal-header, .btn-secondary on Cancel). The rules below repaint those
-   to NCAR palette tokens, flatten the surface, and scope a Cancel-button
-   restyle to .modal-footer so toggle groups using .btn-secondary elsewhere
-   stay untouched. CSS-only — no template edits needed.
+   MODALS — every header is the quiet accent surface with title ink (the expanded
+   project card's header): the verb lives in the title and the submit button, not
+   in a fill. A destructive confirm (.modal-header-danger) takes danger ink plus a rule. The
+   Cancel restyle is scoped to .modal-footer so .btn-secondary toggles elsewhere
+   stay untouched.
    ========================================================================= */
 
+/* Square corners. Bootstrap rounds the header and footer from their own inner
+   variable, so zeroing .modal-content alone left a white wedge in each top corner. */
+.modal {
+    --bs-modal-border-radius: 0;
+    --bs-modal-inner-border-radius: 0;
+}
+
 .modal-content {
-    border-radius: 0;
-    border: 1px solid var(--ncar-gray-light);
+    border: 1px solid var(--border-default);
     box-shadow: var(--shadow-md);
 }
 
@@ -1230,41 +1194,17 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     }
 }
 
-/* Create variant + hand-coded bg-primary (e.g. user/allocation_modals.html). */
-.modal-header.bg-success,
-.modal-header.bg-primary {
-    background-color: var(--ncar-blue) !important;
-    color: var(--text-on-brand);
-    border-bottom: none;
+.modal-header {
+    background-color: var(--surface-accent);
+    color: var(--text-title);
+    border-bottom: 1px solid var(--border-default);
+    padding: 0.875rem 1.25rem;
 }
 
-/* Edit variant — darker palette blue, subtle UX cue for modifying existing data. */
-.modal-header.bg-warning {
-    background-color: var(--ncar-navy) !important;
-    color: var(--text-on-brand);
-    border-bottom: none;
-}
-
-/* Destructive confirmation (samConfirmModal, outage delete). */
-.modal-header.bg-danger {
-    background-color: var(--ncar-vermilion) !important;
-    color: var(--text-on-brand);
-    border-bottom: none;
-}
-
-/* Neutral variant (one outage_modals case). */
-.modal-header.bg-secondary {
-    background-color: var(--ncar-gray) !important;
-    color: var(--text-on-brand);
-    border-bottom: none;
-}
-
-/* bg-success/danger/primary already get .btn-close-white from the template;
-   bg-warning + bg-secondary headers don't, so invert the close button on those
-   two so it's legible against the dark fill. */
-.modal-header.bg-warning .btn-close,
-.modal-header.bg-secondary .btn-close {
-    filter: invert(1) grayscale(100%) brightness(200%);
+/* White on vermilion measured 3.84:1; danger ink on the accent passes in both themes. */
+.modal-header-danger {
+    color: var(--status-danger);
+    box-shadow: inset 0 3px 0 var(--status-danger);
 }
 
 .modal-title {
@@ -1273,20 +1213,92 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     letter-spacing: 0.02em;
 }
 
-.modal-header {
-    padding: 0.875rem 1.25rem;
+.modal-title-meta {
+    font-weight: normal;
+    color: var(--text-secondary);
+}
+
+/* A modal's facts as one quiet panel (a list, or a block), not an alert apiece. */
+.modal-facts {
+    list-style: none;
+    padding: 0.625rem 0.875rem;
+    margin: 0 0 1rem;
+    background-color: var(--surface-accent);
+    border-left: 3px solid var(--border-default);
+}
+
+.modal-facts li + li {
+    margin-top: 0.375rem;
+}
+
+.modal-facts li > .fa-solid {
+    width: 1.25em;
+    color: var(--text-secondary);
+}
+
+.modal-lead {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.scale-input {
+    width: 3rem;
+    display: inline-block;
+}
+
+.modal-notice {
+    padding-block: 1.5rem;
+}
+
+.modal-notice p:last-child {
+    margin-bottom: 0;
+}
+
+/* A long preview list inside a modal scrolls on its own (bulk deactivate, queue cleanup). */
+.scroll-list {
+    max-height: 20em;
+    overflow-y: auto;
+}
+
+/* Manage Project, linked elements: the inline pickers and the directory root select. */
+.le-picker {
+    min-width: 12.5rem;
+}
+
+.path-root-select {
+    max-width: 14em;
+}
+
+/* A picked entity awaiting submit (Add member): one quiet row, not an alert. */
+.picked-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--surface-accent);
+}
+
+.picked-item[hidden] {
+    display: none;
+}
+
+.detach-panel {
+    margin-top: 0.5rem;
+    padding: 0.75rem 0.875rem;
+    border-left: 3px solid var(--status-danger);
+    background-color: var(--surface-accent);
 }
 
 .modal-footer {
-    border-top: 1px solid var(--ncar-gray-light);
+    border-top: 1px solid var(--border-default);
     padding: 0.875rem 1.25rem;
 }
 
-/* Phone width: two footer buttons must share one line. */
-@media (max-width: 575.98px) {
-    .modal-footer .btn {
-        padding-inline: 1rem;
-    }
+/* Footer buttons sized to the dialog, not the page: at the house 1.25rem the two
+   buttons stacked in a default-width modal (and on a phone). */
+.modal-footer .btn {
+    font-size: 1rem;
+    padding: 0.5rem 1.125rem;
 }
 
 /* Cancel button — scoped to .modal-footer so .btn-secondary used as a toggle
@@ -1467,17 +1479,10 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     font-weight: inherit;
 }
 
-/* Expanded (active) state: white surface with blue text — the "settled" look
-   matching .nav-tabs.active and .btn-group .btn-secondary.active. */
+/* Expanded: the accent surface, not a solid brand slab over the whole row. */
 .project-card .card-header[aria-expanded="true"] {
-    background-color: var(--ncar-blue);
-    color: var(--text-on-brand);
-    border-bottom-color: var(--ncar-gray-light);
-}
-
-.project-card .card-header[aria-expanded="true"] h5 i,
-.project-card .card-header[aria-expanded="true"] .accordion-chevron {
-    color: var(--text-on-brand) !important;
+    background-color: var(--surface-accent);
+    color: var(--text-title);
 }
 
 /* Accordion chevron — reusable affordance for any collapsible header.
@@ -1535,6 +1540,9 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .project-stats-box h6 {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
     color: var(--text-title);
     font-weight: 700;
     margin-bottom: 6px;
@@ -1567,6 +1575,48 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     grid-column: 1 / -1;
     padding: 2px 0;
     margin-top: 4px !important;
+}
+
+/* A multi-line value beside its label: the label takes the label track, the value spans the rest. */
+.stat-item-block.stat-item-inline {
+    display: contents;
+}
+
+.stat-item-inline > .stat-label,
+.stat-item-inline > .stat-value {
+    padding: 2px 0;
+}
+
+.stat-item-inline > .stat-label {
+    grid-column: 1;
+}
+
+.stat-item-inline > .stat-value {
+    grid-column: 2 / -1;
+}
+
+/* Detail modals (transaction, adjustment, XRAS action): label and value columns. */
+.project-stats-box.stats-two-col {
+    grid-template-columns: auto minmax(0, 1fr);
+}
+
+/* A verbatim comment or payload inside a stat grid. */
+.stat-pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.85rem;
+    font-weight: normal;
+}
+
+.stat-pre-raw {
+    word-break: break-all;
+    font-size: 0.75rem;
+    max-height: 20rem;
+    overflow: auto;
+}
+
+.stat-value-plain {
+    font-weight: normal;
 }
 
 .stat-label {
@@ -1651,15 +1701,6 @@ tr.tree-node-current {
     color: var(--bs-table-color);
 }
 
-/* The other half of the same inline block: a node whose project is inactive.
- * `#6c757d` -> --text-secondary (#718096 light) is a declared shift; the 0.6
- * opacity is carried over exactly rather than rounded to Bootstrap's
- * `.opacity-50`, which would have moved light mode for no reason. */
-.tree-node-inactive {
-    color: var(--text-secondary);
-    opacity: 0.6;
-}
-
 /* ============================================================================
    COLLAPSIBLE SECTIONS
    ========================================================================= */
@@ -1697,6 +1738,16 @@ tr.tree-node-current {
     margin-bottom: 0.5rem;
 }
 
+/* A label with a tip= icon: inline, so the &nbsp; keeps the icon on its last word
+   when the label wraps (an inline-block label would push the icon to its own line). */
+.form-label-tip {
+    margin-bottom: 0.5rem;
+}
+
+.form-label-tip > .form-label {
+    display: inline;
+}
+
 .input-group-text {
     background-color: var(--ncar-blue);
     color: var(--text-on-brand);
@@ -1730,10 +1781,6 @@ tr.tree-node-current {
    ========================================================================= */
 
 @media (max-width: 768px) {
-    .page-header h1 {
-        font-size: 1.75rem;
-    }
-
     .card-body {
         padding: 16px;
     }
@@ -1747,13 +1794,6 @@ tr.tree-node-current {
 
     .table {
         font-size: 0.875rem;
-    }
-}
-
-@media (max-width: 576px) {
-
-    .page-header {
-        margin-bottom: 20px;
     }
 }
 

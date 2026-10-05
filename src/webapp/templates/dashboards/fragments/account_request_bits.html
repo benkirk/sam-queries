@@ -34,7 +34,7 @@
     {%- if t.status %} · {{ t.status }}{% endif %}
     {%- if t.closed_at %}, closed {{ t.closed_at | fmt_date }}{% endif %}
     <span class="text-muted">({{ 'filed by SAM' if t.origin == 'created' else 'found after the mail' }})</span>
-    {%- if not loop.first %} <span class="badge bg-warning text-dark" title="More than one ticket carries this request's handle">duplicate</span>{% endif %}
+    {%- if not loop.first %} <span class="badge bg-warning" title="More than one ticket carries this request's handle">duplicate</span>{% endif %}
 </dd>
 {% endfor %}
 {% endmacro %}

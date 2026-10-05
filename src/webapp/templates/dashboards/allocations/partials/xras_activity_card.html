@@ -181,7 +181,7 @@
                     <td {% if expandable %}class="cursor-pointer" {{ collapse_toggle(detail_id) }}{% endif %}>
                         <span class="badge bg-secondary">{{ r.action_type or '—' }}</span>
                         {% if r.needs_activation and not show_all %}
-                        <span class="badge bg-warning text-dark">Needs activation</span>
+                        <span class="badge bg-warning">Needs activation</span>
                         {% endif %}
                     </td>
                     <td class="small{% if expandable %} cursor-pointer{% endif %}"
@@ -199,7 +199,7 @@
                             Dismissed by {{ r.dismissed_by }}
                         </span>
                         {% elif r.needs_activation %}
-                        <span class="badge bg-warning text-dark">Needs activation</span>
+                        <span class="badge bg-warning">Needs activation</span>
                         {% elif r.project_active %}
                         <span class="badge bg-success-subtle text-success-emphasis">Active</span>
                         {% else %}

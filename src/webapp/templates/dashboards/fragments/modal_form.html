@@ -5,7 +5,7 @@
 
   Usage (call block — field HTML goes between call and endcall):
       {% call htmx_form(url_for('admin_dashboard.htmx_facility_create'),
-                        '#createFacilityFormContainer', 'Create Facility',
+                        '#createFacilityFormContainer', 'Create',
                         submit_icon='plus') %}
           {{ text_field('facility_name', 'Name', required=True, ...) }}
       {% endcall %}
@@ -35,9 +35,10 @@
     submit_disabled       - When truthy, render the submit button disabled.
                             Pair with submit_disabled_title to explain why.
     submit_disabled_title - Tooltip text shown on the disabled submit button.
+    submit_id     - id on the submit button, for a script that enables it later.
 #}
 
-{% macro htmx_form(post_url, target, submit_text, submit_icon='save', is_edit=False, submit_class=None, errors=none, disabled=False, submit_disabled=False, submit_disabled_title=None) %}
+{% macro htmx_form(post_url, target, submit_text, submit_icon='save', is_edit=False, submit_class=None, errors=none, disabled=False, submit_disabled=False, submit_disabled_title=None, submit_id=None) %}
 {% set _btn_class = submit_class if submit_class else 'btn-primary' %}
 <form hx-post="{{ post_url }}"
       hx-target="{{ target }}"
@@ -67,6 +68,7 @@
         </button>
         {% else %}
         <button type="submit" class="btn {{ _btn_class }}"
+                {%- if submit_id %} id="{{ submit_id }}"{% endif %}
                 {% if submit_disabled %}disabled{% endif %}
                 {% if submit_disabled and submit_disabled_title %}title="{{ submit_disabled_title }}"{% endif %}>
 

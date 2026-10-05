@@ -9,11 +9,9 @@ description: >-
 
 # Wire a dashboard feature
 
-An ordered checklist for adding or changing UI on a SAM dashboard page. The
-rules themselves live in the always-loaded `CLAUDE.md`; this is the *procedure*
-that applies them, plus the traps that only bite at author time. Each step
-names the canonical section — read that section for the full rule, not a paste
-of it here.
+An ordered checklist for adding or changing UI on a SAM dashboard page: the
+*procedure* that applies the rules in the always-loaded `CLAUDE.md`, plus the traps
+that only bite at author time. Each step names the section that holds the full rule.
 
 Work top to bottom. Steps 1–3 are reuse and formatting; 4 is the write path;
 5–11 are the trap-prone surfaces; 12 is the smoke and gate run — read it
@@ -40,10 +38,13 @@ The families:
   `date_field`, `datetime_field`, `textarea_field`, `select_field`,
   `multiselect_filter`, `checkbox_field`, `readonly_display`, `fk_search_field`,
   `form_errors_panel`), and `modal_form.htmx_form`.
-- **Tables** — `pagination.pagination`, `sort_link.sort_link` /
-  `sort_header`, `table_bits.pane_toolbar` / `group_count` / `state_tag`
-  (see §7 for the column vocabulary).
-- **Modals** — `modals.modal_scaffold`, `action_buttons.edit_modal_button` /
+- **Tables** — `pagination.pagination`, `sort_link.sort_link` / `sort_header`,
+  `table_bits.pane_toolbar` / `group_count` / `state_tag` / `share_bar` /
+  `alloc_meter`, and `shared/project_tree.allocation_cells` for allocation rows
+  (shared pools included; `sort=`, `units=`). §7 has the column vocabulary.
+- **Modals** — `modals.modal_scaffold` (the shell), `modals.modal_title` (a fragment
+  retitles its shell out of band), `.modal-facts` (a dialog's facts in one quiet panel),
+  `tip=` on a `form_fields` label (its help), `action_buttons.edit_modal_button` /
   `delete_row_button`.
 - **Pickers** — `date_range_picker`, `time_range_picker`, `window_pills`.
 - **Help** — `help.help_icon` / `help.term`, keyed to a `glossary.g_*` term.
@@ -100,20 +101,14 @@ test's comment on the `_xras_remediation_actions.html` entry is the worked
 example of this exact rule.
 
 **The inverse trap — a link opening a DIFFERENT modal inside a `data-bs-toggle`
-row.** A row that is itself a modal opener (`<tr data-bs-toggle="modal"
-data-bs-target="#auditDetailsModal">`, the allocations ledgers) holds cells with
-projcode / username links that open *their own* modal. Here the link **must**
-carry its own `data-bs-toggle="modal" data-bs-target="#itsModal"` — the
-stack-safe `data-action="show-detail-modal"` idiom is NOT enough. Bootstrap's ONE
-document-level modal data-api runs in the **capture** phase and does
-`event.target.closest('[data-bs-toggle="modal"]')`, so it matches the ROW and
-opens the audit modal before the link's bubble-phase `data-stop-propagation` can
-fire. The link's own `data-bs-toggle` makes `closest()` match the link first and
-shadow the row; `data-stop-propagation` still stops the row's htmx fetch. This is
-the `stop_propagation=True` branch of the shared `project_link` / `user_link`
-macros (`fragments/project_bits.html`, `user_rows.html`); the default `data-action`
-opener is right only when there is NO `data-bs-toggle` ancestor. Same
-capture-phase mechanism as §6.
+row** (the allocations ledgers). The link **must** carry its own
+`data-bs-toggle="modal" data-bs-target="#itsModal"`; `data-action` is NOT enough.
+Bootstrap's one modal data-api runs in the **capture** phase on
+`event.target.closest('[data-bs-toggle="modal"]')`, so without its own toggle the
+ROW matches and opens before the link's `data-stop-propagation` fires (that still
+stops the row's htmx fetch). This is `stop_propagation=True` on the shared
+`project_link` / `user_link` macros; the default `data-action` opener is right
+only with NO `data-bs-toggle` ancestor. Same mechanism as §6.
 
 ## 6. Collapse triggers
 
@@ -131,19 +126,23 @@ The vocabulary lives in `components.css` § Data tables; markup helpers in
 - **Columns**: every column but one is `.col-shrink` (or `.col-num`: right
   aligned, tabular); the one left over takes the slack, as `.cell-truncate`
   with the full text in `title=`. No `width:99%`, no percentage widths.
+- **Headers**: one line in the template, no `<br>`. A multi-word `.col-num` /
+  `.col-shrink` header wraps by itself when its figures are narrower. Join a sort
+  icon or `#` to its word with `&nbsp;`, since an inline-block icon after a space
+  is a break point. Check: `scripts/ui_snapshots.py --headers`.
+- **Client sort** (`sortable_table.js`): `.sortable-header` + `data-sort` on the
+  `<th>`, and a `data-sort-value` on every `<td>` (no text fallback; ISO dates,
+  a sentinel for none).
 - **Group rows**: one spanning label cell + `group_count(n)`, never a Count
   column that is empty on every child row. Child rows indent with `.cell-child`.
 - **Retired rows**: `.row-inactive` on the `<tr>` + `state_tag('expired')`
   (or decommissioned, inactive); not `opacity-50`, which also fades the buttons.
-- **Actions** never wrap. Two icon buttons side by side are ~60 px; without
-  `nowrap` the auto layout shrinks the column to one button and every row
-  doubles (94 px rows on NSF Programs, 127 px on XRAS Activations). The idiom
-  is `<td class="text-end text-nowrap"><span class="row-actions">` holding
-  `.btn.btn-row` icon buttons, the verb in `title` + `aria-label` (the
-  `action_buttons` macros' shape). Color at rest only where it carries
-  meaning: `.btn-row-primary` (the verb the row waits on), `-attention`,
-  `-success`, `-danger`. NOT a `btn-group` of `btn-outline-secondary`:
-  inside a `.btn-group` that class is the toggle-bar idiom and renders solid
+- **Actions** never wrap (without `nowrap` every row doubled: 94 px on NSF
+  Programs, 127 px on XRAS Activations). The idiom is
+  `<td class="text-end text-nowrap"><span class="row-actions">` holding
+  `.btn.btn-row` icon buttons, the verb in `title` + `aria-label`. Color at rest
+  only where it means something: `.btn-row-primary` / `-attention` / `-success`
+  / `-danger`. NOT a `btn-group` of `btn-outline-secondary`, which renders solid
   blue. Consequential verbs (Withdraw, Delete, Merge) keep their words.
 - **Hierarchies are one table**, never a nested `<table>` with its own header in
   a spanning cell: children are rows at `.tree-cell` + `style="--depth: N"`
@@ -190,7 +189,8 @@ literal fails and a removed one must update the allowlist. `:has()` is
 already in use, so a CSS-only selected state (`.x:has(:checked)`) is fine.
 Bootstrap utilities are `!important`: `.border` on an element beats your
 rule's `border-color`, so style the component's own border (a
-`list-group-item` draws one) and drop the utility.
+`list-group-item` draws one) and drop the utility. Delete a class's rule in
+the commit that removes its last user (`test_css_dead`).
 
 ## 11. Render axes (theme × layout)
 
@@ -210,9 +210,13 @@ CLAUDE.md § Charts.
    restarts — for a quick check, inject a fresh
    `<link href="/static/css/x.css?fresh=1">` from the console; for real,
    restart. Measure "no change" against these before doubting the edit.
+   On a `dev_server_alt.sh` server: Redis DB `2 + port % 14`, and
+   `touch src/webapp/utils/static_assets.py` re-hashes CSS.
 2. Tab state persists: click the tab you are testing first — only the active
    pane is in the accessibility snapshot, and `find` matches nothing in a
-   hidden one.
+   hidden one. Collapse state persists too: click a row only if its
+   `aria-expanded` is not `"true"`. `.tab-pane.active` matches hidden nested
+   panes, so select with `:visible`. `ui_snapshots.py --expand N` opens lazy rows.
 3. **A fragment with no live data** (a modal that needs a candidate nobody
    has): set `SAM_DB_*` from `LOCAL_SAM_DB_*`, then
    `create_app()` + `render_template(...)` inside `app.test_request_context()`
@@ -225,16 +229,22 @@ CLAUDE.md § Charts.
    theme with the navbar toggle. Open `/dev/gallery` to eyeball any shared
    component you touched. Measure row heights and cell widths with
    `getBoundingClientRect()` rather than eyeballing a scaled screenshot.
+   Blend the text color's alpha before computing contrast: Bootstrap's muted is
+   `rgba(…, .75)`, and an unblended read gave 15:1 against a true 6.8:1.
 5. Direct-render tests (`render_template` from a test with a literal context)
    hand Jinja `Undefined` to any key you add later: `{% if x > 0 %}` raises,
    `{% if x %}` is fine — guard new context keys by truthiness.
 6. Run the structural gates:
-   `pytest tests/unit/gates/test_modal_shell_contract.py tests/unit/gates/test_collapse_trigger_rows.py tests/unit/gates/test_action_cells_nowrap.py tests/unit/gates/test_static_assets.py tests/unit/gates/test_template_csp_lint.py tests/unit/gates/test_css_tokens.py tests/unit/gates/test_route_map_parity.py`
-   plus the feature's own tests. For a visible change, `scripts/ui_snapshots.py`
-   shoots the before and after folders in all six states. For a change that must
-   NOT be visible (a CSS move or dedupe), add `--styles` to both runs and
-   `--compare before after`: zero differing elements is the proof. Serve the
-   before side with `scripts/dev_server_alt.sh <worktree> <port>`.
-7. If routes changed, regenerate the route-map snapshot
+   `pytest tests/unit/gates/test_modal_shell_contract.py tests/unit/gates/test_collapse_trigger_rows.py tests/unit/gates/test_action_cells_nowrap.py tests/unit/gates/test_static_assets.py tests/unit/gates/test_template_csp_lint.py tests/unit/gates/test_css_tokens.py tests/unit/gates/test_template_detectors.py tests/unit/gates/test_route_map_parity.py`
+   plus the feature's own tests. For a visible change, `scripts/ui_snapshots.py` shoots
+   before and after in all six states (a dialog: `--modal OPENER` or `--recipes`, with
+   its height). A change that must NOT be visible (a CSS move or dedupe) adds `--styles`
+   to both runs, then `--compare before after`: zero differing elements. Serve the
+   before side with `scripts/dev_server_alt.sh <worktree> <port>`. Quote a
+   `--page` with `?` (zsh globs it). Read pytest's rc, not a `| tail`.
+7. **Query counts.** No query per row in a route's loop: one `IN` query, and a
+   pin in `tests/perf/test_route_query_counts.py` + `baselines.json`
+   (`pytest -m perf -n 0`).
+8. If routes changed, regenerate the route-map snapshot
    (`ROUTE_MAP_REGEN=1 pytest tests/unit/gates/test_route_map_parity.py`) and commit
    the diff.

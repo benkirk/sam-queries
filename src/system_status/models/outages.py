@@ -3,7 +3,8 @@
 #-------------------------------------------------------------------------eh-
 
 from ..timeutil import utcnow_naive  # status timestamps are naive-UTC, not local
-from sqlalchemy import Column, Integer, String, Text, DateTime, Index, Enum as SQLEnum, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, Index, Enum as SQLEnum, ForeignKey, and_
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 from ..base import StatusBase, SessionMixin, staged_name
 from .lookups import System
@@ -112,6 +113,16 @@ class ResourceReservation(StatusBase, SessionMixin):
     system = relationship(System, foreign_keys=[system_id])
 
     system_name = staged_name('system')
+
+    @hybrid_property
+    def is_active(self):
+        """Holding nodes right now (start <= now <= end, naive UTC)."""
+        return self.start_time <= utcnow_naive() <= self.end_time
+
+    @is_active.expression
+    def is_active(cls):
+        now = utcnow_naive()
+        return and_(cls.start_time <= now, cls.end_time >= now)
 
     def __str__(self):
         return f"{self.system_name}: {self.reservation_name} ({self.start_time} - {self.end_time})"

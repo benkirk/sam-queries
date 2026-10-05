@@ -36,6 +36,7 @@ from sam.queries.charges import (
 from sam.accounting.adjustments import ChargeAdjustmentType
 from sam.queries.dashboard import (
     _build_project_resources_data,
+    allocation_timeline,
     build_user_projects_resources_batched,
     get_project_dashboard_data,
     get_resource_detail_data,
@@ -195,6 +196,22 @@ class TestChargeQueries:
 # ============================================================================
 # sam.queries.dashboard
 # ============================================================================
+
+
+class TestAllocationTimeline:
+
+    NOW = datetime(2026, 7, 1)
+
+    @pytest.mark.parametrize('start,end,expected', [
+        (None, None, (0, 'no-dates')),
+        (datetime(2026, 1, 1), None, (50, 'open-ended')),
+        (datetime(2025, 1, 1), datetime(2026, 6, 30), (100, 'expired')),
+        (datetime(2026, 7, 1), datetime(2026, 7, 1), (0, 'no-duration')),
+        (datetime(2026, 1, 1), datetime(2026, 12, 31), (49.7, 'active')),
+        (datetime(2026, 8, 1), datetime(2026, 12, 31), (0.0, 'active')),
+    ])
+    def test_states(self, start, end, expected):
+        assert allocation_timeline(start, end, self.NOW) == expected
 
 
 class TestDashboardQueries:

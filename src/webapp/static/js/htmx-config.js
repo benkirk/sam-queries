@@ -36,7 +36,7 @@ document.body.addEventListener('showToast', function (evt) {
     var d = evt.detail || {};
     var toastEl = document.getElementById('htmxToast');
     if (!toastEl) return;
-    toastEl.className = 'toast align-items-center border-0 text-bg-' + (d.variant || 'success');
+    toastEl.className = 'toast align-items-center toast-' + (d.variant || 'success');
     document.getElementById('htmxToastBody').textContent = d.message || 'Done.';
     bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 3500 }).show();
 });
@@ -221,11 +221,11 @@ document.body.addEventListener('reloadUserCard', function(evt) {
 
 (function() {
     var VARIANTS = {
-        danger:  { header: 'bg-danger text-white',  close: 'btn-close-white', icon: 'fa-triangle-exclamation', btn: 'btn-danger' },
-        warning: { header: 'bg-warning',            close: '',                icon: 'fa-circle-exclamation',   btn: 'btn-warning' },
-        info:    { header: 'bg-info text-white',    close: 'btn-close-white', icon: 'fa-circle-info',          btn: 'btn-primary' }
+        // A destructive confirm's header takes danger ink plus a rule; the others keep the quiet modal header.
+        danger:  { header: 'modal-header-danger', icon: 'fa-triangle-exclamation', btn: 'btn-danger' },
+        warning: { header: '',                    icon: 'fa-circle-exclamation',   btn: 'btn-warning' },
+        info:    { header: '',                    icon: 'fa-circle-info',          btn: 'btn-primary' }
     };
-    var ALL_HEADER_CLASSES = 'bg-danger bg-warning bg-info text-white';
     // Include the outline variants so a stray base class (e.g. btn-outline-primary)
     // is always stripped before the variant solid color is applied — otherwise an
     // outline (colored text) + solid (colored bg) combine into e.g. blue-on-blue.
@@ -238,7 +238,6 @@ document.body.addEventListener('reloadUserCard', function(evt) {
         if (!modalEl) { return false; }  // fall through to caller fallback
 
         var header = document.getElementById('samConfirmModalHeader');
-        var closeBtn = document.getElementById('samConfirmModalClose');
         var icon = document.getElementById('samConfirmModalIcon');
         var titleEl = document.getElementById('samConfirmModalTitle');
         var bodyEl = document.getElementById('samConfirmModalBody');
@@ -246,11 +245,8 @@ document.body.addEventListener('reloadUserCard', function(evt) {
 
         var v = VARIANTS[opts.variant] || VARIANTS.danger;
 
-        header.classList.remove.apply(header.classList, ALL_HEADER_CLASSES.split(' '));
-        v.header.split(' ').forEach(function(c) { header.classList.add(c); });
-
-        closeBtn.classList.remove('btn-close-white');
-        if (v.close) { closeBtn.classList.add(v.close); }
+        header.classList.remove('modal-header-danger');
+        if (v.header) { header.classList.add(v.header); }
 
         icon.classList.remove.apply(icon.classList, ALL_ICON_CLASSES.split(' '));
         icon.classList.add(v.icon);

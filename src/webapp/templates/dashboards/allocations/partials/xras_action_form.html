@@ -9,6 +9,7 @@
            write_enabled, post_url
 #}
 {% from 'dashboards/fragments/form_fields.html' import textarea_field, form_errors_panel with context %}
+{% from 'dashboards/fragments/table_bits.html' import state_tag %}
 {% set withdrawing = mode == 'withdraw' %}
 
 <h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
@@ -45,15 +46,13 @@
 </p>
 {% endif %}
 
-<div class="card mb-3">
-    <div class="card-body py-2 small">
+<div class="modal-facts small">
+    <div>
         <div>
             <span class="text-muted">Action</span>
             <span class="font-monospace">{{ action_id }}</span>
             · {{ action.actionType if action else '—' }}
-            · <span class="badge bg-body-secondary text-body-secondary border">
-                {{ action.actionStatus if action else '—' }}
-              </span>
+            {{ state_tag(action.actionStatus if action else '—') }}
         </div>
         <div>
             <span class="text-muted">Request</span>

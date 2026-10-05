@@ -5,27 +5,25 @@
    document.querySelector(), which returns the FIRST match — so without unique
    IDs the second table's Inodes tab targets the first table's pane and never
    activates its own, leaving its Capacity pane showing. #}
-<div class="table-responsive">
-    <!-- Tab navigation -->
-    <ul class="nav nav-tabs" id="{{ id_prefix }}-filesystemTabs" role="tablist">
-        <li class="nav-item">
-            <a class="nav-link active" id="{{ id_prefix }}-capacity-tab" data-bs-toggle="tab" href="#{{ id_prefix }}-capacity" role="tab" aria-controls="{{ id_prefix }}-capacity" aria-selected="true">Capacity</a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" id="{{ id_prefix }}-inodes-tab" data-bs-toggle="tab" href="#{{ id_prefix }}-inodes" role="tab" aria-controls="{{ id_prefix }}-inodes" aria-selected="false">Inodes</a>
-        </li>
-    </ul>
+<ul class="nav nav-pills mb-2" id="{{ id_prefix }}-filesystemTabs" role="tablist">
+    <li class="nav-item">
+        <a class="nav-link active py-1 px-3 small" id="{{ id_prefix }}-capacity-tab" data-bs-toggle="pill" href="#{{ id_prefix }}-capacity" role="tab" aria-controls="{{ id_prefix }}-capacity" aria-selected="true">Capacity</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link py-1 px-3 small" id="{{ id_prefix }}-inodes-tab" data-bs-toggle="pill" href="#{{ id_prefix }}-inodes" role="tab" aria-controls="{{ id_prefix }}-inodes" aria-selected="false">Inodes</a>
+    </li>
+</ul>
 
-    <!-- Tab content -->
+<div class="table-responsive">
     <div class="tab-content" id="{{ id_prefix }}-filesystemTabContent">
         <!-- Capacity Tab Pane -->
         <div class="tab-pane fade show active" id="{{ id_prefix }}-capacity" role="tabpanel" aria-labelledby="{{ id_prefix }}-capacity-tab">
-            <table class="table table-sm table-bordered filesystem-table">
-                <thead class="thead-light">
+            <table class="table table-sm align-middle filesystem-table">
+                <thead class="table-subtle">
                     <tr>
                         <th>Filesystem</th>
-                        <th>Used (TiB)</th>
-                        <th>Capacity (TiB)</th>
+                        <th class="col-num">Used (TiB)</th>
+                        <th class="col-num">Capacity (TiB)</th>
                         <th>Utilization</th>
                     </tr>
                 </thead>
@@ -36,17 +34,17 @@
                         <td>
                             <strong>{{ fs.filesystem_name }}</strong>
                             {% if fs.degraded %}
-                            <span class="badge bg-warning text-dark ms-1">Degraded</span>
+                            <span class="badge bg-warning ms-1">Degraded</span>
                             {% endif %}
                         </td>
-                        <td>
+                        <td class="col-num">
                             {% if fs.used_tb is not none %}
                                 {{ fs.used_tb | fmt_number }}
                             {% else %}
                                 N/A
                             {% endif %}
                         </td>
-                        <td>
+                        <td class="col-num">
                             {% if fs.capacity_tb is not none %}
                                 {{ fs.capacity_tb | fmt_number }}
                             {% else %}
@@ -79,12 +77,12 @@
 
         <!-- Inodes Tab Pane -->
         <div class="tab-pane fade" id="{{ id_prefix }}-inodes" role="tabpanel" aria-labelledby="{{ id_prefix }}-inodes-tab">
-            <table class="table table-sm table-bordered filesystem-table">
-                <thead class="thead-light">
+            <table class="table table-sm align-middle filesystem-table">
+                <thead class="table-subtle">
                     <tr>
                         <th>Filesystem</th>
-                        <th>Used (Inodes)</th>
-                        <th>Capacity (Inodes)</th>
+                        <th class="col-num">Used (Inodes)</th>
+                        <th class="col-num">Capacity (Inodes)</th>
                         <th>Utilization</th>
                     </tr>
                 </thead>
@@ -95,17 +93,17 @@
                         <td>
                             <strong>{{ fs.filesystem_name }}</strong>
                             {% if fs.degraded %}
-                            <span class="badge bg-warning text-dark ms-1">Degraded</span>
+                            <span class="badge bg-warning ms-1">Degraded</span>
                             {% endif %}
                         </td>
-                        <td>
+                        <td class="col-num">
                             {% if fs.used_inodes is not none %}
                                 {{ fs.used_inodes | fmt_number }}
                             {% else %}
                                 N/A
                             {% endif %}
                         </td>
-                        <td>
+                        <td class="col-num">
                             {% if fs.capacity_inodes is not none %}
                                 {{ fs.capacity_inodes | fmt_number }}
                             {% else %}

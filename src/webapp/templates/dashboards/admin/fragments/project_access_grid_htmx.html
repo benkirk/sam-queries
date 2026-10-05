@@ -98,10 +98,10 @@
           <td class="sticky-col">
             {{ contract_user_link(row.user, can_view_users) }}
             {% if row.is_lead %}
-            <span class="badge bg-info text-dark fw-normal ms-1">lead</span>
+            <span class="badge bg-info fw-normal ms-1">lead</span>
             {% endif %}
             {% if row.is_admin %}
-            <span class="badge bg-info text-dark fw-normal ms-1">admin</span>
+            <span class="badge bg-info fw-normal ms-1">admin</span>
             {% endif %}
           </td>
           {% for cell in row.cells %}

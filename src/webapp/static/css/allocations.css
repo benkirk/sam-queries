@@ -17,6 +17,11 @@
     padding: 0.5rem 0.75rem 0.75rem 2.4rem;
 }
 
+/* The project list scrolls with the tree on a phone; keep a readable title. */
+.alloc-details td.cell-truncate {
+    min-width: 10rem;
+}
+
 .alloc-view-pills {
     max-width: 16rem;
     margin-left: auto;

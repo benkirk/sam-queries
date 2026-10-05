@@ -1,4 +1,5 @@
 {% extends 'dashboards/base.html' %}
+{% from 'dashboards/fragments/page_header.html' import page_header %}
 {% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
 {% from 'dashboards/user/partials/_resource_details_macros.html' import jobs_button, jobs_collapse_row with context %}
 {% from 'dashboards/fragments/help.html' import term with context %}
@@ -25,7 +26,7 @@
         <colgroup>
             <col class="ucol-name"><col class="ucol-num"><col class="ucol-num"><col class="ucol-num">
         </colgroup>
-        <thead class="thead-dark">
+        <thead class="table-subtle">
             <tr>
                 <th class="sortable-header" data-sort="text">Username</th>
                 <th class="sortable-header text-end" data-sort="numeric">Jobs</th>
@@ -120,7 +121,7 @@
         <colgroup>
             <col class="ucol-name"><col class="ucol-num"><col class="ucol-num"><col class="ucol-num"><col class="ucol-num">
         </colgroup>
-        <thead class="thead-dark">
+        <thead class="table-subtle">
             <tr>
                 <th>Date</th>
                 <th class="text-end">Users</th>
@@ -252,17 +253,13 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1>
-        <i class="fa-solid fa-chart-line"></i> Resource Usage Details
-    </h1>
-    <p class="text-muted">
-        Project: <strong>{{ projcode }}</strong> | Resource: <strong>{{ resource_name }}</strong>
-        {% if has_children and scope != projcode %}
-        | Scope: <strong>{{ scope }}</strong>
-        {% endif %}
-    </p>
-</div>
+{% set header_desc %}
+    Project: <strong>{{ projcode }}</strong> | Resource: <strong>{{ resource_name }}</strong>
+    {% if has_children and scope != projcode %}
+    | Scope: <strong>{{ scope }}</strong>
+    {% endif %}
+{% endset %}
+{{ page_header('Resource Usage Details', icon='chart-line', description=header_desc) }}
 
 <!-- Resource Summary Card -->
 <div class="card mb-4">
@@ -274,7 +271,7 @@
     <div class="card-body">
         <div class="table-responsive">
             <table class="table table-sm table-bordered table-hover">
-                <thead class="thead-light">
+                <thead class="table-subtle">
                     <tr>
                         <th>Resource</th>
                         <th>Start Date</th>
@@ -310,8 +307,8 @@
                         {% if has_permission and Permission and has_permission(Permission.EDIT_ALLOCATIONS) %}
                         <td class="text-center">
                             {% if summary.allocation_id and not summary.is_inheriting %}
-                            <button class="btn btn-sm btn-outline-primary"
-                                    title="Edit allocation"
+                            <button type="button" class="btn btn-row"
+                                    title="Edit allocation" aria-label="Edit allocation"
                                     data-bs-toggle="modal" data-bs-target="#editAllocationModal"
                                     hx-get="{{ url_for('user_dashboard.htmx_edit_allocation_form', allocation_id=summary.allocation_id) }}?projcode={{ projcode }}"
                                     hx-target="#editAllocationFormContainer"
@@ -389,7 +386,7 @@
         {% endif %}
         {% if node.subtree_charges > 0 %}
         {% if is_selected %}
-        <span class="badge bg-warning text-dark ms-auto flex-shrink-0">
+        <span class="badge bg-warning ms-auto flex-shrink-0">
             {{ node.subtree_charges | fmt_number }}
         </span>
         {% else %}

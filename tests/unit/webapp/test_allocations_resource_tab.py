@@ -35,6 +35,15 @@ class TestResourceTabDeepLink:
         assert _active_tab_id(bogus.get_data(as_text=True)) \
             == _active_tab_id(default.get_data(as_text=True))
 
+    def test_no_tab_opens_on_derecho(self, auth_client):
+        html = auth_client.get('/allocations/projects').get_data(as_text=True)
+        assert _active_tab_id(html) == 'Derecho'
+
+    def test_without_derecho_the_first_resource_opens(self, auth_client):
+        html = auth_client.get('/allocations/projects?resources=Casper&resources=Campaign_Store'
+                               ).get_data(as_text=True)
+        assert _active_tab_id(html) == 'Campaign_Store'
+
     def test_filter_form_carries_the_tab(self, auth_client):
         # The GET filter reload must preserve the tab (url-param channel opts
         # out of localStorage restore).

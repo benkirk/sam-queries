@@ -1,75 +1,14 @@
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_utilization with context %}
+{% from 'dashboards/status/partials/metric_card.html' import util_card %}
 {% macro utilization_metrics(status, show_memory=true, show_gpus=true, show_viz=false) %}
-{# Calculate column width based on number of metrics shown #}
 {% set num_cols = 1 + (1 if show_gpus else 0) + (1 if show_viz else 0) + (1 if show_memory else 0) %}
-{% set col_width = 12 // num_cols %}
+{% set col = 'col-md-%d' % (12 // num_cols) %}
 <div class="row mb-4">
-    <div class="col-md-{{ col_width }}">
-        <div class="metric-card">
-            <h6>CPU Utilization {{ help_icon(g_utilization(), rich=True, title='Utilization', placement='top') }}</h6>
-            <div class="value">{{ (status.cpu_utilization_percent|default(0, true))|round(1) }}%</div>
-            <div class="progress mt-2">
-                <div class="progress-bar bg-{{ 'danger' if (status.cpu_utilization_percent|default(0, true)) >= 90 else 'warning' if (status.cpu_utilization_percent|default(0, true)) >= 75 else 'success' }}"
-                     style="width: {{ status.cpu_utilization_percent|default(0, true) }}%"></div>
-            </div>
-            {% if status.cpu_cores_allocated is defined and status.cpu_cores_total is defined %}
-            <div class="text-muted small mt-1">
-                {{ status.cpu_cores_allocated | fmt_number }} / {{ status.cpu_cores_total | fmt_number }} cores
-            </div>
-            {% endif %}
-        </div>
-    </div>
-    {% if show_gpus %}
-    <div class="col-md-{{ col_width }}">
-        <div class="metric-card">
-            <h6>GPU Utilization</h6>
-            <div class="value">{{ (status.gpu_utilization_percent|default(0, true))|round(1) }}%</div>
-            <div class="progress mt-2">
-                <div class="progress-bar bg-{{ 'danger' if (status.gpu_utilization_percent|default(0, true)) >= 90 else 'warning' if (status.gpu_utilization_percent|default(0, true)) >= 75 else 'success' }}"
-                     style="width: {{ status.gpu_utilization_percent|default(0, true) }}%"></div>
-            </div>
-            {% if status.gpu_count_allocated is defined and status.gpu_count_total is defined %}
-            <div class="text-muted small mt-1">
-                {{ status.gpu_count_allocated | fmt_number }} / {{ status.gpu_count_total | fmt_number }} GPUs
-            </div>
-            {% endif %}
-        </div>
-    </div>
-    {% endif %}
-    {% if show_viz %}
-    <div class="col-md-{{ col_width }}">
-        <div class="metric-card">
-            <h6>VIZ Utilization</h6>
-            <div class="value">{{ (status.viz_utilization_percent|default(0, true))|round(1) }}%</div>
-            <div class="progress mt-2">
-                <div class="progress-bar bg-{{ 'danger' if (status.viz_utilization_percent|default(0, true)) >= 90 else 'warning' if (status.viz_utilization_percent|default(0, true)) >= 75 else 'success' }}"
-                     style="width: {{ status.viz_utilization_percent|default(0, true) }}%"></div>
-            </div>
-            {% if status.viz_count_allocated is defined and status.viz_count_total is defined %}
-            <div class="text-muted small mt-1">
-                {{ status.viz_count_allocated | fmt_number }} / {{ status.viz_count_total | fmt_number }} VIZ GPUs
-            </div>
-            {% endif %}
-        </div>
-    </div>
-    {% endif %}
-    {% if show_memory %}
-    <div class="col-md-{{ col_width }}">
-        <div class="metric-card">
-            <h6>Memory Utilization</h6>
-            <div class="value">{{ (status.memory_utilization_percent|default(0, true))|round(1) }}%</div>
-            <div class="progress mt-2">
-                <div class="progress-bar bg-{{ 'danger' if (status.memory_utilization_percent|default(0, true)) >= 90 else 'warning' if (status.memory_utilization_percent|default(0, true)) >= 75 else 'success' }}"
-                     style="width: {{ status.memory_utilization_percent|default(0, true) }}%"></div>
-            </div>
-            {% if status.memory_allocated_gb is defined and status.memory_total_gb is defined %}
-            <div class="text-muted small mt-1">
-                {{ status.memory_allocated_gb | fmt_number }} / {{ status.memory_total_gb | fmt_number }} GB
-            </div>
-            {% endif %}
-        </div>
-    </div>
-    {% endif %}
+    <div class="{{ col }}">{{ util_card('CPU Utilization ' ~ help_icon(g_utilization(), rich=True, title='Utilization', placement='top'),
+                                        status.cpu_utilization_percent, status.cpu_cores_allocated, status.cpu_cores_total, 'cores') }}</div>
+    {% if show_gpus %}<div class="{{ col }}">{{ util_card('GPU Utilization', status.gpu_utilization_percent, status.gpu_count_allocated, status.gpu_count_total, 'GPUs') }}</div>{% endif %}
+    {% if show_viz %}<div class="{{ col }}">{{ util_card('VIZ Utilization', status.viz_utilization_percent, status.viz_count_allocated, status.viz_count_total, 'VIZ GPUs') }}</div>{% endif %}
+    {% if show_memory %}<div class="{{ col }}">{{ util_card('Memory Utilization', status.memory_utilization_percent, status.memory_allocated_gb, status.memory_total_gb, 'GB') }}</div>{% endif %}
 </div>
 {% endmacro %}

@@ -44,15 +44,6 @@ class EditPanelForm(HtmxFormSchema):
         return data
 
 
-class EditPanelSessionForm(HtmxFormSchema):
-    start_date = f.Date('%Y-%m-%d', required=True)
-    end_date = f.Str(load_default=None)    # handled in post_load for 23:59:59
-    panel_meeting_date = f.Date('%Y-%m-%d', load_default=None)
-    description = f.Str(load_default=None)
-
-    _date_range = ('start_date', 'end_date')
-
-
 class EditAllocationTypeForm(HtmxFormSchema):
     default_allocation_amount = f.Float(load_default=None,
                                          validate=v.Range(min=0))

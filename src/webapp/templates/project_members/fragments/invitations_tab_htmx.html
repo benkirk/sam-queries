@@ -160,11 +160,11 @@
                 {% elif v.readiness == 'ready' %}
                 <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle" title="The account now exists; the next reconcile adds the membership">account exists</span>
                 {% elif r.state == 'claimed' %}
-                <span class="badge bg-info text-dark" title="Being worked by {{ r.assignee }}">in progress</span>
+                <span class="badge bg-info" title="Being worked by {{ r.assignee }}">in progress</span>
                 {% elif r.state in ('dismissed', 'rejected') %}
                 <span class="badge bg-secondary" title="{{ r.closed_reason }}">{{ r.state }}</span>
                 {% elif not r.is_verified %}
-                <span class="badge bg-warning text-dark" title="The address has not been confirmed yet">unverified</span>
+                <span class="badge bg-warning" title="The address has not been confirmed yet">unverified</span>
                 {% else %}
                 <span class="badge bg-body-secondary text-body-secondary border" title="Waiting for the account to be created{% if r.requested_at %}; sent to NUSD {{ r.requested_at | fmt_date }}{% endif %}">waiting</span>
                 {% endif %}

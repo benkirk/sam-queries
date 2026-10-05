@@ -61,16 +61,16 @@
    `aria-expanded` Bootstrap writes onto the toggling cell — components.css. #}
 <div id="xrasActionsTable">
     <div class="table-responsive">
-    <table class="table table-sm table-striped table-hover mb-0 audit-table">
+    <table class="table table-sm table-hover align-middle mb-0 audit-table">
         <thead class="table-subtle">
             <tr>
-                <th style="white-space:nowrap;">{{ sort_header('received_time', 'Received') }}</th>
-                <th style="width:120px;">{{ sort_header('action_type', 'Type') }}</th>
-                <th style="width:130px;">{{ sort_header('request_number', 'Request #') }}</th>
-                <th style="width:150px;">{{ sort_header('status', 'Status') }}</th>
-                <th style="width:130px;">{{ sort_header('projcode_result', 'Result') }}</th>
-                <th style="width:99%;">Errors</th>
-                <th class="text-end" style="white-space:nowrap;">Actions</th>
+                <th class="col-shrink">{{ sort_header('received_time', 'Received') }}</th>
+                <th class="col-shrink">{{ sort_header('action_type', 'Type') }}</th>
+                <th class="col-shrink">{{ sort_header('request_number', 'Request\u00a0#') }}</th>
+                <th class="col-shrink">{{ sort_header('status', 'Status') }}</th>
+                <th class="col-shrink">{{ sort_header('projcode_result', 'Result') }}</th>
+                <th>Errors</th>
+                <th class="col-shrink text-end">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -79,7 +79,7 @@
             <tr>
                 {# Column shows the date; the tooltip carries the time of day, which
                    is what separates six actions posted in the same second. #}
-                <td style="white-space:nowrap;"
+                <td class="text-nowrap"
                     title="{{ r.received_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}">
                     {% if r.source_action_id %}
                     <i class="fa-solid fa-arrow-rotate-right text-muted me-1"
@@ -148,7 +148,7 @@
                     {% endif %}
                     {% if r.request_number %}{{ copy_button(r.request_number, label='Copy request number', inline=true) }}{% endif %}
                 </td>
-                <td style="white-space:nowrap;">
+                <td class="text-nowrap">
                     {{ status_badge(r.status) }}
                     {% if r.http_status %}
                     {# 400 vs 422 both live under status='failed'; the code is the
@@ -183,17 +183,15 @@
                     <span class="text-danger-emphasis">
                         {{ r.errors | length }} error{{ '' if r.errors | length == 1 else 's' }}
                     </span>
-                    <span class="text-muted ms-1"
-                          style="display:inline-block; max-width:38ch; overflow:hidden;
-                                 text-overflow:ellipsis; white-space:nowrap;
-                                 vertical-align:bottom;">{{ r.errors[0] }}</span>
+                    <span class="text-muted ms-1 d-inline-block text-truncate align-bottom"
+                          style="max-width:38ch;">{{ r.errors[0] }}</span>
                 </td>
                 {% else %}
                 <td class="text-muted small">—</td>
                 {% endif %}
                 <td class="text-end text-nowrap">
-                    <button class="btn btn-sm btn-outline-secondary"
-                            title="View action details"
+                    <button class="btn btn-row" type="button"
+                            title="View action details" aria-label="View action details"
                             data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
                             hx-get="{{ url_for('allocations_dashboard.xras_action_details', action_id=r.action_log_id) }}"
                             hx-target="#auditDetailsModalBody"
@@ -209,8 +207,8 @@
                        leaves the two cohorts an operator is actually chasing. #}
                     {% if has_permission(Permission.MANAGE_XRAS)
                           and r.status in ('failed', 'manual', 'rechecked') %}
-                    <button class="btn btn-sm btn-outline-secondary"
-                            title="Re-check: would this succeed if posted now?"
+                    <button type="button" class="btn btn-row"
+                            title="Re-check: would this succeed if posted now?" aria-label="Re-check: would this succeed if posted now?"
                             hx-post="{{ url_for('allocations_dashboard.xras_recheck', action_id=r.action_log_id) }}"
                             hx-confirm="Re-check action #{{ r.action_log_id }} against today's code and data?&#10;&#10;Nothing is applied and XRAS is not contacted — this only answers whether a resend would succeed. A new linked audit row records the verdict."
                             hx-swap="none">

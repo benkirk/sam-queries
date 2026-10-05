@@ -15,15 +15,6 @@
 
     /* ================= Allocations dashboard ================= */
 
-    /* Create Adjustment form: show the intent hint matching the selected
-     * adjustment type (fragments/create_adjustment_form_htmx.html) */
-    registerAction('adj-intent-toggle', function (select) {
-        document.querySelectorAll('#createAdjustmentFormContainer .adj-intent')
-            .forEach(function (el) {
-                el.style.display = (el.dataset.typeId === select.value) ? '' : 'none';
-            });
-    });
-
     /* After a successful "Create Adjustment" POST (HX-Trigger event),
      * reload the adjustments table fragment, carrying the current filter
      * form so the view stays consistent with what the user was looking

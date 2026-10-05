@@ -428,7 +428,8 @@ _CALENDAR = '/allocations/htmx/calendar/Derecho?active_at=2026-10-03'
 
 
 def test_allocations_calendar_route(auth_client, route_count_queries):
-    _route_within("allocations_calendar_route", auth_client, route_count_queries, _CALENDAR)
+    _route_within("allocations_calendar_route", auth_client, route_count_queries,
+                  _CALENDAR + '&mode=used')
 
 
 def test_allocations_calendar_burn_route(auth_client, route_count_queries):
@@ -462,3 +463,14 @@ def test_allocations_sunburst_expanded_used_route(auth_client, route_count_queri
     _route_within("allocations_sunburst_expanded_used_route", auth_client, route_count_queries,
                   '/allocations/htmx/sunburst-expanded/Derecho?active_at=2026-10-03'
                   '&measure=used&days=90')
+
+
+# ---------------------------------------------------------------------------
+# Project list under a type row: titles in one query, so the count is flat in
+# the number of rows (239 here; one find_project_by_code per row was 495).
+# ---------------------------------------------------------------------------
+
+def test_allocations_project_table_route(auth_client, route_count_queries):
+    _route_within("allocations_project_table_route", auth_client, route_count_queries,
+                  '/allocations/htmx/project_table?resource=Derecho&facility=UNIV'
+                  '&allocation_type=Small&active_at=2026-10-03&force_refresh=true')

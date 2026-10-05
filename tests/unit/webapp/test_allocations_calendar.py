@@ -342,7 +342,8 @@ def burn():
 
 
 def test_used_mode_offers_the_toggle_and_never_queries_burn(auth_client, captured, burn):
-    body = auth_client.get('/allocations/htmx/calendar/Derecho?active_at=2026-10-03').get_data(as_text=True)
+    body = auth_client.get('/allocations/htmx/calendar/Derecho?active_at=2026-10-03&mode=used'
+                           ).get_data(as_text=True)
     assert 'aria-label="Calendar shading"' in body and 'mode=burn' in body
     assert 'cal-burn' not in body and 'cal-strip' not in body and 'burn-key' not in body
     assert 'query' not in burn
@@ -380,7 +381,7 @@ def test_runout_mark_renders_in_burn_mode_only(auth_client, captured):
            '&active_at=2026-10-03')
     with patch.object(blueprint, 'cached_allocation_burn', return_value=hot):
         burn_body = auth_client.get(url + '&mode=burn').get_data(as_text=True)
-        used_body = auth_client.get(url).get_data(as_text=True)
+        used_body = auth_client.get(url + '&mode=used').get_data(as_text=True)
     assert 'class="burn-runout"' in burn_body and 'runs out about 2026-11-' in burn_body
     assert 'burn-runout' not in used_body and 'runs out' not in used_body
 
@@ -392,9 +393,12 @@ def test_storage_offers_no_burn(auth_client, captured, burn, monkeypatch):
     assert 'query' not in burn
 
 
-def test_unknown_mode_reads_as_used(auth_client, captured, burn):
-    body = auth_client.get('/allocations/htmx/calendar/Derecho?mode=heat').get_data(as_text=True)
-    assert 'cal-burn' not in body and 'query' not in burn
+@pytest.mark.parametrize('query', ['', '?mode=heat'])
+def test_burn_is_the_default(auth_client, captured, burn, query):
+    body = auth_client.get('/allocations/htmx/calendar/Derecho' + query).get_data(as_text=True)
+    assert 'alloc-calendar cal-burn' in body and 'query' in burn
+    burn_button = body[:body.index('>Burn</button>')].rsplit('<button', 1)[1]
+    assert 'aria-pressed="true"' in burn_button, 'the toggle shows Burn as the selected mode'
 
 
 def test_bad_active_at_falls_back_silently(auth_client, captured):
