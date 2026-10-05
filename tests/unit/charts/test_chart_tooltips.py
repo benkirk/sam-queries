@@ -132,6 +132,25 @@ def test_a_jobs_histogram_segment_names_its_owner_and_the_unknown_remainder(app)
     assert all(not t.endswith(' · 0') for t in titles)   # a zero segment has no mark to hover
 
 
+def test_a_stacked_bar_segment_says_whose_when_and_how_much(app):
+    titles = _titles(app, 'usage_stacked.core_hours')
+    assert 'alice · 2026-03-03 · 20' in titles and '7 other · 2026-03-01 · 1' in titles
+    assert not any('2026-03-02' in t for t in titles)     # a zero day draws no segment
+    flat = _titles(app, 'usage_timeseries.charges')
+    assert flat[0] == '2026-03-01 · 10'                    # one unnamed band: day and value
+
+
+def test_a_timeline_segment_names_its_period_label(app):
+    assert 'alice · 2026-03-01 · 3' in _titles(app, 'jobs_ts.user_linked')
+
+
+def test_an_area_band_hovers_as_its_legend_row(app):
+    assert _titles(app, 'user_proj_area.project_current')[-1] == 'PROJ0001 · 20'
+    assert 'alice' in _titles(app, 'disk_area.bytes_linked')
+    pace = _titles(app, 'pace.size')
+    assert pace[0] == 'PROJ0000 · 2.50M' and pace[-1].startswith('5 other · ')
+
+
 def test_no_chart_leaks_a_tooltip_id(app):
     """`tt-` is reserved: every stamped id must be rewritten away, on every chart."""
     with app.test_request_context('/'):

@@ -95,6 +95,19 @@ class StackedSeriesChart(BaseChart):
         """Drill URL for the bar at x-index *i*, or None."""
         return None
 
+    def x_label(self, i) -> str:
+        """The x position at index *i*, as a hover names it."""
+        x = self.x[i]
+        return fmt.date_str(x) if hasattr(x, 'isoformat') else str(x)
+
+    def bar_tooltip(self, band, i, value) -> str:
+        """Hover text for one bar segment: whose, when, how much."""
+        return ' · '.join(p for p in (band.label, self.x_label(i), fmt.number(value)) if p)
+
+    def band_tooltip(self, band) -> str:
+        """Hover text for one area band: what its legend row says."""
+        return ' · '.join(self.legend_cells(band.label, self.band_value(band)))
+
     # --- lifecycle ---------------------------------------------------------
 
     def prepare(self):
@@ -130,6 +143,7 @@ class StackedSeriesChart(BaseChart):
                 url = self.bar_url(i)
                 if url:
                     rect.set_url(url)
+                self.tooltip(rect, self.bar_tooltip(band, i, band.values[i]))
             bottoms = [b + v for b, v in zip(bottoms, vals)]
 
     def _bar_kwargs(self):
@@ -140,8 +154,10 @@ class StackedSeriesChart(BaseChart):
         # Alpha comes from the theme, not this class: the figure is
         # transparent, so it composites against the card. See
         # `Theme.area_alpha`.
-        ax.stackplot(self.x, *matrix, colors=self.colors,
-                     alpha=theme.area_alpha)
+        areas = ax.stackplot(self.x, *matrix, colors=self.colors,
+                             alpha=theme.area_alpha)
+        for area, band in zip(areas, self.bands):
+            self.tooltip(area, self.band_tooltip(band))
 
     def decorate(self, ax, layout, theme):
         ax.set_ylabel(self.ylabel(), **self.label_kw(layout))
@@ -482,6 +498,9 @@ class JobsTimeseriesChart(StackedSeriesChart):
 
     def x_values(self):
         return list(range(len(self.labels)))
+
+    def x_label(self, i):
+        return self.labels[i]
 
     def is_empty(self):
         if not self.labels or not self.bands:

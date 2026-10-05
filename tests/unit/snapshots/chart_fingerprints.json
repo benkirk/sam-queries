@@ -516,7 +516,7 @@
   "disk_area.bytes_linked": {
     "counts": {
       "a": 4,
-      "g": 79,
+      "g": 76,
       "path": 27,
       "text": 20,
       "use": 15
@@ -570,7 +570,7 @@
   "disk_area.bytes_linked@dark": {
     "counts": {
       "a": 4,
-      "g": 79,
+      "g": 76,
       "path": 27,
       "text": 20,
       "use": 15
@@ -624,7 +624,7 @@
   "disk_area.bytes_linked@mobile": {
     "counts": {
       "a": 4,
-      "g": 51,
+      "g": 48,
       "path": 20,
       "text": 13,
       "use": 8
@@ -671,7 +671,7 @@
   "disk_area.bytes_linked@mobile@dark": {
     "counts": {
       "a": 4,
-      "g": 51,
+      "g": 48,
       "path": 20,
       "text": 13,
       "use": 8
@@ -718,7 +718,7 @@
   "disk_area.bytes_linked@tablet": {
     "counts": {
       "a": 4,
-      "g": 59,
+      "g": 56,
       "path": 22,
       "text": 15,
       "use": 10
@@ -767,7 +767,7 @@
   "disk_area.bytes_linked@tablet@dark": {
     "counts": {
       "a": 4,
-      "g": 59,
+      "g": 56,
       "path": 22,
       "text": 15,
       "use": 10
@@ -820,7 +820,7 @@
   "disk_area.files": {
     "counts": {
       "a": 0,
-      "g": 99,
+      "g": 96,
       "path": 32,
       "text": 25,
       "use": 20
@@ -874,7 +874,7 @@
   "disk_area.files@dark": {
     "counts": {
       "a": 0,
-      "g": 99,
+      "g": 96,
       "path": 32,
       "text": 25,
       "use": 20
@@ -928,7 +928,7 @@
   "disk_area.files@mobile": {
     "counts": {
       "a": 0,
-      "g": 71,
+      "g": 68,
       "path": 25,
       "text": 18,
       "use": 13
@@ -975,7 +975,7 @@
   "disk_area.files@mobile@dark": {
     "counts": {
       "a": 0,
-      "g": 71,
+      "g": 68,
       "path": 25,
       "text": 18,
       "use": 13
@@ -1022,7 +1022,7 @@
   "disk_area.files@tablet": {
     "counts": {
       "a": 0,
-      "g": 79,
+      "g": 76,
       "path": 27,
       "text": 20,
       "use": 15
@@ -1071,7 +1071,7 @@
   "disk_area.files@tablet@dark": {
     "counts": {
       "a": 0,
-      "g": 79,
+      "g": 76,
       "path": 27,
       "text": 20,
       "use": 15
@@ -6206,7 +6206,7 @@
   "jobs_ts.project_unlinked": {
     "counts": {
       "a": 32,
-      "g": 108,
+      "g": 76,
       "path": 55,
       "text": 21,
       "use": 15
@@ -6292,7 +6292,7 @@
   "jobs_ts.project_unlinked@dark": {
     "counts": {
       "a": 32,
-      "g": 108,
+      "g": 76,
       "path": 55,
       "text": 21,
       "use": 15
@@ -6378,7 +6378,7 @@
   "jobs_ts.project_unlinked@mobile": {
     "counts": {
       "a": 32,
-      "g": 93,
+      "g": 61,
       "path": 55,
       "text": 16,
       "use": 10
@@ -6459,7 +6459,7 @@
   "jobs_ts.project_unlinked@mobile@dark": {
     "counts": {
       "a": 32,
-      "g": 93,
+      "g": 61,
       "path": 55,
       "text": 16,
       "use": 10
@@ -6540,7 +6540,7 @@
   "jobs_ts.project_unlinked@tablet": {
     "counts": {
       "a": 32,
-      "g": 108,
+      "g": 76,
       "path": 55,
       "text": 21,
       "use": 15
@@ -6626,7 +6626,7 @@
   "jobs_ts.project_unlinked@tablet@dark": {
     "counts": {
       "a": 32,
-      "g": 108,
+      "g": 76,
       "path": 55,
       "text": 21,
       "use": 15
@@ -6712,7 +6712,7 @@
   "jobs_ts.user_linked": {
     "counts": {
       "a": 38,
-      "g": 112,
+      "g": 80,
       "path": 56,
       "text": 22,
       "use": 16
@@ -6805,7 +6805,7 @@
   "jobs_ts.user_linked@dark": {
     "counts": {
       "a": 38,
-      "g": 112,
+      "g": 80,
       "path": 56,
       "text": 22,
       "use": 16
@@ -6898,7 +6898,7 @@
   "jobs_ts.user_linked@mobile": {
     "counts": {
       "a": 38,
-      "g": 97,
+      "g": 65,
       "path": 56,
       "text": 17,
       "use": 11
@@ -6986,7 +6986,7 @@
   "jobs_ts.user_linked@mobile@dark": {
     "counts": {
       "a": 38,
-      "g": 97,
+      "g": 65,
       "path": 56,
       "text": 17,
       "use": 11
@@ -7074,7 +7074,7 @@
   "jobs_ts.user_linked@tablet": {
     "counts": {
       "a": 38,
-      "g": 112,
+      "g": 80,
       "path": 56,
       "text": 22,
       "use": 16
@@ -7167,7 +7167,7 @@
   "jobs_ts.user_linked@tablet@dark": {
     "counts": {
       "a": 38,
-      "g": 112,
+      "g": 80,
       "path": 56,
       "text": 22,
       "use": 16
@@ -9769,7 +9769,7 @@
   "pace.future": {
     "counts": {
       "a": 60,
-      "g": 177,
+      "g": 156,
       "path": 70,
       "text": 67,
       "use": 20
@@ -9981,7 +9981,7 @@
   "pace.future@dark": {
     "counts": {
       "a": 60,
-      "g": 177,
+      "g": 156,
       "path": 70,
       "text": 67,
       "use": 20
@@ -10193,7 +10193,7 @@
   "pace.future@mobile": {
     "counts": {
       "a": 12,
-      "g": 83,
+      "g": 76,
       "path": 34,
       "text": 24,
       "use": 12
@@ -10272,7 +10272,7 @@
   "pace.future@mobile@dark": {
     "counts": {
       "a": 12,
-      "g": 83,
+      "g": 76,
       "path": 34,
       "text": 24,
       "use": 12
@@ -10351,7 +10351,7 @@
   "pace.future@tablet": {
     "counts": {
       "a": 30,
-      "g": 113,
+      "g": 102,
       "path": 44,
       "text": 41,
       "use": 14
@@ -10477,7 +10477,7 @@
   "pace.future@tablet@dark": {
     "counts": {
       "a": 30,
-      "g": 113,
+      "g": 102,
       "path": 44,
       "text": 41,
       "use": 14
@@ -10603,7 +10603,7 @@
   "pace.fy_rollover": {
     "counts": {
       "a": 36,
-      "g": 129,
+      "g": 117,
       "path": 49,
       "text": 46,
       "use": 17
@@ -10743,7 +10743,7 @@
   "pace.fy_rollover@dark": {
     "counts": {
       "a": 36,
-      "g": 129,
+      "g": 117,
       "path": 49,
       "text": 46,
       "use": 17
@@ -10883,7 +10883,7 @@
   "pace.fy_rollover@mobile": {
     "counts": {
       "a": 12,
-      "g": 71,
+      "g": 64,
       "path": 31,
       "text": 21,
       "use": 9
@@ -10959,7 +10959,7 @@
   "pace.fy_rollover@mobile@dark": {
     "counts": {
       "a": 12,
-      "g": 71,
+      "g": 64,
       "path": 31,
       "text": 21,
       "use": 9
@@ -11035,7 +11035,7 @@
   "pace.fy_rollover@tablet": {
     "counts": {
       "a": 30,
-      "g": 101,
+      "g": 90,
       "path": 41,
       "text": 38,
       "use": 11
@@ -11158,7 +11158,7 @@
   "pace.fy_rollover@tablet@dark": {
     "counts": {
       "a": 30,
-      "g": 101,
+      "g": 90,
       "path": 41,
       "text": 38,
       "use": 11
@@ -11281,7 +11281,7 @@
   "pace.size": {
     "counts": {
       "a": 60,
-      "g": 177,
+      "g": 156,
       "path": 70,
       "text": 67,
       "use": 20
@@ -11493,7 +11493,7 @@
   "pace.size@dark": {
     "counts": {
       "a": 60,
-      "g": 177,
+      "g": 156,
       "path": 70,
       "text": 67,
       "use": 20
@@ -11705,7 +11705,7 @@
   "pace.size@mobile": {
     "counts": {
       "a": 12,
-      "g": 83,
+      "g": 76,
       "path": 34,
       "text": 24,
       "use": 12
@@ -11784,7 +11784,7 @@
   "pace.size@mobile@dark": {
     "counts": {
       "a": 12,
-      "g": 83,
+      "g": 76,
       "path": 34,
       "text": 24,
       "use": 12
@@ -11863,7 +11863,7 @@
   "pace.size@tablet": {
     "counts": {
       "a": 30,
-      "g": 113,
+      "g": 102,
       "path": 44,
       "text": 41,
       "use": 14
@@ -11989,7 +11989,7 @@
   "pace.size@tablet@dark": {
     "counts": {
       "a": 30,
-      "g": 113,
+      "g": 102,
       "path": 44,
       "text": 41,
       "use": 14
@@ -12115,7 +12115,7 @@
   "pace.small_top_n": {
     "counts": {
       "a": 18,
-      "g": 109,
+      "g": 103,
       "path": 38,
       "text": 35,
       "use": 18
@@ -12208,7 +12208,7 @@
   "pace.small_top_n@dark": {
     "counts": {
       "a": 18,
-      "g": 109,
+      "g": 103,
       "path": 38,
       "text": 35,
       "use": 18
@@ -12301,7 +12301,7 @@
   "pace.small_top_n@mobile": {
     "counts": {
       "a": 12,
-      "g": 72,
+      "g": 66,
       "path": 30,
       "text": 21,
       "use": 10
@@ -12374,7 +12374,7 @@
   "pace.small_top_n@mobile@dark": {
     "counts": {
       "a": 12,
-      "g": 72,
+      "g": 66,
       "path": 30,
       "text": 21,
       "use": 10
@@ -12447,7 +12447,7 @@
   "pace.small_top_n@tablet": {
     "counts": {
       "a": 18,
-      "g": 85,
+      "g": 79,
       "path": 32,
       "text": 29,
       "use": 12
@@ -12534,7 +12534,7 @@
   "pace.small_top_n@tablet@dark": {
     "counts": {
       "a": 18,
-      "g": 85,
+      "g": 79,
       "path": 32,
       "text": 29,
       "use": 12
@@ -14297,7 +14297,7 @@
   "usage_stacked.core_hours": {
     "counts": {
       "a": 28,
-      "g": 114,
+      "g": 90,
       "path": 56,
       "text": 22,
       "use": 17
@@ -14377,7 +14377,7 @@
   "usage_stacked.core_hours@dark": {
     "counts": {
       "a": 28,
-      "g": 114,
+      "g": 90,
       "path": 56,
       "text": 22,
       "use": 17
@@ -14457,7 +14457,7 @@
   "usage_stacked.core_hours@mobile": {
     "counts": {
       "a": 28,
-      "g": 78,
+      "g": 54,
       "path": 47,
       "text": 13,
       "use": 8
@@ -14528,7 +14528,7 @@
   "usage_stacked.core_hours@mobile@dark": {
     "counts": {
       "a": 28,
-      "g": 78,
+      "g": 54,
       "path": 47,
       "text": 13,
       "use": 8
@@ -14599,7 +14599,7 @@
   "usage_stacked.core_hours@tablet": {
     "counts": {
       "a": 28,
-      "g": 90,
+      "g": 66,
       "path": 50,
       "text": 16,
       "use": 11
@@ -14673,7 +14673,7 @@
   "usage_stacked.core_hours@tablet@dark": {
     "counts": {
       "a": 28,
-      "g": 90,
+      "g": 66,
       "path": 50,
       "text": 16,
       "use": 11
@@ -14751,7 +14751,7 @@
   "usage_timeseries.charges": {
     "counts": {
       "a": 0,
-      "g": 87,
+      "g": 79,
       "path": 33,
       "text": 19,
       "use": 17
@@ -14791,7 +14791,7 @@
   "usage_timeseries.charges@dark": {
     "counts": {
       "a": 0,
-      "g": 87,
+      "g": 79,
       "path": 33,
       "text": 19,
       "use": 17
@@ -14831,7 +14831,7 @@
   "usage_timeseries.charges@mobile": {
     "counts": {
       "a": 0,
-      "g": 51,
+      "g": 43,
       "path": 24,
       "text": 10,
       "use": 8
@@ -14862,7 +14862,7 @@
   "usage_timeseries.charges@mobile@dark": {
     "counts": {
       "a": 0,
-      "g": 51,
+      "g": 43,
       "path": 24,
       "text": 10,
       "use": 8
@@ -14893,7 +14893,7 @@
   "usage_timeseries.charges@tablet": {
     "counts": {
       "a": 0,
-      "g": 63,
+      "g": 55,
       "path": 27,
       "text": 13,
       "use": 11
@@ -14927,7 +14927,7 @@
   "usage_timeseries.charges@tablet@dark": {
     "counts": {
       "a": 0,
-      "g": 63,
+      "g": 55,
       "path": 27,
       "text": 13,
       "use": 11
@@ -14965,7 +14965,7 @@
   "usage_timeseries.linked_jobs": {
     "counts": {
       "a": 8,
-      "g": 87,
+      "g": 79,
       "path": 33,
       "text": 19,
       "use": 17
@@ -15014,7 +15014,7 @@
   "usage_timeseries.linked_jobs@dark": {
     "counts": {
       "a": 8,
-      "g": 87,
+      "g": 79,
       "path": 33,
       "text": 19,
       "use": 17
@@ -15063,7 +15063,7 @@
   "usage_timeseries.linked_jobs@mobile": {
     "counts": {
       "a": 8,
-      "g": 51,
+      "g": 43,
       "path": 24,
       "text": 10,
       "use": 8
@@ -15103,7 +15103,7 @@
   "usage_timeseries.linked_jobs@mobile@dark": {
     "counts": {
       "a": 8,
-      "g": 51,
+      "g": 43,
       "path": 24,
       "text": 10,
       "use": 8
@@ -15143,7 +15143,7 @@
   "usage_timeseries.linked_jobs@tablet": {
     "counts": {
       "a": 8,
-      "g": 63,
+      "g": 55,
       "path": 27,
       "text": 13,
       "use": 11
@@ -15186,7 +15186,7 @@
   "usage_timeseries.linked_jobs@tablet@dark": {
     "counts": {
       "a": 8,
-      "g": 63,
+      "g": 55,
       "path": 27,
       "text": 13,
       "use": 11
@@ -15233,7 +15233,7 @@
   "user_proj_area.peak_unlinked": {
     "counts": {
       "a": 0,
-      "g": 89,
+      "g": 85,
       "path": 30,
       "text": 27,
       "use": 16
@@ -15292,7 +15292,7 @@
   "user_proj_area.peak_unlinked@dark": {
     "counts": {
       "a": 0,
-      "g": 89,
+      "g": 85,
       "path": 30,
       "text": 27,
       "use": 16
@@ -15351,7 +15351,7 @@
   "user_proj_area.peak_unlinked@mobile": {
     "counts": {
       "a": 0,
-      "g": 58,
+      "g": 54,
       "path": 23,
       "text": 16,
       "use": 9
@@ -15399,7 +15399,7 @@
   "user_proj_area.peak_unlinked@mobile@dark": {
     "counts": {
       "a": 0,
-      "g": 58,
+      "g": 54,
       "path": 23,
       "text": 16,
       "use": 9
@@ -15447,7 +15447,7 @@
   "user_proj_area.peak_unlinked@tablet": {
     "counts": {
       "a": 0,
-      "g": 69,
+      "g": 65,
       "path": 25,
       "text": 22,
       "use": 11
@@ -15501,7 +15501,7 @@
   "user_proj_area.peak_unlinked@tablet@dark": {
     "counts": {
       "a": 0,
-      "g": 69,
+      "g": 65,
       "path": 25,
       "text": 22,
       "use": 11
@@ -15555,7 +15555,7 @@
   "user_proj_area.project_current": {
     "counts": {
       "a": 9,
-      "g": 89,
+      "g": 85,
       "path": 30,
       "text": 27,
       "use": 16
@@ -15624,7 +15624,7 @@
   "user_proj_area.project_current@dark": {
     "counts": {
       "a": 9,
-      "g": 89,
+      "g": 85,
       "path": 30,
       "text": 27,
       "use": 16
@@ -15693,7 +15693,7 @@
   "user_proj_area.project_current@mobile": {
     "counts": {
       "a": 6,
-      "g": 58,
+      "g": 54,
       "path": 23,
       "text": 16,
       "use": 9
@@ -15748,7 +15748,7 @@
   "user_proj_area.project_current@mobile@dark": {
     "counts": {
       "a": 6,
-      "g": 58,
+      "g": 54,
       "path": 23,
       "text": 16,
       "use": 9
@@ -15803,7 +15803,7 @@
   "user_proj_area.project_current@tablet": {
     "counts": {
       "a": 9,
-      "g": 69,
+      "g": 65,
       "path": 25,
       "text": 22,
       "use": 11
@@ -15867,7 +15867,7 @@
   "user_proj_area.project_current@tablet@dark": {
     "counts": {
       "a": 9,
-      "g": 69,
+      "g": 65,
       "path": 25,
       "text": 22,
       "use": 11

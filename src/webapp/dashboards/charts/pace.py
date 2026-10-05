@@ -292,7 +292,8 @@ class PaceChart(BaseChart):
                              for bi in range(len(ordered))]
         self.committed = band_rates_full[-1, keep_idx] * _PACE_RATE_SCALE
         other = _pace_other_color(self.theme)
-        self.colors = [self.color_map.get(k, other) for k, _ in ordered]
+        self.band_keys = [k for k, _ in ordered]
+        self.colors = [self.color_map.get(k, other) for k in self.band_keys]
 
     def is_empty(self) -> bool:
         # Explicit, not inherited: `self._bands` holds ndarrays, so any
@@ -303,8 +304,10 @@ class PaceChart(BaseChart):
     # --- drawing ----------------------------------------------------------
 
     def draw(self, ax, layout, theme):
-        ax.stackplot(self.days, self.rates_matrix, colors=self.colors,
-                     edgecolor='none', linewidth=0, antialiased=True)
+        areas = ax.stackplot(self.days, self.rates_matrix, colors=self.colors,
+                             edgecolor='none', linewidth=0, antialiased=True)
+        for area, key in zip(areas, self.band_keys):
+            self.tooltip(area, ' · '.join(self.band_cells(key)))
 
         # The axis fits the stack; an off-scale committed line is clipped and
         # labeled at today, since the gap to the area is the point.
@@ -334,13 +337,19 @@ class PaceChart(BaseChart):
             return fmt.number(value)
         return f'{fmt.number(value * _PACE_RATE_SCALE)}/yr'
 
+    def band_cells(self, key):
+        """A band's legend row (and its hover): a project, or the remainder."""
+        if key == OTHER_KEY:
+            return self.legend_cells(self.other_label, self.group_sort_totals[OTHER_KEY])
+        return self.legend_cells(key, self.rank_metric[key])
+
     def add_legend(self, ax, layout, theme):
         """One row per top-N project, linked to its modal, then the inert remainder."""
-        rows = [self.legend_cells(pc, self.rank_metric[pc]) for pc in self.top_projs]
+        rows = [self.band_cells(pc) for pc in self.top_projs]
         colors = [self.color_map[pc] for pc in self.top_projs]
         urls = [links.PROJECT_MODAL.url(pc) for pc in self.top_projs]
         if self.n_other_projs > 0:
-            rows.append(self.legend_cells(self.other_label, self.group_sort_totals[OTHER_KEY]))
+            rows.append(self.band_cells(OTHER_KEY))
             colors.append(_pace_other_color(theme))
             urls.append(None)
         if self.table_legend and self.draw_table_legend(ax, rows, colors, urls, layout, theme):
