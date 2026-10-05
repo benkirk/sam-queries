@@ -193,7 +193,27 @@ class TestAllocateDownPostRoute:
         )
         assert resp.status_code == 200
         assert 'HX-Trigger' not in resp.headers     # not a success response
-        assert 'alert-danger' in resp.get_data(as_text=True)
+        html = resp.get_data(as_text=True)
+        # Inline beside the Sub-project select, not folded into the top panel.
+        assert 'Target:' not in html
+        select = html[html.index('name="target"') - 300:html.index('name="target"')]
+        assert 'is-invalid' in select
+        assert 'invalid-feedback' in html
+
+    def test_exchange_field_error_renders_inline(self, auth_client, snapshot_carve_parent):
+        alloc, _ = snapshot_carve_parent
+        project, resource = alloc.account.project, alloc.account.resource
+        resp = auth_client.post(
+            f'/admin/htmx/exchange-allocation/{project.projcode}',
+            data={'resource_id': resource.resource_id,
+                  'from_allocation_id': '1', 'to_allocation_id': '2'},   # no amount
+        )
+        assert resp.status_code == 200
+        assert 'HX-Trigger' not in resp.headers
+        html = resp.get_data(as_text=True)
+        assert 'Amount:' not in html
+        amount = html[html.index('name="amount"') - 300:html.index('name="amount"') + 300]
+        assert 'is-invalid' in amount
 
     def test_forged_target_rejected_no_write(
             self, auth_client, session, snapshot_carve_parent):

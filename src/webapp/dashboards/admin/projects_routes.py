@@ -1318,7 +1318,7 @@ def htmx_exchange_allocation_form(project, resource_id):
     )
 
 
-class _ExchangeAllocationHandler(FlattenedFieldErrors, HtmxFormHandler):
+class _ExchangeAllocationHandler(HtmxFormHandler):
     """Validate and apply an allocation exchange within the project's subtree."""
 
     schema_cls = ExchangeAllocationForm
@@ -1476,7 +1476,7 @@ def htmx_allocate_down_form(allocation):
     )
 
 
-class _AllocateDownHandler(FlattenedFieldErrors, HtmxFormHandler):
+class _AllocateDownHandler(HtmxFormHandler):
     """Validate and apply an allocate-down (sub-allocation) of the residual."""
 
     schema_cls = AllocateResidualForm
