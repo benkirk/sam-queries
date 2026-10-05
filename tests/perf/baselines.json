@@ -215,15 +215,15 @@
     },
     "allocations_pace_route": {
         "queries": 55,
-        "notes": "measured 45 (2026-10-03) vs 38 on the +-180-day rows: +7 for the calendar's month sums, which it now shares, cache off"
+        "notes": "measured 40 (2026-10-05), including one IN query for hover titles; 45 on 2026-10-03, +7 over the +-180-day rows for the calendar's month sums, which it shares, cache off"
     },
     "allocations_sunburst_expanded_route": {
         "queries": 36,
-        "notes": "measured 28 (2026-10-03): the per-resource usage fetch, one project_panels query and the facility index, cache off"
+        "notes": "measured 28 (2026-10-05): the per-resource usage fetch, one project_panels query, one hover-titles query and the facility index, cache off"
     },
     "allocations_sunburst_expanded_used_route": {
         "queries": 22,
-        "notes": "measured 16 (2026-10-03): window charges by project (comp/dav + adjustments), project_panels and the facility index, cache off"
+        "notes": "measured 17 (2026-10-05): window charges by project (comp/dav + adjustments), project_panels, hover titles and the facility index, cache off"
     },
     "allocations_project_table_route": {
         "queries": 27,

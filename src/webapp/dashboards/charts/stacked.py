@@ -102,11 +102,11 @@ class StackedSeriesChart(BaseChart):
 
     def bar_tooltip(self, band, i, value) -> str:
         """Hover text for one bar segment: whose, when, how much."""
-        return ' · '.join(p for p in (band.label, self.x_label(i), fmt.number(value)) if p)
+        return self.hover(band.label, self.x_label(i), fmt.number(value))
 
     def band_tooltip(self, band) -> str:
         """Hover text for one area band: what its legend row says."""
-        return ' · '.join(self.legend_cells(band.label, self.band_value(band)))
+        return self.hover(*self.legend_cells(band.label, self.band_value(band)))
 
     # --- lifecycle ---------------------------------------------------------
 
@@ -401,14 +401,15 @@ class UserProjAreaChart(StackedSeriesChart):
     legend_ncol_below = 1
     table_legend = True
 
-    def __init__(self, timeseries, link_kind=None, rank_by: str = 'current'):
+    def __init__(self, timeseries, link_kind=None, rank_by: str = 'current', titles=None):
         self.timeseries = timeseries or {}
         self.link_kind = link_kind
         self.rank_by = rank_by
+        self.titles = titles
 
     @staticmethod
-    def cache_key(timeseries, link_kind=None, rank_by='current'):
-        return content_hash([content_hash(timeseries), link_kind or '', rank_by])
+    def cache_key(timeseries, link_kind=None, rank_by='current', titles=None):
+        return content_hash([content_hash(timeseries), link_kind or '', rank_by, titles or {}])
 
     @property
     def legend_drill(self):
@@ -458,16 +459,17 @@ class JobsTimeseriesChart(StackedSeriesChart):
     bar_width = 1.0
 
     def __init__(self, ts, *, metric='jobs', period='day',
-                 entity_kind='user', link_entities=True):
+                 entity_kind='user', link_entities=True, titles=None):
         self.ts = ts or {}
         self.metric = metric
         self.period = period
         self.entity_kind = entity_kind
         self.link_entities = link_entities
+        self.titles = titles
 
     @staticmethod
     def cache_key(ts, *, metric='jobs', period='day', entity_kind='user',
-                  link_entities=True):
+                  link_entities=True, titles=None):
         """Hash what the SVG depends on: band labels, the chosen metric's
         per-series values, and the legend's link treatment. The job_count
         positivity vector joins the key because it decides which bars carry
@@ -479,6 +481,7 @@ class JobsTimeseriesChart(StackedSeriesChart):
         return content_hash([
             labels, [(n, v) for n, v in series], clickable,
             str(metric), str(period), str(entity_kind), bool(link_entities),
+            titles or {},
         ])
 
     @property

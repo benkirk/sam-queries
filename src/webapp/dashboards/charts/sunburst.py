@@ -267,6 +267,14 @@ class JobsFacilitySunburst(AllocationSunburst):
     outer_label_fontsize = 6.5
     outer_label_min = 1
 
+    def __init__(self, data: List[Dict], center: str = '', titles=None):
+        super().__init__(data, center)
+        self.titles = titles
+
+    @staticmethod
+    def cache_key(data, center='', titles=None):
+        return content_hash([data, center, titles or {}])
+
     def label_ink(self, theme):
         return None
 
@@ -347,13 +355,14 @@ class PanelSunburst(PieChart):
     panel_fontsize = 8.5
     project_fontsize = 7
 
-    def __init__(self, data: List[Dict], center: str = ''):
+    def __init__(self, data: List[Dict], center: str = '', titles=None):
         self.data = data or []
         self.center_text = center
+        self.titles = titles
 
     @staticmethod
-    def cache_key(data, center=''):
-        return content_hash([data, center])
+    def cache_key(data, center='', titles=None):
+        return content_hash([data, center, titles or {}])
 
     def prepare(self):
         self.rows = [r for r in self.data if r.get('value')]

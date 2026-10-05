@@ -105,7 +105,9 @@ class CategoricalStackChart(BaseChart):
 
     def tooltip_text(self, label, value, owner=None) -> str:
         """Hover text for one bar, or for one owner's segment of it."""
-        return ' · '.join(str(p) for p in (label, owner, self.amount(value)) if p)
+        if owner is None:
+            return self.hover(label, self.amount(value))
+        return ' · '.join((label, self.hover(owner, self.amount(value))))
 
     #: True to draw one solid bar per bucket instead of a stack. A log axis
     #: forces it; a subclass may also have no owner data at all.
@@ -281,13 +283,14 @@ class JobsHistogram(CategoricalStackChart):
     empty_message = 'No jobs in this range'
     drill = links.JH_BUCKET
 
-    def __init__(self, hist, *, metric='jobs', log_y=False):
+    def __init__(self, hist, *, metric='jobs', log_y=False, titles=None):
         self.hist = hist or {}
         self.metric = metric
         self.log_y = log_y
+        self.titles = titles
 
     @staticmethod
-    def cache_key(hist, *, metric='jobs', log_y=False):
+    def cache_key(hist, *, metric='jobs', log_y=False, titles=None):
         """Hash exactly what the SVG depends on: the bucket labels, the chosen
         metric's values and owner-segment split, the dimension, null_count and
         the y-scale (not the full envelope — e.g. min_param/max_param don't
@@ -302,6 +305,7 @@ class JobsHistogram(CategoricalStackChart):
         return content_hash([
             payload, clickable, str((hist or {}).get('dimension', '')),
             int((hist or {}).get('null_count') or 0), str(metric), bool(log_y),
+            titles or {},
         ])
 
     def buckets(self):

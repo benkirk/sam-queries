@@ -669,3 +669,22 @@ def test_fragment_scope_rerooting_narrows_account(
     )
     _dim, kwargs = captured['last_jobs_histogram']
     assert kwargs['account'] == ['CHILD0001', 'CHILD0001_a']
+
+
+def test_by_project_pie_is_titled_and_by_user_is_not(app, auth_client, monkeypatch):
+    import html
+    from webapp.jobs import routes
+    asked = []
+    monkeypatch.setattr(routes, 'hover_titles',
+                        lambda codes, own=False: asked.append((sorted(codes), own)) or {
+                            'SCSG0001': 'CSG systems project'})
+    _install_mock_plugin(app, monkeypatch, jobs_usage_by_return=_PROJECT_USAGE)
+    body = html.unescape(auth_client.get(
+        '/dashboards/user/jobs/machine/derecho/by-project').get_data(as_text=True))
+    assert '<title>SCSG0001 · CSG systems project · ' in body
+    assert asked and asked[0][1] is False          # machine mode: scope decides, not membership
+
+    asked.clear()
+    _install_mock_plugin(app, monkeypatch, jobs_usage_by_return=_sample_usage())
+    auth_client.get('/dashboards/user/jobs/machine/derecho/by-user')
+    assert asked == []                             # usernames have no titles to look up

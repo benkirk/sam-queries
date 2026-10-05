@@ -112,12 +112,23 @@ def project_facilities(session: Session,
     return {code: (fid, name) for code, (fid, name, _) in project_panels(session, projcodes).items()}
 
 
-def project_titles(session: Session, projcodes: Iterable[str]) -> Dict[str, str]:
-    """``{projcode: title}`` in one query; unknown codes are absent."""
+def project_titles(session: Session, projcodes: Iterable[str],
+                   facility_names: Optional[Iterable[str]] = None) -> Dict[str, str]:
+    """``{projcode: title}`` in one query; unknown codes are absent.
+
+    ``facility_names`` keeps only projects in those facilities (a project with
+    no panel has none, so it is dropped); None applies no facility filter.
+    """
     codes = sorted({c for c in projcodes if c})
     if not codes:
         return {}
-    return dict(session.query(Project.projcode, Project.title).filter(Project.projcode.in_(codes)).all())
+    query = session.query(Project.projcode, Project.title).filter(Project.projcode.in_(codes))
+    if facility_names is not None:
+        query = query.join(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)\
+            .join(Panel, AllocationType.panel_id == Panel.panel_id)\
+            .join(Facility, Panel.facility_id == Facility.facility_id)\
+            .filter(Facility.facility_name.in_(sorted(facility_names)))
+    return {code: title for code, title in query.all() if title}
 
 
 def get_projects_by_lead(session: Session, username: str) -> List[Project]:

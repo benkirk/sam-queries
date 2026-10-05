@@ -87,7 +87,7 @@ class PieChart(BaseChart):
 
     def tooltip_text(self, label, value) -> str:
         """Hover text for one wedge: what its legend row says."""
-        return ' · '.join(self.legend_cells(label, value))
+        return self.hover(*self.legend_cells(label, value))
 
     def ring(self, ax, values, radius, width, colors, theme, linewidth):
         """One ring of wedges at ``radius``, edged in the card's surface."""
@@ -296,13 +296,15 @@ class JobsUsagePie(_CumulativePie):
     cache_maxsize = 64
     empty_message = 'No usage data available'
 
-    def __init__(self, entity_data, metric='cpu_hours', *, row_attr='data-job-user'):
+    def __init__(self, entity_data, metric='cpu_hours', *, row_attr='data-job-user',
+                 titles=None):
         self.entity_data = entity_data or {}
         self.metric = metric
         self.row_attr = row_attr
+        self.titles = titles
 
     @staticmethod
-    def cache_key(entity_data, metric='cpu_hours', *, row_attr='data-job-user'):
+    def cache_key(entity_data, metric='cpu_hours', *, row_attr='data-job-user', titles=None):
         """row_attr joins the key: identical usage vectors rendered for
         different entity kinds carry different drill anchors."""
         rows = (entity_data or {}).get('rows') or []
@@ -311,7 +313,7 @@ class JobsUsagePie(_CumulativePie):
                    for r in rows]
         return content_hash([payload,
                              jobs_metric_value(totals, metric, 'cpu_hours'),
-                             str(metric), str(row_attr)])
+                             str(metric), str(row_attr), titles or {}])
 
     @property
     def drill(self):

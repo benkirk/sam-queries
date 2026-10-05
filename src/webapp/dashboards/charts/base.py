@@ -145,6 +145,13 @@ class BaseChart:
     #: and 11 are the same picture).
     tick_fontsize = None
 
+    #: ``{projcode: title}`` for hovers, when the route may show them. A chart
+    #: stays query-free: the route looks the titles up (`utils.charts.hover_titles`)
+    #: and the chart's `cache_key` hashes them.
+    titles = None
+    #: Longest title a hover carries.
+    title_max = 80
+
     # --- lifecycle hooks (override what differs) -------------------------
 
     def prepare(self):
@@ -395,6 +402,19 @@ class BaseChart:
                 or layout.base_fontsize)
         for ax in (axes if isinstance(axes, (tuple, list)) else (axes,)):
             ax.tick_params(labelsize=size)
+
+    def titled(self, name):
+        """``name`` with its project title beside it, where one is known."""
+        title = ' '.join(((self.titles or {}).get(name) or '').split())
+        if not title:
+            return name
+        if len(title) > self.title_max:
+            title = title[:self.title_max - 1].rstrip() + '\u2026'
+        return f'{name} \u00b7 {title}'
+
+    def hover(self, name, *rest) -> str:
+        """Hover text: the name (titled when it is a project), then its figures."""
+        return ' \u00b7 '.join(str(p) for p in (self.titled(name), *rest) if p)
 
     def tooltip(self, artist, text):
         """Hover text for one mark (never a legend entry: it already says what it is)."""

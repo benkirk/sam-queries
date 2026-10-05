@@ -151,17 +151,19 @@ class PaceChart(BaseChart):
     annotation_fontsize = 8
 
     def __init__(self, allocations: List[Dict], active_at: datetime, top_n: int = 20,
-                 resource_name: str = '', sort_by: str = 'size'):
+                 resource_name: str = '', sort_by: str = 'size', titles=None):
         self.allocations = allocations or []
         self.active_at = active_at
         self.top_n = top_n
         self.resource_name = resource_name
         self.sort_by = sort_by
+        self.titles = titles
 
     @staticmethod
-    def cache_key(allocations, active_at, top_n=20, resource_name='', sort_by='size'):
+    def cache_key(allocations, active_at, top_n=20, resource_name='', sort_by='size',
+                  titles=None):
         return content_hash([pace_key_fields(allocations), active_at.isoformat(),
-                             int(top_n), resource_name, sort_by])
+                             int(top_n), resource_name, sort_by, titles or {}])
 
     # --- lifecycle --------------------------------------------------------
 
@@ -307,7 +309,7 @@ class PaceChart(BaseChart):
         areas = ax.stackplot(self.days, self.rates_matrix, colors=self.colors,
                              edgecolor='none', linewidth=0, antialiased=True)
         for area, key in zip(areas, self.band_keys):
-            self.tooltip(area, ' · '.join(self.band_cells(key)))
+            self.tooltip(area, self.hover(*self.band_cells(key)))
 
         # The axis fits the stack; an off-scale committed line is clipped and
         # labeled at today, since the gap to the area is the point.

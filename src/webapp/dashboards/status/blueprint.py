@@ -5,7 +5,7 @@ System Status dashboard blueprint.
 from flask import Blueprint, render_template, request, flash, redirect, url_for, make_response, current_app
 from flask_login import login_required, current_user
 from webapp.utils.htmx import read_layout, read_theme
-from webapp.utils.charts import draw_chart
+from webapp.utils.charts import draw_chart, hover_titles
 from webapp.utils.rbac import require_permission, Permission
 from marshmallow import ValidationError
 from sam.schemas.forms import CreateOutageForm, EditOutageForm
@@ -553,8 +553,11 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
         link_kind = 'user' if group_by == 'user' else 'project'
     else:
         link_kind = None
+    titles = (hover_titles(s['label'] for s in timeseries.get('series') or [])
+              if group_by == 'project' else None)
     chart_svg = draw_chart(
         generate_user_proj_stacked_area, timeseries, link_kind=link_kind, rank_by=rank_by,
+        titles=titles,
         layout=read_layout(), theme=read_theme(),
     )
 

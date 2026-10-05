@@ -60,7 +60,7 @@ from webapp.utils.scope import resolve_scope_project as _scope_project
 from webapp.jobs.session import is_enabled
 from webapp.utils import age_bands, ladders
 from webapp.utils.htmx import PER_PAGE_CHOICES, read_flag, read_layout, read_page, read_sort
-from webapp.utils.charts import draw_chart
+from webapp.utils.charts import draw_chart, hover_titles
 from webapp.utils.rbac import (
     Permission,
     has_permission_any_facility,
@@ -881,6 +881,19 @@ def _active_facility_slots():
     return facility_slots(fid for (fid,) in active)
 
 
+def _project_hover_titles(codes, mode, group_by='project'):
+    """Titles for a job-history chart's project hovers, or None when it names users.
+    Outside machine mode the projects are the viewer's own, or the tree they opened."""
+    if group_by != 'project':
+        return None
+    return hover_titles(codes, own=(mode != 'machine'))
+
+
+def _owner_names(bands):
+    """Every owner named in a histogram's buckets or a timeline's bands."""
+    return {name for band in bands or () for name in (band.get('owners') or {})}
+
+
 def _facility_sunburst(usage, metric, *, layout, theme):
     """The By Project pie grouped by facility, from an untruncated rollup."""
     rows = usage.get('rows') or []
@@ -888,8 +901,9 @@ def _facility_sunburst(usage, metric, *, layout, theme):
     slots = _active_facility_slots()
     linked = {r.get('value') for r in rows[:_BY_USER_LIMIT]}
     data = _facility_rings(rows, metric, facility_of, slots, linked)
+    named = (t['name'] for row in data for t in row['types'])
     return draw_chart(generate_jobs_facility_sunburst, data, _FACILITY_CENTER[metric],
-                      layout=layout, theme=theme)
+                      titles=hover_titles(named), layout=layout, theme=theme)
 
 
 #: The two usage rollups are the same panel over a different entity. Each
@@ -995,6 +1009,8 @@ def _render_usage_panel(*, entity_key, mode, machine, fragment_url,
     else:
         pie_svg = draw_chart(
             generate_jobs_usage_pie_chart, usage, metric=metric, row_attr=entity['sentinel_attr'],
+            titles=_project_hover_titles((r.get('value') for r in usage.get('rows') or []),
+                                         mode, entity_key),
             layout=layout, theme=theme)
     other = _usage_other(usage) if usage else None
     params = _roundtrip_params(machine, target_id)
@@ -1217,6 +1233,7 @@ def _render_timeline(*, mode, machine, fragment_url, target_id,
         generate_jobs_timeseries_stacked, ts, metric=metric, period=period,
         entity_kind=group_by,
         link_entities=link_entities,
+        titles=_project_hover_titles(_owner_names(bands), mode, group_by),
         layout=layout, theme=theme) if has_bands else None)
 
     params = _roundtrip_params(machine, target_id)
@@ -1321,6 +1338,8 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
     has_bands = bool((hist or {}).get('buckets'))
 
     chart_svg = (draw_chart(generate_jobs_histogram, hist, metric=metric, log_y=log_on,
+                            titles=_project_hover_titles(_owner_names(hist['buckets']),
+                                                         mode, group_by),
                             layout=layout, theme=theme)
                  if has_bands else None)
     params = _roundtrip_params(machine, target_id)
@@ -2045,7 +2064,7 @@ def _panel_by_project_expanded(ctx, fragment_url, *, mode, layout='desktop',
     return render_template(
         template, title=title, caption=caption,
         chart_svg=draw_chart(generate_panel_sunburst, data, _FACILITY_CENTER[metric],
-                             layout=layout, theme=theme))
+                             titles=hover_titles(values), layout=layout, theme=theme))
 
 
 def _panel_histogram(ctx, fragment_url, *, mode, scope_for, log_label,

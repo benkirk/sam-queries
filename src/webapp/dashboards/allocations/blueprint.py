@@ -43,7 +43,7 @@ from sam.queries.usage_cache import (
 from sam import fmt
 from sam.dates import parse_ymd, parse_ymd_or, start_of_today
 from webapp.utils.windows import read_log_window
-from webapp.utils.charts import draw_chart, no_chart_failed
+from webapp.utils.charts import draw_chart, hover_titles, no_chart_failed
 from sam.queries.projects import project_panels, project_titles
 from sam.export import Column, build_workbook
 from sam.schemas.forms import CreateChargeAdjustmentForm
@@ -760,7 +760,8 @@ def htmx_pace_chart(resource_name):
 
     chart_svg = draw_chart(
         generate_pace_chart_matplotlib, per_project_usage, active_at, resource_name=resource_name,
-        sort_by=sort_by, layout=read_layout(), theme=read_theme(),
+        sort_by=sort_by, titles=hover_titles(r.get('projcode') for r in per_project_usage),
+        layout=read_layout(), theme=read_theme(),
     )
 
     # A stable HTML id. A facility card (`card=1`) adds its facility: a page
@@ -892,7 +893,7 @@ def htmx_sunburst_expanded(resource_name):
         values = {code: v for code, v in values.items() if panels.get(code, (0, None))[1] in allowed}
     slots = facility_slots(fid for fid, _, active in _facility_index() if active)
     chart_svg = draw_chart(generate_panel_sunburst, panel_rows(values, panels, slots), center=center,
-                           layout=read_layout(), theme=read_theme())
+                           titles=hover_titles(values), layout=read_layout(), theme=read_theme())
     return render_template(
         'dashboards/fragments/chart_expanded.html', chart_svg=chart_svg,
         title=f'{resource_name}: {what} by facility, panel and project',
