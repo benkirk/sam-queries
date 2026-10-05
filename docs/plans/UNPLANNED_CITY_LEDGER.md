@@ -704,7 +704,7 @@ are deliberate visual changes; items 1 and 9 change behavior to fix a bug.
 ## 11. 2026-10-05: area sweep, `py` + `templates` (charts)
 
 **Mode:** area, from `docs/plans/CHARTS_SWEEP_HANDOFF.md` (22 items, all picked by Ben).
-**Base:** `97b8d876` (staging). **Branch:** `charts-sweep`. **PR:** not opened yet (local).
+**Base:** `97b8d876` (staging). **Branch:** `charts-sweep`. **PR:** #735 (draft).
 **Contract:** mixed, declared per commit. Fingerprints are the proof for the package, and
 `scripts/chart_sheet.py --compare` (new) is the stronger one for a refactor: all 227 sample
 renderings byte for byte, which sees the geometry, strokes, opacity and `<title>` text the
