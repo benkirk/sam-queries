@@ -12,7 +12,7 @@
     snapshot        the published index payload, or None
     configured      XRAS_OUTGOING_ENABLED + key;  write_enabled  + XRAS_WRITE_ENABLED
     has_worklist    a sweep has published the ACCOUNT worklist (see below)
-    *_values / selected_*  facet state
+    facet_values / selected  {dimension: chips} and {dimension: [str]}
     form_id, fragment_url, target_id
 
  EVERY BUTTON HERE WRITES TO PRODUCTION XRAS
@@ -298,27 +298,27 @@
                        hx-trigger="input changed delay:300ms, search"
                        hx-include="#xras-window-filters, #{{ form_id }}">
             </div>
-            {{ facet_row('Status', status_values, form_id, 'status',
-                         active=selected_statuses) }}
-            {{ facet_row('Type', action_values, form_id, 'action_type',
-                         active=selected_actions) }}
-            {{ facet_row('Opportunity', opportunity_values, form_id, 'opportunity',
-                         active=selected_opportunities) }}
-            {{ facet_row('SAM project', push_values, form_id, 'push',
-                         active=selected_push) }}
-            {{ facet_row('Readiness', readiness_values, form_id, 'readiness',
-                         active=selected_readiness) }}
+            {{ facet_row('Status', facet_values.status, form_id, 'status',
+                         active=selected.status) }}
+            {{ facet_row('Type', facet_values.action_type, form_id, 'action_type',
+                         active=selected.action_type) }}
+            {{ facet_row('Opportunity', facet_values.opportunity, form_id, 'opportunity',
+                         active=selected.opportunity) }}
+            {{ facet_row('SAM project', facet_values.push, form_id, 'push',
+                         active=selected.push) }}
+            {{ facet_row('Readiness', facet_values.readiness, form_id, 'readiness',
+                         active=selected.readiness) }}
             {# Blocker: which of the three data fixes each failing row is stuck on.
                A row counts under every category it cites, so these can sum past
                the row total. The strips above are the aggregate; this traces
                each aggregate down to its rows. #}
-            {{ facet_row('Blocker', blocker_values, form_id, 'blockers',
-                         active=selected_blockers) }}
-            {# Built in the route — Jinja has no list comprehension. Present
-               only when a request filter is active, which is how the action
-               log's "Show in action log" round-trip renders a clearable chip. #}
-            {{ facet_row('Request', request_values, form_id, 'request_number',
-                         active=selected_requests) }}
+            {{ facet_row('Blocker', facet_values.blockers, form_id, 'blockers',
+                         active=selected.blockers) }}
+            {# Present only when a request filter is active, which is how the
+               action log's "Show in action log" round-trip renders a clearable
+               chip. #}
+            {{ facet_row('Request', facet_values.request_number, form_id, 'request_number',
+                         active=selected.request_number) }}
         </div>
 
         {% if not groups %}

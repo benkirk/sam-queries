@@ -410,6 +410,10 @@ class TestPiiGating:
         assert '>misidentified<' in body
 
 
+def _counts(strip):
+    return {chip['value']: chip['count'] for chip in strip}
+
+
 class TestFacets:
 
     def test_both_classifications_render_even_at_zero(self, auth_client):
@@ -437,22 +441,42 @@ class TestFacets:
     def test_facets_are_self_excluding(self):
         """Scope a dimension by itself and every unselected value reads 0 the
         moment one is picked, which turns the chips into a dead end."""
-        from webapp.dashboards.allocations.xras._shared import _account_facets
+        from webapp.dashboards.allocations.xras._shared import ACCOUNT_FACETS
 
-        rows = [{'classification': 'absent', 'roles': ('PI',)},
-                {'classification': 'inactive', 'roles': ('User',)}]
+        rows = [{'classification': 'absent', 'roles': ('PI',), 'placeholder': True},
+                {'classification': 'inactive', 'roles': ('User',), 'placeholder': False}]
+        selected = {'remedy': ['create']}
         # Filtering on remedy must NOT collapse the remedy rollup — it is the
         # dimension being chosen. Rows without a stamped remedy derive one.
-        facets = _account_facets(rows, 'remedy', remedies=['create'])
-        assert facets == {'merge': 0, 'create': 1, 'reactivate': 1}
+        assert _counts(ACCOUNT_FACETS.strip(rows, selected, 'remedy')) == {
+            'merge': 0, 'create': 1, 'reactivate': 1}
         # But it does scope the other dimension.
-        assert _account_facets(rows, 'role', remedies=['create']) == {'PI': 1}
+        assert _counts(ACCOUNT_FACETS.strip(rows, selected, 'role')) == {'PI': 1}
 
-    def test_an_unknown_dimension_raises(self):
-        from webapp.dashboards.allocations.xras._shared import _account_facets
+    def test_every_strip_counts_the_rows_the_other_selections_keep(self):
+        """Regression: an Identity or Request selection narrowed the rows but
+        not the other strips, so their counts promised rows the table lacked."""
+        from webapp.dashboards.allocations.xras._shared import ACCOUNT_FACETS
 
-        with pytest.raises(ValueError):
-            _account_facets([], 'nonsense')
+        def row(remedy, role, placeholder, source, number):
+            return {'remedy': remedy, 'roles': (role,), 'placeholder': placeholder,
+                    'sources': (source,),
+                    'actions': [{'request_number': number}]}
+
+        rows = [row('create', 'PI', True, 'action_log', 'R1'),
+                row('create', 'User', True, 'reports', 'R2'),
+                row('reactivate', 'PI', False, 'action_log', 'R1'),
+                row('reactivate', 'User', False, 'reports', 'R1')]
+        selected = {'origin': ['known'], 'request_number': ['R1']}
+        shown = ACCOUNT_FACETS.apply(rows, selected)
+        assert shown == rows[2:]
+        strips = ACCOUNT_FACETS.strips(rows, selected)
+        assert _counts(strips['remedy']) == {'merge': 0, 'create': 0, 'reactivate': 2}
+        assert _counts(strips['role']) == {'PI': 1, 'User': 1}
+        assert _counts(strips['source']) == {'action_log': 1, 'reports': 1}
+        # Each of those two self-excludes: origin ignores itself, as does request.
+        assert _counts(strips['origin']) == {'placeholder': 1, 'known': 2, 'mergeable': 0}
+        assert _counts(strips['request_number']) == {'R1': 2}
 
     def test_origin_of_buckets_a_row(self):
         """Mergeable wins over placeholder; the rest is placeholder-vs-known."""
@@ -464,25 +488,23 @@ class TestFacets:
 
     def test_origin_carves_mergeable_out_of_placeholder(self):
         """A mergeable placeholder leaves the placeholder count for its own."""
-        from webapp.dashboards.allocations.xras._shared import (
-            _account_facets, _filter_accounts)
+        from webapp.dashboards.allocations.xras._shared import ACCOUNT_FACETS
 
         rows = [{'placeholder': True, 'remedy': 'merge', 'roles': ()},
                 {'placeholder': True, 'remedy': 'create', 'roles': ()},
                 {'placeholder': False, 'remedy': 'reactivate', 'roles': ()}]
-        assert _account_facets(rows, 'origin') == {
+        assert _counts(ACCOUNT_FACETS.strip(rows, {}, 'origin')) == {
             'placeholder': 1, 'known': 1, 'mergeable': 1}
-        merged = _filter_accounts(rows, origins=['mergeable'])
-        assert merged == [rows[0]]
+        assert ACCOUNT_FACETS.apply(rows, {'origin': ['mergeable']}) == [rows[0]]
 
     def test_filters_are_anded_across_dimensions(self):
-        from webapp.dashboards.allocations.xras._shared import _filter_accounts
+        from webapp.dashboards.allocations.xras._shared import ACCOUNT_FACETS
 
         rows = [{'classification': 'absent', 'roles': ('PI',)},
                 {'classification': 'absent', 'roles': ('User',)}]
-        assert len(_filter_accounts(rows, remedies=['create'])) == 2
-        assert len(_filter_accounts(rows, remedies=['create'],
-                                    roles=['PI'])) == 1
+        assert len(ACCOUNT_FACETS.apply(rows, {'remedy': ['create']})) == 2
+        assert len(ACCOUNT_FACETS.apply(
+            rows, {'remedy': ['create'], 'role': ['PI']})) == 1
 
     def test_a_remedy_filter_reaches_the_route(self, auth_client):
         assert auth_client.get(f'{URL}?remedy=create').status_code == 200

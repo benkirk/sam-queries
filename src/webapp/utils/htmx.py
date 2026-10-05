@@ -127,6 +127,11 @@ def read_flag(args, name, default=False):
     return default if raw is None else is_truthy(raw)
 
 
+def read_multi(args, name):
+    """Every non-empty value of a repeated param; ``[]`` when absent or blank."""
+    return [v for v in args.getlist(name) if v]
+
+
 def read_switch(args, name, default):
     """A checkbox that must default ON in a plain GET form: the template sends
     a hidden ``0`` before the box's ``1``, so the LAST value wins (``args.get``

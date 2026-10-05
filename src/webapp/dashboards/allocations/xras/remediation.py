@@ -62,6 +62,7 @@ from sam.schemas.forms import (
 )
 from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from webapp.extensions import db
+from webapp.utils.facets import Facet, FacetSet
 from webapp.utils.fk_validation import FKValidationError, validate_fk_existence
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import (htmx_modal_not_found, htmx_success_message,
@@ -161,49 +162,8 @@ def xras_remediations_fragment():
     search = (request.args.get('search') or '').strip()
     rows = _search(rows, search)
 
-    _sel = _selected_facets(request.args)
-    selected_statuses = _sel['statuses']
-    selected_opportunities = _sel['opportunities']
-    selected_push = _sel['push']
-    selected_requests = _sel['requests']
-    selected_readiness = _sel['readiness']
-    selected_actions = _sel['actions']
-    selected_blockers = _sel['blockers']
-
-    # Self-excluding facets: each dimension counts over the set filtered by the
-    # *other* dimensions, so a chip never shows a zero that its own selection
-    # caused and clicking one never empties the row it lives in.
-    status_values = _facet(rows, 'status',
-                           _apply(rows, opportunities=selected_opportunities,
-                                  push=selected_push, requests=selected_requests,
-                                  readiness=selected_readiness,
-                                  actions=selected_actions,
-                                  blockers=selected_blockers))
-    action_values = _action_facet(rows, _apply(
-        rows, statuses=selected_statuses, opportunities=selected_opportunities,
-        push=selected_push, requests=selected_requests,
-        readiness=selected_readiness, blockers=selected_blockers))
-    opportunity_values = _facet(rows, 'opportunity_name',
-                                _apply(rows, statuses=selected_statuses,
-                                       push=selected_push,
-                                       requests=selected_requests,
-                                       readiness=selected_readiness,
-                                       actions=selected_actions,
-                                       blockers=selected_blockers))
-    push_values = _push_facet(_apply(rows, statuses=selected_statuses,
-                                     opportunities=selected_opportunities,
-                                     requests=selected_requests,
-                                     readiness=selected_readiness,
-                                     actions=selected_actions,
-                                     blockers=selected_blockers))
-    readiness_values = _readiness_facet(_apply(
-        rows, statuses=selected_statuses, opportunities=selected_opportunities,
-        push=selected_push, requests=selected_requests,
-        actions=selected_actions, blockers=selected_blockers))
-    blocker_values = _blocker_facet(_apply(
-        rows, statuses=selected_statuses, opportunities=selected_opportunities,
-        push=selected_push, requests=selected_requests,
-        readiness=selected_readiness, actions=selected_actions))
+    selected = _FACETS.read(request.args)
+    facet_values = _FACETS.strips(rows, selected)
 
     # The final in-view set — identical to what the batch re-check acts on.
     rows = _filtered_rows(payload, request.args)
@@ -236,21 +196,8 @@ def xras_remediations_fragment():
         # Distinguishes "no sweep at all" from "a sweep that predates this
         # feature" — see the docstring.
         has_worklist=_has_worklist(),
-        status_values=status_values,
-        action_values=action_values,
-        opportunity_values=opportunity_values,
-        push_values=push_values,
-        readiness_values=readiness_values,
-        blocker_values=blocker_values,
-        selected_statuses=selected_statuses,
-        selected_actions=selected_actions,
-        selected_opportunities=selected_opportunities,
-        selected_push=selected_push,
-        selected_requests=selected_requests,
-        selected_readiness=selected_readiness,
-        selected_blockers=selected_blockers,
-        request_values=[{'value': n, 'label': n, 'count': 1}
-                        for n in selected_requests],
+        facet_values=facet_values,
+        selected=selected,
         form_id=_REMEDIATION_FORM_ID,
         fragment_url=url_for('allocations_dashboard.xras_remediations_fragment'),
         target_id=_REMEDIATION_TARGET,
@@ -577,17 +524,6 @@ def _stamp_blockers(rows):
     return [{**r, 'blockers': sorted(row_blockers(r))} for r in rows]
 
 
-def _selected_facets(args):
-    """The active facet selections, read from the request args once."""
-    return {'statuses': [s for s in args.getlist('status') if s],
-            'opportunities': [o for o in args.getlist('opportunity') if o],
-            'push': [p for p in args.getlist('push') if p],
-            'requests': [n for n in args.getlist('request_number') if n],
-            'readiness': [r for r in args.getlist('readiness') if r],
-            'actions': [a for a in args.getlist('action_type') if a],
-            'blockers': [b for b in args.getlist('blockers') if b]}
-
-
 def _scope_rows(rows, args):
     """Pending work by default; the date window only under ``show_all``."""
     return scope_rows(rows, args, queue=is_pending_work,
@@ -601,66 +537,13 @@ def _filtered_rows(payload, args):
     rows = _stamp_blockers(rows)
     rows = _scope_rows(rows, args)
     rows = _search(rows, (args.get('search') or '').strip())
-    return _apply(rows, **_selected_facets(args))
+    return _FACETS.apply(rows, _FACETS.read(args))
 
 
-def _apply(rows, *, statuses=(), opportunities=(), push=(), requests=(),
-           readiness=(), actions=(), blockers=()):
-    out = list(rows)
-    if statuses:
-        out = [r for r in out if r.get('status') in statuses]
-    if opportunities:
-        out = [r for r in out if r.get('opportunity_name') in opportunities]
-    if push:
-        out = [r for r in out
-               if ('pending' if r.get('pending_push') else 'pushed') in push]
-    if requests:
-        out = [r for r in out if r.get('request_number') in requests]
-    if readiness:
-        out = [r for r in out if (r.get('preflight_rollup') or 'none') in readiness]
-    if actions:
-        out = [r for r in out if r.get('latest_action_type') in actions]
-    if blockers:
-        out = [r for r in out if set(r.get('blockers') or ()) & set(blockers)]
-    return out
-
-
-def _facet(all_rows, key, scoped_rows):
-    counts = {}
-    for row in scoped_rows:
-        value = row.get(key)
-        if value:
-            counts[value] = counts.get(value, 0) + 1
-    values = {row.get(key) for row in all_rows if row.get(key)}
-    return [{'value': v, 'label': v, 'count': counts.get(v, 0)}
-            for v in sorted(values)]
-
-
-def _action_facet(all_rows, scoped_rows):
-    """Type chips, keyed on each request's single in-flight action type."""
-    counts = {}
-    for row in scoped_rows:
-        kind = row.get('latest_action_type')
-        if kind:
-            counts[kind] = counts.get(kind, 0) + 1
-    values = {row.get('latest_action_type') for row in all_rows
-              if row.get('latest_action_type')}
-    return [{'value': v, 'label': v, 'count': counts.get(v, 0)}
-            for v in sorted(values)]
-
-
-def _push_facet(scoped_rows):
-    counts = {'pending': 0, 'pushed': 0}
-    for row in scoped_rows:
-        counts['pending' if row.get('pending_push') else 'pushed'] += 1
-    return [{'value': 'pending', 'label': 'No SAM project', 'count': counts['pending']},
-            {'value': 'pushed', 'label': 'Project exists', 'count': counts['pushed']}]
-
-
-#: Readiness facet vocabulary, labels and icons, worst first. The icon matches the
-#: row badge so the chip strip doubles as the column's legend. ``none`` is a real
-#: bucket: a swept request with no pending action checked (out of window/all applied).
-_READINESS_LABELS = (
+#: Readiness chips, worst first; the icon matches the row badge so the strip is
+#: the column's legend. ``none`` is a real bucket: a swept request with no
+#: pending action checked (out of window, or all applied).
+_READINESS = (
     ('failed', 'Would fail', 'fa-triangle-exclamation text-danger-emphasis'),
     ('manual', 'Would park', 'fa-circle-pause text-warning-emphasis'),
     ('incomplete', 'Incomplete', 'fa-circle-question text-secondary-emphasis'),
@@ -673,26 +556,24 @@ _BLOCKER_ICONS = {'mnemonic': 'fa-link-slash text-danger-emphasis',
                   'contract': 'fa-file-contract text-danger-emphasis',
                   'account': 'fa-user text-danger-emphasis'}
 
-
-def _readiness_facet(scoped_rows):
-    counts = {}
-    for row in scoped_rows:
-        key = row.get('preflight_rollup') or 'none'
-        counts[key] = counts.get(key, 0) + 1
-    return [{'value': v, 'label': label, 'icon': icon, 'count': counts.get(v, 0)}
-            for v, label, icon in _READINESS_LABELS if counts.get(v, 0)]
-
-
-def _blocker_facet(scoped_rows):
-    """Blocker chips: a row counts under every category it is stuck on (a request
-    can cite more than one), so these sum past the row total by design."""
-    counts = {}
-    for row in scoped_rows:
-        for kind in row.get('blockers') or ():
-            counts[kind] = counts.get(kind, 0) + 1
-    return [{'value': v, 'label': label, 'icon': _BLOCKER_ICONS.get(v),
-             'count': counts.get(v, 0)}
-            for v, label in BLOCKER_LABELS if counts.get(v, 0)]
+#: The card's chips. A row counts under every blocker it is stuck on, so that
+#: strip sums past the row total by design. ``request_number`` draws only its
+#: selected values (``limit=0``): one chip per swept request would be a wall.
+_FACETS = FacetSet(
+    Facet('status'),
+    Facet('action_type', key='latest_action_type'),
+    Facet('opportunity', key='opportunity_name'),
+    Facet('push', key=lambda r: 'pending' if r.get('pending_push') else 'pushed',
+          order=('pending', 'pushed'),
+          labels={'pending': 'No SAM project', 'pushed': 'Project exists'}),
+    Facet('readiness', key=lambda r: r.get('preflight_rollup') or 'none',
+          order=[v for v, _, _ in _READINESS], hide_zero=True,
+          labels={v: label for v, label, _ in _READINESS},
+          icons={v: icon for v, _, icon in _READINESS}),
+    Facet('blockers', order=[v for v, _ in BLOCKER_LABELS], hide_zero=True,
+          labels=dict(BLOCKER_LABELS), icons=_BLOCKER_ICONS),
+    Facet('request_number', hide_zero=True, limit=0),
+)
 
 
 #: Sortable non-facet columns -> row sort key. The facet columns (status / type /

@@ -61,13 +61,10 @@
     enrichment      {'looked_up','found','reconciled','unavailable','budget_exhausted','error'}
     window          {'days','since','until','start_date','end_date','custom'}
     window_pill_choices  ((days, label), ...)
-    remedy_values          [{'value','label','count'}]  self-excluding
-    role_values            [{'value','count'}]          self-excluding
-    origin_values          [{'value','label','count'}]  self-excluding
-    source_values          [{'value','label','count'}]  self-excluding
+    facet_values           {dimension: [{'value','label','count'}]}  self-excluding
+    selected               {dimension: [str]} over remedy, role, origin, source, request_number
     feed_checked, feed_reason, feed_generated_at, feed_window_days  Feed-B state
     pending_hidden         int — Feed-B rows outside the date filter
-    selected_remedies, selected_roles, selected_origins, selected_sources  [str]
     form_id, fragment_url, target_id
 
  ONE ROW PER USERNAME, NOT PER ACTION
@@ -160,25 +157,25 @@
 
     <div class="card-body border-bottom py-2">
         <div class="facet-grid">
-            {{ facet_row('Needs', remedy_values, form_id,
-                         'remedy', active=selected_remedies) }}
-            {{ facet_row('Role', role_values, form_id, 'role',
-                         active=selected_roles) }}
+            {{ facet_row('Needs', facet_values.remedy, form_id,
+                         'remedy', active=selected.remedy) }}
+            {{ facet_row('Role', facet_values.role, form_id, 'role',
+                         active=selected.role) }}
             {# Separates the two populations that share this card: an ARC
                placeholder never had a site account, a known identity had one
                that lapsed. Different work, different people. Deliberately NOT
                defaulted — on this card no selection means no filter. #}
-            {{ facet_row('Identity', origin_values, form_id, 'origin',
-                         active=selected_origins) }}
+            {{ facet_row('Identity', facet_values.origin, form_id, 'origin',
+                         active=selected.origin) }}
             {# Which feed put the row here: a received push (already blocked) or
                the pending-request lookahead. A both-feeds row counts in both. #}
-            {{ facet_row('Source', source_values, form_id, 'source',
-                         active=selected_sources) }}
+            {{ facet_row('Source', facet_values.source, form_id, 'source',
+                         active=selected.source) }}
             {# The operator working one project's activation filters to it
                here; the same value is a column below so it is visible before
                it is selectable. #}
-            {{ facet_row('Request', request_values, form_id, 'request_number',
-                         active=selected_requests) }}
+            {{ facet_row('Request', facet_values.request_number, form_id, 'request_number',
+                         active=selected.request_number) }}
         </div>
         {# The invariant, said once
            Every other worklist in SAM ends in a button that does the thing.
@@ -654,7 +651,7 @@
        degraded-half note above still renders beside this. #}
     <div class="card-body text-center text-muted py-4">
         No users are waiting on an account
-        {%- if selected_remedies or selected_roles or selected_origins or selected_sources or selected_requests %} for these filters{% endif %}.
+        {%- if selected.values() | select | list %} for these filters{% endif %}.
     </div>
     {% endif %}
 </div>

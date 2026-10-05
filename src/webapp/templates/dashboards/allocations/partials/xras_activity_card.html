@@ -20,10 +20,8 @@
     may_manage      bool
     window          {'days','since','until','start_date','end_date','custom'}
     window_pill_choices  ((days, label), ...)
-    tag_values      [{'value','label','count'}]  self-excluding
-    type_values     [{'value','count'}]          self-excluding
-    selected_tags   [str]
-    selected_types  [str]
+    facet_values    {'tag', 'activity_type'} -> [{'value','label','count'}]  self-excluding
+    selected        {'tag', 'activity_type'} -> [str]
     form_id, fragment_url, target_id
 
  ONE ROW PER ACTION, NOT PER PROJECT
@@ -108,10 +106,10 @@
                                  title='Needs attention vs. everything', placement='right') }}
                 </div>
             </div>
-            {{ facet_row('State', tag_values, form_id, 'tag',
-                         active=selected_tags) }}
-            {{ facet_row('Action', type_values, form_id, 'activity_type',
-                         active=selected_types) }}
+            {{ facet_row('State', facet_values.tag, form_id, 'tag',
+                         active=selected.tag) }}
+            {{ facet_row('Action', facet_values.activity_type, form_id, 'activity_type',
+                         active=selected.activity_type) }}
         </div>
     </div>
 

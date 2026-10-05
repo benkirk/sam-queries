@@ -998,8 +998,7 @@ class TestActivityRowExpansion:
                 window={'days': 30, 'since': None, 'until': None,
                         'start_date': '', 'end_date': '', 'custom': False},
                 window_pill_choices=((7, '7D'), (30, '30D')),
-                tag_values=[], type_values=[],
-                selected_tags=[], selected_types=[],
+                facet_values={}, selected={},
                 form_id='xras-activity-filters',
                 fragment_url='/allocations/xras_pending_fragment',
                 target_id='alloc-xras-pending', **counts)
@@ -1136,8 +1135,7 @@ class TestActivityRowExpansion:
                 window={'days': 30, 'since': None, 'until': None,
                         'start_date': '', 'end_date': '', 'custom': False},
                 window_pill_choices=((7, '7D'), (30, '30D')),
-                tag_values=[], type_values=[],
-                selected_tags=[], selected_types=[],
+                facet_values={}, selected={},
                 form_id='xras-activity-filters',
                 fragment_url='/allocations/xras_pending_fragment',
                 target_id='alloc-xras-pending')
