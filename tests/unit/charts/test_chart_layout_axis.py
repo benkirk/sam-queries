@@ -10,7 +10,7 @@ it. These are the claims that must survive any future retuning:
 - and the axis reaches the leaves, i.e. no chart quietly ignores it.
 
 The last one is the reason this file exists. PR 1 shipped six `Layout` fields
-of which two were read by nothing and three by one or two charts of fifteen,
+of which two were read by nothing and three by one or two charts,
 and every test still passed — because "renders without raising" is all a
 smoke test can see.
 """

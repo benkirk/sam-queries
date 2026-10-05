@@ -3,7 +3,7 @@
 `nodetype_history` and `queue_history` are the only charts in the app using
 `subplots(2, 1, sharex=True)`. They share a skeleton — empty guard, UTC->local
 timestamp conversion, an upper panel, a conditional lower panel, a framed
-legend on each, `autofmt_xdate` — and differ only in what they plot.
+legend on each, the shared date axis — and differ only in what they plot.
 
 Chosen as the pilot for the class hierarchy: no drill links, no custom cache
 key, two charts, and the smallest blast radius of any family.
@@ -71,7 +71,7 @@ class DualPanelTimeSeriesChart(BaseChart):
 
         **Above, not below** — and this family is the reason the direction is
         not simply "below" everywhere. Two stacked Axes share one x axis, so
-        the lower panel's underside is where the rotated date labels and the
+        the lower panel's underside is where the date labels and the
         "Time (MDT)" label live; a legend placed there lands on top of them
         (measured, at three different anchors — moving the anchor down moves
         the label down with it, because the tight bbox grows to fit both).

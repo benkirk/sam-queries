@@ -1,25 +1,14 @@
 """Allocation pace chart.
 
-Stacked-area chart where each allocation is one band, split at ``active_at``.
-Left: its actual monthly charge rate. Right: its projected rate, the project's
-last-90-day pace, until its balance runs out or it ends. A dashed line over the
-stack is the **committed** rate: every balance over its days left, what the
-allocations promise to deliver, and more than will be used. The rates arrive
-precomputed per row (``allocations/burn.py`` ``pace_segments``).
-Top-N projcodes get distinct colors; the rest share a muted "Other" color.
+A stacked area, one band per allocation, split at ``active_at``: left, its actual
+monthly charge rate; right, its projected rate (the project's last-90-day pace)
+until its balance runs out or it ends. The dashed line is the **committed** rate:
+every balance over its days left. Rates arrive precomputed (``allocations/burn.py``
+``pace_segments``). The top N projects get a color; the rest fold into one band.
 
-**A direct `BaseChart` subclass with no family, deliberately.** Roughly 60% of
-this file is bespoke — the daily-grid band builder, the run-length compression,
-the committed line, the today marker, and the only `MonthLocator` in the app — and
-it is the most numerically fragile code in the chart layer. It takes `to_svg`,
-`empty_state` and the render axes from the base and nothing else. Forcing it
-into `StackedSeriesChart` would mean growing that family hooks only one chart
-uses; if this class starts pulling the base in that direction, let it override
-`render()` outright instead.
-
-Note it does NOT use `series.assign_colors`: it builds `color_map` directly
-from the ranked top-N, and its "Other" is an RGBA with baked alpha rather than
-a palette entry.
+A direct `BaseChart` subclass on purpose: the daily-grid band builder, the
+run-length compression and the committed line are bespoke and numerically fragile,
+and forcing them into `StackedSeriesChart` would grow hooks only this chart uses.
 """
 
 from datetime import datetime, timedelta
@@ -368,8 +357,6 @@ class PaceChart(BaseChart):
         self.apply_grid(ax, theme)
 
     def finish(self, fig, axes, layout, theme):
-        # Was a `MonthLocator` with `%b %Y` on every tick — twelve labels
-        # repeating the same year across a default 360-day window. The shared
-        # date axis still lands on month boundaries and still says the year,
+        # The shared date axis lands on month boundaries and says the year
         # once, where it changes.
         self.apply_date_axis(axes, layout)

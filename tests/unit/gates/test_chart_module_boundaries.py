@@ -71,8 +71,8 @@ def test_expected_package_layout():
 
 
 def test_no_module_exceeds_the_readable_size():
-    """The refactor's stated goal was breaking up a file that no longer fit in
-    anyone's head. 2,011 lines became twelve modules; none should drift back."""
+    """The package exists because one 2,011-line file no longer fit in anyone's
+    head. No module should grow back toward that."""
     oversized = {p.name: len(p.read_text().splitlines())
                  for p in PKG.glob('*.py')
                  if len(p.read_text().splitlines()) > 550}

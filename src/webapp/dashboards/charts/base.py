@@ -18,15 +18,14 @@ enforced by test.
         add_legend(axes, ...)
         finish(fig, axes, ...)
         apply_chrome(...)    theme colors onto every chrome artist
-        to_svg(fig)          the single savefig/close chokepoint
+        fig_to_svg(fig)      the single savefig/close chokepoint; writes the hover titles
 
 Hooks default to no-ops, so a leaf implements only what differs. State goes on
 `self` rather than a threaded model object, matching the handler idiom.
 
-WARNING: `BaseChart` must NOT swallow exceptions. Callers own that and do it
-inconsistently -- `disk_scans/routes.py` wraps its call while `jobs/routes.py`
-does not -- so catching here would silently turn the disk-scans error card into
-a blank one.
+WARNING: `BaseChart` must NOT swallow exceptions. Every route calls a chart
+through `webapp.utils.charts.draw_chart`, which logs the failure and returns the
+shared error state; catching here would hide the failure from it and from the log.
 """
 
 import functools
@@ -185,7 +184,7 @@ class BaseChart:
         """Placement comes from `layout`, colors from `theme`."""
 
     def finish(self, fig, axes, layout, theme):
-        """Anything needing the figure — autofmt_xdate, xlim, annotations."""
+        """Anything needing the figure: the date axis, xlim, annotations."""
 
     # --- shared helpers ---------------------------------------------------
 
@@ -352,8 +351,7 @@ class BaseChart:
 
         Applied centrally, after `finish()`, rather than left to each family,
         for the reason `apply_tick_fontsize` gives: a chart that forgets is
-        invisible until someone looks at it in the other theme, and there are
-        sixteen of them.
+        invisible until someone looks at it in the other theme.
 
         **What it deliberately does not touch: `ax.texts`.** Those are the
         artists a chart placed itself, and every one of them already carries a
@@ -480,7 +478,7 @@ def chart_view(cls):
     to everyone; with Redis the cache is shared across workers *and* pods, so
     the aliasing would be global.
 
-    Rather than trust eleven hand-written key functions to each remember, the
+    Rather than trust every hand-written key function to remember, the
     two render axes are composed into the key here, once, where getting it
     wrong is not expressible.
     """

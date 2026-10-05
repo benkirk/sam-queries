@@ -82,7 +82,7 @@ from webapp.dashboards.charts.theme import (  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
-# The 16 cached charts.
+# The cached charts, one `chart_view` binding each.
 #
 # ORDER IS LOAD-BEARING: `chart_cached` appends to the cache registry at
 # decoration time, so this is the order rows appear on the admin Caching card.

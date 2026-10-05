@@ -111,7 +111,7 @@ class TestJavaScriptContract:
 
 
 def test_links_module_imports_no_matplotlib():
-    """`links.py` and `series.py` are the two modules a different rendering
+    """`links.py`, `series.py` and `jobs_metrics.py` are what a different rendering
     backend could reuse. Keeping them matplotlib-free is what makes that seam
     real rather than aspirational — enforced by AST scan rather than by
     convention, because an accidental import would never fail anything.

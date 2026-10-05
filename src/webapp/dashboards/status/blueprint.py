@@ -561,10 +561,8 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
         layout=read_layout(), theme=read_theme(),
     )
 
-    # Two of these cards render on the landing page (one per system
-    # tab), so the chart wrapper div needs a scope-unique id —
-    # otherwise the second card's selector-button hx-target=#... lookup
-    # finds the first card's div and swaps the wrong one.
+    # A scope-unique id: the pills target it, and view persistence keys the
+    # saved selection on it, so a queue's choice is not the system's.
     if queue_name is not None:
         chart_dom_id = f'upq-chart-{system}-{queue_name}'
     else:

@@ -4,13 +4,13 @@ Two channels, because charts reach the browser two different ways and neither
 one covers both:
 
 - **query string**, injected into every htmx request by
-  ``static/js/layout-axis.js``. Covers the 9 fragment call sites, and covers
+  ``static/js/layout-axis.js``. Covers the fragment call sites, and covers
   them on the very first paint because ``hx-trigger="load"`` fires after the
   listener registers.
-- **cookie**, written by the same file from ``matchMedia``. Covers the 9
-  call sites that render inside a full-page GET — the three status history
-  pages and the four pies on ``/allocations/projects`` — where no htmx
-  request exists to inject into.
+- **cookie**, written by the same file from ``matchMedia``. Covers the call
+  sites that render inside a full-page GET — the three status history pages
+  and the sunbursts on ``/allocations/projects`` — where no htmx request
+  exists to inject into.
 
 The cookie cannot cover the first page of a session (it is set at end of body,
 after the server already chose), and the query string cannot reach a full-page
@@ -217,7 +217,7 @@ def test_the_registrar_resolves_both_axes():
 # --------------------------------------------------------------------------
 
 class TestCacheKeyPartitionsByLayout:
-    """``/allocations/projects`` renders four pies inline and is
+    """``/allocations/projects`` renders its sunbursts inline and is
     ``@cache.cached``. Its layout arrives on the cookie, which is *not* in the
     query string — so without this, the first visitor to warm the page would
     decide whether every later visitor got phone-sized or desktop-sized pies.

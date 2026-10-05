@@ -882,7 +882,7 @@ served to everyone:
 - **`layout`** — mobile ≤767.98px / tablet 768–1199.98px / desktop ≥1200px.
   Desktop is the identity. Tablet is desktop with a smaller figure; mobile is a
   redesign. Declared per family via `LAYOUTS = profile(...)`. Transported by
-  **both** a `sam_layout` cookie and an htmx `?layout=` param, because 9 of 18
+  **both** a `sam_layout` cookie and an htmx `?layout=` param, because 5 of 21
   call sites render in a full-page GET.
 - **`theme`** — light / dark. Cookie only: a viewport is discovered, a theme is
   declared. Colors are baked into SVG bytes, which is why this needs a
@@ -901,10 +901,10 @@ and all the measurements: `docs/plans/implemented/CHART_ARCHITECTURE.md`,
 
 ### Gotchas
 
-❌ **DON'T** let `BaseChart` swallow exceptions — callers own that, and
-   inconsistently (`disk_scans/routes.py` wraps its call, `jobs/routes.py`
-   does not).
-❌ **DON'T** rely on a base `is_empty` default: several charts hold ndarrays,
+❌ **DON'T** call a chart from a route directly, or let `BaseChart` swallow
+   exceptions — `draw_chart` (`webapp/utils/charts.py`) is the one caller: it
+   logs a failure and returns the shared error state.
+❌ **DON'T** rely on a base `is_empty` default: the pace chart holds ndarrays,
    where `not self.data` raises *"truth value of an array is ambiguous"*.
    Define it per family.
 ❌ **DON'T** import matplotlib into `links.py` / `series.py` /
@@ -916,7 +916,7 @@ and all the measurements: `docs/plans/implemented/CHART_ARCHITECTURE.md`,
    against `Layout`'s fields.
 ❌ **DON'T** accept a `layout` argument in a fragment renderer and then call a
    delegate without it — the fragment still renders, at desktop, forever.
-   `test_renderers_forward_the_layout_they_are_given` is the gate.
+   `test_renderers_forward_the_axis_they_are_given` is the gate.
 ❌ **DON'T** cap a legend without passing `ordered=True` to `link_legend` — it
    zips bands against patches by position, and a capped legend is no longer
    `reversed(bands)`. The fingerprint proves href *strings*, not the artists
@@ -933,10 +933,10 @@ and all the measurements: `docs/plans/implemented/CHART_ARCHITECTURE.md`,
    visible change — keys hash *input data*, not rendering code, so warm Redis
    entries serve old-code SVGs for up to 600 s.
 
-Design + rationale: `docs/plans/implemented/CHART_ARCHITECTURE.md` (the hierarchy),
-`docs/plans/implemented/DARK_MODE.md` (the theme axis),
-`docs/plans/implemented/MOBILE_CHARTS.md` + `docs/plans/implemented/TABLET_CHARTS.md` (the layout
-axis).
+**Around a chart.** A host is built from `fragments/chart_bits.html` (`chart_figure`,
+`chart_pills`, `chart_loading`; gate `test_chart_frame.py`) and sized by `charts.css`.
+Every mark has a hover title; one naming a project carries its title only for
+viewers `hover_titles` admits. A folded remainder reads `N other` (`series.py`).
 
 ---
 

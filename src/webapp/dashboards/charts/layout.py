@@ -72,7 +72,7 @@ class Layout:
     #: Axis-label size, or None for "whatever the chart declares".
     #:
     #: Same None-means-defer rule as `legend_fontsize`, and it exists for the
-    #: same reason: `UserProjectAreaChart` labels at 13pt where everything
+    #: same reason: `UserProjAreaChart` labels at 13pt where everything
     #: else leaves it to rcParams, and desktop must reproduce both.
     axis_label_fontsize: int | None = None
 
