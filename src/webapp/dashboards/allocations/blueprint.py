@@ -379,6 +379,7 @@ def get_resource_types(session) -> Dict[str, str]:
 _STORAGE_RESOURCE_TYPES = ('DISK', 'ARCHIVE')
 #: Resource types whose charges accrue over time, so a month's burn means something.
 _BURN_RESOURCE_TYPES = ('HPC', 'DAV')
+_DEFAULT_RESOURCE_TAB = 'derecho'   # the page opens on the flagship HPC resource
 
 
 def _resource_type(resource_name):
@@ -591,9 +592,10 @@ def projects():
 
     # Shareable resource tab: ?tab=<slug> selects the active #resourceTabs pane.
     # read_tab lowercases, so the slug set and template comparison use the
-    # lowercased "name with spaces -> underscores" form. Default = first sorted.
+    # lowercased "name with spaces -> underscores" form. Default = Derecho, else first sorted.
     tab_slugs = {name.replace(' ', '_').lower() for name in grouped_data}
-    default_tab = (sorted(grouped_data, key=str.lower)[0].replace(' ', '_').lower()
+    default_tab = (_DEFAULT_RESOURCE_TAB if _DEFAULT_RESOURCE_TAB in tab_slugs
+                   else sorted(grouped_data, key=str.lower)[0].replace(' ', '_').lower()
                    if grouped_data else '')
     active_tab = read_tab('tab', tab_slugs, default_tab)
 

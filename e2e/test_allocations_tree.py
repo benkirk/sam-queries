@@ -14,6 +14,7 @@ ROW_BUDGET_PX = 48
 
 _PANES = """() => [...document.querySelectorAll('#resourceTabsContent > .tab-pane')].map(p => ({
     id: p.id,
+    active: p.classList.contains('active'),
     facilities: [...p.querySelectorAll('tbody[data-alloc-facility]')].map(b => b.dataset.allocFacility),
 }))"""
 
@@ -94,9 +95,11 @@ def test_tree_rows_stay_dense(page):
 
 def test_calendar_view_persists_and_loads_bars(page):
     panes = _fresh(page)
-    pane = next((p for p in panes if p['facilities']), None)
+    # The landing pane: switching tabs carries the view across (mirrorResourcePane), so only
+    # the pane a reload opens on can show its own saved view.
+    pane = next((p for p in panes if p['facilities'] and p['active']), None)
     if pane is None:
-        pytest.skip('no allocations in this dataset')
+        pytest.skip('no allocations on the landing tab in this dataset')
     _show_tab(page, pane['id'])
     page.click(f'#{pane["id"]} .alloc-view-pills [data-alloc-view="calendar"]')
     # The calendar loads on intersect: bring its pane into view first.
