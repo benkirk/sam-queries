@@ -196,11 +196,6 @@ class DistributionHistogram(CategoricalStackChart):
              bool(log_y), str(metric)]
         )
 
-    # The empty guard here is on bucket_labels, not on totals — a scope with
-    # buckets but no data still renders an (empty) axis today.
-    def is_empty(self) -> bool:
-        return not self.hist.get('bucket_labels')
-
     def buckets(self):
         return list(self.hist.get('bucket_labels') or [])
 

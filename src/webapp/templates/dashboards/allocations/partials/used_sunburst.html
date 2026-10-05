@@ -25,9 +25,5 @@
         </div>
     </div>
     {{ chart_svg | safe }}
-    <p class="text-muted small text-center mb-0">
-        {% if days == 365 %}Charges in the year to {{ active_at | fmt_date }},
-        {%- else %}Charges in the {{ days }} days to {{ active_at | fmt_date }}, at an annual rate,
-        {%- endif %} across allocation renewals.
-    </p>
+    <p class="text-muted small text-center mb-0">{{ caption }}</p>
 </div>

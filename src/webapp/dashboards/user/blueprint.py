@@ -813,6 +813,8 @@ _USAGE_CHART_DATA_KEY = {
 }
 
 _VALID_DISK_USAGE_CHART_METRIC = {'bytes', 'files'}
+#: Users named in the disk Usage Over Time chart; the card header says the same number.
+_DISK_CHART_TOP_N = 15
 
 # Which pane of the usage card is open. Server-side input rather than
 # something the client restores after load: only the active pane's chart
@@ -1055,7 +1057,7 @@ def resource_details_disk_usage_chart(project):
             account_ids=scope_account_ids,
             start_date=chart_start,
             end_date=chart_end,
-            top_n=15,
+            top_n=_DISK_CHART_TOP_N,
             metric=metric,
         )
     else:
@@ -1065,7 +1067,7 @@ def resource_details_disk_usage_chart(project):
             directory_name=fileset,
             start_date=chart_start,
             end_date=chart_end,
-            top_n=15,
+            top_n=_DISK_CHART_TOP_N,
             metric=metric,
         )
 
@@ -1290,6 +1292,7 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
             'activity_date':  activity_date,
         },
         user_rows=user_rows,
+        disk_chart_top_n=_DISK_CHART_TOP_N,
     )
 
 

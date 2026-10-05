@@ -797,6 +797,13 @@ def htmx_pace_chart(resource_name):
 _USED_WINDOW_DAYS = (30, 90, 180, 365)
 
 
+def _used_window_caption(days, active_at) -> str:
+    """What the Used ring and its expanded view measure. A year needs no scaling."""
+    span = 'year' if days == 365 else f'{days} days'
+    rate = '' if days == 365 else ', at an annual rate'
+    return f'Charges in the {span} to {fmt.date_str(active_at)}{rate}, across allocation renewals.'
+
+
 @bp.route('/htmx/used-sunburst/<resource_name>')
 @login_required
 @require_permission_any_facility(Permission.VIEW_PROJECTS)
@@ -823,7 +830,7 @@ def htmx_used_sunburst(resource_name):
     return render_template(
         'dashboards/allocations/partials/used_sunburst.html',
         resource_name=resource_name, chart_svg=chart_svg, days=days,
-        window_days=_USED_WINDOW_DAYS, active_at=active_at,
+        window_days=_USED_WINDOW_DAYS, caption=_used_window_caption(days, active_at),
         chart_dom_id='used-sunburst-' + resource_name.replace(' ', '_'),
         selector_kwargs=selector_kwargs,
     )
@@ -862,8 +869,7 @@ def htmx_sunburst_expanded(resource_name):
                     url_for('allocations_dashboard.htmx_sunburst_expanded', resource_name=resource_name,
                             measure='used', days=d, **selector_kwargs), d == days)
                    for d in _USED_WINDOW_DAYS]
-        caption = (f'Charges in the {"year" if days == 365 else f"{days} days"} to '
-                   f'{fmt.date_str(active_at)}, at an annual rate.')
+        caption = _used_window_caption(days, active_at)
     else:
         rows = cached_allocation_usage(
             session=db.session, resource_name=[resource_name], facility_name=None,

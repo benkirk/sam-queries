@@ -100,7 +100,8 @@ class NodetypeHistoryChart(DualPanelTimeSeriesChart):
     #: One entry per node type; can be O(10s) across all machines. Raised
     #: 64 -> 96 for the second layout profile, 96 -> 144 for the third.
     cache_maxsize = 144
-    empty_message = 'No history data available for this node type'
+    #: Also drawn for a system partition, so it names neither.
+    empty_message = 'No history data available for this period'
     #: Two stacked panels need real vertical room on a phone — this is the
     #: tallest mobile figure in the package, and still barely enough.
     #: Tablet: this is the chart the tablet band exists for. The status pages

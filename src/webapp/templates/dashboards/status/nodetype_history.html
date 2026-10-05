@@ -1,7 +1,9 @@
 {% extends 'dashboards/base.html' %}
 {% from 'dashboards/fragments/page_header.html' import page_header %}
 
-{% block title %}Node Type History - {{ node_type }} - SAM{% endblock %}
+{# One page for a node type and for a system partition (`is_partition`, where
+   `node_type` is already "CPU Partition"). #}
+{% block title %}{{ node_type if is_partition else 'Node Type' }} History - {{ system|upper if is_partition else node_type }} - SAM{% endblock %}
 
 {% block breadcrumbs %}
 {% from 'dashboards/fragments/breadcrumbs.html' import breadcrumbs %}
@@ -18,9 +20,10 @@
 
 {% block content %}
 {% set header_desc %}
-    System: <strong>{{ system|upper }}</strong> | Node Type: <strong>{{ node_type }}</strong>
+    System: <strong>{{ system|upper }}</strong> |
+    {{ 'Partition' if is_partition else 'Node Type' }}: <strong>{{ partition|upper if is_partition else node_type }}</strong>
 {% endset %}
-{{ page_header('Node Type History', icon='chart-line', description=header_desc) }}
+{{ page_header('Partition History' if is_partition else 'Node Type History', icon='chart-line', description=header_desc) }}
 
 {% from 'dashboards/fragments/time_range_picker.html' import time_range_picker %}
 {{ time_range_picker(

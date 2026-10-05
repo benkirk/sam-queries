@@ -256,6 +256,12 @@ class TestStatusDashboard:
         assert b'Node Type History' in response.data
         assert b'cpu' in response.data
 
+    def test_partition_history_names_the_partition_not_a_node_type(self, client, status_session):
+        """It shares the node-type page and chart; neither may call it a node type."""
+        body = client.get('/status/partition-history/derecho/cpu').get_data(as_text=True)
+        assert 'Partition History' in body and 'Partition: <strong>CPU</strong>' in body
+        assert 'Node Type' not in body and 'node type' not in body
+
     def test_queue_history(self, auth_client, status_session):
         """Test GET /status/queue-history/derecho/main returns 200."""
         seed_data(status_session)

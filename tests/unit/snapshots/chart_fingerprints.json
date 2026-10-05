@@ -9407,7 +9407,7 @@
     ]
   },
   "nodetype.empty": {
-    "html": "<div class=\"text-center text-muted\">No history data available for this node type</div>",
+    "html": "<div class=\"text-center text-muted\">No history data available for this period</div>",
     "kind": "placeholder"
   },
   "nodetype.normal": {
