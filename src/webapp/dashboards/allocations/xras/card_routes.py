@@ -54,9 +54,9 @@ from ._shared import (
     _ACTIVITY_WINDOW_PILLS, _XRAS_ACTIVITY_FORM_ID,
     _XRAS_ACTIVITY_TARGET, _XRAS_FORM_ID, _XRAS_FRAGMENT_TARGET,
     _parse_activity_window, _parse_xras_filters,
-    _submitted_since, sort_rows,
+    _submitted_since,
 )
-from webapp.utils.htmx import read_flag, read_sort, read_tab
+from webapp.utils.htmx import read_flag, read_sort, read_tab, sort_rows
 
 
 #: Pending Users' sortable non-facet columns -> row key. Needs / Role / Source /

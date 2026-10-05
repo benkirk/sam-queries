@@ -65,7 +65,8 @@ from webapp.extensions import db
 from webapp.utils.fk_validation import FKValidationError, validate_fk_existence
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import (htmx_modal_not_found, htmx_success_message,
-                               read_flag, read_sort, register_typeahead)
+                               read_flag, read_sort, register_typeahead,
+                               sort_rows)
 from webapp.utils.rbac import Permission, require_permission
 
 from .. import bp
@@ -73,7 +74,7 @@ from ._shared import (
     REMEDIATION_FACETS, _XRAS_MODAL_TRIGGERS, _degraded, _entry, _impersonation,
     _index,
     _live_family, _live_request, _parse_activity_window, _read_client,
-    _role_options, _session_factory, scope_rows, sort_rows,
+    _role_options, _session_factory, scope_rows,
 )
 from .modals import _READINESS_FORM, _readiness_context, _render_detail
 

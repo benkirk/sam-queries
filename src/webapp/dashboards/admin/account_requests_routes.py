@@ -43,7 +43,7 @@ from webapp.utils.facets import Facet, FacetSet
 from webapp.utils.form_handler import HtmxFormHandler
 from webapp.utils.htmx import (
     handle_htmx_form_post, htmx_modal_not_found, htmx_not_found, htmx_success,
-    htmx_success_message, modal_triggers, read_flag, read_sort,
+    htmx_success_message, modal_triggers, read_flag, read_sort, sort_rows,
 )
 from webapp.utils.email_preview import (
     email_preview_context, render_email_preview, render_preview_info,
@@ -102,17 +102,6 @@ def _search(views, term):
         v['sponsor'].display_name if v['sponsor'] else '')).casefold()]
 
 
-def _sort_views(views, sort):
-    keyfn = _SORT.get((sort or {}).get('sort_by'))
-    if not keyfn:
-        return views
-    reverse = (sort or {}).get('sort_dir') == 'desc'
-    present = [v for v in views if keyfn(v) is not None]
-    absent = [v for v in views if keyfn(v) is None]
-    present.sort(key=keyfn, reverse=reverse)
-    return present + absent
-
-
 @bp.route('/account-requests')
 @login_required
 @require_permission(Permission.MANAGE_ACCOUNT_REQUESTS)
@@ -157,7 +146,7 @@ def account_requests_fragment():
     facet_values = _FACETS.strips(views, selected)
     views = _FACETS.apply(views, selected)
     sort = read_sort(request.args, _SORT, default_dir='asc')
-    views = _sort_views(views, sort)
+    views = sort_rows(views, sort, _SORT)
 
     return render_template(
         _CARD,

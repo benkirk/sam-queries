@@ -26,8 +26,10 @@ from webapp.utils.htmx import (
     htmx_success_message,
     modal_triggers,
     read_active_only,
+    read_sort,
     read_tab,
     register_typeahead,
+    sort_rows,
 )
 from webapp.extensions import db, cache, fresh_requested, user_aware_cache_key
 from webapp.utils.rbac import (
@@ -382,13 +384,6 @@ _MNEMONIC_SORT_KEYS = {
 }
 
 
-def _sort_inventory(rows, sort_by, sort_dir):
-    key = _MNEMONIC_SORT_KEYS.get(sort_by)
-    if not key:
-        return rows  # default: mnemonic_inventory already orders by code
-    return sorted(rows, key=key, reverse=(sort_dir == 'desc'))
-
-
 def _filter_inventory(rows, *, facet, q):
     if facet == 'linked':
         rows = [r for r in rows if r['links_to']]
@@ -428,15 +423,16 @@ def htmx_mnemonic_codes_table():
         'orphaned': sum(1 for r in rows if r['orphaned']),
         'unused': sum(1 for r in rows if r['minted_total'] == 0),
     }
-    shown = _sort_inventory(_filter_inventory(rows, facet=facet, q=q),
-                            request.args.get('sort_by'), request.args.get('sort_dir'))
+    # No column chosen: mnemonic_inventory's own order (by code) stands.
+    sort = read_sort(request.args, _MNEMONIC_SORT_KEYS, default_dir='asc')
+    shown = sort_rows(_filter_inventory(rows, facet=facet, q=q), sort,
+                      _MNEMONIC_SORT_KEYS)
     return render_template(
         'dashboards/admin/fragments/mnemonic_codes_table_htmx.html',
         rows=shown, counts=counts, facet=facet, q=q, active_only=active_only,
         form_id='mnemonicFilterForm',
         sortable_columns=set(_MNEMONIC_SORT_KEYS),
-        sort={'sort_by': request.args.get('sort_by') or 'code',
-              'sort_dir': request.args.get('sort_dir') or 'asc'},
+        sort={**sort, 'sort_by': sort['sort_by'] or 'code'},
         can_edit=has_permission_any_facility(current_user, Permission.EDIT_ORG_METADATA),
         can_reassign=has_permission(current_user, Permission.SYSTEM_ADMIN),
     )
