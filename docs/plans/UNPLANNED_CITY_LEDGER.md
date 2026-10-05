@@ -269,7 +269,7 @@ visual on purpose, and each commit declares its change. `src/` across the branch
   - no jumbo icons, and the orphan heading is gone;
   - inline styles go from 12 to 0;
   - a shared `.status-dot`.
-- [x] Bootstrap 4 classes (+14 / -14): 20 uses down to 0, held there by `test_bs4_classes.py`.
+- [x] Bootstrap 4 classes (+14 / -14): 20 uses down to 0, held there by `test_template_detectors.py`.
 - [x] Audit-log tables (+102 / -109): seven ledgers on `col-shrink` / `col-num` /
   `cell-truncate`; inline styles go from 50 to 1.
 - [x] Leftovers (+44 / -42): light and dark badges muted, redundant badge ink dropped, and
@@ -290,9 +290,9 @@ visual on purpose, and each commit declares its change. `src/` across the branch
     project-card CSS rides along.
 - [ ] Resource Details (user `resource_details*` and the day/user subtrees): nested tables, 13 raw
   collapse toggles, and `td.text-end` instead of `col-num`.
-- [ ] `xras_request_detail.html`: its 15 small outline row buttons should be `btn-row`. The XRAS
+- [ ] `xras_request_detail.html`: 9 small outline buttons remain beside its 6 `btn-row`s. The XRAS
   cards are only half adopted (nested tables, `width:99%`).
-- [x] The saturated `modal_scaffold` headers (entry 9: quiet accent headers) and the `text-bg-*` toasts (still open). This is an app-wide
+- [x] The saturated `modal_scaffold` headers (entry 9: quiet accent headers) and the `text-bg-*` toasts (the alert recipe, sweep follow-ups). This is an app-wide
   design call.
   - Create: `bg-success`.
   - Edit: `bg-warning`, which renders navy.
@@ -357,7 +357,7 @@ to `staging` once that merges.
 - [ ] Resource Details scope pickers (`resource_details*.html`) still use nested `.tree-list`
   `<li>`s, so they have the same inherited bold and tint under a current node. Moving them to
   `project_tree_rows` would delete `.tree-list`.
-- [ ] 26 `class="btn  btn-…"` double-space leftovers in 13 templates: an old bulk `btn-sm`
+- [ ] 14 `class="btn  btn-…"` double-space leftovers in 10 templates: an old bulk `btn-sm`
   removal whose reason isn't recorded. Several are pane-toolbar buttons that the house rule
   says should be `btn-sm`.
 - [ ] `.tree-d1` / `.tree-d2` could become `.tree-guides`, which draws the same lines at any
@@ -410,16 +410,15 @@ to `staging` once that merges.
 - [x] The Allocations project list (`allocations/partials/project_table.html`, loaded under a
   type row) still draws `render_usage_bar` in one `colspan="6"` usage-and-dates cell behind six
   sortable headers (`min-width:280px`). It should become `alloc_meter` plus real columns, which
-  means reworking its data-sort attributes. Done in entry 8. Resource Details and the usage
-  modal still use `render_usage_bar`.
+  means reworking its data-sort attributes. Done in entry 8. Resource Details
+  (`resource_details.html`, `resource_details_disk.html`) is the last user of `render_usage_bar`.
 
 - [ ] On a phone, the project card's resource table scrolls sideways inside its frame. The
   meter column could hide below md and show only the percentage.
 - [ ] The user card's group branch switch is still the solid-blue toggle bar, like the page
   tabs and pills that sweep 5 kept.
-- [ ] `group_card.html`, `contract_card.html` and the transaction / adjustment / XRAS detail
-  modals use `stat-item-block` with stacked labels. They could opt into `.stat-item-inline`.
-  The three detail modals did in entry 9; the two cards remain.
+- [ ] `contract_card.html` uses `stat-item-block` with stacked labels and could opt into
+  `.stat-item-inline`, as the transaction / adjustment / XRAS detail modals do (entry 9).
 
 ## 8. 2026-10-04: area sweep, `templates` round 4 (the Allocations project list)
 
@@ -492,10 +491,11 @@ widened the column.
 ## 9. 2026-10-04: area sweep, `templates` round 5 (the modals)
 
 **Mode:** area, from `docs/plans/MODAL_SWEEP_HANDOFF.md`. **Stacked on:** sweep 8's branch
-(`alloc-project-list-2026-10`, #729 open; end commit `ede454cf`). **PR:** #730 (draft).
+(`alloc-project-list-2026-10`, #729; end commit `ede454cf`). **PR:** #730, merged with the
+stack as #726.
 **Contract:** aesthetic; each commit declares its change with dialog heights from
-`ui_snapshots.py --recipes` (42 modals, 1440px and 390px, both themes). Ben's calls: quiet
-accent headers everywhere; one PR; the three bugs first.
+`ui_snapshots.py --recipes scripts/ui_snapshots_modals.json` (42 modals, 1440px and 390px, both
+themes). Ben's calls: quiet accent headers everywhere; one PR; the three bugs first.
 
 **Done, in this round's PR**, one commit each:
 
@@ -583,15 +583,16 @@ accent headers everywhere; one PR; the three bugs first.
 
 - [ ] Resource edit cannot set the primary sysadmin or responsible organization
   (`EditResourceForm`, `Resource.update`).
-- [ ] `htmx_panels_for_facility` is gated on `CREATE_PROJECTS`, but allocation-type create is
-  `CREATE_FACILITIES`. A holder of only the latter gets a 403 on the cascade.
+- [x] `htmx_panels_for_facility` admits `CREATE_FACILITIES` as well as `CREATE_PROJECTS`, so
+  New Allocation Type's Panel cascade fills for its own creators (sweep follow-ups).
 - [ ] The hand-rolled detail shells (project, user, contract, audit, chart expand, outage)
   could share a static-body scaffold.
 - [ ] The XRAS forms' own footers keep the page-size buttons (they are not `.modal-footer`).
 - [ ] Extend's resource table scrolls sideways at 390px now that its dates no longer wrap.
-- [ ] The `text-bg-*` toasts are still saturated.
-- [ ] `test_ticket_card::test_a_request_without_tickets_renders_no_ticket_row` fails under
-  xdist on some runs (passes serially), as does `test_db_browser_killswitch` on postgres-test.
+- [x] The toasts take the alert recipe instead of `text-bg-*` fills (sweep follow-ups).
+- [x] `test_ticket_card::test_a_request_without_tickets_renders_no_ticket_row` reads only its
+  own row, so another worker's ticketed request cannot reach it (sweep follow-ups).
+- [ ] `test_db_browser_killswitch` fails under xdist on some postgres-test runs.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
@@ -603,7 +604,8 @@ nothing here has been read for intent yet.
 - **docs:** `plans-stale --gh` on 2026-10-03 found no retirement candidates among 22 top-level
   plans. `ADMIN_TABLE_POLISH.md` and `ALLOCATIONS_SUNBURST.md` still say "implemented, in
   review" although their PRs have merged; they pass the 14-day idle bar on 2026-10-17.
-- **templates:** sweeps 5–8 took inline `style=""` from 404 to 255.
+- **templates:** sweeps 5–9 took inline `style=""` from 404 to 216 (`sweep_inventory.py --area
+  templates`).
 
 ## Propagation candidates
 

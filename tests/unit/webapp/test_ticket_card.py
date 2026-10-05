@@ -63,10 +63,34 @@ def test_the_row_is_icons_with_words_on_hover(auth_client, ticketed_request):
     assert 'mailto:zz.ticket.card@example.invalid' in html, 'the full address is in the details'
 
 
-def test_a_request_without_tickets_renders_no_ticket_row(auth_client):
-    resp = auth_client.get(FRAGMENT)
+@pytest.fixture
+def ticketless_request(app):
+    """A committed open request with no tickets; searched by its own address,
+    since another xdist worker's committed fixture rows share the card."""
+    from sam.core.account_requests import AccountRequest
+    from webapp.extensions import db
+
+    with app.app_context():
+        row = AccountRequest.create(
+            db.session, email='zz.ticketless.card@example.invalid', first_name='No',
+            last_name='Ticket', purpose='standalone', created_by='operator1',
+            verified_by='operator1')
+        db.session.commit()
+        rid = row.account_request_id
+    yield rid
+    with app.app_context():
+        db.session.query(AccountRequest).filter(
+            AccountRequest.account_request_id == rid).delete()
+        db.session.commit()
+
+
+def test_a_request_without_tickets_renders_no_ticket_row(auth_client, ticketless_request):
+    resp = auth_client.get(f'{FRAGMENT}?search=zz.ticketless.card')
     assert resp.status_code == 200
-    assert 'closed without an account' not in resp.get_data(as_text=True)
+    html = resp.get_data(as_text=True)
+    assert 'mailto:zz.ticketless.card@example.invalid' in html, 'the row is on the card'
+    assert 'closed without an account' not in html
+    assert 'ithelp.ucar.edu/browse/' not in html
 
 
 class TestConfigurationTile:

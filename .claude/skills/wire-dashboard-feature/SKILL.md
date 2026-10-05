@@ -9,11 +9,9 @@ description: >-
 
 # Wire a dashboard feature
 
-An ordered checklist for adding or changing UI on a SAM dashboard page. The
-rules themselves live in the always-loaded `CLAUDE.md`; this is the *procedure*
-that applies them, plus the traps that only bite at author time. Each step
-names the canonical section — read that section for the full rule, not a paste
-of it here.
+An ordered checklist for adding or changing UI on a SAM dashboard page: the
+*procedure* that applies the rules in the always-loaded `CLAUDE.md`, plus the traps
+that only bite at author time. Each step names the section that holds the full rule.
 
 Work top to bottom. Steps 1–3 are reuse and formatting; 4 is the write path;
 5–11 are the trap-prone surfaces; 12 is the smoke and gate run — read it
@@ -44,7 +42,9 @@ The families:
   `table_bits.pane_toolbar` / `group_count` / `state_tag` / `share_bar` /
   `alloc_meter`, and `shared/project_tree.allocation_cells` for allocation rows
   (shared pools included; `sort=`, `units=`). §7 has the column vocabulary.
-- **Modals** — `modals.modal_scaffold`, `action_buttons.edit_modal_button` /
+- **Modals** — `modals.modal_scaffold` (the shell), `modals.modal_title` (a fragment
+  retitles its shell out of band), `.modal-facts` (a dialog's facts in one quiet panel),
+  `tip=` on a `form_fields` label (its help), `action_buttons.edit_modal_button` /
   `delete_row_button`.
 - **Pickers** — `date_range_picker`, `time_range_picker`, `window_pills`.
 - **Help** — `help.help_icon` / `help.term`, keyed to a `glossary.g_*` term.
@@ -235,7 +235,7 @@ CLAUDE.md § Charts.
    hand Jinja `Undefined` to any key you add later: `{% if x > 0 %}` raises,
    `{% if x %}` is fine — guard new context keys by truthiness.
 6. Run the structural gates:
-   `pytest tests/unit/gates/test_modal_shell_contract.py tests/unit/gates/test_collapse_trigger_rows.py tests/unit/gates/test_action_cells_nowrap.py tests/unit/gates/test_static_assets.py tests/unit/gates/test_template_csp_lint.py tests/unit/gates/test_css_tokens.py tests/unit/gates/test_route_map_parity.py`
+   `pytest tests/unit/gates/test_modal_shell_contract.py tests/unit/gates/test_collapse_trigger_rows.py tests/unit/gates/test_action_cells_nowrap.py tests/unit/gates/test_static_assets.py tests/unit/gates/test_template_csp_lint.py tests/unit/gates/test_css_tokens.py tests/unit/gates/test_template_detectors.py tests/unit/gates/test_route_map_parity.py`
    plus the feature's own tests. For a visible change, `scripts/ui_snapshots.py` shoots
    before and after in all six states (a dialog: `--modal OPENER` or `--recipes`, with
    its height). A change that must NOT be visible (a CSS move or dedupe) adds `--styles`

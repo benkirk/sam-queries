@@ -285,9 +285,9 @@ def require_permission(permission: Permission):
     return decorator
 
 
-def require_permission_any_facility(permission: Permission):
-    """Admit callers holding ``permission`` unconditionally **or** in at least
-    one facility; the route body then intersects their scope against the
+def require_permission_any_facility(*permissions: Permission):
+    """Admit callers holding any of ``permissions`` unconditionally **or** in at
+    least one facility; the route body then intersects their scope against the
     request.
 
     For admin routes a facility-scoped manager must reach. Routes that must
@@ -298,7 +298,8 @@ def require_permission_any_facility(permission: Permission):
         def decorated_function(*args, **kwargs):
             if not current_user.is_authenticated:
                 abort(401)
-            if not has_permission_any_facility(current_user, permission):
+            if not any(has_permission_any_facility(current_user, p)
+                       for p in permissions):
                 abort(403)
             return f(*args, **kwargs)
         return decorated_function

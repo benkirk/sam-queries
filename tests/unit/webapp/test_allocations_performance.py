@@ -414,6 +414,31 @@ class TestProjectListStates:
         assert '>183<' in active and 'state-tag' not in active
         assert no_usage.count('text-muted" data-sort-value="-1">—<') == 3
 
+    def test_first_paint_is_in_the_used_header_order(self, app):
+        """A pool member's Used cell shows its own use, so the initial sort must too."""
+        import re
+        from flask import render_template
+        from webapp.dashboards.allocations.blueprint import _as_resource_row, _shown_used
+        dates = {'start_date': datetime(2026, 1, 1), 'end_date': datetime(2026, 12, 31)}
+        rows = [
+            _as_resource_row({**dates, 'projcode': 'XMEM0001', 'total_amount': 1000.0,
+                              'total_used': 900.0, 'is_inheriting': True, 'self_used': 5.0,
+                              'self_percent_used': 0.5, 'root_projcode': 'XROO0001'},
+                             'HPC', self.NOW),
+            _as_resource_row({**dates, 'projcode': 'XSTA0001', 'total_amount': 200.0,
+                              'total_used': 100.0}, 'HPC', self.NOW),
+            _as_resource_row({**dates, 'projcode': 'XNIL0001', 'total_amount': 50.0,
+                              'total_used': None}, 'HPC', self.NOW),
+        ]
+        rows.sort(key=_shown_used, reverse=True)
+        assert [r['projcode'] for r in rows] == ['XSTA0001', 'XMEM0001', 'XNIL0001']
+        with app.test_request_context():
+            html = render_template('dashboards/allocations/partials/project_table.html',
+                                   projects=rows, resource_type='HPC', can_view_projects=True)
+        used_col = [float(re.findall(r'data-sort-value="([^"]*)"', tr)[4])
+                    for tr in html.split('<tbody>')[1].split('</tr>')[:-1]]
+        assert used_col == sorted(used_col, reverse=True) == [100.0, 5.0, -1.0]
+
 
 class TestTransactionsFragmentRoute:
     """Tests for GET /allocations/transactions_fragment."""

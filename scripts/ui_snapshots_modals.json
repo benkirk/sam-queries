@@ -1,0 +1,274 @@
+[
+ {
+  "name": "mp-edit-alloc-shared",
+  "page": "/admin/project/NMMM0003/edit?tab=allocations",
+  "steps": [
+   "wait:#allocationTreeContainer table",
+   "reveal:#allocationTreeContainer .collapse"
+  ],
+  "modal": "button[hx-get=\"/admin/htmx/edit-allocation-form/25621\"]"
+ },
+ {
+  "name": "mp-edit-alloc-pool-root",
+  "page": "/admin/project/NMMM0003/edit?tab=allocations",
+  "steps": [
+   "wait:#allocationTreeContainer table",
+   "reveal:#allocationTreeContainer .collapse"
+  ],
+  "modal": "button[hx-get=\"/admin/htmx/edit-allocation-form/25620\"]"
+ },
+ {
+  "name": "mp-edit-alloc-carveout",
+  "page": "/admin/project/CESM0002/edit?tab=allocations",
+  "steps": [
+   "wait:#allocationTreeContainer table",
+   "reveal:#allocationTreeContainer .collapse"
+  ],
+  "modal": "button[hx-get=\"/admin/htmx/edit-allocation-form/24512\"]"
+ },
+ {
+  "name": "mp-edit-alloc-carve-root",
+  "page": "/admin/project/CESM0002/edit?tab=allocations",
+  "steps": [
+   "wait:#allocationTreeContainer table",
+   "reveal:#allocationTreeContainer .collapse"
+  ],
+  "modal": "button[hx-get=\"/admin/htmx/edit-allocation-form/24511\"]"
+ },
+ {
+  "name": "mp-allocate-down",
+  "page": "/admin/project/CESM0002/edit?tab=allocations",
+  "steps": [
+   "wait:#allocationTreeContainer table",
+   "reveal:#allocationTreeContainer .collapse"
+  ],
+  "modal": "[data-bs-target=\"#allocateDownModal\"]:visible"
+ },
+ {
+  "name": "mp-exchange",
+  "page": "/admin/project/CESM0002/edit?tab=allocations",
+  "steps": [
+   "wait:#allocationTreeContainer table",
+   "reveal:#allocationTreeContainer .collapse"
+  ],
+  "modal": "[data-bs-target=\"#exchangeAllocationModal\"]:visible"
+ },
+ {
+  "name": "mp-add",
+  "page": "/admin/project/CESM0002/edit?tab=allocations",
+  "steps": [
+   "wait:#allocationTreeContainer table",
+   "reveal:#allocationTreeContainer .collapse"
+  ],
+  "modal": "[data-bs-target=\"#addAllocationModal\"]:visible"
+ },
+ {
+  "name": "mp-extend",
+  "page": "/admin/project/CESM0002/edit?tab=allocations",
+  "steps": [
+   "wait:#allocationTreeContainer table",
+   "reveal:#allocationTreeContainer .collapse"
+  ],
+  "modal": "[data-bs-target=\"#extendAllocationsModal\"]:visible"
+ },
+ {
+  "name": "mp-renew",
+  "page": "/admin/project/CESM0002/edit?tab=allocations",
+  "steps": [
+   "wait:#allocationTreeContainer table",
+   "reveal:#allocationTreeContainer .collapse"
+  ],
+  "modal": "[data-bs-target=\"#renewAllocationsModal\"]:visible"
+ },
+ {
+  "name": "mp-align",
+  "page": "/admin/project/CESM0002/edit?tab=allocations",
+  "steps": [
+   "wait:#allocationTreeContainer table",
+   "reveal:#allocationTreeContainer .collapse"
+  ],
+  "modal": "[data-bs-target=\"#alignAllocationsModal\"]:visible"
+ },
+ {
+  "name": "mp-notify",
+  "page": "/admin/project/CESM0002/edit?tab=allocations",
+  "steps": [
+   "wait:#allocationTreeContainer table",
+   "reveal:#allocationTreeContainer .collapse"
+  ],
+  "modal": "[data-bs-target=\"#notifyProjectModal\"]:visible"
+ },
+ {
+  "name": "mp-add-member",
+  "page": "/admin/project/CESM0002/edit?tab=members",
+  "modal": "[data-bs-target=\"#addMemberModal\"]:visible"
+ },
+ {
+  "name": "mp-invite",
+  "page": "/admin/project/CESM0002/edit?tab=invitations",
+  "modal": "[data-bs-target=\"#invitationModal\"]:visible"
+ },
+ {
+  "name": "mp-directory-edit",
+  "page": "/admin/project/CESM0002/edit",
+  "modal": "[data-bs-target=\"#editProjectDirectoryModal\"]:visible"
+ },
+ {
+  "name": "user-edit-alloc",
+  "page": "/user/accounts",
+  "steps": [
+   "click:[data-bs-toggle=\"collapse\"][data-bs-target^=\"#project-\"]:visible"
+  ],
+  "modal": "[data-bs-target=\"#editAllocationModal\"]:visible"
+ },
+ {
+  "name": "adm-resource-create",
+  "page": "/admin/resources",
+  "modal": "[data-bs-target=\"#createResourceModal\"]:visible"
+ },
+ {
+  "name": "adm-resource-edit",
+  "page": "/admin/resources",
+  "steps": [
+   "reveal:.tab-pane.active .collapse"
+  ],
+  "modal": "[data-bs-target=\"#editResourceModal\"]:visible"
+ },
+ {
+  "name": "adm-resource-type-edit",
+  "page": "/admin/resources",
+  "modal": "[data-bs-target=\"#editResourceTypeModal\"]:visible"
+ },
+ {
+  "name": "adm-disk-root-add",
+  "page": "/admin/resources",
+  "modal": "[data-bs-target=\"#addDiskRootModal\"]:visible"
+ },
+ {
+  "name": "adm-facility-resource-edit",
+  "page": "/admin/resources",
+  "steps": [
+   "reveal:.tab-pane.active .collapse"
+  ],
+  "modal": "[data-bs-target=\"#editFacilityResourceModal\"]:visible"
+ },
+ {
+  "name": "adm-machine-create",
+  "page": "/admin/resources?tab=machines",
+  "modal": "[data-bs-target=\"#createMachineModal\"]:visible"
+ },
+ {
+  "name": "adm-machine-edit",
+  "page": "/admin/resources?tab=machines",
+  "modal": "[data-bs-target=\"#editMachineModal\"]:visible"
+ },
+ {
+  "name": "adm-queue-create",
+  "page": "/admin/resources?tab=queues",
+  "modal": "[data-bs-target=\"#createQueueModal\"]:visible"
+ },
+ {
+  "name": "adm-queue-edit",
+  "page": "/admin/resources?tab=queues",
+  "steps": [
+   "reveal:.tab-pane.active .collapse"
+  ],
+  "modal": "[data-bs-target=\"#editQueueModal\"]:visible"
+ },
+ {
+  "name": "adm-queue-cleanup",
+  "page": "/admin/resources?tab=queues",
+  "modal": "[data-bs-target=\"#queueCleanupModal\"]:visible"
+ },
+ {
+  "name": "adm-exemption-add",
+  "page": "/admin/resources?tab=queues",
+  "modal": "[data-bs-target=\"#addExemptionModal\"]:visible"
+ },
+ {
+  "name": "adm-facility-create",
+  "page": "/admin/facilities",
+  "modal": "[data-bs-target=\"#createFacilityModal\"]:visible"
+ },
+ {
+  "name": "adm-facility-edit",
+  "page": "/admin/facilities",
+  "modal": "[data-bs-target=\"#editFacilityModal\"]:visible"
+ },
+ {
+  "name": "adm-panel-create",
+  "page": "/admin/facilities",
+  "modal": "[data-bs-target=\"#createPanelModal\"]:visible"
+ },
+ {
+  "name": "adm-panel-edit",
+  "page": "/admin/facilities",
+  "steps": [
+   "reveal:#facilities-pane .collapse"
+  ],
+  "modal": "[data-bs-target=\"#editPanelModal\"]:visible"
+ },
+ {
+  "name": "adm-alloc-type-create",
+  "page": "/admin/facilities",
+  "modal": "[data-bs-target=\"#createAllocationTypeModal\"]:visible"
+ },
+ {
+  "name": "adm-alloc-type-edit",
+  "page": "/admin/facilities",
+  "steps": [
+   "reveal:#facilities-pane .collapse"
+  ],
+  "modal": "[data-bs-target=\"#editAllocationTypeModal\"]:visible"
+ },
+ {
+  "name": "adm-project-create",
+  "page": "/admin/projects",
+  "modal": "[data-bs-target=\"#createProjectModal\"]:visible"
+ },
+ {
+  "name": "adm-org-edit",
+  "page": "/admin/organizations",
+  "modal": "[data-bs-target=\"#editOrganizationModal\"]:visible"
+ },
+ {
+  "name": "adm-contract-create",
+  "page": "/admin/contracts",
+  "modal": "[data-bs-target=\"#createContractModal\"]:visible"
+ },
+ {
+  "name": "adm-event-new",
+  "page": "/admin/events",
+  "modal": "[data-bs-target=\"#invitationModal\"]:visible"
+ },
+ {
+  "name": "al-adjustment-create",
+  "page": "/allocations/adjustments",
+  "modal": "[data-bs-target=\"#createAdjustmentModal\"]:visible"
+ },
+ {
+  "name": "al-adjustment-details",
+  "page": "/allocations/adjustments",
+  "modal": "[data-bs-target=\"#auditDetailsModal\"]:visible"
+ },
+ {
+  "name": "al-transaction-details",
+  "page": "/allocations/transactions",
+  "modal": "[data-bs-target=\"#auditDetailsModal\"]:visible"
+ },
+ {
+  "name": "al-project-details",
+  "page": "/allocations/transactions",
+  "modal": "[data-bs-target=\"#projectDetailsModal\"]:visible"
+ },
+ {
+  "name": "al-user-details",
+  "page": "/allocations/transactions",
+  "modal": "[data-bs-target=\"#userDetailsModal\"]:visible"
+ },
+ {
+  "name": "st-outage-create",
+  "page": "/status/derecho",
+  "modal": "[data-bs-target=\"#createOutageModal\"]:visible"
+ }
+]

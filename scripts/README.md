@@ -12,7 +12,8 @@ scripts/
 ├── cirrus_weblog_audit.sh       # CIRRUS/k8s traffic + rate-limit + abuse audit
 ├── seed_status_dev.sh           # Reseed system_status_dev from prod (make refresh-dev)
 ├── dev_session_load.py          # Load driver for samuel-dev's authed surface (+ dev_capture_session.py)
-├── ui_snapshots.py              # Pages x layouts x themes screenshots for before/after review (no baselines); --headers checks sort icons
+├── ui_snapshots.py              # Pages x layouts x themes screenshots for before/after review (no baselines); --headers checks sort icons; --modal / --recipes shoot dialogs with their heights
+├── ui_snapshots_modals.json     # --recipes input: 42 dialogs as {name, page, steps, modal}; pages name rows of the local dev DB (NMMM0003, CESM0002, allocation 25621), and a recipe whose row is gone prints "not opened" and the run carries on
 ├── er_diagram.py                # Graphviz ER diagram of named tables, from the ORM (no DB)
 ├── zap_probe_docker.sh          # Dockerized OWASP ZAP scan of the webapp
 ├── apis/                        # Public-API worked examples / smoke tests
@@ -51,13 +52,12 @@ codes `0` (all pass) / `1` (≥1 warn) / `2` (≥1 fail), and the shared
 secret), `--no-color`, `-n/--namespace`, `-r/--release`, `--context`,
 `-v/--verbose`, `-h/--help` flags.
 
-- **`cirrus_healthcheck.sh`** — "is the cluster healthy?" 12-section probe of
-  the Helm release: pods, rollout safety, Redis, resource usage, ingress/TLS,
-  edge security headers, ExternalSecrets, the in-pod health endpoint, recent
-  logs, events, and the scheduled-task CronJob. That last section is the only
-  place the dispatcher's liveness is observable — `task_run` records
-  *occurrences*, not wake-ups, so a healthy hourly dispatcher writes one row a
-  day and the row count cannot distinguish that from a dead one.
+- **`cirrus_healthcheck.sh`** — "is the cluster healthy?" 12-section probe of the Helm
+  release: pods, rollout safety, Redis, resource usage, ingress/TLS, edge security headers,
+  ExternalSecrets, the in-pod health endpoint, recent logs, events, and the scheduled-task
+  CronJob. That last section is the only place the dispatcher's liveness is observable —
+  `task_run` records *occurrences*, not wake-ups, so a healthy hourly dispatcher writes one
+  row a day and the row count cannot distinguish that from a dead one.
 
 - **`cirrus_watch.sh`** — "what changed since I last looked?" A recurring,
   read-only *delta* tick meant to run every ~30 min from a scheduler: new XRAS

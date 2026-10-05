@@ -1137,6 +1137,21 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 .alert-secondary,
 .alert-light { --alert-hue: var(--text-tertiary); }
 
+/* Toasts take the same recipe: they float, so they keep Bootstrap's shadow, and the close
+   button stays dark-on-tint (no btn-close-white). The variant is set by htmx-config.js. */
+.toast {
+    --alert-hue: var(--status-info);
+    background-color: color-mix(in srgb, var(--alert-hue) var(--alert-tint), var(--surface-card));
+    border: 0;
+    border-left: 4px solid var(--alert-hue);
+    border-radius: 0;
+    color: var(--text-primary);
+}
+
+.toast-success { --alert-hue: var(--status-success); }
+.toast-warning { --alert-hue: var(--status-warning); }
+.toast-danger { --alert-hue: var(--status-danger); }
+
 .alert a,
 .alert button {
     color: var(--text-heading);
@@ -1152,7 +1167,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 /* ============================================================================
    MODALS — every header is the quiet accent surface with title ink (the expanded
    project card's header): the verb lives in the title and the submit button, not
-   in a fill. Only a destructive confirm (.modal-header-danger) keeps one. The
+   in a fill. A destructive confirm (.modal-header-danger) takes danger ink plus a rule. The
    Cancel restyle is scoped to .modal-footer so .btn-secondary toggles elsewhere
    stay untouched.
    ========================================================================= */

@@ -1465,8 +1465,6 @@ def project_details_modal(project):
         'dashboards/user/partials/project_details_modal.html',
         project_data=project_data,
         user=current_user,
-        usage_warning_threshold=USAGE_WARNING_THRESHOLD,
-        usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
     ))
     resp.headers['HX-Trigger'] = json.dumps({'setModalTitle': f'Project Details \u2014 {project.projcode}'})
     return resp

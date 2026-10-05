@@ -71,7 +71,7 @@ def used_fa_icons():
 
 # Full status vocabulary + one unknown to show the bg-secondary fallback.
 STATUS_STATES = [
-    'active', 'inactive', 'locked', 'expired', 'open-ended', 'received',
+    'active', 'inactive', 'locked', 'expired', 'received',
     'processed', 'manual', 'failed', 'rechecked', 'unmapped', 'sent', 'queued',
     'suppressed', 'redirected', 'running', 'succeeded', 'partial', 'skipped',
     'frobnicated',

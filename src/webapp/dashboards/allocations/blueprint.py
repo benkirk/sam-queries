@@ -379,6 +379,7 @@ def get_resource_types(session) -> Dict[str, str]:
 _STORAGE_RESOURCE_TYPES = ('DISK', 'ARCHIVE')
 #: Resource types whose charges accrue over time, so a month's burn means something.
 _BURN_RESOURCE_TYPES = ('HPC', 'DAV')
+_DEFAULT_RESOURCE_TAB = 'derecho'   # the page opens on the flagship HPC resource
 
 
 def _resource_type(resource_name):
@@ -591,9 +592,10 @@ def projects():
 
     # Shareable resource tab: ?tab=<slug> selects the active #resourceTabs pane.
     # read_tab lowercases, so the slug set and template comparison use the
-    # lowercased "name with spaces -> underscores" form. Default = first sorted.
+    # lowercased "name with spaces -> underscores" form. Default = Derecho, else first sorted.
     tab_slugs = {name.replace(' ', '_').lower() for name in grouped_data}
-    default_tab = (sorted(grouped_data, key=str.lower)[0].replace(' ', '_').lower()
+    default_tab = (_DEFAULT_RESOURCE_TAB if _DEFAULT_RESOURCE_TAB in tab_slugs
+                   else sorted(grouped_data, key=str.lower)[0].replace(' ', '_').lower()
                    if grouped_data else '')
     active_tab = read_tab('tab', tab_slugs, default_tab)
 
@@ -895,9 +897,9 @@ def _calendar_rows(resource_name, active_at, selected_facilities):
 
 
 def _calendar_mode(resource_type):
-    """``(burnable, mode)``: ``mode`` is 'burn' only when asked for on an HPC/DAV resource."""
+    """``(burnable, mode)``: an HPC/DAV resource shows 'burn' unless 'used' is asked for."""
     burnable = resource_type in _BURN_RESOURCE_TYPES
-    return burnable, 'burn' if burnable and request.args.get('mode') == 'burn' else 'used'
+    return burnable, 'burn' if burnable and request.args.get('mode') != 'used' else 'used'
 
 
 def _burn_through(active_at):
@@ -997,6 +999,12 @@ def _as_resource_row(row: Dict, resource_type: str, active_at: datetime) -> Dict
     }
 
 
+def _shown_used(row: Dict) -> float:
+    """The Used cell's sort value: a shared row shows its own use, not the pool's (-1 for none)."""
+    used = row['self_used'] if row.get('is_inheriting') else row['used']
+    return -1.0 if used is None else used
+
+
 @bp.route('/htmx/project_table')
 @login_required
 @require_permission_any_facility(Permission.VIEW_PROJECTS)
@@ -1059,7 +1067,7 @@ def projects_fragment():
     titles = project_titles(db.session, (p['projcode'] for p in projects))
     rows = [{**_as_resource_row(p, resource_type, active_at), 'title': titles.get(p['projcode'])}
             for p in projects]
-    rows.sort(key=lambda r: r['used'] or 0.0, reverse=True)
+    rows.sort(key=_shown_used, reverse=True)
 
     return render_template(
         'dashboards/allocations/partials/project_table.html',

@@ -141,7 +141,20 @@ class TestAllocateDownFormRoute:
             self, auth_client, snapshot_inheriting_alloc):
         resp = auth_client.get(_form_url(snapshot_inheriting_alloc.allocation_id))
         assert resp.status_code == 200
-        assert 'shared allocation' in resp.get_data(as_text=True).lower()
+        html = resp.get_data(as_text=True)
+        assert 'shared allocation' in html.lower()
+        # The notice retitles the modal, whose header may still name another allocation.
+        assert 'id="allocateDownModalLabel" hx-swap-oob="true"' in html
+        assert snapshot_inheriting_alloc.account.project.projcode in html
+
+    def test_exchange_notice_retitles_its_modal(self, auth_client, active_project):
+        resp = auth_client.get(
+            f'/admin/htmx/exchange-allocation-form/{active_project.projcode}/{_BOGUS}')
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert 'Resource not found' in html
+        assert 'id="exchangeAllocationModalLabel" hx-swap-oob="true"' in html
+        assert active_project.projcode in html
 
     def test_carve_parent_renders_form(self, auth_client, snapshot_carve_parent):
         alloc, frontier = snapshot_carve_parent
@@ -180,7 +193,27 @@ class TestAllocateDownPostRoute:
         )
         assert resp.status_code == 200
         assert 'HX-Trigger' not in resp.headers     # not a success response
-        assert 'alert-danger' in resp.get_data(as_text=True)
+        html = resp.get_data(as_text=True)
+        # Inline beside the Sub-project select, not folded into the top panel.
+        assert 'Target:' not in html
+        select = html[html.index('name="target"') - 300:html.index('name="target"')]
+        assert 'is-invalid' in select
+        assert 'invalid-feedback' in html
+
+    def test_exchange_field_error_renders_inline(self, auth_client, snapshot_carve_parent):
+        alloc, _ = snapshot_carve_parent
+        project, resource = alloc.account.project, alloc.account.resource
+        resp = auth_client.post(
+            f'/admin/htmx/exchange-allocation/{project.projcode}',
+            data={'resource_id': resource.resource_id,
+                  'from_allocation_id': '1', 'to_allocation_id': '2'},   # no amount
+        )
+        assert resp.status_code == 200
+        assert 'HX-Trigger' not in resp.headers
+        html = resp.get_data(as_text=True)
+        assert 'Amount:' not in html
+        amount = html[html.index('name="amount"') - 300:html.index('name="amount"') + 300]
+        assert 'is-invalid' in amount
 
     def test_forged_target_rejected_no_write(
             self, auth_client, session, snapshot_carve_parent):

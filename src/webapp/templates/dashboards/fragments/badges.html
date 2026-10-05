@@ -7,7 +7,7 @@
       {{ status_badge('locked', extra='ms-1') }}
       {{ status_badge('expired', extra='ms-1', small=True) }}
 
-  Known states (case-insensitive): active, inactive, locked, expired, open-ended,
+  Known states (case-insensitive): active, inactive, locked, expired,
   plus the six xras_action_log states (received, processed, manual, failed,
   rechecked, unmapped) — see sam/queries/xras_actions.py::XRAS_ACTION_STATUSES.
   test_xras_dashboard.py asserts every member of that tuple has an entry in all
@@ -32,7 +32,6 @@
     'inactive':   'bg-secondary',
     'locked':     'bg-warning',
     'expired':    'bg-secondary',
-    'open-ended': 'bg-info',
     'received':   'bg-info',
     'processed':  'bg-success',
     'manual':     'bg-warning',
@@ -53,7 +52,6 @@
     'inactive':   'Inactive',
     'locked':     'Locked',
     'expired':    'Expired',
-    'open-ended': 'Open-ended',
     'received':   'Received',
     'processed':  'Processed',
     'manual':     'Manual',
@@ -76,7 +74,6 @@
     'inactive':   'Not active — deactivated or outside its date range.',
     'locked':     'Frozen: no further charging or changes until unlocked.',
     'expired':    'Allocation period has ended.',
-    'open-ended': 'No end date — runs indefinitely.',
     'received':   'Captured and audited. Not dispatched — SAM is recording XRAS actions while legacy still applies them.',
     'processed':  'A handler applied this action successfully.',
     'manual':     'Parked for a human: no handler services this action type.',

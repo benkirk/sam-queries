@@ -139,11 +139,11 @@
 {# Macro: Resources Table — the same columns as Manage Project → Allocations
    (shared/project_tree.html allocation_cells), one row per resource under a
    date-group row. Rows open resource_details. #}
-{% macro render_project_resources(project, resources, usage_warning_threshold, usage_critical_threshold, show_clickable_rows=true, can_edit_allocations=false, admin_origin=false) %}
+{% macro render_project_resources(project, resources, show_clickable_rows=true, can_edit_allocations=false, admin_origin=false) %}
 {% if resources %}
 {% set ncols = 6 if can_edit_allocations else 5 %}
 <div class="table-responsive mt-3">
-    <table class="table table-sm table-hover align-middle mb-0 project-resources">
+    <table class="table table-sm table-hover align-middle mb-0">
         <thead class="table-subtle">
             <tr>
                 <th>Resource</th>
@@ -376,7 +376,7 @@
                 {% endcall %}
 
                 <!-- Resources Section -->
-                {{ render_project_resources(project, resources, usage_warning_threshold, usage_critical_threshold, true, user_can_edit_allocations, admin_origin) }}
+                {{ render_project_resources(project, resources, true, user_can_edit_allocations, admin_origin) }}
 
                 <!-- Members Section (Lazy Loaded) -->
                 {{ render_project_members(project, card_id) }}

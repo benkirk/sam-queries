@@ -13,6 +13,7 @@ folders (the middle ground in docs/plans/GALLERY_VISUAL_SNAPSHOTS.md). Needs the
     python scripts/ui_snapshots.py --styles --out /tmp/after && python scripts/ui_snapshots.py --compare /tmp/before /tmp/after
     python scripts/ui_snapshots.py --headers --layout desktop --layout mobile --theme light
     python scripts/ui_snapshots.py --out /tmp/m --page /admin/resources --modal '[data-bs-target="#createResourceModal"]'
+    python scripts/ui_snapshots.py --out /tmp/m --recipes scripts/ui_snapshots_modals.json --layout desktop --layout mobile
 """
 import argparse
 import gzip

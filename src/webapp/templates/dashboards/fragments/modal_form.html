@@ -5,7 +5,7 @@
 
   Usage (call block — field HTML goes between call and endcall):
       {% call htmx_form(url_for('admin_dashboard.htmx_facility_create'),
-                        '#createFacilityFormContainer', 'Create Facility',
+                        '#createFacilityFormContainer', 'Create',
                         submit_icon='plus') %}
           {{ text_field('facility_name', 'Name', required=True, ...) }}
       {% endcall %}
