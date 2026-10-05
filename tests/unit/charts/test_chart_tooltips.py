@@ -3,6 +3,7 @@
 Design record: docs/plans/CHART_HOVER_LAYER.md.
 """
 
+import html
 import re
 
 import matplotlib
@@ -91,6 +92,44 @@ def test_every_pie_wedge_names_itself(app, name, fn, args, kwargs):
     assert len(titles) == len(chart.values) >= 2
     assert [t.split(' · ')[0] for t in titles] == list(chart.labels)
     assert all(t.count(' · ') == 2 for t in titles)     # name, share, amount
+
+
+def _titles(app, case_id):
+    fn, args, kwargs = next((f, a, k) for i, f, a, k in CASES if i == case_id)
+    with app.test_request_context('/'):
+        return [html.unescape(t) for t in re.findall(r'<title>([^<]+)</title>', fn(*args, **kwargs))]
+
+
+def test_a_histogram_segment_names_its_bucket_its_owner_and_its_real_size(app):
+    titles = _titles(app, 'distribution.data')
+    # Bucket '30-90d' has 12 owners: ten named, two folded; values are bytes, not axis units.
+    assert '30-90d · 2 other · 11.0 GiB' in titles
+    assert '30-90d · uid 1011 · 16.0 GiB' in titles and '30-90d · u10 · 15.0 GiB' in titles
+    assert '90-180d · 12.0 GiB' in titles          # no owners: one flat bar
+
+
+def test_an_fs_scan_owner_keyed_by_uid_hovers_as_its_username(app):
+    from webapp.dashboards.charts import generate_distribution_histogram
+    hist = {'bucket_labels': ['> 1 year'], 'username_map': {7: 'benkirk'},
+            'buckets': {'> 1 year': {'data': 3 * 1024 ** 3, 'files': 30,
+                                     'owners': {'7': {'data': 2 * 1024 ** 3, 'files': 20},
+                                                8: {'data': 1024 ** 3, 'files': 10}}}}}
+    with app.test_request_context('/'):
+        svg = generate_distribution_histogram(hist)
+    assert '> 1 year · benkirk · 2.00 GiB' in html.unescape(svg)
+    assert '> 1 year · uid 8 · 1.00 GiB' in html.unescape(svg)
+
+
+def test_a_flat_histogram_bar_names_its_bucket_and_value(app):
+    titles = _titles(app, 'distribution.log_y')    # log scale abandons the stack
+    assert titles == ['< 30d · 55.0 GiB', '30-90d · 180 GiB', '90-180d · 12.0 GiB', '> 180d · 400 GiB']
+
+
+def test_a_jobs_histogram_segment_names_its_owner_and_the_unknown_remainder(app):
+    titles = _titles(app, 'jobs_hist.jobs_owners')
+    # The plugin truncates owners upstream, so the remainder's count is unknown.
+    assert '0-1m · Others · 110' in titles and '0-1m · u3 · 4' in titles
+    assert all(not t.endswith(' · 0') for t in titles)   # a zero segment has no mark to hover
 
 
 def test_no_chart_leaks_a_tooltip_id(app):

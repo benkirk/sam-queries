@@ -53,6 +53,15 @@ def bucket_segments(owners, metric='data'):
     return ([(other_label(n_rest), rest)] if n_rest else []) + kept[::-1]
 
 
+def _by_username(owners, username_map):
+    """fs-scans keys its owners by uid (an int, or a string once cached): rekey
+    them by username, else ``uid N``, as the table beside the chart does."""
+    def name(uid):
+        as_int = int(uid) if str(uid).isdigit() else None
+        return username_map.get(as_int) or username_map.get(str(uid)) or f'uid {uid}'
+    return {name(uid): row for uid, row in (owners or {}).items()}
+
+
 class CategoricalStackChart(BaseChart):
     """One bar per bucket; each bar a shaded single-hue stack."""
 
@@ -90,6 +99,14 @@ class CategoricalStackChart(BaseChart):
     def ylabel(self) -> str:
         raise NotImplementedError
 
+    def amount(self, value) -> str:
+        """A plotted value as its hover says it."""
+        return fmt.number(value)
+
+    def tooltip_text(self, label, value, owner=None) -> str:
+        """Hover text for one bar, or for one owner's segment of it."""
+        return ' · '.join(str(p) for p in (label, owner, self.amount(value)) if p)
+
     #: True to draw one solid bar per bucket instead of a stack. A log axis
     #: forces it; a subclass may also have no owner data at all.
     def flat_only(self) -> bool:
@@ -121,6 +138,8 @@ class CategoricalStackChart(BaseChart):
                           edgecolor=theme.bar_edge, linewidth=self.bar_edge_width)
             for i, (bucket, rect) in enumerate(zip(self._buckets, bars.patches)):
                 self._link(rect, bucket, i)
+                if self.values[i]:
+                    self.tooltip(rect, self.tooltip_text(self.labels[i], self.values[i]))
             return
 
         for i, bucket in enumerate(self._buckets):
@@ -129,15 +148,20 @@ class CategoricalStackChart(BaseChart):
                 bar = ax.bar(i, self.values[i], color=self.band_colors[i],
                              edgecolor=theme.bar_edge, linewidth=self.bar_edge_width)
                 self._link(bar.patches[0], bucket, i)
+                if self.values[i]:
+                    self.tooltip(bar.patches[0], self.tooltip_text(self.labels[i], self.values[i]))
                 continue
             shades = shade_family(self.band_colors[i], len(segs),
                                   toward=theme.shade_toward)
             bottom = 0.0
-            for (_name, seg_val), shade in zip(segs, shades):
+            for (name, seg_val), shade in zip(segs, shades):
                 cont = ax.bar(i, seg_val, bottom=bottom, color=shade,
                               edgecolor=theme.segment_edge,
                               linewidth=self.segment_edge_width)
                 self._link(cont.patches[0], bucket, i)
+                if seg_val:
+                    self.tooltip(cont.patches[0],
+                                 self.tooltip_text(self.labels[i], seg_val, owner=name))
                 bottom += seg_val
 
     def _link(self, artist, bucket, i):
@@ -185,9 +209,9 @@ class DistributionHistogram(CategoricalStackChart):
         """
         labels = list((hist or {}).get('bucket_labels', []))
         buckets = (hist or {}).get('buckets', {})
+        names = (hist or {}).get('username_map') or {}
         payload = [
-            (lbl,
-             tuple(bucket_segments(buckets.get(lbl, {}).get('owners') or {}, metric)))
+            (lbl, bucket_segments(_by_username(buckets.get(lbl, {}).get('owners'), names), metric))
             for lbl in labels
         ]
         return content_hash(
@@ -208,7 +232,7 @@ class DistributionHistogram(CategoricalStackChart):
         return (self._row(bucket).get(self.metric, 0) or 0) / self.scale
 
     def bucket_segments(self, bucket):
-        owners = self._row(bucket).get('owners') or {}
+        owners = _by_username(self._row(bucket).get('owners'), self.hist.get('username_map') or {})
         return [(name, v / self.scale) for name, v in bucket_segments(owners, self.metric)]
 
     def bucket_is_clickable(self, bucket):
@@ -216,6 +240,10 @@ class DistributionHistogram(CategoricalStackChart):
 
     def ylabel(self):
         return self._ylabel
+
+    def amount(self, value):
+        # Plotted values are scaled to the axis unit; a hover gives the real size.
+        return fmt.number(value) if self.metric == 'files' else fmt.size(value * self.scale)
 
     def prepare(self):
         labels = list(self.hist.get('bucket_labels') or [])

@@ -72,8 +72,8 @@ def _user_proj_timeseries():
 
 def _distribution_hist():
     gib = 1024 ** 3
-    def owners(n, base):
-        return {f'u{i}': {'data': (base + i) * gib, 'files': (base + i) * 100}
+    def owners(n, base):      # keyed by uid, as the scan reports them
+        return {1000 + i: {'data': (base + i) * gib, 'files': (base + i) * 100}
                 for i in range(n)}
     labels = ['< 30d', '30-90d', '90-180d', '> 180d']
     return {
@@ -85,6 +85,7 @@ def _distribution_hist():
             '> 180d':   {'data': 400 * gib, 'files': 40000, 'owners': owners(4, 90)},
         },
         'reference_scan_date': '2026-03-01',
+        'username_map': {1000 + i: f'u{i}' for i in range(11)},   # uid 1011 has no name
     }
 
 
