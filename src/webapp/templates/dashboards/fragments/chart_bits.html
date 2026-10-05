@@ -1,0 +1,9 @@
+{# The chart frame's shared pieces. #}
+
+{# What a chart host shows when its chart raised (webapp/utils/charts.py draw_chart).
+   No exception text: it is in the log, and the reader can do nothing with it. #}
+{% macro chart_error(message='This chart could not be drawn. The error has been logged.') %}
+<div class="text-center text-muted small py-4" role="alert" data-chart-error>
+    <i class="fa-solid fa-triangle-exclamation me-1" aria-hidden="true"></i>{{ message }}
+</div>
+{% endmacro %}

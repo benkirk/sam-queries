@@ -5,6 +5,7 @@ System Status dashboard blueprint.
 from flask import Blueprint, render_template, request, flash, redirect, url_for, make_response, current_app
 from flask_login import login_required, current_user
 from webapp.utils.htmx import read_layout, read_theme
+from webapp.utils.charts import draw_chart
 from webapp.utils.rbac import require_permission, Permission
 from marshmallow import ValidationError
 from sam.schemas.forms import CreateOutageForm, EditOutageForm
@@ -321,8 +322,8 @@ def nodetype_history(system, node_type):
         return redirect(url_for('status_dashboard.index'))
 
     # Generate chart
-    chart_svg = generate_nodetype_history_matplotlib(
-        history_data, layout=read_layout(), theme=read_theme())
+    chart_svg = draw_chart(
+        generate_nodetype_history_matplotlib, history_data, layout=read_layout(), theme=read_theme())
 
     return render_template(
         'dashboards/status/nodetype_history.html',
@@ -383,8 +384,8 @@ def partition_history(system, partition):
     partition_display = f"{partition.upper()} Partition"
 
     # Generate chart
-    chart_svg = generate_nodetype_history_matplotlib(
-        history_data, layout=read_layout(), theme=read_theme())
+    chart_svg = draw_chart(
+        generate_nodetype_history_matplotlib, history_data, layout=read_layout(), theme=read_theme())
 
     return render_template(
         'dashboards/status/nodetype_history.html',
@@ -428,8 +429,8 @@ def queue_history(system, queue_name):
     )
 
     # Generate chart
-    chart_svg = generate_queue_history_matplotlib(
-        history_data, layout=read_layout(), theme=read_theme())
+    chart_svg = draw_chart(
+        generate_queue_history_matplotlib, history_data, layout=read_layout(), theme=read_theme())
 
     # Per-user / per-project rollup table — only fetched and rendered for
     # operators with VIEW_SYSTEM_STATUS_USER_INFO. Skipping the query
@@ -552,8 +553,8 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
         link_kind = 'user' if group_by == 'user' else 'project'
     else:
         link_kind = None
-    chart_svg = generate_user_proj_stacked_area(
-        timeseries, link_kind=link_kind, rank_by=rank_by,
+    chart_svg = draw_chart(
+        generate_user_proj_stacked_area, timeseries, link_kind=link_kind, rank_by=rank_by,
         layout=read_layout(), theme=read_theme(),
     )
 

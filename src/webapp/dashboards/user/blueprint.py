@@ -23,6 +23,7 @@ from sam.schemas.forms.user import (
 from webapp.extensions import db
 from webapp.utils.form_handler import FlattenedFieldErrors, FormError, HtmxFormHandler
 from webapp.utils.htmx import read_active_only, read_layout, read_theme
+from webapp.utils.charts import draw_chart
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
 from sam.queries.disk_usage import (
     build_disk_subtree,
@@ -947,15 +948,15 @@ def resource_details_usage_chart(project):
     named_series = [s for s in stacked['series'] if s['label'] != 'Others']
 
     if len(named_series) > 1:
-        svg = generate_usage_timeseries_stacked_by_user(
-            stacked, metric=ctx.metric, layout=read_layout(),
+        svg = draw_chart(
+            generate_usage_timeseries_stacked_by_user, stacked, metric=ctx.metric, layout=read_layout(),
             theme=read_theme())
         has_data = True
         is_stacked = True
     else:
         series = (ctx.detail_data or {}).get(_USAGE_CHART_DATA_KEY[ctx.metric])
-        svg = generate_usage_timeseries_matplotlib(
-            series or {'dates': [], 'values': []},
+        svg = draw_chart(
+            generate_usage_timeseries_matplotlib, series or {'dates': [], 'values': []},
             link_to_day_rows=True,
             metric=ctx.metric,
             layout=read_layout(), theme=read_theme(),
@@ -993,9 +994,9 @@ def resource_details_user_pie(project):
         ctx.start_date,
         ctx.end_date,
     )
-    svg = generate_user_usage_pie_chart(user_breakdown, metric=ctx.metric,
-                                        layout=read_layout(),
-                                        theme=read_theme())
+    svg = draw_chart(generate_user_usage_pie_chart, user_breakdown, metric=ctx.metric,
+                     layout=read_layout(),
+                     theme=read_theme())
 
     return render_template(
         'dashboards/user/partials/user_pie_chart.html',
@@ -1074,8 +1075,8 @@ def resource_details_disk_usage_chart(project):
     disk_link_kind = (
         'user' if has_permission(current_user, Permission.VIEW_USERS) else None
     )
-    chart_svg = generate_disk_usage_stacked_area(
-        timeseries, link_kind=disk_link_kind, metric=metric,
+    chart_svg = draw_chart(
+        generate_disk_usage_stacked_area, timeseries, link_kind=disk_link_kind, metric=metric,
         layout=read_layout(), theme=read_theme(),
     )
 

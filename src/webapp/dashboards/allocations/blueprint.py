@@ -43,6 +43,7 @@ from sam.queries.usage_cache import (
 from sam import fmt
 from sam.dates import parse_ymd, parse_ymd_or, start_of_today
 from webapp.utils.windows import read_log_window
+from webapp.utils.charts import draw_chart, no_chart_failed
 from sam.queries.projects import project_panels, project_titles
 from sam.export import Column, build_workbook
 from sam.schemas.forms import CreateChargeAdjustmentForm
@@ -506,7 +507,7 @@ def adjustments():
 @bp.route('/projects')
 @login_required
 @require_permission_any_facility(Permission.VIEW_PROJECTS)
-@cache.cached(make_cache_key=user_aware_cache_key)
+@cache.cached(make_cache_key=user_aware_cache_key, response_filter=no_chart_failed)
 def projects():
     """
     Main allocations dashboard page.
@@ -657,12 +658,13 @@ def projects():
     for rn, tree in trees.items():
         storage = resource_types.get(rn) in _STORAGE_RESOURCE_TYPES
         sunbursts[rn] = {
-            'alloc': generate_allocation_sunburst(
-                sunburst_rows(tree, 'alloc'), center='Volume' if storage else 'Annual\nrate',
-                layout=layout, theme=theme),
+            'alloc': draw_chart(
+                generate_allocation_sunburst, sunburst_rows(tree, 'alloc'),
+                center='Volume' if storage else 'Annual\nrate', layout=layout, theme=theme),
             # HPC/DAV usage loads as `htmx_used_sunburst`, over a trailing window.
-            'used': generate_allocation_sunburst(
-                sunburst_rows(tree, 'used'), center='Used', layout=layout, theme=theme)
+            'used': draw_chart(
+                generate_allocation_sunburst, sunburst_rows(tree, 'used'), center='Used',
+                layout=layout, theme=theme)
             if storage else None,
         }
 
@@ -756,8 +758,8 @@ def htmx_pace_chart(resource_name):
         burns, through = _calendar_burn(resource_name, active_at, start, end)
         per_project_usage = pace_segments(per_project_usage, burns, through, active_at)
 
-    chart_svg = generate_pace_chart_matplotlib(
-        per_project_usage, active_at, resource_name=resource_name,
+    chart_svg = draw_chart(
+        generate_pace_chart_matplotlib, per_project_usage, active_at, resource_name=resource_name,
         sort_by=sort_by, layout=read_layout(), theme=read_theme(),
     )
 
@@ -820,9 +822,9 @@ def htmx_used_sunburst(resource_name):
         start=active_at - timedelta(days=days - 1), end=active_at)
     charges = filter_rows_by_facility(charges, selected_facilities)
     facilities = _facility_index()
-    chart_svg = generate_allocation_sunburst(
-        window_sunburst_rows(charges, facilities, 365 / days), center='Use\nrate',
-        layout=read_layout(), theme=read_theme())
+    chart_svg = draw_chart(
+        generate_allocation_sunburst, window_sunburst_rows(charges, facilities, 365 / days),
+        center='Use\nrate', layout=read_layout(), theme=read_theme())
 
     selector_kwargs = {'active_at': active_at.strftime('%Y-%m-%d')}
     if requested_facilities:   # carried forward, or a click widens a scoped chart
@@ -889,8 +891,8 @@ def htmx_sunburst_expanded(resource_name):
         allowed = set(selected_facilities)
         values = {code: v for code, v in values.items() if panels.get(code, (0, None))[1] in allowed}
     slots = facility_slots(fid for fid, _, active in _facility_index() if active)
-    chart_svg = generate_panel_sunburst(panel_rows(values, panels, slots), center=center,
-                                        layout=read_layout(), theme=read_theme())
+    chart_svg = draw_chart(generate_panel_sunburst, panel_rows(values, panels, slots), center=center,
+                           layout=read_layout(), theme=read_theme())
     return render_template(
         'dashboards/fragments/chart_expanded.html', chart_svg=chart_svg,
         title=f'{resource_name}: {what} by facility, panel and project',

@@ -61,6 +61,7 @@ from webapp.disk_scans.session import get_module, is_enabled
 from webapp.extensions import db
 from webapp.utils import age_bands, ladders
 from webapp.utils.htmx import read_flag, read_layout
+from webapp.utils.charts import draw_chart
 from webapp.utils.rbac import Permission, require_permission
 
 bp = Blueprint('disk_scans', __name__)
@@ -605,9 +606,9 @@ def _render_entities(ctx, fragment_url, *, mode, scope_for, log_label,
             for r in rows if r.get(id_key) is not None
         ]
         if entity_data:
-            pie_chart = generate_disk_entity_pie_chart(entity_data, kind,
-                                                       layout=layout,
-                                                       theme=theme)
+            pie_chart = draw_chart(generate_disk_entity_pie_chart, entity_data, kind,
+                                   layout=layout,
+                                   theme=theme)
 
     return render_template(
         'dashboards/user/partials/disk_scans_entities.html',
@@ -670,8 +671,8 @@ def _render_distribution(ctx, fragment_url, *, mode, scope_for, kind,
         hist = service.scan_distribution(
             scope_for(ctx['fileset']), kind, owner_uid=owner_uid)
         if hist:
-            chart_svg = generate_distribution_histogram(
-                hist, log_y=log_on, metric=metric, layout=layout,
+            chart_svg = draw_chart(
+                generate_distribution_histogram, hist, log_y=log_on, metric=metric, layout=layout,
                 theme=theme)
     except Exception as exc:
         current_app.logger.exception(

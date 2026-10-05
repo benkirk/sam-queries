@@ -60,6 +60,7 @@ from webapp.utils.scope import resolve_scope_project as _scope_project
 from webapp.jobs.session import is_enabled
 from webapp.utils import age_bands, ladders
 from webapp.utils.htmx import PER_PAGE_CHOICES, read_flag, read_layout, read_page, read_sort
+from webapp.utils.charts import draw_chart
 from webapp.utils.rbac import (
     Permission,
     has_permission_any_facility,
@@ -887,8 +888,8 @@ def _facility_sunburst(usage, metric, *, layout, theme):
     slots = _active_facility_slots()
     linked = {r.get('value') for r in rows[:_BY_USER_LIMIT]}
     data = _facility_rings(rows, metric, facility_of, slots, linked)
-    return generate_jobs_facility_sunburst(data, _FACILITY_CENTER[metric],
-                                           layout=layout, theme=theme)
+    return draw_chart(generate_jobs_facility_sunburst, data, _FACILITY_CENTER[metric],
+                      layout=layout, theme=theme)
 
 
 #: The two usage rollups are the same panel over a different entity. Each
@@ -992,8 +993,8 @@ def _render_usage_panel(*, entity_key, mode, machine, fragment_url,
     elif by_facility:
         pie_svg = _facility_sunburst(full, metric, layout=layout, theme=theme)
     else:
-        pie_svg = generate_jobs_usage_pie_chart(
-            usage, metric=metric, row_attr=entity['sentinel_attr'],
+        pie_svg = draw_chart(
+            generate_jobs_usage_pie_chart, usage, metric=metric, row_attr=entity['sentinel_attr'],
             layout=layout, theme=theme)
     other = _usage_other(usage) if usage else None
     params = _roundtrip_params(machine, target_id)
@@ -1212,8 +1213,8 @@ def _render_timeline(*, mode, machine, fragment_url, target_id,
     else:
         link_entities = (mode == 'user') or has_permission_any_facility(
             current_user, Permission.VIEW_PROJECTS)
-    chart_svg = (generate_jobs_timeseries_stacked(
-        ts, metric=metric, period=period,
+    chart_svg = (draw_chart(
+        generate_jobs_timeseries_stacked, ts, metric=metric, period=period,
         entity_kind=group_by,
         link_entities=link_entities,
         layout=layout, theme=theme) if has_bands else None)
@@ -1319,8 +1320,8 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
     hist = _trim_empty_edge_bands(hist)
     has_bands = bool((hist or {}).get('buckets'))
 
-    chart_svg = (generate_jobs_histogram(hist, metric=metric, log_y=log_on,
-                                        layout=layout, theme=theme)
+    chart_svg = (draw_chart(generate_jobs_histogram, hist, metric=metric, log_y=log_on,
+                            layout=layout, theme=theme)
                  if has_bands else None)
     params = _roundtrip_params(machine, target_id)
 
@@ -2043,8 +2044,8 @@ def _panel_by_project_expanded(ctx, fragment_url, *, mode, layout='desktop',
                if start else '')
     return render_template(
         template, title=title, caption=caption,
-        chart_svg=generate_panel_sunburst(data, _FACILITY_CENTER[metric],
-                                          layout=layout, theme=theme))
+        chart_svg=draw_chart(generate_panel_sunburst, data, _FACILITY_CENTER[metric],
+                             layout=layout, theme=theme))
 
 
 def _panel_histogram(ctx, fragment_url, *, mode, scope_for, log_label,
