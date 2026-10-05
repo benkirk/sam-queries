@@ -95,10 +95,11 @@
     </div>
 </div>
 
-<!-- Per-user / per-project queue load over time (top-N + Others).
-     Visible to any logged-in user; legend click-through into per-user
-     / per-project detail modals is gated on VIEW_SYSTEM_STATUS_USER_INFO
-     inside the chart-rendering route (link_kind=None for non-operators). -->
+{# Per-user / per-project queue load over time (top-N + Others). Signed-in viewers
+   only: the chart route is @login_required, and its 401 carries HX-Redirect, which
+   would send an anonymous visitor to this public page off to the login screen.
+   Legend links need VIEW_SYSTEM_STATUS_USER_INFO (link_kind=None otherwise). #}
+{% if current_user.is_authenticated %}
 <div class="card mb-4">
     <div class="card-header">
         <h5 class="mb-0">
@@ -130,6 +131,7 @@
         </div>
     </div>
 </div>
+{% endif %}
 
 {% if can_view_user_info %}
 <!-- Per-user / per-project rollup (latest snapshot). Restricted to

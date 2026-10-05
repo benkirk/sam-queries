@@ -268,6 +268,20 @@ class TestStatusDashboard:
     # pages should inherit the user's chosen time range via the dashboard.
     # ------------------------------------------------------------------
 
+    _QUEUE_URL = '/status/queue-history/derecho/main'
+
+    def test_queue_history_loads_the_user_project_chart_when_signed_in(
+            self, auth_client, status_session):
+        assert b'user-proj-chart' in auth_client.get(self._QUEUE_URL).data
+
+    def test_queue_history_asks_an_anonymous_visitor_for_no_login_only_chart(
+            self, client, status_session):
+        """The page is public and the chart route is `@login_required`: its 401
+        carries HX-Redirect, which sends the whole page to the login screen."""
+        response = client.get(self._QUEUE_URL)
+        assert response.status_code == 200
+        assert b'user-proj-chart' not in response.data
+
     def test_dashboard_accepts_hours_param(self, auth_client, status_session):
         """`?hours=720` renders without crashing on each system page."""
         seed_data(status_session)
