@@ -42,7 +42,7 @@ from system_status.queries.task_runs import (
 from system_status.timeutil import utcnow_naive
 from webapp.extensions import db
 from webapp.utils.faceted_log import build_facet_strip, parse_window
-from webapp.utils.htmx import htmx_modal_not_found
+from webapp.utils.htmx import htmx_modal_not_found, read_multi
 from webapp.utils.rbac import require_permission, Permission
 
 from .blueprint import bp
@@ -97,9 +97,9 @@ def _parse_filters(args):
                                per_page=_PER_PAGE, now=utcnow_naive())
     filters = {
         'since': since,
-        'task_names': [t for t in args.getlist('task_name') if t],
-        'states': [s for s in args.getlist('state') if s],
-        'triggers': [t for t in args.getlist('trigger_type') if t],
+        'task_names': read_multi(args, 'task_name'),
+        'states': read_multi(args, 'state'),
+        'triggers': read_multi(args, 'trigger_type'),
         'search': (args.get('search', '') or '').strip() or None,
     }
     return filters, page

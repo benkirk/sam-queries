@@ -18,7 +18,9 @@ from flask import current_app, render_template
 
 from webapp.extensions import db
 from webapp.utils.facets import Facet, FacetSet
-from webapp.utils.htmx import modal_triggers, read_flag, read_page, read_sort
+from webapp.utils.htmx import (
+    modal_triggers, read_flag, read_multi, read_page, read_sort,
+)
 from sam.integration.xras_api import XrasSourceUnavailable
 from sam.manage import xras_remediation as remediation
 from sam.queries.xras_actions import XRAS_ACTION_SORT_COLUMNS
@@ -207,8 +209,8 @@ def _parse_xras_filters(request_args):
     ``end_date`` appears in the query string — explicitly empty bounds mean
     "all time", which is a different intent from "I have not chosen".
     """
-    statuses = request_args.getlist('status') or None
-    action_types = request_args.getlist('action_type') or None
+    statuses = read_multi(request_args, 'status') or None
+    action_types = read_multi(request_args, 'action_type') or None
     request_number = (request_args.get('request_number') or '').strip() or None
 
     start_date_str = (request_args.get('start_date') or '').strip()

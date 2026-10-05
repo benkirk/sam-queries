@@ -17,7 +17,8 @@ from typing import List, Dict
 from webapp.extensions import db, cache, user_aware_cache_key
 from webapp.utils import age_bands
 from webapp.utils.htmx import (
-    handle_htmx_form_post, read_flag, read_layout, read_page, read_switch,
+    handle_htmx_form_post, read_flag, read_layout, read_multi, read_page,
+    read_switch,
     read_sort, read_tab, read_theme, register_typeahead,
 )
 from sam.projects.projects import Project
@@ -1196,7 +1197,7 @@ def _parse_audit_filters(request_args, sort_whitelist):
     time).
     """
     projcode = (request_args.get('projcode') or '').strip() or None
-    resource_names = request_args.getlist('resource_name') or None
+    resource_names = read_multi(request_args, 'resource_name') or None
     username = (request_args.get('username') or '').strip() or None
     start_date_str = (request_args.get('start_date') or '').strip()
     end_date_str = (request_args.get('end_date') or '').strip()

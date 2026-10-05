@@ -180,3 +180,14 @@ class TestToggleRefiresSearch:
         assert 'hx-get=' in block
         assert 'hx-trigger="change"' in block
         assert f'hx-target="#{results_id}"' in block
+
+
+class TestReadMulti:
+
+    def test_blank_values_are_dropped_and_order_is_kept(self):
+        from werkzeug.datastructures import MultiDict
+        from webapp.utils.htmx import read_multi
+
+        args = MultiDict([('kind', 'b'), ('kind', ''), ('kind', 'a')])
+        assert read_multi(args, 'kind') == ['b', 'a']
+        assert read_multi(args, 'absent') == []
