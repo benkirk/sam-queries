@@ -288,6 +288,19 @@ class TestStatusDashboard:
         assert response.status_code == 200
         assert b'user-proj-chart' not in response.data
 
+    @pytest.mark.parametrize('url', ['/status/queue-history/derecho/main',
+                                     '/status/partition-history/derecho/cpu'])
+    def test_history_window_presets_swap_the_page_in_place(self, client, status_session, url):
+        """A preset re-requests the page, swaps its main content and pushes the URL:
+        the window drives every card, so no fragment route could keep them in step."""
+        body = client.get(f'{url}?hours=24').get_data(as_text=True)
+        preset = re.search(r'<button[^>]*aria-pressed="true"[^>]*hx-get="([^"]+)"[^>]*>\s*1d', body)
+        assert preset and preset.group(1) == f'{url}?hours=24'
+        week = re.search(r'<button[^>]*hx-get="([^"]*hours=168)"[^>]*>', body).group(0)
+        assert 'hx-target=".main-content"' in week and 'hx-select=".main-content"' in week
+        assert f'hx-push-url="{url}?hours=168"' in week
+        assert body.count('class="main-content"') == 1
+
     def test_dashboard_accepts_hours_param(self, auth_client, status_session):
         """`?hours=720` renders without crashing on each system page."""
         seed_data(status_session)

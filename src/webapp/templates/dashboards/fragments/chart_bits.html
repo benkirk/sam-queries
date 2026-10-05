@@ -28,8 +28,11 @@
      off              True disables the pill (its title says why)
      data             {name: value}, written as data-* attributes
    Build it with `{% set _ = pills.append(dict(...)) %}` in a loop. The selected
-   pill is Unity's `.active` to the eye and aria-pressed to a screen reader. #}
-{% macro chart_pills(label, pills, target, swap='outerHTML', include=None, classes='', attrs={}) %}
+   pill is Unity's `.active` to the eye and aria-pressed to a screen reader.
+   `select` takes that region out of a full-page response; `push` puts the pill's
+   URL in the address bar (the pair is how a whole page changes its window). #}
+{% macro chart_pills(label, pills, target, swap='outerHTML', include=None, classes='', attrs={},
+                     select=None, push=False) %}
 <div class="btn-group btn-group-sm{{ ' ' ~ classes if classes }}" role="group" aria-label="{{ label }}"
      {%- for name, value in attrs.items() %} {{ name }}{% if value is not none %}="{{ value }}"{% endif %}{% endfor %}>
     {% for p in pills %}
@@ -39,7 +42,9 @@
             {%- if p.title %} title="{{ p.title }}"{% endif %}
             {%- if p.off %} disabled
             {%- else %} hx-get="{{ p.url }}" hx-target="{{ target }}" hx-swap="{{ swap }}"
-            {%- if include %} hx-include="{{ include }}"{% endif %}{% endif %}>
+            {%- if include %} hx-include="{{ include }}"{% endif %}
+            {%- if select %} hx-select="{{ select }}"{% endif %}
+            {%- if push %} hx-push-url="{{ p.url }}"{% endif %}{% endif %}>
         {%- if p.icon %}<i class="fa-solid fa-{{ p.icon }} me-1" aria-hidden="true"></i> {% endif %}{{ p.text }}</button>
     {% endfor %}
 </div>
