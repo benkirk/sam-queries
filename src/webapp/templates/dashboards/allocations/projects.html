@@ -1,4 +1,5 @@
 {% extends 'dashboards/allocations/base_allocations.html' %}
+{% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
 {% from 'dashboards/fragments/form_fields.html' import multiselect_filter %}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_roots_only %}
@@ -7,32 +8,17 @@
 
 {% block alloc_content %}
 
-<!-- Filter Panel: Unity NCAR navy panel, always visible, sits above content.
-     Reuses .filter-sidebar (same design tokens as the original sidebar-style
-     filter); form fields arranged horizontally for top-of-page placement. -->
+{# Top-of-page filter: a plain GET form on the shared navy panel shell. #}
 <div class="filter-sidebar mb-3">
-    <div class="filter-sidebar-header">
-        <h2 class="filter-sidebar-title">
-            <button class="filter-sidebar-toggle" type="button"
-                    data-bs-toggle="collapse" data-bs-target="#allocations-filter-fields"
-                    aria-expanded="true" aria-controls="allocations-filter-fields">
-                Filters <i class="fa-solid fa-chevron-down filter-sidebar-chevron ms-1"></i>
-            </button>
-        </h2>
-        <a href="{{ url_for('allocations_dashboard.projects') }}"
-           class="filter-sidebar-clear">Clear filters</a>
-    </div>
-
-    {# Collapsed by default on phones (dashboard-init.js strips .show below
-       md). data-no-persist: the responsive default owns the initial state. #}
-    <div id="allocations-filter-fields" class="collapse show filter-fields-collapse" data-no-persist>
-    <form method="GET" class="d-flex flex-wrap align-items-start gap-3 mb-0"
-          id="allocations-facility-filter-form">
+{% call filter_panel_shell('allocations-facility-filter-form',
+                           action=url_for('allocations_dashboard.projects'),
+                           clear_url=url_for('allocations_dashboard.projects')) %}
         {# Carry the active resource tab across a GET filter reload: this tablist
            is on the ?tab= URL channel (not localStorage), so without this the
            Update submit would reset to the first tab. syncTabParam keeps it
            current on tab click; the seeded value covers deep-link-then-Update. #}
         <input type="hidden" name="tab" value="{{ active_tab }}">
+        <div class="d-flex flex-wrap align-items-start gap-3">
         <div>
             <label for="active_at" class="form-label"><strong>Active at</strong></label>
             <input type="date" class="form-control" id="active_at"
@@ -62,8 +48,8 @@
                 formaction="{{ url_for('allocations_dashboard.projects_export') }}">
             <i class="fa-solid fa-file-excel me-1"></i>Download (.xlsx)
         </button>
-    </form>
-    </div>
+        </div>
+{% endcall %}
 </div>
 
 <!-- Resource Tabs -->

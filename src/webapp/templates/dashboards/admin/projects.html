@@ -1,5 +1,6 @@
 {% extends 'dashboards/admin/base_admin_projects.html' %}
 {% from 'dashboards/fragments/search_box.html' import active_toggle_search %}
+{% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
 {% from 'dashboards/fragments/form_fields.html' import multiselect_filter %}
 
 {% block title %}Admin: Projects - SAM{% endblock %}
@@ -68,17 +69,10 @@
             </div>
             <div id="expirations-section" class="collapse">
                 <div class="card-body py-3">
-                    <!-- Filters Form — Unity navy panel, matches the
-                         global filter-sidebar pattern used elsewhere -->
-                    <form id="expirations-filters-form" class="filter-sidebar mb-3">
-                        <div class="filter-sidebar-header">
-                            <h2 class="filter-sidebar-title">Filters</h2>
-                            {# CSP-clean reset: expirations-clear (static/js/dashboard-init.js)
-                               resets the form and reloads the active tab — no inline onclick. #}
-                            <a class="filter-sidebar-clear" style="cursor: pointer;"
-                               data-action="expirations-clear">Clear filters</a>
-                        </div>
-
+                    {# The form is bare: dashboard-init.js answers its submit by
+                       reloading the ACTIVE tab, which no single hx-target can name. #}
+                    <div class="filter-sidebar mb-3">
+                    {% call filter_panel_shell('expirations-filters-form') %}
                         <div class="d-flex flex-wrap align-items-start gap-3">
                             {{ multiselect_filter('Facilities', 'facilities',
                                                   allowed_facility_names,
@@ -117,14 +111,14 @@
                                 <small class="form-text">For abandoned users</small>
                             </div>
 
-                            <button type="button" class="btn btn-outline-white align-self-end"
-                                    data-action="expirations-reload">Apply Filters
+                            <button type="submit" class="btn btn-outline-white align-self-end">Apply Filters
                             </button>
                             <button type="button" class="btn btn-outline-white align-self-end"
                                     data-action="expirations-export-csv">Export CSV
                             </button>
                         </div>
-                    </form>
+                    {% endcall %}
+                    </div>
 
                     <!-- Sub-tabs -->
                     <ul class="nav nav-pills mb-3" id="expirations-tabs" role="tablist">

@@ -16,11 +16,9 @@
   as the "an entity needing more than the spec expresses stays bespoke" rule in
   dashboards/admin/crud.py.
 
-  The panel chrome now comes from `filter_panel_shell`
-  (dashboards/fragments/filter_panel.html), shared with audit_filters,
-  institution_filters, jobs_filters and _disk_scans_dir_filters. The two
-  hand-rolled panels in allocations/projects.html and admin/projects.html stay
-  bespoke — neither uses htmx, and one has no collapse at all.
+  The panel chrome comes from `filter_panel_shell`
+  (dashboards/fragments/filter_panel.html), as it does for every navy filter
+  panel on the site.
 
   Parameters:
     form_id        - unique id for this form (e.g. "xras-filters")
@@ -35,8 +33,8 @@
     layout         - 'mobile' | 'tablet' | 'desktop', from read_layout()
 
   WARNING: This page carries a SECOND form with start_date/end_date: the hidden
-  #xras-activity-filters (allocations/xras.html), whose pair is emitted by
-  window_pills inside the pending-activity fragment and bound with `form=`.
+  #xras-window-filters (allocations/xras.html), whose pair is emitted by
+  window_pills in partials/xras_window_control.html and bound with `form=`.
   The pair below is nested in THIS form and carries no `form=`, so the two
   never share a form and form.elements['start_date'] stays a single node in
   each. Adding a control here without REMOVING the pair it replaces is what

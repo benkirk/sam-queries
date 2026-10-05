@@ -15,7 +15,7 @@
         </div>
       {% endcall %}
 
-  The button row stays with the caller on purpose: the five panels disagree on
+  The button row stays with the caller on purpose: the panels disagree on
   the button set (Search / Search+Reset / Apply), the icon, and the field-row
   alignment (align-items-start vs -end). So does anything hidden — put hidden
   inputs inside the call body, not around it, so the header keeps the collapse
@@ -36,6 +36,9 @@
                 explorer, which re-renders its card rather than its table).
     action    — render a plain GET form to this URL instead of the htmx one
                 (the /database browser, whose state is the page URL)
+                With neither hx_get nor action the form is bare: the page's
+                own script answers `submit` (expirations, whose target is the
+                active tab). It must preventDefault.
     clear_url — "Clear filters" navigates here instead of resetting the form,
                 which would restore the server-rendered values, not clear them
 #}
@@ -43,12 +46,14 @@
                             action=none, clear_url=none) %}
 {% if action %}
 <form id="{{ form_id }}" method="get" action="{{ action }}">
-{% else %}
+{% elif hx_get %}
 <form id="{{ form_id }}"
       hx-get="{{ hx_get }}"
       hx-target="#{{ hx_target }}"
       hx-swap="{{ hx_swap }}"
       hx-trigger="submit">
+{% else %}
+<form id="{{ form_id }}">
 {% endif %}
   <div class="filter-sidebar-header">
     <h2 class="filter-sidebar-title">

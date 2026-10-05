@@ -129,16 +129,12 @@
         return activeTab ? activeTab.dataset.view : 'upcoming';
     }
 
-    /* Apply Filters — reload the active tab */
-    registerAction('expirations-reload', function () {
-        loadExpirationsView(activeExpirationsView());
-    });
-
-    /* Clear filters — reset the form, then reload the active tab so the
-     * expirations view reflects the cleared (default) filters. */
-    registerAction('expirations-clear', function () {
-        var form = document.getElementById('expirations-filters-form');
-        if (form) { form.reset(); }
+    /* Apply (and the shell's Clear filters, which resets then submits):
+     * reload the active tab. The form has no hx-get because its target is
+     * whichever tab is showing, so its submit is answered here. */
+    document.addEventListener('submit', function (e) {
+        if (e.target.id !== 'expirations-filters-form') { return; }
+        e.preventDefault();
         loadExpirationsView(activeExpirationsView());
     });
 
