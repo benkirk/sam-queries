@@ -28,21 +28,6 @@
     margin-right: auto;
 }
 
-.chart-container {
-    text-align: center;
-}
-
-.chart-container svg {
-    width: 100%;
-    max-width: 720px;
-    height: auto;
-}
-
-/* Pace chart breaks out of the 720px cap and fills the dashboard column */
-.chart-container.pace-chart svg {
-    max-width: none;
-}
-
 /* ===================================================================
    XRAS merge form — the whole candidate card is the control
    =================================================================== */

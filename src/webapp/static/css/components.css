@@ -556,52 +556,6 @@ tr.collapsing {
     transition: none !important;
 }
 
-/* Two-ring charts above their tree tables (admin Facilities, allocations). */
-.fair-share-chart svg,
-.sunburst-chart svg {
-    display: block;
-    width: 100%;
-    max-width: 44rem;
-    height: auto;
-    margin: 0 auto;
-}
-/* Expand opener: top-right of its chart; a click on the chart off a link opens it too. */
-[data-chart-expand] {
-    position: relative;
-}
-[data-chart-expand] svg {
-    cursor: zoom-in;
-}
-[data-chart-expand] svg a {
-    cursor: pointer;
-}
-.chart-expand-btn {
-    position: absolute;
-    top: 0;
-    right: 0.75rem;
-    z-index: 1;
-}
-[data-chart-expand]:hover .chart-expand-btn {
-    --bs-btn-color: var(--text-link);
-}
-/* The expanded chart fills the fullscreen modal's height; its legend takes the width. */
-.chart-expand svg {
-    display: block;
-    width: auto;
-    max-width: 100%;
-    height: calc(100vh - 9rem);
-    margin: 0 auto;
-}
-
-/* A lazy ring's placeholder holds about a ring's height, so `intersect` fires when its row
-   comes into view, not when its vertically centered spinner line does. */
-.sunburst-chart > [hx-trigger] {
-    display: flex;
-    min-height: 20rem;
-    align-items: center;
-    justify-content: center;
-}
-
 /* Allocations calendar: a label column plus a date track --cal-days wide. Bars and
    gridlines are placed in percents of the track, so the pixel scale lives here. */
 .alloc-calendar {

@@ -59,13 +59,13 @@
 
     {# Bar fill color #}
     {%   if state == 'cold' %}
-    {%     set fill_color = '#0dcaf0' %}
+    {%     set fill_color = 'var(--bs-info)' %}
     {%   elif state == 'steady' %}
-    {%     set fill_color = '#198754' %}
+    {%     set fill_color = 'var(--bs-success)' %}
     {%   elif state == 'hot' %}
-    {%     set fill_color = '#fd7e14' %}
+    {%     set fill_color = 'var(--bs-orange)' %}
     {%   else %}
-    {%     set fill_color = '#dc3545' %}
+    {%     set fill_color = 'var(--bs-danger)' %}
     {%   endif %}
 
     {# Badge color class #}
@@ -108,8 +108,8 @@
 
         {# col 2: thermometer bar #}
         <div class="position-relative" style="height:18px; background:var(--surface-secondary); border-radius:4px; overflow:visible;">
-            <div style="position:absolute; left:0; top:0; height:100%; width:{{ center_pos }}%; background:rgba(13,202,240,0.08); border-radius:4px 0 0 4px;"></div>
-            <div style="position:absolute; left:{{ center_pos }}%; top:0; height:100%; width:{{ center_pos }}%; background:rgba(253,126,20,0.08); border-radius:0 4px 4px 0;"></div>
+            <div style="position:absolute; left:0; top:0; height:100%; width:{{ center_pos }}%; background:rgba(var(--bs-info-rgb),0.08); border-radius:4px 0 0 4px;"></div>
+            <div style="position:absolute; left:{{ center_pos }}%; top:0; height:100%; width:{{ center_pos }}%; background:color-mix(in srgb, var(--bs-orange) 8%, transparent); border-radius:0 4px 4px 0;"></div>
             <div style="position:absolute; left:{{ fill_start }}%; top:0; height:100%; width:{{ fill_width_pct }}%; background:{{ fill_color }}; border-radius:4px; opacity:0.85;"></div>
             <div style="position:absolute; left:{{ center_pos }}%; top:-2px; bottom:-2px; width:2px; background:var(--text-primary); opacity:0.75;" title="100% = steady-state"></div>
             {% if win.threshold_pct is not none and thresh_pos > center_pos %}
