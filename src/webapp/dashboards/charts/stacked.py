@@ -379,7 +379,8 @@ class UserProjAreaChart(StackedSeriesChart):
     stack_mode = 'area'
     palette = UNITY_STACK_20
     palette_reverse = True
-    #: A tier larger than the rest of the family: the status dashboard's headline chart.
+    #: A tier larger than the rest of the family: the status dashboard's headline
+    #: chart. Class attributes, so a phone's layout can override them.
     legend_fontsize = 13
     axis_label_fontsize = 13
     tick_fontsize = 12
@@ -425,15 +426,6 @@ class UserProjAreaChart(StackedSeriesChart):
 
     def ylabel(self):
         return self.timeseries.get('metric_label', 'Jobs')
-
-    def decorate(self, ax, layout, theme):
-        # Sizes are class attributes now (`axis_label_fontsize`,
-        # `tick_fontsize`) so the layout can override them on a phone, where
-        # this chart's deliberately-larger 13/12pt chrome would crowd out the
-        # plot rather than emphasize it.
-        ax.set_ylabel(self.ylabel(), **self.label_kw(layout))
-        ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
-        self.apply_grid(ax, theme)
 
 
 # ---------------------------------------------------------------------------
