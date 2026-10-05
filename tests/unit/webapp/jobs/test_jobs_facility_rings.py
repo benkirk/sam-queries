@@ -44,6 +44,14 @@ def test_facility_value_is_every_project_but_only_top_three_are_named():
     ncar = _rings()[0]
     assert ncar['value'] == 1100.0
     assert [t['name'] for t in ncar['types']] == ['NCAR0001', 'NCAR0002', 'NCAR0003']
+    assert ncar['others'] == 1 and _rings()[1]['others'] == 0
+
+
+def test_the_remainder_wedge_says_how_many_projects_it_holds(app):
+    from webapp.dashboards.charts import generate_jobs_facility_sunburst
+    with app.test_request_context('/'):
+        svg = generate_jobs_facility_sunburst(_rings(), 'CPU-h')
+    assert '<title>1 other NCAR projects · ' in svg
 
 
 def test_unmapped_and_null_accounts_share_the_unknown_ring():

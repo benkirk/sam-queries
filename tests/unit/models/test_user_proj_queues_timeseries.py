@@ -98,6 +98,7 @@ def test_rank_by_peak_vs_current_diverge(status_session):
     current_named = [s['label'] for s in current['series'] if s['label'] != 'Others']
 
     assert peak_named == ['spiker'], peak['series']
+    assert peak['series'][0]['label'] == 'Others' and peak['series'][0]['count'] >= 1
     assert current_named == ['steady'], current['series']
 
 

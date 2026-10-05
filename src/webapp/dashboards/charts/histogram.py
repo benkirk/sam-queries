@@ -28,6 +28,7 @@ from webapp.dashboards.charts.jobs_metrics import (
     JOBS_METRIC_LABELS, jobs_bucket_segments, jobs_metric_value,
 )
 from webapp.dashboards.charts.layout import profile
+from webapp.dashboards.charts.series import fold_top, other_label
 from webapp.dashboards.charts.theme import (
     UNITY_NCAR_BLUE, UNITY_STACK_10, scale_bytes, shade_family,
 )
@@ -38,20 +39,18 @@ _AH_TOP_SEGMENTS = 10
 
 
 def bucket_segments(owners, metric='data'):
-    """Per-bucket stacked-bar segments, bottom -> top.
+    """Per-bucket stack segments ``[(name, value)]``, bottom -> top.
 
-    Returns a list of segment values (in *metric* units — ``'data'`` bytes or
-    ``'files'`` counts) ordered as the long-tail "other" aggregate (if any)
-    followed by the top-``_AH_TOP_SEGMENTS`` owners ascending — so the largest
-    owner sits at the top of the bar. Empty list when the bucket has no owners
-    (-> drawn as a single flat bar).
+    Values are in *metric* units (``'data'`` bytes or ``'files'`` counts): the
+    folded long tail (``N other``) at the base, then the top
+    ``_AH_TOP_SEGMENTS`` owners ascending, so the largest sits at the top of
+    the bar. Empty when the bucket has no owners (a single flat bar).
     """
     if not owners:
         return []
-    ranked = sorted((d.get(metric, 0) or 0) for d in owners.values())
-    if len(ranked) > _AH_TOP_SEGMENTS:
-        return [sum(ranked[:-_AH_TOP_SEGMENTS])] + ranked[-_AH_TOP_SEGMENTS:]
-    return ranked
+    kept, rest, n_rest = fold_top(
+        [(name, d.get(metric, 0) or 0) for name, d in owners.items()], _AH_TOP_SEGMENTS)
+    return ([(other_label(n_rest), rest)] if n_rest else []) + kept[::-1]
 
 
 class CategoricalStackChart(BaseChart):
@@ -82,7 +81,7 @@ class CategoricalStackChart(BaseChart):
         raise NotImplementedError
 
     def bucket_segments(self, bucket) -> list:
-        """Stack segments bottom -> top, or [] for a flat bar."""
+        """Stack segments ``[(name, value)]`` bottom -> top, or [] for a flat bar."""
         raise NotImplementedError
 
     def bucket_is_clickable(self, bucket) -> bool:
@@ -134,7 +133,7 @@ class CategoricalStackChart(BaseChart):
             shades = shade_family(self.band_colors[i], len(segs),
                                   toward=theme.shade_toward)
             bottom = 0.0
-            for seg_val, shade in zip(segs, shades):
+            for (_name, seg_val), shade in zip(segs, shades):
                 cont = ax.bar(i, seg_val, bottom=bottom, color=shade,
                               edgecolor=theme.segment_edge,
                               linewidth=self.segment_edge_width)
@@ -210,7 +209,7 @@ class DistributionHistogram(CategoricalStackChart):
 
     def bucket_segments(self, bucket):
         owners = self._row(bucket).get('owners') or {}
-        return [s / self.scale for s in bucket_segments(owners, self.metric)]
+        return [(name, v / self.scale) for name, v in bucket_segments(owners, self.metric)]
 
     def bucket_is_clickable(self, bucket):
         return bool(self._row(bucket).get('owners'))
@@ -267,8 +266,7 @@ class JobsHistogram(CategoricalStackChart):
         affect the rendering). The job_count positivity vector joins the key
         because it decides which bars carry drill URLs — an hours-metric SVG
         with matching hours but a different populated-band set must not be
-        reused. Owner names stay out of the key: the SVG carries no owner
-        labels, so only the segment values shape it."""
+        reused. Each segment is keyed with its owner's name."""
         buckets = (hist or {}).get('buckets') or []
         payload = [(b.get('label'), jobs_metric_value(b, metric),
                     tuple(jobs_bucket_segments(b, metric))) for b in buckets]

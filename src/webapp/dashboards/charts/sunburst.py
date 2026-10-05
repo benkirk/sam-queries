@@ -13,6 +13,7 @@ from webapp.caching.chart import content_hash
 from webapp.dashboards.charts import links
 from webapp.dashboards.charts.layout import profile
 from webapp.dashboards.charts.pie import PieChart
+from webapp.dashboards.charts.series import other_label
 from webapp.dashboards.charts.theme import autopct_color_for, shade_family
 
 
@@ -248,7 +249,7 @@ class AllocationSunburst(TwoRingPie):
 class JobsFacilitySunburst(AllocationSunburst):
     """Job history By Project, grouped: facilities inside, each one's top projects
     outside in usage order. The remainder is other projects' real usage, so it is a
-    pale tint rather than a blank. A project wedge drills to its table row only when
+    pale tint rather than a blank; a row's ``others`` counts them for its hover. A project wedge drills to its table row only when
     ``linked`` (the table holds the top 25 alone); facilities have no row to open.
     """
 
@@ -285,7 +286,9 @@ class JobsFacilitySunburst(AllocationSunburst):
         return shade_family(base, 2, lightest=0.8, toward=theme.shade_toward)[0]
 
     def part_tooltip(self, row, name, value):
-        return super().part_tooltip(row, name or f'Other {row["facility"]} projects', value)
+        n = row.get('others')
+        rest = f'{other_label(n)} {row["facility"]} projects' if n else f'Other {row["facility"]} projects'
+        return super().part_tooltip(row, name or rest, value)
 
 
 def panel_rows(values, panels, slots):
@@ -410,7 +413,7 @@ class PanelSunburst(PieChart):
                 wedge.set_linewidth(0)
             if w['others']:
                 self.tooltip(wedge, self.tooltip_text(
-                    f"{w['others']} other {w['panel']['name']} {self.rim_noun}", w['value']))
+                    f"{other_label(w['others'])} {w['panel']['name']} {self.rim_noun}", w['value']))
             else:
                 wedge.set_url(self.rim_link.url(w['name']))
                 self.tooltip(wedge, self.tooltip_text(w['name'], w['value']))

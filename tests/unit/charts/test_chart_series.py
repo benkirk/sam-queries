@@ -131,3 +131,30 @@ def test_series_module_imports_no_matplotlib():
             imported.add(node.module.split('.')[0])
     assert 'matplotlib' not in imported
     assert 'numpy' not in imported
+
+
+class TestTheRemainder:
+    """One fold and one name for the remainder, wherever a chart has one."""
+
+    def test_fold_top_keeps_the_largest_and_counts_the_rest(self):
+        kept, rest, n = S.fold_top([('a', 5), ('b', 9), ('c', 1), ('d', 2)], 2)
+        assert kept == [('b', 9), ('a', 5)] and (rest, n) == (3, 2)
+        assert S.fold_top([('a', 5)], 3) == ([('a', 5)], 0, 0)
+
+    def test_ties_break_on_the_name_not_the_input_order(self):
+        assert S.fold_top([('z', 1), ('a', 1), ('m', 1)], 2)[0] == [('a', 1), ('m', 1)]
+
+    def test_the_label_says_how_many_only_when_somebody_knows(self):
+        assert S.other_label(12) == '12 other'
+        assert S.other_label(1234) == '1,234 other'
+        assert S.other_label() == S.other_label(0) == 'Others'
+
+    def test_a_producer_count_names_the_band_and_detection_is_a_flag(self):
+        counted, named = S.from_label_series([
+            {'label': 'Others', 'count': 84, 'values': [1]}, {'label': 'alice', 'values': [2]}])
+        assert (counted.label, counted.is_other, counted.is_linkable) == ('84 other', True, False)
+        assert (named.is_other, named.link_key) == (False, 'alice')
+        unknown, = S.from_pairs([('Others', [1])])
+        assert (unknown.label, unknown.is_other) == ('Others', True)
+        # Recolored by the flag: the label no longer says 'Others'.
+        assert S.assign_colors([counted, named], ['#111'], '#999') == ['#999', '#111']

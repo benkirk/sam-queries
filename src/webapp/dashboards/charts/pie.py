@@ -13,6 +13,7 @@ from webapp.dashboards.charts import links
 from webapp.dashboards.charts.base import BaseChart
 from webapp.dashboards.charts.jobs_metrics import jobs_metric_value
 from webapp.dashboards.charts.layout import profile
+from webapp.dashboards.charts.series import OTHERS, other_label
 from webapp.dashboards.charts.theme import UNITY_PALETTE_10, autopct_color_for
 
 _PIE_START_ANGLE = 60
@@ -171,7 +172,7 @@ class _CumulativePie(PieChart):
         n_others = len(values_desc) - keep
         if n_others <= 0:
             return None
-        return f'{fmt.number(n_others)} other', sum(values_desc[keep:])
+        return other_label(n_others), sum(values_desc[keep:])
 
     def build(self):
         rows = self.entities()
@@ -333,4 +334,5 @@ class JobsUsagePie(_CumulativePie):
 
     def remainder(self, values_desc, keep):
         rest = self._total - sum(values_desc[:keep])
-        return ('Other', rest) if rest > 1e-9 else None
+        # Rows past the plugin's limit are in the total too: the count is unknown.
+        return (OTHERS, rest) if rest > 1e-9 else None

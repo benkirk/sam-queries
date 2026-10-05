@@ -17,9 +17,13 @@ to one rule:
 
     an artist is linked iff its `link_key` is not None
 
-so "Others", the unknown bucket and any aggregate row are inert by
+so the remainder, the unknown bucket and any aggregate row are inert by
 construction rather than by remembering to test for them. `Series.is_linkable`
 is the single place that rule lives.
+
+The remainder also has one fold (`fold_top`) and one name (`other_label`):
+``N other`` where the producer says how many it folded, ``Others`` where it
+cannot know (the jobs plugin truncates upstream).
 
 **No matplotlib import here, by design** — see the note in `links.py`.
 """
@@ -29,9 +33,26 @@ from typing import Sequence
 
 from sam import fmt
 
-#: The conventional label for an aggregated remainder band. Producers emit it
-#: verbatim; it is never linkable and never consumes a palette slot.
+#: What a producer names its aggregated remainder, verbatim, and what a chart
+#: shows when nobody knows how many entities it holds. Never linkable, and it
+#: never consumes a palette slot.
 OTHERS = 'Others'
+
+
+def other_label(count=None) -> str:
+    """The remainder's name: ``12 other`` when the count is known, else ``Others``."""
+    return f'{fmt.number(count)} other' if count else OTHERS
+
+
+def fold_top(pairs, n):
+    """Keep the ``n`` largest of ``[(name, value)]``; fold the rest.
+
+    Returns ``(kept, rest_value, rest_count)``, ``kept`` largest first. Ties
+    break on the name, so a color and a position never depend on input order.
+    """
+    ranked = sorted(pairs, key=lambda p: (-p[1], str(p[0])))
+    rest = ranked[n:]
+    return ranked[:n], sum(v for _, v in rest), len(rest)
 
 
 @dataclass(frozen=True)
@@ -45,27 +66,34 @@ class Series:
     #: `label`; kept separate because the *displayed* label often carries a
     #: formatted suffix — "alice (1,234)" — that must not reach the URL.
     link_key: str | None = None
+    #: True for the aggregated remainder: muted, inert, and off the palette.
+    #: Its label is `other_label`, so nothing may recognize it by name.
+    is_other: bool = False
 
     @property
     def is_linkable(self) -> bool:
         return self.link_key is not None
 
 
-def _series(label, values, linkable=True) -> Series:
+def _series(label, values, linkable=True, count=None) -> Series:
+    """The chart boundary: the one place a producer's ``'Others'`` is recognized."""
     label = '' if label is None else str(label)
-    is_other = (label == OTHERS)
+    if label == OTHERS:
+        return Series(label=other_label(count), values=list(values), is_other=True)
     return Series(label=label, values=list(values),
-                  link_key=(label if (linkable and not is_other and label) else None))
+                  link_key=(label if (linkable and label) else None))
 
 
 def from_label_series(raw) -> list[Series]:
-    """`[{'label': ..., 'values': [...]}, ...]` — charges + user/proj queues."""
-    return [_series(s.get('label'), s.get('values') or []) for s in (raw or [])]
+    """`[{'label': ..., 'values': [...], 'count'?: n}, ...]` — charges + user/proj queues."""
+    return [_series(s.get('label'), s.get('values') or [], count=s.get('count'))
+            for s in (raw or [])]
 
 
 def from_username_series(raw) -> list[Series]:
-    """`[{'username': ..., 'values': [...]}, ...]` — disk usage."""
-    return [_series(s.get('username'), s.get('values') or []) for s in (raw or [])]
+    """`[{'username': ..., 'values': [...], 'count'?: n}, ...]` — disk usage."""
+    return [_series(s.get('username'), s.get('values') or [], count=s.get('count'))
+            for s in (raw or [])]
 
 
 def from_pairs(raw) -> list[Series]:
@@ -77,7 +105,7 @@ def assign_colors(series: Sequence[Series], palette, others_color,
                   reverse: bool = False) -> list:
     """One color per band, bottom -> top.
 
-    "Others" takes `others_color` and **does not advance the palette cursor**,
+    The remainder takes `others_color` and **does not advance the palette cursor**,
     so a named band keeps its color whether or not a remainder exists.
 
     `reverse` walks the palette backwards over the named bands. The
@@ -88,11 +116,11 @@ def assign_colors(series: Sequence[Series], palette, others_color,
     convention, where the biggest band is gold. This is a real semantic
     difference between two charts, not a flag someone added for symmetry.
     """
-    n_named = sum(1 for s in series if s.label != OTHERS)
+    n_named = sum(1 for s in series if not s.is_other)
     out = []
     named_idx = 0
     for s in series:
-        if s.label == OTHERS:
+        if s.is_other:
             out.append(others_color)
             continue
         idx = (n_named - 1 - named_idx) if reverse else named_idx

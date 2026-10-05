@@ -13,6 +13,8 @@ for a layering mistake rather than a real constraint.
 by the same test: this is envelope arithmetic, not rendering.
 """
 
+from webapp.dashboards.charts.series import OTHERS
+
 # UI metric name -> the plugin key(s) SUMMED to produce it. 'jobs' is the
 # count metric; the hours metrics come from the LEFT OUTER JOIN against
 # job_charges upstream. 'charges' is a pair because the plugin reports
@@ -47,25 +49,23 @@ def jobs_metric_value(d, metric, default='jobs'):
 
 
 def jobs_bucket_segments(bucket, metric, default='jobs'):
-    """Per-bucket stacked-bar segments (active-metric units), bottom -> top.
+    """Per-bucket stack segments ``[(name, value)]`` (active-metric units), bottom -> top.
 
     The plugin envelope carries pre-truncated top-N ``owners`` per bucket
     with authoritative bucket totals, so — unlike the fs_scans
-    ``histogram.bucket_segments``, which derives the long tail locally — the "other"
+    ``histogram.bucket_segments``, which folds the long tail locally — the
     base segment here is ``bucket total − Σ owners`` (it also absorbs
-    NULL-username jobs). Owner segments follow ascending so the largest
-    owner sits at the top of the bar. Empty list when the bucket has no
-    owners (-> drawn as a single flat bar).
+    NULL-username jobs), named ``Others`` because nobody knows how many it
+    holds. Owner segments follow ascending so the largest sits at the top of
+    the bar. Empty when the bucket has no owners (a single flat bar).
     """
     owners = bucket.get('owners') or {}
     if not owners:
         return []
-    vals = sorted(jobs_metric_value(d, metric, default)
-                  for d in owners.values())
-    remainder = jobs_metric_value(bucket, metric, default) - sum(vals)
-    if remainder > 1e-9:
-        return [remainder] + vals
-    return vals
+    named = sorted(((name, jobs_metric_value(d, metric, default)) for name, d in owners.items()),
+                   key=lambda p: (p[1], str(p[0])))
+    remainder = jobs_metric_value(bucket, metric, default) - sum(v for _, v in named)
+    return ([(OTHERS, remainder)] if remainder > 1e-9 else []) + named
 
 
 def jobs_timeseries_series(ts, metric):
@@ -101,7 +101,7 @@ def jobs_timeseries_series(ts, metric):
 
     series = []
     if any(v > 1e-9 for v in others) or not owner_names:
-        series.append(('Others', others))
+        series.append((OTHERS, others))
     for name in reversed(owner_names):
         series.append((name, [
             jobs_metric_value((b.get('owners') or {}).get(name), metric)

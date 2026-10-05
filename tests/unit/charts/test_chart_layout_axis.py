@@ -346,7 +346,7 @@ def test_link_legend_ordered_flag_skips_the_reverse():
 
 
 def test_others_band_survives_the_legend_cap():
-    """Dropping "Others" would leave a visible gray band with nothing in the
+    """Dropping the remainder would leave a visible gray band with nothing in the
     legend explaining it — worse than dropping a sliver already hard to see."""
     from webapp.dashboards.charts.series import Series
 
@@ -354,14 +354,14 @@ def test_others_band_survives_the_legend_cap():
         pass
 
     chart = _Chart()
-    chart.bands = [Series('Others', [1], None)] + [
+    chart.bands = [Series('84 other', [1], None, is_other=True)] + [
         Series(f'p{i}', [1], f'p{i}') for i in range(9)]
     chart.colors = ['#000'] * 10
 
     entries = chart.legend_entries(_Chart.LAYOUTS['mobile'])
     cap = _Chart.LAYOUTS['mobile'].max_legend_entries
     assert len(entries) == cap
-    assert entries[-1][0].label == 'Others'
+    assert entries[-1][0].is_other
     assert entries[0][0].label == 'p8'   # largest named band still first
 
 

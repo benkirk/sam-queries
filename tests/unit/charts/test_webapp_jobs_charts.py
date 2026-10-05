@@ -254,10 +254,10 @@ def test_histogram_owner_remainder_segment():
     truncated = _with_owners(_hist(), {
         0: {'alice': _owner(6, 60.0)}})     # bucket holds 10 jobs -> 4 unattributed
     assert _jobs_bucket_segments(truncated['buckets'][0], 'job_count') == \
-        [4.0, 6.0]
+        [('Others', 4.0), ('alice', 6.0)]
     even = _with_owners(_hist(), {
         0: {'alice': _owner(5, 50.0), 'bob': _owner(5, 50.0)}})
-    assert _jobs_bucket_segments(even['buckets'][0], 'job_count') == [5.0, 5.0]
+    assert _jobs_bucket_segments(even['buckets'][0], 'job_count') == [('alice', 5.0), ('bob', 5.0)]
     assert _jobs_histogram_cache_key(truncated) != \
         _jobs_histogram_cache_key(even)
     assert '<svg' in generate_jobs_histogram(truncated)
@@ -268,7 +268,8 @@ def test_histogram_segments_ascending_with_remainder_first():
          'owners': {'alice': _owner(9, 90.0), 'bob': _owner(3, 30.0),
                     'carol': _owner(6, 60.0)}}
     # remainder (20-18=2) first, then owners ascending
-    assert _jobs_bucket_segments(b, 'job_count') == [2.0, 3.0, 6.0, 9.0]
+    assert _jobs_bucket_segments(b, 'job_count') == [
+        ('Others', 2.0), ('bob', 3.0), ('carol', 6.0), ('alice', 9.0)]
     assert _jobs_bucket_segments({'job_count': 5}, 'job_count') == []
 
 

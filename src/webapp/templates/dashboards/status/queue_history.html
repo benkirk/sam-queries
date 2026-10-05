@@ -88,7 +88,7 @@
     </div>
 </div>
 
-{# Per-user / per-project queue load over time (top-N + Others). Signed-in viewers
+{# Per-user / per-project queue load over time (top-N + the rest). Signed-in viewers
    only: the chart route is @login_required, and its 401 carries HX-Redirect, which
    would send an anonymous visitor to this public page off to the login screen.
    Legend links need VIEW_SYSTEM_STATUS_USER_INFO (link_kind=None otherwise). #}
@@ -98,7 +98,7 @@
         <h5 class="mb-0">
             <i class="fa-solid fa-chart-area"></i> User / project load over time
             <small class="text-muted fw-normal ms-2">
-                top 15 + Others, {{ start_date | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M') }}
+                top 15 + the rest, {{ start_date | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M') }}
                 → {{ end_date | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }}
             </small>
         </h5>

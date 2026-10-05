@@ -153,9 +153,9 @@ class StackedSeriesChart(BaseChart):
 
         Reversed so the legend reads top-to-bottom matching the visual stack.
 
-        When the cap bites, the trailing inert band — "Others", the gray
-        aggregate that sits at the bottom of every stack — is *kept* and the
-        smallest named bands are dropped instead. Dropping "Others" would
+        When the cap bites, the trailing remainder band — the gray aggregate
+        that sits at the bottom of every stack — is *kept* and the smallest
+        named bands are dropped instead. Dropping it would
         leave a visible gray band with nothing in the legend explaining it,
         which is worse than dropping a sliver that is already hard to see.
         Every band is still drawn either way; only the legend is capped.
@@ -164,7 +164,7 @@ class StackedSeriesChart(BaseChart):
         cap = self.legend_entry_cap(layout, len(entries))
         if cap >= len(entries):
             return entries
-        keep_tail = entries[-1:] if not entries[-1][0].is_linkable else []
+        keep_tail = entries[-1:] if entries[-1][0].is_other else []
         return entries[:cap - len(keep_tail)] + keep_tail
 
     def add_legend(self, ax, layout, theme):

@@ -41,6 +41,7 @@ from webapp.dashboards.charts import (
     generate_jobs_usage_pie_chart,
 )
 from webapp.dashboards.charts.jobs_metrics import JOBS_METRIC_LABELS, jobs_metric_value
+from webapp.dashboards.charts.series import fold_top
 from webapp.dashboards.charts.theme import facility_slots
 from webapp.extensions import db
 from webapp.jobs import service
@@ -861,12 +862,13 @@ def _facility_rings(rows, metric, facility_of, slots, linked,
     out = []
     for name in sorted(groups, key=order):
         group = groups[name]
-        top = sorted(group['projects'], key=lambda p: (-p[1], str(p[0])))[:top_n]
+        top, _rest, n_rest = fold_top(group['projects'], top_n)
         out.append({
             'id': None,
             'facility': name or 'Unknown',
             'slot': slots.get(group['fid']),
             'value': group['value'],
+            'others': n_rest,
             'types': [{'name': code or '(unknown)', 'value': value, 'linked': code in linked}
                       for code, value in top],
         })

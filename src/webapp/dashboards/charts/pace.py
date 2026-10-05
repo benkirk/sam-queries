@@ -31,7 +31,7 @@ import numpy as np
 
 from sam import fmt
 from webapp.caching.chart import content_hash
-from webapp.dashboards.charts import links
+from webapp.dashboards.charts import links, series
 from webapp.dashboards.charts.base import BaseChart, cells_label
 from webapp.dashboards.charts.layout import profile
 from webapp.dashboards.charts.theme import UNITY_STACK_10, UNITY_STACK_20
@@ -216,16 +216,14 @@ class PaceChart(BaseChart):
         # surplus projects fold into the existing "Other" band rather than
         # disappearing — the areas still sum to the same total.
         top_n = min(self.top_n, self.layout.max_legend_entries or self.top_n)
-        self.top_projs = [pc for pc, _ in sorted(
-            self.rank_metric.items(), key=lambda kv: kv[1], reverse=True
-        )[:top_n]]
+        kept, _rest, self.n_other_projs = series.fold_top(self.rank_metric.items(), top_n)
+        self.top_projs = [pc for pc, _ in kept]
         palette = UNITY_STACK_10 if len(self.top_projs) <= 10 else UNITY_STACK_20
         self.color_map = {pc: self.theme.data_color(palette[i])
                           for i, pc in enumerate(self.top_projs)}
 
-        self.n_other_projs = len(self.rank_metric) - len(self.top_projs)
         # A count, not "Other (N projects)": the legend's widest row sets its width.
-        self.other_label = f'{fmt.number(self.n_other_projs)} other'
+        self.other_label = series.other_label(self.n_other_projs)
 
         # Collapse per-allocation bands into one band per color group BEFORE
         # handing to matplotlib. Stackplot emits one <path> per band; without
