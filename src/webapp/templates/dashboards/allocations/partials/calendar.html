@@ -2,6 +2,7 @@
    type tree; a type row opens its projects lazily (htmx_calendar_rows). Positions are
    percents of the window; components.css sets the pixel scale. The Used | Burn pills
    re-render this fragment; data-chart-persist-* replays the chosen `mode` on reload. #}
+{% from 'dashboards/fragments/chart_bits.html' import chart_pills %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/table_bits.html' import tree_label_cell %}
 {% from 'dashboards/allocations/partials/_calendar_burn.html' import burn_strip %}
@@ -11,15 +12,13 @@
      style="--cal-days: {{ days }};">
     {% if burnable %}
     <div class="cal-toolbar">
-        <div class="btn-group btn-group-sm" role="group" aria-label="Calendar shading">
-            {% for m, label in (('used', 'Used'), ('burn', 'Burn')) %}
-            <button type="button" aria-pressed="{{ 'true' if mode == m else 'false' }}"
-                    class="btn btn-outline-secondary{% if mode == m %} active{% endif %}"
-                    hx-get="{{ url_for('allocations_dashboard.htmx_calendar', resource_name=resource_name,
-                                       active_at=active_at, facilities=requested_facilities, mode=m) }}"
-                    hx-target="#{{ cal_id }}" hx-swap="outerHTML">{{ label }}</button>
-            {% endfor %}
-        </div>
+        {% set pills = [] %}
+        {% for m, label in (('used', 'Used'), ('burn', 'Burn')) %}
+        {% set _ = pills.append(dict(text=label, on=(mode == m), url=url_for(
+            'allocations_dashboard.htmx_calendar', resource_name=resource_name, active_at=active_at,
+            facilities=requested_facilities, mode=m))) %}
+        {% endfor %}
+        {{ chart_pills('Calendar shading', pills, '#' ~ cal_id) }}
         {% if mode == 'burn' %}
         <div class="burn-key small text-muted">
             <span>Charges vs. even pace:</span>
@@ -68,7 +67,7 @@
                                                 facility=facility, allocation_type=alloc_type or '',
                                                 active_at=active_at, facilities=requested_facilities,
                                                 mode=mode) }}"
-                             hx-trigger="show.bs.collapse from:closest tr once" hx-swap="innerHTML">
+                             hx-trigger="shown.bs.collapse from:closest tr.collapse once" hx-swap="innerHTML">
                             <div class="cal-loading text-muted small py-2">
                                 <i class="fa-solid fa-spinner fa-spin"></i> Loading projects…
                             </div>

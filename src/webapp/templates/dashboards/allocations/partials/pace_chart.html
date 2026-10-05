@@ -17,37 +17,29 @@
    selector-button clicks (otherwise the partial would emit URLs
    without `facilities=` and the next request would silently widen
    back to the whole resource). #}
+{% from 'dashboards/fragments/chart_bits.html' import chart_figure, chart_pills %}
 <div id="{{ chart_dom_id }}"
      data-chart-persist-id="{{ chart_dom_id }}"
      data-chart-persist-keys="sort_by">
     <div class="d-flex flex-wrap gap-3 mb-3 align-items-center">
         <div>
             <label class="form-label small text-muted mb-1 me-2">Sort by</label>
-            <div class="btn-group btn-group-sm" role="group" aria-label="Sort by">
-                {# size: allocated amount; past: actual rate over the last 90 days;
-                   future: projected rate at the as-of date. Rates per year. #}
-                {% for opt_val, opt_lbl in [
-                    ('size',   'Allocation Size'),
-                    ('past',   'Recent Burn'),
-                    ('future', 'Projected Burn'),
-                ] %}
-                <button type="button"
-                        class="btn btn-outline-secondary{% if sort_by == opt_val %} active{% endif %}"
-                        hx-get="{{ url_for('allocations_dashboard.htmx_pace_chart',
-                                           resource_name=resource_name,
-                                           **dict(selector_kwargs, sort_by=opt_val)) }}"
-                        hx-target="#{{ chart_dom_id }}"
-                        hx-swap="outerHTML">
-                    {{ opt_lbl }}
-                </button>
-                {% endfor %}
-            </div>
+            {# size: allocated amount; past: actual rate over the last 90 days;
+               future: projected rate at the as-of date. Rates per year. #}
+            {% set pills = [] %}
+            {% for value, text in [('size', 'Allocation Size'), ('past', 'Recent Burn'),
+                                   ('future', 'Projected Burn')] %}
+            {% set _ = pills.append(dict(text=text, on=(sort_by == value), url=url_for(
+                'allocations_dashboard.htmx_pace_chart', resource_name=resource_name,
+                **dict(selector_kwargs, sort_by=value)))) %}
+            {% endfor %}
+            {{ chart_pills('Sort by', pills, '#' ~ chart_dom_id) }}
         </div>
     </div>
 
-    <div class="chart-container">
+    {% call chart_figure('Allocation pace by project: charge rate per year, before and after ' ~ active_at) %}
         {{ chart_svg | safe }}
-    </div>
+    {% endcall %}
     <p class="small text-muted text-center mt-2 mb-0">
         Left of today, each allocation's actual monthly charge rate. Right, projected use at its
         project's last-90-day pace, until its balance runs out or it ends. The dashed line is what

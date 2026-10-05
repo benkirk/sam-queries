@@ -396,10 +396,9 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'project_members/fragments/members_table.html': [
         'addMemberFormContainer', 'addMemberModal', 'userDetailsModal', 'userDetailsModalBody'],
     # The sunburst expand opener is a macro any chart host may call, so its shell is
-    # site-wide (SITE_WIDE_SHELLS below). The body's window pills target the open
-    # modal's body and carry no toggle.
+    # site-wide (SITE_WIDE_SHELLS below). The body fragment's window pills go through
+    # chart_pills with the modal body as their target, so no literal is left to pin.
     'dashboards/fragments/chart_expand.html': ['chartExpandModal', 'chartExpandModalBody'],
-    'dashboards/fragments/chart_expanded.html': ['chartExpandModalBody'],
 }
 
 

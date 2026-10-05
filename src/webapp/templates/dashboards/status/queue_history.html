@@ -1,4 +1,5 @@
 {% extends 'dashboards/base.html' %}
+{% from 'dashboards/fragments/chart_bits.html' import chart_figure, chart_loading %}
 {% from 'dashboards/fragments/page_header.html' import page_header %}
 
 {% block title %}Queue History - {{ queue_name }} ({{ system|upper }}) - SAM{% endblock %}
@@ -77,14 +78,14 @@
         <h5 class="mb-0"><i class="fa-solid fa-chart-line"></i> Historical Trends</h5>
     </div>
     <div class="card-body">
+        <h6 class="text-center fw-bold mb-2">
+            Queue Activity
+            <span class="text-muted fw-normal">— {{ system|upper }} · {{ queue_name }}</span>
+        </h6>
         {# Always a string: the chart renders its own empty state. #}
-        <div class="chart-container">
-            <h6 class="text-center fw-bold mb-2">
-                Queue Activity
-                <span class="text-muted fw-normal">— {{ system|upper }} · {{ queue_name }}</span>
-            </h6>
-            {{ chart_svg|safe }}
-        </div>
+        {% call chart_figure('Queue activity over time, ' ~ system|upper ~ ' ' ~ queue_name) %}
+            {{ chart_svg | safe }}
+        {% endcall %}
     </div>
 </div>
 
@@ -118,9 +119,7 @@
              data-chart-persist-id="upq-chart-{{ system }}-{{ queue_name }}"
              data-chart-persist-keys="state rank_by"
              data-chart-persist-shared="group_by metric:queue">
-            <div class="text-center text-muted py-5">
-                <i class="fa-solid fa-spinner fa-spin"></i> Loading chart…
-            </div>
+            {{ chart_loading() }}
         </div>
     </div>
 </div>

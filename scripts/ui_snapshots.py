@@ -56,7 +56,7 @@ PAGE_SETS = {'charts': [
     ('jobs-sizes', _JOBS, ['click:[data-bs-target$="-sizes"]', 'wait:.jobs-histogram-chart svg']),
     ('details-compute', _DETAILS + 'Derecho', ['wait:#tab-usage-history svg']),
     ('details-byuser', _DETAILS + 'Derecho', ['click:[data-bs-target="#tab-usage-byuser"]']),
-    ('details-disk', _DETAILS + 'Campaign+Store', []),
+    ('details-disk', _DETAILS + 'Campaign_Store', []),
     ('user-jobs', '/user/jobs', []),
     ('user-data', '/user/data', []),
 ]}

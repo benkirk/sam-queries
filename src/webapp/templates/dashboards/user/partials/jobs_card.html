@@ -89,6 +89,7 @@
    configRequest handler in nav-view-persistence.js only injects into
    elements that carry them THEMSELVES, so each tab has to opt in for its
    panel fetch to honor a stored window. #}
+{% from 'dashboards/fragments/chart_bits.html' import chart_loading, chart_pills %}
 {% macro _persist(pid) -%}
 {%- if pid %} data-chart-persist-id="{{ pid }}" data-chart-persist-keys="days"{% endif -%}
 {%- endmacro %}
@@ -294,21 +295,13 @@ tab-pane fade{{ ' show active' if key == active_tab }}
        window on screen is legible from the same line as the panel names. #}
     {% if show_pills %}
     <li class="nav-item ms-auto d-flex align-items-center pb-1">
-        <div class="btn-group btn-group-sm" role="group" aria-label="Time window"
-             {%- if days_persist_id %} data-jobs-days-pills{% endif %}>
-            {% for _d, _label in jobs_window_pills %}
-            {# btn-outline-secondary + `active` — the selector convention used
-               by the metric pills, the date presets and the machine subtabs.
-               The old btn-primary/btn-outline-primary pair rendered
-               blue-is-active, backwards against every other selector on the
-               page (same bug 19ab6c0 fixed for the metric pills). #}
-            <button type="button" data-days-value="{{ _d }}"
-                    class="btn btn-outline-secondary{% if days == _d %} active{% endif %}"
-                    hx-get="{{ _card_q }}days={{ _d }}"
-                    hx-target="#{{ cid }}-card"
-                    hx-swap="outerHTML">{{ _label }}</button>
-            {% endfor %}
-        </div>
+        {% set pills = [] %}
+        {% for _d, _label in jobs_window_pills %}
+        {% set _ = pills.append(dict(text=_label, on=(days == _d), data={'days-value': _d},
+                                     url=_card_q ~ 'days=' ~ _d)) %}
+        {% endfor %}
+        {{ chart_pills('Time window', pills, '#' ~ cid ~ '-card',
+                       attrs=({'data-jobs-days-pills': none} if days_persist_id else {})) }}
     </li>
     {% endif %}
 </ul>
@@ -370,56 +363,42 @@ tab-pane fade{{ ' show active' if key == active_tab }}
                      hx-get="{{ _tl_url }}"
                      hx-trigger="{{ _trig('jobs') if timeline_open else 'shown.bs.collapse from:closest .collapse once' }}"
                      hx-swap="innerHTML">
-                    <p class="text-muted small mb-0">
-                        <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading timeline…
-                    </p>
+                    {{ chart_loading('Loading timeline…') }}
                 </div>
             </div>
         </div>
         {% endif %}
         <div id="{{ cid }}-jobs">
-            <p class="text-muted small mb-0">
-                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading jobs…
-            </p>
+            {{ chart_loading('Loading jobs…') }}
         </div>
     </div>
     {% if _user_url %}
     <div class="{{ _panecls('byuser') }}" id="tab-{{ cid }}-byuser" role="tabpanel">
         <div id="{{ cid }}-byuser"{{ _lens() }}>
-            <p class="text-muted small mb-0">
-                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading…
-            </p>
+            {{ chart_loading('Loading…') }}
         </div>
     </div>
     {% endif %}
     {% if _proj_url %}
     <div class="{{ _panecls('byproj') }}" id="tab-{{ cid }}-byproj" role="tabpanel">
         <div id="{{ cid }}-byproj"{{ _lens() }}>
-            <p class="text-muted small mb-0">
-                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading…
-            </p>
+            {{ chart_loading('Loading…') }}
         </div>
     </div>
     {% endif %}
     <div class="{{ _panecls('wait') }}" id="tab-{{ cid }}-wait" role="tabpanel">
         <div id="{{ cid }}-wait"{{ _lens() }}>
-            <p class="text-muted small mb-0">
-                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading wait times…
-            </p>
+            {{ chart_loading('Loading wait times…') }}
         </div>
     </div>
     <div class="{{ _panecls('sizes') }}" id="tab-{{ cid }}-sizes" role="tabpanel">
         <div id="{{ cid }}-sizes"{{ _lens() }}>
-            <p class="text-muted small mb-0">
-                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading job sizes…
-            </p>
+            {{ chart_loading('Loading job sizes…') }}
         </div>
     </div>
     <div class="{{ _panecls('durations') }}" id="tab-{{ cid }}-durations" role="tabpanel">
         <div id="{{ cid }}-durations"{{ _lens() }}>
-            <p class="text-muted small mb-0">
-                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading durations…
-            </p>
+            {{ chart_loading('Loading durations…') }}
         </div>
     </div>
 </div>

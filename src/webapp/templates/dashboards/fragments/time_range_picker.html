@@ -1,3 +1,7 @@
+{# The status pages' window presets, as (label, hours). One list: the picker below and
+   the system pages' chart card both draw it. #}
+{% set TRP_PRESETS = [('6h', 6), ('12h', 12), ('1d', 24), ('3d', 72), ('7d', 168), ('14d', 336), ('30d', 720)] %}
+
 {% macro time_range_picker(action, hours, start_date, end_date, hidden_fields={}) %}
 {#
   Compact time range picker with quick-select presets (sub-day to multi-day).
@@ -20,8 +24,7 @@
 
             <!-- Quick-select preset buttons -->
             <div class="btn-group btn-group-sm" role="group" aria-label="Time range presets">
-                {% set presets = [('6h', 6), ('12h', 12), ('1d', 24), ('3d', 72), ('7d', 168), ('14d', 336), ('30d', 720)] %}
-                {% for label, h in presets %}
+                {% for label, h in TRP_PRESETS %}
                 <button type="button"
                         class="btn btn-outline-secondary{% if hours == h %} active{% endif %}"
                         data-action="trp-hours"

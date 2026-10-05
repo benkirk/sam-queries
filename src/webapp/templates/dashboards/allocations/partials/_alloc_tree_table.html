@@ -1,5 +1,6 @@
 {# One resource pane's tree table. Included in the resource loop of projects.html;
    reads resource_name, slug, pane, is_storage, tree, ncols. #}
+{% from 'dashboards/fragments/chart_bits.html' import chart_loading %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/table_bits.html' import alloc_meter, share_bar, tree_label_cell %}
 {% macro used_meter(row, slot, tint=False) -%}
@@ -62,7 +63,7 @@
                                             resource=resource_name, facility=f.facility,
                                             allocation_type=t.name, active_at=active_at,
                                             root_only=1 if root_only else 0) }}"
-                         hx-trigger="show.bs.collapse from:closest tr once" hx-swap="innerHTML">
+                         hx-trigger="shown.bs.collapse from:closest tr.collapse once" hx-swap="innerHTML">
                         <div class="p-3 text-center text-muted">
                             <i class="fa-solid fa-spinner fa-spin"></i> Loading projects…
                         </div>
@@ -85,12 +86,10 @@
                          hx-get="{{ url_for('allocations_dashboard.htmx_pace_chart',
                                             resource_name=resource_name, facilities=f.facility,
                                             active_at=active_at, sort_by='size', card=1) }}"
-                         hx-trigger="show.bs.collapse from:closest tr once" hx-swap="innerHTML"
+                         hx-trigger="shown.bs.collapse from:closest tr.collapse once" hx-swap="innerHTML"
                          data-chart-persist-id="pace-chart-{{ pane }}-{{ f.facility|replace(' ', '_') }}"
                          data-chart-persist-keys="sort_by">
-                        <div class="text-center text-muted small py-3">
-                            <i class="fa-solid fa-spinner fa-spin"></i> Loading chart…
-                        </div>
+                        {{ chart_loading() }}
                     </div>
                 </td>
             </tr>

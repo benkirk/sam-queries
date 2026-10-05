@@ -9,8 +9,8 @@
    inside the chart-rendering route — non-operators get plain-text
    legend labels rather than clickable anchors.
 
-   Picker is a 7-button strip in the card header. Each button is a
-   plain link back to this system's status page with ?hours=N. The
+   The picker is the status presets (time_range_picker.html TRP_PRESETS) as
+   plain links back to this system's status page with ?hours=N. The
    existing `selected_hours` passthrough on the page route picks that
    up. The chart endpoint is HTMX-fetched on card load with the
    resolved `chart_hours` so initial render matches the active picker
@@ -21,6 +21,8 @@
    unauthorized handler's HX-Redirect would bounce the whole (otherwise
    public) status page to the login screen. Hiding the card for anonymous
    users matches the "visible to any logged-in user" intent above. #}
+{% from 'dashboards/fragments/chart_bits.html' import chart_loading %}
+{% from 'dashboards/fragments/time_range_picker.html' import TRP_PRESETS %}
 {% if current_user.is_authenticated %}
 <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -29,7 +31,7 @@
             <span class="text-muted fw-normal small ms-2">all queues, top 15 + the rest</span>
         </h6>
         <div class="btn-group btn-group-sm" role="group" aria-label="Time range">
-            {% for label, h in [('6h', 6), ('12h', 12), ('1d', 24), ('3d', 72), ('7d', 168), ('14d', 336), ('30d', 720)] %}
+            {% for label, h in TRP_PRESETS %}
             <a href="{{ url_for('status_dashboard.' ~ _chart_system, hours=h) }}"
                class="btn btn-outline-secondary{% if chart_hours == h %} active{% endif %}"
                data-scroll-preserve>{{ label }}</a>
@@ -47,9 +49,7 @@
              data-chart-persist-id="upq-chart-{{ _chart_system }}"
              data-chart-persist-keys="state rank_by"
              data-chart-persist-shared="group_by metric:queue">
-            <div class="text-center text-muted py-5">
-                <i class="fa-solid fa-spinner fa-spin"></i> Loading chart…
-            </div>
+            {{ chart_loading() }}
         </div>
     </div>
 </div>

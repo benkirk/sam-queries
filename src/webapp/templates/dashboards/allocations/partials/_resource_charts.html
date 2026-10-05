@@ -1,5 +1,6 @@
 {# One resource pane's charts: Share (two rings) and Pace pills. Included in the
    resource loop of projects.html; reads resource_name, slug, pane, is_storage. #}
+{% from 'dashboards/fragments/chart_bits.html' import chart_loading %}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_roots_only %}
 {% from 'dashboards/fragments/chart_expand.html' import expand_button %}
@@ -46,7 +47,7 @@
                      hx-trigger="intersect once" hx-swap="outerHTML"
                      data-chart-persist-id="{{ _used_id }}"
                      data-chart-persist-keys="days">
-                    <p class="text-muted small text-center my-5">Loading usage…</p>
+                    {{ chart_loading('Loading usage…') }}
                 </div>
             </figure>
             {% endif %}
@@ -62,9 +63,7 @@
              hx-trigger="intersect once" hx-swap="innerHTML"
              data-chart-persist-id="pace-chart-{{ pane }}"
              data-chart-persist-keys="sort_by">
-            <div class="text-center text-muted py-5">
-                <i class="fa-solid fa-spinner fa-spin"></i> Loading chart…
-            </div>
+            {{ chart_loading() }}
         </div>
     </div>
 </div>

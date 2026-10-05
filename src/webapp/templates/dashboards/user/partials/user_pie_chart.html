@@ -7,20 +7,20 @@
    below (the same handler the stacked Usage Trend legend uses). The "Other"
    slice is inert. #}
 
+{% from 'dashboards/fragments/chart_bits.html' import chart_figure %}
 {% from 'dashboards/user/partials/_resource_details_macros.html' import metric_pills with context %}
 
 {{ metric_pills('user_dashboard.resource_details_user_pie',
                 available_metrics, metric, '#user-pie-wrapper',
                 projcode, resource_name, scope, start_date, end_date) }}
 
-<div class="chart-container">
+{% call chart_figure('Usage by user') %}
     {{ chart_svg | safe }}
-</div>
+{% endcall %}
 
 {% if has_data %}
 <div class="text-muted small text-center mt-2">
     <i class="fa-solid fa-hand-pointer me-1"></i>
     Click a wedge to expand that user in the table below.
-    Reload the page to reset all selections.
 </div>
 {% endif %}

@@ -868,9 +868,10 @@ def htmx_sunburst_expanded(resource_name):
             start=active_at - timedelta(days=days - 1), end=active_at)
         values = {code: c * 365 / days for code, c in charges.items()}
         center, what = 'Use\nrate', 'annual use rate'
-        windows = [('1 yr' if d == 365 else f'{d}d',
-                    url_for('allocations_dashboard.htmx_sunburst_expanded', resource_name=resource_name,
-                            measure='used', days=d, **selector_kwargs), d == days)
+        windows = [dict(text='1 yr' if d == 365 else f'{d}d', on=(d == days),
+                        url=url_for('allocations_dashboard.htmx_sunburst_expanded',
+                                    resource_name=resource_name, measure='used', days=d,
+                                    **selector_kwargs))
                    for d in _USED_WINDOW_DAYS]
         caption = _used_window_caption(days, active_at)
     else:

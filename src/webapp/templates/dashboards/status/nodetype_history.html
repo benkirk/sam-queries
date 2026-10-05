@@ -1,5 +1,6 @@
 {% extends 'dashboards/base.html' %}
 {% from 'dashboards/fragments/page_header.html' import page_header %}
+{% from 'dashboards/fragments/chart_bits.html' import chart_figure %}
 
 {# One page for a node type and for a system partition (`is_partition`, where
    `node_type` is already "CPU Partition"). #}
@@ -132,13 +133,13 @@
         </h5>
     </div>
     <div class="card-body">
-        <div class="chart-container">
-            <h6 class="text-center fw-bold mb-2">
-                Node Availability Over Time
-                <span class="text-muted fw-normal">— {{ node_type }}</span>
-            </h6>
+        <h6 class="text-center fw-bold mb-2">
+            Node Availability Over Time
+            <span class="text-muted fw-normal">— {{ node_type }}</span>
+        </h6>
+        {% call chart_figure('Node availability and utilization over time, ' ~ node_type) %}
             {{ chart_svg | safe }}
-        </div>
+        {% endcall %}
         {% if history_data %}
         <div class="text-muted mt-3">
             <small>

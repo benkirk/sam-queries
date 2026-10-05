@@ -1,4 +1,5 @@
 {% extends 'dashboards/base.html' %}
+{% from 'dashboards/fragments/chart_bits.html' import chart_loading %}
 {% from 'dashboards/fragments/page_header.html' import page_header %}
 {% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
 {% from 'dashboards/user/partials/_resource_details_macros.html' import jobs_button, jobs_collapse_row with context %}
@@ -538,9 +539,7 @@ tab-pane fade{{ ' show active' if key == usage_tab }}
                      hx-trigger="{{ _trig('history') }}"
                      hx-swap="innerHTML"
                      data-chart-persist-shared="metric:usage">
-                    <div class="text-center text-muted py-5">
-                        <i class="fa-solid fa-spinner fa-spin"></i> Loading chart…
-                    </div>
+                    {{ chart_loading() }}
                 </div>
                 {{ daily_breakdown_table(daily_breakdown, 'charges-table', date_span_days) }}
             </div>
@@ -564,9 +563,7 @@ tab-pane fade{{ ' show active' if key == usage_tab }}
                      hx-trigger="{{ _trig('byuser') }}"
                      hx-swap="innerHTML"
                      data-chart-persist-shared="metric:usage">
-                    <div class="text-center text-muted py-5">
-                        <i class="fa-solid fa-spinner fa-spin"></i> Loading chart…
-                    </div>
+                    {{ chart_loading() }}
                 </div>
                 {{ user_breakdown_table(user_breakdown, 'users-table') }}
             </div>

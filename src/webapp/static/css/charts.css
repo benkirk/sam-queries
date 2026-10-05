@@ -7,17 +7,15 @@
    Sizing
    =================================================================== */
 
-/* A chart never exceeds its box, and keeps its aspect ratio when it shrinks:
-   without `height: auto` a flex item keeps the SVG's intrinsic height and the
-   viewBox letterboxes the drawing inside it. */
+/* Every chart sits in a `.chart-container` (chart_bits.html chart_figure), bar
+   the ring charts, which are figures of their own kind below. A chart never
+   exceeds its box and keeps its aspect ratio when it shrinks: without
+   `height: auto` the SVG keeps its intrinsic height and letterboxes. */
 .chart-container {
     text-align: center;
 }
 
-.chart-container svg,
-.jobs-histogram-chart svg,
-.jobs-timeline-chart svg,
-.jobs-user-pie svg {
+.chart-container svg {
     display: block;
     margin: 0 auto;
     max-width: 100%;
@@ -50,11 +48,7 @@
    padding: it lines up with the card edge and cannot overflow. Not the ring
    charts: they are capped, centered, and sit in grid columns. */
 @media (max-width: 1199.98px) {
-    .chart-container,
-    .jobs-histogram-chart,
-    .jobs-timeline-chart,
-    .jobs-user-pie,
-    .disk-entity-pie {
+    .chart-container {
         margin-left: -1rem;
         margin-right: -1rem;
     }
@@ -69,10 +63,7 @@
 /* Phones only: upscale a figure narrower than its card. No tablet figure is,
    and on a wide screen it would blur an 18in figure. */
 @media (max-width: 767.98px) {
-    .chart-container svg,
-    .jobs-histogram-chart svg,
-    .jobs-timeline-chart svg,
-    .jobs-user-pie svg {
+    .chart-container svg {
         width: 100%;
     }
 }
@@ -113,11 +104,18 @@
    Loading
    =================================================================== */
 
-/* A lazy ring's placeholder holds about a ring's height, so `intersect` fires when its row
-   comes into view, not when its vertically centered spinner line does. */
-.sunburst-chart > [hx-trigger] {
+/* The one placeholder (chart_bits.html chart_loading). It holds some height, so the
+   page does not jump when the chart lands, and an `intersect` loader fires when its
+   row comes into view, not when a one-line spinner does. A ring holds a ring's. */
+.chart-loading {
     display: flex;
-    min-height: 20rem;
     align-items: center;
     justify-content: center;
+    gap: 0.5rem;
+    min-height: 8rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+.sunburst-chart .chart-loading {
+    min-height: 20rem;
 }
