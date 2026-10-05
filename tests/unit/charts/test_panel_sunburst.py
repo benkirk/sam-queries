@@ -81,5 +81,18 @@ def test_rim_wedges_drill_to_the_project_modal_and_every_wedge_names_itself(app)
     assert any(t.startswith('A2 · ') for t in titles)
 
 
+def test_the_rim_entity_is_the_charts_to_name(app):
+    """Projects are today's rim; a subclass names another entity (users, by facility
+    and panel) by its link and noun alone."""
+    from webapp.dashboards.charts import links
+    users = type('UserRim', (PanelSunburst,), {'rim_link': links.USER_MODAL, 'rim_noun': 'users',
+                                              'min_wedge_deg': 100})
+    with app.test_request_context('/'):
+        svg = users(_rows(), center='CPU-h').render()
+        assert links.USER_MODAL.url('A2') in svg
+    assert '/user/project-details-modal/' not in svg
+    assert '1 other Labs users · ' in svg
+
+
 def test_empty():
     assert PanelSunburst([]).render().startswith('<div')

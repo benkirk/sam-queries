@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 from sam import fmt
+from webapp.caching.chart import content_hash
 from webapp.dashboards.charts.base import BaseChart
 from webapp.dashboards.charts.layout import profile
 from webapp.dashboards.charts.series import to_display_tz
@@ -34,6 +35,10 @@ class DualPanelTimeSeriesChart(BaseChart):
     def __init__(self, history_data: List[Dict]):
         self.history_data = history_data or []
         self.timestamps = []
+
+    @staticmethod
+    def cache_key(history_data):
+        return content_hash(history_data)
 
     def prepare(self):
         self.timestamps = [to_display_tz(d['timestamp'])
@@ -112,14 +117,6 @@ class NodetypeHistoryChart(DualPanelTimeSeriesChart):
     #: bbox at ~736pt, i.e. 9.3px in that card.
     LAYOUTS = profile((18, 10), (4.0, 4.7), (12, 7.2))
 
-    @staticmethod
-    def cache_key(history_data):
-        # Single argument, so the decorator's default key_fn would also be
-        # correct — but `chart_view` composes layout/theme in, and doing that
-        # requires an explicit key. See `chart_view`'s docstring.
-        from webapp.caching.chart import content_hash
-        return content_hash(history_data)
-
     def draw(self, axes, layout, theme):
         ax1, ax2 = axes
         # Series colors through the theme: only ncar-blue actually moves (it
@@ -182,11 +179,6 @@ class QueueHistoryChart(DualPanelTimeSeriesChart):
     #: which this family reaches at the same 12in despite starting 4in
     #: narrower, because the legend is what the tight bbox is made of.
     LAYOUTS = profile((14, 8), (4.0, 4.2), (12, 7.2))
-
-    @staticmethod
-    def cache_key(history_data):
-        from webapp.caching.chart import content_hash
-        return content_hash(history_data)
 
     def draw(self, axes, layout, theme):
         ax1, ax2 = axes

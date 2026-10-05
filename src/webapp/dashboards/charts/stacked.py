@@ -198,7 +198,18 @@ class StackedSeriesChart(BaseChart):
 # Usage Trend (compute resource-details)
 # ---------------------------------------------------------------------------
 
-class UsageTrendChart(StackedSeriesChart):
+class _UsageTrend(StackedSeriesChart):
+    """Daily usage bars: the metric names the y axis, a bar drills to its day."""
+
+    def ylabel(self):
+        return _USAGE_METRIC_YLABELS.get(self.metric, 'Charges')
+
+    def bar_url(self, i):
+        d = self.x[i]
+        return links.DAY.url(d.isoformat() if hasattr(d, 'isoformat') else str(d))
+
+
+class UsageTrendChart(_UsageTrend):
     """Flat daily bars — the degenerate one-band case of the stack.
 
     Kept a subclass of the stacked family rather than its own thing: with a
@@ -245,18 +256,11 @@ class UsageTrendChart(StackedSeriesChart):
     def build_bands(self):        # unused — prepare() is overridden
         return self.bands
 
-    def ylabel(self):
-        return _USAGE_METRIC_YLABELS.get(self.metric, 'Charges')
-
     def bar_url(self, i):
-        if not self.link_to_day_rows:
-            return None
-        d = self._dates[i]
-        iso = d.isoformat() if hasattr(d, 'isoformat') else str(d)
-        return links.DAY.url(iso)
+        return super().bar_url(i) if self.link_to_day_rows else None
 
 
-class UsageTrendStackedChart(StackedSeriesChart):
+class UsageTrendStackedChart(_UsageTrend):
     """Daily bars segmented by the top-N users over the window + "Others".
 
     Every segment of a given day carries the same day drill, so a click
@@ -282,14 +286,6 @@ class UsageTrendStackedChart(StackedSeriesChart):
 
     def x_values(self):
         return list(self.timeseries.get('dates') or [])
-
-    def ylabel(self):
-        return _USAGE_METRIC_YLABELS.get(self.metric, 'Charges')
-
-    def bar_url(self, i):
-        d = self.x[i]
-        iso = d.isoformat() if hasattr(d, 'isoformat') else str(d)
-        return links.DAY.url(iso)
 
 
 # ---------------------------------------------------------------------------

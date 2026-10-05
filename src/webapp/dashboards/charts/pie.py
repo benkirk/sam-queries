@@ -87,6 +87,18 @@ class PieChart(BaseChart):
         share = self.percent(value)
         return label, fmt.pct(share, decimals=1 if share >= 1 else 2), self.legend_amount(value)
 
+    def tooltip_text(self, label, value) -> str:
+        """Hover text for one wedge: what its legend row says."""
+        return ' · '.join(self.legend_cells(label, value))
+
+    def ring(self, ax, values, radius, width, colors, theme, linewidth):
+        """One ring of wedges at ``radius``, edged in the card's surface."""
+        wedges, _ = ax.pie(values, radius=radius, colors=colors, startangle=self.start_angle,
+                           counterclock=False,
+                           wedgeprops={'edgecolor': theme.surface, 'width': width,
+                                       'linewidth': linewidth})
+        return wedges
+
     def slice_cap(self, default: int) -> int:
         """Named slices this layout affords before 'Other'. Caps the data, not the
         legend: an unlegended wedge is an unlabelled click. Reads `self.layout`
@@ -132,12 +144,58 @@ class PieChart(BaseChart):
 
 
 class _CumulativePie(PieChart):
-    """~90%-cumulative-share slices with one inert 'Other'. Clickable."""
+    """~90%-cumulative-share slices with one inert remainder. Clickable.
+
+    A subclass names its rows (`entities`) and how to read one (`value_of`,
+    `key_of`, `label_of`); `remainder` sizes and labels what is left over.
+    """
 
     def split(self, values_desc):
         """``(keep, n_others)`` for a descending value vector."""
         keep = trim_cumulative(values_desc, cap=self.slice_cap(_PIE_HARD_CAP))
         return keep, len(values_desc) - keep
+
+    def entities(self) -> list:
+        """The rows to rank, in any order; empty for nothing to draw."""
+        raise NotImplementedError
+
+    def value_of(self, row) -> float:
+        raise NotImplementedError
+
+    def key_of(self, row):
+        """The drill key, or None for a slice with nothing to link to."""
+        raise NotImplementedError
+
+    def label_of(self, row) -> str:
+        return self.key_of(row)
+
+    def remainder(self, values_desc, keep):
+        """``(label, value)`` for the slice past ``keep``, or None."""
+        n_others = len(values_desc) - keep
+        if n_others <= 0:
+            return None
+        return f'{fmt.number(n_others)} other', sum(values_desc[keep:])
+
+    def build(self):
+        rows = self.entities()
+        if not rows:
+            return [], [], [], []
+        data = sorted(rows, key=self.value_of, reverse=True)
+        values_desc = [self.value_of(r) for r in data]
+        keep, _n_others = self.split(values_desc)
+
+        keys = [self.key_of(r) for r in data[:keep]]
+        labels = [self.label_of(r) for r in data[:keep]]
+        values = list(values_desc[:keep])
+        colors = self.theme.data_colors(list(UNITY_PALETTE_10[:keep]))
+
+        rest = self.remainder(values_desc, keep)
+        if rest is not None:
+            keys.append(None)                  # inert slice
+            labels.append(rest[0])
+            values.append(rest[1])
+            colors.append(self.theme.muted_data)
+        return labels, values, colors, keys
 
 
 class DiskEntityPie(_CumulativePie):
@@ -168,30 +226,19 @@ class DiskEntityPie(_CumulativePie):
     def legend_amount(self, value):
         return fmt.size(value)
 
-    def build(self):
-        numeric_label = 'uid ' if self.kind == 'owner' else 'gid '
+    def entities(self):
+        return self.entity_data
 
-        # Coerce to float at the single entry point: scan rollups arrive as
-        # decimal.Decimal from Postgres, and Decimal/float don't mix in
-        # arithmetic (cum += v) or matplotlib. Everything downstream is then
-        # plain float.
-        data = sorted(self.entity_data, key=lambda d: float(d['value']),
-                      reverse=True)
-        values_desc = [float(d['value']) for d in data]
-        keep, n_others = self.split(values_desc)
+    def value_of(self, row):
+        # float at the single entry point: scan rollups arrive as Decimal from
+        # Postgres, and Decimal and float do not mix in arithmetic or matplotlib.
+        return float(row['value'])
 
-        keys = [d['id'] for d in data[:keep]]
-        labels = [d['name'] or f'{numeric_label}{d["id"]}' for d in data[:keep]]
-        values = list(values_desc[:keep])
-        colors = self.theme.data_colors(list(UNITY_PALETTE_10[:keep]))
+    def key_of(self, row):
+        return row['id']
 
-        if n_others > 0:
-            keys.append(None)                  # inert slice
-            labels.append(f'{fmt.number(n_others)} other')
-            values.append(sum(values_desc[keep:]))
-            colors.append(self.theme.muted_data)
-
-        return labels, values, colors, keys
+    def label_of(self, row):
+        return row['name'] or f"{'uid' if self.kind == 'owner' else 'gid'} {row['id']}"
 
 
 class UserUsagePie(_CumulativePie):
@@ -222,27 +269,14 @@ class UserUsagePie(_CumulativePie):
         # arrives missing, not defaulted.
         return content_hash([user_data, metric])
 
-    def build(self):
-        rows = [d for d in self.user_data if float(d.get(self.metric) or 0) > 0]
-        if not rows:
-            return [], [], [], []
+    def entities(self):
+        return [d for d in self.user_data if float(d.get(self.metric) or 0) > 0]
 
-        data = sorted(rows, key=lambda d: float(d[self.metric]), reverse=True)
-        values_desc = [float(d[self.metric]) for d in data]
-        keep, n_others = self.split(values_desc)
+    def value_of(self, row):
+        return float(row[self.metric])
 
-        keys = [d['username'] for d in data[:keep]]
-        labels = list(keys)
-        values = list(values_desc[:keep])
-        colors = self.theme.data_colors(list(UNITY_PALETTE_10[:keep]))
-
-        if n_others > 0:
-            keys.append(None)                  # inert slice
-            labels.append(f'{fmt.number(n_others)} other')
-            values.append(sum(values_desc[keep:]))
-            colors.append(self.theme.muted_data)
-
-        return labels, values, colors, keys
+    def key_of(self, row):
+        return row['username']
 
 
 class JobsUsagePie(_CumulativePie):
@@ -283,32 +317,23 @@ class JobsUsagePie(_CumulativePie):
     def drill(self):
         return links.RowDrill(self.row_attr)
 
-    def build(self):
-        rows = self.entity_data.get('rows') or []
-        totals = self.entity_data.get('totals') or {}
-        total = jobs_metric_value(totals, self.metric, 'cpu_hours')
-        if not rows or total <= 0:
-            return [], [], [], []
+    def entities(self):
+        self._total = jobs_metric_value(self.entity_data.get('totals') or {},
+                                        self.metric, 'cpu_hours')
+        return (self.entity_data.get('rows') or []) if self._total > 0 else []
 
-        # Upstream sorts by combined hours; re-sort by the *chosen* metric so
-        # e.g. the Jobs view leads with the most job-count-heavy users.
-        def value_of(r):
-            return jobs_metric_value(r, self.metric, 'cpu_hours')
+    def value_of(self, row):
+        # Upstream sorts by combined hours; the pie ranks by the *chosen* metric,
+        # so the Jobs view leads with the most job-count-heavy users.
+        return jobs_metric_value(row, self.metric, 'cpu_hours')
 
-        data = sorted(rows, key=value_of, reverse=True)
-        values_desc = [value_of(r) for r in data]
-        keep, _n_others = self.split(values_desc)
+    def key_of(self, row):
+        return row.get('value')
 
-        keys = [r.get('value') for r in data[:keep]]
-        labels = [k if k is not None else '(unknown)' for k in keys]
-        values = list(values_desc[:keep])
-        colors = self.theme.data_colors(list(UNITY_PALETTE_10[:keep]))
+    def label_of(self, row):
+        key = row.get('value')
+        return key if key is not None else '(unknown)'
 
-        remainder = total - sum(values)
-        if remainder > 1e-9:
-            keys.append(None)                  # inert slice
-            labels.append('Other')
-            values.append(remainder)
-            colors.append(self.theme.muted_data)
-
-        return labels, values, colors, keys
+    def remainder(self, values_desc, keep):
+        rest = self._total - sum(values_desc[:keep])
+        return ('Other', rest) if rest > 1e-9 else None
