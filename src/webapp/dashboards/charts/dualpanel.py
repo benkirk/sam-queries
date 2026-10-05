@@ -12,6 +12,7 @@ key, two charts, and the smallest blast radius of any family.
 from typing import Dict, List
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
 from sam import fmt
 from webapp.dashboards.charts.base import BaseChart
@@ -85,6 +86,13 @@ class DualPanelTimeSeriesChart(BaseChart):
                   fontsize=layout.legend_fontsize or self.legend_fontsize,
                   frameon=False)
 
+    def count_axis(self, ax):
+        """Whole-number ticks from zero: nodes, jobs, cores and GPUs do not come in halves."""
+        ax.set_ylim([0, None])
+        # AutoLocator's own steps less 2.5, so only the half-ticks change.
+        ax.yaxis.set_major_locator(MaxNLocator(nbins='auto', steps=[1, 2, 5, 10], integer=True))
+        ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
+
     def column(self, key, default=0):
         return [d.get(key, default) for d in self.history_data]
 
@@ -150,8 +158,7 @@ class NodetypeHistoryChart(DualPanelTimeSeriesChart):
     def decorate(self, axes, layout, theme):
         ax1, ax2 = axes
         ax1.set_ylabel('Number of Nodes', fontsize=layout.base_fontsize)
-        ax1.set_ylim([0, None])
-        ax1.yaxis.set_major_formatter(fmt.mpl_number_formatter())
+        self.count_axis(ax1)
         # Normalized: this panel used the literal 'gray' rather than the
         # themed gray-light every other chart uses. Undocumented, and the one
         # grid color a dark theme could not have swapped.
@@ -217,15 +224,13 @@ class QueueHistoryChart(DualPanelTimeSeriesChart):
 
     def decorate(self, axes, layout, theme):
         ax1, ax2 = axes
-        ax1.set_ylim([0, None])
+        self.count_axis(ax1)
         ax1.set_ylabel('Count', fontsize=layout.base_fontsize)
-        ax1.yaxis.set_major_formatter(fmt.mpl_number_formatter())
         self.apply_grid(ax1, theme)
 
-        ax2.set_ylim([0, None])
+        self.count_axis(ax2)
         ax2.set_ylabel('Resources', fontsize=layout.base_fontsize)
         ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', fontsize=layout.base_fontsize)
-        ax2.yaxis.set_major_formatter(fmt.mpl_number_formatter())
         self.apply_grid(ax2, theme)
 
     def add_legend(self, axes, layout, theme):
