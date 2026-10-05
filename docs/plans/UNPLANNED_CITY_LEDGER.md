@@ -494,8 +494,8 @@ widened the column.
 (`alloc-project-list-2026-10`, #729; end commit `ede454cf`). **PR:** #730, merged with the
 stack as #726.
 **Contract:** aesthetic; each commit declares its change with dialog heights from
-`ui_snapshots.py --recipes` (42 modals, 1440px and 390px, both themes). Ben's calls: quiet
-accent headers everywhere; one PR; the three bugs first.
+`ui_snapshots.py --recipes scripts/ui_snapshots_modals.json` (42 modals, 1440px and 390px, both
+themes). Ben's calls: quiet accent headers everywhere; one PR; the three bugs first.
 
 **Done, in this round's PR**, one commit each:
 
@@ -583,15 +583,16 @@ accent headers everywhere; one PR; the three bugs first.
 
 - [ ] Resource edit cannot set the primary sysadmin or responsible organization
   (`EditResourceForm`, `Resource.update`).
-- [ ] `htmx_panels_for_facility` is gated on `CREATE_PROJECTS`, but allocation-type create is
-  `CREATE_FACILITIES`. A holder of only the latter gets a 403 on the cascade.
+- [x] `htmx_panels_for_facility` admits `CREATE_FACILITIES` as well as `CREATE_PROJECTS`, so
+  New Allocation Type's Panel cascade fills for its own creators (sweep follow-ups).
 - [ ] The hand-rolled detail shells (project, user, contract, audit, chart expand, outage)
   could share a static-body scaffold.
 - [ ] The XRAS forms' own footers keep the page-size buttons (they are not `.modal-footer`).
 - [ ] Extend's resource table scrolls sideways at 390px now that its dates no longer wrap.
-- [ ] The `text-bg-*` toasts are still saturated.
-- [ ] `test_ticket_card::test_a_request_without_tickets_renders_no_ticket_row` fails under
-  xdist on some runs (passes serially), as does `test_db_browser_killswitch` on postgres-test.
+- [x] The toasts take the alert recipe instead of `text-bg-*` fills (sweep follow-ups).
+- [x] `test_ticket_card::test_a_request_without_tickets_renders_no_ticket_row` reads only its
+  own row, so another worker's ticketed request cannot reach it (sweep follow-ups).
+- [ ] `test_db_browser_killswitch` fails under xdist on some postgres-test runs.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
