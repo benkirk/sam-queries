@@ -1,4 +1,5 @@
 {% extends 'dashboards/admin/base_admin.html' %}
+{% from 'dashboards/fragments/search_box.html' import active_switch %}
 
 {% block title %}Admin: Facilities &amp; Allocation Types - SAM{% endblock %}
 
@@ -8,16 +9,10 @@
         <h5 class="mb-0 flex-grow-1">
             <i class="fa-solid fa-building"></i> Facilities &amp; Allocation Types
         </h5>
-        <div class="form-check form-switch ms-3 mb-0">
-            <input class="form-check-input" type="checkbox" id="facilitiesCardActiveOnly"
-                   name="active_only" value="1" checked
-                   hx-get="{{ url_for('admin_dashboard.htmx_facilities_card') }}"
-                   hx-trigger="change"
-                   hx-include="this"
-                   hx-target="#facilitiesSection"
-                   hx-swap="innerHTML">
-            <label class="form-check-label small text-muted fw-normal" for="facilitiesCardActiveOnly">Active only</label>
-        </div>
+        {{ active_switch('facilitiesCardActiveOnly',
+                         url_for('admin_dashboard.htmx_facilities_card'),
+                         'facilitiesSection',
+                         wrapper_class='ms-3') }}
     </div>
     <div id="facilitiesSection"
          hx-get="{{ url_for('admin_dashboard.htmx_facilities_card') }}?active_only=1"

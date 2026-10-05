@@ -17,6 +17,7 @@
     default_days / window_hours
 #}
 {% from 'dashboards/fragments/facet_chips.html' import facet_fields %}
+{% from 'dashboards/fragments/search_box.html' import filter_search %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
@@ -98,28 +99,20 @@
                       hx-target="#{{ target_id }}"
                       hx-swap="innerHTML"
                       hx-trigger="submit, change from:select"
-                      class="row g-2 align-items-end">
-                    <div class="col-12 col-md-5">
-                        <label class="form-label small mb-1" for="taskSearch">
-                            Task or runner
-                        </label>
-                        <input type="search" class="form-control form-control-sm"
-                               id="taskSearch" name="search"
-                               placeholder="cleanup_status_snapshots or samuel-tasks-…">
+                      class="row g-2 align-items-center">
+                    <div class="col-auto">
+                        {{ filter_search('taskSearch', 'search', fragment_url, target_id,
+                                         'Task or runner',
+                                         placeholder='cleanup_status_snapshots or samuel-tasks-…') }}
                     </div>
-                    <div class="col-6 col-md-3">
-                        <label class="form-label small mb-1" for="taskDays">Window</label>
-                        <select class="form-select form-select-sm" id="taskDays" name="days">
+                    <div class="col-auto">
+                        <select class="form-select form-select-sm" id="taskDays" name="days"
+                                aria-label="Window">
                             <option value="1">Last 24 hours</option>
                             <option value="7">Last 7 days</option>
                             <option value="30" selected>Last 30 days</option>
                             <option value="365">Last year</option>
                         </select>
-                    </div>
-                    <div class="col-6 col-md-4 d-flex gap-2">
-                        <button type="submit" class="btn btn-sm btn-primary">
-                            <i class="fa-solid fa-filter"></i> Apply
-                        </button>
                     </div>
 
                     {# Written by the facet chips (data-action set-filter-submit). #}

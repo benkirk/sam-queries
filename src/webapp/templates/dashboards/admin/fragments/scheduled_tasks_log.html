@@ -1,5 +1,5 @@
 {% from 'dashboards/fragments/clipboard.html' import copy_button %}
-{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_row %}
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/pagination.html' import pagination %}
 {#
@@ -48,6 +48,7 @@
                  filters.triggers or []) }}
     {{ facet_row('Task', task_facets, form_id, 'task_name',
                  filters.task_names or []) }}
+    {{ facet_clear_all(form_id, filters.states or filters.triggers or filters.task_names or filters.search) }}
 </div>
 
 <div id="scheduledTasksTable">

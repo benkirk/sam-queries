@@ -49,6 +49,11 @@
 
   facet_grid_row(label) is a call-macro for a non-chip row in the same grid (the
   queue switch, a search box).
+
+  facet_clear_all(form_id, active) is the grid's last row: one button that
+  blanks every `data-facet-field` control of the form (the chip fields above,
+  and a `filter_search` box) and re-submits. Pass `active` truthy only when
+  something is selected, so the row is absent at rest.
 #}
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 
@@ -63,9 +68,9 @@
 {% set name = facet.name if facet.name is defined else facet %}
 {% set chosen = selected.get(name) or [] %}
 {% if name in single or facet.multi is sameas false %}
-<input type="hidden" name="{{ name }}" value="{{ chosen | first | default('', true) }}">
+<input type="hidden" name="{{ name }}" value="{{ chosen | first | default('', true) }}" data-facet-field>
 {% else %}
-<select name="{{ name }}" multiple hidden>
+<select name="{{ name }}" multiple hidden data-facet-field>
     {%- for value in chosen %}<option value="{{ value }}" selected>{{ value }}</option>{% endfor -%}
 </select>
 {% endif %}
@@ -88,6 +93,18 @@
 {% macro facet_grid_row(label) %}
 <div class="facet-grid-label">{{ label }}</div>
 <div class="facet-grid-values">{{ caller() }}</div>
+{% endmacro %}
+
+{% macro facet_clear_all(form_id, active) %}
+{% if active %}
+<div class="facet-grid-label" aria-hidden="true"></div>
+<div class="facet-grid-values">
+    <button type="button" class="facet-clear"
+            data-action="facet-clear-all" data-form-id="{{ form_id }}">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i> Clear filters
+    </button>
+</div>
+{% endif %}
 {% endmacro %}
 
 {% macro facet_row(label, values, form_id, field, active=[], badge=False) %}

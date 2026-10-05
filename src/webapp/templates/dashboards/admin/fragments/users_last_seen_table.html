@@ -1,4 +1,4 @@
-{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_row %}
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/pagination.html' import pagination %}
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
@@ -26,6 +26,7 @@
     {{ facet_row('Last seen', bucket_facets, form_id, 'bucket', filters.bucket) }}
     {{ facet_row('Source', kind_facets, form_id, 'kind',
                  [filters.kind] if filters.kind else []) }}
+    {{ facet_clear_all(form_id, filters.bucket or filters.kind or filters.search) }}
 </div>
 
 <div class="table-responsive">

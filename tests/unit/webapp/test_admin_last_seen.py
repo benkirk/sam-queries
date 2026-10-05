@@ -43,7 +43,7 @@ class TestAccess:
 
     def test_page_seeds_the_form_from_the_query_string(self, auth_client, status_session):
         html = auth_client.get(f'{PAGE}?bucket=stale&kind=pbs&q=ben').get_data(as_text=True)
-        assert re.search(r'<select name="bucket" multiple hidden>\s*'
+        assert re.search(r'<select name="bucket" multiple hidden[^>]*>\s*'
                          r'<option value="stale" selected>', html)
         assert 'name="kind" value="pbs"' in html
         assert 'value="ben"' in html

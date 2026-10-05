@@ -47,7 +47,7 @@
 <span title="No SAM project by this name yet — the expected state for a request whose handoff has not completed, which is why this account is still on the list">{{ number }}</span>
 {%- endif -%}
 {%- endmacro %}
-{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_row %}
 {% from 'dashboards/fragments/xras_person_detail.html' import person_detail %}
 {#
   Pending Users — everyone who needs a SAM account before an XRAS handoff can
@@ -176,6 +176,7 @@
                it is selectable. #}
             {{ facet_row('Request', facet_values.request_number, form_id, 'request_number',
                          active=selected.request_number) }}
+            {{ facet_clear_all(form_id, selected.values() | select | list) }}
         </div>
         {# The invariant, said once
            Every other worklist in SAM ends in a button that does the thing.

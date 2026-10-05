@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/search_box.html' import active_switch %}
 {% from 'dashboards/fragments/form_fields.html' import form_errors_panel with context %}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/contract_bits.html' import contract_user_link with context %}
@@ -27,21 +28,10 @@
     All-checked is the healthy state; gaps indicate partial access to repair.
   </span>
   <div class="d-flex align-items-center gap-3">
-    <div class="form-check form-switch mb-0">
-      <input type="checkbox" class="form-check-input"
-             id="accessGridActiveOnly"
-             name="active_only" value="1"
-             {% if active_only %}checked{% endif %}
-             hx-get="{{ url_for('admin_dashboard.htmx_access_grid', projcode=projcode) }}"
-             hx-trigger="change"
-             hx-target="#accessGridContainer"
-             hx-swap="innerHTML"
-             hx-include="this">
-      <label class="form-check-label small text-muted fw-normal"
-             for="accessGridActiveOnly">
-        Active only
-      </label>
-    </div>
+    {{ active_switch('accessGridActiveOnly',
+                     url_for('admin_dashboard.htmx_access_grid', projcode=projcode),
+                     'accessGridContainer',
+                     checked=active_only) }}
     {% if member_rows and columns %}
     <button type="button" class="btn btn-sm btn-warning"
             hx-post="{{ url_for('admin_dashboard.htmx_access_grid_reconcile', projcode=projcode) }}"

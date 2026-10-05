@@ -196,6 +196,27 @@
         htmx.trigger(form, 'submit');
     });
 
+    /* "Clear filters" on a chip card: blank every [data-facet-field] control
+     * that belongs to the form (nested, or bound with form=) and re-submit.
+     * The queue switch, the window and sort are not facet fields and stay. */
+    window.registerAction('facet-clear-all', function (el) {
+        var form = document.getElementById(el.dataset.formId);
+        if (!form) { return; }
+        var fields = document.querySelectorAll('[data-facet-field]');
+        for (var i = 0; i < fields.length; i++) {
+            var field = fields[i];
+            if (field.form !== form) { continue; }
+            if (field.tagName === 'SELECT') {
+                for (var j = 0; j < field.options.length; j++) {
+                    field.options[j].selected = false;
+                }
+            } else {
+                field.value = '';
+            }
+        }
+        htmx.trigger(form, 'submit');
+    });
+
     /* Sortable column header: write sort_by + sort_dir into the filter form's
      * hidden fields, then submit it — so sort is form state and survives every
      * facet/window change, exactly like a chip. The form must carry hidden

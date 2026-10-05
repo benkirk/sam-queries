@@ -1,7 +1,8 @@
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_xras_pending_work, g_xras_mnemonic_strip, g_xras_contract_strip, g_xras_identity_strip with context %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
-{% from 'dashboards/fragments/facet_chips.html' import facet_grid_row, facet_row %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_grid_row, facet_row %}
+{% from 'dashboards/fragments/search_box.html' import filter_search %}
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {#
   XRAS Remediations — the operator WRITE surface.
@@ -284,17 +285,12 @@
                    htmx restores focus and caret to the element with the same
                    id after the swap, which is what makes typing survive a
                    300 ms round trip. Hence the stable id. #}
-                <input type="search" class="form-control form-control-sm"
-                       id="xras-remediation-search" name="search"
-                       form="{{ form_id }}" value="{{ search or '' }}"
-                       autocomplete="off" style="width: 24rem; max-width: 100%;"
-                       placeholder="Request number, project code, or a name"
-                       title="The request number IS the projcode. Also matches the project lead and every roster member, by name or username — including the ones only visible once a row is expanded."
-                       hx-get="{{ fragment_url }}"
-                       hx-target="#{{ target_id }}"
-                       hx-swap="innerHTML"
-                       hx-trigger="input changed delay:300ms, search"
-                       hx-include="#xras-window-filters, #{{ form_id }}">
+                {{ filter_search('xras-remediation-search', 'search', fragment_url,
+                                 target_id, 'Search requests', value=search,
+                                 form_id=form_id,
+                                 include='#xras-window-filters, #' ~ form_id,
+                                 placeholder='Request number, project code, or a name',
+                                 title='The request number IS the projcode. Also matches the project lead and every roster member, by name or username — including the ones only visible once a row is expanded.') }}
             {% endcall %}
             {{ facet_row('Status', facet_values.status, form_id, 'status',
                          active=selected.status) }}
@@ -317,6 +313,7 @@
                chip. #}
             {{ facet_row('Request', facet_values.request_number, form_id, 'request_number',
                          active=selected.request_number) }}
+            {{ facet_clear_all(form_id, search or (selected.values() | select | list)) }}
         </div>
 
         {% if not groups %}
@@ -336,7 +333,9 @@
             <strong>{{ swept_total | fmt_number }} request(s) were swept, and
             the current filters hide all of them.</strong>
             On this card an older request is usually the <em>more</em> urgent
-            one — widen the date filter above, or clear the search and chips,
+            one — widen the date filter above, or
+            <button type="button" class="btn btn-link btn-sm p-0 align-baseline"
+                    data-action="facet-clear-all" data-form-id="{{ form_id }}">clear the search and chips</button>,
             to see them.
             {% endif %}
         </div>

@@ -1,4 +1,4 @@
-{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_row %}
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/pagination.html' import pagination %}
 {% from 'dashboards/fragments/project_bits.html' import project_link with context %}
@@ -36,6 +36,7 @@
     {{ facet_row('Kind', kind_facets, form_id, 'kind', filters.kinds or []) }}
     {{ facet_row('Channel', channel_facets, form_id, 'channel',
                  filters.channels or []) }}
+    {{ facet_clear_all(form_id, filters.statuses or filters.kinds or filters.channels or filters.search) }}
 </div>
 
 <div id="notificationsTable">

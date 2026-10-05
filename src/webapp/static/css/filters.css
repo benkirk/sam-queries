@@ -45,6 +45,43 @@
     gap: 0.25rem;
 }
 
+/* The grid's last row, present only while something is selected. Quiet on
+   purpose: a text button, not a chip, so it never reads as one more value. */
+.facet-clear {
+    padding: 0.125rem 0;
+    background: none;
+    border: 0;
+    font-size: 0.8125rem;
+    color: var(--text-link);
+}
+
+.facet-clear:hover,
+.facet-clear:focus-visible {
+    text-decoration: underline;
+}
+
+/* The one search box (filter_search). A fixed measure so it reads the same
+   in a chip grid, a card header and a filter row; it yields on a phone. */
+.filter-search {
+    width: 24rem;
+    max-width: 100%;
+}
+
+/* The icon is a hint, not a control: it joins the input's own border and
+   surface, where a form's unit addon (.input-group-text) is solid brand blue. */
+.filter-search .input-group-text {
+    padding-right: 0.25rem;
+    background-color: var(--bs-body-bg);
+    border: var(--bs-border-width) solid var(--bs-border-color);
+    border-right: 0;
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+
+.filter-search .form-control {
+    border-left: 0;
+}
+
 /* Deliberately not a .btn. The Unity button treatment above (uppercase,
    700 weight, 3px border, 1.25rem type) is right for an action and far
    too loud for two dozen read-mostly value tokens — and its uppercasing

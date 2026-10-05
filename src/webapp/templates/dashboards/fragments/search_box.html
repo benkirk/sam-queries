@@ -55,3 +55,55 @@
     </label>
 </div>
 {% endmacro %}
+
+{#
+  filter_search: the one search box for a filtered list. Requests as you type
+  (300 ms debounce); the label is for assistive tech, the icon and placeholder
+  carry it visually. The param name stays per surface (q / search / actor).
+
+  Inside the list's own filter <form>, pass no form_id: it includes the closest
+  form and Enter rides that form's submit. Bound to a hidden chip form
+  (form_id), it also answers Enter and the native clear button (`search`).
+  Keep the id stable when the box sits inside its own swap target: htmx
+  restores focus and caret by id, which is what lets typing survive a swap.
+#}
+{% macro filter_search(input_id, name, url, target_id, label, value='',
+                       placeholder='', form_id=none, include=none, title=none) %}
+<label class="visually-hidden" for="{{ input_id }}">{{ label }}</label>
+<div class="input-group input-group-sm filter-search">
+    <span class="input-group-text"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></span>
+    <input type="search" class="form-control" id="{{ input_id }}" name="{{ name }}"
+           value="{{ value or '' }}" placeholder="{{ placeholder }}"
+           autocomplete="off" data-facet-field
+           {%- if form_id %} form="{{ form_id }}"{% endif %}
+           {%- if title %} title="{{ title }}"{% endif %}
+           hx-get="{{ url }}"
+           hx-target="#{{ target_id }}"
+           hx-swap="innerHTML"
+           hx-trigger="input changed delay:300ms{{ ', search' if form_id }}"
+           hx-include="{{ include or ('#' ~ form_id if form_id else 'closest form') }}">
+</div>
+{% endmacro %}
+
+{#
+  active_switch: the "Active only" switch on a card. The route reads it with
+  webapp.utils.htmx.read_active_only (absent means OFF). `checked` is the
+  initial state; a card that re-renders its own switch passes the live value.
+  A call block adds hidden fields the refetch must carry (name them in
+  `include`).
+#}
+{% macro active_switch(input_id, url, target_id, checked=True, include='this',
+                       label='Active only', wrapper_class='') %}
+<div class="form-check form-switch mb-0{{ ' ' ~ wrapper_class if wrapper_class }}">
+    {%- if caller %}{{ caller() }}{% endif %}
+    <input class="form-check-input" type="checkbox" role="switch"
+           id="{{ input_id }}" name="active_only" value="1"
+           {%- if checked %} checked{% endif %}
+           hx-get="{{ url }}"
+           hx-trigger="change"
+           hx-include="{{ include }}"
+           hx-target="#{{ target_id }}"
+           hx-swap="innerHTML">
+    <label class="form-check-label small text-muted fw-normal" for="{{ input_id }}">{{ label }}</label>
+</div>
+{% endmacro %}

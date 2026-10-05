@@ -22,6 +22,7 @@
     template_rows / selected_name   for the Templates pane
 #}
 {% from 'dashboards/fragments/facet_chips.html' import facet_fields %}
+{% from 'dashboards/fragments/search_box.html' import filter_search %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
@@ -125,28 +126,20 @@
                       hx-target="#{{ target_id }}"
                       hx-swap="innerHTML"
                       hx-trigger="submit, change from:select"
-                      class="row g-2 align-items-end">
-                    <div class="col-12 col-md-5">
-                        <label class="form-label small mb-1" for="notifySearch">
-                            Recipient or project
-                        </label>
-                        <input type="search" class="form-control form-control-sm"
-                               id="notifySearch" name="search"
-                               placeholder="name@example.edu or SCSG0001">
+                      class="row g-2 align-items-center">
+                    <div class="col-auto">
+                        {{ filter_search('notifySearch', 'search', fragment_url, target_id,
+                                         'Recipient or project',
+                                         placeholder='name@example.edu or SCSG0001') }}
                     </div>
-                    <div class="col-6 col-md-3">
-                        <label class="form-label small mb-1" for="notifyDays">Window</label>
-                        <select class="form-select form-select-sm" id="notifyDays" name="days">
+                    <div class="col-auto">
+                        <select class="form-select form-select-sm" id="notifyDays" name="days"
+                                aria-label="Window">
                             <option value="1">Last 24 hours</option>
                             <option value="7">Last 7 days</option>
                             <option value="30" selected>Last 30 days</option>
                             <option value="365">Last year</option>
                         </select>
-                    </div>
-                    <div class="col-6 col-md-4 d-flex gap-2">
-                        <button type="submit" class="btn btn-sm btn-primary">
-                            <i class="fa-solid fa-filter"></i> Apply
-                        </button>
                     </div>
 
                     {# Written by the facet chips (data-action set-filter-submit). #}
