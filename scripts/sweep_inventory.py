@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Inventory the code an unplanned-city sweep reads: helpers to lift, duplicates, CSS and JS cruft.
 
-A report, not a gate: it always exits 0, and every detector is a heuristic to read, not a verdict.
-The totals line per detector is what one sweep compares with the last (docs/plans/UNPLANNED_CITY_LEDGER.md).
+A report: it always exits 0, and every detector is a heuristic to read, not a verdict. CI holds four
+of them: css-dead (tests/unit/gates/test_css_dead.py), bs4-classes, row-buttons and modal-alerts
+(test_template_detectors.py). The totals line per detector is what one sweep compares with the last
+(docs/plans/UNPLANNED_CITY_LEDGER.md).
 
     scripts/sweep_inventory.py                     # every detector, whole tree
     scripts/sweep_inventory.py --area css          # one area: py | js | css | templates | docs

@@ -63,7 +63,7 @@ Routes: renew, extend, exchange, propagate-to-remaining
 | `_renew_preconditions` | refusal messages; "nothing ok unless `replace_existing`" | `sam.manage.renew` |
 | `_extend_shortening_error` | refuse unless new end > latest current end (the domain only skips silently) | `sam.manage.extend` |
 | `_exchange_candidates` + `clean()` overdraft check | both ends scoped to the project subtree at `active_at`; usage-based overdraft | `sam.manage.allocations.exchange_allocations` |
-| propagate route body | `_has_any_alloc` filter + `is_inheriting` refusal | `propagate_allocation_to_subprojects` |
+| `_PropagateAllocationHandler` | `_has_any_alloc` filter + `is_inheriting` refusal | `propagate_allocation_to_subprojects` |
 
 ⚠️ **Exchange is security-relevant.** The subtree scoping is the defense
 against forged allocation ids, and the overdraft rule exists only in
@@ -180,7 +180,7 @@ parallel JSON generator is mechanical once the spec gains:
   read-mostly `api/v1`; a prerequisite to fix before exposing any write in
   this census to scripts.
 - **Input read outside the schema** (would need adding to the schema for an
-  API): `break_inheritance` (admin edit-allocation), `action_<project_id>`
+  API): `action_<project_id>`
   (notify-project), `stage` (XRAS resource edit), `request_number` /
   `return_to` (XRAS overrides), `force` (XRAS notify), the
   `listed_present` / `invite_only_present` sentinels in `event_lifecycle.py`,
@@ -228,7 +228,7 @@ note are CLEAN. `†` = the retire rule (date = now) is one inline kwarg; a
 | POST `/htmx/extend-allocations-preview/<projcode>` | 2161 | UI-ONLY | |
 | POST `/htmx/align-allocations/<projcode>` | 2264 | CLEAN | |
 | POST `/htmx/notify-project/<projcode>` | 2347 | GLUE | per-row auto/forced action selection inline |
-| POST `/htmx/edit-allocation/<id>` | 2568 | CLEAN | api twin: `PUT /api/v1/allocations/<id>` (no `break_inheritance`) |
+| POST `/htmx/edit-allocation/<id>` | 2568 | CLEAN | api twin: `PUT /api/v1/allocations/<id>` |
 | POST `/htmx/detach-allocation/<id>` | 2576 | CLEAN | |
 | POST `/htmx/link-allocation-to-parent/<id>` | 2595 | CLEAN | |
 | POST `/htmx/propagate-allocation-to-remaining/<id>` | 2627 | GLUE | cluster 1 |

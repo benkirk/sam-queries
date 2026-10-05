@@ -221,7 +221,7 @@ document.body.addEventListener('reloadUserCard', function(evt) {
 
 (function() {
     var VARIANTS = {
-        // Only a destructive confirm fills its header; the others keep the quiet modal header.
+        // A destructive confirm's header takes danger ink plus a rule; the others keep the quiet modal header.
         danger:  { header: 'modal-header-danger', icon: 'fa-triangle-exclamation', btn: 'btn-danger' },
         warning: { header: '',                    icon: 'fa-circle-exclamation',   btn: 'btn-warning' },
         info:    { header: '',                    icon: 'fa-circle-info',          btn: 'btn-primary' }
