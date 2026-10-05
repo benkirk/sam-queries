@@ -134,21 +134,12 @@ class TestFacade:
         assert generators <= set(charts.__all__), (
             f'generators missing from __all__: {generators - set(charts.__all__)}')
 
-    def test_private_names_tests_import_still_resolve(self):
-        """These moved onto classes or into sibling modules during the
-        refactor; the facade keeps their historical spellings because tests
-        and profiling scripts import them from here."""
+    def test_the_facade_carries_no_private_aliases(self):
+        """A helper is imported from the module that defines it. The facade once
+        re-exported two dozen under historical underscore names; none remain."""
         from webapp.dashboards import charts
-        for name in ('_JOBS_METRIC_KEYS', '_jobs_bucket_segments',
-                     '_jobs_metric_value', '_jobs_timeseries_series',
-                     '_pie_cumulative_keep', '_bucket_segments',
-                     '_pace_bands', '_pace_key_fields',
-                     '_jobs_histogram_cache_key', '_jobs_timeseries_cache_key',
-                     '_jobs_usage_pie_cache_key', '_pace_cache_key',
-                     '_empty_state', '_fig_to_svg', '_to_display_tz',
-                     '_project_modal_url', '_user_modal_url',
-                     '_USAGE_METRIC_YLABELS', '_FONT_DIR'):
-            assert hasattr(charts, name), f'facade dropped {name}'
+        private = sorted(n for n in vars(charts) if n.startswith('_') and not n.startswith('__'))
+        assert not private, f'import these from their own module: {private}'
 
     def test_import_side_effects_still_fire(self):
         """`import webapp.dashboards.charts` must still register the fonts and

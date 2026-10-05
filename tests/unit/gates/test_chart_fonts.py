@@ -42,8 +42,8 @@ def test_charts_font_dir_resolves():
     the developer happened to have Poppins installed in ~/Library/Fonts. In the
     container it would have fallen straight back to DejaVu.
     """
-    assert charts._FONT_DIR == FONT_DIR
-    assert charts._FONT_DIR.exists(), f'{charts._FONT_DIR} does not exist'
+    assert charts.theme._FONT_DIR == FONT_DIR
+    assert FONT_DIR.exists(), f'{FONT_DIR} does not exist'
 
 
 def test_repo_ttfs_are_registered_with_matplotlib():

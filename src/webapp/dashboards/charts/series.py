@@ -5,7 +5,7 @@ key names, which is why their color and legend loops could never be shared:
 
     series[i]['label']      sam/queries/charges.py, system_status user_proj_queues
     series[i]['username']   sam/queries/disk_usage.py
-    (name, values) tuples   the jobs plugin, via `_jobs_timeseries_series`
+    (name, values) tuples   the jobs plugin, via `jobs_timeseries_series`
 
 Normalizing happens **at the chart boundary**, not in the query layer — those
 functions have their own consumers and tests, and changing their envelopes to

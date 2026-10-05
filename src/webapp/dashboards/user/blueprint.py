@@ -1089,7 +1089,6 @@ def resource_details_disk_usage_chart(project):
         fileset=fileset,
         start_date=start_date.strftime('%Y-%m-%d'),
         end_date=end_date.strftime('%Y-%m-%d'),
-        has_data=bool(timeseries.get('series')),
     )
 
 

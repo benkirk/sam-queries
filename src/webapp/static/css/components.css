@@ -89,11 +89,6 @@
    Spinners
    =================================================================== */
 
-.loading-spinner-lg {
-    width: 3rem;
-    height: 3rem;
-}
-
 /* FontAwesome 7 spin-wobble fix. FA7 lays every icon out in a padded 1.25em
    box and sets no transform-origin, so fa-spin pivots on the box center, not
    the glyph — the icon orbits like a clock hand instead of spinning in place

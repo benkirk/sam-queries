@@ -246,7 +246,7 @@ def _capture_connect_listener(monkeypatch, **kwargs):
 # second bucket / second row is deliberately uncharged (real hours, 0.0
 # charges — the `uncharged` QoS carries a genuine 0.0 factor). A fixture
 # that omitted these keys would let every charges assertion pass through
-# charts._jobs_metric_value's `.get(k) or 0` fallback and prove nothing.
+# jobs_metrics.jobs_metric_value's `.get(k) or 0` fallback and prove nothing.
 def _sample_hist(dimension='wait', null_count=0):
     return {
         'dimension': dimension, 'column': 'eligible_secs', 'unit': 'seconds',

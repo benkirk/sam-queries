@@ -926,17 +926,6 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    the Bootstrap `.badge.bg-X` utility form). The live badge palette is the
    subtle Bootstrap 5.3 .bg-X-bg-subtle override applied lower in this file. */
 
-/* ============================================================================
-   LOADING SPINNER
-   ========================================================================= */
-
-.loading-spinner {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 200px;
-}
-
 .htmx-indicator {
     display: none;
 }

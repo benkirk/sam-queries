@@ -34,11 +34,8 @@ from webapp.caching.chart import content_hash
 from webapp.dashboards.charts import links
 from webapp.dashboards.charts.base import BaseChart, cells_label
 from webapp.dashboards.charts.layout import profile
-from webapp.dashboards.charts.theme import (
-    UNITY_NCAR_NAVY, UNITY_STACK_10, UNITY_STACK_20,
-)
+from webapp.dashboards.charts.theme import UNITY_STACK_10, UNITY_STACK_20
 
-_PACE_TODAY_LINE_COLOR = matplotlib.colors.to_rgba(UNITY_NCAR_NAVY, 0.7)
 _PACE_RATE_SCALE = 365  # internal per-day rates -> per-year axis
 
 OTHER_KEY = '__other__'
@@ -124,8 +121,7 @@ class PaceChart(BaseChart):
     Args (via the public view):
         allocations: per-allocation rows through ``burn.pace_segments``: at least
             ``projcode``, ``start_date``, ``end_date``, ``total_amount``, ``pace``.
-        active_at: chart centerline ("today").
-        window_days: half-window on each side of ``active_at``.
+        active_at: chart centerline ("today"); the window is ``PACE_WINDOW_DAYS`` either side.
         top_n: projects with their own color + legend entry.
         resource_name: used only for cache key disambiguation.
         sort_by: ranking metric for the top-N selection — ``'size'`` (total
@@ -135,7 +131,7 @@ class PaceChart(BaseChart):
     """
 
     cache_name = 'pace_chart'
-    #: One entry per (resource, window_days, top_n, sort_by) combination across
+    #: One entry per (resource, top_n, sort_by) combination across
     #: concurrent viewers. Sized for ~30 resources x 3 sort_by x small
     #: facility-scope fanout — well under 10 MB of cached SVG per process.
     cache_maxsize = 192
@@ -153,29 +149,25 @@ class PaceChart(BaseChart):
     #: 9pt: this is a (10,4) figure, so the legend is proportionally larger
     #: than the same point size on an 18-inch chart. Same tier as the pies.
     legend_fontsize = 9
-    legend_anchor = (1.01, 0.5)
 
-    def __init__(self, allocations: List[Dict], active_at: datetime,
-                 window_days: int = PACE_WINDOW_DAYS, top_n: int = 20,
+    def __init__(self, allocations: List[Dict], active_at: datetime, top_n: int = 20,
                  resource_name: str = '', sort_by: str = 'size'):
         self.allocations = allocations or []
         self.active_at = active_at
-        self.window_days = window_days
         self.top_n = top_n
         self.resource_name = resource_name
         self.sort_by = sort_by
 
     @staticmethod
-    def cache_key(allocations, active_at, window_days=PACE_WINDOW_DAYS, top_n=20,
-                  resource_name='', sort_by='size'):
+    def cache_key(allocations, active_at, top_n=20, resource_name='', sort_by='size'):
         return content_hash([pace_key_fields(allocations), active_at.isoformat(),
-                             int(window_days), int(top_n), resource_name, sort_by])
+                             int(top_n), resource_name, sort_by])
 
     # --- lifecycle --------------------------------------------------------
 
     def prepare(self):
-        self.window_start = self.active_at - timedelta(days=self.window_days)
-        self.window_end = self.active_at + timedelta(days=self.window_days)
+        self.window_start = self.active_at - timedelta(days=PACE_WINDOW_DAYS)
+        self.window_end = self.active_at + timedelta(days=PACE_WINDOW_DAYS)
         self.days, self._bands = pace_bands(
             self.allocations, self.active_at, self.window_start, self.window_end)
         if not self._bands:
@@ -184,7 +176,7 @@ class PaceChart(BaseChart):
             # driver's short-circuit stay the single exit path.
             if self.allocations:
                 self.empty_message = (
-                    f'No allocations in the ±{self.window_days}d window')
+                    f'No allocations in the ±{PACE_WINDOW_DAYS}d window')
             return
 
         n_days = len(self.days)

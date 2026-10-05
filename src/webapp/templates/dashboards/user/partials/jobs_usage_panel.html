@@ -162,7 +162,7 @@
               <td class="text-end" data-sort-value="{{ r.job_count }}">{{ r.job_count | fmt_number }}</td>
               <td class="text-end" data-sort-value="{{ r.cpu_hours }}">{{ r.cpu_hours | fmt_number }}</td>
               <td class="text-end" data-sort-value="{{ r.gpu_hours }}">{{ r.gpu_hours | fmt_number }}</td>
-              {# Charges = cpu + gpu, matching charts._JOBS_METRIC_KEYS. #}
+              {# Charges = cpu + gpu, matching charts/jobs_metrics.py JOBS_METRIC_KEYS. #}
               {% set _rc = (r.cpu_charges or 0) + (r.gpu_charges or 0) %}
               <td class="text-end" data-sort-value="{{ _rc }}">{{ _rc | fmt_number }}</td>
             </tr>

@@ -64,8 +64,6 @@ class StackedSeriesChart(BaseChart):
     palette_reverse = False
 
     show_legend = True
-    legend_fontsize = 11
-    legend_anchor = (1.01, 0.5)
     legend_labelspacing = 0.7
 
     #: Drill target for the legend entries, or None. May be a property when
@@ -181,7 +179,6 @@ class StackedSeriesChart(BaseChart):
         legend = ax.legend(
             handles=handles,
             frameon=False,
-            title_fontsize=12,
             **self.legend_kwargs(layout),
             **({'labelspacing': self.legend_labelspacing}
                if self.legend_labelspacing else {}),
@@ -491,13 +488,12 @@ class JobsTimeseriesChart(StackedSeriesChart):
                 else links.USER_MODAL)
 
     def prepare(self):
-        self.labels, pairs = jobs_timeseries_series(self.ts, self.metric)
+        self.labels, self._pairs = jobs_timeseries_series(self.ts, self.metric)
         self.env_bands = self.ts.get('bands') or []
         super().prepare()
 
     def build_bands(self):
-        _labels, pairs = jobs_timeseries_series(self.ts, self.metric)
-        return series_mod.from_pairs(pairs)
+        return series_mod.from_pairs(self._pairs)
 
     def x_values(self):
         return list(range(len(self.labels)))
@@ -506,9 +502,6 @@ class JobsTimeseriesChart(StackedSeriesChart):
         if not self.labels or not self.bands:
             return True
         return not any(any(v > 0 for v in b.values) for b in self.bands)
-
-    def _bar_kwargs(self):
-        return {'linewidth': self.bar_linewidth}
 
     def bar_url(self, i):
         # A zero-height rect is an invisible click target, so `_draw_bars`

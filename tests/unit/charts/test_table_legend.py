@@ -36,3 +36,15 @@ def test_below_placement_draws_nothing():
 def test_cells_label_is_the_fallback_string():
     assert cells_label(('ALPHA0001', '1.2M/yr')) == 'ALPHA0001 (1.2M/yr)'
     assert cells_label(('ALPHA0001',)) == 'ALPHA0001'
+
+
+def test_every_pie_layout_places_its_legend_at_the_right():
+    """`PieChart.add_legend` has no fallback: `draw_table_legend` draws nothing
+    for a 'below' placement, so a pie profile must never ask for one."""
+    from webapp.dashboards import charts
+    from webapp.dashboards.charts.pie import PieChart
+    pies = [fn.chart_class for fn in vars(charts).values()
+            if issubclass(getattr(fn, 'chart_class', type), PieChart)]
+    assert len(pies) >= 7
+    for cls in pies:
+        assert {lay.legend_placement for lay in cls.LAYOUTS.values()} == {'right'}, cls.__name__

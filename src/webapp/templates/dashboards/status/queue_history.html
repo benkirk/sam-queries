@@ -77,8 +77,7 @@
         <h5 class="mb-0"><i class="fa-solid fa-chart-line"></i> Historical Trends</h5>
     </div>
     <div class="card-body">
-
-        {% if chart_svg %}
+        {# Always a string: the chart renders its own empty state. #}
         <div class="chart-container">
             <h6 class="text-center fw-bold mb-2">
                 Queue Activity
@@ -86,12 +85,6 @@
             </h6>
             {{ chart_svg|safe }}
         </div>
-        {% else %}
-        <div class="text-center text-muted py-4">
-            <i class="fa-solid fa-chart-line fa-3x mb-3"></i>
-            <p>No historical data available for the selected time period.</p>
-        </div>
-        {% endif %}
     </div>
 </div>
 

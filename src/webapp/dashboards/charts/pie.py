@@ -10,7 +10,7 @@ from typing import Dict, List
 from sam import fmt
 from webapp.caching.chart import content_hash
 from webapp.dashboards.charts import links
-from webapp.dashboards.charts.base import BaseChart, cells_label
+from webapp.dashboards.charts.base import BaseChart
 from webapp.dashboards.charts.jobs_metrics import jobs_metric_value
 from webapp.dashboards.charts.layout import profile
 from webapp.dashboards.charts.theme import UNITY_PALETTE_10, autopct_color_for
@@ -61,11 +61,9 @@ class PieChart(BaseChart):
     autopct_fontsize = 8
     #: 9pt on a (7,4) figure — see the note on PaceChart.legend_fontsize.
     legend_fontsize = 9
-    legend_anchor = (1.01, 0.5)
 
     #: A drill target (`RowDrill`/`UserDrill`), or None for an inert pie.
     drill = None
-    table_legend = True
 
     def build(self):
         """Return ``(labels, values, colors, link_keys)``, all same length.
@@ -123,33 +121,14 @@ class PieChart(BaseChart):
         self.wedges = wedges
 
     def add_legend(self, ax, layout, theme):
+        """A wedge and its legend row share one drill URL. The table is the only
+        legend: every pie layout places it at the right (pinned by test)."""
         rows = [self.legend_cells(l, v) for l, v in zip(self.labels, self.values)]
-        if self.table_legend:
-            urls = [self.drill.url(k) if self.drill is not None and k is not None else None
-                    for k in self.link_keys]
-            for wedge, url in zip(self.wedges, urls):
-                wedge.set_url(url)
-            if self.draw_table_legend(ax, rows, self.colors, urls, layout, theme):
-                return
-        legend = ax.legend(self.wedges, [cells_label(r) for r in rows],
-                           **self.legend_kwargs(layout))
-        if self.drill is None:
-            return
-
-        # A drill target spans three artists — the wedge, its legend swatch
-        # and its legend text — which is why these stay <a> anchors rather
-        # than set_gid()s: an id has to be unique.
-        leg_patches = legend.get_patches()
-        leg_texts = legend.get_texts()
-        for i, key in enumerate(self.link_keys):
-            if key is None:
-                continue
-            url = self.drill.url(key)
-            self.wedges[i].set_url(url)
-            if i < len(leg_patches):
-                leg_patches[i].set_url(url)
-            if i < len(leg_texts):
-                leg_texts[i].set_url(url)
+        urls = [self.drill.url(k) if self.drill is not None and k is not None else None
+                for k in self.link_keys]
+        for wedge, url in zip(self.wedges, urls):
+            wedge.set_url(url)
+        self.draw_table_legend(ax, rows, self.colors, urls, layout, theme)
 
 
 class _CumulativePie(PieChart):
@@ -283,16 +262,13 @@ class JobsUsagePie(_CumulativePie):
     cache_maxsize = 64
     empty_message = 'No usage data available'
 
-    def __init__(self, entity_data, metric='cpu_hours', *,
-                 row_attr='data-job-user', unknown_label='(unknown)'):
+    def __init__(self, entity_data, metric='cpu_hours', *, row_attr='data-job-user'):
         self.entity_data = entity_data or {}
         self.metric = metric
         self.row_attr = row_attr
-        self.unknown_label = unknown_label
 
     @staticmethod
-    def cache_key(entity_data, metric='cpu_hours', *,
-                  row_attr='data-job-user', unknown_label='(unknown)'):
+    def cache_key(entity_data, metric='cpu_hours', *, row_attr='data-job-user'):
         """row_attr joins the key: identical usage vectors rendered for
         different entity kinds carry different drill anchors."""
         rows = (entity_data or {}).get('rows') or []
@@ -301,7 +277,7 @@ class JobsUsagePie(_CumulativePie):
                    for r in rows]
         return content_hash([payload,
                              jobs_metric_value(totals, metric, 'cpu_hours'),
-                             str(metric), str(row_attr), str(unknown_label)])
+                             str(metric), str(row_attr)])
 
     @property
     def drill(self):
@@ -324,7 +300,7 @@ class JobsUsagePie(_CumulativePie):
         keep, _n_others = self.split(values_desc)
 
         keys = [r.get('value') for r in data[:keep]]
-        labels = [k if k is not None else self.unknown_label for k in keys]
+        labels = [k if k is not None else '(unknown)' for k in keys]
         values = list(values_desc[:keep])
         colors = self.theme.data_colors(list(UNITY_PALETTE_10[:keep]))
 

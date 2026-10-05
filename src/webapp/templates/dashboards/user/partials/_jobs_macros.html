@@ -9,7 +9,7 @@
 {% import 'dashboards/fragments/plugin_state.html' as _state %}
 
 {# ONE metric vocabulary for every jobs panel — mirrors routes._METRICS and
-   charts._JOBS_METRIC_LABELS. Kept here rather than repeated per template
+   charts/jobs_metrics.py JOBS_METRIC_LABELS. Kept here rather than repeated per template
    because the panels share a persist family: a metric offered by one pane
    and unknown to another's label map is a KeyError, not a graceful skip.
 

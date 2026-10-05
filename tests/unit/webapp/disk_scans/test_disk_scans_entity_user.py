@@ -16,7 +16,7 @@ class TestDiskEntityPie:
     wedge/legend sentinels that svg-chart-links.js routes to row expansion."""
 
     def test_cumulative_keep(self):
-        from webapp.dashboards.charts import _pie_cumulative_keep
+        from webapp.dashboards.charts.pie import trim_cumulative as _pie_cumulative_keep
         assert _pie_cumulative_keep([90, 5, 3, 2]) == 1   # one dominant slice
         assert _pie_cumulative_keep([1] * 20) == 9        # hard cap (palette = 10)
         assert _pie_cumulative_keep([5, 4, 3]) == 3       # all fit -> no "Other"

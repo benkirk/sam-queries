@@ -422,7 +422,7 @@ def test_band_drill_url_is_none_for_an_empty_band():
 def test_charges_is_a_first_class_metric_everywhere():
     """Ben's call: one vocabulary across all six panels, so the shared
     `metric:jobs` persist family stays valid."""
-    from webapp.dashboards.charts import _JOBS_METRIC_KEYS
+    from webapp.dashboards.charts.jobs_metrics import JOBS_METRIC_KEYS as _JOBS_METRIC_KEYS
     from webapp.jobs.routes import (_METRICS, _USAGE_METRIC_KEYS,
                                     _USAGE_SORT_BY)
     assert 'charges' in _METRICS

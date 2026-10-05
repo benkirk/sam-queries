@@ -46,6 +46,8 @@ PAGE_SETS = {'charts': [
     ('admin-facilities', '/admin/facilities', ['wait:.fair-share-chart svg']),
     ('status-derecho', '/status/derecho', ['scroll:[id^="user-proj-chart"]']),
     ('status-queue', '/status/queue-history/derecho/main', ['scroll:[id^="user-proj-chart"]']),
+    ('status-nodetype', '/status/nodetype-history/casper/cpu', []),
+    ('status-partition', '/status/partition-history/derecho/cpu', []),
     ('status-jobs-byproj', '/status/job-history', ['click:[data-bs-target$="-byproj"]']),
     ('jobs-timeline', _JOBS, ['wait:.jobs-timeline-chart svg']),
     ('jobs-byuser', _JOBS, ['click:[data-bs-target$="-byuser"]', 'wait:.jobs-user-pie svg']),

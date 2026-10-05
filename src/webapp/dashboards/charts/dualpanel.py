@@ -27,12 +27,6 @@ from webapp.dashboards.charts.theme import (
 class DualPanelTimeSeriesChart(BaseChart):
     """Shared skeleton: stacked upper panel, conditional lower panel."""
 
-    #: Legend keyword arguments. Framed with a solid face — the one place in
-    #: the app where a chart legend sits *over* the data rather than beside
-    #: it, so it needs to occlude. `facecolor` comes from the theme.
-    #: 11pt, matching the rcParams default and every other large figure.
-    #: Was 10 for no recorded reason.
-    legend_fontsize = 11
     #: Two- and three-word labels ("Resources Available", "GPUs Pending"), so
     #: an outside legend gets two columns.
     legend_ncol_below = 2

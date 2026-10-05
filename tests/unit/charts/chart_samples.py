@@ -394,8 +394,8 @@ CASES = [
                                           'row_attr': 'data-job-project'}),
     ('jobs_usage_pie.empty', charts.generate_jobs_usage_pie_chart, ({},), {}),
 
-    # --- 15. jobs user pie (the delegating facade) -----------------------
-    ('jobs_user_pie.delegated', charts.generate_jobs_user_pie_chart,
+    # --- 15. jobs usage pie by user, with an unknown-user row --------------
+    ('jobs_user_pie.delegated', charts.generate_jobs_usage_pie_chart,
      (_jobs_usage(),), {'metric': 'cpu_hours'}),
 
     # --- 16. pace chart ---------------------------------------------------

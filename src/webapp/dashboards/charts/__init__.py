@@ -26,44 +26,24 @@ Module layout and the family hierarchy: CLAUDE.md, *Charts*.
 from webapp.dashboards.charts import (  # noqa: F401
     jobs_metrics, layout, links, series, theme,
 )
-from webapp.dashboards.charts.base import (  # noqa: F401
-    BaseChart,
-    chart_view,
-    empty_state as _empty_state,
-    fig_to_svg as _fig_to_svg,
-)
+from webapp.dashboards.charts.base import BaseChart, chart_view  # noqa: F401
 from webapp.dashboards.charts.dualpanel import (  # noqa: F401
     DualPanelTimeSeriesChart,
     NodetypeHistoryChart,
     QueueHistoryChart,
 )
-from webapp.dashboards.charts.series import to_display_tz as _to_display_tz  # noqa: F401
 from webapp.dashboards.charts.histogram import (  # noqa: F401
     CategoricalStackChart,
     DistributionHistogram,
     JobsHistogram,
-    bucket_segments as _bucket_segments,
-)
-from webapp.dashboards.charts.jobs_metrics import (  # noqa: F401
-    JOBS_METRIC_KEYS as _JOBS_METRIC_KEYS,
-    JOBS_METRIC_LABELS as _JOBS_METRIC_LABELS,
-    jobs_bucket_segments as _jobs_bucket_segments,
-    jobs_metric_value as _jobs_metric_value,
-    jobs_timeseries_series as _jobs_timeseries_series,
 )
 from webapp.dashboards.charts.layout import Layout  # noqa: F401
-from webapp.dashboards.charts.pace import (  # noqa: F401
-    PACE_WINDOW_DAYS,
-    PaceChart,
-    pace_bands as _pace_bands,
-    pace_key_fields as _pace_key_fields,
-)
+from webapp.dashboards.charts.pace import PaceChart  # noqa: F401
 from webapp.dashboards.charts.pie import (  # noqa: F401
     DiskEntityPie,
     JobsUsagePie,
     PieChart,
     UserUsagePie,
-    trim_cumulative as _pie_cumulative_keep,
 )
 from webapp.dashboards.charts.stacked import (  # noqa: F401
     DiskUsageAreaChart,
@@ -72,7 +52,6 @@ from webapp.dashboards.charts.stacked import (  # noqa: F401
     UsageTrendChart,
     UsageTrendStackedChart,
     UserProjAreaChart,
-    _USAGE_METRIC_YLABELS,
 )
 from webapp.dashboards.charts.sunburst import (  # noqa: F401
     AllocationSunburst,
@@ -97,24 +76,9 @@ from webapp.dashboards.charts.theme import (  # noqa: F401
     UNITY_STACK_10,
     UNITY_STACK_20,
     Theme,
-    _FONT_DIR,
-    autopct_color_for as _autopct_color_for,
     resolve_theme,
     scale_bytes,
-    shade_family as _shade_family,
 )
-
-
-def _project_modal_url(projcode: str) -> str:
-    """Resolve the project-details modal route, with blueprint prefix.
-    Used to mark legend entries with set_url() — svg-chart-links.js
-    intercepts clicks on these anchors and dispatches the modal."""
-    return links.PROJECT_MODAL.url(projcode)
-
-
-def _user_modal_url(username: str) -> str:
-    """Resolve the user-card modal route, with blueprint prefix."""
-    return links.USER_MODAL.url(username)
 
 
 # ---------------------------------------------------------------------------
@@ -163,44 +127,6 @@ generate_jobs_facility_sunburst = chart_view(JobsFacilitySunburst)
 generate_panel_sunburst = chart_view(PanelSunburst)
 
 
-def generate_jobs_user_pie_chart(entity_data, metric='cpu_hours', *,
-                                 layout='desktop', theme='light') -> str:
-    """By User pie — delegates to the entity-agnostic renderer with the
-    ``data-job-user`` row family.
-
-    Deliberately a facade rather than a bound chart of its own: binding it would
-    register a second cache and add a row to the admin Caching card for what
-    is really the same chart under a different drill attribute.
-
-    Being a hand-written facade rather than a `chart_view` binding, it is also
-    the one generator that does not get the render axes for free — and it
-    silently didn't have them, because nothing in `src/` calls it (the live
-    By-User path passes `row_attr=` to the bound renderer directly) and the
-    fingerprint gate only ever rendered at the defaults. Forwarding them keeps
-    the facade honest: `test_migrated_charts_expose_the_render_axes` reads the
-    signature, and a caller that ever does appear must not find a `TypeError`.
-    """
-    return generate_jobs_usage_pie_chart(entity_data, metric,
-                                         row_attr=links.JOB_USER.attr,
-                                         layout=layout, theme=theme)
-
-
-#: Cache-key helpers under their historical module-level names. They moved
-#: onto the chart classes as `cache_key`; several tests import them from here
-#: and they are the same function either way.
-_usage_timeseries_cache_key = UsageTrendChart.cache_key
-_usage_stacked_cache_key = UsageTrendStackedChart.cache_key
-_disk_usage_stacked_area_cache_key = DiskUsageAreaChart.cache_key
-_user_proj_stacked_area_cache_key = UserProjAreaChart.cache_key
-_distribution_cache_key = DistributionHistogram.cache_key
-_disk_entity_pie_cache_key = DiskEntityPie.cache_key
-_user_usage_pie_cache_key = UserUsagePie.cache_key
-_jobs_histogram_cache_key = JobsHistogram.cache_key
-_jobs_timeseries_cache_key = JobsTimeseriesChart.cache_key
-_jobs_usage_pie_cache_key = JobsUsagePie.cache_key
-_pace_cache_key = PaceChart.cache_key
-
-
 __all__ = [
     # The public generators.
     'generate_usage_timeseries_matplotlib',
@@ -215,14 +141,12 @@ __all__ = [
     'generate_jobs_histogram',
     'generate_jobs_timeseries_stacked',
     'generate_jobs_usage_pie_chart',
-    'generate_jobs_user_pie_chart',
     'generate_pace_chart_matplotlib',
     'generate_fair_share_sunburst',
     'generate_allocation_sunburst',
     'generate_jobs_facility_sunburst',
     'generate_panel_sunburst',
     'panel_rows',
-    'PACE_WINDOW_DAYS',
     # The hierarchy, for anyone subclassing.
     'BaseChart',
     'chart_view',
