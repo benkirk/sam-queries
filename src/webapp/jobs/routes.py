@@ -2007,7 +2007,8 @@ def _panel_usage(ctx, fragment_url, *, mode, scope_for, log_label,
     if ctx['machine'] is None:
         return _render_usage_panel(entity_key=entity_key, mode=mode,
                                    machine=None, fragment_url=None,
-                                   jobs_fragment_url=None, target_id='')
+                                   jobs_fragment_url=None, target_id='',
+                                   layout=layout, theme=theme)
     return _render_usage_panel(
         entity_key=entity_key, mode=mode, machine=ctx['machine'],
         fragment_url=fragment_url, jobs_fragment_url=jobs_fragment_url,
@@ -2053,7 +2054,8 @@ def _panel_histogram(ctx, fragment_url, *, mode, scope_for, log_label,
     if ctx['machine'] is None:
         return _render_histogram(mode=mode, machine=None, dimension=dim,
                                  dimension_toggle=dimension_toggle,
-                                 fragment_url=None, target_id='')
+                                 fragment_url=None, target_id='',
+                                 layout=layout, theme=theme)
     return _render_histogram(
         mode=mode, machine=ctx['machine'],
         dimension=dim, dimension_toggle=dimension_toggle,
@@ -2071,7 +2073,8 @@ def _panel_timeline(ctx, fragment_url, *, mode, scope_for, log_label,
     """HTMX fragment: the Jobs tab's activity timeline."""
     if ctx['machine'] is None:
         return _render_timeline(mode=mode, machine=None,
-                                fragment_url=None, target_id='')
+                                fragment_url=None, target_id='',
+                                layout=layout, theme=theme)
     return _render_timeline(
         mode=mode, machine=ctx['machine'],
         fragment_url=fragment_url, jobs_fragment_url=jobs_fragment_url,
