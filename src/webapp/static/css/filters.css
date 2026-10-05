@@ -2,13 +2,20 @@
  * SAM filter UI — facet chips, ladder ranges and the filter sidebar.
  * Shared components for any filter form on the site, loaded right after
  * dashboard.css in dashboards/base.html so the cascade order is unchanged.
+ *
+ * TWO TIERS, ONE VOCABULARY. A surface picks one tier:
+ *   - page-level: the navy .filter-sidebar panel (filter_panel_shell), with
+ *     an Apply button; every control one line tall.
+ *   - in-card: a .facet-grid of chips, live, with no button.
+ * Both build from the same atoms: search (filter_search), switch, window,
+ * chips, and a single clear. The chip grid with its counts is the one
+ * distinctive element; everything around it stays quiet.
  */
 
 /* ============================================================================
    FACET CHIPS — a live value-count strip whose chips double as filter
    controls. Every caller goes through the `facet_row` macro in
-   fragments/facet_chips.html: the jobs explorer (between its filter panel and
-   its tab strip), the XRAS action log, and the notification delivery log.
+   fragments/facet_chips.html (ten templates; grep for it).
 
    One grid row per dimension: the label column self-sizes to the widest
    label and the values wrap inside their own cell, so "Exit code" can
@@ -513,6 +520,7 @@
 }
 
 .filter-sidebar select,
+.filter-sidebar .filter-checklist-toggle,
 .filter-sidebar input[type="date"],
 .filter-sidebar input[type="text"],
 .filter-sidebar input[type="search"],
@@ -534,11 +542,6 @@
     text-align: left;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-.filter-sidebar .filter-checklist-toggle {
-    background-color: var(--surface-raised);
-    color: var(--text-heading);
 }
 
 .filter-checklist-menu {

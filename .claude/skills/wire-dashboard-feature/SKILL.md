@@ -31,9 +31,9 @@ The families:
 - **Status** — `badges.status_badge` (its state vocab is the source of truth;
   an unknown state falls back to a neutral `bg-secondary` badge).
 - **Collapse** — `collapse.collapse_toggle`.
-- **Filters** — `facet_chips.facet_row`, `filter_panel.filter_panel_shell`,
-  `audit_filters` / `xras_filters`, the range sliders `ladder_range` /
-  `age_band_range`, `search_box.active_toggle_search`.
+- **Filters** — two tiers, one per surface (rule: `filters.css` header; order: `filter_panel.html`).
+  Page: `filter_panel_shell` + `filter_apply`, `multiselect_filter`, the range sliders. Card:
+  `facet_row` / `facet_form` / `facet_clear_all` + `utils/facets.py`. Both: `search_box.filter_search`.
 - **Forms** — all of `form_fields.*` (`text_field`, `number_field`,
   `date_field`, `datetime_field`, `textarea_field`, `select_field`,
   `multiselect_filter`, `checkbox_field`, `readonly_display`, `fk_search_field`,
