@@ -593,7 +593,7 @@ def _parse_job_filters(include_user: bool = True) -> dict:
     if include_user:
         f['user'] = _resolve_user_filter()[0]
     if f['name'] is not None:
-        f['ignore_case'] = request.args.get('ignore_case') in ('1', 'true', 'on')
+        f['ignore_case'] = read_flag(request.args, 'ignore_case')
     for key in ('min_nodes', 'max_nodes', 'min_cpus', 'max_cpus',
                 'min_gpus', 'max_gpus'):
         v = _parse_int_arg(key)
@@ -1521,7 +1521,7 @@ def _panel_filters(machine: str) -> dict:
         'qos':   (request.args.get('qos') or '').strip(),
         'exit_status': (request.args.get('exit_status') or '').strip(),
         'name':  (request.args.get('name') or '').strip(),
-        'ignore_case': request.args.get('ignore_case') in ('1', 'true', 'on'),
+        'ignore_case': read_flag(request.args, 'ignore_case'),
         'min_nodes': _parse_int_arg('min_nodes'),
         'max_nodes': _parse_int_arg('max_nodes'),
         'min_cpus':  _parse_int_arg('min_cpus'),

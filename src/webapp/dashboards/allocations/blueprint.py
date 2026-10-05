@@ -527,7 +527,7 @@ def projects():
         active_at = start_of_today()
 
     # Allow cache bypass for debugging / stale data
-    force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+    force_refresh = read_flag(request.args, 'force_refresh')
     # The table's row filter; the summaries and charts are always root-only.
     root_only = read_switch(request.args, 'root_only', default=True)
 
@@ -1030,7 +1030,7 @@ def projects_fragment():
     facility = request.args.get('facility')
     allocation_type = request.args.get('allocation_type')
     active_at_str = request.args.get('active_at')
-    force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+    force_refresh = read_flag(request.args, 'force_refresh')
     root_only = read_switch(request.args, 'root_only', default=True)
 
     # Validate required params

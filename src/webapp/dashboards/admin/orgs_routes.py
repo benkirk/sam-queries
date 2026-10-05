@@ -26,6 +26,7 @@ from webapp.utils.htmx import (
     htmx_success_message,
     modal_triggers,
     read_active_only,
+    read_flag,
     read_sort,
     read_tab,
     register_typeahead,
@@ -208,8 +209,8 @@ def htmx_institutions_fragment():
     country_id = _int_or_none(request.args.get('country_id'))
     state_prov_id = _int_or_none(request.args.get('state_prov_id')) if country_id else None
     active_only = read_active_only(request.args)
-    show_users_projects = request.args.get('show_users_projects') == '1'
-    active_users_projects = request.args.get('active_users_projects') == '1'
+    show_users_projects = read_flag(request.args, 'show_users_projects')
+    active_users_projects = read_flag(request.args, 'active_users_projects')
 
     institutions = get_institutions_with_members(
         db.session,
