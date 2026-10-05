@@ -20,7 +20,7 @@ import inspect
 import pytest
 
 from webapp.dashboards import charts
-from webapp.dashboards.charts import dualpanel, histogram, pace, pie, stacked
+from webapp.dashboards.charts import dualpanel, histogram, pace, pie, stacked, sunburst
 from webapp.dashboards.charts.base import BaseChart
 from webapp.dashboards.charts.layout import (
     MOBILE_DEFAULTS, TABLET_DEFAULTS, Layout, profile, resolve_layout,
@@ -34,7 +34,20 @@ LAYOUT_OWNERS = [
     dualpanel.NodetypeHistoryChart,
     dualpanel.QueueHistoryChart,
     pace.PaceChart,
+    sunburst.PanelSunburst,
 ]
+
+#: Drawn only in the fullscreen expand modal, whose opener is hidden below `md`
+#: (`fragments/chart_expand.html`): square at every layout, and never phone-sized.
+EXPAND_ONLY = {sunburst.PanelSunburst}
+
+
+def test_layout_owners_lists_every_class_that_declares_a_profile():
+    declared = {cls for module in (dualpanel, histogram, pace, pie, stacked, sunburst)
+                for cls in vars(module).values()
+                if inspect.isclass(cls) and cls.__module__ == module.__name__
+                and 'LAYOUTS' in vars(cls)}
+    assert declared == set(LAYOUT_OWNERS)
 
 
 def _chart_classes():
@@ -140,6 +153,8 @@ class TestProfiles:
         desktop = cls.LAYOUTS['desktop'].figsize
         mobile = cls.LAYOUTS['mobile'].figsize
         assert mobile[0] < desktop[0], f'{cls.__name__} mobile is not narrower'
+        if cls in EXPAND_ONLY:
+            return
         # ~4.6in of figure lands near 350pt after the tight bbox, which is
         # about a phone viewport once card padding is off. Wider and the
         # browser scales it back down, which is the whole defect.
@@ -173,6 +188,8 @@ class TestProfiles:
         s = cls.LAYOUTS[name].figsize
         if tuple(s) == tuple(d):
             pytest.skip(f'{cls.__name__} {name} is the desktop figure')
+        if cls in EXPAND_ONLY:
+            pytest.skip(f'{cls.__name__} is square by design')
         assert abs(s[1] / s[0] - d[1] / d[0]) > 0.01, cls.__name__
 
     def test_every_bound_chart_reaches_a_profile(self):
