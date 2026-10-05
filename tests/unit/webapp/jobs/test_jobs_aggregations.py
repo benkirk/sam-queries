@@ -500,3 +500,23 @@ def test_histogram_fragment_metric_pill_roundtrip(
     import re
     assert re.search(r'active[^>]*>\s*CPU-hours', body) or \
         re.search(r'CPU-hours', body)
+
+
+def test_timeline_fragment_renders_bars_that_drill_to_their_period(app, auth_client, monkeypatch):
+    from webapp.dashboards.charts import links
+    from webapp.jobs import routes
+    _install_mock_plugin(app, monkeypatch)
+    bands = [{'label': f'2026-03-0{d}', 'start': f'2026-03-0{d}', 'end': f'2026-03-0{d}',
+              'job_count': jc, 'cpu_hours': jc * 4.0, 'gpu_hours': 0.0,
+              'cpu_charges': jc * 2.0, 'gpu_charges': 0.0,
+              'owners': {'alice': {'job_count': jc // 2, 'cpu_hours': jc * 2.0, 'gpu_hours': 0.0,
+                                   'cpu_charges': jc * 1.0, 'gpu_charges': 0.0}}}
+             for d, jc in ((1, 10), (2, 0), (3, 25))]
+    monkeypatch.setattr(routes.service, 'jobs_timeseries', lambda *a, **kw: {
+        'period': 'day', 'bands': bands, 'start': '2026-03-01', 'end': '2026-03-03',
+        'total_count': 35, 'totals': {'job_count': 35, 'cpu_hours': 140.0, 'gpu_hours': 0.0}})
+    resp = auth_client.get('/dashboards/user/jobs/machine/derecho/timeline')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert '<svg' in body
+    assert links.JT_PERIOD.url(0) in body and links.JT_PERIOD.url(1) not in body   # band 1 has no jobs
