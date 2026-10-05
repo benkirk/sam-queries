@@ -79,12 +79,12 @@
             </tr>
             <tr class="collapse" id="{{ p_id }}" data-no-persist>
                 <td colspan="{{ ncols }}" class="p-2">
-                    {# Persist id suffixed with the facility, so its sort_by is
-                       independent of the resource-wide chart's. #}
+                    {# card=1 puts the facility in the fragment's id and persist id, so
+                       its sort_by is independent of the resource-wide chart's. #}
                     <div class="chart-container pace-chart"
                          hx-get="{{ url_for('allocations_dashboard.htmx_pace_chart',
                                             resource_name=resource_name, facilities=f.facility,
-                                            active_at=active_at, sort_by='size') }}"
+                                            active_at=active_at, sort_by='size', card=1) }}"
                          hx-trigger="show.bs.collapse from:closest tr once" hx-swap="innerHTML"
                          data-chart-persist-id="pace-chart-{{ pane }}-{{ f.facility|replace(' ', '_') }}"
                          data-chart-persist-keys="sort_by">

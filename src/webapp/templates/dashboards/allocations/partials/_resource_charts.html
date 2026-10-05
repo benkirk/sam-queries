@@ -57,7 +57,8 @@
            the partial's, so nav-view-persistence.js replays the saved sort_by. #}
         <div class="chart-container pace-chart"
              hx-get="{{ url_for('allocations_dashboard.htmx_pace_chart',
-                                resource_name=resource_name, active_at=active_at, sort_by='size') }}"
+                                resource_name=resource_name, active_at=active_at, sort_by='size',
+                                facilities=selected_facilities or []) }}"
              hx-trigger="intersect once" hx-swap="innerHTML"
              data-chart-persist-id="pace-chart-{{ pane }}"
              data-chart-persist-keys="sort_by">

@@ -761,12 +761,12 @@ def htmx_pace_chart(resource_name):
         sort_by=sort_by, layout=read_layout(), theme=read_theme(),
     )
 
-    # A stable HTML id, matching dashboard.html's
-    # `data-resource="{{ resource_name|replace(' ', '_') }}"` convention. A
-    # single-facility request includes the facility, so a per-facility card's
-    # persisted sort_by does not collide with the resource-wide chart's.
+    # A stable HTML id. A facility card (`card=1`) adds its facility: a page
+    # filtered to one facility draws that card AND the resource-wide chart over
+    # the same scope, and Sort-by targets the id.
     chart_dom_id = 'pace-chart-' + resource_name.replace(' ', '_')
-    if len(requested_facilities) == 1:
+    facility_card = read_flag(request.args, 'card') and len(requested_facilities) == 1
+    if facility_card:
         chart_dom_id += '-' + requested_facilities[0].replace(' ', '_')
 
     # Selector-button URLs MUST carry the original facility scope forward, or
@@ -779,6 +779,8 @@ def htmx_pace_chart(resource_name):
     }
     if requested_facilities:
         selector_kwargs['facilities'] = requested_facilities
+    if facility_card:
+        selector_kwargs['card'] = 1
 
     return render_template(
         'dashboards/allocations/partials/pace_chart.html',

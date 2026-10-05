@@ -1435,6 +1435,23 @@ class TestPaceChartRoute:
         html = response.data.decode().lower()
         assert '<svg' in html or 'no allocations' in html
 
+    def test_page_loader_carries_the_facility_filter(self, auth_client):
+        html = auth_client.get('/allocations/projects?facilities=WNA').get_data(as_text=True)
+        loaders = re.findall(r'hx-get="([^"]*htmx/pace-chart/[^"]*)"\s+hx-trigger="intersect once"', html)
+        if not loaders:
+            pytest.skip('no resource pane in the snapshot for WNA')
+        assert all('facilities=WNA' in url and 'card=' not in url for url in loaders)
+
+    def test_only_a_facility_card_gets_the_facility_in_its_dom_id(self, auth_client):
+        """A page filtered to one facility also renders that facility's card: two
+        charts over the same scope, which must not share an id."""
+        url = '/allocations/htmx/pace-chart/Derecho?active_at=2026-10-01&facilities=WNA'
+        page_wide = auth_client.get(url).get_data(as_text=True)
+        card = auth_client.get(url + '&card=1').get_data(as_text=True)
+        assert 'id="pace-chart-Derecho"' in page_wide and 'card=1' not in page_wide
+        assert 'id="pace-chart-Derecho-WNA"' in card
+        assert card.count('card=1') == 3    # each Sort-by button keeps the card's id
+
     def test_hpc_shares_the_calendars_entries(self, auth_client):
         with patch(f'{self._BP}.cached_allocation_usage_rows', return_value=[]) as rows, \
                 patch(f'{self._BP}.cached_allocation_burn', return_value={}) as burn, \
