@@ -58,7 +58,9 @@ from webapp.dashboards.charts.sunburst import (  # noqa: F401
     FairShareSunburst,
     JobsFacilitySunburst,
     PanelSunburst,
+    UserPanelSunburst,
     panel_rows,
+    panel_rows_grouped,
 )
 from webapp.dashboards.charts.theme import (  # noqa: F401
     UNITY_NCAR_BLUE,
@@ -125,6 +127,8 @@ generate_jobs_facility_sunburst = chart_view(JobsFacilitySunburst)
 
 # 10. Facility / panel / project expanded view (allocations + job history).  charts/sunburst.py
 generate_panel_sunburst = chart_view(PanelSunburst)
+# 11. The same rings with users on the rim (job history By User).               charts/sunburst.py
+generate_user_panel_sunburst = chart_view(UserPanelSunburst)
 
 
 __all__ = [
@@ -146,7 +150,9 @@ __all__ = [
     'generate_allocation_sunburst',
     'generate_jobs_facility_sunburst',
     'generate_panel_sunburst',
+    'generate_user_panel_sunburst',
     'panel_rows',
+    'panel_rows_grouped',
     # The hierarchy, for anyone subclassing.
     'BaseChart',
     'chart_view',

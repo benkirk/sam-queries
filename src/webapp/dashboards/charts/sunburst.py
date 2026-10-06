@@ -247,16 +247,17 @@ class AllocationSunburst(TwoRingPie):
 
 
 class JobsFacilitySunburst(AllocationSunburst):
-    """Job history By Project, grouped: facilities inside, each one's top projects
-    outside in usage order. The remainder is other projects' real usage, so it is a
-    pale tint rather than a blank; a row's ``others`` counts them for its hover. A project wedge drills to its table row only when
+    """Job history By Project or By User, grouped: facilities inside, each one's top
+    entries outside in usage order. The remainder is the rest's real usage, so it is a
+    pale tint rather than a blank; a row's ``others`` counts them for its hover. An
+    outer wedge drills to its table row (``row_attr``, as `JobsUsagePie`) only when
     ``linked`` (the table holds the top 25 alone); facilities have no row to open.
+    ``noun`` names the rim entity in the remainder's hover.
     """
 
     cache_name = 'jobs_facility_sunburst'
     cache_maxsize = 64
     empty_message = 'No usage data available'
-    drill = links.JOB_PROJECT
     #: Thin facility core, thick project rim: a projcode laid along the radius
     #: needs the rim's width, and then only one line's height of arc.
     inner_radius = 0.46
@@ -267,13 +268,16 @@ class JobsFacilitySunburst(AllocationSunburst):
     outer_label_fontsize = 6.5
     outer_label_min = 1
 
-    def __init__(self, data: List[Dict], center: str = '', titles=None):
+    def __init__(self, data: List[Dict], center: str = '', titles=None, *,
+                 row_attr='data-job-project', noun='projects'):
         super().__init__(data, center)
         self.titles = titles
+        self.drill = links.RowDrill(row_attr)
+        self.noun = noun
 
     @staticmethod
-    def cache_key(data, center='', titles=None):
-        return content_hash([data, center, titles or {}])
+    def cache_key(data, center='', titles=None, *, row_attr='data-job-project', noun='projects'):
+        return content_hash([data, center, titles or {}, row_attr, noun])
 
     def label_ink(self, theme):
         return None
@@ -295,29 +299,41 @@ class JobsFacilitySunburst(AllocationSunburst):
 
     def part_tooltip(self, row, name, value):
         n = row.get('others')
-        rest = f'{other_label(n)} {row["facility"]} projects' if n else f'Other {row["facility"]} projects'
+        rest = (f'{other_label(n)} {row["facility"]} {self.noun}' if n
+                else f'Other {row["facility"]} {self.noun}')
         return super().part_tooltip(row, name or rest, value)
 
 
 def panel_rows(values, panels, slots):
-    """`PanelSunburst` input: ``{projcode: value}`` grouped by facility and panel.
+    """`PanelSunburst` input from ``{projcode: value}``: each project under its panel.
 
-    ``panels`` is `project_panels` output and ``slots`` `facility_slots`. Facilities
-    order by slot (unmapped projects last, as Unknown); panels and projects by value.
+    ``panels`` is `project_panels` output and ``slots`` `facility_slots`.
+    """
+    return panel_rows_grouped(
+        ((*panels.get(code, (None, None, None)), code, value) for code, value in values.items()),
+        slots)
+
+
+def panel_rows_grouped(entries, slots):
+    """`PanelSunburst` input from ``(facility_id, facility, panel, name, value)`` entries.
+
+    A name may recur (a user under two panels, or twice under one: values sum).
+    Facilities order by slot (unmapped entries last, as Unknown); panels and rim
+    entries by value.
     """
     tree = {}
-    for code, value in values.items():
+    for fid, facility, panel, name, value in entries:
         if not value or value <= 0:
             continue
-        fid, facility, panel = panels.get(code, (None, None, None))
-        tree.setdefault((fid, facility), {}).setdefault(panel, []).append((code, float(value)))
+        leaves = tree.setdefault((fid, facility), {}).setdefault(panel, {})
+        leaves[name] = leaves.get(name, 0.0) + float(value)
 
     rows = []
     for (fid, facility), by_panel in tree.items():
-        plist = [{'name': panel or 'Unknown', 'value': sum(v for _, v in projects),
-                  'projects': [{'name': code, 'value': v}
-                               for code, v in sorted(projects, key=lambda p: (-p[1], p[0]))]}
-                 for panel, projects in by_panel.items()]
+        plist = [{'name': panel or 'Unknown', 'value': sum(leaves.values()),
+                  'rim': [{'name': name, 'value': v}
+                          for name, v in sorted(leaves.items(), key=lambda p: (-p[1], p[0] or ''))]}
+                 for panel, leaves in by_panel.items()]
         plist.sort(key=lambda p: (-p['value'], p['name']))
         rows.append({'facility': facility or 'Unknown', 'slot': slots.get(fid),
                      'value': sum(p['value'] for p in plist), 'panels': plist,
@@ -330,10 +346,12 @@ def panel_rows(values, panels, slots):
 class PanelSunburst(PieChart):
     """Three rings: facilities, their allocation panels, and every project on the rim.
 
-    Rim labels go where one radial line fits; hover names the rest. A project
+    Rim labels go where one radial line fits; hover names the rest. A rim entry
     under ``min_wedge_deg`` folds into its panel's pale "+N" wedge, and past
     ``max_wedges`` every panel keeps only its ``top_n``. Facility and panel colors
-    follow the facility slot, as on the two-ring charts. ``data`` is `panel_rows`.
+    follow the facility slot, as on the two-ring charts. ``data`` is `panel_rows`
+    (or `panel_rows_grouped`); ``rim_links`` off draws the rim without links,
+    for a viewer the rim's modal would refuse.
     """
 
     cache_name = 'panel_sunburst'
@@ -355,14 +373,15 @@ class PanelSunburst(PieChart):
     panel_fontsize = 8.5
     project_fontsize = 7
 
-    def __init__(self, data: List[Dict], center: str = '', titles=None):
+    def __init__(self, data: List[Dict], center: str = '', titles=None, rim_links=True):
         self.data = data or []
         self.center_text = center
         self.titles = titles
+        self.rim_links = rim_links
 
     @staticmethod
-    def cache_key(data, center='', titles=None):
-        return content_hash([data, center, titles or {}])
+    def cache_key(data, center='', titles=None, rim_links=True):
+        return content_hash([data, center, titles or {}, rim_links])
 
     def prepare(self):
         self.rows = [r for r in self.data if r.get('value')]
@@ -371,25 +390,24 @@ class PanelSunburst(PieChart):
         self.link_keys = [None] * len(self.rows)
         total = sum(self.values)
         floor = total * self.min_wedge_deg / 360
-        self.rim = self._fold(lambda projects: [p for p in projects if p['value'] >= floor])
+        self.rim = self._fold(lambda rim: [p for p in rim if p['value'] >= floor])
         if len(self.rim) > self.max_wedges:
-            self.rim = self._fold(lambda projects: [p for p in projects if p['value'] >= floor]
-                                  [:self.top_n])
+            self.rim = self._fold(lambda rim: [p for p in rim if p['value'] >= floor][:self.top_n])
         self.folded = any(w['others'] for w in self.rim)
 
     def _fold(self, keep):
         """Rim wedges ``{facility, panel, name, value, others}`` in drawing order;
-        ``others`` counts the projects folded into a panel's trailing wedge."""
+        ``others`` counts the entries folded into a panel's trailing wedge."""
         rim = []
         for row in self.rows:
             for panel in row['panels']:
-                kept = keep(panel['projects'])
+                kept = keep(panel['rim'])
                 rim += [{'facility': row, 'panel': panel, 'name': p['name'], 'value': p['value'],
                          'others': 0} for p in kept]
                 rest = panel['value'] - sum(p['value'] for p in kept)
-                if len(kept) < len(panel['projects']) and rest > 0:
+                if len(kept) < len(panel['rim']) and rest > 0:
                     rim.append({'facility': row, 'panel': panel, 'name': None, 'value': rest,
-                                'others': len(panel['projects']) - len(kept)})
+                                'others': len(panel['rim']) - len(kept)})
         return rim
 
     def draw(self, ax, layout, theme):
@@ -424,7 +442,8 @@ class PanelSunburst(PieChart):
                 self.tooltip(wedge, self.tooltip_text(
                     f"{other_label(w['others'])} {w['panel']['name']} {self.rim_noun}", w['value']))
             else:
-                wedge.set_url(self.rim_link.url(w['name']))
+                if self.rim_links:
+                    wedge.set_url(self.rim_link.url(w['name']))
                 self.tooltip(wedge, self.tooltip_text(w['name'], w['value']))
         for wedge, label, value in zip(inner, self.labels, self.values):
             self.tooltip(wedge, self.tooltip_text(label, value))
@@ -465,3 +484,13 @@ class PanelSunburst(PieChart):
                 colors.append(next(panel_colors))
                 indents.append(1.6)
         self.draw_table_legend(ax, rows, colors, [None] * len(rows), layout, theme, indents)
+
+
+class UserPanelSunburst(PanelSunburst):
+    """`PanelSunburst` with users on the rim: a user who charged under two panels is
+    two wedges. ``data`` is `panel_rows_grouped` over (user, project) usage."""
+
+    cache_name = 'user_panel_sunburst'
+    rim_link = links.USER_MODAL
+    rim_noun = 'users'
+

@@ -16,10 +16,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib
-import matplotlib.colors
-import matplotlib.font_manager
-import matplotlib.pyplot as plt
-import numpy as np
+
+# Headless, always: a GUI backend (macosx on a Retina laptop) doubles the figure
+# dpi, which moves every label-fit threshold and makes a fingerprint order-dependent.
+matplotlib.use('Agg')
+import matplotlib.colors  # noqa: E402
+import matplotlib.font_manager  # noqa: E402
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
 
 # Register Poppins TTFs with matplotlib's font manager, then apply the rcParams
 # mirroring the HTML side's editorial flat look. Both run once at import.

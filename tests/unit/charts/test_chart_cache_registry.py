@@ -36,6 +36,7 @@ EXPECTED = [
     'allocation_sunburst',
     'jobs_facility_sunburst',
     'panel_sunburst',
+    'user_panel_sunburst',
 ]
 
 
@@ -48,7 +49,7 @@ def test_cache_names_and_order():
 
 
 def test_cache_count():
-    assert len(caching._chart_caches) == 17
+    assert len(caching._chart_caches) == 18
 
 
 def test_no_duplicate_cache_names():
@@ -62,7 +63,7 @@ def test_every_cached_generator_has_a_cache():
     """One cache per cached generator, and no strays."""
     generators = [n for n in dir(charts) if n.startswith('generate_')]
     assert all(hasattr(getattr(charts, n), 'chart_class') for n in generators)
-    assert len(generators) == len(_registered_names()) == 17
+    assert len(generators) == len(_registered_names()) == 18
 
 
 @pytest.mark.parametrize('name', EXPECTED)

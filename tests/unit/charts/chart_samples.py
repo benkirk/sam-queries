@@ -299,6 +299,15 @@ _PANEL_OF = {
     **{f'UTAIL{i:04d}': (2, 'UNIV', 'UNIV USS') for i in range(300)},
 }
 _PANEL_SUNBURST = charts.panel_rows(_PANEL_PROJECTS, _PANEL_OF, {1: 1, 2: 2, 3: 3})
+# Users on the rim: alice under two panels (one facility), bob under two facilities,
+# a long tail under CHAP, and one with no project.
+_USER_PANEL_SUNBURST = charts.panel_rows_grouped(
+    [(1, 'NCAR', 'NCAR Labs', 'alice', 500.0), (1, 'NCAR', 'NCAR-ARP', 'alice', 120.0),
+     (1, 'NCAR', 'NCAR Labs', 'bob', 300.0), (2, 'UNIV', 'CHAP', 'bob', 400.0),
+     (2, 'UNIV', 'CHAP', 'carol', 250.0), (3, 'CSL', 'CSLAP', 'dave', 350.0),
+     (None, None, None, 'erin', 40.0)]
+    + [(2, 'UNIV', 'CHAP', f'tail{i:03d}', 300.0 / (i + 1) ** 2) for i in range(200)],
+    {1: 1, 2: 2, 3: 3})
 
 
 CASES = [
@@ -426,9 +435,18 @@ CASES = [
      (_JOBS_FACILITY_SUNBURST,), {'center': 'CPU-h'}),
     ('jobs_facility_sunburst.empty', charts.generate_jobs_facility_sunburst,
      ([],), {'center': 'Jobs'}),
+    ('jobs_facility_sunburst.users', charts.generate_jobs_facility_sunburst,
+     (_JOBS_FACILITY_SUNBURST,), {'center': 'CPU-h', 'row_attr': 'data-job-user', 'noun': 'users'}),
 
     # --- 20. facility / panel / project expanded view (long tail folds to "+N")
     ('panel_sunburst.normal', charts.generate_panel_sunburst,
      (_PANEL_SUNBURST,), {'center': 'CPU-h'}),
     ('panel_sunburst.empty', charts.generate_panel_sunburst, ([],), {'center': 'CPU-h'}),
+
+    # --- 21. the same rings with users on the rim; no rim links for a viewer without VIEW_USERS
+    ('user_panel_sunburst.normal', charts.generate_user_panel_sunburst,
+     (_USER_PANEL_SUNBURST,), {'center': 'CPU-h'}),
+    ('user_panel_sunburst.unlinked', charts.generate_user_panel_sunburst,
+     (_USER_PANEL_SUNBURST,), {'center': 'CPU-h', 'rim_links': False}),
+    ('user_panel_sunburst.empty', charts.generate_user_panel_sunburst, ([],), {'center': 'CPU-h'}),
 ]
