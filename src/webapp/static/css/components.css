@@ -202,6 +202,9 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
    Historical Usage (Date + 4 numeric); -4 is Usage by User (Username +
    3 numeric). */
 .usage-table-5, .usage-table-4 { table-layout: fixed; }
+/* Below these widths the fixed columns split header words; the table scrolls instead. */
+.usage-table-5 { min-width: 32rem; }
+.usage-table-4 { min-width: 26rem; }
 .usage-table-5 .ucol-name { width: 36%; }
 .usage-table-5 .ucol-num  { width: 16%; }
 .usage-table-4 .ucol-name { width: 40%; }
@@ -212,7 +215,7 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
    one right; --fill-start / --fill-w / --thresh are percentages of the track. */
 .rate-grid {
     display: grid;
-    grid-template-columns: 4rem 1fr auto auto;
+    grid-template-columns: 4rem minmax(6rem, 1fr) auto auto;
     column-gap: 0.5rem;
     row-gap: 3px;
     align-items: center;
