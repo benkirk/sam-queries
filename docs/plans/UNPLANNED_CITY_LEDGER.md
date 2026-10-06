@@ -1085,9 +1085,9 @@ Data/Files), so the macro takes a column spec rather than one fixed table.
 
 **Open from this sweep:**
 
-- [ ] **Phone-width wrap sweep (Ben, next after this round):** a chevron or caret plus a name in an
+- [x] **Phone-width wrap sweep (Ben, next after this round):** a chevron or caret plus a name in an
   auto-width cell wraps onto two lines on a phone (the owner tier did until `text-nowrap`); Ben has
-  seen carets with project codes do it elsewhere.
+  seen carets with project codes do it elsewhere. Done in entry 16.
 - [ ] Bug, pre-existing (staging too): sorting the per-job table by Elapsed desc puts null-elapsed
   jobs first on Postgres; `_visible_cols` then folds the empty columns, Elapsed included, so the
   sort cannot be toggled back.
@@ -1115,6 +1115,77 @@ Data/Files), so the macro takes a column spec rather than one fixed table.
   amount minus that one fileset's bytes.
 - [ ] The card's usage badge is silent when only the pool is nearly spent (own 3%, pool 96%); the
   meter's lighter layer is the one cue. Ben's call; left as entry 14 set it.
+
+## 16. 2026-10-06: area sweep, `templates` + `css` (the phone-width wrap sweep, round D)
+
+**Mode:** area, from `PHONE_WRAP_SWEEP_HANDOFF.md` (now under `implemented/`, with an as-built
+section). The branch is `phone-wrap-sweep` off `origin/staging` (`0cdf5b96`, #741).
+
+**Proof rig:** the base (`0cdf5b96`) on 5054 and the branch on 5052, both with fs-scans on, and
+one saved stub login per server. Before the work, at 360px (every collapse and tab forced open
+three times):
+- CESM0002 Campaign_Store Resource Details: 45 wraps
+- the CESM0002 job explorer: 33
+- SCSG0001 Derecho: 9
+
+These match the handoff's census. WARNING: a dev server left running on a port makes
+`dev_server_alt.sh` fail with "Address already in use" while the old server keeps answering. The
+first baseline of this round came from a pre-#741 server that way. Check the listener's cwd
+(`lsof -a -p <pid> -d cwd`) before trusting a "before".
+
+**Done, in this sweep's PR**, one commit each:
+
+- [x] **Bug, drill rows:** on a phone the chevron sat on a line above its label.
+  - One rule in `components.css`: a `.table td` whose first element is a `.collapse-icon` or a
+    collapse button does not wrap. It reaches about 30 cells; 7 were already nowrap and 20 hold an
+    icon or a short identifier.
+  - The XRAS audit errors cell keeps its chevron and count in a `text-nowrap` span, so its 38ch
+    excerpt still wraps.
+  - Result: the three pages above went to 0 wraps. Page overflow was unchanged on all 9 pages
+    measured, and every widened table already scrolled in its `table-responsive`.
+- [x] **Bug, collapsible headers:** the chevron wrapped onto a line of its own.
+  - The chevron comes first and `float-end`, as on Resource Details, so the title flows around it.
+    On a phone the project card's title row is block flow.
+  - Applies to the project card (the `/user/` dashboard and admin Expirations), User / Resource
+    Access, and Project Hierarchy (the switch and the toggle float together).
+- [x] **One chevron vocabulary.**
+  - Two rotation idioms remain: `.collapse-icon` for rows and `.accordion-chevron` for headers.
+    `.access-grid-chevron` is deleted, and the access grid now points down when collapsed.
+  - New `collapse.section_toggle(target_id, label)` for a section heading's chevron. Three bare
+    `btn  btn-link` chevrons became it; before, they never turned and had no label. It has a
+    gallery specimen.
+- [x] **Detector.** `scripts/ui_snapshots.py --wraps` (`--pages wraps`, `--width 360`), and
+  `e2e/test_phone_wraps.py` at 360px.
+  - The e2e checks: the CI-filled pages, Manage Project, and a squeezed drill-table fixture with a
+    control case.
+  - Against staging it fails 3 tests: the two project-card chevrons, User / Resource Access, and
+    the fixture.
+- [x] The dashboard skill's section 6 says where a chevron goes, and names the check and the gate.
+
+**Proof:**
+- `ui_snapshots.py --wraps --pages wraps` on the branch: 0 wraps across all 50 pages at both 360px
+  and 390px. The census before the work found 213 at 360px.
+- Dark mode, phone and tablet, of the touched headers: by eye.
+
+**Handoff corrections:**
+- D.1 reaches about 30 cells, not 6.
+- D.2's nowrap flex row cost a line on four of six `/user/` headers. Floats cost a line only where a
+  title fits with under 20px to spare (SCSG0001 83 to 107px, SSSG0001 73 to 81). SVST0002 went 147
+  to 131, and User / Resource Access 112 to 88.
+- D.3 had three bare toggles, not one.
+- D.4's unit fixture test could not run the JS (the unit tier has no browser), so the gate is in
+  `e2e/`.
+- The census is noisy: SCSG0001 Derecho gave 9 hits at 360px and 82 at 390px on the same code.
+
+**Tried and dropped:**
+- A `.chevron-header` nowrap flex row ([content | chevron]): it reserves the chevron's column on
+  every line of the title.
+
+**Open from this sweep:**
+
+- [ ] Pre-existing page overflow at 360px, unchanged by this round: SCSG0001 Derecho Resource
+  Details 17px, the job explorer 22px, admin Expirations 30px.
+- [ ] The census is phone-only; no tablet (768px) pass was run.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
