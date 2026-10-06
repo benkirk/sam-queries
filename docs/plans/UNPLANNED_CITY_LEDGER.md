@@ -1183,8 +1183,13 @@ first baseline of this round came from a pre-#741 server that way. Check the lis
 
 **Open from this sweep:**
 
-- [ ] Pre-existing page overflow at 360px, unchanged by this round: SCSG0001 Derecho Resource
-  Details 17px, the job explorer 22px, admin Expirations 30px.
+- [x] Pre-existing page overflow at 360px, unchanged by this round: SCSG0001 Derecho Resource
+  Details 17px, the job explorer 22px, admin Expirations 30px. Fixed on the stacked
+  `phone-overflow` branch:
+  - The first two were the shared pagination strip; it wraps now.
+  - The 30px was the bare `/admin/expirations` fragment measured with no CSS. On its host page
+    (`/admin/projects`) the real overflow was a 553px contract-source badge in a 69px value column.
+    The project info grid now stacks its multi-line rows on a phone, and its badges may wrap.
 - [ ] The census is phone-only; no tablet (768px) pass was run.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
