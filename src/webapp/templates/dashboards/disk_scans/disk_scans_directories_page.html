@@ -1,5 +1,6 @@
 {% extends 'dashboards/base.html' %}
 {% from 'dashboards/disk_scans/_disk_scans_dir_filters.html' import dir_filters %}
+{% from 'dashboards/fragments/page_header.html' import page_header %}
 {#
   Standalone directory-explorer page — both modes, parameterized by *mode*
   ('project'|'resource') and *fragment_url* (which directory fragment to
@@ -19,26 +20,23 @@
 {% block content %}
 <div class="container-fluid">
 
-  <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
-    <h3 class="mb-0">
-      <i class="fa-solid fa-folder-tree me-2"></i>
-      {% if mode == 'resource' %}
-        {{ resource_name }}
-        <small class="text-muted fw-normal">— all directories</small>
-      {% elif mode == 'user' %}
-        My Data
-        <small class="text-muted fw-normal">— files you own on {{ resource_name }}</small>
-      {% else %}
-        {{ scoped_project.projcode if scoped_project else project.projcode }}
-        <small class="text-muted fw-normal">directories on {{ resource_name }}</small>
-      {% endif %}
-    </h3>
-    {% if mode == 'resource' %}
-      <span class="badge bg-warning-subtle text-warning-emphasis border">
-        <i class="fa-solid fa-shield-halved me-1"></i> Resource-wide (operator view)
-      </span>
-    {% endif %}
-  </div>
+  {% if mode == 'resource' %}
+    {% set _title, _desc = resource_name, 'All directories' %}
+  {% elif mode == 'user' %}
+    {% set _title, _desc = 'My Data', 'Files you own on ' ~ resource_name %}
+  {% else %}
+    {% set _title = scoped_project.projcode if scoped_project else project.projcode %}
+    {% set _desc = 'Directories on ' ~ resource_name %}
+  {% endif %}
+  {% if mode == 'resource' %}
+  {% call page_header(_title, icon='folder-tree', description=_desc) %}
+    <span class="badge bg-warning-subtle text-warning-emphasis border">
+      <i class="fa-solid fa-shield-halved me-1"></i> Resource-wide (operator view)
+    </span>
+  {% endcall %}
+  {% else %}
+  {{ page_header(_title, icon='folder-tree', description=_desc) }}
+  {% endif %}
 
   {# Scope panel — the directories that DEFINE this view (the scoped project +
      its active descendants on this resource), grouped by owning project. Each
