@@ -6,63 +6,25 @@
 {% from 'dashboards/fragments/glossary.html' import g_tib with context %}
 {% from 'dashboards/fragments/date_range_picker.html' import date_range_picker %}
 {% from 'dashboards/fragments/user_rows.html' import user_link with context %}
+{% from 'dashboards/fragments/clipboard.html' import copy_button %}
+{% from 'dashboards/shared/project_tree.html' import project_tree_rows with context %}
 
 {% block title %}Disk Usage Details - {{ resource_name }} - SAM{% endblock %}
 
-{# Filesystem-style project-tree macro (mirrors render_tree_node
-   in resource_details.html, but with disk size + fileset paths
-   instead of cumulative compute hours). #}
-{% macro render_disk_tree_node(node) %}
-{% set is_selected = (node.projcode == scope) %}
-{% set is_clickable = node.account_id is not none or node.children %}
-{% set node_url = url_for('user_dashboard.resource_details',
-                           projcode=projcode, resource=resource_name,
-                           scope=node.projcode,
-                           start_date=start_date, end_date=end_date) %}
-<li{% if is_selected %} class="tree-node-current"{% endif %}>
-    {% if is_clickable %}
-    <a href="{{ node_url }}" class="d-flex align-items-center gap-2 text-decoration-none text-body">
-    {% else %}
-    <span class="d-flex align-items-center gap-2 text-muted" style="cursor: default;" title="No {{ resource_name }} usage">
-    {% endif %}
-        {% if is_selected %}
-        <i class="fa-solid fa-arrow-right text-warning me-1 flex-shrink-0"></i>
-        {% endif %}
-        <strong>{{ node.projcode }}</strong>
-        {% if node.title %}
-        <span class="{% if is_clickable %}text-muted{% endif %} fw-normal text-truncate" style="max-width: 35ch;">- {{ node.title }}</span>
-        {% endif %}
-        {% if node.fileset_paths %}
-        <span class="text-muted small font-monospace"
-              style="max-width: 70ch; white-space: normal; word-break: break-word;">
-            <i class="fa-solid fa-folder-open me-1"></i>{{ node.fileset_paths | join(', ') }}
-        </span>
-        {% endif %}
-        {% if node.current_bytes %}
-        {% if is_selected %}
-        <span class="badge bg-warning ms-auto flex-shrink-0">
-            {{ node.current_bytes | fmt_size }}
-        </span>
-        {% else %}
-        <span class="text-muted small ms-auto flex-shrink-0 font-monospace">
-            {{ node.current_bytes | fmt_size }}
-        </span>
-        {% endif %}
-        {% endif %}
-    {% if is_clickable %}
-    </a>
-    {% else %}
-    </span>
-    {% endif %}
-    {% if node.children %}
-    <ul class="tree-list">
-        {% for child in node.children %}
-        {{ render_disk_tree_node(child) }}
-        {% endfor %}
-    </ul>
-    {% endif %}
-</li>
-{% endmacro %}
+{# Scope-tree cells for project_tree_rows: disk size and the fileset paths in place of
+   compute charges. #}
+{% macro _scope_href(node) -%}
+{%- if node.account_id is not none or node.children -%}
+{{ url_for('user_dashboard.resource_details', projcode=projcode, resource=resource_name,
+           scope=node.projcode, start_date=start_date, end_date=end_date) }}
+{%- endif -%}
+{%- endmacro %}
+{# The paths ride a copy button beside the size: the name cell truncates. #}
+{% macro _scope_value(node) -%}
+{%- if node.fileset_paths -%}
+{{ copy_button(node.fileset_paths | join('\n'), label='Copy fileset path' ~ ('s' if node.fileset_paths | length > 1 else ''), inline=True) }}
+{%- endif %} {% if node.current_bytes %}{{ node.current_bytes | fmt_size }}{% endif -%}
+{%- endmacro %}
 
 {% block breadcrumbs %}
 {% from 'dashboards/fragments/breadcrumbs.html' import breadcrumbs %}
@@ -218,12 +180,7 @@
                             {% if _multi_proj %}
                             <td><strong>{{ d.projcode }}</strong></td>
                             {% endif %}
-                            <td>
-                                {% if is_active %}
-                                <i class="fa-solid fa-arrow-right text-warning me-1"></i>
-                                {% endif %}
-                                <code>{{ d.name }}</code>
-                            </td>
+                            <td><code>{{ d.name }}</code></td>
                             <td class="text-end">{{ d.files | fmt_number }}</td>
                             <td class="text-end font-monospace">{{ d.bytes | fmt_size }}</td>
                             <td>{{ render_usage_bar(_share, none, size_class='progress-small', show_label=True) }}</td>
@@ -250,10 +207,14 @@
         </h5>
     </div>
     <div id="collapseDiskTree" class="collapse show">
-        <div class="card-body p-3 bg-body-tertiary rounded" style="font-size: 0.875em; max-height: 400px; overflow-y: auto;">
-            <ul class="tree-list">
-                {{ render_disk_tree_node(tree_data) }}
-            </ul>
+        <div class="card-body scope-tree">
+            <table class="table table-sm align-middle mb-0 project-tree">
+                <tbody>
+                    {{ project_tree_rows([tree_data], current_projcode=scope, href=_scope_href,
+                                         idle_title='No ' ~ resource_name ~ ' usage',
+                                         value=_scope_value) }}
+                </tbody>
+            </table>
         </div>
     </div>
 </div>

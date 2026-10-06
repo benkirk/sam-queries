@@ -138,10 +138,6 @@ svg a, svg a:hover, svg a:focus, svg a:visited {
 
 /* ── Fragment styles extracted from inline <style> blocks (CSP work) ── */
 
-/* edit_project.html: contracts/orgs tree lists */
-.tree-list { list-style: none; padding-left: 1.25rem; }
-.tree-list > li { border-left: 2px solid var(--border-default); padding: 0.25rem 0.5rem; margin-bottom: 0.1rem; }
-
 /* admin configuration card: two-column definition stats */
 .config-stats {
     display: grid;
@@ -479,6 +475,13 @@ tr:hover > td .btn.btn-row-attention {
                       linear-gradient(var(--border-default), var(--border-default));
     background-size: 1px 100%, 1px 100%;
     background-position: 0.95rem 0, calc(0.95rem + var(--tree-step)) 0;
+}
+
+/* Resource Details' scope picker: a project tree that scrolls inside its card. */
+.scope-tree {
+    max-height: 400px;
+    overflow-y: auto;
+    font-size: 0.875em;
 }
 
 /* A share of a parent: a thin bar beside the number, which stays the text. */

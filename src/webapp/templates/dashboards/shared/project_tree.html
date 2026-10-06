@@ -95,18 +95,36 @@
 </span></td>
 {%- endmacro %}
 
+{#- Picker mode (Resource Details' scope tree): href(node) returns a row's URL, or nothing for
+    a muted row titled idle_title; value(node) fills a trailing number cell. Both are macros
+    taking the node. -#}
 {% macro project_tree_rows(nodes, depth=0, current_projcode='', can_view=false, active_only=false,
-                           alloc_by_projcode=none, can_edit_allocations=false, exchange_url=none) %}
+                           alloc_by_projcode=none, can_edit_allocations=false, exchange_url=none,
+                           href=none, link_attrs='', idle_title='', value=none) %}
 {%- for node in nodes -%}
 {%- set is_active = node.active if node.active is defined else true -%}
 {%- if not active_only or is_active -%}
 {%- set is_current = node.projcode == current_projcode -%}
 <tr class="{{ 'tree-node-current' if is_current }}{{ ' row-inactive' if not is_active }}">
   <td class="tree-cell tree-guides cell-truncate" style="--depth: {{ depth }};" title="{{ node.projcode }}{{ ' — ' ~ node.title if node.title }}">
+    {%- if href is not none -%}
+    {%- set url = href(node) | trim -%}
+    {%- if url -%}
+    <a href="{{ url }}" class="text-decoration-none"{% if link_attrs %} {{ link_attrs }}{% endif %}><span class="font-monospace">{{ node.projcode }}</span>
+      {%- if node.title %}<span class="text-muted ms-2">{{ node.title }}</span>{% endif %}</a>
+    {%- else -%}
+    <span class="text-muted"{% if idle_title %} title="{{ idle_title }}"{% endif %}><span class="font-monospace">{{ node.projcode }}</span>
+      {%- if node.title %}<span class="ms-2">{{ node.title }}</span>{% endif %}</span>
+    {%- endif -%}
+    {%- else -%}
     {{- project_link_button(node.projcode, can_view) -}}
     {%- if node.title %}<span class="text-muted ms-2">{{ node.title }}</span>{% endif -%}
+    {%- endif -%}
     {%- if not is_active %}{{ state_tag('inactive') }}{% endif -%}
   </td>
+  {%- if value is not none %}
+  <td class="col-num">{{ value(node) | trim }}</td>
+  {%- endif -%}
   {%- if alloc_by_projcode is not none -%}
   {%- set res = alloc_by_projcode.get(node.projcode) -%}
   {{ allocation_cells(res, can_view) }}
@@ -116,7 +134,8 @@
 {%- set children = node.children | selectattr('active') | list if active_only else node.children | list -%}
 {%- if children -%}
 {{ project_tree_rows(children | sort(attribute='projcode'), depth + 1, current_projcode, can_view, active_only,
-                     alloc_by_projcode, can_edit_allocations, exchange_url) }}
+                     alloc_by_projcode, can_edit_allocations, exchange_url,
+                     href, link_attrs, idle_title, value) }}
 {%- endif -%}
 {%- endif -%}
 {%- endfor -%}
