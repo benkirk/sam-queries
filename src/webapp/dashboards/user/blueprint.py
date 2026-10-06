@@ -32,6 +32,8 @@ from sam.queries.disk_usage import (
     get_disk_usage_timeseries_for_directory,
     get_earliest_disk_activity_date,
     get_subtree_directory_usage_at,
+    get_subtree_disk_capacity,
+    scope_disk_pool,
 )
 from sam.queries.rolling_usage import get_project_rolling_usage
 from sam.queries.charges import (
@@ -1188,14 +1190,11 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
         if not any(d['name'] == fileset for d in fileset_dirs):
             fileset = None
 
-    # Pool capacity (TiB) for the scope: the master allocation's
-    # amount, NOT the sum across child accounts. Inheriting children
-    # share the parent's cap; summing them double-counts. See
-    # `sam-admin accounting --reconcile-quotas` — NMMM0003 reads 16.4
-    # PiB total, not 6 × parent.
-    allocated_tib = _scope_disk_allocation_tib(
-        db.session, scope_node['projcode'], resource,
-    )
+    # The pool is the master allocation's amount, never a sum over child accounts:
+    # inheriting children share the cap (NMMM0003 reads 16.4 PiB, not 6 x parent).
+    scope_project = (project if scope_node['projcode'] == project.projcode
+                     else Project.get_by_projcode(db.session, scope_node['projcode']))
+    allocated_tib, pool_project = scope_disk_pool(db.session, scope_project, resource)
 
     if fileset is None:
         # Project-scope rendering (default).
@@ -1260,6 +1259,22 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
             )
 
     percent_used = (used_tib / allocated_tib * 100) if allocated_tib > 0 else 0.0
+    # A scope drawing on another project's pool reads as every shared row does
+    # (allocation_cells): its own use beside the pool's remaining.
+    shared = pool_project is not None and pool_project.project_id != scope_project.project_id
+    pool_tib = (get_subtree_disk_capacity(db.session, pool_project, resource_name)['used_tib']
+                if shared else used_tib)
+    capacity_row = {
+        'is_inheriting': shared,
+        'root_projcode': pool_project.projcode if shared else None,
+        'resource_type': 'DISK',
+        'allocated': allocated_tib,
+        'used': pool_tib,
+        'remaining': allocated_tib - pool_tib,
+        'percent_used': (pool_tib / allocated_tib * 100) if allocated_tib > 0 else 0.0,
+        'self_used': used_tib,
+        'self_percent_used': percent_used,
+    }
     # The stacked-area chart itself is rendered lazily by the
     # `resource_details_disk_usage_chart` HTMX fragment (one code path,
     # per-metric caching, Data Volume / File Count tab swap) — not inline
@@ -1284,10 +1299,7 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
         show_scans=show_scans,
         scan_info=scan_info,
         capacity={
-            'allocated_tib':  allocated_tib,
-            'used_tib':       used_tib,
-            'percent_used':   percent_used,
-            'used_bytes':     used_bytes,
+            'row':            capacity_row,
             'total_files':    total_files,
             'activity_date':  activity_date,
         },
@@ -1319,44 +1331,6 @@ def _collect_directory_to_projcode(node) -> dict:
     for c in node.get('children', []):
         out.update(_collect_directory_to_projcode(c))
     return out
-
-
-def _scope_disk_allocation_tib(session, scope_projcode, resource) -> float:
-    """Pool capacity (TiB) for the scoped project on a disk resource.
-
-    The disk pool cap is the *master* allocation's amount — children
-    that inherit from it share the cap, they do not add to it. So
-    summing across all subtree allocations would double-count. We
-    instead locate the scope project's account on this resource (or
-    walk up the project tree if the scope itself doesn't hold an
-    account), pick the active allocation, and return
-    ``allocation.root.amount`` — which is the pool cap regardless of
-    whether the scope is the root or an inheriting child. Returns 0.0
-    if no active allocation can be located.
-    """
-    from sam.accounting.allocations import Allocation
-    scope_project = Project.get_by_projcode(session, scope_projcode)
-    if scope_project is None:
-        return 0.0
-    candidates = [scope_project] + scope_project.get_ancestors(include_self=False)
-    now = datetime.now()
-    for proj in candidates:
-        account = session.query(Account).filter(
-            Account.project_id == proj.project_id,
-            Account.resource_id == resource.resource_id,
-            Account.deleted == False,  # noqa: E712
-        ).first()
-        if account is None:
-            continue
-        for a in account.allocations:
-            if a.deleted:
-                continue
-            if a.start_date and a.start_date > now:
-                continue
-            if a.end_date and a.end_date < now:
-                continue
-            return float(a.root.amount)
-    return 0.0
 
 
 def _build_disk_user_table(session, account_ids, activity_date, scope_bytes):

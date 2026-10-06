@@ -92,15 +92,11 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% set cap_res = {'is_inheriting': false, 'resource_type': 'DISK',
-                                          'allocated': capacity.allocated_tib, 'used': capacity.used_tib,
-                                          'remaining': capacity.allocated_tib - capacity.used_tib,
-                                          'percent_used': capacity.percent_used} %}
                         <tr>
                             <td class="fw-semibold">{{ resource_name }}</td>
                             <td class="col-shrink font-monospace">{{ scope }}</td>
                             <td class="col-shrink">{{ capacity.activity_date | fmt_date }}</td>
-                            {{ allocation_cells(cap_res) }}
+                            {{ allocation_cells(capacity.row, can_view=true) }}
                             <td class="col-num">{{ capacity.total_files | fmt_number }}</td>
                         </tr>
                     </tbody>
