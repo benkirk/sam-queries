@@ -1067,21 +1067,6 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         return float(adj_val)
 
 
-    @classmethod
-    def batch_get_subtree_charges(cls, session, alloc_infos: List[Dict],
-                                  include_adjustments: bool = True) -> Dict[Any, Dict]:
-        """Charges and adjustments per anchor over its project subtree on its resource (`batch_charges`)."""
-        return batch_charges(session, alloc_infos, subtree=True,
-                             include_adjustments=include_adjustments)
-
-    @classmethod
-    def batch_get_account_charges(cls, session, alloc_infos: List[Dict],
-                                  include_adjustments: bool = True) -> Dict[Any, Dict]:
-        """Charges and adjustments per anchor on its own account (`batch_charges`)."""
-        return batch_charges(session, alloc_infos, subtree=False,
-                             include_adjustments=include_adjustments)
-
-
     def get_job_statistics(self,
                            account_id: int,
                            activity_type: str,

@@ -43,7 +43,8 @@ from sam.summaries.dav_summaries import DavChargeSummary
 from sam.summaries.disk_summaries import DiskChargeSummary
 from sam.summaries.archive_summaries import ArchiveChargeSummary
 from sam.queries.charges import get_adjustment_totals_by_date
-from sam.accounting.calculator import get_compute_charge_model_for_activity
+from sam.accounting.calculator import (anchored_charges, get_compute_charge_model_for_activity,
+                                       usage_anchor)
 from sam.queries.rolling_usage import get_project_rolling_usage
 
 
@@ -324,19 +325,11 @@ def build_user_projects_resources_batched(
         User's selectin relationships.
       * ONE bulk Account fetch, joinedloaded with resource + resource_type
         and selectinloaded with allocations.
-      * Calls to Project.batch_get_subtree_charges and
-        Project.batch_get_account_charges — each issues
-        N_resource_types × N_charge_models queries (typically 5-20 total).
+      * One `anchored_charges` call: N_resource_types × N_charge_models
+        queries per path (typically 5-20 total).
       * Skipped get_project_rolling_usage() calls for projects whose
         accounts have no rolling thresholds set (the "C1 gate" — most
         projects in production qualify, eliminating ~80-90 queries).
-
-    Coupling note
-    -------------
-    The batch primitives (Project.batch_get_*_charges) live on the Project
-    class and are also consumed by sam.queries.fstree_access. This module
-    does NOT import anything from fstree_access — fstree is treated as
-    disposable; the durable interface is Project.batch_get_*_charges.
 
     Equivalence
     -----------
@@ -400,15 +393,11 @@ def build_user_projects_resources_batched(
     # collect a work unit for the batch charge methods. Pure Python, no DB;
     # `_select_query_alloc` mirrors get_detailed_allocation_usage()'s
     # active-or-recent selection.
-    subtree_infos: List[Dict] = []
-    account_infos: List[Dict] = []
+    anchors: List[tuple] = []
     # (project_id, account_id) -> (project, account, query_alloc, resource_type, end_date)
     chosen: Dict[tuple, tuple] = {}
 
     for project in projects:
-        # A leaf takes the account primitive, which inlines per-anchor dates in one
-        # statement; the subtree primitive groups by date range.
-        subtree = project.sums_as_subtree()
         for account in accounts_by_project.get(project.project_id, []):
             if account.deleted:
                 continue
@@ -428,33 +417,13 @@ def build_user_projects_resources_batched(
             key = (project.project_id, account.account_id)
 
             chosen[key] = (project, account, query_alloc, resource_type, end_date)
-
-            if not subtree:
-                account_infos.append({
-                    'key':           key,
-                    'account_id':    account.account_id,
-                    'resource_type': resource_type,
-                    'activity_type': account.resource.activity_type,
-                    'start_date':    start_date,
-                    'end_date':      end_date,
-                })
-            else:
-                subtree_infos.append({
-                    'key':           key,
-                    'resource_id':   account.resource_id,
-                    'resource_type': resource_type,
-                    'activity_type': account.resource.activity_type,
-                    'tree_root':     project.tree_root,
-                    'tree_left':     project.tree_left,
-                    'tree_right':    project.tree_right,
-                    'start_date':    start_date,
-                    'end_date':      end_date,
-                })
+            anchors.append(usage_anchor(key, project, account, account.resource.activity_type,
+                                        start_date, end_date, resource_type))
 
     # Phase 3.5: for each inheriting allocation, also compute the root
     # allocation's subtree usage -- that total is the authoritative pool
-    # consumption, and the per-project number becomes `self_used`. Piggy-backs
-    # on batch_get_subtree_charges via parallel ('root',)-suffixed keys.
+    # consumption, and the per-project number becomes `self_used`. Rides the
+    # same batch under parallel ('root',)-suffixed keys.
     root_project_by_key: Dict[tuple, 'Project'] = {}
     for key, (project, account, query_alloc, resource_type, end_date) in chosen.items():
         if not query_alloc.is_inheriting:
@@ -467,17 +436,9 @@ def build_user_projects_resources_batched(
         if not root_project.has_tree_coordinates():
             continue
         root_project_by_key[key] = root_project
-        subtree_infos.append({
-            'key':           ('root', key),
-            'resource_id':   account.resource_id,
-            'resource_type': resource_type,
-            'activity_type': account.resource.activity_type,
-            'tree_root':     root_project.tree_root,
-            'tree_left':     root_project.tree_left,
-            'tree_right':    root_project.tree_right,
-            'start_date':    query_alloc.start_date,
-            'end_date':      end_date,
-        })
+        root_info, _ = usage_anchor(('root', key), root_project, account, account.resource.activity_type,
+                                    query_alloc.start_date, end_date, resource_type)
+        anchors.append((root_info, True))
 
     # Read-model short-circuit (docs/plans/implemented/READ_MODEL.md): when the gate says
     # every chosen allocation has a fresh row, phases 4/5 and the disk override
@@ -501,14 +462,7 @@ def build_user_projects_resources_batched(
                 raw_charges[('root', key)] = {'charges_by_type': {'pool': row.used},
                                               'adjustment': 0.0}
     else:
-        if subtree_infos:
-            raw_charges.update(
-                Project.batch_get_subtree_charges(session, subtree_infos, include_adjustments=True)
-            )
-        if account_infos:
-            raw_charges.update(
-                Project.batch_get_account_charges(session, account_infos, include_adjustments=True)
-            )
+        raw_charges.update(anchored_charges(session, anchors))
 
     # Phase 5: rolling-usage gate, the same rule `_build_project_resources_data`
     # applies so both paths agree. The template gates rendering on

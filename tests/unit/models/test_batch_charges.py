@@ -1,6 +1,6 @@
-"""Project.batch_get_account_charges / batch_get_subtree_charges, called directly.
+"""`batch_charges`, both paths, called directly.
 
-Every usage figure goes through these two; the cases pin the contract their callers rely on.
+Every usage figure goes through it; the cases pin the contract its callers rely on.
 """
 
 from datetime import datetime
@@ -8,7 +8,6 @@ from datetime import datetime
 import pytest
 
 import sam.accounting.calculator as calculator
-from sam.projects.projects import Project
 from sam.resources.resources import ResourceType
 
 YEAR = (datetime(2026, 1, 1), datetime(2026, 12, 31, 23, 59, 59))
@@ -53,11 +52,11 @@ def test_account_charges_follow_each_anchors_own_dates(session):
     old = _info('old', account, datetime(2026, 1, 1), datetime(2026, 9, 14, 23, 59, 59))
     new = _info('new', account, datetime(2026, 9, 15), datetime(2026, 12, 31, 23, 59, 59))
 
-    out = Project.batch_get_account_charges(session, [old, new])
+    out = calculator.batch_charges(session, [old, new], subtree=False)
 
     assert out == {'old': {'charges_by_type': {'comp': 45.0}, 'adjustment': -10.0},
                    'new': {'charges_by_type': {'comp': 7.0}, 'adjustment': 0.0}}
-    without = Project.batch_get_account_charges(session, [old], include_adjustments=False)
+    without = calculator.batch_charges(session, [old], include_adjustments=False, subtree=False)
     assert without == {'old': {'charges_by_type': {'comp': 45.0}, 'adjustment': 0.0}}
 
 
@@ -80,7 +79,7 @@ def test_subtree_charges_cover_descendants_on_the_anchors_resource(session):
              _info(('root', 1), pool, datetime(2026, 1, 1), datetime(2026, 6, 30, 23, 59, 59)),
              _info('late', pool, datetime(2026, 7, 1), datetime(2026, 12, 31, 23, 59, 59))]
 
-    out = Project.batch_get_subtree_charges(session, infos)
+    out = calculator.batch_charges(session, infos, subtree=True)
 
     assert out == {1: {'charges_by_type': {'comp': 18.0}, 'adjustment': 6.0},
                    ('root', 1): {'charges_by_type': {'comp': 14.0}, 'adjustment': 0.0},
@@ -95,10 +94,10 @@ def test_an_anchor_without_charges_is_present_and_zeroed(session):
     account = make_account(session, project=parent, resource=hpc)
     info = _info(7, account, *YEAR)
 
-    assert Project.batch_get_account_charges(session, [info]) == {7: EMPTY}
-    assert Project.batch_get_subtree_charges(session, [info]) == {7: EMPTY}
+    assert calculator.batch_charges(session, [info], subtree=False) == {7: EMPTY}
+    assert calculator.batch_charges(session, [info], subtree=True) == {7: EMPTY}
 
 
 def test_empty_input_returns_an_empty_dict(session):
-    assert Project.batch_get_account_charges(session, []) == {}
-    assert Project.batch_get_subtree_charges(session, []) == {}
+    assert calculator.batch_charges(session, [], subtree=False) == {}
+    assert calculator.batch_charges(session, [], subtree=True) == {}
