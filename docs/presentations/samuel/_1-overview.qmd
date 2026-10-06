@@ -186,9 +186,10 @@ by user; click a bar to open that day.
 ## Allocations across every facility
 
 ::: {.notes}
-The Allocations dashboard, Derecho tab: allocated (annual rate) and used, as two-ring charts
-(inner ring facilities, outer ring their allocation types), over a facility tree that opens to
-types and projects. Clicking a wedge opens its row. Per resource, with an Excel export.
+The Allocations dashboard, Derecho tab: allocated (annual rate) and the use rate over a chosen
+window (30 days to a year), as two-ring charts (inner ring facilities, outer ring their allocation
+types), over a facility tree that opens to types and projects. The expand icon opens a full-screen
+view with every project on the rim. Clicking a wedge opens its row. Per resource, with an Excel export.
 :::
 
 [![](images/tour-allocations.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/allocations/projects?resources=Derecho)
@@ -204,8 +205,8 @@ The project editor: details, allocations, members and invitations in one place.
 ## Status: what Derecho is doing right now
 
 ::: {.notes}
-Fed every 5 minutes by collectors on the HPC systems. Public, no login needed. (The local
-copy's "no updates" banner is hidden in this shot.)
+Fed every 5 minutes by collectors on the HPC systems. Public, no login needed. This shot is
+production, 2026-10-06: the local copy's collectors are idle.
 :::
 
 [![](images/tour-status.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/status/derecho)
