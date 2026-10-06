@@ -16,6 +16,9 @@ def test_jobs_fragment_renders_disabled_banner(auth_client, active_project):
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert 'Per-job data is unavailable' in body
+    # The health link resolves (it hardcoded /dashboards/admin/configuration, a 404).
+    assert 'href="/admin/configuration"' in body
+    assert auth_client.get('/admin/configuration').status_code == 200
 
 
 def test_jobs_fragment_400_on_missing_machine(app, auth_client, active_project, monkeypatch):

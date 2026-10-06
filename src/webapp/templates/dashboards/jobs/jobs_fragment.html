@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/pagination.html' import pagination %}
 {% from 'dashboards/fragments/collapse.html' import drill_toggle %}
+{% from 'dashboards/jobs/_jobs_macros.html' import jobs_disabled %}
 {#
   Per-job rows fragment — embedded into resource_details.html via hx-get.
 
@@ -75,17 +76,7 @@
 {% from 'dashboards/fragments/sort_link.html' import sort_link with context %}
 
 {% if not enabled %}
-  <div class="alert alert-secondary py-2 mb-0" role="status">
-    <small>
-      Per-job data is unavailable: the
-      <code>hpc-usage-queries</code> plugin is not loaded.
-      <a href="/dashboards/admin/configuration"
-         target="_blank" rel="noopener">
-        Check the Database card on the Admin → Configuration page
-      </a>
-      for plugin/DB health.
-    </small>
-  </div>
+  {{ jobs_disabled() }}
 {% elif error %}
   <div class="alert alert-warning py-2 mb-0" role="alert">
     <small>Could not load per-job data: {{ error }}</small>
