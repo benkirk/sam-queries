@@ -392,6 +392,12 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
     vertical-align: middle;
 }
 
+/* A long page-number strip wraps onto a second line rather than pushing a phone page sideways. */
+.pagination {
+    flex-wrap: wrap;
+    row-gap: 0.25rem;
+}
+
 /* Icon-only row action: muted until the row is hovered or the button focused. */
 .btn.btn-row {
     --bs-btn-border-width: 1px;
