@@ -147,12 +147,12 @@ class AllocationWithUsageSchema(AllocationSchema):
         return None
 
     def dump(self, obj, *, many=None):
-        """The sums memo lives for one dump: a reused instance never serves a prior request's figures."""
-        self._sums = {}
+        """The memos live for one dump: a reused instance never serves a prior request's figures."""
+        self._sums, self._disk_caps = {}, {}
         try:
             return super().dump(obj, many=many)
         finally:
-            del self._sums
+            del self._sums, self._disk_caps
 
     def _live_sums(self, obj):
         """``{key: {'charges_by_type', 'adjustment'}}`` for ``obj`` (and ``'root'`` when
@@ -290,7 +290,7 @@ class AllocationWithUsageSchema(AllocationSchema):
         with ``pool`` on a shared allocation, the pool root's.
 
         The same `bulk_get_subtree_disk_capacity` figure the dashboards use;
-        a read-model row supplies it directly. Memoized per schema instance
+        a read-model row supplies it directly. Memoized for one dump,
         because every Method field calls it.
         """
         account = self.context.get('account')
@@ -313,7 +313,7 @@ class AllocationWithUsageSchema(AllocationSchema):
             root = root_account.project if root_account is not None else None
             if root is not None and root.has_tree_coordinates():
                 project = root
-        memo = self.__dict__.setdefault('_disk_caps', {})
+        memo = getattr(self, '_disk_caps', {})
         key = (project.project_id, account.resource.resource_name)
         if key not in memo:
             from sam.queries.disk_usage import bulk_get_subtree_disk_capacity
