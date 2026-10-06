@@ -220,3 +220,14 @@ class TestSharedDiskUsage:
         pair = (t['root'], t['resource'])
         caps = bulk_get_subtree_disk_capacity(session, [pair, pair])
         assert caps[(t['root'].project_id, t['resource'])]['used_tib'] == pytest.approx(3.0)
+
+    def test_a_scope_resolves_to_its_pool(self, session, shared_disk_tree):
+        """The disk details page's summary row: a child scope draws on the root's pool."""
+        from sam import Resource
+        from sam.queries.disk_usage import get_subtree_disk_capacity, scope_disk_pool
+        t = shared_disk_tree
+        resource = Resource.get_by_name(session, t['resource'])
+        assert scope_disk_pool(session, t['child'], resource) == (10.0, t['root'])
+        assert scope_disk_pool(session, t['root'], resource) == (10.0, t['root'])
+        pool = get_subtree_disk_capacity(session, t['root'], t['resource'])
+        assert 10.0 - pool['used_tib'] == pytest.approx(7.0)

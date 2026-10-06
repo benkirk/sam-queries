@@ -6,9 +6,9 @@
 
     {% from 'dashboards/fragments/sort_link.html' import sort_link with context %}
 
-  Used by the allocations audit tables (transactions / adjustments). The
-  jobs and disk-scans tables have their own variants with different
-  parameter semantics — do not fold those in here.
+  Used by the allocations audit tables, the per-job table (extra_qs carries
+  per_page) and the directory table, whose facade fixes each key's direction:
+  fixed_dir sends no sort_dir and points the active arrow that way.
 #}
 {#
   Form-state variant: sort lives in the filter form's hidden `sort_by`/`sort_dir`
@@ -36,19 +36,20 @@
 {% endmacro %}
 
 
-{% macro sort_link(col, label, align='') %}
+{% macro sort_link(col, label, align='', extra_qs='', fixed_dir=None) %}
 {% if col in sortable_columns %}
     {% set is_active = (sort['sort_by'] == col) %}
     {% set next_dir = 'asc' if (is_active and sort['sort_dir'] == 'desc') else 'desc' %}
+    {% set shown_dir = fixed_dir or sort['sort_dir'] %}
     <a class="text-decoration-none {{ align }}"
        href="#"
-       hx-get="{{ fragment_url }}?sort_by={{ col }}&sort_dir={{ next_dir }}&page=1"
+       hx-get="{{ fragment_url }}?sort_by={{ col }}{% if not fixed_dir %}&sort_dir={{ next_dir }}{% endif %}&page=1{{ extra_qs }}"
        hx-target="#{{ target_id }}"
        hx-include="#{{ form_id }}"
        hx-swap="innerHTML">
         {{ label }}&nbsp;
         {%- if is_active -%}
-            {%- if sort['sort_dir'] == 'asc' -%}
+            {%- if shown_dir == 'asc' -%}
                 <i class="fa-solid fa-caret-up ms-1"></i>
             {%- else -%}
                 <i class="fa-solid fa-caret-down ms-1"></i>

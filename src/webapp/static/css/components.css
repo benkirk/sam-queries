@@ -373,6 +373,11 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
     min-width: 12rem;
 }
 
+/* A job name keeps its head readable when the per-job table overflows. */
+.table.jobs-fragment-table td.cell-truncate {
+    min-width: 10rem;
+}
+
 .row-actions {
     display: inline-flex;
     flex-wrap: nowrap;

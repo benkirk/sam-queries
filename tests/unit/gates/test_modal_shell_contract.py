@@ -384,7 +384,7 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/shared/project_tree.html': [
         'allocateDownFormContainer', 'allocateDownModal', 'editAllocationFormContainer',
         'editAllocationModal', 'exchangeAllocationFormContainer', 'exchangeAllocationModal'],
-    'dashboards/user/partials/jobs_histogram.html': [
+    'dashboards/jobs/jobs_histogram.html': [
         'projectDetailsModal', 'projectDetailsModalBody',
         'userDetailsModal', 'userDetailsModalBody'],
     'dashboards/user/partials/project_card.html': [
@@ -533,7 +533,7 @@ def test_project_modal_page_list_is_complete():
         'dashboards/admin/edit_project.html',       # /admin/project/<projcode>/edit
         'dashboards/user/resource_details.html',    # /user/resource/<name>
         'dashboards/user/resource_details_disk.html',  # /user/resource/<name>, a disk
-        'dashboards/user/jobs_explore_page.html',   # /user/jobs/explore
+        'dashboards/jobs/jobs_explore_page.html',   # /user/jobs/explore
         'dashboards/status/queue_history.html',     # /status/<machine>/queues
         'db_browser/row.html',                      # /database/<source>/<table>/row?k.<col>=
     }

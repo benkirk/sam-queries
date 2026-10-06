@@ -30,7 +30,8 @@ The families:
   inside a `data-bs-toggle` row (see §5).
 - **Status** — `badges.status_badge` (its state vocab is the source of truth;
   an unknown state falls back to a neutral `bg-secondary` badge).
-- **Collapse** — `collapse.collapse_toggle`.
+- **Collapse** — `collapse.collapse_toggle`, `drill_toggle` (a chevron button, for a row holding
+  a link), `lazy_drill_row` (fetches on first open), `owner_tier`. Copy: `clipboard.copy_button`.
 - **Filters** — two tiers, pick one per surface (the rule is the `filters.css` header):
   - *Page*: the navy panel. `filter_panel.filter_panel_shell` + `filter_apply()`, every control
     one line tall: `form_fields.multiselect_filter` (a dropdown checklist), the sliders
@@ -42,14 +43,14 @@ The families:
     `webapp/utils/facets.py` (`Facet`, `FacetSet`); for a SQL log, `querykit.faceted` +
     `faceted_log.build_facet_strip`.
   - *Both*: `search_box.filter_search` (the one search box), `filter_window`, `active_switch`,
-    `active_toggle_search`, `window_pills`.
+    `active_toggle_search`, `window_pills`; a field's width is `.ctl-w-xs|sm|md|lg`, never inline.
   - *Reads*: `read_multi`, `read_flag`, `read_sort` + `sort_rows`, `read_page`
     (`utils/htmx.py`); `read_days`, `read_log_window`, `read_chart_window` (`utils/windows.py`).
 - **Forms** — all of `form_fields.*` (`text_field`, `number_field`,
   `date_field`, `datetime_field`, `textarea_field`, `select_field`,
   `multiselect_filter`, `checkbox_field`, `readonly_display`, `fk_search_field`,
   `form_errors_panel`), and `modal_form.htmx_form`.
-- **Tables** — `pagination.pagination`, `sort_link.sort_link` / `sort_header`,
+- **Tables** — `pagination.pagination`, `sort_link.sort_link(extra_qs=, fixed_dir=)` / `sort_header`,
   `table_bits.pane_toolbar` / `group_count` / `state_tag` / `share_bar` /
   `alloc_meter`, and `shared/project_tree.allocation_cells` for allocation rows
   (shared pools included; `sort=`, `units=`). §7 has the column vocabulary.

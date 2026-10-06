@@ -66,22 +66,20 @@
                         layout=layout) }}
       {% else %}
       <label class="form-label"><strong>Jobs ending after</strong></label>
-      <input type="date" class="form-control"
-             name="start" value="{{ filters.start }}"
-             style="width:160px;">
+      <input type="date" class="form-control ctl-w-lg"
+             name="start" value="{{ filters.start }}">
       {% endif %}
     </div>
     {% if not filters.age_bands %}
     <div>
       <label class="form-label"><strong>Jobs ending before</strong></label>
-      <input type="date" class="form-control"
-             name="end" value="{{ filters.end }}"
-             style="width:160px;">
+      <input type="date" class="form-control ctl-w-lg"
+             name="end" value="{{ filters.end }}">
     </div>
     {% endif %}
 
     {% if mode != 'user' %}
-    <div style="min-width:240px;">
+    <div class="ctl-minw-picker">
       {{ fk_search_field('user_id', 'User', user_search_url,
                          placeholder='Search users…',
                          optional_text='',
@@ -94,14 +92,13 @@
 
     <div>
       <label class="form-label"><strong>Queue</strong></label>
-      <input type="text" class="form-control" name="queue"
-             value="{{ filters.queue }}" placeholder="e.g. main"
-             style="width:130px;">
+      <input type="text" class="form-control ctl-w-md" name="queue"
+             value="{{ filters.queue }}" placeholder="e.g. main">
     </div>
 
     <div>
       <label class="form-label"><strong>QoS</strong></label>
-      <select class="form-select" name="qos" style="width:140px;">
+      <select class="form-select ctl-w-md" name="qos">
         <option value="">All QoS</option>
         {% for q in filters.qos_options %}
           <option value="{{ q }}" {% if filters.qos == q %}selected{% endif %}>{{ q }}</option>
@@ -111,17 +108,15 @@
 
     <div>
       <label class="form-label"><strong>Exit code</strong></label>
-      <input type="text" class="form-control" name="exit_status"
+      <input type="text" class="form-control ctl-w-sm" name="exit_status"
              value="{{ filters.exit_status }}" placeholder="0 = success"
-             title="PBS exit code as text — 0 is success"
-             style="width:120px;">
+             title="PBS exit code as text — 0 is success">
     </div>
 
     <div>
       <label class="form-label"><strong>Job name</strong></label>
-      <input type="text" class="form-control" name="name"
-             value="{{ filters.name }}" placeholder="glob, e.g. wrf*"
-             style="width:160px;">
+      <input type="text" class="form-control ctl-w-lg" name="name"
+             value="{{ filters.name }}" placeholder="glob, e.g. wrf*">
     </div>
 
     <div class="form-check form-switch align-self-center mb-2">
@@ -168,12 +163,12 @@
       {% else %}
       <label class="form-label"><strong>{{ d.label }}</strong></label>
       <div class="d-flex gap-1">
-        <input type="number" class="form-control" name="{{ d.lo_field }}"
+        <input type="number" class="form-control ctl-w-{{ d.width }}" name="{{ d.lo_field }}"
                value="{{ filters[d.lo_field] if filters[d.lo_field] is not none }}"
-               placeholder="min" min="0" step="{{ d.step }}" style="width:{{ d.width }};">
-        <input type="number" class="form-control" name="{{ d.hi_field }}"
+               placeholder="min" min="0" step="{{ d.step }}">
+        <input type="number" class="form-control ctl-w-{{ d.width }}" name="{{ d.hi_field }}"
                value="{{ filters[d.hi_field] if filters[d.hi_field] is not none }}"
-               placeholder="max" min="0" step="{{ d.step }}" style="width:{{ d.width }};">
+               placeholder="max" min="0" step="{{ d.step }}">
       </div>
       {% endif %}
     </div>
@@ -187,7 +182,7 @@
   <div class="d-flex flex-wrap align-items-end gap-3 mt-2">
     <div>
       <label class="form-label"><strong>Rows</strong></label>
-      <select class="form-select" name="per_page" style="width:100px;">
+      <select class="form-select ctl-w-xs" name="per_page">
         {% for n in per_page_options %}
           <option value="{{ n }}" {% if filters.per_page == n %}selected{% endif %}>{{ n }}</option>
         {% endfor %}

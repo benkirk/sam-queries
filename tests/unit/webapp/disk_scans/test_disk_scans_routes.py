@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from _disk_scans_helpers import (
+    _DRILL_ROW,
     _RES,
     _enable_fs_scans,
 )
@@ -75,6 +76,20 @@ def test_directories_sort_by_whitelisted(app, auth_client, active_project, monke
         f'?resource={_RES}&sort_by=files'
     )
     assert captured['sort_by'] == 'files'
+
+
+def test_directories_sort_arrow_follows_the_facade(app, auth_client, active_project, monkeypatch):
+    """The facade fixes each key's direction: path sorts ascending (arrow up), the
+    rest descending; a header link sends no sort_dir."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    monkeypatch.setattr(service, 'scan_directories', lambda scope, *a, **kw: [_DRILL_ROW])
+    base = f'/dashboards/user/disk-scans/{active_project.projcode}/directories?resource={_RES}'
+    body = auth_client.get(base + '&sort_by=path').get_data(as_text=True)
+    path_th = body[body.index('sort_by=path'):][:600]
+    assert 'fa-caret-up' in path_th and 'sort_dir' not in path_th
+    body = auth_client.get(base + '&sort_by=size').get_data(as_text=True)
+    assert 'fa-caret-up' not in body and 'fa-caret-down' in body
 
 
 def test_directories_fileset_becomes_subpath(app, auth_client, active_project, monkeypatch):
@@ -420,7 +435,7 @@ def test_file_sizes_renders_svg(app, auth_client, active_project, monkeypatch):
     assert 'data-ah-bucket="0"' in body
     # Data <-> Files metric pill present (file-sizes only) and defaults to Data.
     assert 'metric=files' in body
-    assert 'Top users by data' in body
+    assert 'Show top users in this bucket by data' in body
     # Log-scale switch present and off by default.
     assert 'Log scale' in body
     assert 'disk-scans-log-' in body
@@ -434,7 +449,7 @@ def test_file_sizes_renders_svg(app, auth_client, active_project, monkeypatch):
     assert resp2.status_code == 200
     body2 = resp2.get_data(as_text=True)
     assert '<svg' in body2
-    assert 'Top users by files' in body2   # per-user table re-sorted by metric
+    assert 'Show top users in this bucket by files' in body2   # per-user rows re-sorted by metric
 
     # Log scale on -> still renders (solid bars), switch reflects checked state,
     # and the bar->row drill-down anchor survives.
@@ -463,3 +478,16 @@ def test_fragment_missing_resource_is_graceful(app, auth_client, active_project,
     )
     assert resp.status_code == 200
     assert called['hit'] is False
+
+
+def test_directories_path_copies_and_atime_reads_as_a_date(app, auth_client, active_project, monkeypatch):
+    """A path truncates with a copy button before it; an ISO-string atime prints as a date."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    row = {**_DRILL_ROW, 'max_atime_r': '2026-09-30 12:34:56'}
+    monkeypatch.setattr(service, 'scan_directories', lambda scope, *a, **kw: [row])
+    body = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/directories?resource={_RES}'
+    ).get_data(as_text=True)
+    assert 'cell-truncate cell-path' in body and 'data-copy="/cisl/csg/sub"' in body
+    assert '>2026-09-30</td>' in body and '12:34:56' not in body

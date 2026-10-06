@@ -16,6 +16,9 @@ def test_jobs_fragment_renders_disabled_banner(auth_client, active_project):
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert 'Per-job data is unavailable' in body
+    # The health link resolves (it hardcoded /dashboards/admin/configuration, a 404).
+    assert 'href="/admin/configuration"' in body
+    assert auth_client.get('/admin/configuration').status_code == 200
 
 
 def test_jobs_fragment_400_on_missing_machine(app, auth_client, active_project, monkeypatch):
@@ -271,7 +274,7 @@ def test_jobs_fragment_renders_verbose_drawer(
     body = resp.get_data(as_text=True)
     # The collapse target id pattern + Bootstrap collapse class — confirms
     # the per-row drawer was emitted.
-    assert 'jobs-expand-toggle' in body
+    assert 'aria-label="Show details"' in body
     assert 'jobs-detail-row' in body
     # Verbose-column header labels from plugin COLUMNS.
     assert 'Walltime' in body
@@ -280,6 +283,8 @@ def test_jobs_fragment_renders_verbose_drawer(
     assert 'CPU type' in body
     # Drawer renders the values.
     assert 'milan' in body
+    # Exit status is a badge (the helper row exits 1).
+    assert 'Failed (1)' in body
 
 
 def test_jobs_fragment_qos_column_in_table_and_sortable(
