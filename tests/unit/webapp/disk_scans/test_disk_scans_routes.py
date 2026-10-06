@@ -478,3 +478,16 @@ def test_fragment_missing_resource_is_graceful(app, auth_client, active_project,
     )
     assert resp.status_code == 200
     assert called['hit'] is False
+
+
+def test_directories_path_copies_and_atime_reads_as_a_date(app, auth_client, active_project, monkeypatch):
+    """A path truncates with a copy button before it; an ISO-string atime prints as a date."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    row = {**_DRILL_ROW, 'max_atime_r': '2026-09-30 12:34:56'}
+    monkeypatch.setattr(service, 'scan_directories', lambda scope, *a, **kw: [row])
+    body = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/directories?resource={_RES}'
+    ).get_data(as_text=True)
+    assert 'cell-truncate cell-path' in body and 'data-copy="/cisl/csg/sub"' in body
+    assert '>2026-09-30</td>' in body and '12:34:56' not in body

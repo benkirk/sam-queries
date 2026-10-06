@@ -29,7 +29,7 @@ today). Like ``jobs_fragment``, a plugin/DB hiccup degrades to an inline
 from __future__ import annotations
 
 from datetime import datetime
-from sam.dates import parse_ymd_or
+from sam.dates import parse_wire_date, parse_ymd_or
 from typing import Optional, Tuple
 from urllib.parse import urlencode
 
@@ -492,6 +492,9 @@ def _render_directories_fragment(ctx, fragment_url, *, mode, scope_for,
         )
         error = str(exc)
 
+    # The plugin hands back atime as a datetime or an ISO string; the template formats a date.
+    rows = [{**r, 'max_atime_r': parse_wire_date(r.get('max_atime_r')),
+             'max_atime_nr': parse_wire_date(r.get('max_atime_nr'))} for r in rows or []]
     return render_template(
         'dashboards/disk_scans/disk_scans_directories.html',
         rows=rows, enabled=True, error=error, **base,

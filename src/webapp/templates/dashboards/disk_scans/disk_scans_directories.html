@@ -1,6 +1,7 @@
 {% from 'dashboards/disk_scans/_disk_scans_macros.html'
    import scans_disabled, scans_error, scans_empty, scans_scope_note %}
 {% from 'dashboards/fragments/_breadcrumb.html' import breadcrumb %}
+{% from 'dashboards/fragments/clipboard.html' import copy_button %}
 {#
   Largest-directories fragment — embedded via hx-get from the Filesystem
   Scans card. Context (set in webapp/disk_scans/routes.py):
@@ -38,7 +39,7 @@
   (_size_key,   'Size',           _size_field,   true),
   (_files_key,  'Files',          _files_field,  true),
   ('dirs',      'Dirs',           'dir_count_r', true),
-  (_atime_key,  'Last Access',    _atime_field,  false),
+  (_atime_key,  'Last Access',    _atime_field,  true),
 ] %}
 
 {# sort_link reads form_id from this template's context; the facade fixes each key's
@@ -162,7 +163,7 @@
           <tr>
             {% for key, label, attr, numeric in _cols %}
               {% if key != 'dirs' or _show_dirs %}
-              <th class="{% if numeric %}text-end{% endif %}">{{ sort_link(key, label,
+              <th{% if numeric %} class="col-num"{% endif %}>{{ sort_link(key, label,
                   extra_qs=(('&fileset=' ~ (fileset | urlencode)) if fileset else '') ~ _rec_q,
                   fixed_dir='asc' if key == 'path' else 'desc') }}</th>
               {% endif %}
@@ -172,7 +173,8 @@
         <tbody>
           {% for r in rows %}
             <tr>
-              <td class="text-nowrap small">
+              <td class="cell-truncate cell-path small" title="{{ r.path }}">
+                {{- copy_button(r.path, label='Copy path', inline=True) }}
                 {%- if browse and not filters.leaves_only and r.dir_count_r -%}
                   {# Drill into this directory's subtree, keeping the active
                      filters (the params form). Leaves (dir_count_r == 0) and
@@ -188,15 +190,10 @@
                   <code>{{ r.path }}</code>
                 {%- endif -%}
               </td>
-              <td class="text-end font-monospace">{{ r[_size_field] | fmt_size }}</td>
-              <td class="text-end">{{ r[_files_field] | fmt_number }}</td>
-              {% if _show_dirs %}<td class="text-end">{{ r.dir_count_r | fmt_number }}</td>{% endif %}
-              <td class="text-end text-nowrap small">
-                {%- set a = r[_atime_field] -%}
-                {%- if a is none or a == '' -%}<span class="text-muted">—</span>
-                {%- elif a is string -%}{{ a[:10] }}
-                {%- else -%}{{ a | fmt_date }}{%- endif -%}
-              </td>
+              <td class="col-num font-monospace">{{ r[_size_field] | fmt_size }}</td>
+              <td class="col-num">{{ r[_files_field] | fmt_number }}</td>
+              {% if _show_dirs %}<td class="col-num">{{ r.dir_count_r | fmt_number }}</td>{% endif %}
+              <td class="col-num small">{{ r[_atime_field] | fmt_date }}</td>
             </tr>
           {% endfor %}
         </tbody>
