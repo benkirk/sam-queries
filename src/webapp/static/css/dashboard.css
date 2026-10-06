@@ -1483,6 +1483,10 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     column-gap: 24px;
     row-gap: 0;
     transition: all var(--transition-base);
+    /* The @container rules below key off this box's own width: a nested card (card in card)
+       is far narrower than the viewport says. inline-size containment is safe because every
+       caller sits in a definite-width parent; it collapses to 0 in a shrink-to-fit one. */
+    container: stats / inline-size;
 }
 
 @media (min-width: 768px) {
@@ -1558,11 +1562,20 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     grid-column: 2 / -1;
 }
 
-/* Phone: a multi-line value goes under its label. Beside it, the label track ("Organizations:")
-   left a nested card's values 69px and broke words mid-word. */
-@media (max-width: 575.98px) {
+/* A narrow box: a multi-line value goes under its label. Beside it, the label track
+   ("Organizations:") left a nested card's values 69px and broke words mid-word. 24rem keeps the
+   tablet user card (27rem in a .col-lg-6) two-column; a phone project card is 17.5-19.4rem. */
+@container stats (max-width: 24rem) {
     .stat-item-inline > .stat-label,
     .stat-item-inline > .stat-value {
+        grid-column: 1 / -1;
+    }
+}
+
+/* Narrower still (the nested Expirations card, 13-15rem): every label sits over its value. */
+@container stats (max-width: 16rem) {
+    .stat-item > .stat-label,
+    .stat-item > .stat-value {
         grid-column: 1 / -1;
     }
 }

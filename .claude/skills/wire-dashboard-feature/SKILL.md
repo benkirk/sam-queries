@@ -194,23 +194,23 @@ An unchecked htmx checkbox sends no key, so a missing `active_only` means
 
 ## 9. Static assets and CSP
 
-Reference every asset with `url_for('static', filename=...)` so it gets its
-`?v=` cache tag; never a literal `/static/...` path, and never append `?` or
-`#` after the `url_for` result (CLAUDE.md §11). No inline `<script>`, no `on*`
-handler attributes, no `hx-on:`, no `<style>` block — behavior goes in a
-static JS file, styling in a static CSS file. Gates: `test_static_assets`,
-`test_template_csp_lint`.
+Reference every asset with `url_for('static', filename=...)` so it gets its `?v=` cache tag;
+never a literal `/static/...` path, and never append `?` or `#` after the `url_for` result
+(CLAUDE.md §11). No inline `<script>`, no `on*` handler attributes, no `hx-on:`, no `<style>`
+block — behavior goes in a static JS file, styling in a static CSS file. Gates:
+`test_static_assets`, `test_template_csp_lint`.
 
 ## 10. CSS
 
-Tokens only — `var(--surface-*)`, `var(--text-*)`, `var(--border-default)` —
-never a literal; `test_css_tokens` is an equality ratchet per file, so a new
-literal fails and a removed one must update the allowlist. `:has()` is
-already in use, so a CSS-only selected state (`.x:has(:checked)`) is fine.
-Bootstrap utilities are `!important`: `.border` on an element beats your
-rule's `border-color`, so style the component's own border (a
-`list-group-item` draws one) and drop the utility. Delete a class's rule in
-the commit that removes its last user (`test_css_dead`).
+Tokens only — `var(--surface-*)`, `var(--text-*)`, `var(--border-default)` — never a literal;
+`test_css_tokens` is an equality ratchet per file, so a new literal fails and a removed one
+must update the allowlist. `:has()` (`.x:has(:checked)`) and `@container` are in use: the
+project info grid keys off its own width (container `stats` in `dashboard.css`), since a
+nested card is far narrower than the viewport. `inline-size` containment collapses a box in a
+shrink-to-fit parent (a `<td>`, an auto flex item) to 0, so render every caller first.
+Bootstrap utilities are `!important`: `.border` on an element beats your rule's
+`border-color`, so style the component's own border (a `list-group-item` draws one) and drop
+the utility. Delete a class's rule in the commit that removes its last user (`test_css_dead`).
 
 ## 11. Render axes (theme × layout)
 
