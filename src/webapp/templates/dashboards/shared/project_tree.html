@@ -61,12 +61,13 @@
 {%- endmacro %}
 
 {#- Edit / allocate-down / exchange for one row. exchange_url is set by the caller only
-    when 2+ descendants hold dedicated allocations; it shows on the current row only. -#}
-{% macro allocation_actions(res, is_current=false, can_edit=false, exchange_url=none) -%}
+    when 2+ descendants hold dedicated allocations; it shows on the current row only.
+    edit_url replaces the admin edit form's URL (Resource Details uses the user route). -#}
+{% macro allocation_actions(res, is_current=false, can_edit=false, exchange_url=none, edit_url=none) -%}
 <td class="text-end text-nowrap"><span class="row-actions">
   {%- if can_edit and res and res.allocation_id -%}
   <button type="button" class="btn btn-row"
-          hx-get="{{ url_for('admin_dashboard.htmx_edit_allocation_form', allocation_id=res.allocation_id) }}"
+          hx-get="{{ edit_url or url_for('admin_dashboard.htmx_edit_allocation_form', allocation_id=res.allocation_id) }}"
           hx-target="#editAllocationFormContainer"
           data-bs-toggle="modal" data-bs-target="#editAllocationModal"
           title="Edit allocation" aria-label="Edit allocation"><i class="fa-solid fa-pencil"></i></button>

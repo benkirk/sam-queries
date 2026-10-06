@@ -387,3 +387,34 @@ class TestResourceDetailsAccessControl:
             f'/user/resource-details/{active_project.projcode}?resource=Derecho'
         )
         assert resp.status_code not in (401, 403)
+
+
+class TestSummaryRow:
+    """The summary row renders through allocation_cells, with the elapsed tick."""
+
+    @staticmethod
+    def _compute_resource(project):
+        usage = project.get_detailed_allocation_usage()
+        name = next((n for n, r in usage.items()
+                     if r['resource_type'] in ('HPC', 'DAV') and not r['is_inheriting']), None)
+        if name is None:
+            pytest.skip('active_project holds no dedicated compute allocation')
+        return name
+
+    def test_detail_data_carries_the_timeline(self, session, active_project):
+        from datetime import datetime, timedelta
+        from sam.queries.dashboard import get_resource_detail_data
+        name = self._compute_resource(active_project)
+        end = datetime.now()
+        summary = get_resource_detail_data(session, active_project.projcode, name,
+                                           end - timedelta(days=30), end)['resource_summary']
+        assert summary['is_inheriting'] is False
+        assert summary['bar_state'] and summary['elapsed_pct'] is not None
+
+    def test_page_draws_the_house_meter(self, auth_client, active_project):
+        name = self._compute_resource(active_project)
+        resp = auth_client.get(f'/user/resource-details/{active_project.projcode}?resource={name}')
+        assert resp.status_code == 200
+        body = resp.get_data(as_text=True)
+        assert 'share-bar meter' in body and 'has-elapsed' in body
+        assert 'progress-bar' not in body

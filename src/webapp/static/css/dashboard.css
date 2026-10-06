@@ -1072,15 +1072,6 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     background-color: rgba(var(--ncar-teal-rgb), 0.05);
 }
 
-.table-bordered {
-    border: 1px solid var(--border-default);
-}
-
-.table-bordered th,
-.table-bordered td {
-    border: 1px solid var(--border-default);
-}
-
 .table-sm th,
 .table-sm td {
     padding: 0.5rem;

@@ -690,6 +690,10 @@ def get_resource_detail_data(
     # Surface the type so the template can label the allocation figure with
     # its unit (hours / TiB) via the alloc_unit filter.
     resource_summary['resource_type'] = str(resource_type)
+    # allocation_cells reads these; a missing key is Jinja Undefined, which `is not none`.
+    resource_summary.setdefault('is_inheriting', False)
+    resource_summary['elapsed_pct'], resource_summary['bar_state'] = allocation_timeline(
+        resource_summary['start_date'], resource_summary['end_date'], datetime.now())
 
     # Resolve the scope project (controls daily charge aggregation)
     if scope_projcode and scope_projcode != projcode:

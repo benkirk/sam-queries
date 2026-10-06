@@ -1,12 +1,12 @@
 {% extends 'dashboards/base.html' %}
 {% from 'dashboards/fragments/chart_bits.html' import chart_loading %}
 {% from 'dashboards/fragments/page_header.html' import page_header %}
-{% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
 {% from 'dashboards/user/partials/_resource_details_macros.html' import jobs_button, jobs_collapse_row with context %}
-{% from 'dashboards/fragments/help.html' import term with context %}
-{% from 'dashboards/fragments/glossary.html' import g_core_hours, g_charges with context %}
+{% from 'dashboards/fragments/help.html' import term, help_icon with context %}
+{% from 'dashboards/fragments/glossary.html' import g_core_hours, g_charges, g_usage_bar with context %}
+{% from 'dashboards/fragments/table_bits.html' import state_tag %}
 {% from 'dashboards/user/partials/jobs_card.html' import jobs_card %}
-{% from 'dashboards/shared/project_tree.html' import project_tree_rows with context %}
+{% from 'dashboards/shared/project_tree.html' import project_tree_rows, allocation_cells, allocation_actions with context %}
 
 {% block title %}Resource Details - {{ resource_name }} - SAM{% endblock %}
 
@@ -272,59 +272,35 @@
     </div>
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-sm table-bordered table-hover">
+            <table class="table table-sm table-hover align-middle">
+                {% set can_edit = has_permission and Permission and has_permission(Permission.EDIT_ALLOCATIONS) %}
+                {% set summary = detail_data.resource_summary %}
                 <thead class="table-subtle">
                     <tr>
                         <th>Resource</th>
-                        <th>Start Date</th>
-                        <th>End Date</th>
-                        <th>Allocated</th>
-                        <th>Used</th>
-                        <th>Remaining</th>
-                        <th class="table-col-usage">Usage</th>
-                        {% if has_permission and Permission and has_permission(Permission.EDIT_ALLOCATIONS) %}
-                        <th class="text-center" style="width: 80px;">Actions</th>
-                        {% endif %}
+                        <th class="col-shrink">Start</th>
+                        <th class="col-shrink">End</th>
+                        <th class="col-num">% used {{ help_icon(g_usage_bar(), rich=True, title='Allocation usage', placement='top') }}</th>
+                        <th class="col-num">Allocated</th>
+                        <th class="col-num">Used</th>
+                        <th class="col-num">Remaining</th>
+                        {% if can_edit %}<th class="col-shrink" aria-label="Actions"></th>{% endif %}
                     </tr>
                 </thead>
                 <tbody>
-                    {% set summary = detail_data.resource_summary %}
                     <tr>
-                        <td><strong>{{ resource_name }}</strong></td>
-                        <td>{{ summary.start_date | fmt_date }}</td>
-                        <td>{{ summary.end_date | fmt_date }}</td>
-                        <td class="text-primary">{{ summary.allocated | fmt_number }}{% set _unit = summary.resource_type | alloc_unit(summary.allocated) %}{% if _unit %} {{ _unit }}{% endif %}</td>
-                        <td class="text-warning">
-                            {{ summary.used | fmt_number }}{% if summary.is_inheriting and summary.self_used is not none %}
-                            <span class="text-muted small" title="This project's contribution to the shared pool">({{ summary.self_used | fmt_number }} yours)</span>
-                            {% endif %}
-                        </td>
-                        <td class="text-success">{{ summary.remaining | fmt_number }}</td>
-                        <td>
-                            {{ render_usage_bar(summary.percent_used,
-                                                summary.self_percent_used if summary.is_inheriting else none,
-                                                size_class='progress-large',
-                                                show_label=True) }}
-                        </td>
-                        {% if has_permission and Permission and has_permission(Permission.EDIT_ALLOCATIONS) %}
-                        <td class="text-center">
-                            {% if summary.allocation_id and not summary.is_inheriting %}
-                            <button type="button" class="btn btn-row"
-                                    title="Edit allocation" aria-label="Edit allocation"
-                                    data-bs-toggle="modal" data-bs-target="#editAllocationModal"
-                                    hx-get="{{ url_for('user_dashboard.htmx_edit_allocation_form', allocation_id=summary.allocation_id) }}?projcode={{ projcode }}"
-                                    hx-target="#editAllocationFormContainer"
-                                    hx-swap="innerHTML">
-                                <i class="fa-solid fa-pen-to-square"></i>
-                            </button>
-                            {% elif summary.allocation_id and summary.is_inheriting %}
-                            <span class="badge bg-secondary"
-                                  style="font-size:0.65rem;"
-                                  title="Shared allocation — edit via the master parent project">Shared</span>
-                            {% else %}
-                            <small class="text-muted">No allocation</small>
-                            {% endif %}
-                        </td>
+                        <td class="fw-semibold">{{ resource_name }}</td>
+                        <td class="col-shrink">{{ summary.start_date | fmt_date }}</td>
+                        <td class="col-shrink">{{ summary.end_date | fmt_date }}</td>
+                        {{ allocation_cells(summary if summary.allocation_id else none, can_view=true) }}
+                        {% if can_edit %}
+                        {% if summary.is_inheriting %}
+                        <td class="text-end text-nowrap">{{ state_tag('shared', title='Shared allocation — edit it on the pool\'s owner, ' ~ (summary.root_projcode or 'the parent project')) }}</td>
+                        {% else %}
+                        {{ allocation_actions(summary, can_edit=true,
+                                              edit_url=url_for('user_dashboard.htmx_edit_allocation_form', allocation_id=summary.allocation_id) ~ '?projcode=' ~ projcode
+                                                       if summary.allocation_id else none) }}
+                        {% endif %}
                         {% endif %}
                     </tr>
                 </tbody>

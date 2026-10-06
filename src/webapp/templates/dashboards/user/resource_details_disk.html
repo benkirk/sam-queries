@@ -1,13 +1,13 @@
 {% extends 'dashboards/base.html' %}
 {% from 'dashboards/fragments/chart_bits.html' import chart_loading %}
 {% from 'dashboards/fragments/page_header.html' import page_header %}
-{% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
+{% from 'dashboards/fragments/table_bits.html' import share_bar %}
 {% from 'dashboards/fragments/help.html' import term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_tib with context %}
 {% from 'dashboards/fragments/date_range_picker.html' import date_range_picker %}
 {% from 'dashboards/fragments/user_rows.html' import user_link with context %}
 {% from 'dashboards/fragments/clipboard.html' import copy_button %}
-{% from 'dashboards/shared/project_tree.html' import project_tree_rows with context %}
+{% from 'dashboards/shared/project_tree.html' import project_tree_rows, allocation_cells with context %}
 
 {% block title %}Disk Usage Details - {{ resource_name }} - SAM{% endblock %}
 
@@ -73,48 +73,36 @@
          aria-expanded="true">
         <h5 class="mb-0">
             <i class="fa-solid fa-circle-info"></i> Capacity Summary
-            {% set _remaining = capacity.allocated_tib - capacity.used_tib %}
             <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
         </h5>
     </div>
     <div id="collapseDiskCapacity" class="collapse show">
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-sm table-bordered table-hover">
+                <table class="table table-sm table-hover align-middle">
                     <thead class="table-subtle">
                         <tr>
                             <th>Resource</th>
-                            <th>Scope</th>
-                            <th>As of</th>
-                            <th>{{ term('Allocated', g_tib()) }}</th>
-                            <th>Used</th>
-                            <th>Remaining</th>
-                            <th class="text-end">Files</th>
-                            <th class="table-col-usage">Usage</th>
+                            <th class="col-shrink">Scope</th>
+                            <th class="col-shrink">As of</th>
+                            <th class="col-num">% used</th>
+                            <th class="col-num">{{ term('Allocated', g_tib()) }}</th>
+                            <th class="col-num">Used</th>
+                            <th class="col-num">Remaining</th>
+                            <th class="col-num">Files</th>
                         </tr>
                     </thead>
                     <tbody>
+                        {% set cap_res = {'is_inheriting': false, 'resource_type': 'DISK',
+                                          'allocated': capacity.allocated_tib, 'used': capacity.used_tib,
+                                          'remaining': capacity.allocated_tib - capacity.used_tib,
+                                          'percent_used': capacity.percent_used} %}
                         <tr>
-                            <td><strong>{{ resource_name }}</strong></td>
-                            <td><code>{{ scope }}</code></td>
-                            <td>{{ capacity.activity_date | fmt_date }}</td>
-                            <td class="text-primary">
-                                {{ capacity.allocated_tib | fmt_number }} TiB
-                            </td>
-                            <td class="text-warning">
-                                {{ capacity.used_bytes | fmt_size }}
-                                <span class="text-muted small">({{ capacity.used_tib | fmt_number }} TiB)</span>
-                            </td>
-                            <td class="text-success">
-                                {{ _remaining | fmt_number }} TiB
-                            </td>
-                            <td class="text-end">{{ capacity.total_files | fmt_number }}</td>
-                            <td>
-                                {{ render_usage_bar(capacity.percent_used,
-                                                    none,
-                                                    size_class='progress-large',
-                                                    show_label=True) }}
-                            </td>
+                            <td class="fw-semibold">{{ resource_name }}</td>
+                            <td class="col-shrink font-monospace">{{ scope }}</td>
+                            <td class="col-shrink">{{ capacity.activity_date | fmt_date }}</td>
+                            {{ allocation_cells(cap_res) }}
+                            <td class="col-num">{{ capacity.total_files | fmt_number }}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -163,7 +151,7 @@
                             <th>Path</th>
                             <th class="text-end">Files</th>
                             <th class="text-end">Size</th>
-                            <th class="table-col-usage">Share</th>
+                            <th class="col-num">Share</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -183,7 +171,7 @@
                             <td><code>{{ d.name }}</code></td>
                             <td class="text-end">{{ d.files | fmt_number }}</td>
                             <td class="text-end font-monospace">{{ d.bytes | fmt_size }}</td>
-                            <td>{{ render_usage_bar(_share, none, size_class='progress-small', show_label=True) }}</td>
+                            <td class="col-num">{{ share_bar(_share) }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
