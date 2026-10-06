@@ -1,8 +1,11 @@
 # SAMuel deck: production screenshots with redaction — handoff
 
-**Status (2026-10-06):** proposed, not started. Blocked on Ben's sign-off (§2).
-The deck is `docs/presentations/samuel/` (211 slides). The plan and log are in
+**Status (2026-10-06):** approved by Ben (§2), not started. The deck is
+`docs/presentations/samuel/` (211 slides). The plan and log are in
 `docs/plans/SAMUEL_PRESENTATION.md`.
+
+The same shoot also reshoots the deck's existing screenshots (§5a): the UX sweeps that landed
+after Appendix G (#716 to #746) changed nearly every page they show.
 
 ## 1. Why
 
@@ -22,16 +25,22 @@ signed-in user. Ben's own data is a few files, and the plugin databases are real
 
 Ben's idea (2026-10-03) is to shoot these in production and redact the names.
 
-## 2. Decision needed first
+## 2. Decision (recorded)
 
-`SAMUEL_PRESENTATION.md` §6 says never to screenshot production. This handoff proposes amending
-that to "production only under this protocol":
+**Ben approved production screenshots on 2026-10-06**, recorded in `SAMUEL_PRESENTATION.md` §6.
+The protocol:
 - read-only;
 - redacted in the page;
 - checked by OCR;
 - approved by Ben, image by image.
 
-**Record Ben's sign-off and the date in §6 before any shot is taken.**
+**The principle for the whole effort: responsible obfuscation, not pedantic.** Names, emails and
+usernames must not be legible in a committed image. Nothing beyond that:
+- A pseudonym is a plain hash of the original. It is not hardened against someone hashing a list
+  of guessed usernames.
+- Project codes, resource names, counts and Ben's own identity stay as they are.
+- OCR and Ben's eye are the backstop, not a proof. Where a check would cost more than the shot is
+  worth, leave that view out of the deck instead.
 
 ## 3. What already exists — reuse it
 
@@ -64,12 +73,14 @@ Extend `ui_snapshots.py` with three options. Each is opt-in, so local use is unc
 - `--modal` and `--step` click today, which is why the guard sits at the network layer and not
   in the recipes.
 - Make `--read-only` required whenever `--base-url` is not localhost.
+- The flag is useful only against production. The local reshoot (§5a) does not need it.
 
 **`--redact FILE.js`: redaction in the page, before capture.**
 - Run it with `context.add_init_script`, plus a `MutationObserver`, so content that htmx swaps in
   later is redacted too. Capture after the network is idle and the observer has run.
-- **Emails:** any `x@y.z` in text nodes, attributes (`title`, `href`, `value`) and SVG `<text>`
-  becomes `user_<hash8>@example.org`.
+- **Emails:** any `x@y.z` in text nodes, attributes (`title`, `href`, `value`), SVG `<text>`
+  and SVG `<title>` becomes `user_<hash8>@example.org`. Chart hover titles (#719, #735) are
+  `<title>` elements, and for a staff viewer they name people.
   - `hash8` is a stable hash of the original, so the same person reads the same on every page.
   - That matches the `user_xxxxxxxx` look of the deck's other shots.
 - **Names and usernames:** cells chosen per page by a selector in the recipe (columns such as
@@ -81,6 +92,10 @@ Extend `ui_snapshots.py` with three options. Each is opt-in, so local use is unc
   real text never reaches the PNG.
 - Keep the originals in memory only; they feed the check below and are never written.
 
+**Sunburst rims: keep them out of production shots.** The By User rim (#736) and the expanded
+three-ring view (#721) draw names as rotated radial labels. OCR does not read rotated text, so
+`--verify` cannot backstop them. Shoot those charts locally on obfuscated data instead.
+
 **`--verify`: the check after capture.**
 - OCR each PNG with Tesseract. Fail the shot on:
   - any email-shaped token;
@@ -88,12 +103,45 @@ Extend `ui_snapshots.py` with three options. Each is opt-in, so local use is unc
   - any `qa-names.txt` name.
 - A failed shot is deleted, not kept.
 
+**`ui_snapshots_deck.json`: the local recipes for the existing shots.** These were taken by hand
+through Playwright MCP. Write them as recipes too, so this reshoot and the next are one command.
+They need no new flag. §5a lists them.
+
 **Where files go.**
 - Captures go to the scratchpad only.
 - Ben approves each image by eye before it is copied into `docs/presentations/samuel/images/`.
 - No unredacted file ever sits under a repo path. Both repos are public.
 
 ## 5. The shot list
+
+**Order matters.** The local shots (§5a) can be taken now, from staging. Production runs the code
+on `main`, so the production shots (§5b) wait until the Staging → Main promotion that carries the
+sweeps (#738) is deployed. Shot before that, they would show the old UI next to new tour shots.
+
+### 5a. Existing shots to reshoot, locally
+
+The setup is unchanged: the `samuel-shots` instance on obfuscated data, plugins off, 1440×810
+light (`SAMUEL_PRESENTATION.md` §6).
+
+| Image | Page | Changed by |
+|---|---|---|
+| `tour-usage` | Resource Details, WYOM0247 Derecho | #741: tables, trees, the shared-usage grammar. Changed most |
+| `tour-allocations` | `/allocations/projects?resources=Derecho` | #716 Burn/Pace, #721 expand icon, #726 project list, #733 filters |
+| `tour-project` | `/user/` | #726 cards, #735 chart frame, #741 usage bar and tree |
+| `tour-admin` | `/admin/project/SCSG0001/edit` | #726 modals, #745 |
+| `tour-status` | `/status/derecho` | #733, #735, #741 |
+| `tour-mobile-dark` | 390×844, dark | #745 and #746: no sideways scroll, no mid-word breaks |
+| `jobs-activity`, `jobs-table` | `/user/jobs` | #733 multi-select chips, #735 chart frame |
+| `jobs-by-facility` | Status → Job History → By Project | #721 expand. The expanded three-ring view may be the better shot |
+| `database-resources` | `/database/sam/resources` | only global CSS (#723). Check by eye |
+| `loc_progression` | a chart, not a page | regenerate with `plot_progression.py` |
+
+Slide text to re-read against the new shots:
+- `_E-jobs.qmd`, the views table and the By Project notes: they describe two rings. #721 added
+  the three-ring expanded view, and #736 gave By User its own sunburst.
+- `_1-overview.qmd`, the Allocations caption: it may want the expand view.
+
+### 5b. New shots, in production
 
 Write it as a recipes JSON, e.g. `scripts/ui_snapshots_prod_deck.json`. Each entry gives:
 - the URL;
@@ -124,7 +172,7 @@ Write it as a recipes JSON, e.g. `scripts/ui_snapshots_prod_deck.json`. Each ent
 
 ## 6. Procedure
 
-1. Ben signs off (§2).
+1. Ben signed off (§2). Reshoot §5a locally now. Wait for #738 to be deployed before step 2.
 2. Capture the session once:
    ```bash
    python scripts/dev_capture_session.py --base https://sam.hpc.ucar.edu --out <scratchpad>/prod_state.json

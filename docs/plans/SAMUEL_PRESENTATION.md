@@ -676,10 +676,10 @@ shots are Ben's own views (pinned to the signed-in user) and one project-level c
   Appendix F (admin pages that are empty locally and full of addresses in production). The
   proposal: Ben's own browser session (the claude-in-chrome skill), viewing only. Names and
   emails are replaced in the DOM with `user_xxxxxxxx`-style placeholders before each capture,
-  rather than blurred afterwards. This would amend "never screenshot prod" above; it needs
-  Ben's sign-off.
-  The full protocol, the tooling to build, and the shot list:
-  `SAMUEL_PROD_SCREENSHOTS_HANDOFF.md`.
+  rather than blurred afterwards.
+  **Approved by Ben, 2026-10-06:** production shots are allowed under that protocol. The
+  principle for the whole effort is a responsible obfuscation, not a pedantic one.
+  The protocol, the tooling to build, and the shot list: `SAMUEL_PROD_SCREENSHOTS_HANDOFF.md`.
 
 - **Playwright MCP** drives the local `samuel-dev` (:5050, `docker compose up samuel-dev --watch`)
   through stub Quick Login on obfuscated data. It captures desktop / mobile and light / dark
@@ -687,7 +687,8 @@ shots are Ben's own views (pinned to the signed-in user) and one project-level c
   - `.playwright-mcp/` already holds ~1,089 PNGs from past UI work. Check there before
     re-shooting.
   - ⚠️ **This repo and the framework are both PUBLIC.** Check each shot for real names before
-    committing; a dev DB may be unobfuscated. Never screenshot prod.
+    committing; a dev DB may be unobfuscated. Screenshot prod only under
+    `SAMUEL_PROD_SCREENSHOTS_HANDOFF.md`.
 - **claude-in-chrome skill** uses Ben's browser session for SSO-gated UIs: Argo CD, GitHub
   Actions, the rulesets page, samuel-dev on k8s.
 - **Google Workspace MCP** can mine existing CISL/NCAR Drive decks for framing.
