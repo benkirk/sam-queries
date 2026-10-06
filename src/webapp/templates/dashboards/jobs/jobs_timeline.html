@@ -3,6 +3,8 @@
    import jobs_disabled, jobs_error, jobs_empty, metric_pills, charges_note %}
 {% from 'dashboards/fragments/help.html' import term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_cpu_hours with context %}
+{% from 'dashboards/fragments/collapse.html' import drill_toggle, lazy_drill_row, owner_tier, tier_num %}
+{% from 'dashboards/fragments/table_bits.html' import share_bar %}
 {#
   Activity timeline — the Jobs tab's chart, and the only panel on the card
   with a TIME axis (the other five are distributional or categorical).
@@ -103,38 +105,26 @@
     </p>
   {% endif %}
 
-  {# Lazy per-owner jobs drill — bound to shown.bs.collapse (never click) so
-     a bar-click .show() and a chevron toggle both fire the fetch. The owner
-     rides the band drill URL as the entity's own filter param. #}
-  {% macro owner_jobs_drill(dt_id, owner, drill_url, band_label) %}
-  <div class="p-2 bg-body-tertiary" id="{{ dt_id }}"
-       hx-get="{{ drill_url }}&{{ entity.drill_param }}={{ owner | urlencode }}&target_id={{ dt_id }}"
-       hx-trigger="shown.bs.collapse from:closest tr.collapse once"
-       hx-swap="innerHTML">
-    <p class="text-muted small mb-0">
-      <i class="fa-solid fa-spinner fa-spin me-1"></i>
-      Loading {{ owner }}'s jobs in {{ band_label }}…
-    </p>
-  </div>
-  {% endmacro %}
-
   {# Period table under the SVG — the same zero-filled band vector the chart
      draws, so counts are copy/paste-able. Populated bands expand (row click,
      or bar click via the #sam/row/data-jt-period/<i> anchor and
-     svg-chart-links.js) into
-     the per-owner tier, each owner lazy-loading its jobs in that band.
-     data-no-persist: a restored auto-expand would re-fire the drills. #}
+     svg-chart-links.js) into its owners' rows (collapse.owner_tier), each
+     lazy-loading its jobs in that band.
+     persist=false: a restored auto-expand would re-fire the drills. #}
   {% set _mkey = 'job_count' if metric == 'jobs' else metric %}
+  {% set _ns = namespace(whole=0) %}
+  {% for b in bands %}{% set _ns.whole = _ns.whole + (tier_num(b, _mkey) | float) %}{% endfor %}
   <div class="small text-muted mt-2 mb-1">Period breakdown</div>
   <div class="table-responsive">
     <table class="table table-sm table-hover align-middle mb-0">
       <thead class="table-subtle">
         <tr>
           <th>Period</th>
-          <th class="text-end">Jobs</th>
-          <th class="text-end">{{ term('CPU-hours', g_cpu_hours()) }}</th>
-          <th class="text-end">GPU-hours</th>
-          <th class="text-end">Charges</th>
+          <th class="col-num">Jobs</th>
+          <th class="col-num">{{ term('CPU-hours', g_cpu_hours()) }}</th>
+          <th class="col-num">GPU-hours</th>
+          <th class="col-num">Charges</th>
+          <th class="col-num" title="A period's share of all jobs; an owner's share of its period, by the active metric">Share</th>
         </tr>
       </thead>
       {% for b in bands %}
@@ -142,10 +132,9 @@
         {% set _rid = target_id ~ '-p' ~ loop.index0 %}
         {% set owners = b.owners or {} %}
         {% set _named = owners.values() | selectattr('job_count') | list %}
-        {% set _ojobs = owners.values() | map(attribute='job_count') | sum %}
-        {% set _rem_jobs = b.job_count - _ojobs %}
-        {% set _charges = (b.cpu_charges or 0) + (b.gpu_charges or 0) %}
         {% set _expandable = drill_url and _named %}
+        {% set _share = share_bar((100 * (tier_num(b, _mkey) | float) / _ns.whole) if _ns.whole else none,
+                                  title='Share of all jobs in range') %}
         <tbody>
           {% if _expandable %}
           <tr class="cursor-pointer"
@@ -157,145 +146,47 @@
               <i class="fa-solid fa-chevron-right collapse-icon small me-1"></i>
               <code>{{ b.label }}</code>
             </td>
-            <td class="text-end">{{ b.job_count | fmt_number }}</td>
-            <td class="text-end">{{ b.cpu_hours | fmt_number }}</td>
-            <td class="text-end">{{ b.gpu_hours | fmt_number }}</td>
-            <td class="text-end">{{ _charges | fmt_number }}</td>
+            <td class="col-num">{{ b.job_count | fmt_number }}</td>
+            <td class="col-num">{{ b.cpu_hours | fmt_number }}</td>
+            <td class="col-num">{{ b.gpu_hours | fmt_number }}</td>
+            <td class="col-num">{{ tier_num(b, 'charges') | float | fmt_number }}</td>
+            <td class="col-num">{{ _share }}</td>
           </tr>
-          <tr class="collapse" id="{{ _rid }}-row" data-no-persist>
-            <td colspan="5" class="p-0 border-0">
-              <div class="p-2 bg-body-tertiary">
-                <div class="table-responsive">
-                  <table class="table table-sm table-hover align-middle mb-0">
-                    <thead>
-                      <tr class="small text-muted">
-                        <th style="width:2rem;" class="text-end">#</th>
-                        <th>{{ entity.label }}</th>
-                        <th class="text-end">Jobs</th>
-                        <th class="text-end">CPU-hours</th>
-                        <th class="text-end">GPU-hours</th>
-                        <th class="text-end">% of period</th>
-                      </tr>
-                    </thead>
-                    {# Envelope order is the WINDOW-wide rank, identical in
-                       every band; re-sort by this band's active metric so
-                       the tier reads like the bar it came from. #}
-                    {% set ranked = owners.items()
-                       | selectattr('1.job_count')
-                       | sort(attribute='1.' ~ _mkey, reverse=true) %}
-                    {% for owner, stats in ranked %}
-                      {% set _urid = _rid ~ '-u' ~ loop.index %}
-                      <tbody>
-                        {# Toggle lives on the chevron and the stat cells,
-                           never the <tr>: Bootstrap's data-api binds in the
-                           capture phase, so a nested modal button could not
-                           stop a row-level toggle. #}
-                        <tr title="Show {{ owner }}'s jobs in {{ b.label }}">
-                          <td class="text-end text-muted cursor-pointer"
-                              data-bs-toggle="collapse"
-                              data-bs-target="#{{ _urid }}-row"
-                              aria-controls="{{ _urid }}-row">{{ loop.index }}</td>
-                          <td>
-                            <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
-                                    type="button" data-bs-toggle="collapse"
-                                    data-bs-target="#{{ _urid }}-row"
-                                    aria-expanded="false"
-                                    aria-controls="{{ _urid }}-row">
-                              <i class="fa-solid fa-chevron-right collapse-icon small"></i>
-                            </button>
-                            <span class="font-monospace">{{ owner }}</span>
-                          </td>
-                          {% for cell in [stats.job_count, stats.cpu_hours,
-                                          stats.gpu_hours] %}
-                          <td class="text-end cursor-pointer"
-                              data-bs-toggle="collapse"
-                              data-bs-target="#{{ _urid }}-row"
-                              aria-controls="{{ _urid }}-row">{{ cell | fmt_number }}</td>
-                          {% endfor %}
-                          <td class="text-end text-muted cursor-pointer"
-                              data-bs-toggle="collapse"
-                              data-bs-target="#{{ _urid }}-row"
-                              aria-controls="{{ _urid }}-row">
-                            {% if b[_mkey] %}
-                              {{ (100 * (stats[_mkey] or 0) / b[_mkey]) | fmt_pct }}
-                            {% else %}—{% endif %}
-                          </td>
-                        </tr>
-                        <tr class="collapse" id="{{ _urid }}-row" data-no-persist>
-                          <td colspan="6" class="p-0 border-0">
-                            {{ owner_jobs_drill(_urid ~ '-content',
-                                                owner, drill_url, b.label) }}
-                          </td>
-                        </tr>
-                      </tbody>
-                    {% endfor %}
-                    {% if _rem_jobs > 0 %}
-                    <tbody>
-                      <tr class="text-muted">
-                        <td></td>
-                        <td>
-                          Other {{ entity.label | lower }}s
-                          <span class="small">(beyond top {{ owners | length }})</span>
-                        </td>
-                        <td class="text-end">{{ _rem_jobs | fmt_number }}</td>
-                        <td class="text-end">
-                          {{ (b.cpu_hours - (owners.values() | map(attribute='cpu_hours') | sum)) | fmt_number }}
-                        </td>
-                        <td class="text-end">
-                          {{ (b.gpu_hours - (owners.values() | map(attribute='gpu_hours') | sum)) | fmt_number }}
-                        </td>
-                        <td class="text-end">
-                          {% if b[_mkey] %}
-                            {{ (100 * (b[_mkey] - (owners.values() | map(attribute=_mkey) | sum)) / b[_mkey]) | fmt_pct }}
-                          {% else %}—{% endif %}
-                        </td>
-                      </tr>
-                    </tbody>
-                    {% endif %}
-                  </table>
-                </div>
-              </div>
-            </td>
-          </tr>
+        </tbody>
+          {# Envelope order is the WINDOW-wide rank, identical in every band;
+             re-sort by this band's active metric so the tier reads like its bar. #}
+          {% set ranked = owners.items() | selectattr('1.job_count')
+                          | sort(attribute='1.' ~ _mkey, reverse=true) %}
+          {% call(owner) owner_tier(_rid, b, ranked, dict(
+                cols=[('job_count', 'number'), ('cpu_hours', 'number'), ('gpu_hours', 'number'),
+                      ('charges', 'charges')],
+                share=_mkey, drill_url=drill_url, param=entity.drill_param,
+                loading='jobs in ' ~ b.label, noun='period', persist=false,
+                other='Other ' ~ (entity.label | lower) ~ 's (beyond top ' ~ (owners | length) ~ ')')) %}
+            <span class="font-monospace">{{ owner }}</span>
+          {%- endcall %}
           {% else %}
+        <tbody>
           {# Empty band, or a populated one with no resolvable owners: the
              single-level period -> jobs drill. #}
           <tr {% if not b.job_count %}class="text-muted"
               {% else %}data-jt-period="{{ loop.index0 }}"
                         data-bs-target="#{{ _rid }}-row"{% endif %}>
             <td>
-              {% if drill_url %}
-              <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
-                      type="button" data-bs-toggle="collapse"
-                      data-bs-target="#{{ _rid }}-row"
-                      aria-expanded="false" aria-controls="{{ _rid }}-row">
-                <i class="fa-solid fa-chevron-right collapse-icon small"></i>
-              </button>
-              {% endif %}
+              {% if drill_url %}{{ drill_toggle(_rid ~ '-row', 'Show jobs in this period') }}{% endif %}
               <code>{{ b.label }}</code>
             </td>
-            <td class="text-end">{{ b.job_count | fmt_number }}</td>
-            <td class="text-end">{{ b.cpu_hours | fmt_number }}</td>
-            <td class="text-end">{{ b.gpu_hours | fmt_number }}</td>
-            <td class="text-end">{{ _charges | fmt_number }}</td>
+            <td class="col-num">{{ b.job_count | fmt_number }}</td>
+            <td class="col-num">{{ b.cpu_hours | fmt_number }}</td>
+            <td class="col-num">{{ b.gpu_hours | fmt_number }}</td>
+            <td class="col-num">{{ tier_num(b, 'charges') | float | fmt_number }}</td>
+            <td class="col-num">{{ _share }}</td>
           </tr>
           {% if drill_url %}
-          <tr class="collapse" id="{{ _rid }}-row" data-no-persist>
-            <td colspan="5" class="p-0 border-0">
-              <div class="p-2 bg-body-tertiary" id="{{ _rid }}-content"
-                   hx-get="{{ drill_url }}&target_id={{ _rid }}-content"
-                   hx-trigger="shown.bs.collapse from:closest tr.collapse once"
-                   hx-swap="innerHTML">
-                <p class="text-muted small mb-0">
-                  <i class="fa-solid fa-spinner fa-spin me-1"></i>
-                  Loading jobs in {{ b.label }}…
-                </p>
-              </div>
-            </td>
-          </tr>
-          {% endif %}
+          {{ lazy_drill_row(_rid, drill_url, 6, 'Loading jobs in ' ~ b.label ~ '…', persist=false) }}
           {% endif %}
         </tbody>
+          {% endif %}
       {% endfor %}
     </table>
   </div>
