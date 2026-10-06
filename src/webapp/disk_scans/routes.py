@@ -465,14 +465,14 @@ def _render_directories_fragment(ctx, fragment_url, *, mode, scope_for,
     )
     if not is_enabled() or not ctx['resource_name']:
         return render_template(
-            'dashboards/user/partials/disk_scans_directories.html',
+            'dashboards/disk_scans/disk_scans_directories.html',
             rows=[], enabled=is_enabled(), error=None, **base,
         )
 
     rows, error = [], None
     if flt['owner_unmatched']:
         return render_template(
-            'dashboards/user/partials/disk_scans_directories.html', rows=rows,
+            'dashboards/disk_scans/disk_scans_directories.html', rows=rows,
             enabled=True, error=f"no user '{flt['owner_unmatched']}' with a unix uid",
             **base,
         )
@@ -495,7 +495,7 @@ def _render_directories_fragment(ctx, fragment_url, *, mode, scope_for,
         error = str(exc)
 
     return render_template(
-        'dashboards/user/partials/disk_scans_directories.html',
+        'dashboards/disk_scans/disk_scans_directories.html',
         rows=rows, enabled=True, error=error, **base,
     )
 
@@ -522,7 +522,7 @@ def directories_page(project):
         db.session, ctx['scoped_project'], ctx['resource_name'])
     scope_dir_count = sum(len(g['paths']) for g in scope_groups)
     return render_template(
-        'dashboards/user/disk_scans_directories_page.html',
+        'dashboards/disk_scans/disk_scans_directories_page.html',
         mode='project', fragment_url=fragment_url,
         initial_url=_initial_fragment_url(fragment_url, ctx, flt, browse=True),
         filters=flt, user_search_url=_user_search_url(),
@@ -548,7 +548,7 @@ def directories_resource_page(resource):
     fragment_url = url_for('disk_scans.directories_resource_fragment',
                            resource=resource)
     return render_template(
-        'dashboards/user/disk_scans_directories_page.html',
+        'dashboards/disk_scans/disk_scans_directories_page.html',
         mode='resource', fragment_url=fragment_url,
         initial_url=_initial_fragment_url(fragment_url, ctx, flt, browse=True),
         filters=flt, user_search_url=_user_search_url(),
@@ -578,7 +578,7 @@ def _render_entities(ctx, fragment_url, *, mode, scope_for, log_label,
 
     if not is_enabled() or not ctx['resource_name']:
         return render_template(
-            'dashboards/user/partials/disk_scans_entities.html',
+            'dashboards/disk_scans/disk_scans_entities.html',
             rows=[], kind=kind, pie_chart=None, fragment_url=fragment_url,
             dir_fragment_url=dir_fragment_url,
             enabled=is_enabled(), error=None, **ctx,
@@ -611,7 +611,7 @@ def _render_entities(ctx, fragment_url, *, mode, scope_for, log_label,
                                    theme=theme)
 
     return render_template(
-        'dashboards/user/partials/disk_scans_entities.html',
+        'dashboards/disk_scans/disk_scans_entities.html',
         rows=rows, kind=kind, pie_chart=pie_chart, fragment_url=fragment_url,
         dir_fragment_url=dir_fragment_url,
         enabled=True, error=error, **ctx,
@@ -657,7 +657,7 @@ def _render_distribution(ctx, fragment_url, *, mode, scope_for, kind,
 
     if not is_enabled() or not ctx['resource_name']:
         return render_template(
-            'dashboards/user/partials/disk_scans_distribution.html',
+            'dashboards/disk_scans/disk_scans_distribution.html',
             hist=None, chart_svg=None,
             enabled=is_enabled(), error=None, **ctx, **extra,
         )
@@ -682,7 +682,7 @@ def _render_distribution(ctx, fragment_url, *, mode, scope_for, kind,
         error = str(exc)
 
     return render_template(
-        'dashboards/user/partials/disk_scans_distribution.html',
+        'dashboards/disk_scans/disk_scans_distribution.html',
         hist=hist, chart_svg=chart_svg,
         enabled=True, error=error, **ctx, **extra,
     )
@@ -701,7 +701,7 @@ def _render_distribution(ctx, fragment_url, *, mode, scope_for, kind,
 def _no_identity_fragment():
     """Empty state for a user with no ``unix_uid`` — never runs a scan."""
     return render_template(
-        'dashboards/user/partials/disk_scans_no_identity.html')
+        'dashboards/disk_scans/disk_scans_no_identity.html')
 
 
 @bp.route('/user/<resource>/explore')
@@ -724,7 +724,7 @@ def directories_user_page(resource):
     fragment_url = url_for('disk_scans.directories_user_fragment',
                            resource=resource)
     return render_template(
-        'dashboards/user/disk_scans_directories_page.html',
+        'dashboards/disk_scans/disk_scans_directories_page.html',
         mode='user', fragment_url=fragment_url,
         initial_url=_initial_fragment_url(fragment_url, ctx, flt, browse=True),
         filters=flt, user_search_url=None,

@@ -259,7 +259,7 @@ def _render_distribution_partial(app, owners):
     }
     with app.test_request_context():
         return render_template(
-            'dashboards/user/partials/disk_scans_distribution.html',
+            'dashboards/disk_scans/disk_scans_distribution.html',
             hist=hist, chart_svg='<svg/>', enabled=True, error=None,
             resource_name=_RES, scope='', fileset=None, target_id='t',
             bucket_header='Last accessed', metric='data', metric_toggle=False,
