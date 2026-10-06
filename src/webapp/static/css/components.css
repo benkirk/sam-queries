@@ -202,9 +202,11 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
    Historical Usage (Date + 4 numeric); -4 is Usage by User (Username +
    3 numeric). */
 .usage-table-5, .usage-table-4 { table-layout: fixed; }
-/* Below these widths the fixed columns split header words; the table scrolls instead. */
-.usage-table-5 { min-width: 32rem; }
-.usage-table-4 { min-width: 26rem; }
+/* Below these widths the fixed columns split header words; the table scrolls instead. At 360px
+   "Charges" needs 85px with its help term (16% of 34rem = 87) and 96px with its sort arrow
+   (20% of 31rem = 99). */
+.usage-table-5 { min-width: 34rem; }
+.usage-table-4 { min-width: 31rem; }
 .usage-table-5 .ucol-name { width: 36%; }
 .usage-table-5 .ucol-num  { width: 16%; }
 .usage-table-4 .ucol-name { width: 40%; }
