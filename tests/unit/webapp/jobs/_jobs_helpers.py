@@ -120,6 +120,7 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
                         machines=('derecho',),
                         jobs_histogram_return=None,
                         jobs_usage_by_return=None,
+                        jobs_usage_by_pair_return=None,
                         jobs_facets_return=None,
                         jobs_facets_raises=False):
     """Wire a mock job_history module onto app.extensions and return the
@@ -134,6 +135,7 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
         'last_jobs_count_kwargs':  None,
         'last_jobs_histogram':     None,   # (dimension, kwargs)
         'last_jobs_usage_by':      None,   # (dimension, kwargs)
+        'last_jobs_usage_by_pair': None,   # (dimensions, kwargs)
         'last_jobs_facets_kwargs': None,
     }
     qos_list = (list(qos_names) if qos_names is not None
@@ -162,6 +164,13 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
             if jobs_usage_by_return is not None:
                 return jobs_usage_by_return
             return {'dimension': dimension, 'rows': [],
+                    'totals': {'job_count': 0, 'cpu_hours': 0.0,
+                               'gpu_hours': 0.0}}
+        def jobs_usage_by_pair(self, dimensions, **kwargs):
+            captured['last_jobs_usage_by_pair'] = (tuple(dimensions), kwargs)
+            if jobs_usage_by_pair_return is not None:
+                return jobs_usage_by_pair_return
+            return {'dimensions': tuple(dimensions), 'rows': [],
                     'totals': {'job_count': 0, 'cpu_hours': 0.0,
                                'gpu_hours': 0.0}}
         def jobs_facets(self, **kwargs):
@@ -332,6 +341,19 @@ _PROJECT_USAGE = {
         {'value': 'UABC0002', 'job_count': 12, 'cpu_hours': 120.0, 'gpu_hours': 2.0},
     ],
     'totals': {'job_count': 42, 'cpu_hours': 420.0, 'gpu_hours': 2.0},
+}
+
+
+#: user x project pairs: alice under two projects, bob under one, carol with no project.
+_USER_ACCOUNT_USAGE = {
+    'dimensions': ('user', 'account'),
+    'rows': [
+        {'user': 'alice', 'account': 'SCSG0001', 'job_count': 20, 'cpu_hours': 200.0, 'gpu_hours': 0.0},
+        {'user': 'bob', 'account': 'UABC0002', 'job_count': 12, 'cpu_hours': 120.0, 'gpu_hours': 2.0},
+        {'user': 'alice', 'account': 'UABC0002', 'job_count': 10, 'cpu_hours': 100.0, 'gpu_hours': 0.0},
+        {'user': 'carol', 'account': None, 'job_count': 1, 'cpu_hours': 5.0, 'gpu_hours': 0.0},
+    ],
+    'totals': {'job_count': 43, 'cpu_hours': 425.0, 'gpu_hours': 2.0},
 }
 
 

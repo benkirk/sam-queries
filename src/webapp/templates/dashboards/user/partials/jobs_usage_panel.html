@@ -56,7 +56,7 @@
     {# Same idiom as the histograms' Log scale switch: ?by_facility= is spelled
        out, beating the round-trip form's copy, which the metric pills inherit. #}
     <div class="form-check form-switch form-check-inline mb-0 me-1"
-         title="Facilities inside, each facility's top projects outside">
+         title="Facilities inside, each facility's top {{ entity.noun }} outside">
       <input class="form-check-input" type="checkbox" role="switch"
              id="jobs-byfac-{{ target_id }}"
              {% if by_facility %}checked{% endif %}
@@ -91,9 +91,9 @@
                          'mb-3 jobs-user-pie',
                          attrs=({'data-chart-expand': none} if facility_toggle else {})) %}
       {% if facility_toggle %}
-      {{ expand_button(url_for('jobs.by_project_expanded_machine_fragment', machine=machine,
-                               metric=metric),
-                       include='#jobs-' ~ entity.form_key ~ '-params-' ~ target_id) }}
+      {{ expand_button(url_for(entity.expanded, machine=machine, metric=metric),
+                       include='#jobs-' ~ entity.form_key ~ '-params-' ~ target_id,
+                       noun=entity.noun) }}
       {% endif %}
       {{ pie_svg | safe }}
     {% endcall %}
