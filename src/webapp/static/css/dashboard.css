@@ -1558,6 +1558,15 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     grid-column: 2 / -1;
 }
 
+/* Phone: a multi-line value goes under its label. Beside it, the label track ("Organizations:")
+   left a nested card's values 69px and broke words mid-word. */
+@media (max-width: 575.98px) {
+    .stat-item-inline > .stat-label,
+    .stat-item-inline > .stat-value {
+        grid-column: 1 / -1;
+    }
+}
+
 /* Detail modals (transaction, adjustment, XRAS action): label and value columns. */
 .project-stats-box.stats-two-col {
     grid-template-columns: auto minmax(0, 1fr);
@@ -1590,6 +1599,13 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 .stat-value {
     font-weight: 700;
     color: var(--text-title);
+}
+
+/* A badge in a value column wraps inside itself: Bootstrap's nowrap let a long organization
+   name spill past the card on a phone. */
+.stat-value .badge {
+    white-space: normal;
+    text-align: start;
 }
 
 /* ============================================================================
