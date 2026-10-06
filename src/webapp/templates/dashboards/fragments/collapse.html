@@ -54,6 +54,12 @@
 data-bs-toggle="collapse" data-bs-target="#{{ target_id }}" aria-expanded="{{ 'true' if expanded else 'false' }}"
 {%- endmacro %}
 
+{#- A section heading's toggle: the header chevron (points down, flips up when open). -#}
+{% macro section_toggle(target_id, label) -%}
+<button type="button" class="btn btn-link p-0" {{ collapse_toggle(target_id) }}
+        aria-controls="{{ target_id }}" aria-label="{{ label }}" title="{{ label }}"><i class="fa-solid fa-chevron-down accordion-chevron" aria-hidden="true"></i></button>
+{%- endmacro %}
+
 {#- The toggle as its own button, for a row that also holds a link: the row keeps
     data-bs-target (chart drills read it) and only this chevron toggles. -#}
 {% macro drill_toggle(target_id, label='Show breakdown') -%}
