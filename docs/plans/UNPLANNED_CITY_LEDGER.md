@@ -1108,9 +1108,9 @@ Data/Files), so the macro takes a column spec rather than one fixed table.
   pool renders as before.
 - [x] The dashboard skill's reuse list and `/dev/gallery` name `drill_toggle`, `lazy_drill_row`,
   `owner_tier`, `sort_link`'s two arguments, the `ctl-w-*` scale and `copy_button`.
-- [ ] `AllocationWithUsageSchema._disk_caps` is memoized per instance and never cleared (#739
-  gave `_sums` a one-dump lifetime). Fold it into the same `dump()` hook once this branch sits on
-  staging. No live effect: every caller builds a schema per request.
+- [x] `AllocationWithUsageSchema._disk_caps` was memoized per instance and never cleared (#739
+  gave `_sums` a one-dump lifetime); it shares that `dump()` hook now. No figure moved: every
+  caller builds a schema per request.
 - [ ] A `?fileset=` view on a project that owns its pool still reads Remaining as the pool's
   amount minus that one fileset's bytes.
 - [ ] The card's usage badge is silent when only the pool is nearly spent (own 3%, pool 96%); the
