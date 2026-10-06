@@ -220,7 +220,7 @@ def test_caching_facade_reports_and_clears_jobs_category(app):
 
 def _install_agg_plugin(app, monkeypatch):
     """Mock plugin capturing jobs_histogram / jobs_usage_by / jobs_facets."""
-    captured = {'histogram': [], 'usage_by': [], 'facets': []}
+    captured = {'histogram': [], 'usage_by': [], 'usage_by_pair': [], 'facets': []}
 
     class FakeJobQueries:
         def __init__(self, session, machine='derecho'):
@@ -236,6 +236,9 @@ def _install_agg_plugin(app, monkeypatch):
             return {'dimension': dimension, 'rows': [],
                     'totals': {'job_count': 0, 'cpu_hours': 0.0, 'gpu_hours': 0.0}}
 
+        def jobs_usage_by_pair(self, dimensions, **kwargs):
+            captured['usage_by_pair'].append((tuple(dimensions), kwargs))
+            return {'dimensions': tuple(dimensions), 'rows': [], 'totals': {}}
         def jobs_facets(self, **kwargs):
             captured['facets'].append(kwargs)
             return {d: [] for d in kwargs.get('facets', ())}
@@ -499,6 +502,30 @@ def test_service_jobs_usage_by_user_caches(app, monkeypatch):
         service.jobs_usage_by_user('derecho', ProjectJobScope(account_projcodes=['SCSG0001']), limit=3, **win)
 
     assert len(captured['usage_by']) == 2
+
+
+def test_service_jobs_usage_by_user_account_is_unlimited_and_its_own_family(
+    app, monkeypatch):
+    """The pair rollup asks the plugin for every (user, account) row and never
+    shares a key with the one-dimension families over the same window."""
+    from webapp.jobs import cache as c, service
+    c._adapters.clear()
+
+    captured = _install_agg_plugin(app, monkeypatch)
+    win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
+
+    with app.app_context():
+        out = service.jobs_usage_by_user_account(
+            'derecho', MachineJobScope(), sort_by='job_count', **win)
+        service.jobs_usage_by_user_account(
+            'derecho', MachineJobScope(), sort_by='job_count', **win)
+        service.jobs_usage_by_user('derecho', MachineJobScope(), sort_by='job_count', **win)
+
+    assert out['dimensions'] == ('user', 'account')
+    dimensions, kwargs = captured['usage_by_pair'][0]
+    assert dimensions == ('user', 'account')
+    assert 'limit' not in kwargs and kwargs['sort_by'] == 'job_count'
+    assert len(captured['usage_by_pair']) == 1 and len(captured['usage_by']) == 1
 
 
 def test_service_jobs_usage_by_project_caches_under_own_query_type(
