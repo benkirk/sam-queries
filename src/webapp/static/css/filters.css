@@ -589,6 +589,14 @@
     margin-top: 0 !important;
 }
 
+/* Field widths in a horizontal filter row (jobs + disk-scans panels). Chained to
+   .form-control/.form-select to beat Bootstrap's width: 100%; phones stack below. */
+.form-control.ctl-w-xs, .form-select.ctl-w-xs { width: 100px; }
+.form-control.ctl-w-sm, .form-select.ctl-w-sm { width: 120px; }
+.form-control.ctl-w-md, .form-select.ctl-w-md { width: 140px; }
+.form-control.ctl-w-lg, .form-select.ctl-w-lg { width: 160px; }
+.ctl-minw-picker { min-width: 240px; }
+
 /* On phones the horizontal filter rows wrap into a ragged multi-column mess:
    stack every field full-width instead. !important is required to beat the
    inline style="width:###px" attributes that size the fields on desktop

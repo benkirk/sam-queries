@@ -1544,7 +1544,7 @@ def _numeric_ladder_ctx(machine: str) -> list:
             'lo_field': lo_f,
             'hi_field': hi_f,
             'step': '1' if factor == 1 else 'any',
-            'width': '90px' if factor == 1 else '110px',
+            'width': 'xs' if factor == 1 else 'sm',   # a ctl-w-* filter width
             'bands': (ladders.band_map(ladders.scaled(ladder, factor), lo_f, hi_f)
                       if ladder else None),
             'span': (ladders.span_for(
