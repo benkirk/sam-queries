@@ -9,7 +9,7 @@
 #}
 
 {# Numeric columns get text-end alignment in the header AND every body cell.
-   Kept here as a single source of truth so render_value + sort_link stay aligned. #}
+   Kept here as a single source of truth so render_value + the headers stay aligned. #}
 {% set _numeric_cols = ['numnodes', 'numcpus', 'numgpus',
                         'elapsed', 'walltime', 'mpiprocs', 'ompthreads',
                         'reqmem', 'memory', 'vmemory',
@@ -60,27 +60,13 @@
   {%- endif -%}
 {% endmacro %}
 
-{% macro sort_link(col) %}
-  {%- set label = _header_overrides.get(col, column_specs.get(col, {}).get('header', col)) -%}
-  {%- set numeric = col in _numeric_cols -%}
-  {%- if col in sortable_columns -%}
-    {%- set is_active = (sort['sort_by'] == col) -%}
-    {%- set next_dir = 'asc' if (is_active and sort['sort_dir'] == 'desc') else 'desc' -%}
-    <a class="text-decoration-none" href="#"
-       hx-get="{{ fragment_url }}?sort_by={{ col }}&sort_dir={{ next_dir }}&page=1&per_page={{ page.per_page }}"
-       hx-target="#{{ target_id }}"
-       hx-include="#jobs-filters-{{ target_id }}"
-       hx-swap="innerHTML">
-      {{ label }}
-      {%- if is_active -%}
-        {%- if sort['sort_dir'] == 'asc' %} <i class="fa-solid fa-caret-up ms-1"></i>
-        {%- else %} <i class="fa-solid fa-caret-down ms-1"></i>{% endif -%}
-      {%- else %} <i class="fa-solid fa-sort text-muted small ms-1"></i>{%- endif -%}
-    </a>
-  {%- else -%}
-    {{ label }}
-  {%- endif -%}
-{% endmacro %}
+{% macro _col_label(col) -%}
+  {{ _header_overrides.get(col, column_specs.get(col, {}).get('header', col)) }}
+{%- endmacro %}
+
+{# sort_link reads form_id from this template's context. #}
+{% set form_id = 'jobs-filters-' ~ target_id %}
+{% from 'dashboards/fragments/sort_link.html' import sort_link with context %}
 
 {% if not enabled %}
   <div class="alert alert-secondary py-2 mb-0" role="status">
@@ -187,7 +173,7 @@
           <tr>
             <th style="width:1.5rem;" aria-label="Expand"></th>
             {% for col in visible_cols %}
-              <th class="{% if col in _numeric_cols %}text-end{% endif %}">{{ sort_link(col) }}</th>
+              <th class="{% if col in _numeric_cols %}text-end{% endif %}">{{ sort_link(col, _col_label(col), extra_qs='&per_page=' ~ page.per_page) }}</th>
             {% endfor %}
           </tr>
         </thead>
@@ -221,9 +207,7 @@
                   {% for col in verbose_extras %}
                     {% set v = r.get(col) %}
                     {% if v is not none and v != '' and v != 0 %}
-                      <dt class="col-sm-3 col-md-2 text-muted">
-                        {{ _header_overrides.get(col, column_specs.get(col, {}).get('header', col)) }}
-                      </dt>
+                      <dt class="col-sm-3 col-md-2 text-muted">{{ _col_label(col) }}</dt>
                       <dd class="col-sm-9 col-md-10">{{ render_value(col, v) }}</dd>
                     {% endif %}
                   {% endfor %}
