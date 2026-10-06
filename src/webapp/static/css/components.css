@@ -134,6 +134,10 @@ svg a, svg a:hover, svg a:focus, svg a:visited {
     padding: 2px 0;
     word-break: break-word;
 }
+/* Phone: the long dt labels left dd 120px and split "DevelopmentConfig"; dt sits over dd. */
+@media (max-width: 575.98px) {
+    .config-stats { grid-template-columns: 1fr; }
+}
 
 /* A summary's counters on one line above a log (notifications, task runs):
    a <dl> of <div> pairs that wraps instead of stacking. */

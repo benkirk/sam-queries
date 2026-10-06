@@ -8,7 +8,8 @@ folders (the middle ground in docs/plans/GALLERY_VISUAL_SNAPSHOTS.md). Needs the
 change that keeps the DOM. A restructure moves every element path, so prove that one with
 --element SELECTOR on both sides and --compare-pixels.
 --headers lists table headers whose sort icon wrapped onto a line of its own; --wraps lists chevrons
-wrapped away from their text, with every collapse and tab open (neither needs --out).
+wrapped away from their text and --midword words split across two lines (a column too narrow for
+its content), both with every collapse and tab open (none of the three needs --out).
 --modal OPENER (after any --step) or --recipes FILE shoots the opened dialog and prints its height.
 --pages charts shoots every chart host, each with the steps its lazy tabs need.
 
@@ -19,6 +20,7 @@ wrapped away from their text, with every collapse and tab open (neither needs --
     python scripts/ui_snapshots.py --compare-pixels /tmp/before /tmp/after
     python scripts/ui_snapshots.py --headers --layout desktop --layout mobile --theme light
     python scripts/ui_snapshots.py --wraps --pages wraps --layout mobile --width 360 --theme light
+    python scripts/ui_snapshots.py --midword --pages wraps --layout mobile --width 360 --theme light
     python scripts/ui_snapshots.py --out /tmp/m --page /admin/resources --modal '[data-bs-target="#createResourceModal"]'
     python scripts/ui_snapshots.py --out /tmp/m --recipes scripts/ui_snapshots_modals.json --layout desktop --layout mobile
     python scripts/ui_snapshots.py --out /tmp/c --pages charts --base-url http://localhost:5050
@@ -303,16 +305,36 @@ WRAP_CHECK_JS = r"""() => {
   }
   return out;
 }"""
+# Mid-word: a letter/digit run whose glyph rects sit on two lines. Bootstrap's .card sets
+# word-wrap: break-word, so inside a card this marks a column narrower than its longest word.
+# One hit per (host id, box, table column, word); the box is the cell, else the nearest block.
+MIDWORD_JS = r"""() => {
+  const out = [], seen = new Set();
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n; (n = walker.nextNode());) {
+    const el = n.parentElement;
+    if (!el || !el.offsetParent || el.closest('svg, script, style, .offcanvas, .modal:not(.show), nav.navbar')) continue;
+    const re = /[A-Za-z0-9]{2,}/g; let m;
+    while ((m = re.exec(n.textContent))) {
+      const rg = document.createRange(); rg.setStart(n, m.index); rg.setEnd(n, m.index + m[0].length);
+      if (new Set([...rg.getClientRects()].filter(r => r.width > 0).map(r => Math.round(r.top))).size < 2) continue;
+      const cell = el.closest('td, th');
+      let box = cell || el; while (box && getComputedStyle(box).display.startsWith('inline')) box = box.parentElement;
+      let col = '';
+      if (cell) { const i = [...cell.parentElement.children].indexOf(cell), th = cell.closest('table').querySelector('thead tr');
+                  col = ` col ${i}` + (th && th.children[i] ? ` "${th.children[i].textContent.trim().replace(/\s+/g, ' ').slice(0, 24)}"` : ''); }
+      const host = box.closest('[id]'), sig = box.tagName.toLowerCase() + [...box.classList].slice(0, 3).map(c => '.' + c).join('');
+      const key = (host ? host.id : '') + '|' + sig + '|' + col + '|' + m[0];
+      if (seen.has(key)) continue; seen.add(key);
+      out.push(`mid-word: "${m[0].slice(0, 30)}" in ${sig} ${Math.round(box.getBoundingClientRect().width)}px${col}${host ? ' #' + host.id : ''}`);
+    }
+  }
+  return out;
+}"""
 
 
-def check_wraps(page, max_tabs=14):
-    """Open every collapse and tab on the page; return each wrapped chevron, deduplicated."""
-    found = {}
-
-    def sample(tab):
-        for line in page.evaluate(WRAP_CHECK_JS):
-            found.setdefault(line, f'{line} [tab {tab}]' if tab else line)
-
+def open_everything(page, sample, max_tabs=14):
+    """Force every collapse open and call sample(''); then click each tab, reopen, and call sample(tab)."""
     def force_open(rounds):   # a lazy drill can reveal more collapses
         for _ in range(rounds):
             page.evaluate(WRAP_FORCE_OPEN_JS)
@@ -326,7 +348,27 @@ def check_wraps(page, max_tabs=14):
         page.wait_for_timeout(800)
         force_open(2)
         sample(tab)
+
+
+def _collect(page, check_js, max_tabs):
+    found = {}
+
+    def sample(tab):
+        for line in page.evaluate(check_js):
+            found.setdefault(line, f'{line} [tab {tab}]' if tab else line)
+
+    open_everything(page, sample, max_tabs)
     return list(found.values())
+
+
+def check_wraps(page, max_tabs=14):
+    """Open every collapse and tab on the page; return each wrapped chevron, deduplicated."""
+    return _collect(page, WRAP_CHECK_JS, max_tabs)
+
+
+def check_midword(page, max_tabs=14):
+    """Open every collapse and tab on the page; return each word split across two lines, deduplicated."""
+    return _collect(page, MIDWORD_JS, max_tabs)
 
 
 def parse_step(text):
@@ -459,6 +501,8 @@ def main(argv=None):
                     help='report sort icons wrapped away from their header label; exit 1 if any')
     ap.add_argument('--wraps', action='store_true',
                     help='open every collapse and tab, report chevrons wrapped away from their text; exit 1 if any')
+    ap.add_argument('--midword', action='store_true',
+                    help='open every collapse and tab, report words split across two lines; exit 1 if any')
     ap.add_argument('--width', type=int, help="override each layout's viewport width (360: a small phone)")
     ap.add_argument('--compare', nargs=2, metavar=('BEFORE', 'AFTER'), type=Path,
                     help='diff two --styles folders and exit 1 on any difference (no browser)')
@@ -489,8 +533,9 @@ def main(argv=None):
             [parse_step(s) for s in r.get('steps', ())]   # fail before the browser starts
         if args.out is None:
             ap.error('--out is required with --modal or --recipes')
-    if args.out is None and not (args.headers or args.wraps):
-        ap.error('--out is required unless --compare, --compare-pixels, --headers or --wraps is given')
+    checks = args.headers or args.wraps or args.midword
+    if args.out is None and not checks:
+        ap.error('--out is required unless --compare, --compare-pixels, --headers, --wraps or --midword is given')
     from playwright.sync_api import sync_playwright
 
     if args.out:
@@ -540,14 +585,15 @@ def main(argv=None):
                         for line in page.evaluate(HEADER_CHECK_JS):
                             problems += 1
                             print(f'{url} [{layout}-{theme}]: {line}')
-                    if args.wraps:   # last: it opens every collapse and clicks every tab
-                        for line in check_wraps(page):
-                            problems += 1
-                            print(f'{url} [{layout}-{theme} {width}px]: {line}', flush=True)
+                    for on, check in ((args.wraps, check_wraps), (args.midword, check_midword)):
+                        if on:   # last: it opens every collapse and clicks every tab
+                            for line in check(page):
+                                problems += 1
+                                print(f'{url} [{layout}-{theme} {width}px]: {line}', flush=True)
                 context.close()
         browser.close()
-    if args.headers or args.wraps:
-        print(f'{problems} wrapped icon(s)')
+    if checks:
+        print(f'{problems} finding(s)')
     return 1 if problems else 0
 
 
