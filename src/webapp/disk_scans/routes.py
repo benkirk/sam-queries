@@ -60,7 +60,7 @@ from webapp.disk_scans.scope import resolve_scan_scope, resolve_scan_scope_group
 from webapp.disk_scans.session import get_module, is_enabled
 from webapp.extensions import db
 from webapp.utils import age_bands, ladders
-from webapp.utils.htmx import read_flag, read_layout
+from webapp.utils.htmx import read_flag, read_layout, read_sort
 from webapp.utils.charts import draw_chart
 from webapp.utils.rbac import Permission, require_permission
 
@@ -69,7 +69,7 @@ bp = Blueprint('disk_scans', __name__)
 # scan_directories sort keys the facade understands (see
 # fs_scans/queries/facade.py:_DIR_SORT_KEYS). The facade fixes the sort
 # direction per key (size/files/atime/dirs descending, path ascending),
-# so the UI only switches the active key, not a direction. 'dirs' maps to
+# so the UI only switches the active key (sort_link's fixed_dir). 'dirs' maps to
 # the recursive subdirectory count (dir_count_r). The ``_nr`` keys sort on the
 # non-recursive (own-files) columns — used by the access-history drill-down's
 # non-recursive view, which shows a directory's own cold data.
@@ -132,9 +132,7 @@ def _dir_filters() -> dict:
     datetimes) and the raw date strings (``*_str``) the hidden form / filter
     panel echo back so a sort re-fetch or page reload preserves them.
     """
-    sort_by = request.args.get('sort_by') or _DEFAULT_DIR_SORT
-    if sort_by not in _DIR_SORT_WHITELIST:
-        sort_by = _DEFAULT_DIR_SORT
+    sort_by = read_sort(request.args, _DIR_SORT_WHITELIST)['sort_by'] or _DEFAULT_DIR_SORT
 
     owner_uid, owner_user_id, owner_label = _resolve_owner()
     owner_gid, group_label = _resolve_group()

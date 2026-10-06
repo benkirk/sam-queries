@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from _disk_scans_helpers import (
+    _DRILL_ROW,
     _RES,
     _enable_fs_scans,
 )
@@ -75,6 +76,20 @@ def test_directories_sort_by_whitelisted(app, auth_client, active_project, monke
         f'?resource={_RES}&sort_by=files'
     )
     assert captured['sort_by'] == 'files'
+
+
+def test_directories_sort_arrow_follows_the_facade(app, auth_client, active_project, monkeypatch):
+    """The facade fixes each key's direction: path sorts ascending (arrow up), the
+    rest descending; a header link sends no sort_dir."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    monkeypatch.setattr(service, 'scan_directories', lambda scope, *a, **kw: [_DRILL_ROW])
+    base = f'/dashboards/user/disk-scans/{active_project.projcode}/directories?resource={_RES}'
+    body = auth_client.get(base + '&sort_by=path').get_data(as_text=True)
+    path_th = body[body.index('sort_by=path'):][:600]
+    assert 'fa-caret-up' in path_th and 'sort_dir' not in path_th
+    body = auth_client.get(base + '&sort_by=size').get_data(as_text=True)
+    assert 'fa-caret-up' not in body and 'fa-caret-down' in body
 
 
 def test_directories_fileset_becomes_subpath(app, auth_client, active_project, monkeypatch):
