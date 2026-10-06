@@ -159,10 +159,15 @@ def display_project(ctx: Context, data: dict, extra_title_info: str = "",
             end_str = fmt.date_str(resource_usage.get('end_date'), null='N/A')
             date_range = f"[{date_style}]{start_str}\n{end_str}[/]"
 
-            pct = resource_usage['percent_used']
+            # A shared (inheriting) row reads as on the web: the project's own % and Used,
+            # "from <root>" for Allocated, the pool's Remaining (red once overdrawn).
+            is_shared = resource_usage.get('is_inheriting', False) \
+                and resource_usage.get('self_used') is not None
+            pool_pct = resource_usage['percent_used']
+            pct = resource_usage['self_percent_used'] if is_shared else pool_pct
             pct_style = "green"
             if pct > 80: pct_style = "yellow"
-            if pct > 100: pct_style = "red bold"
+            if pct > 100 or pool_pct > 100: pct_style = "red bold"
             if is_expired:
                 pct_style = "dim"
 
@@ -170,16 +175,13 @@ def display_project(ctx: Context, data: dict, extra_title_info: str = "",
             alloc_str = fmt.number(allocated)
             remaining_str = fmt.number(resource_usage['remaining'])
             used_str = fmt.number(resource_usage['used'])
-            # Shared (inheriting) allocation: annotate this project's
-            # contribution inline, e.g. "700 (200 yours)", and tag the
-            # resource cell so the user knows the pool is shared.
-            is_shared = resource_usage.get('is_inheriting', False)
-            self_used = resource_usage.get('self_used')
-            if is_shared and self_used is not None:
-                used_str = f"{used_str} [dim]({fmt.number(self_used)} yours)[/]"
-            shared_indicator = " [dim](shared)[/]" if is_shared else ""
+            if is_shared:
+                alloc_str = f"[dim]from {resource_usage.get('root_projcode') or 'parent'}[/]"
+                used_str = fmt.number(resource_usage['self_used'])
+                remaining_str = (f"[red]{remaining_str}[/]" if resource_usage['remaining'] < 0
+                                 else f"[dim]{remaining_str}[/]")
             row = [
-                f"[{resource_style}]{resource_name}{expired_indicator}[/]{shared_indicator}",
+                f"[{resource_style}]{resource_name}{expired_indicator}[/]",
                 (f"[{resource_style}]{resource_usage['resource_type']}[/]"
                  if is_expired else resource_usage['resource_type']),
                 date_range,
