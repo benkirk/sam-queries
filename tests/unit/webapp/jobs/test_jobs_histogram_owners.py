@@ -379,8 +379,7 @@ def test_name_column_truncates(
         f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
     )
     body = resp.get_data(as_text=True)
-    assert 'max-width: 35ch' in body
-    assert 'text-truncate' in body
+    assert 'cell-truncate small' in body
     assert f'title="{long_name}"' in body
 
 

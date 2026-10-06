@@ -271,7 +271,7 @@ def test_jobs_fragment_renders_verbose_drawer(
     body = resp.get_data(as_text=True)
     # The collapse target id pattern + Bootstrap collapse class — confirms
     # the per-row drawer was emitted.
-    assert 'jobs-expand-toggle' in body
+    assert 'aria-label="Show details"' in body
     assert 'jobs-detail-row' in body
     # Verbose-column header labels from plugin COLUMNS.
     assert 'Walltime' in body

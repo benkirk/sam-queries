@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/pagination.html' import pagination %}
+{% from 'dashboards/fragments/collapse.html' import drill_toggle %}
 {#
   Per-job rows fragment — embedded into resource_details.html via hx-get.
 
@@ -8,7 +9,7 @@
     sortable_columns, fragment_url, target_id, enabled, error
 #}
 
-{# Numeric columns get text-end alignment in the header AND every body cell.
+{# Numeric columns are .col-num in the header AND every body cell.
    Kept here as a single source of truth so render_value + the headers stay aligned. #}
 {% set _numeric_cols = ['numnodes', 'numcpus', 'numgpus',
                         'elapsed', 'walltime', 'mpiprocs', 'ompthreads',
@@ -59,6 +60,11 @@
     {{ val }}
   {%- endif -%}
 {% endmacro %}
+
+{#- Column roles: numbers right-aligned, the job name takes the slack, the rest shrink. -#}
+{% macro _col_role(col) -%}
+  {{ 'col-num' if col in _numeric_cols else ('cell-truncate' if col == 'name' else 'col-shrink') }}
+{%- endmacro %}
 
 {% macro _col_label(col) -%}
   {{ _header_overrides.get(col, column_specs.get(col, {}).get('header', col)) }}
@@ -171,9 +177,9 @@
       <table class="table table-sm table-hover align-middle mb-0 jobs-fragment-table">
         <thead class="table-subtle">
           <tr>
-            <th style="width:1.5rem;" aria-label="Expand"></th>
+            <th class="col-shrink" aria-label="Expand"></th>
             {% for col in visible_cols %}
-              <th class="{% if col in _numeric_cols %}text-end{% endif %}">{{ sort_link(col, _col_label(col), extra_qs='&per_page=' ~ page.per_page) }}</th>
+              <th{% if col != 'name' %} class="{{ _col_role(col) }}"{% endif %}>{{ sort_link(col, _col_label(col), extra_qs='&per_page=' ~ page.per_page) }}</th>
             {% endfor %}
           </tr>
         </thead>
@@ -181,22 +187,10 @@
           {% for r in rows %}
             {% set rowid = target_id ~ '-r' ~ loop.index %}
             <tr>
-              <td class="text-center p-0">
-                <button type="button"
-                        class="btn btn-link p-0 text-muted jobs-expand-toggle"
-                        data-bs-toggle="collapse"
-                        data-bs-target="#{{ rowid }}"
-                        aria-expanded="false" aria-controls="{{ rowid }}"
-                        title="Show details">
-                  <i class="fa-solid fa-chevron-right small collapse-icon"></i>
-                </button>
-              </td>
+              <td class="col-shrink">{{ drill_toggle(rowid, 'Show details') }}</td>
               {% for col in visible_cols %}
-                {# Long job names must not widen the auto-fit column —
-                   truncate with an ellipsis; the full name stays on the
-                   render_value title tooltip. #}
-                <td class="{% if col in _numeric_cols %}text-end{% endif %}{% if col in ('job_id', 'user') %} text-nowrap small{% endif %}{% if col == 'name' %} small text-truncate{% endif %}"
-                    {% if col == 'name' %}style="max-width: 35ch;"{% endif %}>
+                {# A long job name truncates (full name in render_value's title). #}
+                <td class="{{ _col_role(col) }}{% if col in ('job_id', 'user', 'name') %} small{% endif %}">
                   {{ render_value(col, r.get(col)) }}
                 </td>
               {% endfor %}

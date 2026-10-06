@@ -102,7 +102,7 @@ def test_by_user_other_row_carries_a_charges_figure(
     # noun on its own rather than the phrase.
     assert 'charges)</span>' in body
     # 400 total - 150 shown = 250 remaining, in charge units.
-    assert '<td class="text-end">250</td>' in body
+    assert '<td class="col-num">250</td>' in body
 
 
 def test_usage_other_remainder_includes_charge_keys():

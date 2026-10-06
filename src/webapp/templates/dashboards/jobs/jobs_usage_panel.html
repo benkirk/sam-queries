@@ -109,10 +109,10 @@
              server ranks rows by it (and the top-N cut is taken in it). #}
           <tr>
             <th class="sortable-header" data-sort="text">{{ entity.label }}</th>
-            <th class="sortable-header text-end{% if metric == 'jobs' %} sort-desc{% endif %}" data-sort="numeric">Jobs</th>
-            <th class="sortable-header text-end{% if metric == 'cpu_hours' %} sort-desc{% endif %}" data-sort="numeric">{{ term('CPU-hours', g_cpu_hours()) }}</th>
-            <th class="sortable-header text-end{% if metric == 'gpu_hours' %} sort-desc{% endif %}" data-sort="numeric">GPU-hours</th>
-            <th class="sortable-header text-end{% if metric == 'charges' %} sort-desc{% endif %}" data-sort="numeric">Charges</th>
+            <th class="sortable-header col-num{% if metric == 'jobs' %} sort-desc{% endif %}" data-sort="numeric">Jobs</th>
+            <th class="sortable-header col-num{% if metric == 'cpu_hours' %} sort-desc{% endif %}" data-sort="numeric">{{ term('CPU-hours', g_cpu_hours()) }}</th>
+            <th class="sortable-header col-num{% if metric == 'gpu_hours' %} sort-desc{% endif %}" data-sort="numeric">GPU-hours</th>
+            <th class="sortable-header col-num{% if metric == 'charges' %} sort-desc{% endif %}" data-sort="numeric">Charges</th>
           </tr>
         </thead>
         {% for r in rows %}
@@ -147,12 +147,12 @@
                 <span class="text-muted" title="{{ entity.unknown_hint }}">(unknown)</span>
                 {% endif %}
               </td>
-              <td class="text-end" data-sort-value="{{ r.job_count }}">{{ r.job_count | fmt_number }}</td>
-              <td class="text-end" data-sort-value="{{ r.cpu_hours }}">{{ r.cpu_hours | fmt_number }}</td>
-              <td class="text-end" data-sort-value="{{ r.gpu_hours }}">{{ r.gpu_hours | fmt_number }}</td>
+              <td class="col-num" data-sort-value="{{ r.job_count }}">{{ r.job_count | fmt_number }}</td>
+              <td class="col-num" data-sort-value="{{ r.cpu_hours }}">{{ r.cpu_hours | fmt_number }}</td>
+              <td class="col-num" data-sort-value="{{ r.gpu_hours }}">{{ r.gpu_hours | fmt_number }}</td>
               {# Charges = cpu + gpu, matching charts/jobs_metrics.py JOBS_METRIC_KEYS. #}
               {% set _rc = (r.cpu_charges or 0) + (r.gpu_charges or 0) %}
-              <td class="text-end" data-sort-value="{{ _rc }}">{{ _rc | fmt_number }}</td>
+              <td class="col-num" data-sort-value="{{ _rc }}">{{ _rc | fmt_number }}</td>
             </tr>
             {% if val %}
             {# The drill param only ever NARROWS the mode's already-scoped fragment
@@ -174,10 +174,10 @@
           <tr class="text-muted">
             <td>Other <span class="small">(beyond top {{ rows | length }} by
               {{ JOBS_METRIC_NOUNS[metric] }})</span></td>
-            <td class="text-end">{{ other.job_count | fmt_number }}</td>
-            <td class="text-end">{{ other.cpu_hours | fmt_number }}</td>
-            <td class="text-end">{{ other.gpu_hours | fmt_number }}</td>
-            <td class="text-end">{{ ((other.cpu_charges or 0)
+            <td class="col-num">{{ other.job_count | fmt_number }}</td>
+            <td class="col-num">{{ other.cpu_hours | fmt_number }}</td>
+            <td class="col-num">{{ other.gpu_hours | fmt_number }}</td>
+            <td class="col-num">{{ ((other.cpu_charges or 0)
                                      + (other.gpu_charges or 0)) | fmt_number }}</td>
           </tr>
         </tbody>
