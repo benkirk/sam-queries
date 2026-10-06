@@ -828,8 +828,7 @@ def _usage_anchor(key, project, account, activity_type, start_date, end_date,
         'start_date': start_date,
         'end_date': end_date,
     }
-    tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
-    return info, tree_valid and not project.is_leaf()
+    return info, project.sums_as_subtree()
 
 
 def get_allocation_usage_rows(
@@ -1187,7 +1186,7 @@ def get_allocation_summary_with_usage(
             root_project = root_account.project if root_account else None
             if root_project is None:
                 continue
-            if not (root_project.tree_root and root_project.tree_left and root_project.tree_right):
+            if not root_project.has_tree_coordinates():
                 continue
             root_projcode_by_alloc_id[alloc.allocation_id] = root_project.projcode
             root_info, _ = _usage_anchor(

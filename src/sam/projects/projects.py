@@ -753,8 +753,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         results = {}
 
         # Check if tree structure is valid for hierarchical queries
-        is_tree_valid = bool(self.tree_root and self.tree_left and self.tree_right)
-        use_hierarchy = hierarchical and is_tree_valid
+        use_hierarchy = hierarchical and self.has_tree_coordinates()
 
         # Get accounts with eager loading
         query = self.session.query(Account).options(joinedload(Account.allocations),
@@ -827,8 +826,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
                 root_alloc = query_alloc.root
                 root_account = root_alloc.account
                 root_project = root_account.project if root_account else None
-                if root_project is not None and root_project.tree_root \
-                        and root_project.tree_left and root_project.tree_right:
+                if root_project is not None and root_project.has_tree_coordinates():
                     root_charges = root_project.get_subtree_charges(
                         account.resource_id, activity_type, start_date, end_date)
                     root_total = sum(root_charges.values())

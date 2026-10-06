@@ -186,8 +186,7 @@ class AllocationWithUsageSchema(AllocationSchema):
         # (dashboards, sam-search, fstree). The account-only sum below is for
         # leaves, where the subtree is the account.
         project = account.project
-        if project is not None and not project.is_leaf() and \
-                project.tree_root and project.tree_left and project.tree_right:
+        if project is not None and project.sums_as_subtree():
             charges = _keep_fixed_keys(project.get_subtree_charges(
                 account.resource_id, activity_type, start_date, end_date), activity_type)
             adjustments = 0.0
@@ -257,9 +256,7 @@ class AllocationWithUsageSchema(AllocationSchema):
         root_alloc = obj.root
         root_account = root_alloc.account
         root_project = root_account.project if root_account else None
-        if root_project is None or not (
-            root_project.tree_root and root_project.tree_left and root_project.tree_right
-        ):
+        if root_project is None or not root_project.has_tree_coordinates():
             return None, None
         now = datetime.now()
         start_date = obj.start_date

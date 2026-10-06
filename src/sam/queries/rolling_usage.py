@@ -195,9 +195,7 @@ def get_project_rolling_usage(
             'threshold_90': acct.second_threshold,
         }
 
-        # Leaf vs. non-leaf determines self-charge rollup strategy.
-        # project.is_leaf() uses NestedSetMixin (base.py:303): tree_right == tree_left + 1
-        if project.is_leaf():
+        if not project.sums_as_subtree():
             leaf_infos.append(anchor)
         else:
             subtree_infos.append({**anchor, 'tree_root': project.tree_root,

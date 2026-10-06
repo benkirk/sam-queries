@@ -406,12 +406,9 @@ def build_user_projects_resources_batched(
     chosen: Dict[tuple, tuple] = {}
 
     for project in projects:
-        # Leaf nodes route through the leaf-friendly batch primitive, which
-        # groups by resource_type only and inlines per-anchor date ranges in the
-        # VALUES CTE. The subtree primitive must date-group separately, fanning
-        # out the query count for users whose projects span many distinct
-        # allocation windows.
-        leaf = project.is_leaf()
+        # A leaf takes the account primitive, which inlines per-anchor dates in one
+        # statement; the subtree primitive groups by date range.
+        subtree = project.sums_as_subtree()
         for account in accounts_by_project.get(project.project_id, []):
             if account.deleted:
                 continue
@@ -432,7 +429,7 @@ def build_user_projects_resources_batched(
 
             chosen[key] = (project, account, query_alloc, resource_type, end_date)
 
-            if leaf:
+            if not subtree:
                 account_infos.append({
                     'key':           key,
                     'account_id':    account.account_id,
@@ -467,7 +464,7 @@ def build_user_projects_resources_batched(
         root_project = root_account.project if root_account else None
         if root_project is None:
             continue
-        if not (root_project.tree_root and root_project.tree_left and root_project.tree_right):
+        if not root_project.has_tree_coordinates():
             continue
         root_project_by_key[key] = root_project
         subtree_infos.append({
@@ -894,13 +891,7 @@ def get_resource_detail_data(
     else:
         scope_proj = project  # default: root project = include all descendants
 
-    # Use subtree MPPT when the scope project has children and valid tree coords
-    use_subtree = bool(
-        scope_proj.has_children
-        and scope_proj.tree_root
-        and scope_proj.tree_left
-        and scope_proj.tree_right
-    )
+    use_subtree = scope_proj.sums_as_subtree()
 
     if use_subtree:
         # Use MPPT join pattern (same as Project.get_subtree_charges) to aggregate
