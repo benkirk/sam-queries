@@ -581,7 +581,7 @@ usage = project.get_detailed_allocation_usage()          # {resource_name: {...}
 usage = project.get_detailed_allocation_usage(resource_name='Derecho')
 
 # Expiration queries return 4-tuples — unpack them
-from sam.queries import get_projects_by_allocation_end_date
+from sam.queries.expirations import get_projects_by_allocation_end_date
 for project, allocation, resource_name, days_remaining in get_projects_by_allocation_end_date(
         session, start_date=..., end_date=..., facility_names=['UNIV', 'WNA']):
     ...
@@ -842,13 +842,9 @@ and asserts the inequality.
 exports `NotificationLog`, so eager imports there put jinja2 and the
 transports into every ORM consumer's import graph.
 `tests/unit/gates/test_notify_import_graph.py` is the gate.
-❌ **DON'T** export `sam/queries/expiration_notices.py`,
-`sam/queries/xras_notices.py` **or `sam/queries/account_notices.py`** from
-`sam/queries/__init__.py` — that file
-imports its submodules eagerly, so listing either would put `sam.notify.base`
-into every `from sam.queries import ...`. The trap is that the near-identically
-named `xras_activation.py` **is** exported, safely, because it imports no
-`sam.notify`.
+❌ **DON'T** re-export anything from `sam/queries/__init__.py` — it is empty on
+purpose, so `from sam.queries.x import ...` drags in only `x`'s graph.
+`tests/unit/gates/test_layer_imports.py` is the gate.
 ❌ **DON'T** import Click, Flask, `rich` or `kubernetes` anywhere under
 `src/scheduling/` — a task writes to `ctx.logger`, never to stdout, because the
 CronJob's stdout is a JSON envelope. The CLI routes logging to stderr as `LEVEL

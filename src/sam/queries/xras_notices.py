@@ -12,12 +12,9 @@ It lives here beside :mod:`sam.queries.xras_activation`, whose row shape it
 consumes. The one place it must NOT live is ``sam/notify/`` -- that package is
 transport, ledger and rendering, and stays domain-free.
 
-WARNING: NOT exported from ``sam/queries/__init__.py``. That file imports its
-submodules eagerly, so listing this one would put ``sam.notify.base`` into the
-import graph of every ``from sam.queries import ...`` in the tree. Import it by
-full path. The trap is that :mod:`sam.queries.xras_activation` IS exported, and
-safely, because it imports no ``sam.notify``. The two look alike and must be
-treated differently; ``tests/unit/gates/test_notify_import_graph.py`` is the gate.
+This module imports ``sam.notify``; its look-alike
+:mod:`sam.queries.xras_activation` does not. The gate is
+``tests/unit/gates/test_notify_import_graph.py``.
 
 See ``docs/plans/XRAS_AUTO_NOTICES.md`` commit 2.
 """

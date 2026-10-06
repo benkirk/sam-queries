@@ -748,11 +748,6 @@ class TestListing:
         # `attempted` + `unverified` — a rejection needs nobody, it did nothing.
         assert summary['needs_attention'] == 2
 
-    def test_it_is_not_exported_from_the_queries_package(self):
-        """Exporting it would drag the ORM into every `from sam.queries import`."""
-        import sam.queries as queries
-        assert not hasattr(queries, 'list_remediation_events')
-
 
 class TestTheRefreshRerunsThePreflight:
     """A patched entry must carry a verdict, or the request it just fixed
