@@ -35,6 +35,12 @@ written, and the as-built section says where the work departed from it.
 - **Round 5** as written, plus the `SAMUEL_PRESENTATION.md` follow-up "Mobile table headers
   wrap mid-word" (found 2026-09-29) is ticked: #741's floors cleared Users, Jobs and the values,
   and round 3 cleared "Charges".
+- **Added after review (Ben): a gallery specimen** of `render_project_info` at the card's width,
+  22rem and 14rem. It exposed that a `@container` rule cannot size the container itself: the
+  box's pair count (2 at 768px, 3 at 1200px) stays viewport-driven, and a narrow box at a wide
+  viewport keeps it unless its caller wraps it in `container: stats / inline-size`, which the
+  gallery's narrow wrappers do (`@container stats (max-width: 36rem)` caps the box to one pair).
+  Real pages are unchanged by that rule: no box sits inside another `stats` container.
 
 ## Context
 

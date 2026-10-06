@@ -25,6 +25,7 @@ SECTIONS = [
     {'id': 'ranges', 'title': 'Range & date pickers'},
     {'id': 'filters', 'title': 'Filter panels (layout-aware)'},
     {'id': 'people', 'title': 'People & contracts'},
+    {'id': 'stats', 'title': 'Stat grids (container query)'},
     {'id': 'openers', 'title': 'Inert modal openers'},
     {'id': 'icons', 'title': 'Icons'},
     {'id': 'skipped', 'title': 'Needs live context (note-and-skip)'},
@@ -103,6 +104,24 @@ CONTRACTS = [
     {'label': 'Expired', 'is_active': False, 'is_future': False},
 ]
 
+# render_project_info's reads: the long values are the ones that split mid-word in the census
+# (a lead's surname, an area, a path). Methods are lambdas; no contracts, whose link is live.
+_ORG = {'acronym': 'ACOM', 'name': 'Atmospheric Chemistry Observations & Modeling',
+        'is_active': True, 'ancestry': lambda include_self=False: [{'acronym': 'NCAR', 'name': 'NCAR'}]}
+PROJECT = {
+    'active': True, 'unix_gid': 78281,
+    'lead': {'user_id': 1, 'display_name': 'Suresh Muknahallipatna'}, 'admin': None,
+    'allocation_type': {'allocation_type': 'Discover ACCESS',
+                        'panel': {'panel_name': 'ACCESS', 'facility': {'facility_name': 'UNIV'}}},
+    'area_of_interest': {'area_of_interest': 'Magnetospheric Physics'},
+    'organizations': [1], 'organizations_current_first': lambda: [
+        {'organization': _ORG, 'is_active': True, 'end_date': None},
+        {'organization': dict(_ORG, acronym='HAO', name='High Altitude Observatory', is_active=False),
+         'is_active': False, 'end_date': datetime(2025, 9, 30)}],
+    'contracts': [],
+    'active_directories': ['/gpfs/csfs1/univ/ucir0064', '/glade/campaign/univ/ucir0064'],
+}
+
 FACET_VALUES = [
     {'value': 'received', 'count': 128},
     {'value': 'processed', 'count': 74},
@@ -154,6 +173,7 @@ def gallery_context():
         'sample_users': SAMPLE_USERS,
         'person': PERSON,
         'contracts': CONTRACTS,
+        'project': PROJECT,
         'facet_values': FACET_VALUES,
         'age_bands': AGE_BANDS,
         'node_bands': NODE_BANDS,

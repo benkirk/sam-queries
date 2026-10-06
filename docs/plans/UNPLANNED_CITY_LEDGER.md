@@ -1233,6 +1233,13 @@ whose every `dd` split counted once; the promoted detector adds the word.
   `open_everything` walk; `e2e/test_phone_wraps.py` asserts no mid-word hits on its pages plus
   `/admin/projects` with Expirations open, and a 60px card fixture proves the detector live.
 - [x] The unplanned-city skill's Legibility pass has the mid-word heuristic.
+- [x] **Gallery specimen** (`/dev/gallery` → Stat grids): `render_project_info` at the card's
+  width, 22rem and 14rem, so both rungs are visible without finding a nested card. Building it
+  found two facts: a flex item sized by `max-width` alone is shrink-to-fit, so the contained
+  grid collapsed to 156px (the wrappers now have definite widths); and a box cannot query its
+  own width, so the pair count (2 at 768px, 3 at 1200px) stays a viewport rule, with one opt-in
+  `@container stats (max-width: 36rem)` cap for a caller that wraps a narrow box in its own
+  `container: stats` (the gallery's narrow specimens). Real pages are pixel-identical.
 
 **Proof:**
 - `ui_snapshots.py --midword --pages wraps --width 360` on the branch: 3 hits across the 48
