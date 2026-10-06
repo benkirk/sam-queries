@@ -31,6 +31,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-05 | `2122755e` + sweep 12 (src from the air) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 16 (16), 2 kept | 4,754 / 50 / 9 | 210 (78) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-06 | `b682c918` + Resource Details round A | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,736 / 50 / 8 | 183 (74) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-06 | `b682c918` + round B (shared-usage grammar) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,750 / 50 / 8 | 183 (74) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
+| 2026-10-06 | `b682c918` + round C (jobs, disk scans, drill macros) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,763 / 50 / 8 | 163 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -1024,6 +1025,73 @@ bar, so only solid vs tint matters (2.3:1, red on red).
 - [ ] The rolling-rate fragment keeps its "(N yours)" slice beside the pool's burn: it is a rate
   gauge, not a meter, and its banner already says the rate covers the pool.
 
+## 15. 2026-10-06: area sweep, `templates` round 8 (jobs explorer, disk scans, drill macros; round C)
+
+**Mode:** area, `templates`, from `RESOURCE_DETAILS_SWEEP_HANDOFF.md` round C, stacked on entry
+14's branch (`36897959`). **End commit:** `b682c918` (`origin/staging`). Aesthetic contract as
+before. Proof rig: staging served on 5053 and the branch on 5052, both with fs-scans on
+(`ALT_FS_SCANS_ENABLED=1`, the round's first commit) against the read-only plugin replica. Pages:
+both explorers (the jobs pages pinned to a past window, since the machine view lists live jobs),
+CESM0002 Derecho Job History and Campaign_Store Filesystem Scans, status Job History / Filesystem Scans.
+
+**Done, in this sweep's PR**, one commit each:
+
+- [x] The jobs and disk-scans partials and both explorer pages moved to `dashboards/jobs/` and
+  `dashboards/disk_scans/` (a partial lives with its blueprint; 48 path sites). `--styles
+  --compare`: 0 of 42 captures differ (the two live job pages reshot with a pinned window on
+  both commits at once).
+- [x] `sort_link(..., extra_qs=, fixed_dir=)`. The per-job table's private copy goes (per_page
+  rides `extra_qs`). The directory table's `dir_sort_link` goes: `fixed_dir` sends no `sort_dir`
+  and points the arrow the facade's way, so Path points up (bug). The route reads the key through
+  `read_sort` against `_DIR_SORT_WHITELIST` (kept).
+- [x] `collapse.lazy_drill_row` (tr#`<rid>-row`, body #`<rid>-content`, `persist=`) beside
+  `drill_toggle`, which the By User / By Project and disk owner/group drills adopt. Pixel-identical
+  (`--element` + `--compare-pixels`, six states).
+- [x] `collapse.owner_tier`: a band's owners are rows of the outer table in its columns, one
+  collapsing `<tbody>` per band (closing a band hides any open drawer), with a trailing Share
+  `share_bar` (Ben: band share of the whole, owner share of the band). Histogram, timeline and the
+  disk distribution adopt it. On a phone the nested tier never scrolled (bug, entry 8); the outer
+  table now scrolls. `tier_num` reads 'charges' as cpu + gpu (no dict carries the key; a plain
+  `sum(attribute=)` raised under the Charges pill before it shipped). Owner modal buttons take
+  `btn-entity` (20px names). The disk distribution keeps its Owners count as a column (Ben: no
+  count badges on row labels).
+- [x] Column roles on every jobs and disk-scans table; the job name is the one `.cell-truncate`
+  column (10rem floor, `components.css`). One filter-width scale (`.ctl-w-xs..lg`,
+  `.ctl-minw-picker`, `filters.css`) for both filter panels: 14 inline widths go; Queue and the
+  numeric fallbacks widen 10px.
+- [x] Bug: the plugin-off banner's "Check the Database card" link was `/dashboards/admin/configuration`,
+  never a route. `url_for`; `jobs_fragment`'s copy of the banner calls `jobs_disabled()`.
+- [x] Exit status through `exit_status_badge`; the uncalled `mode_badge` is deleted.
+- [x] Bug: the directory table's Last Access header sat left of right-aligned dates. Paths are
+  `.cell-truncate .cell-path`; the folder icon is the copy button (Ben: one icon per path), and the
+  drill link is titled "Browse into <path>". The atime prints through `fmt_date` (the route
+  normalizes the plugin's datetime or ISO string with `parse_wire_date`).
+- [x] `page_header` on both explorer pages.
+
+**Handoff corrections:** 18 files moved and 48 path sites, not 25 in 8 files; `mode_badge` had an
+import but no call; the owner tiers' columns differ (the timeline adds Charges, the distribution
+Data/Files), so the macro takes a column spec rather than one fixed table.
+
+**Tried and dropped:**
+- A `group_count` badge on the distribution's band label in place of its Owners column (the
+  wire-dashboard §7 group-row rule): Ben, the badge is noise; a count that matters is a column.
+- A separate copy icon before the folder icon: two icons for one path.
+
+**Open from this sweep:**
+
+- [ ] **Phone-width wrap sweep (Ben, next after this round):** a chevron or caret plus a name in an
+  auto-width cell wraps onto two lines on a phone (the owner tier did until `text-nowrap`); Ben has
+  seen carets with project codes do it elsewhere.
+- [ ] Bug, pre-existing (staging too): sorting the per-job table by Elapsed desc puts null-elapsed
+  jobs first on Postgres; `_visible_cols` then folds the empty columns, Elapsed included, so the
+  sort cannot be toggled back.
+- [ ] `copy_button`'s title is the copied text, so a hover on the folder says the path, not "Copy";
+  discoverability rests on the aria-label and the toast.
+- [ ] The distribution's tier persists open across reloads (no `data-no-persist`) while the jobs
+  tiers do not; kept as it was.
+- [ ] The By User / By Project drawers and the owner drawers render a full per-job table in a
+  spanning cell; on a phone that table widens the outer one (it scrolls as a whole).
+
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
 Surfaced by the first run of `scripts/sweep_inventory.py`. Each item belongs to an area sweep;
@@ -1043,8 +1111,14 @@ nothing here has been read for intent yet.
 Shared pieces a window introduced that an older surface could adopt. The canonical example is the
 sunburst, which started on the allocations page and then moved to job history.
 
-- [ ] `collapse.drill_toggle` and `clipboard.copy_button` on a `.cell-path` cell (sweep 13):
-  the jobs and disk-scans drilldowns (round C), and any other truncated path.
+- [x] `collapse.drill_toggle` and `clipboard.copy_button` on a `.cell-path` cell (sweep 13):
+  the jobs and disk-scans drilldowns (sweep 15).
+- [ ] `collapse.lazy_drill_row` / `owner_tier` (sweep 15): `_resource_details_macros.jobs_collapse_row`
+  stays a two-level shape (`outer_tr_collapse_id` + an inner `div.collapse`, `data-no-persist`), and
+  Resource Details' user and day subtrees load as whole `tr.collapse` rows; neither was converted.
+- [ ] The `.ctl-w-*` filter widths (sweep 15): `audit_filters.html`, `allocations/projects.html`
+  and `admin/projects.html` still size fields inline, which is why the phone rule keeps its
+  `!important`.
 - [ ] `sam.dates.start_of_today()`: the `datetime.now().replace(hour=0, ...)` expression still
   appears in `xras/card_routes.py`, `sam/xras/handlers/_allocations.py` and
   `sam/resources/machines.py` (sweep 4).
