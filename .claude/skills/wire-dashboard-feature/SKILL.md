@@ -30,8 +30,8 @@ The families:
   inside a `data-bs-toggle` row (see §5).
 - **Status** — `badges.status_badge` (its state vocab is the source of truth;
   an unknown state falls back to a neutral `bg-secondary` badge).
-- **Collapse** — `collapse.collapse_toggle`, `drill_toggle` (a chevron button, for a row holding
-  a link), `lazy_drill_row` (fetches on first open), `owner_tier`. Copy: `clipboard.copy_button`.
+- **Collapse** — `collapse.collapse_toggle`, `section_toggle` (a heading's chevron), `drill_toggle` (a
+  row's chevron button), `lazy_drill_row` (fetches on first open), `owner_tier`. Copy: `clipboard.copy_button`.
 - **Filters** — two tiers, pick one per surface (the rule is the `filters.css` header):
   - *Page*: the navy panel. `filter_panel.filter_panel_shell` + `filter_apply()`, every control
     one line tall: `form_fields.multiselect_filter` (a dropdown checklist), the sliders
@@ -131,11 +131,12 @@ only with NO `data-bs-toggle` ancestor. Same mechanism as §6.
 
 ## 6. Collapse triggers
 
-Never put a link or button inside a `data-bs-toggle="collapse"` trigger cell or
-row. Bootstrap's collapse data-api fires in the capture phase, so a nested
-button toggles the row too and no `stopPropagation` on the button can prevent
-it. Use `collapse.collapse_toggle`, make the toggle non-link `<td>`s, and render
-the chevron with `.collapse-icon`. Gate: `test_collapse_trigger_rows`.
+Never put a link or button inside a `data-bs-toggle="collapse"` trigger cell or row. Bootstrap's
+collapse data-api fires in the capture phase, so a nested button toggles the row too and no
+`stopPropagation` on the button can prevent it. Use `collapse.collapse_toggle`, make the toggle
+non-link `<td>`s, and render the chevron with `.collapse-icon` as the cell's first element (`components.css` keeps it on its
+label's line). A header's `.accordion-chevron` comes first, `float-end`, never last in a wrapping
+flex row. Gates: `test_collapse_trigger_rows`, `e2e/test_phone_wraps.py` (`ui_snapshots.py --wraps`).
 
 ## 7. Table columns and action cells
 

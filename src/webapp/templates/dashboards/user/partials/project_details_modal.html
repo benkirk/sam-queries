@@ -2,6 +2,7 @@
 {# `with context` is required: render_project_info reaches the help_icon /
    glossary macros, which resolve app globals (tooltip config, filters). #}
 {% from 'dashboards/user/partials/project_card.html' import render_project_info, render_project_resources, render_project_members with context %}
+{% from 'dashboards/fragments/collapse.html' import section_toggle %}
 
 {# Render project details using reusable macros #}
 <div class="project-details-modal-content">
@@ -44,10 +45,7 @@
         <div class="mt-3">
             <h6 class="mb-2">
                 <i class="fa-solid fa-sitemap"></i> Project Hierarchy
-                <button class="btn  btn-link" data-bs-toggle="collapse"
-                        data-bs-target="#tree-modal" aria-expanded="false">
-                    <i class="fa-solid fa-chevron-down"></i>
-                </button>
+                {{ section_toggle('tree-modal', 'Show project hierarchy') }}
             </h6>
             <div id="tree-modal" class="collapse">
                 <div class="tree-container"

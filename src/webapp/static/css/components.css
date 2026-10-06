@@ -368,6 +368,13 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
     white-space: nowrap;
 }
 
+/* A drill chevron never sits on the line above its label (a phone squeezes the label column).
+   A cell whose long text may wrap puts the chevron in a span, which this does not match. */
+.table td:has(> .collapse-icon:first-child),
+.table td:has(> button[data-bs-toggle="collapse"]:first-child) {
+    white-space: nowrap;
+}
+
 /* A truncating path keeps its head readable on a phone; its copy button sits before it. */
 .table td.cell-truncate.cell-path {
     min-width: 12rem;
@@ -383,6 +390,12 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
     flex-wrap: nowrap;
     gap: 0.125rem;
     vertical-align: middle;
+}
+
+/* A long page-number strip wraps onto a second line rather than pushing a phone page sideways. */
+.pagination {
+    flex-wrap: wrap;
+    row-gap: 0.25rem;
 }
 
 /* Icon-only row action: muted until the row is hovered or the button focused. */
