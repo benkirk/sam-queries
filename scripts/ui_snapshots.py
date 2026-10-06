@@ -85,17 +85,17 @@ def _slug(url):
     return re.sub(r'[^a-z0-9]+', '-', url.lower()).strip('-') or 'root'
 
 
-# The phone-wrap census (--wraps --pages wraps): every page with a chevron, tabs included.
+# The phone-wrap census (--wraps --pages wraps): every page with a chevron, tabs included. Pages,
+# not fragments: /admin/expirations and /allocations/xras_remediations load bare, with no CSS.
 PAGE_SETS['wraps'] = [(_slug(url), url, []) for url in [
     '/admin/', '/admin/account-requests', '/admin/configuration', '/admin/contracts', '/admin/events',
-    '/admin/expirations', '/admin/facilities', '/admin/organizations', '/admin/organizations?tab=institutions',
+    '/admin/facilities', '/admin/organizations', '/admin/organizations?tab=institutions',
     '/admin/organizations?tab=areas', '/admin/organizations/mnemonics', '/admin/projects',
     '/admin/projects/directories', '/admin/resources', '/admin/resources?tab=machines',
     '/admin/resources?tab=queues', '/admin/roles', '/admin/users-groups', '/admin/users/last-seen',
     '/admin/project/SCSG0001', '/admin/project/SCSG0001/edit', '/admin/project/CESM0002',
     '/allocations/', '/allocations/projects', '/allocations/projects?view=calendar',
-    '/allocations/adjustments', '/allocations/transactions', '/allocations/xras',
-    '/allocations/xras_remediations', '/database/',
+    '/allocations/adjustments', '/allocations/transactions', '/allocations/xras', '/database/',
     '/status/derecho', '/status/casper', '/status/jupyterhub', '/status/events',
     '/status/job-history', '/status/filesystem-scans',
     '/user/', '/user/accounts', '/user/data', '/user/events', '/user/info', '/user/jobs',
