@@ -102,7 +102,7 @@ def test_by_user_other_row_carries_a_charges_figure(
     # noun on its own rather than the phrase.
     assert 'charges)</span>' in body
     # 400 total - 150 shown = 250 remaining, in charge units.
-    assert '<td class="text-end">250</td>' in body
+    assert '<td class="col-num">250</td>' in body
 
 
 def test_usage_other_remainder_includes_charge_keys():
@@ -520,3 +520,8 @@ def test_timeline_fragment_renders_bars_that_drill_to_their_period(app, auth_cli
     body = resp.get_data(as_text=True)
     assert '<svg' in body
     assert links.JT_PERIOD.url(0) in body and links.JT_PERIOD.url(1) not in body   # band 1 has no jobs
+    # The owner tier is rows of the period table, and the Charges pill (no 'charges'
+    # key on a band or owner) still renders their shares.
+    assert '-p0-u1-row' in body and 'Other users (beyond top 1)' in body
+    resp = auth_client.get('/dashboards/user/jobs/machine/derecho/timeline?metric=charges')
+    assert resp.status_code == 200 and 'share-num' in resp.get_data(as_text=True)

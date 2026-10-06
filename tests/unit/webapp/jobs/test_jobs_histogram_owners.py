@@ -238,7 +238,7 @@ def test_histogram_account_owner_tier_and_drill(
     body = auth_client.get(
         '/dashboards/user/jobs/machine/derecho/wait-times?group_by=project'
     ).get_data(as_text=True)
-    assert '<th>Project</th>' in body
+    assert 'Show top projects in this band' in body
     assert 'Other projects' in body
     assert 'project-details-modal/SCSG0001' in body
     assert 'name="group_by" value="project"' in body
@@ -379,8 +379,7 @@ def test_name_column_truncates(
         f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
     )
     body = resp.get_data(as_text=True)
-    assert 'max-width: 35ch' in body
-    assert 'text-truncate' in body
+    assert 'cell-truncate small' in body
     assert f'title="{long_name}"' in body
 
 
@@ -440,3 +439,14 @@ def test_by_user_sort_indicator_follows_metric(
     gpu_th = re.search(r'<th[^>]*sort-desc[^>]*>GPU-hours</th>', body)
     assert gpu_th, 'sort-desc must sit on the GPU-hours header'
     assert not re.search(r'<th[^>]*sort-desc[^>]*>CPU-hours</th>', body)
+
+
+def test_histogram_charges_metric_renders_owner_shares(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Under the Charges pill the share column sums cpu + gpu charges; no band
+    or owner dict carries a 'charges' key, so a plain attribute read raises."""
+    body = _get_hist_body(app, auth_client, active_project, monkeypatch,
+                          query='&metric=charges')
+    assert '-b0-u1-row' in body
+    assert 'share-num' in body

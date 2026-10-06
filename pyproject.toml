@@ -120,8 +120,7 @@ source = ["src/dbbrowse", "src/querykit", "src/sam", "src/scheduling", "src/syst
 # so the default `pytest` fast loop is unaffected. See fail_under below.
 branch = true
 omit = [
-    "src/sam/queries/examples.py",
-        "src/webapp/utils/project_permissions.py",
+    "src/webapp/utils/project_permissions.py",
     "*/tests/*",
     "*/test_*.py",
     "*/__init__.py",
@@ -161,9 +160,6 @@ omit = [
     # Admin-page query builders — eager-loading scaffolding consumed only by
     # the deferred admin HTMX routes. Coverage follows the route policy.
     "src/sam/queries/admin.py",
-
-    # Trivial entry-point shim
-    "src/sam_search_cli.py",
 ]
 
 [tool.coverage.report]

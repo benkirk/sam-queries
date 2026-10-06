@@ -380,7 +380,8 @@ pytest-xdist against the isolated `mysql-test` container.
 
 #### Adding CLI Features
 
-1. **Add functionality** to `src/sam_search_cli.py`
+1. **Add functionality** under `src/cli/` (a command class plus a Click entry
+   point in `src/cli/cmds/`; see `src/cli/README.md`)
 
 2. **Create integration tests** in `tests/unit/cli/test_sam_search_cli.py`:
    ```python
@@ -669,7 +670,7 @@ sam-queries/
 │   │   ├── summaries/       # Charge summaries
 │   │   ├── integration/     # XRAS integration
 │   │   └── security/        # Roles, API credentials
-│   ├── sam_search_cli.py    # CLI tool (invoked as `sam-search`)
+│   ├── cli/                 # sam-search / sam-admin (see src/cli/README.md)
 │   └── webapp/               # Flask web application
 │       ├── api/             # REST API blueprints
 │       ├── schemas/         # Marshmallow schemas

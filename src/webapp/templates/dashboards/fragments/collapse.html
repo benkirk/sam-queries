@@ -48,6 +48,101 @@
   htmx swap, and needs no registration anywhere.
 #}
 
+{% from 'dashboards/fragments/table_bits.html' import share_bar %}
+
 {% macro collapse_toggle(target_id, expanded=false) -%}
 data-bs-toggle="collapse" data-bs-target="#{{ target_id }}" aria-expanded="{{ 'true' if expanded else 'false' }}"
+{%- endmacro %}
+
+{#- A section heading's toggle: the header chevron (points down, flips up when open). -#}
+{% macro section_toggle(target_id, label) -%}
+<button type="button" class="btn btn-link p-0" {{ collapse_toggle(target_id) }}
+        aria-controls="{{ target_id }}" aria-label="{{ label }}" title="{{ label }}"><i class="fa-solid fa-chevron-down accordion-chevron" aria-hidden="true"></i></button>
+{%- endmacro %}
+
+{#- The toggle as its own button, for a row that also holds a link: the row keeps
+    data-bs-target (chart drills read it) and only this chevron toggles. -#}
+{% macro drill_toggle(target_id, label='Show breakdown') -%}
+<button type="button" class="btn btn-sm btn-link text-decoration-none p-0 me-1" {{ collapse_toggle(target_id) }}
+        aria-controls="{{ target_id }}" aria-label="{{ label }}" title="{{ label }}"><i class="fa-solid fa-chevron-right collapse-icon small"></i></button>
+{%- endmacro %}
+
+{#- A collapsed row that fetches its body on first open: tr#<rid>-row, swap target #<rid>-content.
+    Bound to shown.bs.collapse (never click), so a chart-click .show() fires it too. persist=false
+    keeps nav-view-persistence from re-opening it, and re-running its query, on reload. -#}
+{% macro lazy_drill_row(rid, url, colspan, loading, persist=true) -%}
+<tr class="collapse" id="{{ rid }}-row"{% if not persist %} data-no-persist{% endif %}>
+    <td colspan="{{ colspan }}" class="p-0 border-0">
+        <div class="p-2 bg-body-tertiary" id="{{ rid }}-content"
+             hx-get="{{ url }}{{ '&' if '?' in url else '?' }}target_id={{ rid }}-content"
+             hx-trigger="shown.bs.collapse from:closest tr.collapse once"
+             hx-swap="innerHTML">
+            <p class="text-muted small mb-0"><i class="fa-solid fa-spinner fa-spin me-1"></i> {{ loading }}</p>
+        </div>
+    </td>
+</tr>
+{%- endmacro %}
+
+{#- A stat as a number; 'charges' is cpu + gpu charges (charts/jobs_metrics.py). Callers | float it. -#}
+{% macro tier_num(stats, key) -%}
+{%- if key == 'charges' -%}{{ (stats.cpu_charges or 0) + (stats.gpu_charges or 0) }}
+{%- else -%}{{ stats[key] or 0 }}{%- endif -%}
+{%- endmacro %}
+
+{% macro _tier_value(stats, key, fmt) -%}
+{%- set _v = tier_num(stats, 'charges' if fmt == 'charges' else key) | float -%}
+{{- (_v | fmt_size) if fmt == 'size' else (_v | fmt_number) -}}
+{%- endmacro %}
+
+{% macro _tier_sum(ranked, key) -%}
+{%- set _ns = namespace(total=0) -%}
+{%- for _o, _s in ranked %}{% set _ns.total = _ns.total + (tier_num(_s, key) | float) %}{% endfor -%}
+{{- _ns.total -}}
+{%- endmacro %}
+
+{#- A band's owners as rows of the outer table, in its own columns plus a trailing share (a
+    hierarchy is one table). One collapsing <tbody id=<tier_id>-row>, so closing the band also
+    hides any owner drawer open under it. caller(owner) renders the name.
+    spec: cols [(key, 'number'|'size'|'charges'|'blank')], share (key), names (owner -> label),
+    drill_url + param (none: no drawers), loading ("jobs in the X band"), noun, other, persist. -#}
+{% macro owner_tier(tier_id, band, ranked, spec) -%}
+{%- set _whole = tier_num(band, spec.share) | float -%}
+{%- set _persist = spec.persist if spec.persist is defined else true -%}
+{%- set _span = (spec.cols | length) + 2 -%}
+<tbody class="collapse" id="{{ tier_id }}-row"{% if not _persist %} data-no-persist{% endif %}>
+{%- for owner, stats in ranked %}
+    {%- set _rid = tier_id ~ '-u' ~ loop.index %}
+    {%- set _label = (spec.names or {}).get(owner) or owner %}
+    {%- set _drill = spec.drill_url %}
+    {%- set _toggle = collapse_toggle(_rid ~ '-row') if _drill else '' %}
+    <tr{% if _drill %} title="Show {{ _label }}'s {{ spec.loading }}"{% endif %}>
+        <td class="cell-child text-nowrap">{% if _drill %}{{ drill_toggle(_rid ~ '-row', "Show " ~ _label ~ "'s " ~ spec.loading) }}{% endif %}{{ caller(owner) }}</td>
+        {%- for key, fmt in spec.cols %}
+        <td class="col-num{{ ' cursor-pointer' if _drill }}" {{ _toggle }}>{% if fmt != 'blank' %}{{ _tier_value(stats, key, fmt) }}{% endif %}</td>
+        {%- endfor %}
+        <td class="col-num{{ ' cursor-pointer' if _drill }}" {{ _toggle }}>{{ share_bar((100 * (tier_num(stats, spec.share) | float) / _whole) if _whole else none, tint=True, title='Share of the ' ~ spec.noun) }}</td>
+    </tr>
+    {%- if _drill %}
+    {{ lazy_drill_row(_rid, _drill ~ '&' ~ spec.param ~ '=' ~ (owner | string | urlencode), _span,
+                      'Loading ' ~ _label ~ "'s " ~ spec.loading ~ '…', persist=_persist) }}
+    {%- endif %}
+{%- endfor %}
+{%- set _first = spec.cols[0][0] %}
+{%- if spec.other and (tier_num(band, _first) | float) - (_tier_sum(ranked, _first) | float) > 0 %}
+    <tr class="text-muted">
+        <td class="cell-child">{{ spec.other }}</td>
+        {%- for key, fmt in spec.cols %}
+        {%- if fmt == 'blank' %}
+        <td class="col-num"></td>
+        {%- else %}
+        {%- set _k = 'charges' if fmt == 'charges' else key %}
+        {%- set _v = (tier_num(band, _k) | float) - (_tier_sum(ranked, _k) | float) %}
+        <td class="col-num">{{ (_v | fmt_size) if fmt == 'size' else (_v | fmt_number) }}</td>
+        {%- endif %}
+        {%- endfor %}
+        {%- set _rest = _whole - (_tier_sum(ranked, spec.share) | float) %}
+        <td class="col-num">{{ share_bar((100 * _rest / _whole) if _whole else none, tint=True, title='Share of the ' ~ spec.noun) }}</td>
+    </tr>
+{%- endif %}
+</tbody>
 {%- endmacro %}

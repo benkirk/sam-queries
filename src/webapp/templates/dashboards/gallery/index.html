@@ -34,6 +34,7 @@
 {% import 'dashboards/fragments/contract_bits.html' as contract_bits with context %}
 {% import 'dashboards/fragments/action_buttons.html' as action_buttons with context %}
 {% import 'dashboards/fragments/table_bits.html' as table_bits %}
+{% from 'dashboards/user/partials/project_card.html' import render_project_info with context %}
 
 {# Card chrome shared by every specimen. #}
 {% macro specimen(title, note='') %}
@@ -108,6 +109,25 @@
     </button>
     <div id="galleryCollapseDemo" class="collapse mt-2">
       <div class="card card-body">Revealed content.</div>
+    </div>
+  {% endcall %}
+  {% call specimen('collapse.drill_toggle', 'the chevron as its own button, for a row that also holds a link; lazy_drill_row and owner_tier build the rows it opens') %}
+    <table class="table table-sm align-middle mb-0">
+      <tbody>
+        <tr data-bs-target="#galleryDrillDemo">
+          <td>{{ collapse.drill_toggle('galleryDrillDemo', 'Show breakdown') }}<span class="font-monospace">SCSG0001</span></td>
+          <td class="col-num">1,234</td>
+        </tr>
+        <tr class="collapse" id="galleryDrillDemo">
+          <td colspan="2" class="p-0 border-0"><div class="p-2 bg-body-tertiary small text-muted">The row's breakdown.</div></td>
+        </tr>
+      </tbody>
+    </table>
+  {% endcall %}
+  {% call specimen('collapse.section_toggle', 'a section heading\'s chevron: points down, flips up when open; a card header floats its .accordion-chevron first, float-end') %}
+    <h6 class="mb-2"><i class="fa-solid fa-users"></i> Project Members {{ collapse.section_toggle('gallerySectionDemo', 'Show project members') }}</h6>
+    <div id="gallerySectionDemo" class="collapse">
+      <div class="p-2 bg-body-tertiary small text-muted">The section's body.</div>
     </div>
   {% endcall %}
   {% call specimen('clipboard.copy_button', 'labelled, compact and inline; never inside a data-bs-toggle cell or row') %}
@@ -290,6 +310,14 @@
       </table>
     </div>
   {% endcall %}
+  {% call specimen('table_bits.alloc_meter', 'own % used with the elapsed tick; pool_pct: a shared row, own share solid over the pool; over 100% turns red') %}
+    <div class="d-inline-flex flex-column gap-2 align-items-end">
+      {{ table_bits.alloc_meter(53.0, elapsed_pct=48.0) }}
+      {{ table_bits.alloc_meter(28.9, elapsed_pct=42.0, pool_pct=61.8, title='This project 28.9% · CESM0002\'s pool 61.8%') }}
+      {{ table_bits.alloc_meter(0, pool_pct=40.0) }}
+      {{ table_bits.alloc_meter(12.0, pool_pct=104.0) }}
+    </div>
+  {% endcall %}
   {% call specimen('pagination.pagination', 'windowed page nav') %}
     {{ pagination.pagination(pagination_page, pagination_total, fragment_url, target_id, form_id, sort) }}
   {% endcall %}
@@ -362,6 +390,21 @@
   {% call specimen('contract_bits.contract_status_badge', 'active / not-started / expired') %}
     <div class="d-flex flex-wrap gap-3">
       {% for c in contracts %}<span>{{ c.label }}: {{ contract_bits.contract_status_badge(c, show_active=True) }}</span>{% endfor %}
+    </div>
+  {% endcall %}
+</section>
+
+{# ── Stat grids ──────────────────────────────────────────────────────── #}
+<section id="stats" class="mb-5">
+  <h2 class="h4 border-bottom pb-1 mb-3">Stat grids (container query)</h2>
+  {% call specimen('project_card.render_project_info', 'the rows key off the box\'s own width (the tree\'s first @container): at 24rem a multi-line row stacks, at 16rem every row does; the pair count is the viewport\'s unless the wrapper is itself the container') %}
+    {# Definite widths on purpose: a flex item sized by max-width alone is shrink-to-fit, and
+       inline-size containment collapses the grid inside it (measured: 156px). The narrow
+       wrappers are containers themselves, which caps the box to one pair (dashboard.css). #}
+    <div class="d-flex flex-wrap gap-4 align-items-start">
+      <div class="w-100"><div class="small text-muted mb-1">the card's width</div>{{ render_project_info(project) }}</div>
+      <div class="mw-100" style="width: 22rem; container: stats / inline-size"><div class="small text-muted mb-1">22rem: a phone card</div>{{ render_project_info(project) }}</div>
+      <div class="mw-100" style="width: 14rem; container: stats / inline-size"><div class="small text-muted mb-1">14rem: a nested card</div>{{ render_project_info(project) }}</div>
     </div>
   {% endcall %}
 </section>

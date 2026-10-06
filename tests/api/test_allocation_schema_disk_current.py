@@ -58,6 +58,32 @@ def _disk_alloc(session, *, amount_tib: float = 100.0):
 
 class TestAllocationDiskCurrentFields:
 
+    def test_a_reused_instance_reads_capacity_afresh_on_every_dump(self, session):
+        """The capacity memo lives for one dump: a reused schema must not serve a stale snapshot."""
+        user, project, account, alloc = _disk_alloc(session, amount_tib=100.0)
+        snap_date = next_date("disk_snap")
+        alloc.start_date = datetime(snap_date.year - 1, 1, 1)
+        alloc.end_date = datetime(snap_date.year + 1, 1, 1)
+        session.flush()
+        _ensure_status(session, snap_date)
+        row = DiskChargeSummary(
+            activity_date=snap_date, user_id=user.user_id, account_id=account.account_id,
+            username=user.username, bytes=47 * BYTES_PER_TIB, terabyte_years=0.5,
+            charges=0.5, number_of_files=1,
+        )
+        session.add(row)
+        session.flush()
+        _mark_current(session, snap_date)
+
+        schema = AllocationWithUsageSchema()
+        schema.context = {'account': account, 'session': session, 'include_adjustments': True}
+        assert schema.dump(alloc)['used'] == pytest.approx(47.0)
+
+        row.bytes = 50 * BYTES_PER_TIB
+        session.flush()
+        assert schema.dump(alloc)['used'] == pytest.approx(50.0)
+        assert not hasattr(schema, '_disk_caps')
+
     def test_disk_allocation_has_current_used_fields(self, session):
         user, project, account, alloc = _disk_alloc(session, amount_tib=100.0)
         # Worker-unique snapshot date so xdist workers don't collide on

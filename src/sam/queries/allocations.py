@@ -24,7 +24,8 @@ from typing import Any, List, Optional, Dict, Tuple, Union
 from sqlalchemy import or_, func
 from sqlalchemy.orm import Session, noload
 
-from sam.accounting.calculator import anchor_sums, get_charge_models_for_activity
+from sam.accounting.calculator import (anchor_sums, anchored_charges, get_charge_models_for_activity,
+                                       usage_anchor)
 
 from sam.core.users import User
 from sam.projects.projects import Project
@@ -813,25 +814,6 @@ def _fetch_all_allocations(
     return query.all()
 
 
-def _usage_anchor(key, project, account, activity_type, start_date, end_date,
-                  resource_type=None) -> Tuple[Dict[str, Any], bool]:
-    """A batch-charge anchor, and whether it takes the subtree path (a valid tree, not a leaf)."""
-    info = {
-        'key': key,
-        'resource_type': resource_type,
-        'activity_type': activity_type,
-        'resource_id': account.resource_id,
-        'account_id': account.account_id,
-        'tree_root': project.tree_root,
-        'tree_left': project.tree_left,
-        'tree_right': project.tree_right,
-        'start_date': start_date,
-        'end_date': end_date,
-    }
-    tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
-    return info, tree_valid and not project.is_leaf()
-
-
 def get_allocation_usage_rows(
     session: Session,
     *,
@@ -856,15 +838,13 @@ def get_allocation_usage_rows(
         overlaps=(window_start, window_end),
     )
 
-    subtree_infos: List[Dict[str, Any]] = []
-    account_infos: List[Dict[str, Any]] = []
+    anchors = []
     for alloc, _rn, res_type, activity_type, _fn, _atn, _pc, project, account in rows:
         if alloc.start_date > as_of_end:
             continue
         end = min(alloc.end_date, as_of_end) if alloc.end_date else as_of_end
-        info, subtree = _usage_anchor(alloc.allocation_id, project, account, activity_type,
-                                      alloc.start_date, end, res_type)
-        (subtree_infos if subtree else account_infos).append(info)
+        anchors.append(usage_anchor(alloc.allocation_id, project, account, activity_type,
+                                    alloc.start_date, end, res_type))
 
     def _used(key):
         c = charges.get(key)
@@ -872,11 +852,7 @@ def get_allocation_usage_rows(
             return 0.0
         return sum(c['charges_by_type'].values()) + (c['adjustment'] if include_adjustments else 0.0)
 
-    charges: Dict[Any, Dict] = {}
-    if subtree_infos:
-        charges.update(Project.batch_get_subtree_charges(session, subtree_infos, include_adjustments))
-    if account_infos:
-        charges.update(Project.batch_get_account_charges(session, account_infos, include_adjustments))
+    charges = anchored_charges(session, anchors, include_adjustments=include_adjustments)
 
     out = []
     for alloc, res_name, _rt, _act, fac_name, at_name, projcode, _proj, _acct in rows:
@@ -918,7 +894,7 @@ def get_allocation_burn(
         hi = min(alloc.end_date or as_of_end, as_of_end, window_end)
         if hi < lo:
             continue
-        info, subtree = _usage_anchor(alloc.allocation_id, project, account, activity_type, lo, hi)
+        info, subtree = usage_anchor(alloc.allocation_id, project, account, activity_type, lo, hi)
         paths['subtree' if subtree else 'account'].setdefault(activity_type, []).append(info)
 
     out: Dict[int, Dict[int, float]] = {}
@@ -974,6 +950,13 @@ def _group_allocations_by_summary_key(
         grouped.setdefault(key, []).append((alloc, res_name, res_type, project, account))
 
     return grouped
+
+
+def _pool_root(alloc: Allocation) -> Optional[Project]:
+    """The project owning a shared allocation's pool, or None when it cannot anchor a subtree."""
+    account = alloc.root.account
+    project = account.project if account else None
+    return project if project is not None and project.has_tree_coordinates() else None
 
 
 def _summary_item_key(item: Dict, resource_name, facility_name, allocation_type, projcode) -> tuple:
@@ -1147,20 +1130,14 @@ def get_allocation_summary_with_usage(
         all_allocations, resource_name, facility_name, allocation_type, projcode
     )
 
-    # Collect all allocation infos for batch charge computation.
-    # This replaces per-allocation project.get_subtree_charges() / get_charges_by_resource_type()
-    # calls (N scalar queries) with one query per charge model covering all allocations at once.
-    subtree_infos: List[Dict[str, Any]] = []
-    account_infos: List[Dict[str, Any]] = []
-
+    # One `usage_anchor` per allocation: the kernel sums them in one query per charge model.
+    anchors = []
     for alloc_list in alloc_by_key.values():
         for alloc, res_name, res_type, project, account in alloc_list:
             end_date = min(alloc.end_date, as_of_end) if alloc.end_date else as_of_end
-            # A leaf's subtree is itself, so it takes the faster account path.
-            info, subtree = _usage_anchor(alloc.allocation_id, project, account,
-                                          account_activity.get(alloc.account_id),
-                                          alloc.start_date, end_date, res_type)
-            (subtree_infos if subtree else account_infos).append(info)
+            anchors.append(usage_anchor(alloc.allocation_id, project, account,
+                                        account_activity.get(alloc.account_id),
+                                        alloc.start_date, end_date, res_type))
 
     # Read-model short-circuit (docs/plans/implemented/READ_MODEL.md): rows the hourly task
     # wrote stand in for the batched rollups, the root anchors and the disk
@@ -1182,19 +1159,15 @@ def get_allocation_summary_with_usage(
         for alloc, res_name, res_type, project, account in alloc_list:
             if not alloc.is_inheriting:
                 continue
-            root_alloc = alloc.root
-            root_account = root_alloc.account
-            root_project = root_account.project if root_account else None
+            root_project = _pool_root(alloc)
             if root_project is None:
                 continue
-            if not (root_project.tree_root and root_project.tree_left and root_project.tree_right):
-                continue
             root_projcode_by_alloc_id[alloc.allocation_id] = root_project.projcode
-            root_info, _ = _usage_anchor(
+            root_info, _ = usage_anchor(
                 ('root', alloc.allocation_id), root_project, account,
                 account_activity.get(alloc.account_id), alloc.start_date,
                 min(alloc.end_date, as_of_end) if alloc.end_date else as_of_end, res_type)
-            subtree_infos.append(root_info)
+            anchors.append((root_info, True))
 
     # Batch compute all charges in O(charge_models × date_groups) SQL queries
     all_charges: Dict[Any, Dict] = {}
@@ -1209,10 +1182,7 @@ def get_allocation_summary_with_usage(
                     'charges_by_type': {'pool': row.used}, 'adjustment': 0.0}
                 root_projcode_by_alloc_id[alloc.allocation_id] = row.root_projcode
     else:
-        if subtree_infos:
-            all_charges.update(Project.batch_get_subtree_charges(session, subtree_infos, include_adjustments))
-        if account_infos:
-            all_charges.update(Project.batch_get_account_charges(session, account_infos, include_adjustments))
+        all_charges.update(anchored_charges(session, anchors, include_adjustments=include_adjustments))
 
     # Bulk-resolve disk capacity for every all-disk row at once. The
     # `get_subtree_disk_capacity` walk is expensive (per-account snapshot
@@ -1221,6 +1191,7 @@ def get_allocation_summary_with_usage(
     # Collect the (project, resource_name) pairs we'll need and resolve
     # them in a single fixed-size set of queries.
     disk_capacity_pairs: List[Tuple['Project', str]] = []
+    pool_root_by_pair: Dict[Tuple[int, str], int] = {}
     for alloc_list in alloc_by_key.values():
         if not alloc_list:
             continue
@@ -1232,18 +1203,31 @@ def get_allocation_summary_with_usage(
             only_project = next(iter(unique_projects.values()))
             only_resource = next(iter(unique_resources))
             disk_capacity_pairs.append((only_project, only_resource))
+            # A shared row's pool is its root's subtree capacity (the dashboard builder's rule).
+            roots = {_pool_root(alloc) for alloc, *_ in alloc_list if alloc.is_inheriting}
+            if len(roots) == 1 and None not in roots:
+                root = roots.pop()
+                disk_capacity_pairs.append((root, only_resource))
+                pool_root_by_pair[(only_project.project_id, only_resource)] = root.project_id
     from sam.queries.disk_usage import _EMPTY_CAP
+    pool_caps: Dict[Tuple[int, str], Dict[str, Any]] = {}
     if state is not None:
         disk_caps = {}
         for alloc, res_name, res_type, project, account in (
                 t for group in alloc_by_key.values() for t in group):
             row = state[alloc.allocation_id]
             if res_type == 'DISK' and row.activity_date is not None:
+                own = row.self_used if row.is_inheriting else row.used
                 disk_caps[(project.project_id, res_name)] = {
-                    'used_tib': row.used, 'activity_date': row.activity_date}
+                    'used_tib': own, 'activity_date': row.activity_date}
+                if row.is_inheriting:
+                    pool_caps[(project.project_id, res_name)] = {
+                        'used_tib': row.used, 'activity_date': row.activity_date}
     elif disk_capacity_pairs:
         from sam.queries.disk_usage import bulk_get_subtree_disk_capacity
         disk_caps = bulk_get_subtree_disk_capacity(session, disk_capacity_pairs)
+        for (pid, res), root_id in pool_root_by_pair.items():
+            pool_caps[(pid, res)] = disk_caps.get((root_id, res), _EMPTY_CAP)
     else:
         disk_caps = {}
 
@@ -1335,9 +1319,12 @@ def get_allocation_summary_with_usage(
                 cap = disk_caps.get(
                     (only_project.project_id, only_resource), _EMPTY_CAP,
                 )
-                capacity_used = cap['used_tib']
-                activity_date = cap['activity_date']
+                own_used = cap['used_tib']
+                pool = pool_caps.get((only_project.project_id, only_resource)) if item.get('is_inheriting') else None
+                capacity_used = (pool or cap)['used_tib']
+                activity_date = (pool or cap)['activity_date']
             else:
+                own_used = None
                 capacity_used = 0.0
                 activity_date = None
                 for _, _, _, _, account in item_allocations:
@@ -1353,8 +1340,11 @@ def get_allocation_summary_with_usage(
                 if item['total_allocated'] > 0 else 0
             )
             if 'self_used' in item:
-                item['self_used'] = capacity_used
-                item['self_percent_used'] = item['percent_used']
+                item['self_used'] = capacity_used if own_used is None else own_used
+                item['self_percent_used'] = (
+                    (item['self_used'] / item['total_allocated'] * 100)
+                    if item['total_allocated'] > 0 else 0
+                )
             item['activity_date'] = activity_date
 
     return summary

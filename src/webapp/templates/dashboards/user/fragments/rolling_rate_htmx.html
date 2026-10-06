@@ -35,18 +35,14 @@
     {% set scale_max = 200 %}
     {% set center_pos = 50 %}
 
-    {# Grid wrapper: col1=label(4rem) col2=bar(1fr) col3=annotations(auto)
-           col4=limit action(auto).  All rows — both bars + scale — share the
-           same column widths so 0%/100%/200% align with the bar edges, and the
-           col4 action buttons line up vertically regardless of the variable
-           "running hot/cold" annotation width in col3. #}
-    <div style="display:grid; grid-template-columns:4rem 1fr auto auto; column-gap:0.5rem; row-gap:3px; align-items:center;">
+    {# One grid for both bars and the scale (label, bar, annotation, limit action), so
+       0%/100%/200% align with the bar edges and the limit buttons line up. #}
+    <div class="rate-grid">
 
     {% for label, win, win_days in [('30-day', rolling_30, 30), ('90-day', rolling_90, 90)] %}
     {% if win %}
     {%   set pct = win.pct_of_prorated %}
 
-    {# Hot/cold state #}
     {%   if win.threshold_pct is not none and pct >= win.threshold_pct %}
     {%     set state = 'over_limit' %}
     {%   elif pct < 80 %}
@@ -56,75 +52,41 @@
     {%   else %}
     {%     set state = 'hot' %}
     {%   endif %}
-
-    {# Bar fill color #}
-    {%   if state == 'cold' %}
-    {%     set fill_color = 'var(--bs-info)' %}
-    {%   elif state == 'steady' %}
-    {%     set fill_color = 'var(--bs-success)' %}
-    {%   elif state == 'hot' %}
-    {%     set fill_color = 'var(--bs-orange)' %}
-    {%   else %}
-    {%     set fill_color = 'var(--bs-danger)' %}
-    {%   endif %}
-
-    {# Badge color class #}
-    {%   if state == 'cold' %}
-    {%     set badge_class = 'bg-info text-dark' %}
-    {%   elif state == 'steady' %}
-    {%     set badge_class = 'bg-success' %}
-    {%   elif state == 'hot' %}
-    {%     set badge_class = 'bg-warning text-dark' %}
-    {%   else %}
-    {%     set badge_class = 'bg-danger' %}
-    {%   endif %}
-
-    {# Hot/cold label #}
-    {%   if state == 'cold' %}
-    {%     set state_label = 'running cold' %}
-    {%   elif state == 'steady' %}
-    {%     set state_label = 'near steady' %}
-    {%   else %}
-    {%     set state_label = 'running hot' %}
-    {%   endif %}
+    {%   set badge_class = {'cold': 'bg-info text-dark', 'steady': 'bg-success',
+                            'hot': 'bg-warning text-dark'}.get(state, 'bg-danger') %}
+    {%   set state_label = {'cold': 'running cold', 'steady': 'near steady'}.get(state, 'running hot') %}
 
     {# Fill geometry: cold fills left of center; hot fills right #}
     {%   if pct <= 100 %}
-    {%     set fill_left_pct  = (pct / scale_max * 100) | round(3) %}
-    {%     set fill_width_pct = (center_pos - fill_left_pct) | round(3) %}
-    {%     set fill_start     = fill_left_pct %}
+    {%     set fill_start = (pct / scale_max * 100) | round(3) %}
+    {%     set fill_width_pct = (center_pos - fill_start) | round(3) %}
     {%   else %}
-    {%     set fill_start     = center_pos %}
+    {%     set fill_start = center_pos %}
     {%     set fill_width_pct = (([pct, scale_max] | min) / scale_max * 100 - center_pos) | round(3) %}
     {%   endif %}
-
-    {# Threshold marker position for this bar #}
     {%   if win.threshold_pct is not none %}
     {%     set thresh_pos = (win.threshold_pct / scale_max * 100) | round(3) %}
     {%   endif %}
 
-        {# col 1: label #}
-        <span class="fw-semibold text-nowrap" style="font-size:0.82rem;">{{ label }}</span>
+        <span class="rate-label fw-semibold text-nowrap">{{ label }}</span>
 
-        {# col 2: thermometer bar #}
-        <div class="position-relative" style="height:18px; background:var(--surface-secondary); border-radius:4px; overflow:visible;">
-            <div style="position:absolute; left:0; top:0; height:100%; width:{{ center_pos }}%; background:rgba(var(--bs-info-rgb),0.08); border-radius:4px 0 0 4px;"></div>
-            <div style="position:absolute; left:{{ center_pos }}%; top:0; height:100%; width:{{ center_pos }}%; background:color-mix(in srgb, var(--bs-orange) 8%, transparent); border-radius:0 4px 4px 0;"></div>
-            <div style="position:absolute; left:{{ fill_start }}%; top:0; height:100%; width:{{ fill_width_pct }}%; background:{{ fill_color }}; border-radius:4px; opacity:0.85;"></div>
-            <div style="position:absolute; left:{{ center_pos }}%; top:-2px; bottom:-2px; width:2px; background:var(--text-primary); opacity:0.75;" title="100% = steady-state"></div>
+        <div class="rate-gauge">
+            <div class="rate-zone rate-zone-cold"></div>
+            <div class="rate-zone rate-zone-hot"></div>
+            <div class="rate-fill rate-{{ state }}" style="--fill-start: {{ fill_start }}%; --fill-w: {{ fill_width_pct }}%;"></div>
+            <div class="rate-pace" title="100% = steady-state"></div>
             {% if win.threshold_pct is not none and thresh_pos > center_pos %}
-            <div style="position:absolute; left:{{ thresh_pos }}%; top:-2px; bottom:-2px; width:0; border-left:2px dashed var(--bs-danger); opacity:0.85;" title="{{ win.threshold_pct }}% limit"></div>
-            <span style="position:absolute; left:{{ thresh_pos }}%; top:50%; transform:translate(-50%,-50%); font-size:0.6rem; font-weight:600; color:var(--bs-danger); background:rgba(var(--surface-card-rgb),0.82); padding:0 3px; border-radius:2px; white-space:nowrap; pointer-events:none; z-index:1;">{{ win.threshold_pct }}%</span>
+            <div class="rate-limit" style="--thresh: {{ thresh_pos }}%;" title="{{ win.threshold_pct }}% limit"></div>
+            <span class="rate-limit-label" style="--thresh: {{ thresh_pos }}%;">{{ win.threshold_pct }}%</span>
             {% endif %}
         </div>
 
-        {# col 3: badge + annotation #}
-        <div class="d-flex align-items-center gap-1 text-nowrap">
+        <div class="d-flex flex-wrap align-items-center gap-1">
             {% if state == 'over_limit' %}
             <span class="badge bg-danger"><i class="fa-solid fa-triangle-exclamation me-1"></i>over {{ win.threshold_pct }}% lim</span>
             {% endif %}
             <span class="badge {{ badge_class }}">{{ pct | fmt_pct }}</span>
-            <span class="text-muted" style="font-size:0.78rem;">
+            <span class="rate-note text-muted">
                 {{ win.charges | fmt_number }} AU
                 {% if rolling_is_inheriting and win.self_charges is not none %}
                 <span title="This project's own contribution to the shared pool">({{ win.self_charges | fmt_number }} yours)</span>
@@ -133,30 +95,18 @@
             </span>
         </div>
 
-        {# col 4: limit action + help — its own grid column so the buttons line
-           up vertically across rows regardless of the col-3 annotation width.
-           Threshold edit lives on the master allocation's account, not the
-           child's — the displayed pct is pool burn, so a child-side threshold
-           is never compared against. Hide the edit button on inheriting
-           projects; users edit via the master parent project. #}
+        {# Threshold edits live on the master allocation's account: the shown pct is
+           pool burn, so an inheriting project's own threshold is never compared. #}
         <div class="d-flex align-items-center gap-1 text-nowrap">
             {% if can_edit_threshold and not rolling_is_inheriting %}
             <span id="threshold-btn-{{ win_days }}d-{{ projcode }}">
-                {% if win.threshold_pct is none %}
-                <button class="btn btn-outline-secondary py-0 px-1"
-                        style="font-size:0.68rem; line-height:1.4;"
+                {% set verb = ('Add a ' if win.threshold_pct is none else 'Edit the ') ~ win_days ~ '-day rate limit' %}
+                <button type="button" class="btn btn-row{{ ' btn-row-attention' if win.threshold_pct is not none }}"
+                        title="{{ verb }}" aria-label="{{ verb }}"
                         hx-get="{{ url_for('user_dashboard.htmx_threshold_form', projcode=projcode, resource_name=resource_name, window=win_days) }}"
                         hx-target="this" hx-swap="outerHTML">
-                    + limit
+                    <i class="fa-solid {{ 'fa-plus' if win.threshold_pct is none else 'fa-pencil' }}"></i>
                 </button>
-                {% else %}
-                <button class="btn btn-outline-warning py-0 px-1"
-                        style="font-size:0.68rem; line-height:1.4;"
-                        hx-get="{{ url_for('user_dashboard.htmx_threshold_form', projcode=projcode, resource_name=resource_name, window=win_days) }}"
-                        hx-target="this" hx-swap="outerHTML">
-                    <i class="fa-solid fa-pencil fa-xs"></i> limit
-                </button>
-                {% endif %}
             </span>
             {{ help_icon(g_threshold_limit(window=win_days), rich=True,
                          title='Consumption Rate Limit', placement='left') }}
@@ -166,12 +116,12 @@
     {% endif %}
     {% endfor %}
 
-        {# Scale row — col1: empty spacer, col2: tick labels, col3+col4: nothing #}
+        {# Scale row: spacer, tick labels under the bar, two empty cells #}
         <span></span>
-        <div class="position-relative" style="height:1.1rem; font-size:0.65rem; color:var(--text-secondary); margin-top:1px;">
-            <span style="position:absolute; left:0;">0%</span>
-            <span style="position:absolute; left:{{ center_pos }}%; transform:translateX(-50%);">&#9650; 100%</span>
-            <span style="position:absolute; right:0;">200%</span>
+        <div class="rate-scale">
+            <span>0%</span>
+            <span class="rate-scale-mid">&#9650; 100%</span>
+            <span class="rate-scale-end">200%</span>
         </div>
         <span></span>
         <span></span>

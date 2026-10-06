@@ -35,6 +35,7 @@ from sam.queries.charges import (
 )
 from sam.accounting.adjustments import ChargeAdjustmentType
 from sam.queries.dashboard import (
+    DashboardResource,
     _build_project_resources_data,
     allocation_timeline,
     build_user_projects_resources_batched,
@@ -279,68 +280,39 @@ class TestDashboardQueries:
         shown = usage[hpc_resource.resource_name]
         assert (shown['allocated'], shown['end_date']) == (100.0, ended.end_date)
 
-    def test_user_dashboard_batched_matches_per_project(
+    def test_rows_carry_the_dashboard_resource_shape_and_reshape_losslessly(
         self, session, multi_project_user
     ):
-        """Equivalence check: the batched helper must agree field-by-field
-        with the per-project loop for the same user at the same instant.
+        """Every builder row is exactly the `DashboardResource` contract, and
+        `Project.get_detailed_allocation_usage` keeps each figure it reshapes.
         """
         projects = sorted(multi_project_user.active_projects(), key=lambda p: p.projcode)
         assert projects, "multi_project_user fixture returned user with no active projects"
-
         active_at = datetime.now()
 
-        batched = build_user_projects_resources_batched(
-            session, projects, active_at=active_at,
-        )
+        batched = build_user_projects_resources_batched(session, projects, active_at=active_at)
+        contract = DashboardResource.__required_keys__ | DashboardResource.__optional_keys__
+        rows = [r for rs in batched.values() for r in rs]
+        assert rows
+        for row in rows:
+            assert set(row) == contract, f"{row['resource_name']}: {set(row) ^ contract}"
 
-        SCALAR_FIELDS = (
-            'resource_name', 'allocation_id', 'parent_allocation_id',
-            'is_inheriting', 'account_id', 'status', 'start_date', 'end_date',
-            'days_until_expiration', 'date_group_key', 'bar_state',
-            'resource_type', 'root_projcode', 'activity_date',
+        SHARED_FIELDS = (
+            'allocation_id', 'parent_allocation_id', 'is_inheriting', 'account_id',
+            'resource_type', 'allocated', 'used', 'remaining', 'percent_used',
+            'charges_by_type', 'adjustments', 'start_date', 'end_date',
         )
-        FLOAT_FIELDS = (
-            'allocated', 'used', 'remaining', 'percent_used',
-            'adjustments', 'elapsed_pct',
-        )
-        # Optional float fields: present-and-equal, or None on both sides.
-        OPTIONAL_FLOAT_FIELDS = ('self_used', 'self_percent_used')
-        FLOAT_TOL = 1e-6
-
         for project in projects:
-            per_project = sorted(
-                _build_project_resources_data(project, active_at=active_at),
-                key=lambda r: r['resource_name'],
-            )
-            from_batch = batched.get(project.project_id, [])
-
-            assert len(per_project) == len(from_batch), (
-                f"{project.projcode}: batched returned {len(from_batch)}, "
-                f"per-project returned {len(per_project)}"
-            )
-            for pp, bb in zip(per_project, from_batch):
-                ctx = f"{project.projcode}/{pp['resource_name']}"
-                for f in SCALAR_FIELDS:
-                    assert pp[f] == bb[f], f"{ctx}: {f} differs ({pp[f]!r} vs {bb[f]!r})"
-                for f in FLOAT_FIELDS:
-                    assert abs(float(pp[f]) - float(bb[f])) < FLOAT_TOL, (
-                        f"{ctx}: {f} differs ({pp[f]} vs {bb[f]})"
-                    )
-                for f in OPTIONAL_FLOAT_FIELDS:
-                    if pp[f] is None or bb[f] is None:
-                        assert pp[f] == bb[f], (
-                            f"{ctx}: {f} differs ({pp[f]!r} vs {bb[f]!r})"
-                        )
-                    else:
-                        assert abs(float(pp[f]) - float(bb[f])) < FLOAT_TOL, (
-                            f"{ctx}: {f} differs ({pp[f]} vs {bb[f]})"
-                        )
-                assert set(pp['charges_by_type'].keys()) == set(bb['charges_by_type'].keys())
-                for k in pp['charges_by_type']:
-                    assert abs(pp['charges_by_type'][k] - bb['charges_by_type'][k]) < FLOAT_TOL
-                assert pp['rolling_30'] == bb['rolling_30']
-                assert pp['rolling_90'] == bb['rolling_90']
+            usage = project.get_detailed_allocation_usage(active_at=active_at)
+            by_name = {r['resource_name']: r for r in batched[project.project_id]}
+            assert set(usage) == set(by_name), project.projcode
+            for name, item in usage.items():
+                ctx = f"{project.projcode}/{name}"
+                for f in SHARED_FIELDS:
+                    assert item[f] == by_name[name][f], f"{ctx}: {f} differs"
+                if item['is_inheriting']:
+                    for f in ('self_used', 'self_percent_used', 'root_projcode'):
+                        assert item[f] == by_name[name][f], f"{ctx}: {f} differs"
 
     def test_get_resource_detail_data_daily_charges(
         self, session, active_project, hpc_resource

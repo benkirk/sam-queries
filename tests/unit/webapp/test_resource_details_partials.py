@@ -387,3 +387,81 @@ class TestResourceDetailsAccessControl:
             f'/user/resource-details/{active_project.projcode}?resource=Derecho'
         )
         assert resp.status_code not in (401, 403)
+
+
+class TestSummaryRow:
+    """The summary row renders through allocation_cells, with the elapsed tick."""
+
+    @staticmethod
+    def _compute_resource(project):
+        usage = project.get_detailed_allocation_usage()
+        name = next((n for n, r in usage.items()
+                     if r['resource_type'] in ('HPC', 'DAV') and not r['is_inheriting']), None)
+        if name is None:
+            pytest.skip('active_project holds no dedicated compute allocation')
+        return name
+
+    def test_detail_data_carries_the_timeline(self, session, active_project):
+        from datetime import datetime, timedelta
+        from sam.queries.dashboard import get_resource_detail_data
+        name = self._compute_resource(active_project)
+        end = datetime.now()
+        summary = get_resource_detail_data(session, active_project.projcode, name,
+                                           end - timedelta(days=30), end)['resource_summary']
+        assert summary['is_inheriting'] is False
+        assert summary['bar_state'] and summary['elapsed_pct'] is not None
+
+    def test_page_draws_the_house_meter(self, auth_client, active_project):
+        name = self._compute_resource(active_project)
+        resp = auth_client.get(f'/user/resource-details/{active_project.projcode}?resource={name}')
+        assert resp.status_code == 200
+        body = resp.get_data(as_text=True)
+        assert 'share-bar meter' in body and 'has-elapsed' in body
+        assert 'progress-bar' not in body
+
+
+class TestDiskFilesets:
+    """The Filesets card: a path link per row with a copy icon, never a navigate row."""
+
+    def test_rows_link_and_copy_their_path(self, auth_client, session, monkeypatch):
+        from sam import Account, Project, Resource
+        row = (session.query(Project.projcode, Resource.resource_name)
+               .join(Account, Account.project_id == Project.project_id)
+               .join(Resource, Resource.resource_id == Account.resource_id)
+               .filter(Project.is_active, Account.is_active, Resource.resource_name == 'Campaign_Store')
+               .first())
+        if row is None:
+            pytest.skip('snapshot has no project on Campaign_Store')
+        projcode, resource = row
+        dirs = [{'name': '/gpfs/csfs1/a/very/long/fileset/path', 'bytes': 3 * 1024 ** 4,
+                 'files': 10, 'projcode': projcode},
+                {'name': '/gpfs/csfs1/b', 'bytes': 1024 ** 4, 'files': 5, 'projcode': projcode}]
+        monkeypatch.setattr('webapp.dashboards.user.blueprint.get_subtree_directory_usage_at',
+                            lambda *a, **k: dirs)
+        body = auth_client.get(f'/user/resource-details/{projcode}?resource={resource}').get_data(as_text=True)
+        assert 'id="collapseDiskFilesets"' in body
+        assert 'data-copy="/gpfs/csfs1/a/very/long/fileset/path"' in body
+        assert 'data-action="navigate"' not in body
+        assert 'share-bar' in body
+
+
+class TestDiskCapacityRow:
+    """A scope drawing on another project's pool reads as a shared row, not as the pool's owner."""
+
+    def test_a_shared_scope_shows_the_pools_remaining(self, auth_client, session):
+        from sam import Account, Allocation, Project, Resource, ResourceType
+        row = (session.query(Project.projcode, Resource.resource_name)
+               .join(Account, Account.project_id == Project.project_id)
+               .join(Resource, Resource.resource_id == Account.resource_id)
+               .join(ResourceType, ResourceType.resource_type_id == Resource.resource_type_id)
+               .join(Allocation, Allocation.account_id == Account.account_id)
+               .filter(Project.is_active, Account.is_active, Allocation.is_active,
+                       Allocation.parent_allocation_id.isnot(None),
+                       ResourceType.resource_type == 'DISK')
+               .first())
+        if row is None:
+            pytest.skip('snapshot has no inheriting disk allocation')
+        projcode, resource = row
+        body = auth_client.get(f'/user/resource-details/{projcode}?resource={resource}').get_data(as_text=True)
+        assert 'id="collapseDiskCapacity"' in body
+        assert 'has-pool' in body and 'pool remaining' in body

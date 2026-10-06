@@ -55,15 +55,6 @@
     background: var(--surface-tertiary);
 }
 
-/* Chevron affordance on the collapsible card header. */
-.access-grid-chevron {
-    transition: transform 0.15s ease;
-}
-
-.access-grid-toggle.collapsed .access-grid-chevron {
-    transform: rotate(-90deg);
-}
-
 /* ===================================================================
    Notification template editor (Admin > Notifications > Templates)
    =================================================================== */

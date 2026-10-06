@@ -9,9 +9,8 @@ from ..accounting.adjustments import *
 from ..resources.resources import *
 from ..summaries.comp_summaries import *
 from ..summaries.dav_summaries import *
-from ..accounting.calculator import (batch_charges, calculate_charges,
-                                     get_charge_models_for_activity,
-                                     get_compute_charge_model_for_activity)
+from ..accounting.calculator import (anchor_sums, get_compute_charge_model_for_activity,
+                                     usage_anchor)
 from ..enums import ResourceTypeName
 
 from typing import Any
@@ -733,198 +732,54 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
     def get_detailed_allocation_usage(self,
                                       resource_name: Optional[str] = None,
                                       include_adjustments: bool = True,
-                                      hierarchical: bool = True,
-                                      active_at: Optional[datetime] = None) -> Dict[str, Dict[str, any]]:
-        """
-        Calculate allocation usage and remaining balance across all resource types.
-
-        Args:
-            resource_name: Optional filter for specific resource (e.g., 'Derecho', 'GLADE')
-            include_adjustments: Whether to include manual charge adjustments
-            hierarchical: If True, aggregate usage from this project and all descendants (sub-projects).
-                          If False, only count usage for this specific project.
-            active_at: Reference datetime for determining which allocation is "active".
-                       Defaults to now.
-
-        Returns:
-            Dict mapping resource_name to usage details.
-        """
+                                      active_at: Optional[datetime] = None) -> Dict[str, Dict[str, Any]]:
+        """Usage by resource name: the dashboard builder's rows for this project, plus job statistics."""
+        from sam.queries.dashboard import build_user_projects_resources_batched
+        rows = build_user_projects_resources_batched(
+            self.session, [self], active_at=active_at, include_adjustments=include_adjustments,
+            resource_name=resource_name, with_project_metadata=False,
+        ).get(self.project_id, [])
         now = active_at or datetime.now()
-        results = {}
+        accounts = {a.account_id: a for a in self.accounts}
 
-        # Check if tree structure is valid for hierarchical queries
-        is_tree_valid = bool(self.tree_root and self.tree_left and self.tree_right)
-        use_hierarchy = hierarchical and is_tree_valid
-
-        # Get accounts with eager loading
-        query = self.session.query(Account).options(joinedload(Account.allocations),
-                                                    joinedload(Account.resource).joinedload(Resource.resource_type),
-                                                    joinedload(Account.charge_adjustments) if include_adjustments else None
-                                                    ).filter(Account.project_id == self.project_id,
-                                                             Account.deleted == False
-                                                             )
-
-        if resource_name:
-            query = query.join(Resource).filter(Resource.resource_name == resource_name)
-
-        for account in query.all():
-            if not account.resource:
-                continue
-
-            resource = account.resource.resource_name
-            resource_type = account.resource.resource_type.resource_type if account.resource.resource_type else 'UNKNOWN'
-            # Charges/job-stats route by activity_type (the single authoritative
-            # table), NOT resource_type. resource_type still drives the DISK
-            # snapshot override below.
-            activity_type = account.resource.activity_type
-
-            # The active allocation, else one that ended within 90 days —
-            # the rule the dashboards' batched builder shares.
-            query_alloc = account.display_allocation(now)
-            if not query_alloc:
-                continue
-
-            start_date = query_alloc.start_date
-            end_date = query_alloc.end_date or now
-
-            # Determine usage (Charges)
-            if use_hierarchy:
-                charges_by_type = self.get_subtree_charges(account.resource_id,
-                                                           activity_type,
-                                                           start_date,
-                                                           end_date)
-            else:
-                charges_by_type = self.get_charges_by_resource_type(account.account_id,
-                                                                    activity_type,
-                                                                    start_date,
-                                                                    end_date)
-
-            # Calculate adjustment total
-            adjustments = 0.0
+        results: Dict[str, Dict[str, Any]] = {}
+        job_anchors = []
+        for row in rows:
+            name = row['resource_name']
+            start_date, end_date = row['start_date'], row['end_date']
+            item = {k: row[k] for k in (
+                'allocation_id', 'parent_allocation_id', 'is_inheriting', 'account_id', 'resource_type',
+                'allocated', 'used', 'remaining', 'percent_used', 'charges_by_type', 'start_date', 'end_date')}
+            item['days_elapsed'] = (now - start_date).days
+            item['days_remaining'] = (end_date - now).days if end_date else None
+            item['days_total'] = (end_date - start_date).days if end_date else None
+            if row['is_inheriting']:
+                item['self_used'] = row['self_used']
+                item['self_percent_used'] = row['self_percent_used']
+                item['root_projcode'] = row['root_projcode']
             if include_adjustments:
-                if use_hierarchy:
-                    adjustments = self.get_subtree_adjustments(account.resource_id,
-                                                               start_date,
-                                                               end_date)
-                else:
-                    adjustments = self.get_adjustments(account.account_id,
-                                                       start_date,
-                                                       end_date)
+                item['adjustments'] = row['adjustments']
+            if row['activity_date'] is not None:
+                item['activity_date'] = row['activity_date']
+            results[name] = item
 
-            # Calculate totals
-            allocated = float(query_alloc.amount)
-            total_charges = sum(charges_by_type.values())
-            effective_used = total_charges + adjustments
-            # `effective_used` here represents this project's subtree
-            # contribution to a (possibly shared) allocation pool. When the
-            # allocation is inheriting, the authoritative pool consumption
-            # lives at the root allocation's project subtree — compute it
-            # so the UI shows truth instead of just self-share.
-            self_used = effective_used
-            tree_used = effective_used
-            root_projcode = None
-            if query_alloc.is_inheriting:
-                root_alloc = query_alloc.root
-                root_account = root_alloc.account
-                root_project = root_account.project if root_account else None
-                if root_project is not None and root_project.tree_root \
-                        and root_project.tree_left and root_project.tree_right:
-                    root_charges = root_project.get_subtree_charges(
-                        account.resource_id, activity_type, start_date, end_date)
-                    root_total = sum(root_charges.values())
-                    if include_adjustments:
-                        root_total += root_project.get_subtree_adjustments(
-                            account.resource_id, start_date, end_date)
-                    tree_used = root_total
-                    root_projcode = root_project.projcode
+            account = accounts.get(row['account_id'])
+            activity_type = account.resource.activity_type if account and account.resource else None
+            if get_compute_charge_model_for_activity(activity_type) is not None:
+                item['total_jobs'], item['total_core_hours'] = 0, 0.0
+                job_anchors.append(usage_anchor(name, self, account, activity_type,
+                                                start_date, end_date or now))
 
-            effective_used = tree_used
-            remaining = allocated - effective_used
-            percent_used = (effective_used / allocated * 100) if allocated > 0 else 0
-            self_percent_used = (self_used / allocated * 100) if allocated > 0 else 0
-
-            # Calculate time metrics
-            days_elapsed = (now - query_alloc.start_date).days
-            days_remaining = None
-            days_total = None
-            if query_alloc.end_date:
-                days_remaining = (query_alloc.end_date - now).days
-                days_total = (query_alloc.end_date - query_alloc.start_date).days
-
-            # Get job statistics (primarily for HPC/DAV)
-            if use_hierarchy:
-                total_jobs, total_core_hours = self.get_subtree_job_statistics(account.resource_id,
-                                                                               activity_type,
-                                                                               start_date,
-                                                                               end_date)
-            else:
-                total_jobs, total_core_hours = self.get_job_statistics(account.account_id,
-                                                                       activity_type,
-                                                                       start_date,
-                                                                       end_date)
-
-            result = {
-                'allocation_id': query_alloc.allocation_id,
-                'parent_allocation_id': query_alloc.parent_allocation_id,
-                'is_inheriting': query_alloc.is_inheriting,
-                'account_id': account.account_id,
-                'resource_type': resource_type,
-                'allocated': allocated,
-                'used': effective_used,
-                'remaining': remaining,
-                'percent_used': percent_used,
-                'charges_by_type': charges_by_type,
-                'start_date': query_alloc.start_date,
-                'end_date': query_alloc.end_date,
-                'days_elapsed': days_elapsed,
-                'days_remaining': days_remaining,
-                'days_total': days_total,
-                'hierarchical': use_hierarchy
-            }
-
-            # When the allocation is shared (inheriting), surface this
-            # project's own contribution and the root projcode so the UI
-            # can render a two-tone bar / inline annotation. Non-inheriting
-            # allocations keep the original shape.
-            if query_alloc.is_inheriting:
-                result['self_used'] = self_used
-                result['self_percent_used'] = self_percent_used
-                result['root_projcode'] = root_projcode
-
-            if include_adjustments:
-                result['adjustments'] = adjustments
-
-            if total_jobs is not None:
-                result['total_jobs'] = total_jobs
-                result['total_core_hours'] = total_core_hours
-
-            results[resource] = result
-
-        # Disk resources need a different "% used" — point-in-time TiB
-        # capacity (snapshot bytes / allocated TiB), not cumulative
-        # TiB-yr burn. Apply the override in one bulk pass so the helper
-        # is the single source of truth across CLI, API, admin tree
-        # view, and the single-project dashboard path. `charges_by_type`
-        # stays TiB-yr for billing-side consumers.
-        disk_names = [name for name, r in results.items()
-                      if r.get('resource_type') == 'DISK']
-        if disk_names:
-            from sam.queries.disk_usage import bulk_get_subtree_disk_capacity
-            caps = bulk_get_subtree_disk_capacity(
-                self.session, [(self, name) for name in disk_names],
-            )
-            for name in disk_names:
-                cap = caps.get((self.project_id, name))
-                if cap is None:
-                    continue
-                allocated = results[name].get('allocated', 0.0) or 0.0
-                used_tib = cap['used_tib']
-                pct = (used_tib / allocated * 100) if allocated > 0 else 0.0
-                results[name]['used'] = used_tib
-                results[name]['remaining'] = allocated - used_tib
-                results[name]['percent_used'] = pct
-                results[name]['activity_date'] = cap['activity_date']
-
+        groups: Dict[tuple, list] = {}
+        for info, subtree in job_anchors:
+            groups.setdefault((subtree, info['activity_type']), []).append(info)
+        for (subtree, activity_type), infos in groups.items():
+            table = get_compute_charge_model_for_activity(activity_type).__tablename__
+            for column, field, cast in (('num_jobs', 'total_jobs', int),
+                                        ('core_hours', 'total_core_hours', float)):
+                for key, _, amount in anchor_sums(self.session, infos, subtree=subtree, table=table,
+                                                  value=column, date_col='activity_date'):
+                    results[key][field] = cast(amount)
         return results
 
 
@@ -991,153 +846,6 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
             }
         return results
 
-
-    def get_charges_by_resource_type(self,
-                                     account_id: int,
-                                     activity_type: str,
-                                     start_date: datetime,
-                                     end_date: datetime) -> Dict[str, float]:
-        """
-        Sum the resource's authoritative charge table (by activity_type) for one account.
-
-        Returns:
-            Dict of charge type to amount, e.g., {'comp': 1000.0}
-        """
-        return calculate_charges(self.session, [account_id], start_date, end_date, activity_type)
-
-
-    def get_subtree_charges(self,
-                            resource_id: int,
-                            activity_type: str,
-                            start_date: datetime,
-                            end_date: datetime) -> Dict[str, float]:
-        """
-        Aggregate charges for this project AND all descendants (subtree) on a specific resource.
-        """
-        charges = {}
-        models = get_charge_models_for_activity(activity_type)
-
-        for key, ModelClass in models.items():
-            val = self.session.query(func.coalesce(func.sum(ModelClass.charges), 0))\
-                .join(Account, ModelClass.account_id == Account.account_id)\
-                .join(Project, Account.project_id == Project.project_id)\
-                .filter(
-                    Project.tree_root == self.tree_root,
-                    Project.tree_left >= self.tree_left,
-                    Project.tree_right <= self.tree_right,
-                    Account.resource_id == resource_id,
-                    ModelClass.activity_date >= start_date,
-                    ModelClass.activity_date <= end_date
-                ).scalar()
-
-            if val:
-                charges[key] = float(val)
-
-        return charges
-
-
-    def get_adjustments(self,
-                        account_id: int,
-                        start_date: datetime,
-                        end_date: datetime) -> float:
-        """Get total charge adjustments for a single account."""
-        adj_val = self.session.query(func.coalesce(func.sum(ChargeAdjustment.amount), 0))\
-            .filter(
-                ChargeAdjustment.account_id == account_id,
-                ChargeAdjustment.adjustment_date >= start_date,
-                ChargeAdjustment.adjustment_date <= end_date
-            ).scalar()
-        return float(adj_val)
-
-
-    def get_subtree_adjustments(self,
-                                resource_id: int,
-                                start_date: datetime,
-                                end_date: datetime) -> float:
-        """Get total charge adjustments for the project subtree on a resource."""
-        adj_val = self.session.query(func.coalesce(func.sum(ChargeAdjustment.amount), 0))\
-            .join(Account, ChargeAdjustment.account_id == Account.account_id)\
-            .join(Project, Account.project_id == Project.project_id)\
-            .filter(
-                Project.tree_root == self.tree_root,
-                Project.tree_left >= self.tree_left,
-                Project.tree_right <= self.tree_right,
-                Account.resource_id == resource_id,
-                ChargeAdjustment.adjustment_date >= start_date,
-                ChargeAdjustment.adjustment_date <= end_date
-            ).scalar()
-        return float(adj_val)
-
-
-    @classmethod
-    def batch_get_subtree_charges(cls, session, alloc_infos: List[Dict],
-                                  include_adjustments: bool = True) -> Dict[Any, Dict]:
-        """Charges and adjustments per anchor over its project subtree on its resource (`batch_charges`)."""
-        return batch_charges(session, alloc_infos, subtree=True,
-                             include_adjustments=include_adjustments)
-
-    @classmethod
-    def batch_get_account_charges(cls, session, alloc_infos: List[Dict],
-                                  include_adjustments: bool = True) -> Dict[Any, Dict]:
-        """Charges and adjustments per anchor on its own account (`batch_charges`)."""
-        return batch_charges(session, alloc_infos, subtree=False,
-                             include_adjustments=include_adjustments)
-
-
-    def get_job_statistics(self,
-                           account_id: int,
-                           activity_type: str,
-                           start_date: datetime,
-                           end_date: datetime) -> tuple[Optional[int], Optional[float]]:
-        """
-        Get job count and core hours for computational resources (Single Account).
-
-        Returns:
-            Tuple of (total_jobs, total_core_hours) or (None, None)
-        """
-        # The authoritative compute table for this activity_type (comp/dav/hpc), else non-compute.
-        SummaryClass = get_compute_charge_model_for_activity(activity_type)
-        if SummaryClass is None:
-            return None, None
-
-        stats = self.session.query(func.coalesce(func.sum(SummaryClass.num_jobs), 0).label('jobs'),
-                                   func.coalesce(func.sum(SummaryClass.core_hours), 0).label('hours')
-                                   ).filter(SummaryClass.account_id == account_id,
-                                            SummaryClass.activity_date >= start_date,
-                                            SummaryClass.activity_date <= end_date
-                                            ).first()
-
-        return int(stats.jobs), float(stats.hours)
-
-
-    def get_subtree_job_statistics(self,
-                                   resource_id: int,
-                                   activity_type: str,
-                                   start_date: datetime,
-                                   end_date: datetime) -> tuple[Optional[int], Optional[float]]:
-        """
-        Get job count and core hours for computational resources (Subtree Aggregation).
-        """
-        # The authoritative compute table for this activity_type (comp/dav/hpc), else non-compute.
-        SummaryClass = get_compute_charge_model_for_activity(activity_type)
-        if SummaryClass is None:
-            return None, None
-
-        stats = self.session.query(
-                func.coalesce(func.sum(SummaryClass.num_jobs), 0).label('jobs'),
-                func.coalesce(func.sum(SummaryClass.core_hours), 0).label('hours')
-            ).join(Account, SummaryClass.account_id == Account.account_id)\
-             .join(Project, Account.project_id == Project.project_id)\
-             .filter(
-                Project.tree_root == self.tree_root,
-                Project.tree_left >= self.tree_left,
-                Project.tree_right <= self.tree_right,
-                Account.resource_id == resource_id,
-                SummaryClass.activity_date >= start_date,
-                SummaryClass.activity_date <= end_date
-            ).first()
-
-        return int(stats.jobs), float(stats.hours)
 
     def get_root(self) -> Optional['Project']:
         """

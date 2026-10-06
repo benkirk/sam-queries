@@ -28,6 +28,11 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-04 | `36e69595` (base, filters) | 61 / 70 / 33 | 3 (4) | 14 / 46 | 16 (16), 2 kept | 4,714 / 50 / 10 | 216 (80) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 39 |
 | 2026-10-05 | `36e69595` + filters sweep | 52 / 61 / 24 | 3 (4) | 14 / 46 | 16 (16), 2 kept | 4,810 / 50 / 10 | 210 (78) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-05 | `97b8d876` + charts sweep | 50 / 59 / 24 | 2 (3) | 14 / 46 | 16 (16), 2 kept | 4,754 / 50 / 9 | 210 (78) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
+| 2026-10-05 | `2122755e` + sweep 12 (src from the air) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 16 (16), 2 kept | 4,754 / 50 / 9 | 210 (78) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
+| 2026-10-06 | `b682c918` + Resource Details round A | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,736 / 50 / 8 | 183 (74) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
+| 2026-10-06 | `b682c918` + round B (shared-usage grammar) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,750 / 50 / 8 | 183 (74) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
+| 2026-10-06 | `b682c918` + round C (jobs, disk scans, drill macros) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,763 / 50 / 8 | 163 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
+| 2026-10-06 | `5f27d3b7` + round E (mid-word breaks) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,810 / 51 / 8 | 163 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -50,7 +55,8 @@ the allocations follow-ups handoff, item 2.
 
 **Open from this window:**
 
-- [ ] Three leaf-versus-subtree rules: `src/sam/queries/allocations.py` (valid tree and not a leaf),
+- [x] Three leaf-versus-subtree rules (sweep 12: `Project.sums_as_subtree()`; there were four, and
+  they agreed on every row of both snapshots): `src/sam/queries/allocations.py` (valid tree and not a leaf),
   `src/sam/queries/dashboard.py` (`is_leaf()` only), `src/sam/queries/fstree_access.py`
   (coordinates). This is convention drift; pick one rule.
 - [ ] `get_allocation_summary_with_usage(projcode='TOTAL')` issued 1,433 statements in a capture.
@@ -207,9 +213,10 @@ the two intended changes below. Perf tier: 64 passed before and after; `baseline
   model layer strips the zone.
 - [ ] `search_projects_by_code_or_title` has no `ORDER BY`, so which 10 rows the pickers show is
   plan order on both backends. It also filters on `Project.active == active` (§5 drift).
-- [ ] `sam` still imports `webapp.extensions` in `sam/schemas/__init__.py` and `sam/base.py`
+- [x] (sweep 12: a session proxy + `test_layer_imports.py`) `sam` still imports `webapp.extensions` in `sam/schemas/__init__.py` and `sam/base.py`
   (this sweep removed the `normalize_end_date` edge). The rule is not gated.
-- [ ] jscpd clones not read: `sam/xras/handlers/adjustment.py` / `supplement.py`,
+- [ ] jscpd clones not read (sweep 12 read the first: ~60-line loops differing in four places,
+  a merge decision recorded at `adjustment.py:59`; leave): `sam/xras/handlers/adjustment.py` / `supplement.py`,
   `sam/summaries/archive_summaries.py` / `disk_summaries.py`, the `cli/*/display.py` pairs.
 - [ ] dup-functions left: `active_account_users` on User and Project. (The duplicate `decorate`
   in `charts/stacked.py` went in sweep 11.)
@@ -830,6 +837,435 @@ fingerprint cannot.
   - `CacheBase.bytes_used` (entry 4); matplotlib's own ids repeating when one cached SVG
     appears twice on a page.
 
+## 12. 2026-10-05: area sweep, `src/` from the air (allocation usage, import graph)
+
+**Mode:** area, all of `src/` (117k lines, 30% prose), read for the structural debt a small team
+has to carry rather than for detector leads, which sweeps 1–11 had drained. **End commit:**
+`2122755e` (`origin/staging`). Three censuses (allocation usage, the XRAS footprint, the route
+monoliths and CLI) ranked three findings; Ben picked #1 and #3, deferred XRAS and left #2 open.
+`src/` across the branch is +262 / -1,646.
+
+**Parity:** `utils/profiling/usage_sweep/` (untracked): 659 captures over 108 projects (every
+non-leaf, a child of each, inheriting and disk holders, charged leaves, SCSG0001) of every live
+usage assembly at a fixed as-of date, plus a rule matrix that sums each anchor both ways from the
+kernel. Two runs of unchanged code agree exactly on mysql-test and postgres-test; the backends
+differ from each other only at the eighth significant digit.
+
+**Done, in this sweep's PR**, one commit each:
+
+- [x] Dead: `sam/queries/examples.py`, the ORM notebook, the `sam_search_cli` shim (-425).
+- [x] `sam/queries/__init__.py` re-exports nothing. Its 122 names had one consumer, the dead
+  `examples.py`; the facade was the whole reason for the eager-import trap three docstrings, a
+  CLAUDE.md DON'T and two tests described (-418).
+- [x] The schema packages bind `sqla_session` to a proxy, so `import sam.schemas` loads no Flask;
+  `tests/unit/gates/test_layer_imports.py` holds the facade empty and the `sam`-side packages free
+  of module-level `webapp` imports.
+- [x] `Project.sums_as_subtree()`: the leaf-versus-subtree rule, written 5 times in 3 shapes (8
+  copies of the coordinates check), now one method. **The four rules agreed on every row:**
+  `is_leaf()` already answers True without coordinates, and the "leaves included" spelling can
+  only differ through a deleted or duplicate account, of which both snapshots hold zero.
+  Rule matrix: 247 anchors, 146 on parents, 80 with a subtree total that differs from the
+  own-account total, 0 disagreements.
+- [x] `usage_anchor` / `anchored_charges` in `accounting/calculator.py`; the four hand-built anchor
+  dicts and the `Project.batch_get_*_charges` pass-throughs are gone; fstree needs no `Project`.
+- [x] One assembly. `Project.get_detailed_allocation_usage` reshapes the dashboard builder's rows
+  (its 7 callers gain the read model; `include_adjustments=False` works, it raised before);
+  `AllocationWithUsageSchema` sums through the kernel once per allocation per dump (statements
+  2,926 -> 712 over the set); the per-account kernel copy (`get_subtree_charges`, five siblings,
+  `calculate_charges`) is deleted. **Output change:** the CLI JSON drops the unread `hierarchical`
+  key. Perf tier green, `baselines.json` unchanged.
+
+**Tried and dropped:**
+- Having the API routes precompute usage and hand it to the schema (plan step 1f): memoizing one
+  kernel call per allocation got the 4x without a new context key, and the read model already
+  serves those routes when fresh.
+- Deleting `sam/queries/xras_remediations.py` (tests-only): XRAS, so it waits with the rest.
+
+**Deferred until `XRAS_SUBMISSION.md` lands (Ben, 2026-10-05).** The XRAS census (22.7k Python
+lines, 4.9k template lines; two HTTP clients on purpose; the query modules do three different
+jobs): `webapp/dashboards/allocations/xras/remediation.py`'s seven editors each repeat a
+`_safe_*` fallback / GET modal / one-click-write triplet (984–1929; about -250);
+`xras_api/admin_client.py`'s 14 write calls share a read/write/re-read tail `_act` could
+generalize (about -150); the preflight batch duplicated by `manage/xras_remediation.py:257` and
+`scheduling/tasks/xras_sweep.py:265` (about -60); five of the six `xras_views` classes and
+`queries/xras_remediations.py` have no `src/` caller (about -200); both clients import parsing
+helpers from `queries/xras_requests.py`, so the HTTP layer depends on the query layer; about
+1,000 lines of over-budget prose in `integration/xras.py`, `xras/extractors.py`,
+`queries/xras_actions.py`, `queries/xras_accounts.py`, `api/xras/actions.py`. The
+adjustment/supplement handler clone was read: leave.
+
+**Open from this sweep:**
+
+- [ ] **`admin/projects_routes.py` (3,527 lines).** Nine sections with clean ranges (create
+  210–689, add/exchange 1017–1537, renew/extend 1538–2313, linked entities 2689–3027,
+  directories CRUD 3028–3394, access grid 3395–3527) want to be ~6 modules on the same blueprint.
+  Project creation (`:580–660`) is duplicated in `sam/xras/handlers/new.py:170–207` and belongs in
+  `sam.manage.projects.create_project()`; `_exchange_candidates:1195`, the renew date proposals
+  `:1547–1660` and the contract auto-retire `:2943` are domain rules testable only through Flask.
+- [ ] Eight retire/toggle routes on one `management_transaction` + error skeleton
+  (`resources_routes.py:160,238,261,386,749`, `contracts_routes.py:694`,
+  `projects_routes.py:3268`, `admin/blueprint.py:1262`, which has no guard): extend
+  `handle_htmx_soft_delete`.
+- [ ] `_window_control_context` exists three times (allocations blueprint, `jobs/routes.py:1473`,
+  `disk_scans/routes.py:168`); home: `utils/age_bands.py`. Homes for the other private imports:
+  `_available_primary_groups` -> `sam/queries/lookups.py`; `_user_can_access_project` ->
+  `utils/project_permissions.py` (`_get_sam_user` repeats a query `current_user.sam_user` has);
+  `_RESOURCES_TABS` / `_ORGANIZATIONS_TABS` -> move the page routes into their modules.
+- [ ] The six linked-element routes (`projects_routes.py:2833–3006`) check a global
+  `require_permission` where their GET is project-scoped. A policy decision, not a tidy-up.
+- [ ] CLI: shared option bundles for `cmds/search.py` / `cmds/admin.py` (about -45; `--help`
+  text moves); the provisioning-issues table, status-style and timestamp helpers duplicated across
+  `cli/*/display.py` (about -30); the mnemonic handlers onto `HtmxFormHandler` (about -40);
+  `legacy_dedup_key` once a notification cycle has passed.
+- [ ] `READ_MODEL.md:141` now matches the code: resource details' summary card is served by the
+  read model through `get_detailed_allocation_usage`.
+- [ ] Prose: `src/` is 30.0% doc lines; `DOC_SLIMMING.md` phases 5–8 remain the vehicle.
+
+## 13. 2026-10-06: area sweep, `templates` round 6 (Resource Details, round A)
+
+**Mode:** area, `templates`, from `RESOURCE_DETAILS_SWEEP_HANDOFF.md` round A. **End commit:**
+`b682c918` (`origin/staging`, sweep 12 merged). Aesthetic contract as sweeps 5–9: each commit
+declares its visual change; bug fixes say "bug". Proof rig: staging served on 5053, the branch on
+5052, `ui_snapshots.py` in the six states on CESM0002 (Derecho, Campaign_Store), P93300042/Casper
+(shared) and SCSG0001/Derecho; Playwright smoke of every control moved.
+
+**Done, in this sweep's PR**, one commit each:
+
+- [x] The compute and disk scope pickers are `project_tree_rows` tables. The macro gains a picker
+  mode (`href`, `link_attrs`, `idle_title`, `value` as node macros); its two older callers render
+  byte-identically (HTML diffed against staging). `.tree-list` (two CSS blocks) is deleted, and
+  `.tree-node-current` keeps only its `<tr>` form, which drops the whole-row bold (bug).
+- [x] The summary rows are `allocation_cells` + `allocation_actions` (`edit_url=` added for the
+  user-route edit form). `get_resource_detail_data` stamps `elapsed_pct` / `bar_state`;
+  `get_detailed_allocation_usage` is untouched, so the CLI JSON and `/api/v1/users` do not move.
+  `shared/usage_bar.html`, `.progress-small`, `.table-col-usage`, `.table-bordered` are deleted.
+- [x] Nine card headers on `collapse_toggle` + `.accordion-chevron` (now in components.css). Their
+  chevrons never rotated: `.transition-smooth` had no transform (bug). `drill_toggle` added to
+  `collapse.html` for a row that also holds a link (By User rows: `user_link` + chevron button,
+  `data-bs-target` kept on the `<tr>` for `openUserRow`).
+- [x] Column roles: every numeric cell on both pages and the subtrees is `.col-num`; `user_count | fmt_number`.
+- [x] Paths are copyable (Ben, 2026-10-06): the disk tree's fileset paths ride an inline
+  `copy_button` in the size cell (the name cell truncates); the Filesets Path cell is a link plus
+  a copy icon on a new `.cell-truncate .cell-path` (min-width 12rem). The Filesets row stops being
+  a `data-action="navigate"` row: a copy button there would also navigate, because the clipboard
+  listener on `body` lets the click reach the document-level dispatcher.
+- [x] The rolling-rate gauge's 16 inline styles are a `.rate-*` family (geometry on custom
+  properties; fill color a state class). Pixel-identical gauge (edge rows aside). Limit actions
+  are icon `btn-row`s.
+- [x] Bug, pre-existing: on a phone the gauge's bar column resolved to zero width and the
+  fixed-layout usage tables split header words letter-wise. `minmax(6rem, 1fr)` + a wrapping
+  annotation; the usage tables take a min-width and scroll.
+
+**Handoff corrections (census, 2026-10-06):** `.progress` stays (four status templates use it;
+the three `!important`s are on global `.bg-*` utilities); 9 card headers, not 13; 49 `text-end`
+cells, not 24; `page_header` was already on both pages; the rolling bar is a rate gauge, not a
+pool bar, so it takes neither `alloc_meter` nor round B's pool tone; the disk tree's clickability
+and URL differ from compute (no `usage_tab`).
+
+**Tried and dropped:**
+- Passing `elapsed_pct` through `get_detailed_allocation_usage` (the handoff's route): it feeds
+  the CLI JSON envelope and `/api/v1/users`, so the summary computes it beside its other
+  page-only keys instead.
+- An `extra=` cell hook on `project_tree_rows` for the copy icon: a trailing icon in a truncating
+  cell is the first thing clipped, so the icon lives in the value cell.
+
+**Open from this sweep:**
+
+- [ ] The Filesets card could not render on the local snapshot (no multi-fileset project with
+  `disk_activity`); proven by test client + injection. Recheck on samuel-dev.
+- [ ] `css-dead`'s dynamic-stem count is 20 (from 16): the four `rate-{{ state }}` classes.
+- [ ] The threshold inline form (`threshold_form_htmx.html`) keeps its documented inline styles.
+
+## 14. 2026-10-06: area sweep, `templates` + `py` round 7 (one shared-usage grammar, round B)
+
+**Mode:** area, from `RESOURCE_DETAILS_SWEEP_HANDOFF.md` round B, stacked on entry 13's branch.
+**End commit:** `b682c918` (`origin/staging`). One rule for a shared (inheriting) allocation
+everywhere it is drawn: the project's own % and Used, "from <root>", the pool's Remaining.
+
+**Done, in this sweep's PR**, one commit each:
+
+- [x] `alloc_meter(..., pool_pct=)`: the pool as a lighter layer of the same hue under the solid
+  own share; `.meter-over` (red) follows the pool. `allocation_cells` passes it and restores the
+  elapsed tick shared compute rows dropped. A negative Remaining is `text-danger` (bug: muted).
+  B.5 (Ben): Allocated keeps sorting by the pool's amount; its title says so.
+- [x] Glossary: `g_shared_pool` rewritten (it described the tones backwards and had no caller)
+  and carried by `g_usage_bar`, the "% used" help; `g_roots_only` names the pool's Remaining.
+- [x] Bug: the card's usage badge read the pool's % over rows showing the project's own; it
+  now takes the highest % the rows show and names the fullest shared pool in its title. 30d /
+  90d limit lines on a shared row say "pool".
+- [x] Bug: shared DISK rows mixed units and owners (own TiB as `used`, TiB-years as
+  `self_used`; the summaries path forced them equal; the API schema did both). Pool = the root's
+  subtree capacity, self = the project's own, in the builder, the summaries path, the API schema
+  and both read-model paths. Found on the way: `bulk_get_subtree_disk_capacity` double-counted a
+  repeated pair (the whole-snapshot projection read a 4,096 TiB pool as 8,191).
+- [x] `sam-search project`'s shared rows read as on the web; the JSON envelope is unchanged.
+
+**Output changes:** shared DISK rows only. `used` / `remaining` / `percent_used` go from the
+project's own TiB to the pool's, and `self_used` from TiB-years to the project's own TiB, on
+`/api/v1/projects/<projcode>/allocations` and, because the builder feeds
+`Project.get_detailed_allocation_usage()`, on `GET /api/v1/users/<username>/projects` (readable
+with an API key) and in `sam-search --format json project`.
+
+**Parity:** sweep 12's 659-capture set moved 0 values on MySQL and Postgres. It holds no shared
+disk row (its inheriting set is capped alphabetically at 25), so a new untracked
+`utils/profiling/usage_sweep/shared_disk.py` captures all 91 inheriting DISK allocations through
+the builder, the summary and the API schema, staging vs branch: only inheriting rows move (58
+`used`, 15 `self_used`, 32 summary `total_used`), MySQL and Postgres agree exactly.
+
+**Design and deviations (brand stance of entry 5):** no new hue; the pool tint is the row's own
+color mixed 32% toward the track. Measured in-page: solid vs tint 3.4:1 light / 3.2:1 dark (40%
+fell to 3.0 / 2.7); tint vs track 1.6:1 / 1.8:1. **Deviation:** the pool layer is below WCAG
+1.4.11's 3:1 against the track; it is supplementary, since every shared row also states the
+pool's Remaining as text and its title names both figures. In the over state the tint spans the
+bar, so only solid vs tint matters (2.3:1, red on red).
+
+**Tried and dropped:**
+- A stronger mix for the over state (45-65%): the tint never meets the track there, and a
+  stronger mix only lowered solid vs tint (2.0 -> 1.6).
+- Keeping the API's `current_used_*` on the project's own subtree: the read-model row carries one
+  snapshot date (the pool's), so on and off could not agree; they follow `used`.
+
+**Open from this sweep:**
+
+- [ ] Read-model rows written before deploy carry the old shared-disk figures until the hourly
+  `refresh_allocation_state` rewrites them; run it once after the deploy.
+- [ ] The rolling-rate fragment keeps its "(N yours)" slice beside the pool's burn: it is a rate
+  gauge, not a meter, and its banner already says the rate covers the pool.
+
+## 15. 2026-10-06: area sweep, `templates` round 8 (jobs explorer, disk scans, drill macros; round C)
+
+**Mode:** area, `templates`, from `RESOURCE_DETAILS_SWEEP_HANDOFF.md` round C, stacked on entry
+14's branch (`36897959`). **End commit:** `b682c918` (`origin/staging`). Aesthetic contract as
+before. Proof rig: staging served on 5053 and the branch on 5052, both with fs-scans on
+(`ALT_FS_SCANS_ENABLED=1`, the round's first commit) against the read-only plugin replica. Pages:
+both explorers (the jobs pages pinned to a past window, since the machine view lists live jobs),
+CESM0002 Derecho Job History and Campaign_Store Filesystem Scans, status Job History / Filesystem Scans.
+
+**Done, in this sweep's PR**, one commit each:
+
+- [x] The jobs and disk-scans partials and both explorer pages moved to `dashboards/jobs/` and
+  `dashboards/disk_scans/` (a partial lives with its blueprint; 48 path sites). `--styles
+  --compare`: 0 of 42 captures differ (the two live job pages reshot with a pinned window on
+  both commits at once).
+- [x] `sort_link(..., extra_qs=, fixed_dir=)`. The per-job table's private copy goes (per_page
+  rides `extra_qs`). The directory table's `dir_sort_link` goes: `fixed_dir` sends no `sort_dir`
+  and points the arrow the facade's way, so Path points up (bug). The route reads the key through
+  `read_sort` against `_DIR_SORT_WHITELIST` (kept).
+- [x] `collapse.lazy_drill_row` (tr#`<rid>-row`, body #`<rid>-content`, `persist=`) beside
+  `drill_toggle`, which the By User / By Project and disk owner/group drills adopt. Pixel-identical
+  (`--element` + `--compare-pixels`, six states).
+- [x] `collapse.owner_tier`: a band's owners are rows of the outer table in its columns, one
+  collapsing `<tbody>` per band (closing a band hides any open drawer), with a trailing Share
+  `share_bar` (Ben: band share of the whole, owner share of the band). Histogram, timeline and the
+  disk distribution adopt it. On a phone the nested tier never scrolled (bug, entry 8); the outer
+  table now scrolls. `tier_num` reads 'charges' as cpu + gpu (no dict carries the key; a plain
+  `sum(attribute=)` raised under the Charges pill before it shipped). Owner modal buttons take
+  `btn-entity` (20px names). The disk distribution keeps its Owners count as a column (Ben: no
+  count badges on row labels).
+- [x] Column roles on every jobs and disk-scans table; the job name is the one `.cell-truncate`
+  column (10rem floor, `components.css`). One filter-width scale (`.ctl-w-xs..lg`,
+  `.ctl-minw-picker`, `filters.css`) for both filter panels: 14 inline widths go; Queue and the
+  numeric fallbacks widen 10px.
+- [x] Bug: the plugin-off banner's "Check the Database card" link was `/dashboards/admin/configuration`,
+  never a route. `url_for`; `jobs_fragment`'s copy of the banner calls `jobs_disabled()`.
+- [x] Exit status through `exit_status_badge`; the uncalled `mode_badge` is deleted.
+- [x] Bug: the directory table's Last Access header sat left of right-aligned dates. Paths are
+  `.cell-truncate .cell-path`; the folder icon is the copy button (Ben: one icon per path), and the
+  drill link is titled "Browse into <path>". The atime prints through `fmt_date` (the route
+  normalizes the plugin's datetime or ISO string with `parse_wire_date`).
+- [x] `page_header` on both explorer pages.
+
+**Handoff corrections:** 18 files moved and 48 path sites, not 25 in 8 files; `mode_badge` had an
+import but no call; the owner tiers' columns differ (the timeline adds Charges, the distribution
+Data/Files), so the macro takes a column spec rather than one fixed table.
+
+**Tried and dropped:**
+- A `group_count` badge on the distribution's band label in place of its Owners column (the
+  wire-dashboard §7 group-row rule): Ben, the badge is noise; a count that matters is a column.
+- A separate copy icon before the folder icon: two icons for one path.
+
+**Open from this sweep:**
+
+- [x] **Phone-width wrap sweep (Ben, next after this round):** a chevron or caret plus a name in an
+  auto-width cell wraps onto two lines on a phone (the owner tier did until `text-nowrap`); Ben has
+  seen carets with project codes do it elsewhere. Done in entry 16.
+- [ ] Bug, pre-existing (staging too): sorting the per-job table by Elapsed desc puts null-elapsed
+  jobs first on Postgres; `_visible_cols` then folds the empty columns, Elapsed included, so the
+  sort cannot be toggled back.
+- [ ] `copy_button`'s title is the copied text, so a hover on the folder says the path, not "Copy";
+  discoverability rests on the aria-label and the toast.
+- [ ] The distribution's tier persists open across reloads (no `data-no-persist`) while the jobs
+  tiers do not; kept as it was.
+- [ ] The By User / By Project drawers and the owner drawers render a full per-job table in a
+  spanning cell; on a phone that table widens the outer one (it scrolls as a whole).
+
+**Pre-staging review of entries 13-15 (2026-10-06), on this sweep's PR:**
+
+- [x] Bug: disk Resource Details' Capacity Summary, on a scope drawing on another project's pool,
+  subtracted the scope's own bytes from the pool's amount (P03010039: Remaining 2,796 TiB while
+  NCGD0009's pool is 1,300 TiB over). The row is `allocation_cells` fed by the route:
+  `scope_disk_pool` (moved from the blueprint to `sam/queries/disk_usage.py`) names the pool's
+  owner, and a scope that is not the owner reads as every shared row does. A scope that owns its
+  pool renders as before.
+- [x] The dashboard skill's reuse list and `/dev/gallery` name `drill_toggle`, `lazy_drill_row`,
+  `owner_tier`, `sort_link`'s two arguments, the `ctl-w-*` scale and `copy_button`.
+- [x] `AllocationWithUsageSchema._disk_caps` was memoized per instance and never cleared (#739
+  gave `_sums` a one-dump lifetime); it shares that `dump()` hook now. No figure moved: every
+  caller builds a schema per request.
+- [ ] A `?fileset=` view on a project that owns its pool still reads Remaining as the pool's
+  amount minus that one fileset's bytes.
+- [ ] The card's usage badge is silent when only the pool is nearly spent (own 3%, pool 96%); the
+  meter's lighter layer is the one cue. Ben's call; left as entry 14 set it.
+
+## 16. 2026-10-06: area sweep, `templates` + `css` (the phone-width wrap sweep, round D)
+
+**Mode:** area, from `PHONE_WRAP_SWEEP_HANDOFF.md` (now under `implemented/`, with an as-built
+section). The branch is `phone-wrap-sweep` off `origin/staging` (`0cdf5b96`, #741).
+
+**Proof rig:** the base (`0cdf5b96`) on 5054 and the branch on 5052, both with fs-scans on, and
+one saved stub login per server. Before the work, at 360px (every collapse and tab forced open
+three times):
+- CESM0002 Campaign_Store Resource Details: 45 wraps
+- the CESM0002 job explorer: 33
+- SCSG0001 Derecho: 9
+
+These match the handoff's census. WARNING: a dev server left running on a port makes
+`dev_server_alt.sh` fail with "Address already in use" while the old server keeps answering. The
+first baseline of this round came from a pre-#741 server that way. Check the listener's cwd
+(`lsof -a -p <pid> -d cwd`) before trusting a "before".
+
+**Done, in this sweep's PR**, one commit each:
+
+- [x] **Bug, drill rows:** on a phone the chevron sat on a line above its label.
+  - One rule in `components.css`: a `.table td` whose first element is a `.collapse-icon` or a
+    collapse button does not wrap. It reaches about 30 cells; 7 were already nowrap and 20 hold an
+    icon or a short identifier.
+  - The XRAS audit errors cell keeps its chevron and count in a `text-nowrap` span, so its 38ch
+    excerpt still wraps.
+  - Result: the three pages above went to 0 wraps. Page overflow was unchanged on all 9 pages
+    measured, and every widened table already scrolled in its `table-responsive`.
+- [x] **Bug, collapsible headers:** the chevron wrapped onto a line of its own.
+  - The chevron comes first and `float-end`, as on Resource Details, so the title flows around it.
+    On a phone the project card's title row is block flow.
+  - Applies to the project card (the `/user/` dashboard and admin Expirations), User / Resource
+    Access, and Project Hierarchy (the switch and the toggle float together).
+- [x] **One chevron vocabulary.**
+  - Two rotation idioms remain: `.collapse-icon` for rows and `.accordion-chevron` for headers.
+    `.access-grid-chevron` is deleted, and the access grid now points down when collapsed.
+  - New `collapse.section_toggle(target_id, label)` for a section heading's chevron. Three bare
+    `btn  btn-link` chevrons became it; before, they never turned and had no label. It has a
+    gallery specimen.
+- [x] **Detector.** `scripts/ui_snapshots.py --wraps` (`--pages wraps`, `--width 360`), and
+  `e2e/test_phone_wraps.py` at 360px.
+  - The e2e checks: the CI-filled pages, Manage Project, and a squeezed drill-table fixture with a
+    control case.
+  - Against staging it fails 3 tests: the two project-card chevrons, User / Resource Access, and
+    the fixture.
+- [x] The dashboard skill's section 6 says where a chevron goes, and names the check and the gate.
+
+**Proof:**
+- `ui_snapshots.py --wraps --pages wraps` on the branch: 0 wraps across all 50 pages at both 360px
+  and 390px. The census before the work found 213 at 360px.
+- Dark mode, phone and tablet, of the touched headers: by eye.
+
+**Handoff corrections:**
+- D.1 reaches about 30 cells, not 6.
+- D.2's nowrap flex row cost a line on four of six `/user/` headers. Floats cost a line only where a
+  title fits with under 20px to spare (SCSG0001 83 to 107px, SSSG0001 73 to 81). SVST0002 went 147
+  to 131, and User / Resource Access 112 to 88.
+- D.3 had three bare toggles, not one.
+- D.4's unit fixture test could not run the JS (the unit tier has no browser), so the gate is in
+  `e2e/`.
+- The census is noisy: SCSG0001 Derecho gave 9 hits at 360px and 82 at 390px on the same code.
+
+**Tried and dropped:**
+- A `.chevron-header` nowrap flex row ([content | chevron]): it reserves the chevron's column on
+  every line of the title.
+
+**Open from this sweep:**
+
+- [x] Pre-existing page overflow at 360px, unchanged by this round: SCSG0001 Derecho Resource
+  Details 17px, the job explorer 22px, admin Expirations 30px. Fixed on the stacked
+  `phone-overflow` branch:
+  - The first two were the shared pagination strip; it wraps now.
+  - The 30px was the bare `/admin/expirations` fragment measured with no CSS. On its host page
+    (`/admin/projects`) the real overflow was a 553px contract-source badge in a 69px value column.
+    The project info grid now stacks its multi-line rows on a phone, and its badges may wrap.
+- [ ] The census is phone-only; no tablet (768px) pass was run.
+
+## 17. 2026-10-06: area sweep, `templates` + `css` (the mid-word break sweep, round E)
+
+**Mode:** area, from `PHONE_MIDWORD_SWEEP_HANDOFF.md` (now under `implemented/`, with an as-built
+section). The branch is `phone-midword` off `origin/staging` (`5f27d3b7`, #745).
+
+**Why:** inside any Bootstrap `.card` (`word-wrap: break-word`) a column narrower than its
+longest word splits the word, so every mid-word break marks a layout too narrow for its content.
+The fix belongs to the layout, not the text.
+
+**Proof rig:** the base (`5f27d3b7`) on 5054 and the branch on 5052, fs-scans on, one saved
+stub login per server. Census before the work at 360px (every collapse and tab open):
+86 hits on 9 pages, 38 + 36 of them the project info grid (nested in the admin Expirations card,
+and the Directories paths on `/user/`), 6 the Resource Details "Charges" headers, 2 the config
+page, 2 the dev gallery. The census keyed one hit per (host, box signature, column), so a `<dl>`
+whose every `dd` split counted once; the promoted detector adds the word.
+
+**Done, in this sweep's PR**, one commit each:
+
+- [x] **Project info grid keys off its own width** — the tree's first container query.
+  `.project-stats-box` is `container: stats / inline-size`; at 24rem a multi-line value goes
+  under its label (replacing #745's `<576px` media rule), at 16rem every label sits over its
+  value. 24rem, not the handoff's 30rem: the user card's box is 27rem on a tablet.
+  - Containment: all 15 emit sites rendered at 360 and 1440px, none 0 wide; tablet and desktop
+    pixel-identical on `/user/`, `/user/info` and the Expirations card (0 of 10 differ).
+  - Nested card values 118 -> 204px. The wire-dashboard skill's section 10 says `@container` is
+    in use and what `inline-size` containment costs.
+- [x] **Bug, directory paths:** `/quasar/HPCD` split as "/quasar/H" / "PCD". A `path_breaks`
+  filter (`webapp/utils/template_filters.py`: escape, then `<wbr>` after every slash) on the
+  Directories row. It lives in the webapp because `sam.fmt`'s registrar also feeds the notify
+  sandbox.
+- [x] **Bug, usage-table floors:** "Charges" needs 85px with its help term and 96px with the
+  sort arrow; the fixed columns gave 82-83. `.usage-table-5` 32 -> 34rem (87px),
+  `.usage-table-4` 26 -> 31rem (99px). This also closes `SAMUEL_PRESENTATION.md`'s "Mobile
+  table headers wrap mid-word" follow-up (#741's floors had cleared Users, Jobs and the values).
+- [x] **Config page, plus the detector.** `.config-stats` stacks dt over dd below 576px (dd
+  120 -> 242px; the caching, server, rate-limits cards and the notification modal share it).
+  `scripts/ui_snapshots.py --midword` (`check_midword`), with `check_wraps` sharing one
+  `open_everything` walk; `e2e/test_phone_wraps.py` asserts no mid-word hits on its pages plus
+  `/admin/projects` with Expirations open, and a 60px card fixture proves the detector live.
+- [x] The unplanned-city skill's Legibility pass has the mid-word heuristic.
+- [x] **Gallery specimen** (`/dev/gallery` → Stat grids): `render_project_info` at the card's
+  width, 22rem and 14rem, so both rungs are visible without finding a nested card. Building it
+  found two facts: a flex item sized by `max-width` alone is shrink-to-fit, so the contained
+  grid collapsed to 156px (the wrappers now have definite widths); and a box cannot query its
+  own width, so the pair count (2 at 768px, 3 at 1200px) stays a viewport rule, with one opt-in
+  `@container stats (max-width: 36rem)` cap for a caller that wraps a narrow box in its own
+  `container: stats` (the gallery's narrow specimens). Real pages are pixel-identical.
+
+**Proof:**
+- `ui_snapshots.py --midword --pages wraps --width 360` on the branch: 3 hits across the 48
+  pages, from 86 before the work: one config-page Postgres URL and the two gallery titles, both
+  on the open list below. At 390: 2 hits, both config-page URLs (the gallery titles fit).
+- `e2e/test_phone_wraps.py`: 18 pass on the branch. Against staging the two mid-word page cases
+  fail (`/user/accounts`: "HPCD"; `/admin/projects`: "Environmental" at 118px and the
+  Directories paths) and the other 16 pass.
+- Phone shots before and after of the Expirations card, a `/user/` card, the two Resource
+  Details headers and the config page, sent to Ben.
+
+**Handoff corrections:**
+- 24rem, not 30rem, for the inline-row rung (measured above).
+- The card template is `dashboards/user/partials/project_card.html`; the `fmt_*` filters are
+  registered from `sam.fmt`, not `create_app()`, so the new filter has its own module.
+- `.config-stats` is shared by four other surfaces.
+- The census under-counted lists (one hit per box signature).
+
+**Open from this sweep:**
+
+- [ ] `/dev/gallery` specimen titles (`date_range_picker.date_range_picker`): a dotted
+  identifier in a card header; dev-only.
+- [ ] `/admin/configuration`'s Postgres URLs still split at 360px: a URL has no break point, and
+  `word-break` is what holds it on a phone. `path_breaks` at the slashes is the candidate.
+- [ ] The census is phone-only; no tablet (768px) pass was run.
+
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
 Surfaced by the first run of `scripts/sweep_inventory.py`. Each item belongs to an area sweep;
@@ -849,6 +1285,22 @@ nothing here has been read for intent yet.
 Shared pieces a window introduced that an older surface could adopt. The canonical example is the
 sunburst, which started on the allocations page and then moved to job history.
 
+- [x] `collapse.drill_toggle` and `clipboard.copy_button` on a `.cell-path` cell (sweep 13):
+  the jobs and disk-scans drilldowns (sweep 15).
+- [ ] `path_breaks` (sweep 17): the other bare path renders, none converted. In a card:
+  `admin/fragments/project_directories_card.html:113`, `project_linked_elements_htmx.html:300`,
+  `bulk_deactivate_project_directories_preview_htmx.html:32,37`,
+  `disk_root_directories_section.html:55`, `configuration_card.html:608` (`AUDIT_LOG_PATH`) and
+  the Postgres URLs on the same card; `disk_scans/_disk_scans_macros.html:33` and
+  `user/resource_details_disk.html:57,129,339` (a fileset name). The `.cell-path` cells
+  (`disk_scans_directories.html:187`, `resource_details_disk.html:165`) truncate at 12rem
+  instead, a different idiom.
+- [ ] `collapse.lazy_drill_row` / `owner_tier` (sweep 15): `_resource_details_macros.jobs_collapse_row`
+  stays a two-level shape (`outer_tr_collapse_id` + an inner `div.collapse`, `data-no-persist`), and
+  Resource Details' user and day subtrees load as whole `tr.collapse` rows; neither was converted.
+- [ ] The `.ctl-w-*` filter widths (sweep 15): `audit_filters.html`, `allocations/projects.html`
+  and `admin/projects.html` still size fields inline, which is why the phone rule keeps its
+  `!important`.
 - [ ] `sam.dates.start_of_today()`: the `datetime.now().replace(hour=0, ...)` expression still
   appears in `xras/card_routes.py`, `sam/xras/handlers/_allocations.py` and
   `sam/resources/machines.py` (sweep 4).

@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/collapse.html' import section_toggle %}
 {% from 'dashboards/shared/project_tree.html' import allocation_cells with context %}
 {% from 'dashboards/fragments/table_bits.html' import state_tag %}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
@@ -129,7 +130,7 @@
     <div class="stat-item stat-item-block stat-item-inline">
       <span class="stat-label">Directories:</span>
       <div class="stat-value text-detail">
-        {% for dir in project.active_directories %}<code class="me-3">{{ dir }}</code>{% endfor %}
+        {% for dir in project.active_directories %}<code class="me-3">{{ dir | path_breaks }}</code>{% endfor %}
       </div>
     </div>
     {% endif %}
@@ -180,8 +181,8 @@
                     <span class="fw-semibold">{{ resource.resource_name }}</span>
                     {% if not is_expired %}
                     {% for label, win in [('30d', resource.rolling_30), ('90d', resource.rolling_90)] if win and win.threshold_pct is not none %}
-                    <div class="small text-muted" title="{{ win.charges | fmt_number }} charged in the last {{ label }}">
-                        {{ label }}: {{ win.pct_of_prorated | fmt_pct }} of steady use (limit {{ win.threshold_pct }}%)
+                    <div class="small text-muted" title="{{ win.charges | fmt_number }} charged in the last {{ label }}{{ ' across the shared pool' if resource.is_inheriting }}">
+                        {{ label }}{{ ' pool' if resource.is_inheriting }}: {{ win.pct_of_prorated | fmt_pct }} of steady use (limit {{ win.threshold_pct }}%)
                     </div>
                     {% endfor %}
                     {% endif %}
@@ -216,9 +217,7 @@
 <div class="mt-3">
     <h6 class="mb-2">
         <i class="fa-solid fa-users"></i> Project Members
-        <button class="btn  btn-link" data-bs-toggle="collapse" data-bs-target="#members-{{ unique_id }}" aria-expanded="false">
-            <i class="fa-solid fa-chevron-down"></i>
-        </button>
+        {{ section_toggle('members-' ~ unique_id, 'Show project members') }}
     </h6>
     <div id="members-{{ unique_id }}" class="collapse">
         <div class="members-container p-3 bg-body-tertiary rounded"
@@ -257,6 +256,8 @@
 
     <div class="card project-card mb-3" data-projcode="{{ project.projcode }}">
         <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#{{ card_id }}" aria-expanded="{{ 'true' if is_expanded else 'false' }}">
+            {# First and floated: the title flows around the chevron, which never wraps alone. #}
+            <i class="fa-solid fa-chevron-down accordion-chevron float-end ms-3" aria-hidden="true"></i>
             <div class="d-flex justify-content-between align-items-center">
                 <div>
                     <h5 class="mb-0">
@@ -308,14 +309,22 @@
                     {% elif project.admin and project.admin.user_id == user.user_id %}
                         <span class="badge bg-info"><i class="fa-solid fa-user-shield"></i> Admin</span>
                     {% endif %}
-                    {# Show usage warning if any resource exceeds thresholds #}
-                    {% set max_usage = resources | map(attribute='percent_used') | max | default(0) %}
+                    {# Usage warning on the highest % the rows show: a shared row's own share,
+                       with the fullest shared pool named in the title. #}
+                    {% set ns = namespace(own=0, pool=none) %}
+                    {% for r in resources %}
+                        {% set own = (r.self_percent_used if r.is_inheriting else r.percent_used) or 0 %}
+                        {% if own > ns.own %}{% set ns.own = own %}{% endif %}
+                        {% if r.is_inheriting and (ns.pool is none or (r.percent_used or 0) > ns.pool) %}{% set ns.pool = r.percent_used or 0 %}{% endif %}
+                    {% endfor %}
+                    {% set max_usage = ns.own %}
+                    {% set pool_note = ('; a shared pool is at ' ~ (ns.pool | fmt_pct)) if ns.pool is not none else '' %}
                     {% if max_usage >= usage_critical_threshold %}
-                        <span class="badge bg-danger" title="Resource usage above {{ usage_critical_threshold }}%">
+                        <span class="badge bg-danger" title="Resource usage above {{ usage_critical_threshold }}%{{ pool_note }}">
                             <i class="fa-solid fa-circle-exclamation"></i> {{ max_usage | round(0) | int }}% used
                         </span>
                     {% elif max_usage >= usage_warning_threshold %}
-                        <span class="badge bg-warning" title="Resource usage above {{ usage_warning_threshold }}%">
+                        <span class="badge bg-warning" title="Resource usage above {{ usage_warning_threshold }}%{{ pool_note }}">
                             <i class="fa-solid fa-triangle-exclamation"></i> {{ max_usage | round(0) | int }}% used
                         </span>
                     {% endif %}
@@ -357,7 +366,6 @@
                             </span>
                         {% endif %}
                     {% endif %}
-                    <i class="fa-solid fa-chevron-down accordion-chevron ms-3" aria-hidden="true"></i>
                 </div>
             </div>
         </div>
@@ -384,21 +392,18 @@
                 <!-- Project Tree Section (Lazy Loaded) -->
                 {% if project_data.has_children or project.parent_id %}
                 <div class="mt-3">
-                    <h6 class="mb-2 d-flex align-items-center">
-                        <span><i class="fa-solid fa-sitemap me-1"></i> Project Hierarchy</span>
-                        <div class="ms-auto d-flex align-items-center gap-2">
-                            <div class="form-check form-switch mb-0">
+                    <h6 class="mb-2 clearfix">
+                        <span class="float-end d-flex flex-nowrap align-items-center gap-2 ms-2">
+                            <span class="form-check form-switch mb-0">
                                 <input class="form-check-input" type="checkbox"
                                        id="treeActiveOnly-{{ card_id }}" checked
                                        data-action-change="tree-toggle-active-only" data-card-id="{{ card_id }}" data-base-url="{{ url_for('user_dashboard.tree_fragment', projcode=project.projcode) }}">
                                 <label class="form-check-label small text-muted fw-normal"
                                        for="treeActiveOnly-{{ card_id }}">Active only</label>
-                            </div>
-                            <button class="btn  btn-link p-0" data-bs-toggle="collapse"
-                                    data-bs-target="#tree-{{ card_id }}" aria-expanded="false">
-                                <i class="fa-solid fa-chevron-down"></i>
-                            </button>
-                        </div>
+                            </span>
+                            {{ section_toggle('tree-' ~ card_id, 'Show project hierarchy') }}
+                        </span>
+                        <i class="fa-solid fa-sitemap me-1"></i> Project Hierarchy
                     </h6>
                     <div id="tree-{{ card_id }}" class="collapse">
                         <div class="tree-container"

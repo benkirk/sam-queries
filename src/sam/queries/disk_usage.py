@@ -174,6 +174,28 @@ def get_subtree_disk_capacity(
     return out.get((project.project_id, resource_name), dict(_EMPTY_CAP))
 
 
+def scope_disk_pool(session: Session, project: Project,
+                    resource: Resource) -> Tuple[float, Optional[Project]]:
+    """(pool amount in TiB, the project owning the pool) for a scope on a disk resource.
+
+    The scope's live allocation, else its nearest ancestor's; ``allocation.root`` is the
+    pool whether the scope owns it or inherits it. ``(0.0, None)`` with no live allocation.
+    """
+    for candidate in [project] + project.get_ancestors(include_self=False):
+        account = session.query(Account).filter(
+            Account.project_id == candidate.project_id,
+            Account.resource_id == resource.resource_id,
+            Account.is_active,
+        ).first()
+        if account is None:
+            continue
+        for alloc in account.allocations:
+            if alloc.is_active:
+                root = alloc.root
+                return float(root.amount), root.account.project if root.account else None
+    return 0.0, None
+
+
 def bulk_get_subtree_disk_capacity(
     session: Session,
     pairs: List[Tuple[Project, str]],
@@ -195,6 +217,8 @@ def bulk_get_subtree_disk_capacity(
     """
     if not pairs:
         return {}
+    # A repeated pair would collect its accounts twice and double its bytes.
+    pairs = list({(p.project_id, rn): (p, rn) for p, rn in pairs}.values())
 
     out: Dict[Tuple[int, str], Dict[str, Any]] = {
         (p.project_id, rn): dict(_EMPTY_CAP) for p, rn in pairs
@@ -216,8 +240,7 @@ def bulk_get_subtree_disk_capacity(
         if rid is None:
             continue
         valid_pairs.append((project, rn, rid))
-        is_tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
-        if is_tree_valid:
+        if project.sums_as_subtree():
             conditions.append(and_(
                 Project.tree_root == project.tree_root,
                 Project.tree_left >= project.tree_left,
@@ -252,8 +275,7 @@ def bulk_get_subtree_disk_capacity(
     all_account_ids: set = set()
     for project, rn, rid in valid_pairs:
         key = (project.project_id, rn)
-        is_tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
-        if is_tree_valid:
+        if project.sums_as_subtree():
             for r in candidate_rows:
                 if r.resource_id != rid:
                     continue

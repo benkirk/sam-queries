@@ -8,6 +8,7 @@
     {{ share_bar(31.0, slot=3) }}   bar + number; slot = facility color family
     {{ tree_label_cell('UNIV', count=4) }}   chevron + name cell of a collapse-toggle row
     {{ alloc_meter(53.0, elapsed_pct=48.0, slot=2) }}   % used bar with a time-elapsed tick
+    {{ alloc_meter(28.9, pool_pct=61.8) }}   a shared row: own share solid over the pool's
 #}
 
 {# Count on the left, create buttons on the right; sits above the table. #}
@@ -39,14 +40,17 @@
 {%- endif -%}
 {%- endmacro %}
 
-{# Percent of an allocation used (may pass 100), with an optional tick at percent of time elapsed. #}
-{% macro alloc_meter(pct, elapsed_pct=None, slot=None, tint=False, title='') -%}
+{# Percent of an allocation used (may pass 100), with an optional tick at percent of time elapsed.
+   pool_pct: a shared row's whole pool, drawn as a lighter layer under this project's own share;
+   the over state and its red then follow the pool. #}
+{% macro alloc_meter(pct, elapsed_pct=None, slot=None, tint=False, title='', pool_pct=None) -%}
 {%- if pct is none -%}<span class="text-muted">—</span>
 {%- else -%}
+{%- set over = (pool_pct if pool_pct is not none else pct) > 100 -%}
 <span class="share"{% if title %} title="{{ title }}"{% endif %}>
-  <span class="share-bar meter{{ ' share-tint' if tint }}{{ ' meter-over' if pct > 100 }}{{ ' share-zero' if not pct }}{{ ' has-elapsed' if elapsed_pct is not none }}"
+  <span class="share-bar meter{{ ' share-tint' if tint }}{{ ' meter-over' if over }}{{ ' share-zero' if not pct }}{{ ' has-pool' if pool_pct is not none }}{{ ' has-elapsed' if elapsed_pct is not none }}"
         {%- if slot %} data-fs="{{ slot }}"{% endif %}
-        style="--share: {{ [[pct, 0] | max, 100] | min }}%{% if elapsed_pct is not none %}; --elapsed: {{ [[elapsed_pct, 0] | max, 100] | min }}%{% endif %}" aria-hidden="true"></span>
+        style="--share: {{ [[pct, 0] | max, 100] | min }}%{% if pool_pct is not none %}; --pool: {{ [[pool_pct, 0] | max, 100] | min }}%{% endif %}{% if elapsed_pct is not none %}; --elapsed: {{ [[elapsed_pct, 0] | max, 100] | min }}%{% endif %}" aria-hidden="true"></span>
   <span class="share-num">{{ pct | fmt_pct }}</span>
 </span>
 {%- endif -%}

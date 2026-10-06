@@ -29,7 +29,7 @@ today). Like ``jobs_fragment``, a plugin/DB hiccup degrades to an inline
 from __future__ import annotations
 
 from datetime import datetime
-from sam.dates import parse_ymd_or
+from sam.dates import parse_wire_date, parse_ymd_or
 from typing import Optional, Tuple
 from urllib.parse import urlencode
 
@@ -60,7 +60,7 @@ from webapp.disk_scans.scope import resolve_scan_scope, resolve_scan_scope_group
 from webapp.disk_scans.session import get_module, is_enabled
 from webapp.extensions import db
 from webapp.utils import age_bands, ladders
-from webapp.utils.htmx import read_flag, read_layout
+from webapp.utils.htmx import read_flag, read_layout, read_sort
 from webapp.utils.charts import draw_chart
 from webapp.utils.rbac import Permission, require_permission
 
@@ -69,7 +69,7 @@ bp = Blueprint('disk_scans', __name__)
 # scan_directories sort keys the facade understands (see
 # fs_scans/queries/facade.py:_DIR_SORT_KEYS). The facade fixes the sort
 # direction per key (size/files/atime/dirs descending, path ascending),
-# so the UI only switches the active key, not a direction. 'dirs' maps to
+# so the UI only switches the active key (sort_link's fixed_dir). 'dirs' maps to
 # the recursive subdirectory count (dir_count_r). The ``_nr`` keys sort on the
 # non-recursive (own-files) columns — used by the access-history drill-down's
 # non-recursive view, which shows a directory's own cold data.
@@ -132,9 +132,7 @@ def _dir_filters() -> dict:
     datetimes) and the raw date strings (``*_str``) the hidden form / filter
     panel echo back so a sort re-fetch or page reload preserves them.
     """
-    sort_by = request.args.get('sort_by') or _DEFAULT_DIR_SORT
-    if sort_by not in _DIR_SORT_WHITELIST:
-        sort_by = _DEFAULT_DIR_SORT
+    sort_by = read_sort(request.args, _DIR_SORT_WHITELIST)['sort_by'] or _DEFAULT_DIR_SORT
 
     owner_uid, owner_user_id, owner_label = _resolve_owner()
     owner_gid, group_label = _resolve_group()
@@ -465,14 +463,14 @@ def _render_directories_fragment(ctx, fragment_url, *, mode, scope_for,
     )
     if not is_enabled() or not ctx['resource_name']:
         return render_template(
-            'dashboards/user/partials/disk_scans_directories.html',
+            'dashboards/disk_scans/disk_scans_directories.html',
             rows=[], enabled=is_enabled(), error=None, **base,
         )
 
     rows, error = [], None
     if flt['owner_unmatched']:
         return render_template(
-            'dashboards/user/partials/disk_scans_directories.html', rows=rows,
+            'dashboards/disk_scans/disk_scans_directories.html', rows=rows,
             enabled=True, error=f"no user '{flt['owner_unmatched']}' with a unix uid",
             **base,
         )
@@ -494,8 +492,11 @@ def _render_directories_fragment(ctx, fragment_url, *, mode, scope_for,
         )
         error = str(exc)
 
+    # The plugin hands back atime as a datetime or an ISO string; the template formats a date.
+    rows = [{**r, 'max_atime_r': parse_wire_date(r.get('max_atime_r')),
+             'max_atime_nr': parse_wire_date(r.get('max_atime_nr'))} for r in rows or []]
     return render_template(
-        'dashboards/user/partials/disk_scans_directories.html',
+        'dashboards/disk_scans/disk_scans_directories.html',
         rows=rows, enabled=True, error=error, **base,
     )
 
@@ -522,7 +523,7 @@ def directories_page(project):
         db.session, ctx['scoped_project'], ctx['resource_name'])
     scope_dir_count = sum(len(g['paths']) for g in scope_groups)
     return render_template(
-        'dashboards/user/disk_scans_directories_page.html',
+        'dashboards/disk_scans/disk_scans_directories_page.html',
         mode='project', fragment_url=fragment_url,
         initial_url=_initial_fragment_url(fragment_url, ctx, flt, browse=True),
         filters=flt, user_search_url=_user_search_url(),
@@ -548,7 +549,7 @@ def directories_resource_page(resource):
     fragment_url = url_for('disk_scans.directories_resource_fragment',
                            resource=resource)
     return render_template(
-        'dashboards/user/disk_scans_directories_page.html',
+        'dashboards/disk_scans/disk_scans_directories_page.html',
         mode='resource', fragment_url=fragment_url,
         initial_url=_initial_fragment_url(fragment_url, ctx, flt, browse=True),
         filters=flt, user_search_url=_user_search_url(),
@@ -578,7 +579,7 @@ def _render_entities(ctx, fragment_url, *, mode, scope_for, log_label,
 
     if not is_enabled() or not ctx['resource_name']:
         return render_template(
-            'dashboards/user/partials/disk_scans_entities.html',
+            'dashboards/disk_scans/disk_scans_entities.html',
             rows=[], kind=kind, pie_chart=None, fragment_url=fragment_url,
             dir_fragment_url=dir_fragment_url,
             enabled=is_enabled(), error=None, **ctx,
@@ -611,7 +612,7 @@ def _render_entities(ctx, fragment_url, *, mode, scope_for, log_label,
                                    theme=theme)
 
     return render_template(
-        'dashboards/user/partials/disk_scans_entities.html',
+        'dashboards/disk_scans/disk_scans_entities.html',
         rows=rows, kind=kind, pie_chart=pie_chart, fragment_url=fragment_url,
         dir_fragment_url=dir_fragment_url,
         enabled=True, error=error, **ctx,
@@ -657,7 +658,7 @@ def _render_distribution(ctx, fragment_url, *, mode, scope_for, kind,
 
     if not is_enabled() or not ctx['resource_name']:
         return render_template(
-            'dashboards/user/partials/disk_scans_distribution.html',
+            'dashboards/disk_scans/disk_scans_distribution.html',
             hist=None, chart_svg=None,
             enabled=is_enabled(), error=None, **ctx, **extra,
         )
@@ -682,7 +683,7 @@ def _render_distribution(ctx, fragment_url, *, mode, scope_for, kind,
         error = str(exc)
 
     return render_template(
-        'dashboards/user/partials/disk_scans_distribution.html',
+        'dashboards/disk_scans/disk_scans_distribution.html',
         hist=hist, chart_svg=chart_svg,
         enabled=True, error=error, **ctx, **extra,
     )
@@ -701,7 +702,7 @@ def _render_distribution(ctx, fragment_url, *, mode, scope_for, kind,
 def _no_identity_fragment():
     """Empty state for a user with no ``unix_uid`` — never runs a scan."""
     return render_template(
-        'dashboards/user/partials/disk_scans_no_identity.html')
+        'dashboards/disk_scans/disk_scans_no_identity.html')
 
 
 @bp.route('/user/<resource>/explore')
@@ -724,7 +725,7 @@ def directories_user_page(resource):
     fragment_url = url_for('disk_scans.directories_user_fragment',
                            resource=resource)
     return render_template(
-        'dashboards/user/disk_scans_directories_page.html',
+        'dashboards/disk_scans/disk_scans_directories_page.html',
         mode='user', fragment_url=fragment_url,
         initial_url=_initial_fragment_url(fragment_url, ctx, flt, browse=True),
         filters=flt, user_search_url=None,

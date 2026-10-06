@@ -327,6 +327,15 @@ class NestedSetMixin:
             return True
         return self.tree_right == self.tree_left + 1
 
+    def has_tree_coordinates(self) -> bool:
+        """Left, right and (when scoped) root are all set; a subtree query without them matches nothing."""
+        root_ok = not self._ns_root_col or bool(getattr(self, self._ns_root_col, None))
+        return root_ok and bool(self.tree_left and self.tree_right)
+
+    def sums_as_subtree(self) -> bool:
+        """The usage rule: a parent with coordinates sums its subtree; a leaf sums its own account."""
+        return self.has_tree_coordinates() and not self.is_leaf()
+
     def is_ancestor_of(self, other) -> bool:
         """True if self contains other in its subtree."""
         if not all([self.tree_left, self.tree_right,

@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from sam.accounting.calculator import batch_charges
+from sam.accounting.calculator import batch_charges, usage_anchor
 from sam.enums import ResourceTypeName
 from sam.projects.projects import Project
 from sam.accounting.accounts import Account
@@ -156,30 +156,25 @@ def get_project_rolling_usage(
             continue
 
         aid = acct.account_id
-        anchor = {'key': aid, 'account_id': aid, 'resource_id': acct.resource_id,
-                  'activity_type': res.activity_type,
-                  'start_date': active_alloc.start_date, 'end_date': active_alloc.end_date}
+        anchor, subtree = usage_anchor(aid, project, acct, res.activity_type,
+                                       active_alloc.start_date, active_alloc.end_date)
 
         # Pool detection — when the active allocation is inheriting, walk to
         # the root allocation and prepare a parallel subtree query against
         # the *root project's* tree, so this window's `charges` reflects
-        # pool burn (the rate that actually depletes the shared allocation).
-        # Mirrors Project.get_detailed_allocation_usage (projects.py:660-673).
+        # pool burn (the rate that actually depletes the shared allocation),
+        # as `build_user_projects_resources_batched` does for `used`.
         is_inheriting = False
         root_projcode = None
         if active_alloc.is_inheriting:
             root_alloc = active_alloc.root
             root_account = root_alloc.account if root_alloc is not None else None
             root_project = root_account.project if root_account is not None else None
-            if (root_project is not None
-                    and root_project.tree_root is not None
-                    and root_project.tree_left is not None
-                    and root_project.tree_right is not None):
+            if root_project is not None and root_project.has_tree_coordinates():
                 is_inheriting = True
                 root_projcode = root_project.projcode
-                pool_infos.append({**anchor, 'tree_root': root_project.tree_root,
-                                   'tree_left': root_project.tree_left,
-                                   'tree_right': root_project.tree_right})
+                pool_infos.append(usage_anchor(aid, root_project, acct, res.activity_type,
+                                               active_alloc.start_date, active_alloc.end_date)[0])
 
         account_meta[aid] = {
             'resource_name':    res.resource_name,
@@ -195,13 +190,7 @@ def get_project_rolling_usage(
             'threshold_90': acct.second_threshold,
         }
 
-        # Leaf vs. non-leaf determines self-charge rollup strategy.
-        # project.is_leaf() uses NestedSetMixin (base.py:303): tree_right == tree_left + 1
-        if project.is_leaf():
-            leaf_infos.append(anchor)
-        else:
-            subtree_infos.append({**anchor, 'tree_root': project.tree_root,
-                                  'tree_left': project.tree_left, 'tree_right': project.tree_right})
+        (subtree_infos if subtree else leaf_infos).append(anchor)
 
     if not account_meta:
         return {}

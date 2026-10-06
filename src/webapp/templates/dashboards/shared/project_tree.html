@@ -20,9 +20,10 @@
 {%- endmacro %}
 
 {#- % used meter; title carries the % of allocated time elapsed (the tick). -#}
-{% macro usage_meter(pct, elapsed_pct=none, title='') -%}
-{{ alloc_meter(pct, elapsed_pct=elapsed_pct,
-               title=title or ((pct | fmt_pct) ~ ' used' ~ (('; ' ~ (elapsed_pct | fmt_pct) ~ ' of time elapsed') if elapsed_pct is not none else ''))) }}
+{% macro usage_meter(pct, elapsed_pct=none, title='', pool_pct=none) -%}
+{%- set elapsed = ('; ' ~ (elapsed_pct | fmt_pct) ~ ' of time elapsed') if elapsed_pct is not none else '' -%}
+{{ alloc_meter(pct, elapsed_pct=elapsed_pct, pool_pct=pool_pct,
+               title=(title or ((pct | fmt_pct) ~ ' used')) ~ elapsed) }}
 {%- endmacro %}
 
 {#- sort=true: each cell carries its sortable_table.js key (data-sort-value).
@@ -38,12 +39,14 @@
 {%- elif res.is_inheriting -%}
 {#- Drawing on an ancestor's pool: this project's own use leads; the pool's figures are context. -#}
 {%- set pool = res.root_projcode or 'parent' -%}
-<td class="col-num"{{ _sort_key(res.self_percent_used, sort) }}>{{ usage_meter(res.self_percent_used, title=(res.self_percent_used | fmt_pct) ~ ' of ' ~ pool ~ "'s pool used by this project") }}</td>
-<td class="col-num text-muted small"{{ _sort_key(res.allocated, sort) }} title="{{ pool }}'s pool: {{ res.allocated | fmt_number }} allocated">
+<td class="col-num"{{ _sort_key(res.self_percent_used, sort) }}>{{ usage_meter(res.self_percent_used, res.elapsed_pct if res.resource_type in ('HPC', 'DAV') else none,
+    title='This project ' ~ (res.self_percent_used | fmt_pct) ~ ' · ' ~ pool ~ "'s pool " ~ (res.percent_used | fmt_pct),
+    pool_pct=res.percent_used) }}</td>
+<td class="col-num text-muted small"{{ _sort_key(res.allocated, sort) }} title="{{ pool }}'s pool: {{ res.allocated | fmt_number }} allocated (sorts by it)">
   {{- term('from', g_shared_alloc(), rich=True, title='Shared allocation', stop_propagation=True) }} {{ project_link_button(res.root_projcode, can_view) if res.root_projcode else 'parent' -}}
 </td>
 <td class="col-num"{{ _sort_key(res.self_used, sort) }} title="Used by this project; the pool has used {{ res.used | fmt_number }}">{{ res.self_used | fmt_number }}</td>
-<td class="col-num text-muted"{{ _sort_key(res.remaining, sort) }} title="{{ pool }}'s pool remaining">{{ res.remaining | fmt_number }}</td>
+<td class="col-num {{ 'text-danger' if (res.remaining or 0) < 0 else 'text-muted' }}"{{ _sort_key(res.remaining, sort) }} title="{{ pool }}'s pool remaining">{{ res.remaining | fmt_number }}</td>
 {%- else -%}
 {#- Time elapsed means something for a compute allocation, not for storage. -#}
 <td class="col-num"{{ _sort_key(res.percent_used, sort) }}>{{ usage_meter(res.percent_used, res.elapsed_pct if res.resource_type in ('HPC', 'DAV') else none) }}</td>
@@ -56,17 +59,18 @@
   {%- endif %}
 </td>
 <td class="col-num"{{ _sort_key(res.used, sort) }}>{{ res.used | fmt_number }}</td>
-<td class="col-num"{{ _sort_key(res.remaining, sort) }}>{{ res.remaining | fmt_number }}</td>
+<td class="col-num{{ ' text-danger' if (res.remaining or 0) < 0 }}"{{ _sort_key(res.remaining, sort) }}>{{ res.remaining | fmt_number }}</td>
 {%- endif -%}
 {%- endmacro %}
 
 {#- Edit / allocate-down / exchange for one row. exchange_url is set by the caller only
-    when 2+ descendants hold dedicated allocations; it shows on the current row only. -#}
-{% macro allocation_actions(res, is_current=false, can_edit=false, exchange_url=none) -%}
+    when 2+ descendants hold dedicated allocations; it shows on the current row only.
+    edit_url replaces the admin edit form's URL (Resource Details uses the user route). -#}
+{% macro allocation_actions(res, is_current=false, can_edit=false, exchange_url=none, edit_url=none) -%}
 <td class="text-end text-nowrap"><span class="row-actions">
   {%- if can_edit and res and res.allocation_id -%}
   <button type="button" class="btn btn-row"
-          hx-get="{{ url_for('admin_dashboard.htmx_edit_allocation_form', allocation_id=res.allocation_id) }}"
+          hx-get="{{ edit_url or url_for('admin_dashboard.htmx_edit_allocation_form', allocation_id=res.allocation_id) }}"
           hx-target="#editAllocationFormContainer"
           data-bs-toggle="modal" data-bs-target="#editAllocationModal"
           title="Edit allocation" aria-label="Edit allocation"><i class="fa-solid fa-pencil"></i></button>
@@ -95,18 +99,36 @@
 </span></td>
 {%- endmacro %}
 
+{#- Picker mode (Resource Details' scope tree): href(node) returns a row's URL, or nothing for
+    a muted row titled idle_title; value(node) fills a trailing number cell. Both are macros
+    taking the node. -#}
 {% macro project_tree_rows(nodes, depth=0, current_projcode='', can_view=false, active_only=false,
-                           alloc_by_projcode=none, can_edit_allocations=false, exchange_url=none) %}
+                           alloc_by_projcode=none, can_edit_allocations=false, exchange_url=none,
+                           href=none, link_attrs='', idle_title='', value=none) %}
 {%- for node in nodes -%}
 {%- set is_active = node.active if node.active is defined else true -%}
 {%- if not active_only or is_active -%}
 {%- set is_current = node.projcode == current_projcode -%}
 <tr class="{{ 'tree-node-current' if is_current }}{{ ' row-inactive' if not is_active }}">
   <td class="tree-cell tree-guides cell-truncate" style="--depth: {{ depth }};" title="{{ node.projcode }}{{ ' — ' ~ node.title if node.title }}">
+    {%- if href is not none -%}
+    {%- set url = href(node) | trim -%}
+    {%- if url -%}
+    <a href="{{ url }}" class="text-decoration-none"{% if link_attrs %} {{ link_attrs }}{% endif %}><span class="font-monospace">{{ node.projcode }}</span>
+      {%- if node.title %}<span class="text-muted ms-2">{{ node.title }}</span>{% endif %}</a>
+    {%- else -%}
+    <span class="text-muted"{% if idle_title %} title="{{ idle_title }}"{% endif %}><span class="font-monospace">{{ node.projcode }}</span>
+      {%- if node.title %}<span class="ms-2">{{ node.title }}</span>{% endif %}</span>
+    {%- endif -%}
+    {%- else -%}
     {{- project_link_button(node.projcode, can_view) -}}
     {%- if node.title %}<span class="text-muted ms-2">{{ node.title }}</span>{% endif -%}
+    {%- endif -%}
     {%- if not is_active %}{{ state_tag('inactive') }}{% endif -%}
   </td>
+  {%- if value is not none %}
+  <td class="col-num">{{ value(node) | trim }}</td>
+  {%- endif -%}
   {%- if alloc_by_projcode is not none -%}
   {%- set res = alloc_by_projcode.get(node.projcode) -%}
   {{ allocation_cells(res, can_view) }}
@@ -116,7 +138,8 @@
 {%- set children = node.children | selectattr('active') | list if active_only else node.children | list -%}
 {%- if children -%}
 {{ project_tree_rows(children | sort(attribute='projcode'), depth + 1, current_projcode, can_view, active_only,
-                     alloc_by_projcode, can_edit_allocations, exchange_url) }}
+                     alloc_by_projcode, can_edit_allocations, exchange_url,
+                     href, link_attrs, idle_title, value) }}
 {%- endif -%}
 {%- endif -%}
 {%- endfor -%}

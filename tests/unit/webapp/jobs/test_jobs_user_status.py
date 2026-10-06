@@ -185,7 +185,7 @@ def test_by_project_fragment_renders_rows_and_pinned_pie(
     assert 'data-job-project="SCSG0001"' in body
     assert '#sam/row/data-job-project/SCSG0001' in body
     # Row drill narrows the user-mode jobs fragment by account.
-    assert '/dashboards/user/jobs/user/derecho?machine=derecho&account=SCSG0001' in body
+    assert '/dashboards/user/jobs/user/derecho?machine=derecho&account=SCSG0001' in body.replace('&amp;', '&')
 
 
 def test_by_project_fragment_404_unknown_machine(app, auth_client, monkeypatch):
@@ -252,7 +252,7 @@ def test_project_by_project_fragment_scoped_to_tree(
     assert kwargs.get('user') is None      # tree scoping, no user pin
     assert active_project.projcode in kwargs['account']
     assert (f'/dashboards/user/jobs/{active_project.projcode}'
-            '?machine=derecho&account=SCSG0001') in resp.get_data(as_text=True)
+            '?machine=derecho&account=SCSG0001') in resp.get_data(as_text=True).replace('&amp;', '&')
 
 
 def test_project_fragment_intree_account_narrows(

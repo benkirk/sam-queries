@@ -418,7 +418,7 @@ for resource_name, details in usage.items():
     print(f"  {resource_name}: {details['used']:.2f}/{details['allocated']:.2f} ({details['percent_used']:.1f}% used)")
 
 # Find projects expiring soon
-from sam.queries import get_projects_by_allocation_end_date
+from sam.queries.expirations import get_projects_by_allocation_end_date
 from datetime import datetime, timedelta
 
 expiring = get_projects_by_allocation_end_date(
@@ -594,8 +594,6 @@ sam-queries/
 │   │   ├── tasks/               # Scheduled-task commands (sam-admin tasks)
 │   │   ├── xras/                # XRAS action-log commands and display functions
 │   │   └── cmds/                # Entry points (search.py, admin.py)
-│   │
-│   ├── sam_search_cli.py        # Compatibility shim (re-exports from cli.cmds.search)
 │   │
 │   └── webapp/                   # Flask web application
 │       ├── run.py               # Development server
@@ -829,7 +827,7 @@ curl -b cookies.txt http://localhost:5050/api/v1/users/benkirk
 sam-search project --upcoming-expirations
 
 # Python
-from sam.queries import get_projects_by_allocation_end_date
+from sam.queries.expirations import get_projects_by_allocation_end_date
 expiring = get_projects_by_allocation_end_date(session, ...)
 
 # API
@@ -852,7 +850,7 @@ curl -b cookies.txt http://localhost:5050/api/v1/accounts/12345/balance
 ### Automated Reporting
 ```python
 # Generate weekly expiration report
-from sam.queries import get_projects_by_allocation_end_date
+from sam.queries.expirations import get_projects_by_allocation_end_date
 from datetime import datetime, timedelta
 import csv
 

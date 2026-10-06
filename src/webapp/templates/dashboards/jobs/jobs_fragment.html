@@ -1,4 +1,6 @@
 {% from 'dashboards/fragments/pagination.html' import pagination %}
+{% from 'dashboards/fragments/collapse.html' import drill_toggle %}
+{% from 'dashboards/jobs/_jobs_macros.html' import jobs_disabled, exit_status_badge %}
 {#
   Per-job rows fragment — embedded into resource_details.html via hx-get.
 
@@ -8,8 +10,8 @@
     sortable_columns, fragment_url, target_id, enabled, error
 #}
 
-{# Numeric columns get text-end alignment in the header AND every body cell.
-   Kept here as a single source of truth so render_value + sort_link stay aligned. #}
+{# Numeric columns are .col-num in the header AND every body cell.
+   Kept here as a single source of truth so render_value + the headers stay aligned. #}
 {% set _numeric_cols = ['numnodes', 'numcpus', 'numgpus',
                         'elapsed', 'walltime', 'mpiprocs', 'ompthreads',
                         'reqmem', 'memory', 'vmemory',
@@ -40,6 +42,8 @@
     {%- else -%}
       {{ val | fmt_date }}
     {%- endif -%}
+  {%- elif col == 'exit_status' -%}
+    {{ exit_status_badge(val) }}
   {%- elif col in ('job_id', 'user') -%}
     <code class="small" title="{{ val }}">{{ val }}</code>
   {%- elif col in ('name', 'resources') -%}
@@ -60,40 +64,21 @@
   {%- endif -%}
 {% endmacro %}
 
-{% macro sort_link(col) %}
-  {%- set label = _header_overrides.get(col, column_specs.get(col, {}).get('header', col)) -%}
-  {%- set numeric = col in _numeric_cols -%}
-  {%- if col in sortable_columns -%}
-    {%- set is_active = (sort['sort_by'] == col) -%}
-    {%- set next_dir = 'asc' if (is_active and sort['sort_dir'] == 'desc') else 'desc' -%}
-    <a class="text-decoration-none" href="#"
-       hx-get="{{ fragment_url }}?sort_by={{ col }}&sort_dir={{ next_dir }}&page=1&per_page={{ page.per_page }}"
-       hx-target="#{{ target_id }}"
-       hx-include="#jobs-filters-{{ target_id }}"
-       hx-swap="innerHTML">
-      {{ label }}
-      {%- if is_active -%}
-        {%- if sort['sort_dir'] == 'asc' %} <i class="fa-solid fa-caret-up ms-1"></i>
-        {%- else %} <i class="fa-solid fa-caret-down ms-1"></i>{% endif -%}
-      {%- else %} <i class="fa-solid fa-sort text-muted small ms-1"></i>{%- endif -%}
-    </a>
-  {%- else -%}
-    {{ label }}
-  {%- endif -%}
-{% endmacro %}
+{#- Column roles: numbers right-aligned, the job name takes the slack, the rest shrink. -#}
+{% macro _col_role(col) -%}
+  {{ 'col-num' if col in _numeric_cols else ('cell-truncate' if col == 'name' else 'col-shrink') }}
+{%- endmacro %}
+
+{% macro _col_label(col) -%}
+  {{ _header_overrides.get(col, column_specs.get(col, {}).get('header', col)) }}
+{%- endmacro %}
+
+{# sort_link reads form_id from this template's context. #}
+{% set form_id = 'jobs-filters-' ~ target_id %}
+{% from 'dashboards/fragments/sort_link.html' import sort_link with context %}
 
 {% if not enabled %}
-  <div class="alert alert-secondary py-2 mb-0" role="status">
-    <small>
-      Per-job data is unavailable: the
-      <code>hpc-usage-queries</code> plugin is not loaded.
-      <a href="/dashboards/admin/configuration"
-         target="_blank" rel="noopener">
-        Check the Database card on the Admin → Configuration page
-      </a>
-      for plugin/DB health.
-    </small>
-  </div>
+  {{ jobs_disabled() }}
 {% elif error %}
   <div class="alert alert-warning py-2 mb-0" role="alert">
     <small>Could not load per-job data: {{ error }}</small>
@@ -185,9 +170,9 @@
       <table class="table table-sm table-hover align-middle mb-0 jobs-fragment-table">
         <thead class="table-subtle">
           <tr>
-            <th style="width:1.5rem;" aria-label="Expand"></th>
+            <th class="col-shrink" aria-label="Expand"></th>
             {% for col in visible_cols %}
-              <th class="{% if col in _numeric_cols %}text-end{% endif %}">{{ sort_link(col) }}</th>
+              <th{% if col != 'name' %} class="{{ _col_role(col) }}"{% endif %}>{{ sort_link(col, _col_label(col), extra_qs='&per_page=' ~ page.per_page) }}</th>
             {% endfor %}
           </tr>
         </thead>
@@ -195,22 +180,10 @@
           {% for r in rows %}
             {% set rowid = target_id ~ '-r' ~ loop.index %}
             <tr>
-              <td class="text-center p-0">
-                <button type="button"
-                        class="btn btn-link p-0 text-muted jobs-expand-toggle"
-                        data-bs-toggle="collapse"
-                        data-bs-target="#{{ rowid }}"
-                        aria-expanded="false" aria-controls="{{ rowid }}"
-                        title="Show details">
-                  <i class="fa-solid fa-chevron-right small collapse-icon"></i>
-                </button>
-              </td>
+              <td class="col-shrink">{{ drill_toggle(rowid, 'Show details') }}</td>
               {% for col in visible_cols %}
-                {# Long job names must not widen the auto-fit column —
-                   truncate with an ellipsis; the full name stays on the
-                   render_value title tooltip. #}
-                <td class="{% if col in _numeric_cols %}text-end{% endif %}{% if col in ('job_id', 'user') %} text-nowrap small{% endif %}{% if col == 'name' %} small text-truncate{% endif %}"
-                    {% if col == 'name' %}style="max-width: 35ch;"{% endif %}>
+                {# A long job name truncates (full name in render_value's title). #}
+                <td class="{{ _col_role(col) }}{% if col in ('job_id', 'user', 'name') %} small{% endif %}">
                   {{ render_value(col, r.get(col)) }}
                 </td>
               {% endfor %}
@@ -221,9 +194,7 @@
                   {% for col in verbose_extras %}
                     {% set v = r.get(col) %}
                     {% if v is not none and v != '' and v != 0 %}
-                      <dt class="col-sm-3 col-md-2 text-muted">
-                        {{ _header_overrides.get(col, column_specs.get(col, {}).get('header', col)) }}
-                      </dt>
+                      <dt class="col-sm-3 col-md-2 text-muted">{{ _col_label(col) }}</dt>
                       <dd class="col-sm-9 col-md-10">{{ render_value(col, v) }}</dd>
                     {% endif %}
                   {% endfor %}

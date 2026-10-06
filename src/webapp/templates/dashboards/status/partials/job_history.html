@@ -14,7 +14,7 @@
    AND the viewer holds VIEW_ALL_JOB_DATA (gated at the route + tab), so
    it never needs its own empty/disabled state.
 #}
-{% from 'dashboards/user/partials/jobs_card.html' import jobs_card %}
+{% from 'dashboards/jobs/jobs_card.html' import jobs_card %}
 <ul class="nav nav-pills mb-3" id="jobHistSubtabs" role="tablist">
     {% for m in job_history_machines %}
     <li class="nav-item" role="presentation">

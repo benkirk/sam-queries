@@ -420,8 +420,9 @@ volumes:
 
 secrets:
   # Read-only deploy key for the private NCAR/hpc-scheduling-tools plugin.
-  # Unset -> /dev/null -> empty -> the samuel Dockerfile skips the optional
-  # install. Opt in locally with:
+  # Unset -> the empty in-repo file -> the samuel Dockerfile skips the optional
+  # install. NOT /dev/null: buildx >= 0.37.2 refuses a secret outside the project
+  # without --allow=fs.read, which compose cannot pass. Opt in locally with:
   #   HPC_SCHEDULING_TOOLS_DEPLOY_KEY_FILE=~/.ssh/hpc_sched_deploy docker compose build samuel
   hpc_sched_deploy_key:
-    file: ${HPC_SCHEDULING_TOOLS_DEPLOY_KEY_FILE:-/dev/null}
+    file: ${HPC_SCHEDULING_TOOLS_DEPLOY_KEY_FILE:-./containers/samuel/no-deploy-key}

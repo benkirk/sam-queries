@@ -571,7 +571,7 @@ No grace-period cutoffs apply (unlike `project_access`).  All active projects
 | Single resource (e.g. `Derecho`) | ~0.7s | near-instant |
 | All HPC+DAV resources | ~2.8s | near-instant |
 
-Charge aggregation uses `Project.batch_get_account_charges()` (VALUES CTE primary
+Charge aggregation uses `batch_charges` (VALUES CTE primary
 path) — one query per charge model with all account IDs and date windows inlined.
 This avoids the LEFT JOIN fanout on charge summary tables that would otherwise
 produce hundreds of millions of intermediate rows.

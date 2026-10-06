@@ -7,7 +7,9 @@ folders (the middle ground in docs/plans/GALLERY_VISUAL_SNAPSHOTS.md). Needs the
 --styles also dumps every element's computed style; --compare proves "no visual change" for a
 change that keeps the DOM. A restructure moves every element path, so prove that one with
 --element SELECTOR on both sides and --compare-pixels.
---headers lists table headers whose sort icon wrapped onto a line of its own (no --out needed).
+--headers lists table headers whose sort icon wrapped onto a line of its own; --wraps lists chevrons
+wrapped away from their text and --midword words split across two lines (a column too narrow for
+its content), both with every collapse and tab open (none of the three needs --out).
 --modal OPENER (after any --step) or --recipes FILE shoots the opened dialog and prints its height.
 --pages charts shoots every chart host, each with the steps its lazy tabs need.
 
@@ -17,6 +19,8 @@ change that keeps the DOM. A restructure moves every element path, so prove that
     python scripts/ui_snapshots.py --out /tmp/after --page /allocations/projects --element .filter-sidebar
     python scripts/ui_snapshots.py --compare-pixels /tmp/before /tmp/after
     python scripts/ui_snapshots.py --headers --layout desktop --layout mobile --theme light
+    python scripts/ui_snapshots.py --wraps --pages wraps --layout mobile --width 360 --theme light
+    python scripts/ui_snapshots.py --midword --pages wraps --layout mobile --width 360 --theme light
     python scripts/ui_snapshots.py --out /tmp/m --page /admin/resources --modal '[data-bs-target="#createResourceModal"]'
     python scripts/ui_snapshots.py --out /tmp/m --recipes scripts/ui_snapshots_modals.json --layout desktop --layout mobile
     python scripts/ui_snapshots.py --out /tmp/c --pages charts --base-url http://localhost:5050
@@ -81,6 +85,29 @@ def _login(browser, base_url, username, password):
 
 def _slug(url):
     return re.sub(r'[^a-z0-9]+', '-', url.lower()).strip('-') or 'root'
+
+
+# The phone-wrap census (--wraps --pages wraps): every page with a chevron, tabs included. Pages,
+# not fragments: /admin/expirations and /allocations/xras_remediations load bare, with no CSS.
+PAGE_SETS['wraps'] = [(_slug(url), url, []) for url in [
+    '/admin/', '/admin/account-requests', '/admin/configuration', '/admin/contracts', '/admin/events',
+    '/admin/facilities', '/admin/organizations', '/admin/organizations?tab=institutions',
+    '/admin/organizations?tab=areas', '/admin/organizations/mnemonics', '/admin/projects',
+    '/admin/projects/directories', '/admin/resources', '/admin/resources?tab=machines',
+    '/admin/resources?tab=queues', '/admin/roles', '/admin/users-groups', '/admin/users/last-seen',
+    '/admin/project/SCSG0001', '/admin/project/SCSG0001/edit', '/admin/project/CESM0002',
+    '/allocations/', '/allocations/projects', '/allocations/projects?view=calendar',
+    '/allocations/adjustments', '/allocations/transactions', '/allocations/xras', '/database/',
+    '/status/derecho', '/status/casper', '/status/jupyterhub', '/status/events',
+    '/status/job-history', '/status/filesystem-scans',
+    '/user/', '/user/accounts', '/user/data', '/user/events', '/user/info', '/user/jobs',
+    _DETAILS + 'Derecho', '/user/resource-details/CESM0002?resource=Derecho',
+    '/user/resource-details/CESM0002?resource=Campaign_Store',
+    '/user/resource-details/P93300042?resource=Casper',
+    '/dashboards/user/jobs/CESM0002/explore?machine=derecho&start=2026-09-01&end=2026-09-08',
+    '/dashboards/user/disk-scans/CESM0002/directories/explore?resource=Campaign_Store',
+    '/project-invitations/SCSG0001/invitations', '/dev/gallery',
+]]
 
 
 # Every element's computed style (and any ::before/::after with content), path-keyed. Styles are
@@ -228,6 +255,122 @@ HEADER_CHECK_JS = """() => {
 }"""
 
 
+# Phone-width wraps: a chevron or caret on a line above its text, or a trailing one alone on the
+# last line. Rows only get .show: opening them through Bootstrap fires every lazy drill's fetch
+# (status Job History's 600 drawers stalled the census). Cards and tabs open for real.
+WRAP_FORCE_OPEN_JS = """() => {
+  document.querySelectorAll('.collapse:not(.show)').forEach(e => {
+    if (e.closest('nav') || e.closest('.modal')) return;
+    if (e.matches('tr, tbody')) { e.classList.add('show'); return; }
+    try { bootstrap.Collapse.getOrCreateInstance(e, {toggle: false}).show(); } catch (_) { e.classList.add('show'); }
+  });
+}"""
+WRAP_TABS_JS = """() => [...document.querySelectorAll('[data-bs-toggle="tab"], [data-bs-toggle="pill"]')]
+  .filter(t => t.offsetParent && !t.closest('.modal')).map(t => t.textContent.trim().slice(0, 30))"""
+WRAP_CLICK_TAB_JS = """i => { const t = [...document.querySelectorAll('[data-bs-toggle="tab"], [data-bs-toggle="pill"]')]
+  .filter(t => t.offsetParent && !t.closest('.modal'))[i]; if (t) t.click(); }"""
+WRAP_CHECK_JS = r"""() => {
+  const ICON = 'i.collapse-icon, i.accordion-chevron, i.fa-chevron-right, i.fa-chevron-down, i.fa-caret-right, i.fa-caret-down, i.fa-angle-right, i.fa-angle-left';
+  const BOX = 'td, th, .card-header, .accordion-button, li, .list-group-item, h1, h2, h3, h4, h5, h6, label, summary, .btn, a, button';
+  const out = [], seen = new Set();
+  const rects = (node, from, to) => { const rg = document.createRange(); rg.setStart(node, from); rg.setEnd(node, to); return rg.getClientRects(); };
+  for (const icon of document.querySelectorAll(ICON)) {
+    if (icon.closest('thead a, .dropdown-menu, nav.navbar')) continue;
+    let ib = icon; const btn = icon.closest('button, a');   // an icon-only button wraps as one
+    if (btn && !btn.textContent.trim()) ib = btn;
+    let box = ib.parentElement && ib.parentElement.closest(BOX);   // the smallest box with other text
+    while (box && !box.textContent.replace(ib.textContent, '').trim()) box = box.parentElement && box.parentElement.closest(BOX);
+    const r0 = ib.getBoundingClientRect();
+    if (!box || !r0.width || !r0.height || seen.has(box)) continue;
+    seen.add(box);
+    const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+    let node, after = null, before = null, txt = '';
+    while ((node = walker.nextNode())) {
+      if (ib.contains(node)) continue;
+      const t = node.textContent, i = t.search(/\S/);
+      if (i < 0) continue;
+      const pos = ib.compareDocumentPosition(node);
+      if ((pos & Node.DOCUMENT_POSITION_FOLLOWING) && !after) {
+        const rs = rects(node, i, i + 1); if (rs.length) { after = rs[0]; txt = t.trim().slice(0, 40); }
+      } else if (pos & Node.DOCUMENT_POSITION_PRECEDING) {
+        const j = t.trimEnd().length, rs = rects(node, j - 1, j);
+        if (rs.length) { before = rs[rs.length - 1]; if (!txt) txt = t.trim().slice(-40); }
+      }
+    }
+    let kind = null;
+    if (after && r0.bottom <= after.top + 1) kind = 'icon above its text';
+    else if (!after && before && r0.top >= before.bottom - 1) kind = 'trailing icon alone on a line';
+    const host = box.closest('[id]');
+    if (kind) out.push(`${kind}: "${txt}" in ${box.tagName.toLowerCase()}${host ? ' #' + host.id : ''}`);
+  }
+  return out;
+}"""
+# Mid-word: a letter/digit run whose glyph rects sit on two lines. Bootstrap's .card sets
+# word-wrap: break-word, so inside a card this marks a column narrower than its longest word.
+# One hit per (host id, box, table column, word); the box is the cell, else the nearest block.
+MIDWORD_JS = r"""() => {
+  const out = [], seen = new Set();
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n; (n = walker.nextNode());) {
+    const el = n.parentElement;
+    if (!el || !el.offsetParent || el.closest('svg, script, style, .offcanvas, .modal:not(.show), nav.navbar')) continue;
+    const re = /[A-Za-z0-9]{2,}/g; let m;
+    while ((m = re.exec(n.textContent))) {
+      const rg = document.createRange(); rg.setStart(n, m.index); rg.setEnd(n, m.index + m[0].length);
+      if (new Set([...rg.getClientRects()].filter(r => r.width > 0).map(r => Math.round(r.top))).size < 2) continue;
+      const cell = el.closest('td, th');
+      let box = cell || el; while (box && getComputedStyle(box).display.startsWith('inline')) box = box.parentElement;
+      let col = '';
+      if (cell) { const i = [...cell.parentElement.children].indexOf(cell), th = cell.closest('table').querySelector('thead tr');
+                  col = ` col ${i}` + (th && th.children[i] ? ` "${th.children[i].textContent.trim().replace(/\s+/g, ' ').slice(0, 24)}"` : ''); }
+      const host = box.closest('[id]'), sig = box.tagName.toLowerCase() + [...box.classList].slice(0, 3).map(c => '.' + c).join('');
+      const key = (host ? host.id : '') + '|' + sig + '|' + col + '|' + m[0];
+      if (seen.has(key)) continue; seen.add(key);
+      out.push(`mid-word: "${m[0].slice(0, 30)}" in ${sig} ${Math.round(box.getBoundingClientRect().width)}px${col}${host ? ' #' + host.id : ''}`);
+    }
+  }
+  return out;
+}"""
+
+
+def open_everything(page, sample, max_tabs=14):
+    """Force every collapse open and call sample(''); then click each tab, reopen, and call sample(tab)."""
+    def force_open(rounds):   # a lazy drill can reveal more collapses
+        for _ in range(rounds):
+            page.evaluate(WRAP_FORCE_OPEN_JS)
+            page.wait_for_timeout(1000)
+            _idle(page)
+
+    force_open(3)
+    sample('')
+    for i, tab in enumerate(page.evaluate(WRAP_TABS_JS)[:max_tabs]):
+        page.evaluate(WRAP_CLICK_TAB_JS, i)
+        page.wait_for_timeout(800)
+        force_open(2)
+        sample(tab)
+
+
+def _collect(page, check_js, max_tabs):
+    found = {}
+
+    def sample(tab):
+        for line in page.evaluate(check_js):
+            found.setdefault(line, f'{line} [tab {tab}]' if tab else line)
+
+    open_everything(page, sample, max_tabs)
+    return list(found.values())
+
+
+def check_wraps(page, max_tabs=14):
+    """Open every collapse and tab on the page; return each wrapped chevron, deduplicated."""
+    return _collect(page, WRAP_CHECK_JS, max_tabs)
+
+
+def check_midword(page, max_tabs=14):
+    """Open every collapse and tab on the page; return each word split across two lines, deduplicated."""
+    return _collect(page, MIDWORD_JS, max_tabs)
+
+
 def parse_step(text):
     """``click:SEL`` / ``wait:SEL`` / ``reveal:SEL`` / ``scroll:SEL`` / ``fill:SEL=TEXT`` -> ``(verb, selector, text)``."""
     verb, _, rest = text.partition(':')
@@ -356,6 +499,11 @@ def main(argv=None):
     ap.add_argument('--styles', action='store_true', help='also dump computed styles as <name>.styles.json.gz')
     ap.add_argument('--headers', action='store_true',
                     help='report sort icons wrapped away from their header label; exit 1 if any')
+    ap.add_argument('--wraps', action='store_true',
+                    help='open every collapse and tab, report chevrons wrapped away from their text; exit 1 if any')
+    ap.add_argument('--midword', action='store_true',
+                    help='open every collapse and tab, report words split across two lines; exit 1 if any')
+    ap.add_argument('--width', type=int, help="override each layout's viewport width (360: a small phone)")
     ap.add_argument('--compare', nargs=2, metavar=('BEFORE', 'AFTER'), type=Path,
                     help='diff two --styles folders and exit 1 on any difference (no browser)')
     ap.add_argument('--strict', action='store_true',
@@ -385,8 +533,9 @@ def main(argv=None):
             [parse_step(s) for s in r.get('steps', ())]   # fail before the browser starts
         if args.out is None:
             ap.error('--out is required with --modal or --recipes')
-    if args.out is None and not args.headers:
-        ap.error('--out is required unless --compare, --compare-pixels or --headers is given')
+    checks = args.headers or args.wraps or args.midword
+    if args.out is None and not checks:
+        ap.error('--out is required unless --compare, --compare-pixels, --headers, --wraps or --midword is given')
     from playwright.sync_api import sync_playwright
 
     if args.out:
@@ -398,6 +547,7 @@ def main(argv=None):
         state = args.storage_state or _login(browser, args.base_url, args.username, args.password)
         for layout in args.layouts or LAYOUTS:
             width, height = LAYOUTS[layout]
+            width = args.width or width
             for theme in args.themes or THEMES:
                 context = browser.new_context(base_url=args.base_url, storage_state=state,
                                               viewport={'width': width, 'height': height})
@@ -435,10 +585,15 @@ def main(argv=None):
                         for line in page.evaluate(HEADER_CHECK_JS):
                             problems += 1
                             print(f'{url} [{layout}-{theme}]: {line}')
+                    for on, check in ((args.wraps, check_wraps), (args.midword, check_midword)):
+                        if on:   # last: it opens every collapse and clicks every tab
+                            for line in check(page):
+                                problems += 1
+                                print(f'{url} [{layout}-{theme} {width}px]: {line}', flush=True)
                 context.close()
         browser.close()
-    if args.headers:
-        print(f'{problems} orphaned sort icon(s)')
+    if checks:
+        print(f'{problems} finding(s)')
     return 1 if problems else 0
 
 
