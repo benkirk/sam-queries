@@ -5,7 +5,8 @@
 #
 # Serves <worktree>/src on the host (local MySQL :3306, Redis :6379 on its own DB index, which
 # it flushes so a previous run's fragments cannot leak in). Every outbound lever is forced off;
-# ALT_FS_SCANS_ENABLED=1 turns fs-scans on (read-only; default 0).
+# ALT_FS_SCANS_ENABLED=1 turns fs-scans on (read-only; default 0). ALT_SAM_DB_PORT=3307 serves the
+# obfuscated test DB instead of the real local one: the deck's screenshots need it.
 # Loads .env (searched upward from this repo) and NEVER prints a value from it: hand-copying a
 # running server's env printed a Jira token into a session transcript.
 set -eo pipefail
@@ -27,7 +28,7 @@ PY=${SAM_PYTHON:-$ROOT/conda-env/bin/python}
 [[ -x $PY ]] || PY=$(command -v python3)
 
 export SAM_DB_SERVER=${LOCAL_SAM_DB_SERVER:-127.0.0.1} SAM_DB_USERNAME=${LOCAL_SAM_DB_USERNAME:-root}
-export SAM_DB_PASSWORD=${LOCAL_SAM_DB_PASSWORD:-root} SAM_DB_DRIVER=mysql SAM_DB_NAME=sam SAM_DB_PORT=
+export SAM_DB_PASSWORD=${LOCAL_SAM_DB_PASSWORD:-root} SAM_DB_DRIVER=mysql SAM_DB_NAME=sam SAM_DB_PORT=${ALT_SAM_DB_PORT:-}
 export STATUS_DB_DRIVER=mysql STATUS_DB_SERVER=127.0.0.1 STATUS_DB_USERNAME=root STATUS_DB_PASSWORD=root
 export CACHE_REDIS_URL=redis://127.0.0.1:6379/$REDIS_DB RATELIMIT_STORAGE_URI=memory://
 export NOTIFY_ENABLED=0 NOTIFY_TRANSPORT=null XRAS_API_KEY= XRAS_OUTGOING_ENABLED=0 XRAS_WRITE_ENABLED=0
