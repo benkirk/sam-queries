@@ -1,4 +1,5 @@
 {% extends 'dashboards/base.html' %}
+{% from 'dashboards/fragments/search_box.html' import filter_search %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
@@ -90,15 +91,18 @@
                 <form class="d-flex gap-2 align-items-center small"
                       hx-get="{{ url_for('admin_dashboard.rate_limits_recent') }}"
                       hx-target="#recent-body" hx-swap="innerHTML"
-                      hx-trigger="submit, change from:select[name=window], keyup changed delay:500ms from:input[name=actor]">
-                    <input type="search" name="actor" class="form-control form-control-sm"
-                           placeholder="filter by actor (e.g. ip:10.0.0.5)" style="min-width: 18rem;">
-                    <select name="window" class="form-select form-select-sm" style="width:auto">
+                      hx-trigger="submit, change from:select[name=window]">
+                    {{ filter_search('rateLimitActor', 'actor',
+                                     url_for('admin_dashboard.rate_limits_recent'),
+                                     'recent-body', 'Actor',
+                                     placeholder='Actor, e.g. ip:10.0.0.5') }}
+                    <select name="window" class="form-select form-select-sm w-auto" aria-label="Window">
                         <option value="1h">Last 1h</option>
                         <option value="24h" selected>Last 24h</option>
                     </select>
-                    <button type="submit" class="btn  btn-outline-secondary">
-                        <i class="fa-solid fa-arrows-rotate"></i>
+                    <button type="submit" class="btn btn-sm btn-outline-secondary"
+                            title="Refresh" aria-label="Refresh">
+                        <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
                     </button>
                 </form>
             </div>

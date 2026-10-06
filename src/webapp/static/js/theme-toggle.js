@@ -15,7 +15,7 @@
  * <html> from the cookie, so the first byte is already correct. That is what
  * makes this flash-free by construction rather than by racing the paint.
  *
- * The click reloads because 16 server-rendered charts have their colors baked
+ * The click reloads because every server-rendered chart has its colors baked
  * into their SVG bytes. Leaving them stale is worse than a brief reload, and
  * re-issuing every chart fragment's htmx request would re-derive knowledge
  * nav-view-persistence.js already owns. Steps 1-2 flip the cookie and the

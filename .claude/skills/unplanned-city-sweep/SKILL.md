@@ -71,6 +71,12 @@ Run each pass and collect findings. The examples are real.
 - **Convention drift.** Several idioms for one thing: the leaf-versus-subtree rule exists in
   three query modules, and date arguments are parsed several ways. Pick the house idiom and
   move the others to it. Grep the idiom across the layer before proposing.
+- **Bypassed helper.** A lifted helper fixes nothing until its call sites use it, and the sites
+  that still hand-roll the idiom are invisible to every duplicate detector: each copy is one
+  line. After any Lift, grep the raw idiom across the layer and add its pattern to
+  `HELPER_BYPASS` (`helper-bypass`). Example: the filters sweep found 21 `getlist`
+  comprehensions with no helper at all, and 11 flag, sort and page reads beside `read_flag` /
+  `read_sort` / `read_page`, which already existed.
 - **Delete.** Dead CSS classes (`css-dead`, held at zero by `test_css_dead.py`), JS functions nothing calls
   (`js-dead`), compatibility shims whose callers are gone, and options no caller passes.
 - **Retire plans.** A top-level `docs/plans/*.md` whose PRs have merged and that nobody has
@@ -133,9 +139,16 @@ Rank by value over cost. Mark anything that changes behavior. Then stop and let 
 - **Front-end changes** get the same before/after, in a browser. Serve the old code from a
   worktree with `scripts/dev_server_alt.sh <worktree> <port>` (outbound off, own Redis DB; never
   copy a running server's env by hand) and the branch on another port. A change meant to look
-  the same is proved with `scripts/ui_snapshots.py --styles` on both, then `--compare before
-  after`, which must report zero differing elements. Pin time with Playwright's
-  `page.clock.install` for date logic. Load `wire-dashboard-feature` for its smoke and gates.
+  the same has two proofs, by what it does to the DOM:
+  - *DOM kept* (a class swap, a CSS move): `ui_snapshots.py --styles` on both, then `--compare
+    before after`: zero captures differ. A custom property that differs alone is counted, not
+    failed (`--strict` fails it). A live page (status charts, a clock label) needs
+    `--px-tolerance 0.05` and still differs where its content moved; leave it out or say so.
+  - *DOM restructured* (markup moved onto a macro): every element path shifts, so `--compare`
+    is noise. Shoot the component with `--element SELECTOR` on both, then `--compare-pixels`.
+
+  Pin time with Playwright's `page.clock.install` for date logic. Load
+  `wire-dashboard-feature` for its smoke and gates.
 - **An aesthetic sweep** changes looks on purpose, so `--compare` cannot be its proof. Shoot
   `ui_snapshots.py` before and after in all six states and review them by eye. Measure contrast
   (WCAG ratio computed in the page, both themes) and spacing (`getBoundingClientRect`) rather

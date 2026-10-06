@@ -9,6 +9,8 @@ Tests for the performance optimization changes:
 - Extended allocation query edge cases
 """
 
+import re
+
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
@@ -1172,6 +1174,14 @@ class TestShowUsageToggle:
 # Facility-scoped RBAC on the allocations dashboard
 # ============================================================================
 
+def _facility_box(html, name):
+    """A facility's box in the filter checklist: 'checked', 'unchecked' or None."""
+    box = re.search(rf'<input[^>]*name="facilities"\s+value="{name}"([^>]*)>', html)
+    if box is None:
+        return None
+    return 'checked' if 'checked' in box.group(1) else 'unchecked'
+
+
 class TestAllocationsDashboardFacilityScope:
     """Route-level assertions for the facility-scope layer on
     ``/allocations``. Runs against the snapshot DB via ``auth_client``;
@@ -1209,13 +1219,12 @@ class TestAllocationsDashboardFacilityScope:
         response = auth_client.get('/allocations/projects')
         assert response.status_code == 200
         html = response.data.decode()
-        # Selector form + one option (WNA), selected.
+        # Selector form + one box (WNA), checked.
         assert 'id="allocations-facility-filter-form"' in html
-        assert '<option value="WNA"' in html
-        assert 'selected' in html.split('<option value="WNA"', 1)[1].split('</option>', 1)[0]
-        # Other facilities must not appear as options.
-        assert '<option value="NCAR"' not in html
-        assert '<option value="UNIV"' not in html
+        assert _facility_box(html, 'WNA') == 'checked'
+        # Other facilities must not appear as boxes.
+        assert _facility_box(html, 'NCAR') is None
+        assert _facility_box(html, 'UNIV') is None
 
     def test_index_selector_lists_every_facility_for_unscoped_user(self, auth_client):
         """Unscoped admin (benkirk default): selector shows the full
@@ -1225,8 +1234,8 @@ class TestAllocationsDashboardFacilityScope:
         html = response.data.decode()
         assert 'id="allocations-facility-filter-form"' in html
         # Snapshot has WNA and NCAR as active facilities.
-        assert '<option value="WNA"' in html
-        assert '<option value="NCAR"' in html
+        assert _facility_box(html, 'WNA') == 'checked'
+        assert _facility_box(html, 'NCAR') == 'checked'
 
     def test_index_clamps_out_of_scope_request_to_allowed_set(
         self, auth_client, monkeypatch,
@@ -1239,9 +1248,7 @@ class TestAllocationsDashboardFacilityScope:
         assert response.status_code == 200
         html = response.data.decode()
         # WNA is still in the selected state.
-        assert '<option value="WNA"' in html
-        wna_frag = html.split('<option value="WNA"', 1)[1].split('</option>', 1)[0]
-        assert 'selected' in wna_frag
+        assert _facility_box(html, 'WNA') == 'checked'
 
     def test_projects_fragment_403s_out_of_scope_facility(
         self, auth_client, monkeypatch,
@@ -1427,6 +1434,23 @@ class TestPaceChartRoute:
         assert response.status_code == 200
         html = response.data.decode().lower()
         assert '<svg' in html or 'no allocations' in html
+
+    def test_page_loader_carries_the_facility_filter(self, auth_client):
+        html = auth_client.get('/allocations/projects?facilities=WNA').get_data(as_text=True)
+        loaders = re.findall(r'hx-get="([^"]*htmx/pace-chart/[^"]*)"\s+hx-trigger="intersect once"', html)
+        if not loaders:
+            pytest.skip('no resource pane in the snapshot for WNA')
+        assert all('facilities=WNA' in url and 'card=' not in url for url in loaders)
+
+    def test_only_a_facility_card_gets_the_facility_in_its_dom_id(self, auth_client):
+        """A page filtered to one facility also renders that facility's card: two
+        charts over the same scope, which must not share an id."""
+        url = '/allocations/htmx/pace-chart/Derecho?active_at=2026-10-01&facilities=WNA'
+        page_wide = auth_client.get(url).get_data(as_text=True)
+        card = auth_client.get(url + '&card=1').get_data(as_text=True)
+        assert 'id="pace-chart-Derecho"' in page_wide and 'card=1' not in page_wide
+        assert 'id="pace-chart-Derecho-WNA"' in card
+        assert card.count('card=1') == 3    # each Sort-by button keeps the card's id
 
     def test_hpc_shares_the_calendars_entries(self, auth_client):
         with patch(f'{self._BP}.cached_allocation_usage_rows', return_value=[]) as rows, \

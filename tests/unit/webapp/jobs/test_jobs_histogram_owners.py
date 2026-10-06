@@ -22,11 +22,13 @@ def test_histogram_bucket_renders_owner_table(
     body = _get_hist_body(app, auth_client, active_project, monkeypatch)
     assert 'alice' in body and 'bob' in body
     assert '-b0-u1-row' in body and '-b0-u2-row' in body
-    assert body.index('alice') < body.index('bob')
+    table = body[body.index('<table'):]       # the chart above names owners too, in stack order
+    assert table.index('alice') < table.index('bob')
 
     body_cpu = _get_hist_body(app, auth_client, active_project, monkeypatch,
                               query='&metric=cpu_hours')
-    assert body_cpu.index('bob') < body_cpu.index('alice')
+    table_cpu = body_cpu[body_cpu.index('<table'):]
+    assert table_cpu.index('bob') < table_cpu.index('alice')
 
 
 def test_histogram_owner_drill_appends_user(

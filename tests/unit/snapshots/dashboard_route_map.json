@@ -2493,6 +2493,13 @@
     ]
   ],
   [
+    "jobs.by_user_expanded_machine_fragment",
+    "/dashboards/user/jobs/machine/<machine>/by-user/expanded",
+    [
+      "GET"
+    ]
+  ],
+  [
     "jobs.by_user_fragment",
     "/dashboards/user/jobs/<projcode>/by-user",
     [

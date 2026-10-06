@@ -18,15 +18,14 @@ enforced by test.
         add_legend(axes, ...)
         finish(fig, axes, ...)
         apply_chrome(...)    theme colors onto every chrome artist
-        to_svg(fig)          the single savefig/close chokepoint
+        fig_to_svg(fig)      the single savefig/close chokepoint; writes the hover titles
 
 Hooks default to no-ops, so a leaf implements only what differs. State goes on
 `self` rather than a threaded model object, matching the handler idiom.
 
-WARNING: `BaseChart` must NOT swallow exceptions. Callers own that and do it
-inconsistently -- `disk_scans/routes.py` wraps its call while `jobs/routes.py`
-does not -- so catching here would silently turn the disk-scans error card into
-a blank one.
+WARNING: `BaseChart` must NOT swallow exceptions. Every route calls a chart
+through `webapp.utils.charts.draw_chart`, which logs the failure and returns the
+shared error state; catching here would hide the failure from it and from the log.
 """
 
 import functools
@@ -145,6 +144,13 @@ class BaseChart:
     #: and 11 are the same picture).
     tick_fontsize = None
 
+    #: ``{projcode: title}`` for hovers, when the route may show them. A chart
+    #: stays query-free: the route looks the titles up (`utils.charts.hover_titles`)
+    #: and the chart's `cache_key` hashes them.
+    titles = None
+    #: Longest title a hover carries.
+    title_max = 80
+
     # --- lifecycle hooks (override what differs) -------------------------
 
     def prepare(self):
@@ -178,7 +184,7 @@ class BaseChart:
         """Placement comes from `layout`, colors from `theme`."""
 
     def finish(self, fig, axes, layout, theme):
-        """Anything needing the figure — autofmt_xdate, xlim, annotations."""
+        """Anything needing the figure: the date axis, xlim, annotations."""
 
     # --- shared helpers ---------------------------------------------------
 
@@ -209,13 +215,23 @@ class BaseChart:
         and aggregates are inert by construction.
         """
         entries = list(bands) if ordered else list(reversed(list(bands)))
-        patches, texts = legend.get_patches(), legend.get_texts()
-        for band, patch, text in zip(entries, patches, texts):
-            if not band.is_linkable:
-                continue
-            url = url_fn(band.link_key)
-            patch.set_url(url)
-            text.set_url(url)
+        self.link_legend_urls(legend, [url_fn(b.link_key) if b.is_linkable else None
+                                       for b in entries])
+
+    @staticmethod
+    def link_legend_urls(legend, urls):
+        """Put each URL on its legend row's swatch and text, in legend order; None is inert."""
+        for url, patch, text in zip(urls, legend.get_patches(), legend.get_texts()):
+            if url is not None:
+                patch.set_url(url)
+                text.set_url(url)
+
+    def legend_amount(self, value) -> str:
+        return fmt.number(value)
+
+    def legend_cells(self, label, value):
+        """Strings for one legend row: the name, then its number when it has one."""
+        return (label,) if value is None else (label, self.legend_amount(value))
 
     def draw_table_legend(self, ax, rows, colors, urls, layout, theme, indents=None) -> bool:
         """Legend as aligned columns: swatch + name left, numbers right-aligned so
@@ -245,7 +261,7 @@ class BaseChart:
                                      for r, c, u, i in zip(rows, colors, urls, indents)],
                            sep=sep, align='left')]
         for j in range(1, len(rows[0])):
-            columns.append(VPacker(children=[cell(r[j], u, alpha=1.0 if j == 1 else 0.7)
+            columns.append(VPacker(children=[cell(r[j], u, alpha=1.0 if j == 1 else theme.muted_alpha)
                                              for r, u in zip(rows, urls)],
                                    sep=sep, align='right'))
         table = AnchoredOffsetbox(loc='center left', child=HPacker(children=columns, sep=size * 1.1,
@@ -335,8 +351,7 @@ class BaseChart:
 
         Applied centrally, after `finish()`, rather than left to each family,
         for the reason `apply_tick_fontsize` gives: a chart that forgets is
-        invisible until someone looks at it in the other theme, and there are
-        sixteen of them.
+        invisible until someone looks at it in the other theme.
 
         **What it deliberately does not touch: `ax.texts`.** Those are the
         artists a chart placed itself, and every one of them already carries a
@@ -385,6 +400,19 @@ class BaseChart:
                 or layout.base_fontsize)
         for ax in (axes if isinstance(axes, (tuple, list)) else (axes,)):
             ax.tick_params(labelsize=size)
+
+    def titled(self, name):
+        """``name`` with its project title beside it, where one is known."""
+        title = ' '.join(((self.titles or {}).get(name) or '').split())
+        if not title:
+            return name
+        if len(title) > self.title_max:
+            title = title[:self.title_max - 1].rstrip() + '\u2026'
+        return f'{name} \u00b7 {title}'
+
+    def hover(self, name, *rest) -> str:
+        """Hover text: the name (titled when it is a project), then its figures."""
+        return ' \u00b7 '.join(str(p) for p in (self.titled(name), *rest) if p)
 
     def tooltip(self, artist, text):
         """Hover text for one mark (never a legend entry: it already says what it is)."""
@@ -450,7 +478,7 @@ def chart_view(cls):
     to everyone; with Redis the cache is shared across workers *and* pods, so
     the aliasing would be global.
 
-    Rather than trust eleven hand-written key functions to each remember, the
+    Rather than trust every hand-written key function to remember, the
     two render axes are composed into the key here, once, where getting it
     wrong is not expressible.
     """

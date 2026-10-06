@@ -32,17 +32,15 @@ from sqlalchemy import select
 
 from system_status.models.task_run import TASK_STATES, TASK_TRIGGERS, TaskRun
 from system_status.queries.task_runs import (
-    DEFAULT_WINDOW_HOURS,
     count_recent_task_runs,
     facet_task_runs,
     get_recent_task_runs,
-    observed_task_names,
     summarize_task_runs,
 )
 from system_status.timeutil import utcnow_naive
 from webapp.extensions import db
 from webapp.utils.faceted_log import build_facet_strip, parse_window
-from webapp.utils.htmx import htmx_modal_not_found
+from webapp.utils.htmx import htmx_modal_not_found, read_multi
 from webapp.utils.rbac import require_permission, Permission
 
 from .blueprint import bp
@@ -97,9 +95,9 @@ def _parse_filters(args):
                                per_page=_PER_PAGE, now=utcnow_naive())
     filters = {
         'since': since,
-        'task_names': [t for t in args.getlist('task_name') if t],
-        'states': [s for s in args.getlist('state') if s],
-        'triggers': [t for t in args.getlist('trigger_type') if t],
+        'task_names': read_multi(args, 'task_name'),
+        'states': read_multi(args, 'state'),
+        'triggers': read_multi(args, 'trigger_type'),
         'search': (args.get('search', '') or '').strip() or None,
     }
     return filters, page
@@ -119,11 +117,6 @@ def scheduled_tasks():
         form_id=_FORM_ID,
         target_id=_FRAGMENT_TARGET,
         fragment_url=url_for('admin_dashboard.scheduled_tasks_log'),
-        all_task_names=observed_task_names(db.session),
-        all_states=list(TASK_STATES),
-        all_triggers=list(TASK_TRIGGERS),
-        default_days=_DEFAULT_DAYS,
-        window_hours=DEFAULT_WINDOW_HOURS,
     )
 
 

@@ -53,7 +53,8 @@ from webapp.extensions import db
 from webapp.utils.faceted_log import build_facet_strip, parse_window
 from webapp.utils.form_handler import FlattenedFieldErrors, FormError, HtmxFormHandler
 from webapp.utils.htmx import (
-    handle_htmx_form_post, htmx_modal_not_found, read_tab, register_typeahead,
+    handle_htmx_form_post, htmx_modal_not_found, read_multi, read_tab,
+    register_typeahead,
 )
 from webapp.utils.notify import get_notifier
 from webapp.utils.rbac import has_permission_any_facility, require_permission, Permission
@@ -117,9 +118,9 @@ def _parse_filters(args):
                                per_page=_PER_PAGE)
     filters = {
         'since': since,
-        'statuses': [s for s in args.getlist('status') if s],
-        'kinds': [k for k in args.getlist('kind') if k],
-        'channels': [c for c in args.getlist('channel') if c],
+        'statuses': read_multi(args, 'status'),
+        'kinds': read_multi(args, 'kind'),
+        'channels': read_multi(args, 'channel'),
         'search': (args.get('search', '') or '').strip() or None,
     }
     return filters, page
@@ -147,12 +148,7 @@ def notifications():
         form_id=_FORM_ID,
         target_id=_FRAGMENT_TARGET,
         fragment_url=url_for('admin_dashboard.notifications_log'),
-        initial_log_url=url_for('admin_dashboard.notifications_log',
-                                kind=preselect_kind),
         preselect_kind=preselect_kind,
-        all_statuses=list(NOTIFICATION_STATUSES),
-        all_kinds=sorted(NOTIFICATION_KINDS),
-        default_days=_DEFAULT_DAYS,
         active_tab=read_tab('tab', _TABS, 'log'),
         template_rows=template_rows,
         selected_name=selected_name,

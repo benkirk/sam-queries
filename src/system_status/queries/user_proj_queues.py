@@ -232,7 +232,7 @@ def get_user_proj_timeseries(
         {
           'dates':  [datetime, ...],                # sorted ascending (5-min ticks)
           'series': [
-            {'label': 'Others', 'values': [int, ...]},   # iff > top_n series
+            {'label': 'Others', 'count': n, 'values': [int, ...]},   # iff > top_n series
             {'label': 'alice',  'values': [int, ...]},   # smallest named (peak)
             ...,
             {'label': 'zach',   'values': [int, ...]},   # largest named (peak)
@@ -412,7 +412,7 @@ def get_user_proj_timeseries(
         others_arr = np.zeros(n_ticks, dtype=np.int64)
         for _label, arr in rest:
             others_arr += arr
-        series.append({'label': 'Others', 'values': others_arr.tolist()})
+        series.append({'label': 'Others', 'count': len(rest), 'values': others_arr.tolist()})
     for label, arr in reversed(top):
         series.append({
             'label':  label,

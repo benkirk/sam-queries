@@ -4,16 +4,22 @@
 No baselines, no CI: run it on the base branch and on yours, then compare the two
 folders (the middle ground in docs/plans/GALLERY_VISUAL_SNAPSHOTS.md). Needs the
 [e2e] extra. Logs in through the stub form unless given --storage-state.
---styles also dumps every element's computed style; --compare proves "no visual change".
+--styles also dumps every element's computed style; --compare proves "no visual change" for a
+change that keeps the DOM. A restructure moves every element path, so prove that one with
+--element SELECTOR on both sides and --compare-pixels.
 --headers lists table headers whose sort icon wrapped onto a line of its own (no --out needed).
 --modal OPENER (after any --step) or --recipes FILE shoots the opened dialog and prints its height.
+--pages charts shoots every chart host, each with the steps its lazy tabs need.
 
     python scripts/ui_snapshots.py --out /tmp/before
     python scripts/ui_snapshots.py --out /tmp/after --page /admin/contracts --expand 2
     python scripts/ui_snapshots.py --styles --out /tmp/after && python scripts/ui_snapshots.py --compare /tmp/before /tmp/after
+    python scripts/ui_snapshots.py --out /tmp/after --page /allocations/projects --element .filter-sidebar
+    python scripts/ui_snapshots.py --compare-pixels /tmp/before /tmp/after
     python scripts/ui_snapshots.py --headers --layout desktop --layout mobile --theme light
     python scripts/ui_snapshots.py --out /tmp/m --page /admin/resources --modal '[data-bs-target="#createResourceModal"]'
     python scripts/ui_snapshots.py --out /tmp/m --recipes scripts/ui_snapshots_modals.json --layout desktop --layout mobile
+    python scripts/ui_snapshots.py --out /tmp/c --pages charts --base-url http://localhost:5050
 """
 import argparse
 import gzip
@@ -28,6 +34,32 @@ DEFAULT_PAGES = [
     '/admin/contracts', '/admin/facilities', '/admin/account-requests', '/admin/events',
     '/status/derecho', '/status/casper', '/status/jupyterhub', '/status/events', '/dev/gallery',
 ]
+_JOBS = '/dashboards/user/jobs/machine/derecho/explore'
+_DETAILS = '/user/resource-details/SCSG0001?resource='
+# Named page sets for --pages: (name, url, steps). A chart behind a lazy tab or below the fold
+# needs its tab clicked or its loader scrolled to before the shot.
+PAGE_SETS = {'charts': [
+    ('alloc-share', '/allocations/projects', []),
+    ('alloc-pace', '/allocations/projects', ['click:[aria-controls^="pace-"]:visible',
+                                            'wait:.pace-chart:visible svg']),
+    ('alloc-calendar', '/allocations/projects?view=calendar', []),
+    ('admin-facilities', '/admin/facilities', ['wait:.fair-share-chart svg']),
+    ('status-derecho', '/status/derecho', ['scroll:[id^="user-proj-chart"]']),
+    ('status-queue', '/status/queue-history/derecho/main', ['scroll:[id^="user-proj-chart"]']),
+    ('status-nodetype', '/status/nodetype-history/casper/cpu', []),
+    ('status-partition', '/status/partition-history/derecho/cpu', []),
+    ('status-jobs-byproj', '/status/job-history', ['click:[data-bs-target$="-byproj"]']),
+    ('jobs-timeline', _JOBS, ['wait:.jobs-timeline-chart svg']),
+    ('jobs-byuser', _JOBS, ['click:[data-bs-target$="-byuser"]', 'wait:.jobs-user-pie svg']),
+    ('jobs-byproj', _JOBS, ['click:[data-bs-target$="-byproj"]', 'wait:.jobs-user-pie svg']),
+    ('jobs-wait', _JOBS, ['click:[data-bs-target$="-wait"]', 'wait:.jobs-histogram-chart svg']),
+    ('jobs-sizes', _JOBS, ['click:[data-bs-target$="-sizes"]', 'wait:.jobs-histogram-chart svg']),
+    ('details-compute', _DETAILS + 'Derecho', ['wait:#tab-usage-history svg']),
+    ('details-byuser', _DETAILS + 'Derecho', ['click:[data-bs-target="#tab-usage-byuser"]']),
+    ('details-disk', _DETAILS + 'Campaign_Store', []),
+    ('user-jobs', '/user/jobs', []),
+    ('user-data', '/user/data', []),
+]}
 LAYOUTS = {'mobile': (390, 844), 'tablet': (1024, 1366), 'desktop': (1440, 1000)}
 THEMES = ('light', 'dark')
 
@@ -103,8 +135,23 @@ def diff_styles(before, after):
     return out
 
 
-def compare_dirs(before_dir, after_dir, top=20):
-    """Print the differences between two --styles folders; 1 when any element differs."""
+_PX = re.compile(r'-?\d+(?:\.\d+)?(?=px)')
+
+
+def _within(a, b, tolerance):
+    """Two computed values that differ only in px lengths, each by at most ``tolerance``."""
+    if not tolerance or a is None or b is None or _PX.sub('#', a) != _PX.sub('#', b):
+        return False
+    return all(abs(float(x) - float(y)) <= tolerance for x, y in zip(_PX.findall(a), _PX.findall(b)))
+
+
+def compare_dirs(before_dir, after_dir, top=20, strict=False, px_tolerance=0.0):
+    """Print the differences between two --styles folders; 1 when any element differs.
+
+    A custom property (``--bs-btn-hover-bg``) is an input, not paint: where it reaches the page at
+    rest a standard property differs too. So one that differs alone is counted but does not fail,
+    unless ``strict``. What that can hide is a state the capture never enters (hover, focus).
+    """
     names = sorted({p.name for p in Path(before_dir).glob('*.styles.json.gz')}
                    | {p.name for p in Path(after_dir).glob('*.styles.json.gz')})
     if not names:
@@ -117,13 +164,44 @@ def compare_dirs(before_dir, after_dir, top=20):
             print(f'{name}: only in {before_dir if pa.exists() else after_dir}')
             failed += 1
             continue
-        diffs = diff_styles(*(json.loads(gzip.decompress(f.read_bytes())) for f in (pa, pb)))
-        elements = len({d[0] for d in diffs})
-        print(f'{name}: {elements} elements differ' if diffs else f'{name}: same')
-        for el, prop, va, vb in diffs[:top]:
+        diffs = [d for d in diff_styles(*(json.loads(gzip.decompress(f.read_bytes())) for f in (pa, pb)))
+                 if not _within(d[2], d[3], px_tolerance)]
+        rendered = diffs if strict else [d for d in diffs if not d[1].startswith('--')]
+        only_custom = {d[0] for d in diffs} - {d[0] for d in rendered}
+        note = f' ({len(only_custom)} more differ only in custom properties)' if only_custom else ''
+        print(f'{name}: {len({d[0] for d in rendered})} elements differ{note}' if rendered
+              else f'{name}: same{note}')
+        for el, prop, va, vb in rendered[:top]:
             print(f'    {el}  {prop}: {va} -> {vb}')
-        failed += bool(diffs)
+        failed += bool(rendered)
     print(f'{failed} of {len(names)} captures differ')
+    return 1 if failed else 0
+
+
+def compare_pixels(before_dir, after_dir):
+    """Print where same-named PNGs in two folders differ; 1 when any does (needs Pillow)."""
+    from PIL import Image, ImageChops
+    names = sorted({p.name for p in Path(before_dir).glob('*.png')} | {p.name for p in Path(after_dir).glob('*.png')})
+    if not names:
+        print(f'no *.png in {before_dir} or {after_dir}')
+        return 1
+    failed = 0
+    for name in names:
+        pa, pb = Path(before_dir) / name, Path(after_dir) / name
+        if not (pa.exists() and pb.exists()):
+            print(f'{name}: only in {before_dir if pa.exists() else after_dir}')
+            failed += 1
+            continue
+        a, b = Image.open(pa).convert('RGB'), Image.open(pb).convert('RGB')
+        box = None if a.size != b.size else ImageChops.difference(a, b).getbbox()
+        if a.size != b.size:
+            print(f'{name}: size {a.size[0]}x{a.size[1]} -> {b.size[0]}x{b.size[1]}')
+        elif box:
+            print(f'{name}: differs within {box}')
+        else:
+            print(f'{name}: identical')
+        failed += a.size != b.size or bool(box)
+    print(f'{failed} of {len(names)} images differ')
     return 1 if failed else 0
 
 
@@ -151,15 +229,15 @@ HEADER_CHECK_JS = """() => {
 
 
 def parse_step(text):
-    """``click:SEL`` / ``wait:SEL`` / ``reveal:SEL`` / ``fill:SEL=TEXT`` -> ``(verb, selector, text)``."""
+    """``click:SEL`` / ``wait:SEL`` / ``reveal:SEL`` / ``scroll:SEL`` / ``fill:SEL=TEXT`` -> ``(verb, selector, text)``."""
     verb, _, rest = text.partition(':')
     if verb == 'fill':
         selector, sep, value = rest.rpartition('=')
         if not sep or not selector:
             raise ValueError(f'fill step needs SEL=TEXT: {text!r}')
         return verb, selector, value
-    if verb not in ('click', 'wait', 'reveal') or not rest:
-        raise ValueError(f'step must be click:SEL, wait:SEL, reveal:SEL or fill:SEL=TEXT: {text!r}')
+    if verb not in ('click', 'wait', 'reveal', 'scroll') or not rest:
+        raise ValueError(f'step must be click:SEL, wait:SEL, reveal:SEL, scroll:SEL or fill:SEL=TEXT: {text!r}')
     return verb, rest, None
 
 
@@ -175,19 +253,29 @@ UNCLIP_CSS = ('.modal.show .modal-dialog, .modal.show .modal-content { height: a
               ' .modal.show .modal-body { overflow: visible !important; }')
 
 
-def _open_modal(page, recipe):
-    for verb, selector, value in map(parse_step, recipe.get('steps', ())):
+def _run_steps(page, steps):
+    for verb, selector, value in map(parse_step, steps):
         target = page.locator(selector).first
         if verb == 'reveal':   # open collapsed rows without clicking their toggles one by one
             page.evaluate("s => document.querySelectorAll(s).forEach(e => e.classList.add('show'))", selector)
+        elif verb == 'scroll':   # every match: an `intersect once` loader fires when it is seen
+            page.evaluate("s => document.querySelectorAll(s).forEach("
+                          "e => e.offsetParent && e.scrollIntoView({block: 'center'}))", selector)
         elif verb == 'fill':
             target.fill(value)
         elif verb == 'click':
             target.click()
         else:
-            target.wait_for(state='visible', timeout=15_000)
+            try:
+                target.wait_for(state='visible', timeout=15_000)
+            except Exception:  # noqa: BLE001 - a chart with no data here: shoot what loaded
+                print(f'  wait:{selector} never visible')
         _idle(page)
         page.wait_for_timeout(300)   # a debounced typeahead or a collapse transition
+
+
+def _open_modal(page, recipe):
+    _run_steps(page, recipe.get('steps', ()))
     page.locator(recipe['modal']).first.click()
     page.wait_for_selector('.modal.show .modal-dialog')
     _idle(page)
@@ -257,6 +345,8 @@ def main(argv=None):
     ap.add_argument('--base-url', default='http://localhost:7050')
     ap.add_argument('--out', type=Path)
     ap.add_argument('--page', action='append', dest='pages', help='repeatable; default: admin tables + gallery')
+    ap.add_argument('--pages', choices=PAGE_SETS, dest='page_set',
+                    help='a named page set, each page with its own steps')
     ap.add_argument('--layout', action='append', choices=LAYOUTS, dest='layouts')
     ap.add_argument('--theme', action='append', choices=THEMES, dest='themes')
     ap.add_argument('--expand', type=int, default=1, help='collapse groups to open per page (default 1)')
@@ -268,14 +358,25 @@ def main(argv=None):
                     help='report sort icons wrapped away from their header label; exit 1 if any')
     ap.add_argument('--compare', nargs=2, metavar=('BEFORE', 'AFTER'), type=Path,
                     help='diff two --styles folders and exit 1 on any difference (no browser)')
+    ap.add_argument('--strict', action='store_true',
+                    help='--compare: a difference in a custom property alone also fails')
+    ap.add_argument('--px-tolerance', type=float, default=0.0, metavar='PX',
+                    help='--compare: ignore px lengths this close (a live chart moves by 0.02px)')
+    ap.add_argument('--compare-pixels', nargs=2, metavar=('BEFORE', 'AFTER'), type=Path,
+                    help='diff same-named PNGs in two folders and exit 1 on any difference (no browser)')
+    ap.add_argument('--element', metavar='SEL',
+                    help='shoot the first visible match on each --page instead of the whole page')
     ap.add_argument('--step', action='append', dest='steps', default=[],
-                    help='before --modal, in order: click:SEL, wait:SEL, reveal:SEL or fill:SEL=TEXT')
+                    help='before the shot, in order: click:SEL, wait:SEL, reveal:SEL or fill:SEL=TEXT')
     ap.add_argument('--modal', help='opener to click on each --page; shoots .modal.show .modal-dialog')
     ap.add_argument('--recipes', type=Path,
                     help='JSON list of {name, page, steps, modal, inject: {file, into}}; needs --out')
     args = ap.parse_args(argv)
     if args.compare:
-        return compare_dirs(*args.compare)
+        return compare_dirs(*args.compare, strict=args.strict, px_tolerance=args.px_tolerance)
+    if args.compare_pixels:
+        return compare_pixels(*args.compare_pixels)
+    [parse_step(s) for s in args.steps]   # fail before the browser starts
     recipes = json.loads(args.recipes.read_text()) if args.recipes else [
         {'page': url, 'steps': args.steps, 'modal': args.modal} for url in args.pages or []
     ] if args.modal else None
@@ -285,7 +386,7 @@ def main(argv=None):
         if args.out is None:
             ap.error('--out is required with --modal or --recipes')
     if args.out is None and not args.headers:
-        ap.error('--out is required unless --compare or --headers is given')
+        ap.error('--out is required unless --compare, --compare-pixels or --headers is given')
     from playwright.sync_api import sync_playwright
 
     if args.out:
@@ -305,11 +406,25 @@ def main(argv=None):
                 page = context.new_page()
                 for recipe in recipes or ():
                     _shoot_modal(page, recipe, args.out, f'{layout}-{theme}', args.styles)
-                for url in () if recipes else args.pages or DEFAULT_PAGES:
+                named = PAGE_SETS[args.page_set] if args.page_set else [
+                    (_slug(url), url, ()) for url in args.pages or DEFAULT_PAGES]
+                for name, url, steps in () if recipes else named:
                     page.goto(url)
                     _settle(page, args.expand)
-                    if args.out:
-                        path = args.out / f'{_slug(url)}__{layout}-{theme}.png'
+                    _run_steps(page, [*steps, *args.steps])
+                    if args.out and args.element:
+                        path = args.out / f'{name}__{layout}-{theme}.png'
+                        target = page.locator(f'{args.element} >> visible=true').first
+                        try:
+                            target.wait_for(state='visible', timeout=8_000)
+                        except Exception:  # noqa: BLE001 - one page without the element must not lose the run
+                            print(f'{url} [{layout}-{theme}]: no visible {args.element}')
+                            continue
+                        box = target.bounding_box()
+                        target.screenshot(path=str(path))
+                        print(f"{path} {box['width']:.0f}x{box['height']:.0f}")
+                    elif args.out:
+                        path = args.out / f'{name}__{layout}-{theme}.png'
                         page.screenshot(path=str(path), full_page=True)
                         print(path)
                         if args.styles:

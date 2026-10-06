@@ -146,6 +146,14 @@ def configure(
 
 # Internal helpers
 
+_COMPACT_UNITS = [
+    (1_000_000_000_000, 'T'),
+    (1_000_000_000,     'B'),
+    (1_000_000,         'M'),
+    (1_000,             'K'),
+]
+
+
 def _compact(x: float, sig_figs: int) -> str:
     """Return compact notation for |x| > COMPACT_THRESHOLD.
 
@@ -157,12 +165,7 @@ def _compact(x: float, sig_figs: int) -> str:
            100_001  ->  '100K'
     """
     abs_x = abs(x)
-    for threshold, suffix in [
-        (1_000_000_000_000, 'T'),
-        (1_000_000_000,     'B'),
-        (1_000_000,         'M'),
-        (1_000,             'K'),
-    ]:
+    for threshold, suffix in _COMPACT_UNITS:
         if abs_x >= threshold:
             scaled = x / threshold
             # Digits to the left of the decimal point in scaled value
@@ -511,19 +514,48 @@ def register_jinja_filters(target) -> None:
     env.globals['local_tz_label'] = local_tz_label
 
 
-def mpl_number_formatter(sig_figs: Optional[int] = None):
-    """Return a matplotlib FuncFormatter backed by fmt.number().
+def axis_labels(values, basis=None, raw: Optional[bool] = None) -> list:
+    """Tick labels for one linear axis: one unit and one precision for all of them.
 
-    Usage:
-        import matplotlib.ticker as ticker
-        ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
-
-    Args:
-        sig_figs: Override significant figures for this axis.
+    A tick above COMPACT_THRESHOLD puts the whole axis in the peak's unit
+    (``50K, 100K, 150K``); otherwise numbers stay exact, with commas. Decimals are
+    the fewest that represent every tick (``0.5, 1.0, 1.5``, never ``0, 1, 2``).
+    ``basis`` is the ticks that decide, when some of ``values`` are off screen.
+    An axis spanning more than three decades (a log scale) formats each tick alone.
     """
-    from matplotlib.ticker import FuncFormatter
-    sf = sig_figs or _sig_figs
-    return FuncFormatter(lambda x, _: number(x, sig_figs=sf))
+    values = [float(v) for v in values]
+    sizes = [abs(float(v)) for v in (values if basis is None else basis) if v]
+    if not sizes:
+        return [number(v) for v in values]
+    peak = max(sizes)
+    if peak / min(sizes) > 1000:
+        return [number(v) if abs(v) >= 1 or not v else f'{v:g}' for v in values]
+    unit, suffix = 1, ''
+    if peak > COMPACT_THRESHOLD and not (_raw if raw is None else raw):
+        unit, suffix = next((t, sfx) for t, sfx in _COMPACT_UNITS if peak >= t)
+    scaled = [v / unit for v in values]
+    decimals = next((d for d in range(4)
+                     if all(abs(round(x, d) - x) <= 1e-9 * max(1.0, abs(x)) for x in scaled)), 3)
+    return ['0' if not x else f'{x:,.{decimals}f}{suffix}' for x in scaled]
+
+
+def mpl_number_formatter():
+    """A matplotlib tick formatter backed by `axis_labels`: one unit per axis."""
+    from matplotlib.ticker import Formatter
+
+    class AxisNumbers(Formatter):
+        def __call__(self, x, pos=None):
+            return axis_labels([x])[0]
+
+        def format_ticks(self, values):
+            # The locator also returns ticks just outside the view; they must
+            # not push a visible `20,000 .. 100,000` axis into K.
+            lo, hi = sorted(self.axis.get_view_interval())
+            pad = (hi - lo) * 1e-9
+            shown = [v for v in values if lo - pad <= v <= hi + pad]
+            return axis_labels(values, basis=shown or None)
+
+    return AxisNumbers()
 
 
 def mpl_pct_formatter(decimals: int = 0):

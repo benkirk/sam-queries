@@ -1,34 +1,36 @@
+{% from 'dashboards/fragments/chart_bits.html' import chart_pills %}
+{# The status pages' window presets, as (label, hours). One list: the picker below and
+   the system pages' chart card both draw it. #}
+{% set TRP_PRESETS = [('6h', 6), ('12h', 12), ('1d', 24), ('3d', 72), ('7d', 168), ('14d', 336), ('30d', 720)] %}
+
 {% macro time_range_picker(action, hours, start_date, end_date, hidden_fields={}) %}
 {#
   Compact time range picker with quick-select presets (sub-day to multi-day).
 
   Parameters:
-    action        - form action URL (e.g. url_for('status_dashboard.nodetype_history', ...))
+    action        - the page's own URL (e.g. url_for('status_dashboard.nodetype_history', ...))
     hours         - current window size in hours (integer)
     start_date    - current start datetime object
     end_date      - current end datetime object
     hidden_fields - dict of extra query params to preserve (rarely needed for status routes)
 
-  Behavior lives in static/js/pickers.js (CSP: no inline scripts); the
-  active preset is server-rendered via the hours comparison below.
+  A preset re-requests the page with ?hours=N, swaps `.main-content` out of the
+  response and pushes the URL. The window drives every card on a history page
+  (the chart, the statistics, the breadcrumb links, this picker's own state), so
+  they change together, with no reload and no fragment route to keep in step.
 #}
-<div class="card mb-4 trp" data-action-url="{{ action }}">
-    <script type="application/json" class="trp-hidden">{{ hidden_fields | tojson }}</script>
+<div class="card mb-4">
     <div class="card-body py-2">
         <div class="d-flex align-items-center flex-wrap gap-2">
             <i class="fa-solid fa-clock text-muted"></i>
 
-            <!-- Quick-select preset buttons -->
-            <div class="btn-group btn-group-sm" role="group" aria-label="Time range presets">
-                {% set presets = [('6h', 6), ('12h', 12), ('1d', 24), ('3d', 72), ('7d', 168), ('14d', 336), ('30d', 720)] %}
-                {% for label, h in presets %}
-                <button type="button"
-                        class="btn {% if hours == h %}btn-secondary active{% else %}btn-outline-secondary{% endif %}"
-                        data-action="trp-hours"
-                        data-hours="{{ h }}"
-                        data-scroll-preserve>{{ label }}</button>
-                {% endfor %}
-            </div>
+            {% set pills = [] %}
+            {% for label, h in TRP_PRESETS %}
+            {% set _ = pills.append(dict(text=label, on=(hours == h),
+                                         url=action ~ '?' ~ (dict(hidden_fields, hours=h) | urlencode))) %}
+            {% endfor %}
+            {{ chart_pills('Time range presets', pills, '.main-content', select='.main-content',
+                           push=true) }}
 
             <!-- Current range display (TZ-converted to user-local for readability;
                  underlying query uses naive-UTC against the collector's UTC writes). -->

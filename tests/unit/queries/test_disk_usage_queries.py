@@ -136,6 +136,7 @@ class TestDiskUsageTimeseries:
         # then named users smallest -> largest.
         names = [s['username'] for s in out['series']]
         assert names[0] == 'Others'
+        assert out['series'][0]['count'] == 2    # 12 users, top 10 named
         assert len(names) == 11
         # Others = users ranked 11 + 12 = 2 + 1 = 3 TiB (bottom of stack).
         assert out['series'][0]['values'] == [3 * BYTES_PER_TIB]

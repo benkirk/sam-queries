@@ -852,7 +852,7 @@ def get_daily_user_usage_for_project(
         {
           'dates':  [date, ...],                            # ascending
           'series': [
-              {'label': 'Others',  'values': [num, ...]},   # first (bottom)
+              {'label': 'Others',  'values': [num, ...], 'count': n},   # first (bottom)
               {'label': <username>, 'values': [num, ...]},  # lowest->highest rank
               ...
           ],
@@ -897,6 +897,7 @@ def get_daily_user_usage_for_project(
     if others:
         series.append({
             'label': 'Others',
+            'count': len(others),
             'values': [sum(per_user[u].get(d, 0) for u in others) for d in dates],
         })
 

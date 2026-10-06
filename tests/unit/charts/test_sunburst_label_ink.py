@@ -13,7 +13,7 @@ LIGHT_WEDGE = '#fdd509'   # gold: the per-wedge pick is space-blue
 
 def test_allocation_sunburst_is_white_in_light_and_per_wedge_in_dark():
     chart = AllocationSunburst([])
-    assert chart.label_ink(THEMES['light']) == '#fff'
+    assert chart.label_ink(THEMES['light']) == THEMES['light'].surface == '#ffffff'
     assert chart.label_ink(THEMES['dark']) is None
 
 

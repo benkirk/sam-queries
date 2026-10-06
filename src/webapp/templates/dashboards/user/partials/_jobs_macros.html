@@ -7,9 +7,10 @@
   keep the names they already use.
 #}
 {% import 'dashboards/fragments/plugin_state.html' as _state %}
+{% from 'dashboards/fragments/chart_bits.html' import chart_pills %}
 
 {# ONE metric vocabulary for every jobs panel — mirrors routes._METRICS and
-   charts._JOBS_METRIC_LABELS. Kept here rather than repeated per template
+   charts/jobs_metrics.py JOBS_METRIC_LABELS. Kept here rather than repeated per template
    because the panels share a persist family: a metric offered by one pane
    and unknown to another's label map is a KeyError, not a graceful skip.
 
@@ -28,18 +29,25 @@
    copy — Werkzeug reads the first). #}
 {% macro metric_pills(metric, fragment_url, target_id, include_sel,
                       extra_qs='', aria='Chart metric') %}
-<div class="btn-group btn-group-sm me-1" role="group" aria-label="{{ aria }}">
-  {% for m, text in JOBS_METRICS %}
-  <button type="button"
-          class="btn btn-outline-secondary {% if metric == m %}active{% endif %}"
-          hx-get="{{ fragment_url }}?metric={{ m }}{{ extra_qs }}"
-          hx-target="#{{ target_id }}"
-          hx-include="{{ include_sel }}"
-          hx-swap="innerHTML">
-    {{ text }}
-  </button>
-  {% endfor %}
-</div>
+{% set pills = [] %}
+{% for m, text in JOBS_METRICS %}
+{% set _ = pills.append(dict(text=text, on=(metric == m),
+                             url=fragment_url ~ '?metric=' ~ m ~ extra_qs)) %}
+{% endfor %}
+{{ chart_pills(aria, pills, '#' ~ target_id, swap='innerHTML', include=include_sel, classes='me-1') }}
+{% endmacro %}
+
+{# Said when the metric is charges: an empty wedge, bar or band is not missing
+   data. qos_factor is a genuine 0.0 for the 'uncharged' QoS, so work can be real
+   and its charges exactly zero. `what` is what the panel draws. #}
+{% macro charges_note(metric, what) %}
+{% if metric == 'charges' %}
+<p class="text-muted small mb-2">
+  <i class="fa-solid fa-circle-info me-1"></i>
+  Charges are hours weighted by each job's QoS factor. Uncharged QoS classes have a
+  factor of 0, so {{ what }} can show jobs and CPU-hours while contributing no charges.
+</p>
+{% endif %}
 {% endmacro %}
 
 {# Plugin not loaded / no warmed engine. #}

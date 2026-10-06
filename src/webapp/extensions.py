@@ -55,18 +55,13 @@ def user_aware_cache_key() -> str:
     to warm the cache would decide whether every later visitor got phone-sized
     or desktop-sized pies.
 
-    The theme tag is the same argument with a more visible failure. Today all
-    five of these routes emit table/card fragments with no chart SVG and no
-    ``data-bs-theme`` of their own — theming reaches them by CSS inheritance
-    from the root attribute, which lives in the page shell, not the fragment —
-    so strictly the key does not need it. It is here anyway because "no cached
-    fragment ever contains a theme-dependent byte" is an invariant that is real
-    today and completely invisible tomorrow: add one chart to the allocations
-    fragment and one user's dark SVG is served to every light-mode user with
-    the same facility scope. That presents as an intermittent *rendering* bug,
-    not a caching bug, and would cost far more to chase than the key costs to
-    partition. Same reasoning as ``charts/base.py:chart_view`` — make the wrong
-    thing inexpressible.
+    The theme tag is the same argument with a more visible failure, and it is
+    load-bearing: ``/allocations/projects`` is cached with this key and inlines
+    its sunbursts, whose colors are baked into the SVG. Without the tag one
+    user's dark charts are served to every light-mode user with the same
+    facility scope, which presents as an intermittent *rendering* bug, not a
+    caching one. Same reasoning as ``charts/base.py:chart_view``: make the
+    wrong thing inexpressible.
 
     Routes with no chart in them pay a doubled key space for nothing. That is
     the right trade at five call sites: the cost is a few extra cache entries,

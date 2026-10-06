@@ -35,12 +35,15 @@ from sam.resources.facilities import Facility
 from webapp.dashboards.charts import (
     generate_jobs_facility_sunburst,
     generate_panel_sunburst,
+    generate_user_panel_sunburst,
     panel_rows,
+    panel_rows_grouped,
     generate_jobs_histogram,
     generate_jobs_timeseries_stacked,
     generate_jobs_usage_pie_chart,
 )
 from webapp.dashboards.charts.jobs_metrics import JOBS_METRIC_LABELS, jobs_metric_value
+from webapp.dashboards.charts.series import fold_top
 from webapp.dashboards.charts.theme import facility_slots
 from webapp.extensions import db
 from webapp.jobs import service
@@ -59,6 +62,7 @@ from webapp.utils.scope import resolve_scope_project as _scope_project
 from webapp.jobs.session import is_enabled
 from webapp.utils import age_bands, ladders
 from webapp.utils.htmx import PER_PAGE_CHOICES, read_flag, read_layout, read_page, read_sort
+from webapp.utils.charts import draw_chart, hover_titles
 from webapp.utils.rbac import (
     Permission,
     has_permission_any_facility,
@@ -593,7 +597,7 @@ def _parse_job_filters(include_user: bool = True) -> dict:
     if include_user:
         f['user'] = _resolve_user_filter()[0]
     if f['name'] is not None:
-        f['ignore_case'] = request.args.get('ignore_case') in ('1', 'true', 'on')
+        f['ignore_case'] = read_flag(request.args, 'ignore_case')
     for key in ('min_nodes', 'max_nodes', 'min_cpus', 'max_cpus',
                 'min_gpus', 'max_gpus'):
         v = _parse_int_arg(key)
@@ -843,32 +847,48 @@ def _facility_rings(rows, metric, facility_of, slots, linked,
                     top_n=_FACILITY_TOP_PROJECTS):
     """`TwoRingPie` rows from every project's usage: facilities in slot order
     (so a color keeps its place across metrics), unmapped projects last as Unknown."""
+    entries = ((r.get('value'), r.get('value'), jobs_metric_value(r, metric, 'cpu_hours'))
+               for r in rows)
+    return _facility_ring_rows(entries, facility_of, slots, linked, top_n)
+
+
+def _facility_user_rings(pairs, metric, facility_of, slots, linked,
+                         top_n=_FACILITY_TOP_PROJECTS):
+    """`_facility_rings` for users: each (user, project) pair lands under the
+    project's facility, so a user under two facilities is a wedge in each."""
+    entries = ((r.get('account'), r.get('user'), jobs_metric_value(r, metric, 'cpu_hours'))
+               for r in pairs)
+    return _facility_ring_rows(entries, facility_of, slots, linked, top_n)
+
+
+def _facility_ring_rows(entries, facility_of, slots, linked, top_n):
+    """Group ``(projcode, name, value)`` entries by the project's facility, sum a
+    name that recurs, keep each facility's top ``top_n`` and count the rest."""
     groups = {}
-    for r in rows:
-        value = jobs_metric_value(r, metric, 'cpu_hours')
+    for code, name, value in entries:
         if value <= 0:
             continue
-        code = r.get('value')
-        fid, name = facility_of.get(code, (None, None))
-        group = groups.setdefault(name, {'fid': fid, 'value': 0.0, 'projects': []})
+        fid, facility = facility_of.get(code, (None, None))
+        group = groups.setdefault(facility, {'fid': fid, 'value': 0.0, 'members': {}})
         group['value'] += value
-        group['projects'].append((code, value))
+        group['members'][name] = group['members'].get(name, 0.0) + value
 
-    def order(name):
-        slot = slots.get(groups[name]['fid'])
-        return name is None, slot is None, slot or 0, name or ''
+    def order(facility):
+        slot = slots.get(groups[facility]['fid'])
+        return facility is None, slot is None, slot or 0, facility or ''
 
     out = []
-    for name in sorted(groups, key=order):
-        group = groups[name]
-        top = sorted(group['projects'], key=lambda p: (-p[1], str(p[0])))[:top_n]
+    for facility in sorted(groups, key=order):
+        group = groups[facility]
+        top, _rest, n_rest = fold_top(list(group['members'].items()), top_n)
         out.append({
             'id': None,
-            'facility': name or 'Unknown',
+            'facility': facility or 'Unknown',
             'slot': slots.get(group['fid']),
             'value': group['value'],
-            'types': [{'name': code or '(unknown)', 'value': value, 'linked': code in linked}
-                      for code, value in top],
+            'others': n_rest,
+            'types': [{'name': name or '(unknown)', 'value': value, 'linked': name in linked}
+                      for name, value in top],
         })
     return out
 
@@ -878,15 +898,52 @@ def _active_facility_slots():
     return facility_slots(fid for (fid,) in active)
 
 
-def _facility_sunburst(usage, metric, *, layout, theme):
-    """The By Project pie grouped by facility, from an untruncated rollup."""
+def _project_hover_titles(codes, mode, group_by='project'):
+    """Titles for a job-history chart's project hovers, or None when it names users.
+    Outside machine mode the projects are the viewer's own, or the tree they opened."""
+    if group_by != 'project':
+        return None
+    return hover_titles(codes, own=(mode != 'machine'))
+
+
+def _owner_names(bands):
+    """Every owner named in a histogram's buckets or a timeline's bands."""
+    return {name for band in bands or () for name in (band.get('owners') or {})}
+
+
+def _facility_sunburst(entity, usage, pairs, metric, *, layout, theme):
+    """The By Project or By User pie grouped by facility. Projects group from the
+    untruncated rollup; users from their (user, project) pairs. ``usage`` is the
+    table's envelope either way, and only its top 25 drill to a row."""
     rows = usage.get('rows') or []
-    facility_of = project_facilities(db.session, (r.get('value') for r in rows))
-    slots = _active_facility_slots()
     linked = {r.get('value') for r in rows[:_BY_USER_LIMIT]}
-    data = _facility_rings(rows, metric, facility_of, slots, linked)
-    return generate_jobs_facility_sunburst(data, _FACILITY_CENTER[metric],
-                                           layout=layout, theme=theme)
+    slots = _active_facility_slots()
+    if entity['key'] == 'project':
+        facility_of = project_facilities(db.session, (r.get('value') for r in rows))
+        data = _facility_rings(rows, metric, facility_of, slots, linked)
+        titles = hover_titles(t['name'] for row in data for t in row['types'])
+    else:
+        pair_rows = pairs.get('rows') or []
+        facility_of = project_facilities(db.session, {r.get('account') for r in pair_rows})
+        data = _facility_user_rings(pair_rows, metric, facility_of, slots, linked)
+        titles = None
+    return draw_chart(generate_jobs_facility_sunburst, data, _FACILITY_CENTER[metric],
+                      titles=titles, row_attr=entity['sentinel_attr'], noun=entity['noun'],
+                      layout=layout, theme=theme)
+
+
+def _users_from_pairs(pairs, metric):
+    """A By User envelope folded from (user, project) pairs: one row per user,
+    ranked by the viewed metric, the pairs' own pre-fold ``totals``."""
+    by_user = {}
+    for r in pairs.get('rows') or []:
+        row = by_user.setdefault(r.get('user'), {'value': r.get('user')})
+        for key, value in r.items():
+            if key not in ('user', 'account') and isinstance(value, (int, float)):
+                row[key] = row.get(key, 0) + value
+    rows = sorted(by_user.values(),
+                  key=lambda r: (-jobs_metric_value(r, metric, 'cpu_hours'), r['value'] or ''))
+    return {'dimension': 'user', 'rows': rows, 'totals': pairs.get('totals') or {}}
 
 
 #: The two usage rollups are the same panel over a different entity. Each
@@ -908,6 +965,8 @@ _USAGE_ENTITIES = {
         'loading_suffix': "'s jobs",
         'service':        'jobs_usage_by_user',
         'target_stem':    'byuser',
+        'noun':           'users',
+        'expanded':       'jobs.by_user_expanded_machine_fragment',
     },
     'project': {
         'key':            'project',
@@ -924,6 +983,8 @@ _USAGE_ENTITIES = {
         'loading_suffix': ' jobs',
         'service':        'jobs_usage_by_project',
         'target_stem':    'byproj',
+        'noun':           'projects',
+        'expanded':       'jobs.by_project_expanded_machine_fragment',
     },
 }
 
@@ -961,20 +1022,27 @@ def _render_usage_panel(*, entity_key, mode, machine, fragment_url,
     filters = _parse_job_filters(include_user=(username is None))
     metric = _parse_metric(_DEFAULT_METRIC_PIE)
     # Status page only: a user's or project's own rollup spans one facility or two.
-    facility_toggle = entity_key == 'project' and mode == 'machine'
+    facility_toggle = mode == 'machine'
     by_facility = facility_toggle and _parse_by_facility()
 
-    usage = full = None
+    usage = full = pairs = None
     error = None
     try:
-        # Grouped by facility, the rings need every project; the table keeps its top 25.
-        usage = full = getattr(service, entity['service'])(
-            machine,
-            _agg_scope(mode, username=username,
-                       account_projcodes=account_projcodes),
-            limit=None if by_facility else _BY_USER_LIMIT,
-            sort_by=_USAGE_SORT_BY[metric], **filters,
-        )
+        scope = _agg_scope(mode, username=username, account_projcodes=account_projcodes)
+        if by_facility and entity_key == 'user':
+            # Users group by their projects' facilities: one pair rollup serves
+            # both the rings and, folded per user, the table.
+            pairs = service.jobs_usage_by_user_account(
+                machine, scope, sort_by=_USAGE_SORT_BY[metric], **filters)
+            full = _users_from_pairs(pairs, metric)
+        else:
+            # Grouped by facility, the rings need every project; the table keeps its top 25.
+            full = getattr(service, entity['service'])(
+                machine, scope,
+                limit=None if by_facility else _BY_USER_LIMIT,
+                sort_by=_USAGE_SORT_BY[metric], **filters,
+            )
+        usage = full
         if by_facility:
             usage = {**full, 'rows': (full.get('rows') or [])[:_BY_USER_LIMIT]}
     except Exception as exc:
@@ -988,10 +1056,12 @@ def _render_usage_panel(*, entity_key, mode, machine, fragment_url,
     if not usage:
         pie_svg = None
     elif by_facility:
-        pie_svg = _facility_sunburst(full, metric, layout=layout, theme=theme)
+        pie_svg = _facility_sunburst(entity, full, pairs, metric, layout=layout, theme=theme)
     else:
-        pie_svg = generate_jobs_usage_pie_chart(
-            usage, metric=metric, row_attr=entity['sentinel_attr'],
+        pie_svg = draw_chart(
+            generate_jobs_usage_pie_chart, usage, metric=metric, row_attr=entity['sentinel_attr'],
+            titles=_project_hover_titles((r.get('value') for r in usage.get('rows') or []),
+                                         mode, entity_key),
             layout=layout, theme=theme)
     other = _usage_other(usage) if usage else None
     params = _roundtrip_params(machine, target_id)
@@ -1210,10 +1280,11 @@ def _render_timeline(*, mode, machine, fragment_url, target_id,
     else:
         link_entities = (mode == 'user') or has_permission_any_facility(
             current_user, Permission.VIEW_PROJECTS)
-    chart_svg = (generate_jobs_timeseries_stacked(
-        ts, metric=metric, period=period,
+    chart_svg = (draw_chart(
+        generate_jobs_timeseries_stacked, ts, metric=metric, period=period,
         entity_kind=group_by,
         link_entities=link_entities,
+        titles=_project_hover_titles(_owner_names(bands), mode, group_by),
         layout=layout, theme=theme) if has_bands else None)
 
     params = _roundtrip_params(machine, target_id)
@@ -1317,8 +1388,10 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
     hist = _trim_empty_edge_bands(hist)
     has_bands = bool((hist or {}).get('buckets'))
 
-    chart_svg = (generate_jobs_histogram(hist, metric=metric, log_y=log_on,
-                                        layout=layout, theme=theme)
+    chart_svg = (draw_chart(generate_jobs_histogram, hist, metric=metric, log_y=log_on,
+                            titles=_project_hover_titles(_owner_names(hist['buckets']),
+                                                         mode, group_by),
+                            layout=layout, theme=theme)
                  if has_bands else None)
     params = _roundtrip_params(machine, target_id)
 
@@ -1521,7 +1594,7 @@ def _panel_filters(machine: str) -> dict:
         'qos':   (request.args.get('qos') or '').strip(),
         'exit_status': (request.args.get('exit_status') or '').strip(),
         'name':  (request.args.get('name') or '').strip(),
-        'ignore_case': request.args.get('ignore_case') in ('1', 'true', 'on'),
+        'ignore_case': read_flag(request.args, 'ignore_case'),
         'min_nodes': _parse_int_arg('min_nodes'),
         'max_nodes': _parse_int_arg('max_nodes'),
         'min_cpus':  _parse_int_arg('min_cpus'),
@@ -2007,7 +2080,8 @@ def _panel_usage(ctx, fragment_url, *, mode, scope_for, log_label,
     if ctx['machine'] is None:
         return _render_usage_panel(entity_key=entity_key, mode=mode,
                                    machine=None, fragment_url=None,
-                                   jobs_fragment_url=None, target_id='')
+                                   jobs_fragment_url=None, target_id='',
+                                   layout=layout, theme=theme)
     return _render_usage_panel(
         entity_key=entity_key, mode=mode, machine=ctx['machine'],
         fragment_url=fragment_url, jobs_fragment_url=jobs_fragment_url,
@@ -2040,8 +2114,37 @@ def _panel_by_project_expanded(ctx, fragment_url, *, mode, layout='desktop',
                if start else '')
     return render_template(
         template, title=title, caption=caption,
-        chart_svg=generate_panel_sunburst(data, _FACILITY_CENTER[metric],
-                                          layout=layout, theme=theme))
+        chart_svg=draw_chart(generate_panel_sunburst, data, _FACILITY_CENTER[metric],
+                             titles=hover_titles(values), layout=layout, theme=theme))
+
+
+def _panel_by_user_expanded(ctx, fragment_url, *, mode, layout='desktop',
+                            theme='light', **_kw):
+    """HTMX fragment: the expand modal's facility / panel / user sunburst."""
+    template = 'dashboards/fragments/chart_expanded.html'
+    machine = ctx['machine']
+    metric = _parse_metric(_DEFAULT_METRIC_PIE)
+    title = f'{(machine or "").title()}: {JOBS_METRIC_LABELS[metric]} by facility, panel and user'
+    rim_links = _usage_affordance_permission('user', mode)
+    if machine is None or not is_enabled():
+        return render_template(template, title=title, rim='user', rim_links=rim_links,
+                               chart_svg='<p class="text-muted text-center">Job history is unavailable.</p>')
+    filters = _parse_job_filters()
+    pairs = service.jobs_usage_by_user_account(
+        machine, _agg_scope(mode, account_projcodes=ctx['account_projcodes']),
+        sort_by=_USAGE_SORT_BY[metric], **filters)
+    rows = pairs.get('rows') or []
+    panels = project_panels(db.session, {r.get('account') for r in rows if r.get('account')})
+    entries = [(*panels.get(r.get('account'), (None, None, None)), r.get('user'),
+                jobs_metric_value(r, metric, 'cpu_hours')) for r in rows]
+    data = panel_rows_grouped(entries, _active_facility_slots())
+    start, end = filters.get('start'), filters.get('end')
+    caption = (f'Jobs from {fmt.date_str(start)} to {fmt.date_str(end) if end else "today"}.'
+               if start else '')
+    return render_template(
+        template, title=title, caption=caption, rim='user', rim_links=rim_links,
+        chart_svg=draw_chart(generate_user_panel_sunburst, data, _FACILITY_CENTER[metric],
+                             rim_links=rim_links, layout=layout, theme=theme))
 
 
 def _panel_histogram(ctx, fragment_url, *, mode, scope_for, log_label,
@@ -2053,7 +2156,8 @@ def _panel_histogram(ctx, fragment_url, *, mode, scope_for, log_label,
     if ctx['machine'] is None:
         return _render_histogram(mode=mode, machine=None, dimension=dim,
                                  dimension_toggle=dimension_toggle,
-                                 fragment_url=None, target_id='')
+                                 fragment_url=None, target_id='',
+                                 layout=layout, theme=theme)
     return _render_histogram(
         mode=mode, machine=ctx['machine'],
         dimension=dim, dimension_toggle=dimension_toggle,
@@ -2071,7 +2175,8 @@ def _panel_timeline(ctx, fragment_url, *, mode, scope_for, log_label,
     """HTMX fragment: the Jobs tab's activity timeline."""
     if ctx['machine'] is None:
         return _render_timeline(mode=mode, machine=None,
-                                fragment_url=None, target_id='')
+                                fragment_url=None, target_id='',
+                                layout=layout, theme=theme)
     return _render_timeline(
         mode=mode, machine=ctx['machine'],
         fragment_url=fragment_url, jobs_fragment_url=jobs_fragment_url,
@@ -2162,6 +2267,8 @@ _PANELS = declare_panels((
     # The By Project chart's expand modal; machine mode, where the facility switch lives.
     PanelSpec(key='by_project_expanded', rule='/by-project/expanded',
               render=_panel_by_project_expanded, modes=('machine',)),
+    PanelSpec(key='by_user_expanded', rule='/by-user/expanded',
+              render=_panel_by_user_expanded, modes=('machine',)),
     PanelSpec(key='wait_times', rule='/wait-times', render=_panel_histogram,
               kwargs={'dimension': 'wait', 'dimension_toggle': False},
               siblings={'jobs_fragment_url': 'jobs'}),

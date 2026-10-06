@@ -12,8 +12,8 @@ them. Tick an item when its fix merges.
 
 From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 
-| date | end commit | private imports (helpers / sites / package-private) | dup-function groups (extra copies) | py-dup-names (names / definitions) | dead CSS classes (dynamic stem) | CSS lines / `!important` / repeated blocks | inline styles (templates) | bs4-classes (uses / classes) | row-buttons | JS shared names / shared events | modal alerts (templates) |
-|---|---|---|---|---|---|---|---|---|---|---|---|
+| date | end commit | private imports (helpers / sites / package-private) | dup-function groups (extra copies) | py-dup-names (names / definitions) | dead CSS classes (dynamic stem) | CSS lines / `!important` / repeated blocks | inline styles (templates) | bs4-classes (uses / classes) | row-buttons | JS shared names / shared events | modal alerts (templates) | helper-bypass (sites) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 2026-10-03 | `79f1a147` | 70 / 88 / 33 | 9 (10) | — | 38 (17) | 4,789 / 70 / 14 | 405 (106) | — | — | 5 / 4 |
 | 2026-10-03 | `5254c65b` + js sweep | 70 / 88 / 33 | 9 (10) | — | 38 (17) | 4,817 / 70 / 14 | 404 (105) | — | — | 5 / 4 |
 | 2026-10-04 | `0515333f` + css sweep | 70 / 88 / 33 | 9 (10) | — | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | — | — | 5 / 4 |
@@ -25,6 +25,9 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-04 | `21e6bae5` + sweeps 5–7 | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,603 / 54 / 10 | 257 (93) | 0 / 0 | 0 | 5 / 4 |
 | 2026-10-04 | `a75b9db7` + project list + headers | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,617 / 54 / 10 | 255 (92) | 0 / 0 | 0 | 5 / 4 | 52 (23) |
 | 2026-10-04 | `ede454cf` + modal sweep | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,699 / 50 / 10 | 216 (80) | 0 / 0 | 0 | 5 / 4 | 20 (14) |
+| 2026-10-04 | `36e69595` (base, filters) | 61 / 70 / 33 | 3 (4) | 14 / 46 | 16 (16), 2 kept | 4,714 / 50 / 10 | 216 (80) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 39 |
+| 2026-10-05 | `36e69595` + filters sweep | 52 / 61 / 24 | 3 (4) | 14 / 46 | 16 (16), 2 kept | 4,810 / 50 / 10 | 210 (78) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
+| 2026-10-05 | `97b8d876` + charts sweep | 50 / 59 / 24 | 2 (3) | 14 / 46 | 16 (16), 2 kept | 4,754 / 50 / 9 | 210 (78) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -208,8 +211,8 @@ the two intended changes below. Perf tier: 64 passed before and after; `baseline
   (this sweep removed the `normalize_end_date` edge). The rule is not gated.
 - [ ] jscpd clones not read: `sam/xras/handlers/adjustment.py` / `supplement.py`,
   `sam/summaries/archive_summaries.py` / `disk_summaries.py`, the `cli/*/display.py` pairs.
-- [ ] dup-functions left: `active_account_users` on User and Project, and the two `decorate` in
-  `charts/stacked.py`.
+- [ ] dup-functions left: `active_account_users` on User and Project. (The duplicate `decorate`
+  in `charts/stacked.py` went in sweep 11.)
 - [ ] `CacheBase` has no `bytes_used`, which `chart_cached` reads; both backends define it.
 
 ## 5. 2026-10-04: area sweep, `templates` + `css` (aesthetic)
@@ -594,6 +597,239 @@ themes). Ben's calls: quiet accent headers everywhere; one PR; the three bugs fi
   own row, so another worker's ticketed request cannot reach it (sweep follow-ups).
 - [ ] `test_db_browser_killswitch` fails under xdist on some postgres-test runs.
 
+## 10. 2026-10-04: area sweep, `templates` + `py` (filters and facets)
+
+**Mode:** area, from `docs/plans/FILTERS_SWEEP_HANDOFF.md`. **Base:** `36e69595` (staging).
+**Branch:** `filters-sweep`. **PR:** #733 (draft).
+**Contract:** mixed, declared per commit. Items 7 and 8 must look identical; items 3b, 6 and 11
+are deliberate visual changes; items 1 and 9 change behavior to fix a bug.
+
+**Done**, one commit each:
+
+- [x] 1. `webapp/utils/facets.py`: `Facet` / `FacetSet`, one in-memory facet engine for account
+  requests and the three XRAS worklist cards.
+  - Fixes Pending Users: an Identity selection reached none of the other four strips, and a
+    Request selection reached no strip.
+  - A selected value always renders, so Readiness and Blocker chips can be deselected at zero.
+- [x] 2. `read_multi` replaces nine `getlist` comprehensions.
+- [x] 3. `facet_fields` / `facet_form` / `facet_grid_row`: about 20 hand-written hidden selects
+  go. Gate: `tests/unit/gates/test_facet_form_contract.py` (every chip resolves to a control;
+  every `FacetSet` dimension has one).
+- [x] 3b. Chips are multi-select toggles (`aria-pressed`). A single-value target (jobs explorer,
+  mnemonic Show, Last seen Source) still replaces.
+- [x] 4. One `sort_rows` in `utils/htmx.py`; mnemonic codes reads its sort through `read_sort`.
+- [x] 6. In-card atoms: `facet_clear_all`, `filter_search` (seven boxes, five triggers, now one),
+  `active_switch` (seven cards).
+- [x] 7. One pill markup (`btn-outline-secondary` + `active`); the second CSS rule goes. Gate:
+  `test_pill_markup.py`.
+- [x] 8. The Allocations and Expirations panels on `filter_panel_shell`, which gains a bare mode
+  for a form its page's script submits.
+- [x] 9. `webapp/utils/windows.py`: `read_days`, `read_log_window`, `read_chart_window`.
+  The audit default window loses its sub-second upper bound.
+- [x] 10. Eleven flag, sort and page reads move onto the shared helpers; first direct tests of
+  `read_flag`, `read_page`, `read_sort`, `build_facet_strip`, `parse_window`.
+- [x] 11. (Added by Ben at kickoff: ordering and packing of the older panels.)
+  `multiselect_filter` is a one-line dropdown checklist; the XRAS action log panel drops the two
+  lists its chips already cover; `filter_apply()` is the one primary action; the house field
+  order is written into `filter_panel.html`.
+
+- [x] Growth rule, from the friction this sweep met:
+  - `helper-bypass` detector (`sweep_inventory.py`, fixture test) and a "Bypassed helper"
+    heuristic in the sweep skill: request reads that hand-roll a shared reader. 39 sites at
+    the base, 6 now.
+  - `ui_snapshots.py --compare` counts a custom property that differs alone without failing
+    (`--strict` fails it) and takes `--px-tolerance`; `--element SEL` + `--compare-pixels`
+    prove a restructure, where every element path moves. Replayed on item 7's captures:
+    36 of 42 "differ" -> 6, all one live clock label.
+  - `wire-dashboard-feature`: the filter tiers and macros, and the `compose --watch` trap (a
+    module saved one edit before its import exits samuel-dev). Its length budget goes
+    250 -> 275.
+
+**Panel height**, before -> after (px), desktop / tablet / phone:
+
+| panel | 1440 | 1024 | 390 |
+|---|---|---|---|
+| Transactions / Adjustments | 279 -> 203 | 469 -> 289 | 996 -> 788 |
+| Allocations | 279 -> 175 | 349 -> 245 | 743 -> 535 |
+| Expirations | 279 -> 175 | 349 -> 245 | 749 -> 573 |
+| XRAS action log | 305 -> 203 | 521 -> 203 | 962 -> 530 |
+
+**Deviations from the handoff:**
+- Item 5 stopped at the strips (`build_facet_strip` in the action-log route). The `LogSpec`
+  retrofit is larger than "add a `LogSpec`": `facet_counts` groups on the raw column, so the
+  `Adjust` / `Adjustment` aliases would split; `_apply_action_filters` returns a query, not
+  terms; and `summarize_xras_actions` also feeds the CLI. `src/querykit/README.md` lists it as
+  deferred growth.
+- Last seen's Source stays one value. Choosing a source re-derives every row from that
+  source's sightings (`review()`), so it is a lens, not a filter. The buckets are multi-select.
+- Mnemonic Show stays one value: its values overlap and `all` is a sentinel.
+- Item 7's `--compare` is not literally zero: it reports the selected pill's own `--bs-btn-*`
+  custom properties and sub-pixel noise on live status charts. No rendered property differs.
+- Item 8's Expirations panel is not identical: its title gains the shell's collapse chevron.
+- Item 9's audit bug is latent. Both pages always send their form's explicit dates.
+- The handoff paths `xras/...`, `jobs/routes.py` and `disk_scans/routes.py` were wrong
+  (`allocations/xras/...`, `src/webapp/jobs`, `src/webapp/disk_scans`).
+
+**Tried and dropped:**
+- A solid-blue icon cell on the search box (the default `.input-group-text`): too loud beside
+  quiet chips. It takes the input's own surface; contrast 4.0:1 light, 7.3:1 dark.
+- Text-tertiary for that icon: 2.86:1.
+- Folding the Expirations hints into longer labels: "(abandoned users)" wrapped Export CSV to a
+  second row at 1440px. "(abandoned)" fits.
+
+**Open from this round:**
+
+- [ ] XRAS action log as querykit's third caller (see Deviations).
+- [ ] `observed_task_names` (`system_status/queries/task_runs.py`) has no caller outside its
+  tests since the tasks page stopped pre-filling its hidden select.
+- [ ] `get_observed_action_types` likewise, since the action-log panel dropped its list.
+- [ ] `/admin/organizations?tab=institutions` leaves the pane on "Loading institutions…": its
+  trigger is `shown.bs.tab ... once`, which never fires for a tab rendered active.
+- [x] The Notifications and Scheduled tasks Filter cards are gone: the search and the window
+  are rows of the log's chip grid (`search_box.filter_window`), and the summary is a one-row
+  `.stat-strip`. The log starts about 200px higher.
+- [ ] `tests/unit/queries/test_contract_audit.py` deadlocks on an `nsf_program` insert between
+  xdist workers (passes with `-n 0`).
+- [ ] A `ViewState`-like registry for the jobs explorer's five overlapping key lists (model:
+  `db_browser/params.py`); one macro for the notifications and tasks filter cards; a shared
+  uppercase-label CSS block. Ledger-only by Ben's call in the handoff.
+- [ ] The disk-scan directory sort is still hand-whitelisted (`read_sort` is not a drop-in).
+- [ ] The six `helper-bypass` leads left: `include_adjustments` (`api/v1/allocations.py`,
+  `api/v1/projects.py`), `strict` (`api/v1/health.py`), `sent` (`register/blueprint.py`), and
+  two `int(v) for v in form.getlist('resource_ids')` in `admin/projects_routes.py`, which is
+  a form POST and wants a schema, not `read_multi`.
+- [x] Option order in the Facilities and Resources checklists stays alphabetical, matching
+  the resource tabs (Ben, 2026-10-05).
+
+## 11. 2026-10-05: area sweep, `py` + `templates` (charts)
+
+**Mode:** area, from `docs/plans/CHARTS_SWEEP_HANDOFF.md` (22 items, all picked by Ben).
+**Base:** `97b8d876` (staging). **Branch:** `charts-sweep`. **PR:** #735 (draft).
+**Contract:** mixed, declared per commit. Fingerprints are the proof for the package, and
+`scripts/chart_sheet.py --compare` (new) is the stronger one for a refactor: all 227 sample
+renderings byte for byte, which sees the geometry, strokes, opacity and `<title>` text the
+fingerprint cannot.
+
+**Done**, one commit each unless noted:
+
+- [x] 0. Tooling: `scripts/chart_sheet.py` (a byte-stable contact sheet of every chart in six
+  states), `ui_snapshots.py --pages charts` (19 chart hosts, each with its own steps), the
+  allocations profiler off the retired pie generators.
+- [x] 1. Pace honors the facility filter. The fix as written would have given the page-wide
+  chart the facility card's DOM id; the card marks itself (`card=1`) instead.
+- [x] 2. `#chartExpandModal` is in `dashboards/base.html`. The machine job explorer drew the
+  opener with no modal on the page.
+- [x] 3. The public queue-history page no longer loads the login-only user/project chart (its
+  401 carried `HX-Redirect`, sending an anonymous visitor to the login screen).
+- [x] 4. Tick labels in one unit and one precision per axis (`fmt.axis_labels`). The old
+  formatter also rounded fractions: ticks at 2.5, 7.5 and 12.5 read `2`, `8`, `12`.
+- [x] 5. Four wrong texts: the disk card's "top 10", partition history calling itself a node
+  type, an all-zero distribution drawing empty axes, the used-window caption written twice.
+- [x] 6. Dead code: the pie legend fallback, every private alias on the charts facade (20),
+  `generate_jobs_user_pie_chart`, two unused parameters, dead template branches, the
+  `loading_spinner` macro and its CSS.
+- [x] 7. Stale prose, done last: counts, the lifecycle docstring, "no chart SVG in a cached
+  route", CLAUDE.md, `CHART_ARCHITECTURE.md` (it said PROPOSED), three Status lines.
+- [x] 8. The duplicate `decorate` in `stacked.py` (entry 4's open item).
+- [x] 9. Family homes: `_CumulativePie.build`, `PieChart.tooltip_text` and `ring`, the usage
+  trends' shared base, the dual-panel `cache_key`. The three-ring rim names its entity
+  (`rim_link`, `rim_noun`).
+- [x] 10. Two legend kinds and one `legend_cells(label, value)` signature.
+- [x] 11. Sizes and inks from `Layout` and `Theme`: `label_kw` on the histograms and dual
+  panels, `Layout.line_scale`, `Theme.muted_alpha`, Pace's remainder at `area_alpha`.
+- [x] 12. `series.fold_top` and `series.other_label`; `Series.is_other`; the three producers
+  of the stacked remainder emit their folded `count`.
+- [x] 13. The axis-forwarding gate checks every call in all six calling modules.
+- [x] 14. Route smokes for four chart routes that had only a route-map pin.
+- [x] 15. Pins: `PanelSunburst` in `LAYOUT_OWNERS`, the light surface, `facility_slots`.
+- [x] 16. `webapp.utils.charts.draw_chart` at all 21 call sites; a cached page declines to
+  cache a chart error.
+- [x] 17. Hover titles on pies, histograms, stacked charts, area bands and Pace (four
+  commits), with project titles for viewers `hover_titles` admits.
+- [x] 18. Table legends with figures on the usage trend, disk usage and the jobs timeline.
+- [x] 19. The chart frame: `fragments/chart_bits.html` (`chart_figure`, `chart_loading`,
+  `chart_pills`, `chart_error`). Twenty loaders, twenty pill groups, fifteen unnamed charts.
+  Gate: `tests/unit/gates/test_chart_frame.py`.
+- [x] 20. `charts.css`. Pace's doubled gutter, one pie cap.
+- [x] 21. The status history pages change their window in place (`chart_pills` with `select`
+  and `push`), with no fragment route.
+
+- [x] Growth rule. This sweep's new class is **a shared opener whose shell each page must
+  remember to include** (item 2). The modal-shell gate walks `extends` and `include` but not
+  `{% from %}`, so it cannot see which hosts call a macro. `SITE_WIDE_SHELLS` pins the
+  structural answer: such a shell is included by the base page and nowhere else. The
+  dashboard skill says so beside the modal trap.
+
+**Deviations from the handoff:**
+- Order: bugs, then the safety net (13 to 15) ahead of the refactors it guards, then 5, 4, 6,
+  8 to 12, 16 to 21, and 7 last, so prose was rewritten once.
+- Item 2: the handoff's pin (`jobs_usage_panel.html` in `HTMX_FRAGMENT_SHELL_DEPS`) cannot
+  work, for the reason under Growth rule.
+- Item 6: `PaceChart(top_n)` stays (a sample passes it; the layout clamps it), and
+  `allocations.css:31-44` was not dead (its `width: 100%` stretches Pace); item 20 moved it.
+- Item 8: one duplicate `decorate`, not four.
+- Item 12: the three-ring rim keeps `+N` on the wedge (a 7pt radial label where `12 other`
+  rarely fits); its hover says `N other`. Plugin remainders read `Others`: the count is unknown.
+- Item 16: the five places a panel skips its chart when it has no rows stay. Each panel's own
+  "no jobs match" message covers the table too.
+- Item 17: bar segments hover with their own value, not the band total; area bands and Pace
+  got titles although `CHART_HOVER_LAYER.md` had left areas out. That plan records both.
+- Item 20: the ring charts stay out of the below-desktop gutter, on purpose (grid columns).
+- Item 21: swapping only the chart would have left the statistics card, the breadcrumbs and
+  the user/project card on the old window, so the page's main content is swapped instead.
+
+**Tried and dropped:**
+- Following `{% from %}` in the modal-shell gate's closure walk: 36 of 54 pinned entries
+  change, mostly noise (an imported file is not a called macro), and it surfaced one lead,
+  `dashboards/user/accounts.html` (allocate-down and exchange modals), left open below.
+- `MaxNLocator(integer=True)` with its default steps on the dual-panel count axes: ticks at
+  150, 300, 450. `steps=[1, 2, 5, 10]` keeps AutoLocator's ticks less the halves.
+- Naming fs-scan histogram segments after the fold: a uid cached as a string was taken for a
+  username. Owners are rekeyed by username before the fold.
+
+**Measured:**
+- Hover titles add about 11% to the bar charts (a 365-day, 11-band usage trend: 1.39 MB of
+  SVG before, 156 KB of titles; the 120-bar jobs timeline: 405 KB to 454 KB) and 12% to the
+  three-ring chart on Derecho (242 KB to 270 KB, 436 project titles).
+- Pinned routes with one more query each: Pace 40 of 55, expanded 28 of 36 and 17 of 22.
+- Item 19: 32 of 38 before/after page shots pixel-identical; the six are the intended ones.
+- Item 20: 104 of 114 computed-style captures identical; the ten are Pace's gutter and one
+  color serialized differently.
+
+**Open from this round:**
+
+- [ ] **The By User sunburst** (Ben, 2026-10-05): facility, panel, user, with usernames on the
+  rim. Needs a user x account rollup in `hpc-usage-queries` first.
+  `docs/plans/JOBS_USER_SUNBURST_HANDOFF.md`.
+- [ ] A usage trend over a long window is megabytes of SVG (4,015 rectangles at 365 days by 11
+  bands), before any title. Weekly bars past some span, as the jobs timeline does, would fix it.
+- [ ] `dashboards/user/accounts.html`: the import-following experiment says it reaches the
+  allocate-down and exchange modals without including their shells. Not read for intent.
+- [ ] The chart-expand shell is still hand-rolled (entry 9's scaffold item); its ids are
+  `...Title` / `...Body`, which `svg-chart-links.js` reads.
+- [ ] Count axes outside the dual panels (jobs histogram, timeline) can still tick at halves.
+- [ ] `test_account_requests_manage.py::TestEventEnrollmentLedger::
+  test_existing_user_invite_without_event_records_nothing` counts every `EventEnrollment` row
+  and failed once under xdist; passes alone. (`test_contract_audit.py`, entry 10, also bit.)
+- [ ] The local `hpc-usage-postgres` container was down for this sweep, so no jobs chart was
+  seen in a browser: By Project expand, the timeline legend and the jobs hovers want a look
+  on samuel-dev.
+- [ ] Carried from the handoff's "Ledger only" list, not built:
+  - Palette single-sourcing and the brand-drift tokens (entry 5): every fingerprint moves.
+  - The `auto` theme; a styled tooltip (`CHART_HOVER_LAYER.md` step 4); per-surface figure
+    tuning (`MOBILE_CHARTS.md`).
+  - The expanded chart reuses the viewport's layout and is stretched by CSS.
+  - "Others" is the largest band on the status load chart at top 15: a data-design question.
+  - JS: the param-stripping `configRequest` code in `layout-axis.js` and
+    `nav-view-persistence.js`; two cookie writers, one setting `Secure`; the breakpoint
+    strings in four files.
+  - Facility ordering written three times (`sunburst.py`, `jobs/routes.py`,
+    `allocations/blueprint.py`, the last by id rather than slot).
+  - The #707 review items on entry 1: the run-out tick's color token, Pace's zero projection
+    for a new project, calendar month figures living only in hover titles.
+  - `CacheBase.bytes_used` (entry 4); matplotlib's own ids repeating when one cached SVG
+    appears twice on a page.
+
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
 Surfaced by the first run of `scripts/sweep_inventory.py`. Each item belongs to an area sweep;
@@ -602,8 +838,9 @@ nothing here has been read for intent yet.
 - **py:** the first inventory's py items were read and closed by sweep 4; its leftovers are on
   that entry's open list.
 - **docs:** `plans-stale --gh` on 2026-10-03 found no retirement candidates among 22 top-level
-  plans. `ADMIN_TABLE_POLISH.md` and `ALLOCATIONS_SUNBURST.md` still say "implemented, in
-  review" although their PRs have merged; they pass the 14-day idle bar on 2026-10-17.
+  plans. `ADMIN_TABLE_POLISH.md` and `ALLOCATIONS_SUNBURST.md` said "implemented, in review"
+  after their PRs merged; sweep 11 corrected both Status lines. They pass the 14-day idle bar
+  on 2026-10-17.
 - **templates:** sweeps 5–9 took inline `style=""` from 404 to 216 (`sweep_inventory.py --area
   templates`).
 

@@ -746,15 +746,7 @@ class TestEveryExpandableRowShowsAChevron:
 # facet / control parity
 
 class TestFacetParity:
-    """A chip whose field has no control in the form filters nothing."""
-
-    def test_every_facet_field_has_a_hidden_control(self, auth_client):
-        body = auth_client.get('/allocations/xras').get_data(as_text=True)
-        form = body.split('id="xras-remediation-filters"')[1].split('</form>')[0]
-        for field in ('status', 'action_type', 'opportunity', 'push',
-                      'readiness', 'request_number'):
-            assert f'name="{field}"' in form, \
-                f'{field} chips would be silently inert'
+    """The chip-to-control check is tests/unit/gates/test_facet_form_contract.py."""
 
     def test_the_search_box_is_bound_to_that_form(self, auth_client, armed):
         """It renders inside the card and belongs to the form outside it.

@@ -12,15 +12,20 @@ from ``xras_remediation_routes.py`` — ``git blame -C`` follows both moves.
 """
 
 from datetime import datetime, timedelta
-from sam.dates import parse_wire_date, parse_ymd_or, start_of_today
+from sam.dates import parse_wire_date, parse_ymd_or
+from webapp.utils.windows import read_days, read_log_window
 
 from flask import current_app, render_template
 
 from webapp.extensions import db
-from webapp.utils.htmx import modal_triggers, read_flag, read_page, read_sort
+from webapp.utils.facets import Facet, FacetSet
+from webapp.utils.htmx import (
+    modal_triggers, read_flag, read_multi, read_page, read_sort,
+)
 from sam.integration.xras_api import XrasSourceUnavailable
 from sam.manage import xras_remediation as remediation
 from sam.queries.xras_actions import XRAS_ACTION_SORT_COLUMNS
+from sam.queries.xras_requests import BLOCKER_LABELS
 from sam.queries.xras_activation import ACTIVITY_TAGS
 from sam.queries.xras_accounts import (REMEDIES,
                                        REMEDY_MERGE,
@@ -202,34 +207,14 @@ def _parse_xras_filters(request_args):
     Returns ``(filters, sort, page)`` with the same shapes ``_parse_audit_filters``
     returns, because the table fragment renders through the same macros.
 
-    Default 30-day window is applied iff **neither** ``start_date`` nor
-    ``end_date`` appears in the query string — explicitly empty bounds mean
-    "all time", which is a different intent from "I have not chosen".
+    The window is ``read_log_window``: a 30-day lookback until either date
+    param appears in the query string, and never bounded above by default.
     """
-    statuses = request_args.getlist('status') or None
-    action_types = request_args.getlist('action_type') or None
+    statuses = read_multi(request_args, 'status') or None
+    action_types = read_multi(request_args, 'action_type') or None
     request_number = (request_args.get('request_number') or '').strip() or None
 
-    start_date_str = (request_args.get('start_date') or '').strip()
-    end_date_str = (request_args.get('end_date') or '').strip()
-
-    if 'start_date' not in request_args and 'end_date' not in request_args:
-        start_date = (start_of_today()
-                      - timedelta(days=30))
-        # Deliberately UNBOUNDED above, where the sibling audit pages use
-        # datetime.now(). There are no future rows, so an upper bound buys
-        # nothing — and a sub-second one actively loses the newest row.
-        # `received_time` is a MySQL DATETIME with second resolution and MySQL
-        # ROUNDS rather than truncates, so a row written at 10:10:24.894 is
-        # stored as 10:10:25 and lands *after* an end_date captured microseconds
-        # earlier in the same request. On an audit surface whose whole job is
-        # answering "did my action get recorded?", the row most worth seeing is
-        # the one that just arrived. (_parse_audit_filters above still has the
-        # sub-second bound; same latent bug, left alone as pre-existing.)
-        end_date = None
-    else:
-        start_date = parse_ymd_or(start_date_str)
-        end_date = parse_ymd_or(end_date_str, end_of_day=True)
+    start_date, end_date = read_log_window(request_args, default_days=30)
 
     filters = {
         'status': statuses,
@@ -282,8 +267,8 @@ def _parse_activity_window(args) -> dict:
         return {'days': None, 'since': since, 'until': until,
                 'start_date': start_raw, 'end_date': end_raw, 'custom': True}
 
-    days = args.get('days', type=int) or _ACTIVITY_DEFAULT_DAYS
-    days = max(1, min(days, _ACTIVITY_MAX_DAYS))
+    days = read_days(args, default=_ACTIVITY_DEFAULT_DAYS,
+                     maximum=_ACTIVITY_MAX_DAYS)
     return {'days': days, 'since': datetime.now() - timedelta(days=days),
             'until': None, 'start_date': '', 'end_date': '', 'custom': False}
 
@@ -310,20 +295,6 @@ def _activity_in_window(row, window) -> bool:
     return (since is None or when >= since) and (until is None or when <= until)
 
 
-def sort_rows(rows, sort, keymap):
-    """In-Python sort of snapshot rows by a whitelisted column, None-last in both
-    directions. ``keymap`` maps a ``sort_by`` value to a row-key function; an
-    unknown/absent column leaves the order untouched."""
-    keyfn = keymap.get((sort or {}).get('sort_by'))
-    if not keyfn:
-        return list(rows)
-    reverse = (sort or {}).get('sort_dir') == 'desc'
-    present = [r for r in rows if keyfn(r) is not None]
-    absent = [r for r in rows if keyfn(r) is None]
-    present.sort(key=keyfn, reverse=reverse)
-    return present + absent
-
-
 def _row_activity_type(row) -> str:
     """The chip value for the action-type dimension.
 
@@ -336,42 +307,13 @@ def _row_activity_type(row) -> str:
     return row.get('action_type') or '—'
 
 
-def _filter_activity(rows, *, tags=None, types=None):
-    """Apply the chip selections. Tags are ANDed with types, ORed within."""
-    if tags:
-        wanted = set(tags)
-        rows = [r for r in rows if wanted & set(r['tags'])]
-    if types:
-        wanted_types = set(types)
-        rows = [r for r in rows if _row_activity_type(r) in wanted_types]
-    return rows
-
-
-def _activity_facets(rows, dimension, *, tags=None, types=None) -> dict:
-    """Counts for one chip dimension, **excluding that dimension's own filter**.
-
-    Computed in Python rather than SQL because the rows are already assembled
-    here — the notification rollup that produces the tags has no SQL form. The
-    set is one window of processed actions, so this is a pass over a list, not
-    a scan.
-    """
-    if dimension == 'tag':
-        scoped = _filter_activity(rows, types=types)
-        counts = {tag: 0 for tag in ACTIVITY_TAGS}
-        for row in scoped:
-            for tag in row['tags']:
-                counts[tag] = counts.get(tag, 0) + 1
-        return counts
-
-    if dimension == 'activity_type':
-        scoped = _filter_activity(rows, tags=tags)
-        counts: dict = {}
-        for row in scoped:
-            key = _row_activity_type(row)
-            counts[key] = counts.get(key, 0) + 1
-        return dict(sorted(counts.items()))
-
-    raise ValueError(f'unknown activity facet dimension {dimension!r}')
+#: The activity card's chips. Counted in Python because the notification rollup
+#: that produces the tags has no SQL form; every declared tag renders, since an
+#: absent chip reads as "not measured", a different claim from "none".
+ACTIVITY_FACETS = FacetSet(
+    Facet('tag', key='tags', order=ACTIVITY_TAGS, labels=_ACTIVITY_TAG_LABELS),
+    Facet('activity_type', key=_row_activity_type, hide_zero=True),
+)
 
 
 #: Display labels for the classification facet. The slug is what round-trips
@@ -439,39 +381,6 @@ _SOURCE_LABELS = {
 }
 
 
-def _filter_accounts(rows, *, remedies=None, roles=None, origins=None,
-                     sources=None):
-    """Facet filters: ANDed across dimensions, ORed within one.
-
-    *origins* is the Identity dimension, expressed as the three values a form
-    can round-trip. It separates the populations that share this card: an ARC
-    placeholder is a researcher who never had a site account, a known identity
-    had one that lapsed, and a *mergeable* row is the placeholder subset SAM can
-    absorb into an existing active account. Bucketed by ``_origin_of`` so the
-    filter and the counts cannot drift.
-
-    *sources* is the provenance dimension — which feed put the row here. A row
-    is kept when ANY selected source is one it carries, so a both-feeds row
-    survives either filter.
-
-    WARNING: Deliberately **not** defaulted. The rule on this card is *no selection =
-    no filter*, and defaulting one dimension on would make an empty facet row
-    mean something different here than on every other card.
-    """
-    out = rows
-    if remedies:
-        out = [r for r in out if _remedy_of(r) in remedies]
-    if roles:
-        out = [r for r in out if any(role in roles for role in r['roles'])]
-    if origins:
-        wanted = set(origins)
-        out = [r for r in out if _origin_of(r) in wanted]
-    if sources:
-        out = [r for r in out
-               if any(s in (r.get('sources') or ()) for s in sources)]
-    return out
-
-
 #: Requests to offer as chips. A worklist spanning dozens of projects would
 #: otherwise render a chip wall; the cap is on the CHIPS, not the rows, and
 #: the rows all stay visible whether or not their request earned one.
@@ -501,62 +410,62 @@ def _submitted_since(row, since):
     return False
 
 
-def _request_facets(rows, *, remedies=None):
-    """Counts per XRAS request number, most-affected first.
-
-    Self-excluding on its own dimension, like every other facet here. Rows
-    naming no request number contribute nothing: a NULL cannot round-trip
-    through the form, so it must not become a chip.
-    """
-    scoped = _filter_accounts(rows, remedies=remedies)
-    counts = {}
-    for row in scoped:
-        for number in {a['request_number'] for a in row['actions'] if a['request_number']}:
-            counts[number] = counts.get(number, 0) + 1
-    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-    return [{'value': k, 'count': v} for k, v in ordered[:_MAX_REQUEST_CHIPS]]
+def _request_numbers(row):
+    """A NULL cannot round-trip through the form, so it never becomes a chip."""
+    return {a['request_number'] for a in row.get('actions') or ()
+            if a['request_number']}
 
 
-def _account_facets(rows, dimension, *, remedies=None, roles=None,
-                    sources=None):
-    """Self-excluding counts for one dimension.
+#: The Pending Users chips: no selection is no filter, on every dimension.
+#: ``origin`` is the Identity bucket (``_origin_of``, so filter and counts
+#: cannot drift); ``source`` keeps a both-feeds row under either value.
+ACCOUNT_FACETS = FacetSet(
+    Facet('remedy', key=_remedy_of, order=REMEDY_ORDER,
+          labels=_ACCOUNT_REMEDY_LABELS),
+    Facet('role', key='roles', hide_zero=True),
+    Facet('origin', key=_origin_of, labels=_ORIGIN_LABELS,
+          order=(ORIGIN_PLACEHOLDER, ORIGIN_KNOWN, ORIGIN_MERGEABLE)),
+    Facet('source', key='sources', labels=_SOURCE_LABELS,
+          order=(SOURCE_ACTION_LOG, SOURCE_REPORTS)),
+    Facet('request_number', key=_request_numbers, by_count=True,
+          hide_zero=True, limit=_MAX_REQUEST_CHIPS),
+)
 
-    A dimension's rollup omits its own filter — scope it by itself and every
-    unselected value reads 0 the moment one is picked, which turns the chips
-    from switchers into a dead end. Same rule as :func:`_activity_facets`.
-    """
-    if dimension == 'remedy':
-        scoped = _filter_accounts(rows, roles=roles, sources=sources)
-        return {key: sum(1 for r in scoped if _remedy_of(r) == key)
-                for key in REMEDY_ORDER}
 
-    if dimension == 'role':
-        scoped = _filter_accounts(rows, remedies=remedies,
-                                  sources=sources)
-        counts = {}
-        for row in scoped:
-            for role in row['roles']:
-                counts[role] = counts.get(role, 0) + 1
-        return dict(sorted(counts.items()))
+#: Readiness chips, worst first; the icon matches the row badge so the strip is
+#: the column's legend. ``none`` is a real bucket: a swept request with no
+#: pending action checked (out of window, or all applied).
+_READINESS = (
+    ('failed', 'Would fail', 'fa-triangle-exclamation text-danger-emphasis'),
+    ('manual', 'Would park', 'fa-circle-pause text-warning-emphasis'),
+    ('incomplete', 'Incomplete', 'fa-circle-question text-secondary-emphasis'),
+    ('rechecked', 'Would land', 'fa-circle-check text-success-emphasis'),
+    ('none', 'Not checked', 'fa-rotate text-secondary-emphasis'),
+)
 
-    if dimension == 'origin':
-        scoped = _filter_accounts(rows, remedies=remedies,
-                                  roles=roles, sources=sources)
-        # Mergeable is carved out of placeholder — same _origin_of the filter
-        # uses, so a mergeable row leaves the placeholder count.
-        counts = {ORIGIN_PLACEHOLDER: 0, ORIGIN_KNOWN: 0, ORIGIN_MERGEABLE: 0}
-        for r in scoped:
-            counts[_origin_of(r)] += 1
-        return counts
+#: Blocker chip icons, matching the row indicators (the chip strip is their legend).
+_BLOCKER_ICONS = {'mnemonic': 'fa-link-slash text-danger-emphasis',
+                  'contract': 'fa-file-contract text-danger-emphasis',
+                  'account': 'fa-user text-danger-emphasis'}
 
-    if dimension == 'source':
-        scoped = _filter_accounts(rows, remedies=remedies,
-                                  roles=roles)
-        # A both-feeds row counts in both, so this is not a partition.
-        return {key: sum(1 for r in scoped if key in (r.get('sources') or ()))
-                for key in (SOURCE_ACTION_LOG, SOURCE_REPORTS)}
-
-    raise ValueError(f'unknown account facet dimension {dimension!r}')
+#: The card's chips. A row counts under every blocker it is stuck on, so that
+#: strip sums past the row total by design. ``request_number`` draws only its
+#: selected values (``limit=0``): one chip per swept request would be a wall.
+REMEDIATION_FACETS = FacetSet(
+    Facet('status'),
+    Facet('action_type', key='latest_action_type'),
+    Facet('opportunity', key='opportunity_name'),
+    Facet('push', key=lambda r: 'pending' if r.get('pending_push') else 'pushed',
+          order=('pending', 'pushed'),
+          labels={'pending': 'No SAM project', 'pushed': 'Project exists'}),
+    Facet('readiness', key=lambda r: r.get('preflight_rollup') or 'none',
+          order=[v for v, _, _ in _READINESS], hide_zero=True,
+          labels={v: label for v, label, _ in _READINESS},
+          icons={v: icon for v, _, icon in _READINESS}),
+    Facet('blockers', order=[v for v, _ in BLOCKER_LABELS], hide_zero=True,
+          labels=dict(BLOCKER_LABELS), icons=_BLOCKER_ICONS),
+    Facet('request_number', hide_zero=True, limit=0),
+)
 
 
 _WINDOW_TARGET = 'alloc-xras-window'

@@ -10,9 +10,10 @@ from typing import Dict, List
 from sam import fmt
 from webapp.caching.chart import content_hash
 from webapp.dashboards.charts import links
-from webapp.dashboards.charts.base import BaseChart, cells_label
+from webapp.dashboards.charts.base import BaseChart
 from webapp.dashboards.charts.jobs_metrics import jobs_metric_value
 from webapp.dashboards.charts.layout import profile
+from webapp.dashboards.charts.series import OTHERS, other_label
 from webapp.dashboards.charts.theme import UNITY_PALETTE_10, autopct_color_for
 
 _PIE_START_ANGLE = 60
@@ -61,11 +62,9 @@ class PieChart(BaseChart):
     autopct_fontsize = 8
     #: 9pt on a (7,4) figure — see the note on PaceChart.legend_fontsize.
     legend_fontsize = 9
-    legend_anchor = (1.01, 0.5)
 
     #: A drill target (`RowDrill`/`UserDrill`), or None for an inert pie.
     drill = None
-    table_legend = True
 
     def build(self):
         """Return ``(labels, values, colors, link_keys)``, all same length.
@@ -80,14 +79,23 @@ class PieChart(BaseChart):
         total = sum(self.values)
         return value * 100 / total if total else 0
 
-    def legend_amount(self, value) -> str:
-        return fmt.number(value)
-
     def legend_cells(self, label, value):
-        """Strings for one legend row: the name, then its numbers."""
+        """The name, its share of the pie, then its amount."""
         # Under 1% keeps two decimals, so a sliver never reads as 0.0%.
         share = self.percent(value)
         return label, fmt.pct(share, decimals=1 if share >= 1 else 2), self.legend_amount(value)
+
+    def tooltip_text(self, label, value) -> str:
+        """Hover text for one wedge: what its legend row says."""
+        return self.hover(*self.legend_cells(label, value))
+
+    def ring(self, ax, values, radius, width, colors, theme, linewidth):
+        """One ring of wedges at ``radius``, edged in the card's surface."""
+        wedges, _ = ax.pie(values, radius=radius, colors=colors, startangle=self.start_angle,
+                           counterclock=False,
+                           wedgeprops={'edgecolor': theme.surface, 'width': width,
+                                       'linewidth': linewidth})
+        return wedges
 
     def slice_cap(self, default: int) -> int:
         """Named slices this layout affords before 'Other'. Caps the data, not the
@@ -120,45 +128,74 @@ class PieChart(BaseChart):
             at.set_color(autopct_color_for(wedge_color))
             at.set_fontweight('bold')
             at.set_fontsize(self.autopct_fontsize)
+        for wedge, label, value in zip(wedges, self.labels, self.values):
+            self.tooltip(wedge, self.tooltip_text(label, value))
         self.wedges = wedges
 
     def add_legend(self, ax, layout, theme):
+        """A wedge and its legend row share one drill URL. The table is the only
+        legend: every pie layout places it at the right (pinned by test)."""
         rows = [self.legend_cells(l, v) for l, v in zip(self.labels, self.values)]
-        if self.table_legend:
-            urls = [self.drill.url(k) if self.drill is not None and k is not None else None
-                    for k in self.link_keys]
-            for wedge, url in zip(self.wedges, urls):
-                wedge.set_url(url)
-            if self.draw_table_legend(ax, rows, self.colors, urls, layout, theme):
-                return
-        legend = ax.legend(self.wedges, [cells_label(r) for r in rows],
-                           **self.legend_kwargs(layout))
-        if self.drill is None:
-            return
-
-        # A drill target spans three artists — the wedge, its legend swatch
-        # and its legend text — which is why these stay <a> anchors rather
-        # than set_gid()s: an id has to be unique.
-        leg_patches = legend.get_patches()
-        leg_texts = legend.get_texts()
-        for i, key in enumerate(self.link_keys):
-            if key is None:
-                continue
-            url = self.drill.url(key)
-            self.wedges[i].set_url(url)
-            if i < len(leg_patches):
-                leg_patches[i].set_url(url)
-            if i < len(leg_texts):
-                leg_texts[i].set_url(url)
+        urls = [self.drill.url(k) if self.drill is not None and k is not None else None
+                for k in self.link_keys]
+        for wedge, url in zip(self.wedges, urls):
+            wedge.set_url(url)
+        self.draw_table_legend(ax, rows, self.colors, urls, layout, theme)
 
 
 class _CumulativePie(PieChart):
-    """~90%-cumulative-share slices with one inert 'Other'. Clickable."""
+    """~90%-cumulative-share slices with one inert remainder. Clickable.
+
+    A subclass names its rows (`entities`) and how to read one (`value_of`,
+    `key_of`, `label_of`); `remainder` sizes and labels what is left over.
+    """
 
     def split(self, values_desc):
         """``(keep, n_others)`` for a descending value vector."""
         keep = trim_cumulative(values_desc, cap=self.slice_cap(_PIE_HARD_CAP))
         return keep, len(values_desc) - keep
+
+    def entities(self) -> list:
+        """The rows to rank, in any order; empty for nothing to draw."""
+        raise NotImplementedError
+
+    def value_of(self, row) -> float:
+        raise NotImplementedError
+
+    def key_of(self, row):
+        """The drill key, or None for a slice with nothing to link to."""
+        raise NotImplementedError
+
+    def label_of(self, row) -> str:
+        return self.key_of(row)
+
+    def remainder(self, values_desc, keep):
+        """``(label, value)`` for the slice past ``keep``, or None."""
+        n_others = len(values_desc) - keep
+        if n_others <= 0:
+            return None
+        return other_label(n_others), sum(values_desc[keep:])
+
+    def build(self):
+        rows = self.entities()
+        if not rows:
+            return [], [], [], []
+        data = sorted(rows, key=self.value_of, reverse=True)
+        values_desc = [self.value_of(r) for r in data]
+        keep, _n_others = self.split(values_desc)
+
+        keys = [self.key_of(r) for r in data[:keep]]
+        labels = [self.label_of(r) for r in data[:keep]]
+        values = list(values_desc[:keep])
+        colors = self.theme.data_colors(list(UNITY_PALETTE_10[:keep]))
+
+        rest = self.remainder(values_desc, keep)
+        if rest is not None:
+            keys.append(None)                  # inert slice
+            labels.append(rest[0])
+            values.append(rest[1])
+            colors.append(self.theme.muted_data)
+        return labels, values, colors, keys
 
 
 class DiskEntityPie(_CumulativePie):
@@ -189,30 +226,19 @@ class DiskEntityPie(_CumulativePie):
     def legend_amount(self, value):
         return fmt.size(value)
 
-    def build(self):
-        numeric_label = 'uid ' if self.kind == 'owner' else 'gid '
+    def entities(self):
+        return self.entity_data
 
-        # Coerce to float at the single entry point: scan rollups arrive as
-        # decimal.Decimal from Postgres, and Decimal/float don't mix in
-        # arithmetic (cum += v) or matplotlib. Everything downstream is then
-        # plain float.
-        data = sorted(self.entity_data, key=lambda d: float(d['value']),
-                      reverse=True)
-        values_desc = [float(d['value']) for d in data]
-        keep, n_others = self.split(values_desc)
+    def value_of(self, row):
+        # float at the single entry point: scan rollups arrive as Decimal from
+        # Postgres, and Decimal and float do not mix in arithmetic or matplotlib.
+        return float(row['value'])
 
-        keys = [d['id'] for d in data[:keep]]
-        labels = [d['name'] or f'{numeric_label}{d["id"]}' for d in data[:keep]]
-        values = list(values_desc[:keep])
-        colors = self.theme.data_colors(list(UNITY_PALETTE_10[:keep]))
+    def key_of(self, row):
+        return row['id']
 
-        if n_others > 0:
-            keys.append(None)                  # inert slice
-            labels.append(f'{fmt.number(n_others)} other')
-            values.append(sum(values_desc[keep:]))
-            colors.append(self.theme.muted_data)
-
-        return labels, values, colors, keys
+    def label_of(self, row):
+        return row['name'] or f"{'uid' if self.kind == 'owner' else 'gid'} {row['id']}"
 
 
 class UserUsagePie(_CumulativePie):
@@ -243,27 +269,14 @@ class UserUsagePie(_CumulativePie):
         # arrives missing, not defaulted.
         return content_hash([user_data, metric])
 
-    def build(self):
-        rows = [d for d in self.user_data if float(d.get(self.metric) or 0) > 0]
-        if not rows:
-            return [], [], [], []
+    def entities(self):
+        return [d for d in self.user_data if float(d.get(self.metric) or 0) > 0]
 
-        data = sorted(rows, key=lambda d: float(d[self.metric]), reverse=True)
-        values_desc = [float(d[self.metric]) for d in data]
-        keep, n_others = self.split(values_desc)
+    def value_of(self, row):
+        return float(row[self.metric])
 
-        keys = [d['username'] for d in data[:keep]]
-        labels = list(keys)
-        values = list(values_desc[:keep])
-        colors = self.theme.data_colors(list(UNITY_PALETTE_10[:keep]))
-
-        if n_others > 0:
-            keys.append(None)                  # inert slice
-            labels.append(f'{fmt.number(n_others)} other')
-            values.append(sum(values_desc[keep:]))
-            colors.append(self.theme.muted_data)
-
-        return labels, values, colors, keys
+    def key_of(self, row):
+        return row['username']
 
 
 class JobsUsagePie(_CumulativePie):
@@ -283,16 +296,15 @@ class JobsUsagePie(_CumulativePie):
     cache_maxsize = 64
     empty_message = 'No usage data available'
 
-    def __init__(self, entity_data, metric='cpu_hours', *,
-                 row_attr='data-job-user', unknown_label='(unknown)'):
+    def __init__(self, entity_data, metric='cpu_hours', *, row_attr='data-job-user',
+                 titles=None):
         self.entity_data = entity_data or {}
         self.metric = metric
         self.row_attr = row_attr
-        self.unknown_label = unknown_label
+        self.titles = titles
 
     @staticmethod
-    def cache_key(entity_data, metric='cpu_hours', *,
-                  row_attr='data-job-user', unknown_label='(unknown)'):
+    def cache_key(entity_data, metric='cpu_hours', *, row_attr='data-job-user', titles=None):
         """row_attr joins the key: identical usage vectors rendered for
         different entity kinds carry different drill anchors."""
         rows = (entity_data or {}).get('rows') or []
@@ -301,38 +313,30 @@ class JobsUsagePie(_CumulativePie):
                    for r in rows]
         return content_hash([payload,
                              jobs_metric_value(totals, metric, 'cpu_hours'),
-                             str(metric), str(row_attr), str(unknown_label)])
+                             str(metric), str(row_attr), titles or {}])
 
     @property
     def drill(self):
         return links.RowDrill(self.row_attr)
 
-    def build(self):
-        rows = self.entity_data.get('rows') or []
-        totals = self.entity_data.get('totals') or {}
-        total = jobs_metric_value(totals, self.metric, 'cpu_hours')
-        if not rows or total <= 0:
-            return [], [], [], []
+    def entities(self):
+        self._total = jobs_metric_value(self.entity_data.get('totals') or {},
+                                        self.metric, 'cpu_hours')
+        return (self.entity_data.get('rows') or []) if self._total > 0 else []
 
-        # Upstream sorts by combined hours; re-sort by the *chosen* metric so
-        # e.g. the Jobs view leads with the most job-count-heavy users.
-        def value_of(r):
-            return jobs_metric_value(r, self.metric, 'cpu_hours')
+    def value_of(self, row):
+        # Upstream sorts by combined hours; the pie ranks by the *chosen* metric,
+        # so the Jobs view leads with the most job-count-heavy users.
+        return jobs_metric_value(row, self.metric, 'cpu_hours')
 
-        data = sorted(rows, key=value_of, reverse=True)
-        values_desc = [value_of(r) for r in data]
-        keep, _n_others = self.split(values_desc)
+    def key_of(self, row):
+        return row.get('value')
 
-        keys = [r.get('value') for r in data[:keep]]
-        labels = [k if k is not None else self.unknown_label for k in keys]
-        values = list(values_desc[:keep])
-        colors = self.theme.data_colors(list(UNITY_PALETTE_10[:keep]))
+    def label_of(self, row):
+        key = row.get('value')
+        return key if key is not None else '(unknown)'
 
-        remainder = total - sum(values)
-        if remainder > 1e-9:
-            keys.append(None)                  # inert slice
-            labels.append('Other')
-            values.append(remainder)
-            colors.append(self.theme.muted_data)
-
-        return labels, values, colors, keys
+    def remainder(self, values_desc, keep):
+        rest = self._total - sum(values_desc[:keep])
+        # Rows past the plugin's limit are in the total too: the count is unknown.
+        return (OTHERS, rest) if rest > 1e-9 else None

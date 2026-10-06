@@ -360,7 +360,7 @@ def get_disk_usage_timeseries_by_user(
         {
           'dates':  [date, ...],                   # sorted ascending
           'series': [
-            {'username': 'Others', 'values': [bytes, ...]},  # iff > top_n
+            {'username': 'Others', 'count': n, 'values': [bytes, ...]},  # iff > top_n
             {'username': 'alice',  'values': [bytes, ...]},  # smallest named
             ...,                                              # ascending
             {'username': 'zach',   'values': [bytes, ...]},  # largest named
@@ -428,7 +428,7 @@ def get_disk_usage_timeseries_by_user(
         for _uid, info in rest_users:
             for i, d in enumerate(dates):
                 others_values[i] += info['by_date'].get(d, 0)
-        series.append({'username': 'Others', 'values': others_values})
+        series.append({'username': 'Others', 'count': len(rest_users), 'values': others_values})
     # Named users smallest -> largest. `top_users` is sorted descending
     # by latest-snapshot bytes; reverse to put the largest on top of
     # the stack.
@@ -519,7 +519,7 @@ def get_disk_usage_timeseries_for_directory(
         for _key, info in rest_users:
             for i, d in enumerate(dates):
                 others_values[i] += info['by_date'].get(d, 0)
-        series.append({'username': 'Others', 'values': others_values})
+        series.append({'username': 'Others', 'count': len(rest_users), 'values': others_values})
     for _key, info in reversed(top_users):
         series.append({
             'username': info['username'],

@@ -298,6 +298,21 @@ def test_dark_card_matches_chart_blend_target():
             f'change both together, in the same commit.')
 
 
+def test_light_card_matches_chart_blend_target():
+    """The light half of the pin above. `Theme.LIGHT` spells white two ways
+    (`'white'`, `'#ffffff'`), so compare the colors, not the strings."""
+    from matplotlib.colors import to_hex
+    from webapp.dashboards.charts.theme import Theme
+
+    text = COMMENT_RE.sub('', (CSS_DIR / TOKEN_FILE).read_text())
+    head = text[:text.index(':root[data-bs-theme="dark"]')]
+    card = dict(DECL_RE.findall(head)).get('--surface-card', '').strip()
+    assert card, 'the light block does not define --surface-card'
+    for attr in ('shade_toward', 'legend_face', 'segment_edge', 'surface'):
+        assert to_hex(getattr(Theme.LIGHT, attr)) == to_hex(card), (
+            f'Theme.LIGHT.{attr} != --surface-card ({card})')
+
+
 def test_dark_block_redeclares_the_bootstrap_bridge():
     """Not redundant with the `:root` bridge — required.
 

@@ -1,6 +1,6 @@
 # Admin table polish — Resources, Organizations, Contracts, Facilities
 
-**Status: implemented, in review** · branch `admin-table-polish` (from `origin/staging`)
+**Status: implemented and merged** (#696, 2026-10-02) · branch `admin-table-polish` (from `origin/staging`)
 
 ## Why
 

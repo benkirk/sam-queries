@@ -8,13 +8,16 @@
 
   A chip click writes its value into the named field of a filter form and
   re-submits it — data-action "set-filter-submit" in static/js/actions.js,
-  CSP-clean, no inline handlers. The active chip is marked and clicking it
-  CLEARS the filter (empty data-value), so it doubles as its own clear button.
+  CSP-clean, no inline handlers. A chip is a toggle (aria-pressed): on a
+  multi-value field it adds or removes its own value and leaves the others, so
+  values in one dimension are ORed; on a single-value field it sets the value
+  or, when pressed, clears it.
 
   WARNING: The caller must compute counts with SELF-EXCLUSION — a dimension's rollup
   must omit its own filter. Scope a dimension by itself and every unselected
   value reads 0 the moment one is picked, which turns the strip from a switcher
-  into a dead end. See blueprint.py::xras_fragment.
+  into a dead end. `webapp/utils/facets.py` does it for rows held in memory;
+  `querykit.faceted` does it in SQL.
 
   WARNING: Values that cannot round-trip through the form must not become chips. A
   NULL is a real count but not a filterable value (there is no way to say
@@ -38,8 +41,71 @@
                a plain text span, preserving a color vocabulary the rows below
                already use. Chips get .has-badge so the CSS can mark selection
                with a ring rather than a fill that would overwrite the color.
+
+  facet_form / facet_fields emit the controls the chips write into. A chip whose
+  `field` has no control in its form does nothing and says nothing, so build the
+  form from the same dimension list as the chips; the gate is
+  tests/unit/gates/test_facet_form_contract.py.
+
+  facet_grid_row(label) is a call-macro for a non-chip row in the same grid (the
+  queue switch, a search box).
+
+  facet_clear_all(form_id, active) is the grid's last row: one button that
+  blanks every `data-facet-field` control of the form (the chip fields above,
+  and a `filter_search` box) and re-submits. Pass `active` truthy only when
+  something is selected, so the row is absent at rest.
 #}
 {% from 'dashboards/fragments/badges.html' import status_badge %}
+
+{#- `facets`: dimension names, or Facet objects (a FacetSet iterates as them).
+    `selected`: {name: [values]} to pre-select, for a page that deep-links.
+    `single`: names that hold one value (as does a Facet with multi=False); a
+    chip on one of those replaces the value instead of adding to it.
+    `sort`: truthy adds the sort_by / sort_dir pair set-sort-submit writes, so a
+    sort survives every chip click; pass the sort dict to seed it. -#}
+{% macro facet_fields(facets, selected={}, sort=False, single=[]) %}
+{% for facet in facets %}
+{% set name = facet.name if facet.name is defined else facet %}
+{% set chosen = selected.get(name) or [] %}
+{% if name in single or facet.multi is sameas false %}
+<input type="hidden" name="{{ name }}" value="{{ chosen | first | default('', true) }}" data-facet-field>
+{% else %}
+<select name="{{ name }}" multiple hidden data-facet-field>
+    {%- for value in chosen %}<option value="{{ value }}" selected>{{ value }}</option>{% endfor -%}
+</select>
+{% endif %}
+{% endfor %}
+{% if sort %}
+<input type="hidden" name="sort_by" value="{{ sort.sort_by or '' if sort is mapping }}">
+<input type="hidden" name="sort_dir" value="{{ sort.sort_dir or '' if sort is mapping }}">
+{% endif %}
+{% endmacro %}
+
+{#- A hidden form holding only chip state, for a card whose visible controls
+    bind to it with `form=`. The swap target listens with
+    `submit from:#<form_id>` and `hx-include`s it. -#}
+{% macro facet_form(form_id, facets, selected={}, sort=False) %}
+<form id="{{ form_id }}" class="d-none">
+    {{ facet_fields(facets, selected, sort) }}
+</form>
+{% endmacro %}
+
+{% macro facet_grid_row(label) %}
+<div class="facet-grid-label">{{ label }}</div>
+<div class="facet-grid-values">{{ caller() }}</div>
+{% endmacro %}
+
+{% macro facet_clear_all(form_id, active) %}
+{% if active %}
+<div class="facet-grid-label" aria-hidden="true"></div>
+<div class="facet-grid-values">
+    <button type="button" class="facet-clear"
+            data-action="facet-clear-all" data-form-id="{{ form_id }}">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i> Clear filters
+    </button>
+</div>
+{% endif %}
+{% endmacro %}
 
 {% macro facet_row(label, values, form_id, field, active=[], badge=False) %}
 {% if values %}
@@ -56,8 +122,9 @@
             data-action="set-filter-submit"
             data-form-id="{{ form_id }}"
             data-field="{{ field }}"
-            data-value="{{ '' if is_active else row.value }}"
-            title="{{ 'Clear this filter' if is_active else 'Filter by ' ~ label ~ ' ' ~ (row.label or row.value) }}">
+            data-value="{{ row.value }}"
+            aria-pressed="{{ 'true' if is_active else 'false' }}"
+            title="{{ ('Remove ' if is_active else 'Filter by ') ~ label ~ ' ' ~ (row.label or row.value) }}">
         {% if badge %}
         {# tooltip=False: the chip's own title already says what clicking does,
            and a live Bootstrap tooltip whose trigger htmx removes mid-transition

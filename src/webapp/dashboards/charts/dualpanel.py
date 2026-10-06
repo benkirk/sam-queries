@@ -3,7 +3,7 @@
 `nodetype_history` and `queue_history` are the only charts in the app using
 `subplots(2, 1, sharex=True)`. They share a skeleton — empty guard, UTC->local
 timestamp conversion, an upper panel, a conditional lower panel, a framed
-legend on each, `autofmt_xdate` — and differ only in what they plot.
+legend on each, the shared date axis — and differ only in what they plot.
 
 Chosen as the pilot for the class hierarchy: no drill links, no custom cache
 key, two charts, and the smallest blast radius of any family.
@@ -12,8 +12,10 @@ key, two charts, and the smallest blast radius of any family.
 from typing import Dict, List
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
 from sam import fmt
+from webapp.caching.chart import content_hash
 from webapp.dashboards.charts.base import BaseChart
 from webapp.dashboards.charts.layout import profile
 from webapp.dashboards.charts.series import to_display_tz
@@ -26,12 +28,11 @@ from webapp.dashboards.charts.theme import (
 class DualPanelTimeSeriesChart(BaseChart):
     """Shared skeleton: stacked upper panel, conditional lower panel."""
 
-    #: Legend keyword arguments. Framed with a solid face — the one place in
-    #: the app where a chart legend sits *over* the data rather than beside
-    #: it, so it needs to occlude. `facecolor` comes from the theme.
-    #: 11pt, matching the rcParams default and every other large figure.
-    #: Was 10 for no recorded reason.
-    legend_fontsize = 11
+    #: Stroke widths at desktop size, for a solid and a dashed series; the
+    #: layout scales them (`Layout.line_scale`).
+    line_width = 3
+    dashed_width = 2
+
     #: Two- and three-word labels ("Resources Available", "GPUs Pending"), so
     #: an outside legend gets two columns.
     legend_ncol_below = 2
@@ -39,6 +40,10 @@ class DualPanelTimeSeriesChart(BaseChart):
     def __init__(self, history_data: List[Dict]):
         self.history_data = history_data or []
         self.timestamps = []
+
+    @staticmethod
+    def cache_key(history_data):
+        return content_hash(history_data)
 
     def prepare(self):
         self.timestamps = [to_display_tz(d['timestamp'])
@@ -66,7 +71,7 @@ class DualPanelTimeSeriesChart(BaseChart):
 
         **Above, not below** — and this family is the reason the direction is
         not simply "below" everywhere. Two stacked Axes share one x axis, so
-        the lower panel's underside is where the rotated date labels and the
+        the lower panel's underside is where the date labels and the
         "Time (MDT)" label live; a legend placed there lands on top of them
         (measured, at three different anchors — moving the anchor down moves
         the label down with it, because the tight bbox grows to fit both).
@@ -76,14 +81,21 @@ class DualPanelTimeSeriesChart(BaseChart):
         in `make_figure` is what widens that gap to hold it.
         """
         if layout.legend_placement != 'below':
-            ax.legend(loc=loc, fontsize=self.legend_fontsize, frameon=True,
-                      facecolor=theme.legend_face, edgecolor='none',
-                      framealpha=0.9)
+            ax.legend(**self.legend_kwargs(layout, loc=loc, bbox_to_anchor=None), frameon=True,
+                      facecolor=theme.legend_face, edgecolor='none', framealpha=0.9)
             return
-        ax.legend(loc='lower center', bbox_to_anchor=(0.5, 1.03),
-                  ncol=self.legend_ncol_below,
-                  fontsize=layout.legend_fontsize or self.legend_fontsize,
+        ax.legend(**self.legend_kwargs(layout, loc='lower center', bbox_to_anchor=(0.5, 1.03)),
                   frameon=False)
+
+    def stroke(self, layout, dashed=False) -> float:
+        return (self.dashed_width if dashed else self.line_width) * layout.line_scale
+
+    def count_axis(self, ax):
+        """Whole-number ticks from zero: nodes, jobs, cores and GPUs do not come in halves."""
+        ax.set_ylim([0, None])
+        # AutoLocator's own steps less 2.5, so only the half-ticks change.
+        ax.yaxis.set_major_locator(MaxNLocator(nbins='auto', steps=[1, 2, 5, 10], integer=True))
+        ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
 
     def column(self, key, default=0):
         return [d.get(key, default) for d in self.history_data]
@@ -100,7 +112,8 @@ class NodetypeHistoryChart(DualPanelTimeSeriesChart):
     #: One entry per node type; can be O(10s) across all machines. Raised
     #: 64 -> 96 for the second layout profile, 96 -> 144 for the third.
     cache_maxsize = 144
-    empty_message = 'No history data available for this node type'
+    #: Also drawn for a system partition, so it names neither.
+    empty_message = 'No history data available for this period'
     #: Two stacked panels need real vertical room on a phone — this is the
     #: tallest mobile figure in the package, and still barely enough.
     #: Tablet: this is the chart the tablet band exists for. The status pages
@@ -108,14 +121,6 @@ class NodetypeHistoryChart(DualPanelTimeSeriesChart):
     #: 768 viewport, where the 18in figure reads 6.0px. 12in lands the tight
     #: bbox at ~736pt, i.e. 9.3px in that card.
     LAYOUTS = profile((18, 10), (4.0, 4.7), (12, 7.2))
-
-    @staticmethod
-    def cache_key(history_data):
-        # Single argument, so the decorator's default key_fn would also be
-        # correct — but `chart_view` composes layout/theme in, and doing that
-        # requires an explicit key. See `chart_view`'s docstring.
-        from webapp.caching.chart import content_hash
-        return content_hash(history_data)
 
     def draw(self, axes, layout, theme):
         ax1, ax2 = axes
@@ -139,25 +144,24 @@ class NodetypeHistoryChart(DualPanelTimeSeriesChart):
         if any(u is not None for u in utilization):
             times = [self.timestamps[i] for i, u in enumerate(utilization) if u is not None]
             ax2.plot(times, [u for u in utilization if u is not None],
-                     color=blue, linewidth=3, label='CPU/GPU Utilization')
+                     color=blue, linewidth=self.stroke(layout), label='CPU/GPU Utilization')
 
         if any(m is not None for m in memory):
             times = [self.timestamps[i] for i, m in enumerate(memory) if m is not None]
             ax2.plot(times, [m for m in memory if m is not None],
-                     color=teal, linewidth=3, label='Memory Utilization')
+                     color=teal, linewidth=self.stroke(layout), label='Memory Utilization')
 
     def decorate(self, axes, layout, theme):
         ax1, ax2 = axes
-        ax1.set_ylabel('Number of Nodes', fontsize=layout.base_fontsize)
-        ax1.set_ylim([0, None])
-        ax1.yaxis.set_major_formatter(fmt.mpl_number_formatter())
+        ax1.set_ylabel('Number of Nodes', **self.label_kw(layout))
+        self.count_axis(ax1)
         # Normalized: this panel used the literal 'gray' rather than the
         # themed gray-light every other chart uses. Undocumented, and the one
         # grid color a dark theme could not have swapped.
         self.apply_grid(ax1, theme)
 
-        ax2.set_ylabel('Utilization', fontsize=layout.base_fontsize)
-        ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', fontsize=layout.base_fontsize)
+        ax2.set_ylabel('Utilization', **self.label_kw(layout))
+        ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', **self.label_kw(layout))
         ax2.set_ylim(0, 100)
         ax2.yaxis.set_major_formatter(fmt.mpl_pct_formatter())
         self.apply_grid(ax2, theme)
@@ -181,11 +185,6 @@ class QueueHistoryChart(DualPanelTimeSeriesChart):
     #: narrower, because the legend is what the tight bbox is made of.
     LAYOUTS = profile((14, 8), (4.0, 4.2), (12, 7.2))
 
-    @staticmethod
-    def cache_key(history_data):
-        from webapp.caching.chart import content_hash
-        return content_hash(history_data)
-
     def draw(self, axes, layout, theme):
         ax1, ax2 = axes
         ts = self.timestamps
@@ -193,38 +192,36 @@ class QueueHistoryChart(DualPanelTimeSeriesChart):
             [UNITY_NCAR_TEAL, UNITY_NCAR_ORANGE, UNITY_NCAR_VERMILION,
              UNITY_NCAR_BLUE])
         ax1.plot(ts, self.column('running_jobs'), color=teal,
-                 linewidth=3, label='Running')
+                 linewidth=self.stroke(layout), label='Running')
         ax1.plot(ts, self.column('pending_jobs'), color=orange,
-                 linewidth=3, label='Pending')
+                 linewidth=self.stroke(layout), label='Pending')
         ax1.plot(ts, self.column('held_jobs'), color=vermilion,
-                 linewidth=3, label='Held')
+                 linewidth=self.stroke(layout), label='Held')
         ax1.plot(ts, self.column('active_users'), color=blue,
-                 linestyle='--', linewidth=2, label='Active Users')
+                 linestyle='--', linewidth=self.stroke(layout, dashed=True), label='Active Users')
 
         gpus_alloc = self.column('gpus_allocated')
         gpus_pend = self.column('gpus_pending')
         if any(gpus_alloc) or any(gpus_pend):
-            ax2.plot(ts, gpus_alloc, color=blue, linewidth=3,
+            ax2.plot(ts, gpus_alloc, color=blue, linewidth=self.stroke(layout),
                      label='GPUs Running')
-            ax2.plot(ts, gpus_pend, color=teal, linewidth=3,
+            ax2.plot(ts, gpus_pend, color=teal, linewidth=self.stroke(layout),
                      label='GPUs Pending')
         else:
             ax2.plot(ts, self.column('cores_allocated'), color=blue,
-                     linewidth=3, label='Cores Running')
+                     linewidth=self.stroke(layout), label='Cores Running')
             ax2.plot(ts, self.column('cores_pending'), color=teal,
-                     linewidth=3, label='Cores Pending')
+                     linewidth=self.stroke(layout), label='Cores Pending')
 
     def decorate(self, axes, layout, theme):
         ax1, ax2 = axes
-        ax1.set_ylim([0, None])
-        ax1.set_ylabel('Count', fontsize=layout.base_fontsize)
-        ax1.yaxis.set_major_formatter(fmt.mpl_number_formatter())
+        self.count_axis(ax1)
+        ax1.set_ylabel('Count', **self.label_kw(layout))
         self.apply_grid(ax1, theme)
 
-        ax2.set_ylim([0, None])
-        ax2.set_ylabel('Resources', fontsize=layout.base_fontsize)
-        ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', fontsize=layout.base_fontsize)
-        ax2.yaxis.set_major_formatter(fmt.mpl_number_formatter())
+        self.count_axis(ax2)
+        ax2.set_ylabel('Resources', **self.label_kw(layout))
+        ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', **self.label_kw(layout))
         self.apply_grid(ax2, theme)
 
     def add_legend(self, axes, layout, theme):

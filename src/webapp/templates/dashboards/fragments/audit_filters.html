@@ -1,5 +1,5 @@
 {% from 'dashboards/fragments/form_fields.html' import multiselect_filter %}
-{% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
+{% from 'dashboards/fragments/filter_panel.html' import filter_apply, filter_panel_shell %}
 {% from 'dashboards/fragments/age_band_range.html' import age_band_range %}
 {#
   Shared filter bar for audit-style tables (Transactions, Adjustments).
@@ -84,7 +84,7 @@
         {{ multiselect_filter('Resources', 'resource_name', all_resources,
                               selected_resources, width='220px') }}
 
-        <button type="submit" class="btn btn-outline-white align-self-end">Search</button>
+        {{ filter_apply() }}
     </div>
 {% endcall %}
 {% endmacro %}

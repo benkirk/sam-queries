@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/search_box.html' import active_switch %}
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
 {% from 'dashboards/fragments/project_bits.html' import project_link with context %}
 {% from 'dashboards/fragments/table_bits.html' import state_tag %}
@@ -25,21 +26,10 @@
             </span>
         </div>
         <div class="d-flex align-items-center gap-3">
-            <div class="form-check form-switch mb-0">
-                <input type="checkbox" class="form-check-input"
-                       id="projectDirectoriesActiveOnly"
-                       name="active_only" value="1"
-                       {% if active_only %}checked{% endif %}
-                       hx-get="{{ url_for('admin_dashboard.htmx_admin_project_directories') }}"
-                       hx-trigger="change"
-                       hx-target="#projectDirectoriesSection"
-                       hx-swap="innerHTML"
-                       hx-include="this">
-                <label class="form-check-label small text-muted fw-normal"
-                       for="projectDirectoriesActiveOnly">
-                    Active only
-                </label>
-            </div>
+            {{ active_switch('projectDirectoriesActiveOnly',
+                             url_for('admin_dashboard.htmx_admin_project_directories'),
+                             'projectDirectoriesSection',
+                             checked=active_only) }}
             {% if has_permission(Permission.EDIT_PROJECTS) %}
             <button type="button" class="btn  btn-primary"
                     data-bs-toggle="modal"

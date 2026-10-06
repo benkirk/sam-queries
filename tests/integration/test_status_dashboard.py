@@ -256,6 +256,12 @@ class TestStatusDashboard:
         assert b'Node Type History' in response.data
         assert b'cpu' in response.data
 
+    def test_partition_history_names_the_partition_not_a_node_type(self, client, status_session):
+        """It shares the node-type page and chart; neither may call it a node type."""
+        body = client.get('/status/partition-history/derecho/cpu').get_data(as_text=True)
+        assert 'Partition History' in body and 'Partition: <strong>CPU</strong>' in body
+        assert 'Node Type' not in body and 'node type' not in body
+
     def test_queue_history(self, auth_client, status_session):
         """Test GET /status/queue-history/derecho/main returns 200."""
         seed_data(status_session)
@@ -267,6 +273,33 @@ class TestStatusDashboard:
     # `hours` filter passthrough — sideways navigation between detail
     # pages should inherit the user's chosen time range via the dashboard.
     # ------------------------------------------------------------------
+
+    _QUEUE_URL = '/status/queue-history/derecho/main'
+
+    def test_queue_history_loads_the_user_project_chart_when_signed_in(
+            self, auth_client, status_session):
+        assert b'user-proj-chart' in auth_client.get(self._QUEUE_URL).data
+
+    def test_queue_history_asks_an_anonymous_visitor_for_no_login_only_chart(
+            self, client, status_session):
+        """The page is public and the chart route is `@login_required`: its 401
+        carries HX-Redirect, which sends the whole page to the login screen."""
+        response = client.get(self._QUEUE_URL)
+        assert response.status_code == 200
+        assert b'user-proj-chart' not in response.data
+
+    @pytest.mark.parametrize('url', ['/status/queue-history/derecho/main',
+                                     '/status/partition-history/derecho/cpu'])
+    def test_history_window_presets_swap_the_page_in_place(self, client, status_session, url):
+        """A preset re-requests the page, swaps its main content and pushes the URL:
+        the window drives every card, so no fragment route could keep them in step."""
+        body = client.get(f'{url}?hours=24').get_data(as_text=True)
+        preset = re.search(r'<button[^>]*aria-pressed="true"[^>]*hx-get="([^"]+)"[^>]*>\s*1d', body)
+        assert preset and preset.group(1) == f'{url}?hours=24'
+        week = re.search(r'<button[^>]*hx-get="([^"]*hours=168)"[^>]*>', body).group(0)
+        assert 'hx-target=".main-content"' in week and 'hx-select=".main-content"' in week
+        assert f'hx-push-url="{url}?hours=168"' in week
+        assert body.count('class="main-content"') == 1
 
     def test_dashboard_accepts_hours_param(self, auth_client, status_session):
         """`?hours=720` renders without crashing on each system page."""

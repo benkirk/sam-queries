@@ -180,3 +180,35 @@ class TestToggleRefiresSearch:
         assert 'hx-get=' in block
         assert 'hx-trigger="change"' in block
         assert f'hx-target="#{results_id}"' in block
+
+
+class TestReadMulti:
+
+    def test_blank_values_are_dropped_and_order_is_kept(self):
+        from werkzeug.datastructures import MultiDict
+        from webapp.utils.htmx import read_multi
+
+        args = MultiDict([('kind', 'b'), ('kind', ''), ('kind', 'a')])
+        assert read_multi(args, 'kind') == ['b', 'a']
+        assert read_multi(args, 'absent') == []
+
+
+class TestSortRows:
+
+    ROWS = [{'n': 2}, {'n': None}, {'n': 1}]
+    KEYS = {'n': lambda r: r['n']}
+
+    def test_none_sorts_last_in_both_directions(self):
+        from webapp.utils.htmx import sort_rows
+
+        asc = sort_rows(self.ROWS, {'sort_by': 'n', 'sort_dir': 'asc'}, self.KEYS)
+        desc = sort_rows(self.ROWS, {'sort_by': 'n', 'sort_dir': 'desc'}, self.KEYS)
+        assert [r['n'] for r in asc] == [1, 2, None]
+        assert [r['n'] for r in desc] == [2, 1, None]
+
+    def test_an_unknown_column_keeps_the_order_and_returns_a_copy(self):
+        from webapp.utils.htmx import sort_rows
+
+        out = sort_rows(self.ROWS, {'sort_by': 'nope', 'sort_dir': 'asc'}, self.KEYS)
+        assert out == self.ROWS and out is not self.ROWS
+        assert sort_rows(self.ROWS, None, self.KEYS) == self.ROWS

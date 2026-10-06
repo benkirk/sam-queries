@@ -357,43 +357,59 @@
 
 {# multi-select filter control #}
 {#
-  The `<select multiple>` that filter panels use — NOT a validated form field,
-  and deliberately not a mode of `select_field`. This one is standalone (no
-  `mb-3` wrapper, no `field_errors` plumbing), keeps `.form-control` rather than
-  `.form-select` so the panel's arrow-free styling holds, and matches the
-  selection against a *list* of values rather than a scalar. Safe to import
-  without context.
+  The multi-select that filter panels use: a dropdown checklist. NOT a
+  validated form field. One line tall like every other control in the row, so
+  a panel keeps one baseline; the button summarizes the selection (the rule is
+  mirrored in actions.js `checklistPaint`).
 
-  `size` is min(len(values), max_size): a box taller than its own option list is
-  dead space. Pass `max_size=5` where the vocabulary is longer.
+  The checkboxes share `name`, so the route reads them with getlist exactly as
+  it read the old <select multiple>. WARNING: that makes
+  form.elements[name] a RadioNodeList, which `set-filter-submit` cannot assign
+  to. A dimension that facet chips also write needs `facet_fields`, not this.
 
-  Renders nothing when `values` is empty — a dimension with no vocabulary is not
-  a control, and an empty <select> submits nothing anyway.
+  Renders nothing when `values` is empty: a dimension with no vocabulary is
+  not a control.
 
   Args:
-    label    — visible label text (rendered <strong>)
-    name     — the form control's name
-    values   — the option vocabulary (list of strings)
-    selected — currently-selected values (list); membership is by equality
-    width    — inline width for the control, e.g. '160px'
-    max_size — cap on the visible row count
-    id       — explicit id, which also wires the label's `for=`. Omit it when
-               the name is already unique in the rendered page.
+    label      — visible label text (rendered <strong>)
+    name       — the checkboxes' name
+    values     — the option vocabulary (list of strings), in display order
+    selected   — currently-selected values (list); membership is by equality
+    width      — inline width for the button, e.g. '160px'
+    id         — the button's id (default: name); must be unique on the page
+    none_label — the summary when nothing is checked, i.e. what the route
+                 does with an empty selection ("All" unless it has a default)
 #}
 {% macro multiselect_filter(label, name, values, selected=[],
-                            width='160px', max_size=4, id=None) %}
+                            width='160px', id=None, none_label='All') %}
 {%- if values %}
-<div>
-    <label{% if id %} for="{{ id }}"{% endif %} class="form-label"><strong>{{ label }}</strong></label>
-    <select class="form-control"{% if id %} id="{{ id }}"{% endif %}
-            name="{{ name }}" multiple size="{{ [values|length, max_size]|min }}"
+{%- set _id = id or name %}
+{%- set _chosen = values | select('in', selected) | list %}
+<div class="dropdown filter-checklist" data-filter-checklist data-none-label="{{ none_label }}">
+    <label for="{{ _id }}" class="form-label"><strong>{{ label }}</strong></label>
+    <button type="button" class="form-select filter-checklist-toggle" id="{{ _id }}"
+            data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
             style="width:{{ width }};">
+        <span class="filter-checklist-summary">
+            {%- if not _chosen %}{{ none_label }}
+            {%- elif _chosen | length == values | length %}All
+            {%- elif _chosen | length == 1 %}{{ _chosen[0] }}
+            {%- else %}{{ _chosen | length }} of {{ values | length }}
+            {%- endif -%}
+        </span>
+    </button>
+    <div class="dropdown-menu filter-checklist-menu">
+        <button type="button" class="filter-checklist-clear" data-action="checklist-clear">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i> Clear
+        </button>
         {% for value in values %}
-        <option value="{{ value }}"
-            {% if value in selected %}selected{% endif %}>{{ value }}</option>
+        <label class="dropdown-item filter-checklist-item">
+            <input class="form-check-input" type="checkbox" name="{{ name }}"
+                   value="{{ value }}"{% if value in selected %} checked{% endif %}>
+            <span>{{ value }}</span>
+        </label>
         {% endfor %}
-    </select>
-    <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
+    </div>
 </div>
 {%- endif %}
 {% endmacro %}

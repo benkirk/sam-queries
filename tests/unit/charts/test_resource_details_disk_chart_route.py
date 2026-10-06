@@ -48,8 +48,8 @@ def _sentinel_chart(monkeypatch):
 
 
 def _active_tab_label(html):
-    """Return the label of the tab carrying the ``active`` class."""
-    m = re.search(r'nav-link active.*?(Data Volume|File Count)', html, re.S)
+    """Return the label of the metric pill that is pressed."""
+    m = re.search(r'aria-pressed="true"[^>]*>.*?(Data Volume|File Count)', html, re.S)
     return m.group(1) if m else None
 
 

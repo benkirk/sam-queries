@@ -164,8 +164,6 @@ def gallery_context():
         'trp_start': datetime(2026, 8, 1, 9, 0),
         'trp_end': datetime(2026, 8, 8, 9, 0),
         'audit_resources': ['Derecho', 'Casper', 'Campaign Store'],
-        'xras_statuses': ['received', 'processed', 'manual', 'failed'],
-        'xras_action_types': ['New', 'Renewal', 'Supplement', 'Transfer'],
         'facilities': ['UNIV', 'WNA', 'NCAR'],
 
         # a user/program object for the linking (inert opener) specimens

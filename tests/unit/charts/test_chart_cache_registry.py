@@ -5,10 +5,7 @@ Three things are pinned here, all of which the refactor could break silently:
 - **Names.** They are Redis key prefixes (``redis_chart.py``:
   ``f'chart:{name}:'``), so renaming one orphans its warm entries rather than
   failing. ``test_redis_cache.py`` also names several directly.
-- **Count.** One cache per cached generator, except
-  ``generate_jobs_user_pie_chart``: a facade that delegates and
-  deliberately registers no cache of its own — binding it would add a row to
-  the admin Caching card for a chart that is really another chart.
+- **Count.** One cache per generator: every generator is ``chart_view``-bound.
 - **Order.** ``chart_cached`` appends to ``caching._chart_caches`` at
   decoration time, so the order of the bindings in ``charts/__init__.py`` is
   the order rows appear on the admin Caching card. Nothing enforces that but
@@ -39,6 +36,7 @@ EXPECTED = [
     'allocation_sunburst',
     'jobs_facility_sunburst',
     'panel_sunburst',
+    'user_panel_sunburst',
 ]
 
 
@@ -51,7 +49,7 @@ def test_cache_names_and_order():
 
 
 def test_cache_count():
-    assert len(caching._chart_caches) == 17
+    assert len(caching._chart_caches) == 18
 
 
 def test_no_duplicate_cache_names():
@@ -64,22 +62,8 @@ def test_no_duplicate_cache_names():
 def test_every_cached_generator_has_a_cache():
     """One cache per cached generator, and no strays."""
     generators = [n for n in dir(charts) if n.startswith('generate_')]
-    # 18 generators, 17 caches: the By User jobs pie is a delegating facade.
-    assert len(generators) == 18
-    assert len(_registered_names()) == 17
-
-
-def test_delegating_facade_registers_no_cache(app):
-    """`generate_jobs_user_pie_chart` must stay a thin facade.
-
-    It inherits caching through the callee. Binding it as its own chart would
-    register a second cache and add a row to the admin Caching card for what is
-    really the same chart under a different drill attribute.
-    """
-    before = len(caching._chart_caches)
-    with app.test_request_context('/'):
-        charts.generate_jobs_user_pie_chart({'rows': [], 'totals': {}})
-    assert len(caching._chart_caches) == before
+    assert all(hasattr(getattr(charts, n), 'chart_class') for n in generators)
+    assert len(generators) == len(_registered_names()) == 18
 
 
 @pytest.mark.parametrize('name', EXPECTED)

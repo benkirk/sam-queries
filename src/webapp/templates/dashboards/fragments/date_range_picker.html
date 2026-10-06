@@ -18,9 +18,8 @@
 
   Two pickers.js contracts that look cosmetic but are not:
     * `.drp-custom` is toggled with `d-none`, not a Bootstrap collapse.
-    * markActive() paints the active preset by swapping
-      `btn-outline-secondary` -> `btn-secondary active`, so preset buttons must
-      keep that starting class alongside data-action/data-days.
+    * markActive() paints the active preset by adding `active`, so preset
+      buttons are `btn-outline-secondary` alongside data-action/data-days.
 #}
 
 {% macro drp_pills(epoch_date=None, presets=None) %}

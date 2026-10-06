@@ -30,7 +30,8 @@ def _usage_stacked():
     return {
         'dates': list(_DAYS),
         'series': [
-            {'label': 'Others', 'values': [1.0, 0.0, 2.0, 3.0, 1.5, 0.0, 4.0, 0.5, 2.0, 1.0]},
+            {'label': 'Others', 'count': 7,
+             'values': [1.0, 0.0, 2.0, 3.0, 1.5, 0.0, 4.0, 0.5, 2.0, 1.0]},
             {'label': 'alice', 'values': [5.0, 0.0, 20.0, 30.0, 20.0, 0.0, 40.0, 6.0, 35.0, 2.0]},
             {'label': 'bob', 'values': [4.0, 0.0, 13.5, 29.0, 19.75, 0.0, 44.0, 6.0, 33.0, 2.0]},
         ],
@@ -71,8 +72,8 @@ def _user_proj_timeseries():
 
 def _distribution_hist():
     gib = 1024 ** 3
-    def owners(n, base):
-        return {f'u{i}': {'data': (base + i) * gib, 'files': (base + i) * 100}
+    def owners(n, base):      # keyed by uid, as the scan reports them
+        return {1000 + i: {'data': (base + i) * gib, 'files': (base + i) * 100}
                 for i in range(n)}
     labels = ['< 30d', '30-90d', '90-180d', '> 180d']
     return {
@@ -84,6 +85,7 @@ def _distribution_hist():
             '> 180d':   {'data': 400 * gib, 'files': 40000, 'owners': owners(4, 90)},
         },
         'reference_scan_date': '2026-03-01',
+        'username_map': {1000 + i: f'u{i}' for i in range(11)},   # uid 1011 has no name
     }
 
 
@@ -297,6 +299,15 @@ _PANEL_OF = {
     **{f'UTAIL{i:04d}': (2, 'UNIV', 'UNIV USS') for i in range(300)},
 }
 _PANEL_SUNBURST = charts.panel_rows(_PANEL_PROJECTS, _PANEL_OF, {1: 1, 2: 2, 3: 3})
+# Users on the rim: alice under two panels (one facility), bob under two facilities,
+# a long tail under CHAP, and one with no project.
+_USER_PANEL_SUNBURST = charts.panel_rows_grouped(
+    [(1, 'NCAR', 'NCAR Labs', 'alice', 500.0), (1, 'NCAR', 'NCAR-ARP', 'alice', 120.0),
+     (1, 'NCAR', 'NCAR Labs', 'bob', 300.0), (2, 'UNIV', 'CHAP', 'bob', 400.0),
+     (2, 'UNIV', 'CHAP', 'carol', 250.0), (3, 'CSL', 'CSLAP', 'dave', 350.0),
+     (None, None, None, 'erin', 40.0)]
+    + [(2, 'UNIV', 'CHAP', f'tail{i:03d}', 300.0 / (i + 1) ** 2) for i in range(200)],
+    {1: 1, 2: 2, 3: 3})
 
 
 CASES = [
@@ -394,8 +405,8 @@ CASES = [
                                           'row_attr': 'data-job-project'}),
     ('jobs_usage_pie.empty', charts.generate_jobs_usage_pie_chart, ({},), {}),
 
-    # --- 15. jobs user pie (the delegating facade) -----------------------
-    ('jobs_user_pie.delegated', charts.generate_jobs_user_pie_chart,
+    # --- 15. jobs usage pie by user, with an unknown-user row --------------
+    ('jobs_user_pie.delegated', charts.generate_jobs_usage_pie_chart,
      (_jobs_usage(),), {'metric': 'cpu_hours'}),
 
     # --- 16. pace chart ---------------------------------------------------
@@ -424,9 +435,18 @@ CASES = [
      (_JOBS_FACILITY_SUNBURST,), {'center': 'CPU-h'}),
     ('jobs_facility_sunburst.empty', charts.generate_jobs_facility_sunburst,
      ([],), {'center': 'Jobs'}),
+    ('jobs_facility_sunburst.users', charts.generate_jobs_facility_sunburst,
+     (_JOBS_FACILITY_SUNBURST,), {'center': 'CPU-h', 'row_attr': 'data-job-user', 'noun': 'users'}),
 
     # --- 20. facility / panel / project expanded view (long tail folds to "+N")
     ('panel_sunburst.normal', charts.generate_panel_sunburst,
      (_PANEL_SUNBURST,), {'center': 'CPU-h'}),
     ('panel_sunburst.empty', charts.generate_panel_sunburst, ([],), {'center': 'CPU-h'}),
+
+    # --- 21. the same rings with users on the rim; no rim links for a viewer without VIEW_USERS
+    ('user_panel_sunburst.normal', charts.generate_user_panel_sunburst,
+     (_USER_PANEL_SUNBURST,), {'center': 'CPU-h'}),
+    ('user_panel_sunburst.unlinked', charts.generate_user_panel_sunburst,
+     (_USER_PANEL_SUNBURST,), {'center': 'CPU-h', 'rim_links': False}),
+    ('user_panel_sunburst.empty', charts.generate_user_panel_sunburst, ([],), {'center': 'CPU-h'}),
 ]

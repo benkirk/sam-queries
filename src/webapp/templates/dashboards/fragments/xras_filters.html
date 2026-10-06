@@ -1,5 +1,5 @@
-{% from 'dashboards/fragments/form_fields.html' import multiselect_filter %}
-{% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_fields %}
+{% from 'dashboards/fragments/filter_panel.html' import filter_apply, filter_panel_shell %}
 {% from 'dashboards/fragments/age_band_range.html' import age_band_range %}
 {#
   Filter bar for the XRAS action log (Allocations > XRAS).
@@ -16,11 +16,9 @@
   as the "an entity needing more than the spec expresses stays bespoke" rule in
   dashboards/admin/crud.py.
 
-  The panel chrome now comes from `filter_panel_shell`
-  (dashboards/fragments/filter_panel.html), shared with audit_filters,
-  institution_filters, jobs_filters and _disk_scans_dir_filters. The two
-  hand-rolled panels in allocations/projects.html and admin/projects.html stay
-  bespoke — neither uses htmx, and one has no collapse at all.
+  The panel chrome comes from `filter_panel_shell`
+  (dashboards/fragments/filter_panel.html), as it does for every navy filter
+  panel on the site.
 
   Parameters:
     form_id        - unique id for this form (e.g. "xras-filters")
@@ -35,14 +33,16 @@
     layout         - 'mobile' | 'tablet' | 'desktop', from read_layout()
 
   WARNING: This page carries a SECOND form with start_date/end_date: the hidden
-  #xras-activity-filters (allocations/xras.html), whose pair is emitted by
-  window_pills inside the pending-activity fragment and bound with `form=`.
+  #xras-window-filters (allocations/xras.html), whose pair is emitted by
+  window_pills in partials/xras_window_control.html and bound with `form=`.
   The pair below is nested in THIS form and carries no `form=`, so the two
   never share a form and form.elements['start_date'] stays a single node in
   each. Adding a control here without REMOVING the pair it replaces is what
   would break that — see test_the_xras_page_keeps_one_date_pair_per_form.
-    all_statuses      / selected_statuses    - status vocabulary + selection
-    all_action_types  / selected_action_types - action-type vocabulary + selection
+
+  Status and Action type are NOT controls here: the chip strips directly under
+  the panel (partials/xras_table.html) filter both, with counts. The form only
+  holds the hidden fields those chips write into.
     request_example   - a sample request number for the input's placeholder.
                         Site-specific (NCAR#### here), so it comes from
                         sam.queries.xras_actions.XRAS_REQUEST_TOKEN_EXAMPLE
@@ -51,15 +51,11 @@
 {% macro xras_filters(form_id, fragment_url, target_id,
                       start_date='', end_date='',
                       age_bands=None, age_band_span=None, layout='desktop',
-                      request_number='',
-                      all_statuses=[], selected_statuses=[],
-                      all_action_types=[], selected_action_types=[],
-                      request_example='') %}
+                      request_number='', request_example='') %}
 {% call filter_panel_shell(form_id, fragment_url, target_id) %}
     {# Sort is form state (set-sort-submit writes these), so a column sort survives
        every facet/window change instead of resetting on the next chip click. #}
-    <input type="hidden" name="sort_by" value="">
-    <input type="hidden" name="sort_dir" value="">
+    {{ facet_fields(['status', 'action_type'], sort=True) }}
     {# align-items-end — see audit_filters.html. #}
     <div class="d-flex flex-wrap align-items-end gap-3">
 
@@ -80,13 +76,7 @@
                    style="width:160px;">
         </div>
 
-        {{ multiselect_filter('Status', 'status', all_statuses,
-                              selected_statuses, width='150px', max_size=5) }}
-
-        {{ multiselect_filter('Action type', 'action_type', all_action_types,
-                              selected_action_types, width='160px', max_size=5) }}
-
-        <button type="submit" class="btn btn-outline-white align-self-end">Search</button>
+        {{ filter_apply() }}
     </div>
 {% endcall %}
 {% endmacro %}

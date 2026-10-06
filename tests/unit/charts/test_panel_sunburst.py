@@ -4,7 +4,7 @@ import re
 
 import pytest
 
-from webapp.dashboards.charts import PanelSunburst, panel_rows
+from webapp.dashboards.charts import PanelSunburst, UserPanelSunburst, panel_rows, panel_rows_grouped
 
 _PANELS = {'A1': (1, 'NCAR', 'Labs'), 'A2': (1, 'NCAR', 'Labs'), 'A3': (1, 'NCAR', 'ARP'),
            'B1': (2, 'UNIV', 'CHAP')}
@@ -23,14 +23,14 @@ def test_groups_by_facility_then_panel_in_slot_and_value_order():
     ncar = rows[1]
     assert ncar['value'] == 120.0
     assert [(p['name'], p['value']) for p in ncar['panels']] == [('Labs', 80.0), ('ARP', 40.0)]
-    assert [p['name'] for p in ncar['panels'][0]['projects']] == ['A2', 'A1']
+    assert [p['name'] for p in ncar['panels'][0]['rim']] == ['A2', 'A1']
 
 
 def test_unmapped_projects_land_in_unknown_and_zeros_drop():
     unknown = _rows()[-1]
     assert unknown['slot'] is None
     assert unknown['panels'] == [{'name': 'Unknown', 'value': 5.0,
-                                  'projects': [{'name': 'X9', 'value': 5.0}]}]
+                                  'rim': [{'name': 'X9', 'value': 5.0}]}]
     assert 'ZERO' not in str(_rows())
 
 
@@ -79,6 +79,48 @@ def test_rim_wedges_drill_to_the_project_modal_and_every_wedge_names_itself(app)
     titles = re.findall(r'<title>([^<]+)</title>', svg)
     assert len(titles) == 3 + 4 + 5        # facilities, panels, projects
     assert any(t.startswith('A2 · ') for t in titles)
+
+
+def test_the_rim_entity_is_the_charts_to_name(app):
+    """Projects are today's rim; a subclass names another entity (users, by facility
+    and panel) by its link and noun alone."""
+    from webapp.dashboards.charts import links
+    users = type('UserRim', (PanelSunburst,), {'rim_link': links.USER_MODAL, 'rim_noun': 'users',
+                                              'min_wedge_deg': 100})
+    with app.test_request_context('/'):
+        svg = users(_rows(), center='CPU-h').render()
+        assert links.USER_MODAL.url('A2') in svg
+    assert '/user/project-details-modal/' not in svg
+    assert '1 other Labs users · ' in svg
+
+
+def test_grouped_rows_sum_a_repeated_name_and_keep_the_order():
+    """A user under two panels is two rim entries; twice under one panel is one, summed."""
+    rows = panel_rows_grouped([(1, 'NCAR', 'Labs', 'alice', 30.0), (1, 'NCAR', 'Labs', 'alice', 20.0),
+                               (1, 'NCAR', 'ARP', 'alice', 5.0), (1, 'NCAR', 'Labs', 'bob', 40.0),
+                               (None, None, None, 'carol', 1.0)], _SLOTS)
+    assert [r['facility'] for r in rows] == ['NCAR', 'Unknown']
+    labs, arp = rows[0]['panels']
+    assert [(p['name'], p['value']) for p in labs['rim']] == [('alice', 50.0), ('bob', 40.0)]
+    assert arp['rim'] == [{'name': 'alice', 'value': 5.0}]
+    assert panel_rows({'A1': 30.0}, _PANELS, _SLOTS) == \
+        panel_rows_grouped([(1, 'NCAR', 'Labs', 'A1', 30.0)], _SLOTS)
+
+
+def test_user_rim_links_only_when_allowed(app):
+    """`UserPanelSunburst` links the rim to the user modal; `rim_links=False` keeps
+    the hovers and drops the links, and the two render under different keys."""
+    from webapp.dashboards.charts import links
+    data = panel_rows_grouped([(1, 'NCAR', 'Labs', 'alice', 30.0), (2, 'UNIV', 'CHAP', 'alice', 9.0)],
+                              _SLOTS)
+    with app.test_request_context('/'):
+        linked = UserPanelSunburst(data, center='CPU-h').render()
+        bare = UserPanelSunburst(data, center='CPU-h', rim_links=False).render()
+        assert linked.count(links.USER_MODAL.url('alice')) == 2
+    assert '/admin/user/' not in bare
+    assert bare.count('<title>alice · ') == 2
+    assert UserPanelSunburst.cache_key(data, 'CPU-h') != \
+        UserPanelSunburst.cache_key(data, 'CPU-h', rim_links=False)
 
 
 def test_empty():

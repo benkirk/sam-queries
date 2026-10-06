@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/chart_bits.html' import chart_figure, chart_pills %}
 {% from 'dashboards/user/partials/_disk_scans_macros.html'
    import scans_disabled, scans_error, scans_empty, scans_scope_note %}
 {#
@@ -28,24 +29,12 @@
 
   <div class="d-flex align-items-center mb-2">
     {# Owner <-> group sub-toggle — re-fetches this same pane with ?kind=. #}
-    <div class="btn-group btn-group-sm me-3" role="group" aria-label="Owner or group">
-      <button type="button"
-              class="btn btn-outline-secondary {% if _is_owner %}active{% endif %}"
-              hx-get="{{ fragment_url }}?kind=owner"
-              hx-target="#{{ target_id }}"
-              hx-include="#disk-scans-ent-params-{{ target_id }}"
-              hx-swap="innerHTML">
-        <i class="fa-solid fa-user me-1"></i> By user
-      </button>
-      <button type="button"
-              class="btn btn-outline-secondary {% if not _is_owner %}active{% endif %}"
-              hx-get="{{ fragment_url }}?kind=group"
-              hx-target="#{{ target_id }}"
-              hx-include="#disk-scans-ent-params-{{ target_id }}"
-              hx-swap="innerHTML">
-        <i class="fa-solid fa-users me-1"></i> By group
-      </button>
-    </div>
+    {% set pills = [
+        dict(text='By user', icon='user', on=_is_owner, url=fragment_url ~ '?kind=owner'),
+        dict(text='By group', icon='users', on=(not _is_owner), url=fragment_url ~ '?kind=group'),
+    ] %}
+    {{ chart_pills('Owner or group', pills, '#' ~ target_id, swap='innerHTML',
+                   include='#disk-scans-ent-params-' ~ target_id, classes='me-3') }}
     {{ scans_scope_note(fileset) }}
     <span class="ms-auto text-muted small">
       {{ rows | length | fmt_number }} {{ 'user' if _is_owner else 'group' }}{{ '' if rows | length == 1 else 's' }}
@@ -60,9 +49,10 @@
        and expand the matching entity's row below. Swaps with the kind toggle
        since the whole fragment re-renders. #}
     {% if pie_chart %}
-    <div class="d-flex justify-content-center mb-3 disk-entity-pie">
+    {% call chart_figure('Scanned data by ' ~ ('user' if _is_owner else 'group'),
+                         'mb-3 disk-entity-pie') %}
       {{ pie_chart | safe }}
-    </div>
+    {% endcall %}
     {% endif %}
 
     {# Client-side sortable (sortable_table.js): sort by name (text), or

@@ -157,3 +157,15 @@ class TestPalettes:
                      'SKY', 'LIGHT_BLUE', 'SPACE_BLUE', 'GRAY'):
             value = getattr(T, f'UNITY_NCAR_{name}')
             assert value in T.UNITY_PALETTE_10, f'{name} ({value}) not in the pie palette'
+
+
+class TestFacilitySlots:
+    def test_slots_follow_id_order_whatever_order_the_ids_arrive_in(self):
+        from webapp.dashboards.charts.theme import facility_slots
+        assert facility_slots([7, 2, 2, 5]) == {2: 1, 5: 2, 7: 3}
+
+    def test_a_seventh_facility_has_no_slot(self):
+        from webapp.dashboards.charts.theme import FAIR_SHARE_LIGHT, facility_slots
+        slots = facility_slots(range(10, 18))
+        assert [slots[i] for i in range(10, 16)] == list(range(1, len(FAIR_SHARE_LIGHT) + 1))
+        assert slots[16] is None and slots[17] is None

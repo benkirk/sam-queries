@@ -11,17 +11,21 @@
         <input type="hidden" name="scope" value="{{ scope }}">
         <div class="d-flex flex-wrap align-items-start gap-3">
           ...fields...
-          <button type="submit" class="btn btn-outline-white align-self-end">Search</button>
+          {{ filter_apply() }}
         </div>
       {% endcall %}
 
-  The button row stays with the caller on purpose: the five panels disagree on
-  the button set (Search / Search+Reset / Apply), the icon, and the field-row
-  alignment (align-items-start vs -end). So does anything hidden — put hidden
-  inputs inside the call body, not around it, so the header keeps the collapse
-  as its immediate next sibling (the collapsed-state CSS in filters.css uses
-  `:has(+ .collapse:not(.show))`). htmx submits them either way; visibility is
-  irrelevant to a form GET.
+  House order for the fields: when (age, date), what (project, request, name),
+  who (user), scope (Facilities, then Resources), switches, rows; then
+  `filter_apply()` and any export button. Every control is one line tall, so a
+  multi-value dimension is `form_fields.multiselect_filter`, and one that facet
+  chips already filter is NOT repeated here as a control. "Clear filters" in
+  the header is the only reset.
+
+  The field row stays with the caller (alignment and extra buttons differ), and
+  so does anything hidden: put hidden inputs inside the call body, not around
+  it, so the header keeps the collapse as its immediate next sibling (the
+  collapsed-state CSS in filters.css uses `:has(+ .collapse:not(.show))`).
 
   The caller also supplies the surrounding <div class="filter-sidebar">.
 
@@ -36,19 +40,31 @@
                 explorer, which re-renders its card rather than its table).
     action    — render a plain GET form to this URL instead of the htmx one
                 (the /database browser, whose state is the page URL)
+                With neither hx_get nor action the form is bare: the page's
+                own script answers `submit` (expirations, whose target is the
+                active tab). It must preventDefault.
     clear_url — "Clear filters" navigates here instead of resetting the form,
                 which would restore the server-rendered values, not clear them
 #}
+{#- The panel's one primary action: always "Apply", always this icon. -#}
+{% macro filter_apply(class='align-self-end') %}
+<button type="submit" class="btn btn-outline-white {{ class }}">
+    <i class="fa-solid fa-filter me-1" aria-hidden="true"></i>Apply
+</button>
+{% endmacro %}
+
 {% macro filter_panel_shell(form_id, hx_get=none, hx_target=none, hx_swap='innerHTML',
                             action=none, clear_url=none) %}
 {% if action %}
 <form id="{{ form_id }}" method="get" action="{{ action }}">
-{% else %}
+{% elif hx_get %}
 <form id="{{ form_id }}"
       hx-get="{{ hx_get }}"
       hx-target="#{{ hx_target }}"
       hx-swap="{{ hx_swap }}"
       hx-trigger="submit">
+{% else %}
+<form id="{{ form_id }}">
 {% endif %}
   <div class="filter-sidebar-header">
     <h2 class="filter-sidebar-title">

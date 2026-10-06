@@ -572,6 +572,33 @@ def jobs_usage_by_project(
     )
 
 
+def jobs_usage_by_user_account(
+    machine: str,
+    scope: JobScope,
+    *,
+    sort_by: Optional[str] = None,
+    valid_qos_names: Sequence[str] = (),
+    **filters,
+) -> Dict[str, Any]:
+    """Cached usage per (user, project) pair (plugin ``jobs_usage_by_pair``).
+
+    Backs the By User facility sunburst: a user's usage split by the project
+    it was charged to, so the webapp can group users by that project's
+    facility and panel. Every pair, no limit; ``totals`` is over every row.
+    Query type ``'usage_by_user_account'``, its own key family.
+    """
+    scope.check_filters(filters)
+    kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    scope.apply(kwargs)
+    if sort_by is not None:
+        kwargs['sort_by'] = sort_by
+
+    return _cached_aggregation(
+        'usage_by_user_account', machine, kwargs,
+        lambda q: q.jobs_usage_by_pair(('user', 'account'), **kwargs),
+    )
+
+
 def jobs_facets(
     machine: str,
     scope: JobScope,

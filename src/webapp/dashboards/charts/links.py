@@ -16,9 +16,9 @@ target spans three artists (bar + legend patch + legend text), an ``<a>`` is
 keyboard-focusable where a ``<g id>`` is not, and a ``#``-fragment degrades
 safely when JS fails.
 
-WARNING: no matplotlib import here, by design. This module and ``series.py``
-are the two the chart layer could reuse under a different rendering backend;
-``test_chart_module_boundaries.py`` enforces that they stay import-clean.
+WARNING: no matplotlib import here, by design. This module, ``series.py`` and
+``jobs_metrics.py`` are what the chart layer could reuse under a different
+rendering backend; ``test_chart_module_boundaries.py`` keeps them import-clean.
 """
 
 from dataclasses import dataclass
@@ -121,13 +121,13 @@ JT_PERIOD = RowDrill('data-jt-period')
 DISK_OWNER = RowDrill('data-owner-uid')
 DISK_GROUP = RowDrill('data-group-gid')
 
-#: admin Facilities fair-share sunburst -> that facility's tree row.
+#: Fair-share and allocation sunbursts -> that facility's tree row.
 FACILITY_ROW = RowDrill('data-facility-id')
 
-#: job-history usage pies.
+#: job-history usage pies, and the By Project facility sunburst's project wedges.
 JOB_USER = RowDrill('data-job-user')
 JOB_PROJECT = RowDrill('data-job-project')
 
-#: Legend entries that open a quick-view modal.
+#: Legend entries, and the three-ring chart's rim wedges, that open a quick-view modal.
 PROJECT_MODAL = ModalRoute('user_dashboard.project_details_modal', 'projcode')
 USER_MODAL = ModalRoute('admin_dashboard.user_card', 'username')

@@ -19,10 +19,8 @@ from webapp.utils.rbac import (
 from sam.queries.xras_actions import (
     XRAS_ACTION_SORT_COLUMNS,
     XRAS_ACTION_STATUSES,
-    XRAS_ACTION_TYPES,
     XRAS_REQUEST_TOKEN_EXAMPLE,
     count_recent_xras_actions,
-    get_observed_action_types,
     get_projects_by_ids,
     get_recent_xras_actions,
     summarize_xras_actions,
@@ -31,14 +29,10 @@ from sam.queries.xras_activation import (
     ATTENTION_RECENT_DAYS,
     needs_attention,
     notify_only_project_ids,
-    ACTIVITY_TAGS,
     get_xras_activity,
     get_xras_pending_recipients,
 )
 from sam.queries.xras_accounts import (
-    REMEDY_ORDER,
-    SOURCE_ACTION_LOG,
-    SOURCE_REPORTS,
     enrich_worklist,
     get_account_worklist,
     load_pending_worklist_rows,
@@ -53,16 +47,15 @@ from ..blueprint import _window_control_context
 from ._shared import (
     _activity_in_window,
     scope_rows,
-    ORIGIN_KNOWN, ORIGIN_MERGEABLE, ORIGIN_PLACEHOLDER, _ACCOUNT_REMEDY_LABELS,
+    ACCOUNT_FACETS, ACTIVITY_FACETS, REMEDIATION_FACETS,
     _ACCOUNTS_ENRICH_BUDGET, _ACCOUNTS_FORM_ID, _ACCOUNTS_TARGET,
-    _ACTIVITY_TAG_LABELS, _ACTIVITY_WINDOW_PILLS, _ORIGIN_LABELS,
-    _SOURCE_LABELS, _XRAS_ACTIVITY_FORM_ID,
+    _ACTIVITY_WINDOW_PILLS, _XRAS_ACTIVITY_FORM_ID,
     _XRAS_ACTIVITY_TARGET, _XRAS_FORM_ID, _XRAS_FRAGMENT_TARGET,
-    _account_facets, _activity_facets, _filter_accounts, _filter_activity,
     _parse_activity_window, _parse_xras_filters,
-    _request_facets, _submitted_since, sort_rows,
+    _submitted_since,
 )
-from webapp.utils.htmx import read_flag, read_sort, read_tab
+from webapp.utils.faceted_log import build_facet_strip
+from webapp.utils.htmx import read_flag, read_sort, read_tab, sort_rows
 
 
 #: Pending Users' sortable non-facet columns -> row key. Needs / Role / Source /
@@ -93,22 +86,6 @@ _ACCOUNTS_SORT = {
 # a malformed body has none at all. See rbac.py's USER_FACILITY_PERMISSIONS.
 
 
-def _xras_action_types():
-    """Filter vocabulary: the known types plus anything actually in the table.
-
-    ``XrasActionSchema`` applies no enum to ``actionType`` on purpose — Transfer,
-    Renewal and Advance still have zero samples and no co-PI role has ever been
-    sampled — so a type we have never seen must still be filterable rather than
-    invisible. Union, don't replace.
-
-    Observed values are folded onto their canonical spelling first, so an alias pair
-    offers **one** entry: ``Adjust`` and ``Adjustment`` are the same action and
-    filtering on either returns both (``XRAS_ACTION_TYPE_ALIASES``). Two chips that
-    filter identically would read as two distinct action types.
-    """
-    return sorted(set(XRAS_ACTION_TYPES) | set(get_observed_action_types(db.session)))
-
-
 #: Deep-link targets (?view=) for the XRAS page. The two tab panes plus the two
 #: sibling cards (remediations/logs) — not a uniform tablist, so the two cards
 #: are reached by a scroll-into-view handler (data-deeplink), not the tab
@@ -137,8 +114,9 @@ def xras():
         window_pill_choices=_ACTIVITY_WINDOW_PILLS,
         form_id='xras-window-filters',
         **_window_control_context(end_date, start_str, end_str),
-        all_statuses=list(XRAS_ACTION_STATUSES),
-        all_action_types=_xras_action_types(),
+        activity_facets=ACTIVITY_FACETS,
+        account_facets=ACCOUNT_FACETS,
+        remediation_facets=REMEDIATION_FACETS,
         # Site-specific, so it lives with the token family rather than in the
         # template — see XRAS_REQUEST_TOKEN_PREFIXES.
         request_example=XRAS_REQUEST_TOKEN_EXAMPLE,
@@ -175,35 +153,16 @@ def xras_fragment():
     type_facet = summarize_xras_actions(
         db.session, status=filters['status'], **_facet_common)
 
-    # Every status renders, including at zero -- an absent bucket reads as "not
-    # measured" rather than "none". `summarize_xras_actions` seeds the five, so
-    # iterating its dict gives that for free, in vocabulary order.
-    #
-    # WARNING: iterated, NOT re-derived from XRAS_ACTION_STATUSES. That spelling
-    # drops any status outside the vocabulary -- which the query layer goes out
-    # of its way to keep, being a bug worth surfacing -- while the headline
-    # total still counts it, so the strip disagrees with its own total. A stray
-    # appends rather than reshuffles: the five are a stable strip an operator
-    # scans by position.
-    #
-    # A stray chip still filters even though `all_statuses` offers only the
-    # five, because `set-filter-submit` synthesizes a missing <option> before
-    # setting the value. The offer list is deliberately NOT widened the way
-    # `_xras_action_types` widens its own: an unsampled action type is normal
-    # traffic, a stray status is only ever a bad write, and offering it as a
-    # standing filter choice would dress a bug up as a category.
-    status_facets = [{'value': s, 'count': n}
-                     for s, n in status_facet['by_status'].items()]
-
-    # A NULL action_type is a real count — a body that would not parse has none —
-    # but it is not a filterable value: there is no way to express "IS NULL"
-    # through the form's multi-select. Dropped rather than rendered as a chip
-    # that cannot work, the same rule the jobs facet strip applies.
-    action_type_facets = sorted(
-        ({'value': t, 'count': n}
-         for t, n in type_facet['by_action_type'].items() if t),
-        key=lambda r: (-r['count'], r['value']),
-    )
+    # Every declared status renders, including at zero, and a status outside
+    # the vocabulary (only ever a bad write) appends after them, so the strip
+    # agrees with the headline total. A stray chip still filters although
+    # `all_statuses` offers only the declared ones: `set-filter-submit` adds a
+    # missing <option>. That offer list is deliberately not widened.
+    status_facets = build_facet_strip(status_facet['by_status'],
+                                      XRAS_ACTION_STATUSES)
+    # A NULL action_type is a real count (an unparseable body has none) but
+    # not a filterable value, so the observed-only strip drops it.
+    action_type_facets = build_facet_strip(type_facet['by_action_type'])
 
     # `configured` gates the Request # -> detail-modal link: the modal needs a
     # live outbound read, so a site with XRAS incoming-only degrades to the
@@ -254,8 +213,7 @@ def xras_pending_fragment():
     may_manage = has_permission(current_user, Permission.MANAGE_XRAS)
     show_all = read_flag(request.args, 'show_all')
     window = _parse_activity_window(request.args)
-    selected_tags = [t for t in request.args.getlist('tag') if t]
-    selected_types = [t for t in request.args.getlist('activity_type') if t]
+    selected = ACTIVITY_FACETS.read(request.args)
 
     # All time, then scoped in Python: the queue has no date bound (a New
     # nobody activated months ago is its point) and the badges need both
@@ -272,14 +230,8 @@ def xras_pending_fragment():
     rows = scope_rows(everything, request.args,
                       queue=queue, in_window=_activity_in_window)
 
-    # Facets over the *unfiltered* scoped set, each dimension dropping its own
-    # selection -- the same self-exclusion `facet_notifications` and
-    # `xras_fragment` keep, and for the same reason: scope a dimension by itself
-    # and the chips stop being switchers.
-    tag_facets = _activity_facets(rows, 'tag', types=selected_types)
-    type_facets = _activity_facets(rows, 'activity_type', tags=selected_tags)
-
-    rows = _filter_activity(rows, tags=selected_tags, types=selected_types)
+    facet_values = ACTIVITY_FACETS.strips(rows, selected)
+    rows = ACTIVITY_FACETS.apply(rows, selected)
 
     recipients = {}
     may_activate = {}
@@ -299,15 +251,8 @@ def xras_pending_fragment():
         may_manage=may_manage,
         window=window,
         window_pill_choices=_ACTIVITY_WINDOW_PILLS,
-        # Every declared tag renders, including at zero: an absent chip reads
-        # as "not measured", which is a different claim from "none".
-        tag_values=[{'value': tag,
-                     'label': _ACTIVITY_TAG_LABELS.get(tag, tag),
-                     'count': tag_facets.get(tag, 0)}
-                    for tag in ACTIVITY_TAGS],
-        type_values=[{'value': k, 'count': v} for k, v in type_facets.items()],
-        selected_tags=selected_tags,
-        selected_types=selected_types,
+        facet_values=facet_values,
+        selected=selected,
         show_all=show_all,
         attention_total=attention_total,
         window_total=len(in_window),
@@ -361,11 +306,7 @@ def xras_accounts_fragment():
 
     may_manage = has_permission(current_user, Permission.MANAGE_XRAS)
     window = _parse_activity_window(request.args)
-    selected_remedies = [c for c in request.args.getlist('remedy') if c]
-    selected_roles = [r for r in request.args.getlist('role') if r]
-    selected_origins = [o for o in request.args.getlist('origin') if o]
-    selected_sources = [s for s in request.args.getlist('source') if s]
-    selected_requests = [r for r in request.args.getlist('request_number') if r]
+    selected = ACCOUNT_FACETS.read(request.args)
 
     # Feed B, filtered BEFORE injection: after the merge every Feed-A row would
     # pass `_submitted_since` (no submit_date => kept), so the window has to bite
@@ -404,26 +345,8 @@ def xras_accounts_fragment():
         for row in rows:
             row['person'] = None
 
-    class_facets = _account_facets(rows, 'remedy', roles=selected_roles,
-                                   sources=selected_sources)
-    role_facets = _account_facets(rows, 'role', remedies=selected_remedies,
-                                  sources=selected_sources)
-    origin_facets = _account_facets(rows, 'origin',
-                                    remedies=selected_remedies,
-                                    roles=selected_roles,
-                                    sources=selected_sources)
-    source_facets = _account_facets(rows, 'source',
-                                    remedies=selected_remedies,
-                                    roles=selected_roles)
-    request_facets = _request_facets(rows, remedies=selected_remedies)
-
-    rows = _filter_accounts(rows, remedies=selected_remedies,
-                            roles=selected_roles, origins=selected_origins,
-                            sources=selected_sources)
-    if selected_requests:
-        # The operator working one project's activation wants only its rows.
-        rows = [r for r in rows
-                if {a['request_number'] for a in r['actions']} & set(selected_requests)]
+    facet_values = ACCOUNT_FACETS.strips(rows, selected)
+    rows = ACCOUNT_FACETS.apply(rows, selected)
 
     # No forced default: with no header clicked the source order stands
     # (received-push rows pinned first), and sort_rows is a no-op.
@@ -441,22 +364,8 @@ def xras_accounts_fragment():
         enrichment=enrichment,
         window=window,
         window_pill_choices=_ACTIVITY_WINDOW_PILLS,
-        # Every remedy renders even at zero: an absent chip reads as
-        # "not measured", a different claim from "none".
-        remedy_values=[
-            {'value': key,
-             'label': _ACCOUNT_REMEDY_LABELS.get(key, key),
-             'count': class_facets.get(key, 0)}
-            for key in REMEDY_ORDER],
-        role_values=[{'value': k, 'count': v} for k, v in role_facets.items()],
-        origin_values=[{'value': k, 'label': _ORIGIN_LABELS[k],
-                        'count': origin_facets.get(k, 0)}
-                       for k in (ORIGIN_PLACEHOLDER, ORIGIN_KNOWN,
-                                 ORIGIN_MERGEABLE)],
-        source_values=[{'value': k, 'label': _SOURCE_LABELS[k],
-                        'count': source_facets.get(k, 0)}
-                       for k in (SOURCE_ACTION_LOG, SOURCE_REPORTS)],
-        request_values=request_facets,
+        facet_values=facet_values,
+        selected=selected,
         # The Feed-B half's state, so the card can render a degraded-half note
         # and its freshness line instead of pretending it saw everything.
         feed_checked=feed.checked,
@@ -464,11 +373,6 @@ def xras_accounts_fragment():
         feed_generated_at=snapshot.get('generated_at'),
         feed_window_days=snapshot.get('window_days'),
         pending_hidden=pending_hidden,
-        selected_remedies=selected_remedies,
-        selected_roles=selected_roles,
-        selected_origins=selected_origins,
-        selected_sources=selected_sources,
-        selected_requests=selected_requests,
         form_id=_ACCOUNTS_FORM_ID,
         fragment_url=url_for('allocations_dashboard.xras_accounts_fragment'),
         target_id=_ACCOUNTS_TARGET,

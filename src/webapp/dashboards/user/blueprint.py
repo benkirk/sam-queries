@@ -11,7 +11,7 @@ import json
 
 from flask import Blueprint, abort, render_template, request, flash, redirect, url_for, session, jsonify, make_response, current_app
 from flask_login import login_required, current_user
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 from typing import NamedTuple
 
 from marshmallow import ValidationError
@@ -21,9 +21,9 @@ from sam.schemas.forms.user import (
 )
 
 from webapp.extensions import db
-from webapp.api.helpers import parse_input_start_date, parse_input_end_date
 from webapp.utils.form_handler import FlattenedFieldErrors, FormError, HtmxFormHandler
 from webapp.utils.htmx import read_active_only, read_layout, read_theme
+from webapp.utils.charts import draw_chart
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
 from sam.queries.disk_usage import (
     build_disk_subtree,
@@ -68,6 +68,7 @@ from ..charts import (
     generate_disk_usage_stacked_area,
 )
 from webapp.utils.scope import resolve_scope_project, resolve_scope_projcodes
+from webapp.utils.windows import read_chart_window
 from webapp.disk_scans import is_enabled as is_fs_scans_enabled
 from webapp.disk_scans import service as disk_scans_service
 from webapp.jobs import service as jobs_service
@@ -486,12 +487,7 @@ def resource_details(project):
 
     # Parse date range (default to last 90 days)
     try:
-        start_date = (parse_input_start_date(request.args['start_date'])
-                      if request.args.get('start_date')
-                      else datetime.now() - timedelta(days=90))
-        end_date = (parse_input_end_date(request.args['end_date'])
-                    if request.args.get('end_date')
-                    else datetime.now())
+        start_date, end_date = read_chart_window(request.args, default_days=90)
     except ValueError:
         flash('Invalid date format. Please use YYYY-MM-DD.', 'error')
         return redirect(url_for('user_dashboard.index'))
@@ -711,10 +707,8 @@ def resource_details(project):
 def _parse_subtree_dates(start_raw, end_raw):
     """Parse YYYY-MM-DD start / end query params; defaults to last 90 days."""
     try:
-        start_date = (parse_input_start_date(start_raw)
-                      if start_raw else datetime.now() - timedelta(days=90))
-        end_date = (parse_input_end_date(end_raw)
-                    if end_raw else datetime.now())
+        start_date, end_date = read_chart_window(
+            {'start_date': start_raw, 'end_date': end_raw}, default_days=90)
     except ValueError:
         return None, None, 'Invalid date format. Please use YYYY-MM-DD.'
     return start_date, end_date, None
@@ -820,6 +814,8 @@ _USAGE_CHART_DATA_KEY = {
 }
 
 _VALID_DISK_USAGE_CHART_METRIC = {'bytes', 'files'}
+#: Users named in the disk Usage Over Time chart; the card header says the same number.
+_DISK_CHART_TOP_N = 15
 
 # Which pane of the usage card is open. Server-side input rather than
 # something the client restores after load: only the active pane's chart
@@ -892,12 +888,7 @@ def _usage_fragment_ctx(project) -> _UsageFragmentCtx:
         abort(400, 'resource is required')
 
     try:
-        start_date = (parse_input_start_date(request.args['start_date'])
-                      if request.args.get('start_date')
-                      else datetime.now() - timedelta(days=90))
-        end_date = (parse_input_end_date(request.args['end_date'])
-                    if request.args.get('end_date')
-                    else datetime.now())
+        start_date, end_date = read_chart_window(request.args, default_days=90)
     except ValueError:
         abort(400, 'Invalid date format. Please use YYYY-MM-DD.')
 
@@ -957,15 +948,15 @@ def resource_details_usage_chart(project):
     named_series = [s for s in stacked['series'] if s['label'] != 'Others']
 
     if len(named_series) > 1:
-        svg = generate_usage_timeseries_stacked_by_user(
-            stacked, metric=ctx.metric, layout=read_layout(),
+        svg = draw_chart(
+            generate_usage_timeseries_stacked_by_user, stacked, metric=ctx.metric, layout=read_layout(),
             theme=read_theme())
         has_data = True
         is_stacked = True
     else:
         series = (ctx.detail_data or {}).get(_USAGE_CHART_DATA_KEY[ctx.metric])
-        svg = generate_usage_timeseries_matplotlib(
-            series or {'dates': [], 'values': []},
+        svg = draw_chart(
+            generate_usage_timeseries_matplotlib, series or {'dates': [], 'values': []},
             link_to_day_rows=True,
             metric=ctx.metric,
             layout=read_layout(), theme=read_theme(),
@@ -1003,9 +994,9 @@ def resource_details_user_pie(project):
         ctx.start_date,
         ctx.end_date,
     )
-    svg = generate_user_usage_pie_chart(user_breakdown, metric=ctx.metric,
-                                        layout=read_layout(),
-                                        theme=read_theme())
+    svg = draw_chart(generate_user_usage_pie_chart, user_breakdown, metric=ctx.metric,
+                     layout=read_layout(),
+                     theme=read_theme())
 
     return render_template(
         'dashboards/user/partials/user_pie_chart.html',
@@ -1039,12 +1030,7 @@ def resource_details_disk_usage_chart(project):
 
     # Same default window as the disk page (last 90 days).
     try:
-        start_date = (parse_input_start_date(request.args['start_date'])
-                      if request.args.get('start_date')
-                      else datetime.now() - timedelta(days=90))
-        end_date = (parse_input_end_date(request.args['end_date'])
-                    if request.args.get('end_date')
-                    else datetime.now())
+        start_date, end_date = read_chart_window(request.args, default_days=90)
     except ValueError:
         abort(400, 'Invalid date format. Please use YYYY-MM-DD.')
 
@@ -1072,7 +1058,7 @@ def resource_details_disk_usage_chart(project):
             account_ids=scope_account_ids,
             start_date=chart_start,
             end_date=chart_end,
-            top_n=15,
+            top_n=_DISK_CHART_TOP_N,
             metric=metric,
         )
     else:
@@ -1082,15 +1068,15 @@ def resource_details_disk_usage_chart(project):
             directory_name=fileset,
             start_date=chart_start,
             end_date=chart_end,
-            top_n=15,
+            top_n=_DISK_CHART_TOP_N,
             metric=metric,
         )
 
     disk_link_kind = (
         'user' if has_permission(current_user, Permission.VIEW_USERS) else None
     )
-    chart_svg = generate_disk_usage_stacked_area(
-        timeseries, link_kind=disk_link_kind, metric=metric,
+    chart_svg = draw_chart(
+        generate_disk_usage_stacked_area, timeseries, link_kind=disk_link_kind, metric=metric,
         layout=read_layout(), theme=read_theme(),
     )
 
@@ -1104,7 +1090,6 @@ def resource_details_disk_usage_chart(project):
         fileset=fileset,
         start_date=start_date.strftime('%Y-%m-%d'),
         end_date=end_date.strftime('%Y-%m-%d'),
-        has_data=bool(timeseries.get('series')),
     )
 
 
@@ -1307,6 +1292,7 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
             'activity_date':  activity_date,
         },
         user_rows=user_rows,
+        disk_chart_top_n=_DISK_CHART_TOP_N,
     )
 
 

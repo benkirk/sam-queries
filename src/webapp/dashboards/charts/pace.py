@@ -1,25 +1,14 @@
 """Allocation pace chart.
 
-Stacked-area chart where each allocation is one band, split at ``active_at``.
-Left: its actual monthly charge rate. Right: its projected rate, the project's
-last-90-day pace, until its balance runs out or it ends. A dashed line over the
-stack is the **committed** rate: every balance over its days left, what the
-allocations promise to deliver, and more than will be used. The rates arrive
-precomputed per row (``allocations/burn.py`` ``pace_segments``).
-Top-N projcodes get distinct colors; the rest share a muted "Other" color.
+A stacked area, one band per allocation, split at ``active_at``: left, its actual
+monthly charge rate; right, its projected rate (the project's last-90-day pace)
+until its balance runs out or it ends. The dashed line is the **committed** rate:
+every balance over its days left. Rates arrive precomputed (``allocations/burn.py``
+``pace_segments``). The top N projects get a color; the rest fold into one band.
 
-**A direct `BaseChart` subclass with no family, deliberately.** Roughly 60% of
-this file is bespoke — the daily-grid band builder, the run-length compression,
-the committed line, the today marker, and the only `MonthLocator` in the app — and
-it is the most numerically fragile code in the chart layer. It takes `to_svg`,
-`empty_state` and the render axes from the base and nothing else. Forcing it
-into `StackedSeriesChart` would mean growing that family hooks only one chart
-uses; if this class starts pulling the base in that direction, let it override
-`render()` outright instead.
-
-Note it does NOT use `series.assign_colors`: it builds `color_map` directly
-from the ranked top-N, and its "Other" is an RGBA with baked alpha rather than
-a palette entry.
+A direct `BaseChart` subclass on purpose: the daily-grid band builder, the
+run-length compression and the committed line are bespoke and numerically fragile,
+and forcing them into `StackedSeriesChart` would grow hooks only this chart uses.
 """
 
 from datetime import datetime, timedelta
@@ -31,14 +20,11 @@ import numpy as np
 
 from sam import fmt
 from webapp.caching.chart import content_hash
-from webapp.dashboards.charts import links
+from webapp.dashboards.charts import links, series
 from webapp.dashboards.charts.base import BaseChart, cells_label
 from webapp.dashboards.charts.layout import profile
-from webapp.dashboards.charts.theme import (
-    UNITY_NCAR_NAVY, UNITY_STACK_10, UNITY_STACK_20,
-)
+from webapp.dashboards.charts.theme import UNITY_STACK_10, UNITY_STACK_20
 
-_PACE_TODAY_LINE_COLOR = matplotlib.colors.to_rgba(UNITY_NCAR_NAVY, 0.7)
 _PACE_RATE_SCALE = 365  # internal per-day rates -> per-year axis
 
 OTHER_KEY = '__other__'
@@ -50,12 +36,10 @@ PACE_WINDOW_DAYS = 180
 def _pace_other_color(theme):
     """The inert "N other" band.
 
-    Translucent so the ranked bands above it stay dominant, and derived from
-    the theme rather than fixed: `--ncar-gray-light` recedes on a white card
-    and is the *brightest* thing on a dark one, which is exactly backwards for
-    the band that means the least. See `Theme.muted_data`.
+    The theme's muted fill at the theme's area alpha, as the stacked family
+    draws its own remainder. See `Theme.muted_data` and `Theme.area_alpha`.
     """
-    return matplotlib.colors.to_rgba(theme.muted_data, 0.85)
+    return matplotlib.colors.to_rgba(theme.muted_data, theme.area_alpha)
 
 
 def _day(d, window_start, n):
@@ -124,8 +108,7 @@ class PaceChart(BaseChart):
     Args (via the public view):
         allocations: per-allocation rows through ``burn.pace_segments``: at least
             ``projcode``, ``start_date``, ``end_date``, ``total_amount``, ``pace``.
-        active_at: chart centerline ("today").
-        window_days: half-window on each side of ``active_at``.
+        active_at: chart centerline ("today"); the window is ``PACE_WINDOW_DAYS`` either side.
         top_n: projects with their own color + legend entry.
         resource_name: used only for cache key disambiguation.
         sort_by: ranking metric for the top-N selection — ``'size'`` (total
@@ -135,7 +118,7 @@ class PaceChart(BaseChart):
     """
 
     cache_name = 'pace_chart'
-    #: One entry per (resource, window_days, top_n, sort_by) combination across
+    #: One entry per (resource, top_n, sort_by) combination across
     #: concurrent viewers. Sized for ~30 resources x 3 sort_by x small
     #: facility-scope fanout — well under 10 MB of cached SVG per process.
     cache_maxsize = 192
@@ -153,29 +136,29 @@ class PaceChart(BaseChart):
     #: 9pt: this is a (10,4) figure, so the legend is proportionally larger
     #: than the same point size on an 18-inch chart. Same tier as the pies.
     legend_fontsize = 9
-    legend_anchor = (1.01, 0.5)
+    #: The "today" and "committed" notes: smaller than any tick.
+    annotation_fontsize = 8
 
-    def __init__(self, allocations: List[Dict], active_at: datetime,
-                 window_days: int = PACE_WINDOW_DAYS, top_n: int = 20,
-                 resource_name: str = '', sort_by: str = 'size'):
+    def __init__(self, allocations: List[Dict], active_at: datetime, top_n: int = 20,
+                 resource_name: str = '', sort_by: str = 'size', titles=None):
         self.allocations = allocations or []
         self.active_at = active_at
-        self.window_days = window_days
         self.top_n = top_n
         self.resource_name = resource_name
         self.sort_by = sort_by
+        self.titles = titles
 
     @staticmethod
-    def cache_key(allocations, active_at, window_days=PACE_WINDOW_DAYS, top_n=20,
-                  resource_name='', sort_by='size'):
+    def cache_key(allocations, active_at, top_n=20, resource_name='', sort_by='size',
+                  titles=None):
         return content_hash([pace_key_fields(allocations), active_at.isoformat(),
-                             int(window_days), int(top_n), resource_name, sort_by])
+                             int(top_n), resource_name, sort_by, titles or {}])
 
     # --- lifecycle --------------------------------------------------------
 
     def prepare(self):
-        self.window_start = self.active_at - timedelta(days=self.window_days)
-        self.window_end = self.active_at + timedelta(days=self.window_days)
+        self.window_start = self.active_at - timedelta(days=PACE_WINDOW_DAYS)
+        self.window_end = self.active_at + timedelta(days=PACE_WINDOW_DAYS)
         self.days, self._bands = pace_bands(
             self.allocations, self.active_at, self.window_start, self.window_end)
         if not self._bands:
@@ -184,7 +167,7 @@ class PaceChart(BaseChart):
             # driver's short-circuit stay the single exit path.
             if self.allocations:
                 self.empty_message = (
-                    f'No allocations in the ±{self.window_days}d window')
+                    f'No allocations in the ±{PACE_WINDOW_DAYS}d window')
             return
 
         n_days = len(self.days)
@@ -224,16 +207,14 @@ class PaceChart(BaseChart):
         # surplus projects fold into the existing "Other" band rather than
         # disappearing — the areas still sum to the same total.
         top_n = min(self.top_n, self.layout.max_legend_entries or self.top_n)
-        self.top_projs = [pc for pc, _ in sorted(
-            self.rank_metric.items(), key=lambda kv: kv[1], reverse=True
-        )[:top_n]]
+        kept, _rest, self.n_other_projs = series.fold_top(self.rank_metric.items(), top_n)
+        self.top_projs = [pc for pc, _ in kept]
         palette = UNITY_STACK_10 if len(self.top_projs) <= 10 else UNITY_STACK_20
         self.color_map = {pc: self.theme.data_color(palette[i])
                           for i, pc in enumerate(self.top_projs)}
 
-        self.n_other_projs = len(self.rank_metric) - len(self.top_projs)
         # A count, not "Other (N projects)": the legend's widest row sets its width.
-        self.other_label = f'{fmt.number(self.n_other_projs)} other'
+        self.other_label = series.other_label(self.n_other_projs)
 
         # Collapse per-allocation bands into one band per color group BEFORE
         # handing to matplotlib. Stackplot emits one <path> per band; without
@@ -302,7 +283,8 @@ class PaceChart(BaseChart):
                              for bi in range(len(ordered))]
         self.committed = band_rates_full[-1, keep_idx] * _PACE_RATE_SCALE
         other = _pace_other_color(self.theme)
-        self.colors = [self.color_map.get(k, other) for k, _ in ordered]
+        self.band_keys = [k for k, _ in ordered]
+        self.colors = [self.color_map.get(k, other) for k in self.band_keys]
 
     def is_empty(self) -> bool:
         # Explicit, not inherited: `self._bands` holds ndarrays, so any
@@ -313,8 +295,10 @@ class PaceChart(BaseChart):
     # --- drawing ----------------------------------------------------------
 
     def draw(self, ax, layout, theme):
-        ax.stackplot(self.days, self.rates_matrix, colors=self.colors,
-                     edgecolor='none', linewidth=0, antialiased=True)
+        areas = ax.stackplot(self.days, self.rates_matrix, colors=self.colors,
+                             edgecolor='none', linewidth=0, antialiased=True)
+        for area, key in zip(areas, self.band_keys):
+            self.tooltip(area, self.hover(*self.band_cells(key)))
 
         # The axis fits the stack; an off-scale committed line is clipped and
         # labeled at today, since the gap to the area is the point.
@@ -329,31 +313,34 @@ class PaceChart(BaseChart):
             label = f'committed {fmt.number(now)}/yr'
             ax.annotate(label + (' \u2191' if now > ymax else ''), (self.active_at, min(now, ymax)),
                         xytext=(4, -2 if now > ymax * 0.9 else 3), textcoords='offset points',
-                        color=theme.text, fontsize=8, ha='left',
+                        color=theme.text, fontsize=self.annotation_fontsize, ha='left',
                         va='top' if now > ymax * 0.9 else 'bottom')
 
         ax.axvline(self.active_at, color=theme.accent, linestyle='--',
                    linewidth=1)
         ax.annotate('today', (self.active_at, ymax), xytext=(-4, -2), textcoords='offset points',
-                    color=theme.accent, fontsize=8, va='top', ha='right')
+                    color=theme.accent, fontsize=self.annotation_fontsize, va='top', ha='right')
+
+    def legend_amount(self, value):
+        # The number beside a project tracks the active sort. A rate sort scales
+        # per-day to per-year, matching the axis, and says so.
+        if self.sort_by == 'size':
+            return fmt.number(value)
+        return f'{fmt.number(value * _PACE_RATE_SCALE)}/yr'
+
+    def band_cells(self, key):
+        """A band's legend row (and its hover): a project, or the remainder."""
+        if key == OTHER_KEY:
+            return self.legend_cells(self.other_label, self.group_sort_totals[OTHER_KEY])
+        return self.legend_cells(key, self.rank_metric[key])
 
     def add_legend(self, ax, layout, theme):
-        # Deduplicated: one handle per top-N projcode + one Other. The number
-        # next to each project tracks the active sort_by. For rate sorts,
-        # scale per-day -> per-year so the number matches the axis units, and
-        # tag with "/yr" to keep that explicit.
-        if self.sort_by == 'size':
-            def _fmt(v):
-                return fmt.number(v)
-        else:
-            def _fmt(v):
-                return f'{fmt.number(v * _PACE_RATE_SCALE)}/yr'
-
-        rows = [(pc, _fmt(self.rank_metric[pc])) for pc in self.top_projs]
+        """One row per top-N project, linked to its modal, then the inert remainder."""
+        rows = [self.band_cells(pc) for pc in self.top_projs]
         colors = [self.color_map[pc] for pc in self.top_projs]
         urls = [links.PROJECT_MODAL.url(pc) for pc in self.top_projs]
         if self.n_other_projs > 0:
-            rows.append((self.other_label, _fmt(self.group_sort_totals[OTHER_KEY])))
+            rows.append(self.band_cells(OTHER_KEY))
             colors.append(_pace_other_color(theme))
             urls.append(None)
         if self.table_legend and self.draw_table_legend(ax, rows, colors, urls, layout, theme):
@@ -361,16 +348,7 @@ class PaceChart(BaseChart):
         handles = [mpatches.Patch(color=c, label=cells_label(r)) for r, c in zip(rows, colors)]
         legend = ax.legend(handles=handles, frameon=False,
                            **self.legend_kwargs(layout))
-
-        # Tag each top-N legend entry with the project-modal URL. The trailing
-        # "Other" patch (if present) gets none — it is not a single project.
-        # NOTE this legend is built FORWARD over top_projs, unlike the
-        # StackedSeriesChart family's reversed legends, so it must not use
-        # `link_legend`.
-        for url, patch, text in zip(urls, legend.get_patches(), legend.get_texts()):
-            if url is not None:
-                patch.set_url(url)
-                text.set_url(url)
+        self.link_legend_urls(legend, urls)   # rows are already in legend order
 
     def decorate(self, ax, layout, theme):
         ax.set_xlim(self.window_start, self.window_end)
@@ -379,8 +357,6 @@ class PaceChart(BaseChart):
         self.apply_grid(ax, theme)
 
     def finish(self, fig, axes, layout, theme):
-        # Was a `MonthLocator` with `%b %Y` on every tick — twelve labels
-        # repeating the same year across a default 360-day window. The shared
-        # date axis still lands on month boundaries and still says the year,
+        # The shared date axis lands on month boundaries and says the year
         # once, where it changes.
         self.apply_date_axis(axes, layout)

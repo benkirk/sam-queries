@@ -1,0 +1,59 @@
+{# The chart frame: what every chart host is built from. A named <figure>, one pill
+   macro for its controls, one loading placeholder, one error state. Sizing is
+   static/css/charts.css; the author-time checklist is the wire-dashboard-feature skill. #}
+
+{# The chart itself, named for a screen reader: an SVG of paths says nothing.
+   `classes` adds the kind (jobs-user-pie, disk-entity-pie); `attrs` is {name: value},
+   a None value writing the bare attribute.
+     {% call chart_figure('Usage by user') %}{{ chart_svg | safe }}{% endcall %} #}
+{% macro chart_figure(label, classes='', attrs={}) %}
+<figure class="chart-container mb-0{{ ' ' ~ classes if classes }}" aria-label="{{ label }}"
+        {%- for name, value in attrs.items() %} {{ name }}{% if value is not none %}="{{ value }}"{% endif %}{% endfor %}>
+    {{- caller() -}}
+</figure>
+{% endmacro %}
+
+{# The one loading placeholder. It holds some height (charts.css), so the page does
+   not jump when the chart lands and an `intersect` loader fires when its row shows. #}
+{% macro chart_loading(text='Loading chart…') %}
+<div class="chart-loading" role="status">
+    <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> {{ text }}
+</div>
+{% endmacro %}
+
+{# One pill group over a chart. `pills` is a list of dicts:
+     text, url, on    the label, its hx-get, and whether it is the selected one
+     icon             a Font Awesome name drawn before the text
+     title            a tooltip
+     off              True disables the pill (its title says why)
+     data             {name: value}, written as data-* attributes
+   Build it with `{% set _ = pills.append(dict(...)) %}` in a loop. The selected
+   pill is Unity's `.active` to the eye and aria-pressed to a screen reader.
+   `select` takes that region out of a full-page response; `push` puts the pill's
+   URL in the address bar (the pair is how a whole page changes its window). #}
+{% macro chart_pills(label, pills, target, swap='outerHTML', include=None, classes='', attrs={},
+                     select=None, push=False) %}
+<div class="btn-group btn-group-sm{{ ' ' ~ classes if classes }}" role="group" aria-label="{{ label }}"
+     {%- for name, value in attrs.items() %} {{ name }}{% if value is not none %}="{{ value }}"{% endif %}{% endfor %}>
+    {% for p in pills %}
+    <button type="button" class="btn btn-outline-secondary{{ ' active' if p.on }}"
+            aria-pressed="{{ 'true' if p.on else 'false' }}"
+            {%- for name, value in (p.data or {}).items() %} data-{{ name }}="{{ value }}"{% endfor %}
+            {%- if p.title %} title="{{ p.title }}"{% endif %}
+            {%- if p.off %} disabled
+            {%- else %} hx-get="{{ p.url }}" hx-target="{{ target }}" hx-swap="{{ swap }}"
+            {%- if include %} hx-include="{{ include }}"{% endif %}
+            {%- if select %} hx-select="{{ select }}"{% endif %}
+            {%- if push %} hx-push-url="{{ p.url }}"{% endif %}{% endif %}>
+        {%- if p.icon %}<i class="fa-solid fa-{{ p.icon }} me-1" aria-hidden="true"></i> {% endif %}{{ p.text }}</button>
+    {% endfor %}
+</div>
+{% endmacro %}
+
+{# What a chart host shows when its chart raised (webapp/utils/charts.py draw_chart).
+   No exception text: it is in the log, and the reader can do nothing with it. #}
+{% macro chart_error(message='This chart could not be drawn. The error has been logged.') %}
+<div class="text-center text-muted small py-4" role="alert" data-chart-error>
+    <i class="fa-solid fa-triangle-exclamation me-1" aria-hidden="true"></i>{{ message }}
+</div>
+{% endmacro %}
