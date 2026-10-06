@@ -28,6 +28,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-04 | `36e69595` (base, filters) | 61 / 70 / 33 | 3 (4) | 14 / 46 | 16 (16), 2 kept | 4,714 / 50 / 10 | 216 (80) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 39 |
 | 2026-10-05 | `36e69595` + filters sweep | 52 / 61 / 24 | 3 (4) | 14 / 46 | 16 (16), 2 kept | 4,810 / 50 / 10 | 210 (78) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-05 | `97b8d876` + charts sweep | 50 / 59 / 24 | 2 (3) | 14 / 46 | 16 (16), 2 kept | 4,754 / 50 / 9 | 210 (78) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
+| 2026-10-05 | `2122755e` + sweep 12 (src from the air) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 16 (16), 2 kept | 4,754 / 50 / 9 | 210 (78) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -50,7 +51,8 @@ the allocations follow-ups handoff, item 2.
 
 **Open from this window:**
 
-- [ ] Three leaf-versus-subtree rules: `src/sam/queries/allocations.py` (valid tree and not a leaf),
+- [x] Three leaf-versus-subtree rules (sweep 12: `Project.sums_as_subtree()`; there were four, and
+  they agreed on every row of both snapshots): `src/sam/queries/allocations.py` (valid tree and not a leaf),
   `src/sam/queries/dashboard.py` (`is_leaf()` only), `src/sam/queries/fstree_access.py`
   (coordinates). This is convention drift; pick one rule.
 - [ ] `get_allocation_summary_with_usage(projcode='TOTAL')` issued 1,433 statements in a capture.
@@ -207,9 +209,10 @@ the two intended changes below. Perf tier: 64 passed before and after; `baseline
   model layer strips the zone.
 - [ ] `search_projects_by_code_or_title` has no `ORDER BY`, so which 10 rows the pickers show is
   plan order on both backends. It also filters on `Project.active == active` (§5 drift).
-- [ ] `sam` still imports `webapp.extensions` in `sam/schemas/__init__.py` and `sam/base.py`
+- [x] (sweep 12: a session proxy + `test_layer_imports.py`) `sam` still imports `webapp.extensions` in `sam/schemas/__init__.py` and `sam/base.py`
   (this sweep removed the `normalize_end_date` edge). The rule is not gated.
-- [ ] jscpd clones not read: `sam/xras/handlers/adjustment.py` / `supplement.py`,
+- [ ] jscpd clones not read (sweep 12 read the first: ~60-line loops differing in four places,
+  a merge decision recorded at `adjustment.py:59`; leave): `sam/xras/handlers/adjustment.py` / `supplement.py`,
   `sam/summaries/archive_summaries.py` / `disk_summaries.py`, the `cli/*/display.py` pairs.
 - [ ] dup-functions left: `active_account_users` on User and Project. (The duplicate `decorate`
   in `charts/stacked.py` went in sweep 11.)
@@ -829,6 +832,90 @@ fingerprint cannot.
     for a new project, calendar month figures living only in hover titles.
   - `CacheBase.bytes_used` (entry 4); matplotlib's own ids repeating when one cached SVG
     appears twice on a page.
+
+## 12. 2026-10-05: area sweep, `src/` from the air (allocation usage, import graph)
+
+**Mode:** area, all of `src/` (117k lines, 30% prose), read for the structural debt a small team
+has to carry rather than for detector leads, which sweeps 1–11 had drained. **End commit:**
+`2122755e` (`origin/staging`). Three censuses (allocation usage, the XRAS footprint, the route
+monoliths and CLI) ranked three findings; Ben picked #1 and #3, deferred XRAS and left #2 open.
+`src/` across the branch is +262 / -1,646.
+
+**Parity:** `utils/profiling/usage_sweep/` (untracked): 659 captures over 108 projects (every
+non-leaf, a child of each, inheriting and disk holders, charged leaves, SCSG0001) of every live
+usage assembly at a fixed as-of date, plus a rule matrix that sums each anchor both ways from the
+kernel. Two runs of unchanged code agree exactly on mysql-test and postgres-test; the backends
+differ from each other only at the eighth significant digit.
+
+**Done, in this sweep's PR**, one commit each:
+
+- [x] Dead: `sam/queries/examples.py`, the ORM notebook, the `sam_search_cli` shim (-425).
+- [x] `sam/queries/__init__.py` re-exports nothing. Its 122 names had one consumer, the dead
+  `examples.py`; the facade was the whole reason for the eager-import trap three docstrings, a
+  CLAUDE.md DON'T and two tests described (-418).
+- [x] The schema packages bind `sqla_session` to a proxy, so `import sam.schemas` loads no Flask;
+  `tests/unit/gates/test_layer_imports.py` holds the facade empty and the `sam`-side packages free
+  of module-level `webapp` imports.
+- [x] `Project.sums_as_subtree()`: the leaf-versus-subtree rule, written 5 times in 3 shapes (8
+  copies of the coordinates check), now one method. **The four rules agreed on every row:**
+  `is_leaf()` already answers True without coordinates, and the "leaves included" spelling can
+  only differ through a deleted or duplicate account, of which both snapshots hold zero.
+  Rule matrix: 247 anchors, 146 on parents, 80 with a subtree total that differs from the
+  own-account total, 0 disagreements.
+- [x] `usage_anchor` / `anchored_charges` in `accounting/calculator.py`; the four hand-built anchor
+  dicts and the `Project.batch_get_*_charges` pass-throughs are gone; fstree needs no `Project`.
+- [x] One assembly. `Project.get_detailed_allocation_usage` reshapes the dashboard builder's rows
+  (its 7 callers gain the read model; `include_adjustments=False` works, it raised before);
+  `AllocationWithUsageSchema` sums through the kernel once per allocation per dump (statements
+  2,926 -> 712 over the set); the per-account kernel copy (`get_subtree_charges`, five siblings,
+  `calculate_charges`) is deleted. **Output change:** the CLI JSON drops the unread `hierarchical`
+  key. Perf tier green, `baselines.json` unchanged.
+
+**Tried and dropped:**
+- Having the API routes precompute usage and hand it to the schema (plan step 1f): memoizing one
+  kernel call per allocation got the 4x without a new context key, and the read model already
+  serves those routes when fresh.
+- Deleting `sam/queries/xras_remediations.py` (tests-only): XRAS, so it waits with the rest.
+
+**Deferred until `XRAS_SUBMISSION.md` lands (Ben, 2026-10-05).** The XRAS census (22.7k Python
+lines, 4.9k template lines; two HTTP clients on purpose; the query modules do three different
+jobs): `webapp/dashboards/allocations/xras/remediation.py`'s seven editors each repeat a
+`_safe_*` fallback / GET modal / one-click-write triplet (984–1929; about -250);
+`xras_api/admin_client.py`'s 14 write calls share a read/write/re-read tail `_act` could
+generalize (about -150); the preflight batch duplicated by `manage/xras_remediation.py:257` and
+`scheduling/tasks/xras_sweep.py:265` (about -60); five of the six `xras_views` classes and
+`queries/xras_remediations.py` have no `src/` caller (about -200); both clients import parsing
+helpers from `queries/xras_requests.py`, so the HTTP layer depends on the query layer; about
+1,000 lines of over-budget prose in `integration/xras.py`, `xras/extractors.py`,
+`queries/xras_actions.py`, `queries/xras_accounts.py`, `api/xras/actions.py`. The
+adjustment/supplement handler clone was read: leave.
+
+**Open from this sweep:**
+
+- [ ] **`admin/projects_routes.py` (3,527 lines).** Nine sections with clean ranges (create
+  210–689, add/exchange 1017–1537, renew/extend 1538–2313, linked entities 2689–3027,
+  directories CRUD 3028–3394, access grid 3395–3527) want to be ~6 modules on the same blueprint.
+  Project creation (`:580–660`) is duplicated in `sam/xras/handlers/new.py:170–207` and belongs in
+  `sam.manage.projects.create_project()`; `_exchange_candidates:1195`, the renew date proposals
+  `:1547–1660` and the contract auto-retire `:2943` are domain rules testable only through Flask.
+- [ ] Eight retire/toggle routes on one `management_transaction` + error skeleton
+  (`resources_routes.py:160,238,261,386,749`, `contracts_routes.py:694`,
+  `projects_routes.py:3268`, `admin/blueprint.py:1262`, which has no guard): extend
+  `handle_htmx_soft_delete`.
+- [ ] `_window_control_context` exists three times (allocations blueprint, `jobs/routes.py:1473`,
+  `disk_scans/routes.py:168`); home: `utils/age_bands.py`. Homes for the other private imports:
+  `_available_primary_groups` -> `sam/queries/lookups.py`; `_user_can_access_project` ->
+  `utils/project_permissions.py` (`_get_sam_user` repeats a query `current_user.sam_user` has);
+  `_RESOURCES_TABS` / `_ORGANIZATIONS_TABS` -> move the page routes into their modules.
+- [ ] The six linked-element routes (`projects_routes.py:2833–3006`) check a global
+  `require_permission` where their GET is project-scoped. A policy decision, not a tidy-up.
+- [ ] CLI: shared option bundles for `cmds/search.py` / `cmds/admin.py` (about -45; `--help`
+  text moves); the provisioning-issues table, status-style and timestamp helpers duplicated across
+  `cli/*/display.py` (about -30); the mnemonic handlers onto `HtmxFormHandler` (about -40);
+  `legacy_dedup_key` once a notification cycle has passed.
+- [ ] `READ_MODEL.md:141` now matches the code: resource details' summary card is served by the
+  read model through `get_detailed_allocation_usage`.
+- [ ] Prose: `src/` is 30.0% doc lines; `DOC_SLIMMING.md` phases 5–8 remain the vehicle.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

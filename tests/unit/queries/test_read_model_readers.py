@@ -113,8 +113,8 @@ def armed(monkeypatch):
     """Make the batched charge primitives raise, so a served scope is proven."""
     def boom(*a, **k):
         raise AssertionError('live rollup ran while the read-model should serve')
-    monkeypatch.setattr(Project, 'batch_get_subtree_charges', classmethod(boom))
-    monkeypatch.setattr(Project, 'batch_get_account_charges', classmethod(boom))
+    import sam.accounting.calculator as calculator
+    monkeypatch.setattr(calculator, 'batch_charges', boom)
 
 
 def _projects_of(request, name):

@@ -688,11 +688,6 @@ class TestEnrichment:
 class TestImportGraph:
     """The task imports this module; ``test_task_ledger`` walks what that drags."""
 
-    def test_it_is_not_exported_from_the_queries_package(self):
-        """``sam/queries/__init__.py`` imports its submodules eagerly."""
-        import sam.queries
-        assert not hasattr(sam.queries, 'get_account_worklist')
-
     def test_it_does_not_import_the_api_client_at_module_scope(self):
         source = (REPO_ROOT / 'src' / 'sam' /
                   'queries' / 'xras_accounts.py').read_text()

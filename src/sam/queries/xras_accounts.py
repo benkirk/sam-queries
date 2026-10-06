@@ -11,11 +11,8 @@ Two feeds, one classifier, joined at :class:`RosterRecord`: Feed A is
 structurally cannot -- a brand-new PI on a solo New request, connected to
 nobody SAM knows -- and neither feed should imply a second copy of the rules.
 
-WARNING: not exported from ``sam/queries/__init__.py``, which imports its
-submodules eagerly -- listing this would drag ``requests`` and the cache layer
-into every ``from sam.queries import ...``. Import it by module path. For the
-same reason the default person lookup is a DEFERRED import inside
-:func:`enrich_worklist`: ``src/scheduling/`` imports this module, and
+The default person lookup is a DEFERRED import inside :func:`enrich_worklist`:
+``src/scheduling/`` imports this module, and
 ``test_task_ledger.py::TestPortabilityBoundary`` walks what that drags in.
 
 WARNING: classification checks the CURRENT state of ``users``, never the

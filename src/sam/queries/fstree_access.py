@@ -8,7 +8,7 @@ scheduler to build fairshare vertices and by LDAP tooling.
 Built from three queries: a JOIN-based skeleton (projects with a current
 active allocation), a targeted lifecycle query for the minority with none
 ("Expired", "No Account" -- these carry zeroes and omit the date keys), and a
-bulk user roster. Charges roll up via ``Project.batch_get_subtree_charges()``.
+bulk user roster. Charges roll up via ``batch_charges``.
 
 ``accountStatus`` matches ``DefaultAccountStatusCalculator.java``: No Account,
 Expired, Overspent, Exceed Two Thresholds, Exceed One Threshold, Normal. A
@@ -521,7 +521,7 @@ def get_fstree_data(
         Projects with no current active allocation appear as "Expired" or
         "No Account" with zero usage/allocation/users (requires resource filter).
     """
-    from sam.projects.projects import Project
+    from sam.accounting.calculator import batch_charges
 
     now = datetime.now()
     params = {'resource': resource_name}
@@ -596,12 +596,12 @@ def get_fstree_data(
     # ------------------------------------------------------------------
     # Charges — hybrid approach matching allocations.py:
     #
-    # Non-leaf projects (~28) -> batch_get_subtree_charges(): MPTT rollup
+    # Non-leaf projects (~28) -> the subtree path of batch_charges: MPTT rollup
     #   that includes descendant charges.  With only ~28 non-leaf entries,
     #   the (activity_type, start_date, end_date) grouping yields ~28 date
     #   groups -> ~56 SQL queries (fast).
     #
-    # Leaf projects (~1,455) -> batch_get_account_charges(): VALUES CTE that
+    # Leaf projects (~1,455) -> the account path: VALUES CTE that
     #   embeds all date ranges in ~5 queries (~0.9s).  Correct for leaves
     #   since their subtree == self.
     #
@@ -627,13 +627,9 @@ def get_fstree_data(
     else:
         raw_charges: Dict[Any, Dict] = {}
         if subtree_infos:
-            raw_charges.update(
-                Project.batch_get_subtree_charges(session, subtree_infos, include_adjustments=True)
-            )
+            raw_charges.update(batch_charges(session, subtree_infos, subtree=True))
         if account_infos:
-            raw_charges.update(
-                Project.batch_get_account_charges(session, account_infos, include_adjustments=True)
-            )
+            raw_charges.update(batch_charges(session, account_infos, subtree=False))
         for account_id, data in raw_charges.items():
             charge_map[account_id] = sum(data['charges_by_type'].values()) + data['adjustment']
 
@@ -642,7 +638,7 @@ def get_fstree_data(
     #
     # Non-leaf threshold accounts (roots of an allocation tree) require MPTT
     # subtree rollup so that descendant project charges are included, matching
-    # the behavior of batch_get_subtree_charges() used for adjustedUsage.
+    # the behavior of the subtree charges used for adjustedUsage.
     # ------------------------------------------------------------------
     subtree_ids = {info['account_id'] for info in subtree_infos}
     threshold_infos = [info for info in alloc_infos if info['account_id'] in threshold_accounts]

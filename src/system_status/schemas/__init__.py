@@ -16,7 +16,15 @@ Usage:
 
 from marshmallow import EXCLUDE
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
-from webapp.extensions import db
+
+
+class _FlaskSession:
+    """Forwards to ``webapp.extensions.db.session`` on first use, so importing
+    a schema needs no Flask; only ``load_instance`` loads do."""
+
+    def __getattr__(self, name):
+        from webapp.extensions import db
+        return getattr(db.session, name)
 
 
 class BaseSchema(SQLAlchemyAutoSchema):
@@ -32,7 +40,7 @@ class BaseSchema(SQLAlchemyAutoSchema):
     All model-specific schemas should inherit from this class.
     """
     class Meta:
-        sqla_session = db.session
+        sqla_session = _FlaskSession()
         load_instance = True
         include_fk = True
         unknown = EXCLUDE

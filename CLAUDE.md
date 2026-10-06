@@ -211,14 +211,19 @@ Datetimes serialize to ISO automatically (DB stores naive datetimes). Use
 `fields.Method` to expose `@property` values.
 
 **`AllocationWithUsageSchema`** ⭐ is the key one — computes `used` / `remaining` /
-`percent_used` / `charges_by_type` / `adjustments` from the pre-aggregated
-summary tables (`comp_charge_summary`, `dav_charge_summary`,
-`disk_charge_summary`, `archive_charge_summary`), matching
-`Project.get_detailed_allocation_usage()` and the sam-search CLI. It needs
-context: `{'account': ..., 'session': ..., 'include_adjustments': ...}`.
-Resource-type routing: HPC/DAV → comp+dav summaries, DISK → disk, ARCHIVE →
-archive; `remaining = allocated - (charges + adjustments)` over the
-allocation's date range.
+`percent_used` / `charges_by_type` / `adjustments`. It needs context:
+`{'account': ..., 'session': ..., 'include_adjustments': ...}` (+ `'state'`, a
+read-model row, when the route has one).
+
+**Allocation usage is one computation.** Kernel: `sam/accounting/calculator.py`
+— `usage_anchor` (one anchor per (project, account); `Project.sums_as_subtree()`
+picks the subtree path) and `batch_charges` / `anchored_charges` (one statement
+per charge table, routed by `activity_type`, plus `charge_adjustment`). The one
+assembly is `build_user_projects_resources_batched` (`sam/queries/dashboard.py`),
+which also projects the read model; `Project.get_detailed_allocation_usage()`
+reshapes its rows for one project; the schema above, `sam/queries/allocations.py`,
+the rolling windows and fstree call the kernel. Never write another sum over the
+summary tables — add an anchor.
 
 Form-validation schemas are a separate concern — see §9 below; they live in
 `sam/schemas/forms/` (one module per domain, exported from its `__init__.py`).
@@ -577,11 +582,10 @@ user.primary_email;  user.all_emails
 
 # Allocation usage (uses SessionMixin internally — do NOT pass session)
 project = Project.get_by_projcode(session, 'SCSG0001')
-usage = project.get_detailed_allocation_usage()          # {resource_name: {...}}
-usage = project.get_detailed_allocation_usage(resource_name='Derecho')
+usage = project.get_detailed_allocation_usage(resource_name='Derecho')   # {resource_name: {...}}
 
 # Expiration queries return 4-tuples — unpack them
-from sam.queries import get_projects_by_allocation_end_date
+from sam.queries.expirations import get_projects_by_allocation_end_date
 for project, allocation, resource_name, days_remaining in get_projects_by_allocation_end_date(
         session, start_date=..., end_date=..., facility_names=['UNIV', 'WNA']):
     ...
@@ -842,13 +846,9 @@ and asserts the inequality.
 exports `NotificationLog`, so eager imports there put jinja2 and the
 transports into every ORM consumer's import graph.
 `tests/unit/gates/test_notify_import_graph.py` is the gate.
-❌ **DON'T** export `sam/queries/expiration_notices.py`,
-`sam/queries/xras_notices.py` **or `sam/queries/account_notices.py`** from
-`sam/queries/__init__.py` — that file
-imports its submodules eagerly, so listing either would put `sam.notify.base`
-into every `from sam.queries import ...`. The trap is that the near-identically
-named `xras_activation.py` **is** exported, safely, because it imports no
-`sam.notify`.
+❌ **DON'T** re-export anything from `sam/queries/__init__.py` — it is empty on
+purpose, so `from sam.queries.x import ...` drags in only `x`'s graph.
+`tests/unit/gates/test_layer_imports.py` is the gate.
 ❌ **DON'T** import Click, Flask, `rich` or `kubernetes` anywhere under
 `src/scheduling/` — a task writes to `ctx.logger`, never to stdout, because the
 CronJob's stdout is a JSON envelope. The CLI routes logging to stderr as `LEVEL

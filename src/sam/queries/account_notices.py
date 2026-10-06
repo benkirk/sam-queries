@@ -5,10 +5,8 @@ public form and any resend) must mint the same dedup key, so each message
 is built in one place. The rejection notice has one consumer, the reject
 form's checkbox, and lives here for the same reason. The read side is :mod:`sam.queries.account_requests`.
 
-WARNING: NOT exported from ``sam/queries/__init__.py``. This module imports
-``sam.notify``, and that file imports its submodules eagerly, so listing it
-would put ``sam.notify.base`` into every ``from sam.queries import ...``.
-Import by full path; the gate is ``tests/unit/gates/test_notify_import_graph.py``.
+This module imports ``sam.notify``; the gate is
+``tests/unit/gates/test_notify_import_graph.py``.
 """
 
 from __future__ import annotations

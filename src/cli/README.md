@@ -177,11 +177,6 @@ Two conventions coexist deliberately, and `cli/contracts/` holds one of each:
    (CliRunner-based) and the subprocess smoke tests in
    `tests/integration/`.
 
-## Backward Compatibility
-
-`src/sam_search_cli.py` is a compatibility shim that re-exports the CLI
-from `cli.cmds.search`, so historical imports keep working.
-
 ## Testing
 
 CLI coverage lives in `tests/unit/cli/test_sam_search_cli.py`,
