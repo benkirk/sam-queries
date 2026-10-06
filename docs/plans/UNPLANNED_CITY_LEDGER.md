@@ -29,6 +29,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-05 | `36e69595` + filters sweep | 52 / 61 / 24 | 3 (4) | 14 / 46 | 16 (16), 2 kept | 4,810 / 50 / 10 | 210 (78) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-05 | `97b8d876` + charts sweep | 50 / 59 / 24 | 2 (3) | 14 / 46 | 16 (16), 2 kept | 4,754 / 50 / 9 | 210 (78) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-05 | `2122755e` + sweep 12 (src from the air) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 16 (16), 2 kept | 4,754 / 50 / 9 | 210 (78) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
+| 2026-10-06 | `b682c918` + Resource Details round A | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,736 / 50 / 8 | 183 (74) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -917,6 +918,61 @@ adjustment/supplement handler clone was read: leave.
   read model through `get_detailed_allocation_usage`.
 - [ ] Prose: `src/` is 30.0% doc lines; `DOC_SLIMMING.md` phases 5–8 remain the vehicle.
 
+## 13. 2026-10-06: area sweep, `templates` round 6 (Resource Details, round A)
+
+**Mode:** area, `templates`, from `RESOURCE_DETAILS_SWEEP_HANDOFF.md` round A. **End commit:**
+`b682c918` (`origin/staging`, sweep 12 merged). Aesthetic contract as sweeps 5–9: each commit
+declares its visual change; bug fixes say "bug". Proof rig: staging served on 5053, the branch on
+5052, `ui_snapshots.py` in the six states on CESM0002 (Derecho, Campaign_Store), P93300042/Casper
+(shared) and SCSG0001/Derecho; Playwright smoke of every control moved.
+
+**Done, in this sweep's PR**, one commit each:
+
+- [x] The compute and disk scope pickers are `project_tree_rows` tables. The macro gains a picker
+  mode (`href`, `link_attrs`, `idle_title`, `value` as node macros); its two older callers render
+  byte-identically (HTML diffed against staging). `.tree-list` (two CSS blocks) is deleted, and
+  `.tree-node-current` keeps only its `<tr>` form, which drops the whole-row bold (bug).
+- [x] The summary rows are `allocation_cells` + `allocation_actions` (`edit_url=` added for the
+  user-route edit form). `get_resource_detail_data` stamps `elapsed_pct` / `bar_state`;
+  `get_detailed_allocation_usage` is untouched, so the CLI JSON and `/api/v1/users` do not move.
+  `shared/usage_bar.html`, `.progress-small`, `.table-col-usage`, `.table-bordered` are deleted.
+- [x] Nine card headers on `collapse_toggle` + `.accordion-chevron` (now in components.css). Their
+  chevrons never rotated: `.transition-smooth` had no transform (bug). `drill_toggle` added to
+  `collapse.html` for a row that also holds a link (By User rows: `user_link` + chevron button,
+  `data-bs-target` kept on the `<tr>` for `openUserRow`).
+- [x] Column roles: every numeric cell on both pages and the subtrees is `.col-num`; `user_count | fmt_number`.
+- [x] Paths are copyable (Ben, 2026-10-06): the disk tree's fileset paths ride an inline
+  `copy_button` in the size cell (the name cell truncates); the Filesets Path cell is a link plus
+  a copy icon on a new `.cell-truncate .cell-path` (min-width 12rem). The Filesets row stops being
+  a `data-action="navigate"` row: a copy button there would also navigate, because the clipboard
+  listener on `body` lets the click reach the document-level dispatcher.
+- [x] The rolling-rate gauge's 16 inline styles are a `.rate-*` family (geometry on custom
+  properties; fill color a state class). Pixel-identical gauge (edge rows aside). Limit actions
+  are icon `btn-row`s.
+- [x] Bug, pre-existing: on a phone the gauge's bar column resolved to zero width and the
+  fixed-layout usage tables split header words letter-wise. `minmax(6rem, 1fr)` + a wrapping
+  annotation; the usage tables take a min-width and scroll.
+
+**Handoff corrections (census, 2026-10-06):** `.progress` stays (four status templates use it;
+the three `!important`s are on global `.bg-*` utilities); 9 card headers, not 13; 49 `text-end`
+cells, not 24; `page_header` was already on both pages; the rolling bar is a rate gauge, not a
+pool bar, so it takes neither `alloc_meter` nor round B's pool tone; the disk tree's clickability
+and URL differ from compute (no `usage_tab`).
+
+**Tried and dropped:**
+- Passing `elapsed_pct` through `get_detailed_allocation_usage` (the handoff's route): it feeds
+  the CLI JSON envelope and `/api/v1/users`, so the summary computes it beside its other
+  page-only keys instead.
+- An `extra=` cell hook on `project_tree_rows` for the copy icon: a trailing icon in a truncating
+  cell is the first thing clipped, so the icon lives in the value cell.
+
+**Open from this sweep:**
+
+- [ ] The Filesets card could not render on the local snapshot (no multi-fileset project with
+  `disk_activity`); proven by test client + injection. Recheck on samuel-dev.
+- [ ] `css-dead`'s dynamic-stem count is 20 (from 16): the four `rate-{{ state }}` classes.
+- [ ] The threshold inline form (`threshold_form_htmx.html`) keeps its documented inline styles.
+
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
 Surfaced by the first run of `scripts/sweep_inventory.py`. Each item belongs to an area sweep;
@@ -936,6 +992,8 @@ nothing here has been read for intent yet.
 Shared pieces a window introduced that an older surface could adopt. The canonical example is the
 sunburst, which started on the allocations page and then moved to job history.
 
+- [ ] `collapse.drill_toggle` and `clipboard.copy_button` on a `.cell-path` cell (sweep 13):
+  the jobs and disk-scans drilldowns (round C), and any other truncated path.
 - [ ] `sam.dates.start_of_today()`: the `datetime.now().replace(hour=0, ...)` expression still
   appears in `xras/card_routes.py`, `sam/xras/handlers/_allocations.py` and
   `sam/resources/machines.py` (sweep 4).
