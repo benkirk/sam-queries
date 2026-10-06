@@ -1,4 +1,5 @@
 {% extends 'dashboards/base.html' %}
+{% from 'dashboards/fragments/chart_bits.html' import chart_figure, chart_loading %}
 {% from 'dashboards/fragments/page_header.html' import page_header %}
 
 {% block title %}Queue History - {{ queue_name }} ({{ system|upper }}) - SAM{% endblock %}
@@ -77,34 +78,28 @@
         <h5 class="mb-0"><i class="fa-solid fa-chart-line"></i> Historical Trends</h5>
     </div>
     <div class="card-body">
-
-        {% if chart_svg %}
-        <div class="chart-container">
-            <h6 class="text-center fw-bold mb-2">
-                Queue Activity
-                <span class="text-muted fw-normal">— {{ system|upper }} · {{ queue_name }}</span>
-            </h6>
-            {{ chart_svg|safe }}
-        </div>
-        {% else %}
-        <div class="text-center text-muted py-4">
-            <i class="fa-solid fa-chart-line fa-3x mb-3"></i>
-            <p>No historical data available for the selected time period.</p>
-        </div>
-        {% endif %}
+        <h6 class="text-center fw-bold mb-2">
+            Queue Activity
+            <span class="text-muted fw-normal">— {{ system|upper }} · {{ queue_name }}</span>
+        </h6>
+        {# Always a string: the chart renders its own empty state. #}
+        {% call chart_figure('Queue activity over time, ' ~ system|upper ~ ' ' ~ queue_name) %}
+            {{ chart_svg | safe }}
+        {% endcall %}
     </div>
 </div>
 
-<!-- Per-user / per-project queue load over time (top-N + Others).
-     Visible to any logged-in user; legend click-through into per-user
-     / per-project detail modals is gated on VIEW_SYSTEM_STATUS_USER_INFO
-     inside the chart-rendering route (link_kind=None for non-operators). -->
+{# Per-user / per-project queue load over time (top-N + the rest). Signed-in viewers
+   only: the chart route is @login_required, and its 401 carries HX-Redirect, which
+   would send an anonymous visitor to this public page off to the login screen.
+   Legend links need VIEW_SYSTEM_STATUS_USER_INFO (link_kind=None otherwise). #}
+{% if current_user.is_authenticated %}
 <div class="card mb-4">
     <div class="card-header">
         <h5 class="mb-0">
             <i class="fa-solid fa-chart-area"></i> User / project load over time
             <small class="text-muted fw-normal ms-2">
-                top 15 + Others, {{ start_date | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M') }}
+                top 15 + the rest, {{ start_date | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M') }}
                 → {{ end_date | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }}
             </small>
         </h5>
@@ -124,12 +119,11 @@
              data-chart-persist-id="upq-chart-{{ system }}-{{ queue_name }}"
              data-chart-persist-keys="state rank_by"
              data-chart-persist-shared="group_by metric:queue">
-            <div class="text-center text-muted py-5">
-                <i class="fa-solid fa-spinner fa-spin"></i> Loading chart…
-            </div>
+            {{ chart_loading() }}
         </div>
     </div>
 </div>
+{% endif %}
 
 {% if can_view_user_info %}
 <!-- Per-user / per-project rollup (latest snapshot). Restricted to

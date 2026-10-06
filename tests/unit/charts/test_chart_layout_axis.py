@@ -10,7 +10,7 @@ it. These are the claims that must survive any future retuning:
 - and the axis reaches the leaves, i.e. no chart quietly ignores it.
 
 The last one is the reason this file exists. PR 1 shipped six `Layout` fields
-of which two were read by nothing and three by one or two charts of fifteen,
+of which two were read by nothing and three by one or two charts,
 and every test still passed — because "renders without raising" is all a
 smoke test can see.
 """
@@ -20,7 +20,7 @@ import inspect
 import pytest
 
 from webapp.dashboards import charts
-from webapp.dashboards.charts import dualpanel, histogram, pace, pie, stacked
+from webapp.dashboards.charts import dualpanel, histogram, pace, pie, stacked, sunburst
 from webapp.dashboards.charts.base import BaseChart
 from webapp.dashboards.charts.layout import (
     MOBILE_DEFAULTS, TABLET_DEFAULTS, Layout, profile, resolve_layout,
@@ -34,7 +34,20 @@ LAYOUT_OWNERS = [
     dualpanel.NodetypeHistoryChart,
     dualpanel.QueueHistoryChart,
     pace.PaceChart,
+    sunburst.PanelSunburst,
 ]
+
+#: Drawn only in the fullscreen expand modal, whose opener is hidden below `md`
+#: (`fragments/chart_expand.html`): square at every layout, and never phone-sized.
+EXPAND_ONLY = {sunburst.PanelSunburst}
+
+
+def test_layout_owners_lists_every_class_that_declares_a_profile():
+    declared = {cls for module in (dualpanel, histogram, pace, pie, stacked, sunburst)
+                for cls in vars(module).values()
+                if inspect.isclass(cls) and cls.__module__ == module.__name__
+                and 'LAYOUTS' in vars(cls)}
+    assert declared == set(LAYOUT_OWNERS)
 
 
 def _chart_classes():
@@ -140,6 +153,8 @@ class TestProfiles:
         desktop = cls.LAYOUTS['desktop'].figsize
         mobile = cls.LAYOUTS['mobile'].figsize
         assert mobile[0] < desktop[0], f'{cls.__name__} mobile is not narrower'
+        if cls in EXPAND_ONLY:
+            return
         # ~4.6in of figure lands near 350pt after the tight bbox, which is
         # about a phone viewport once card padding is off. Wider and the
         # browser scales it back down, which is the whole defect.
@@ -173,6 +188,8 @@ class TestProfiles:
         s = cls.LAYOUTS[name].figsize
         if tuple(s) == tuple(d):
             pytest.skip(f'{cls.__name__} {name} is the desktop figure')
+        if cls in EXPAND_ONLY:
+            pytest.skip(f'{cls.__name__} is square by design')
         assert abs(s[1] / s[0] - d[1] / d[0]) > 0.01, cls.__name__
 
     def test_every_bound_chart_reaches_a_profile(self):
@@ -329,7 +346,7 @@ def test_link_legend_ordered_flag_skips_the_reverse():
 
 
 def test_others_band_survives_the_legend_cap():
-    """Dropping "Others" would leave a visible gray band with nothing in the
+    """Dropping the remainder would leave a visible gray band with nothing in the
     legend explaining it — worse than dropping a sliver already hard to see."""
     from webapp.dashboards.charts.series import Series
 
@@ -337,14 +354,14 @@ def test_others_band_survives_the_legend_cap():
         pass
 
     chart = _Chart()
-    chart.bands = [Series('Others', [1], None)] + [
+    chart.bands = [Series('84 other', [1], None, is_other=True)] + [
         Series(f'p{i}', [1], f'p{i}') for i in range(9)]
     chart.colors = ['#000'] * 10
 
     entries = chart.legend_entries(_Chart.LAYOUTS['mobile'])
     cap = _Chart.LAYOUTS['mobile'].max_legend_entries
     assert len(entries) == cap
-    assert entries[-1][0].label == 'Others'
+    assert entries[-1][0].is_other
     assert entries[0][0].label == 'p8'   # largest named band still first
 
 

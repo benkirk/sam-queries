@@ -4,13 +4,13 @@ Two channels, because charts reach the browser two different ways and neither
 one covers both:
 
 - **query string**, injected into every htmx request by
-  ``static/js/layout-axis.js``. Covers the 9 fragment call sites, and covers
+  ``static/js/layout-axis.js``. Covers the fragment call sites, and covers
   them on the very first paint because ``hx-trigger="load"`` fires after the
   listener registers.
-- **cookie**, written by the same file from ``matchMedia``. Covers the 9
-  call sites that render inside a full-page GET — the three status history
-  pages and the four pies on ``/allocations/projects`` — where no htmx
-  request exists to inject into.
+- **cookie**, written by the same file from ``matchMedia``. Covers the call
+  sites that render inside a full-page GET — the three status history pages
+  and the sunbursts on ``/allocations/projects`` — where no htmx request
+  exists to inject into.
 
 The cookie cannot cover the first page of a session (it is set at end of body,
 after the server already chose), and the query string cannot reach a full-page
@@ -18,6 +18,7 @@ render. Together they leave only that one first page, on which charts are
 merely small rather than broken.
 """
 
+import ast
 import importlib
 import inspect
 import re
@@ -95,11 +96,17 @@ class TestReadLayout:
 # The last hop: renderer to renderer
 # --------------------------------------------------------------------------
 
-#: The modules whose fragment renderers take a render-axis argument.
-#: ``utils/fragments.py:_register_one`` resolves both axes once for all 27
-#: jobs/disk-scans routes and hands them to every panel, so an axis reaches
-#: these two files and then has to be *carried* the rest of the way by hand.
-_RENDERER_MODULES = ('webapp.jobs.routes', 'webapp.disk_scans.routes')
+#: Every module that calls a chart. ``utils/fragments.py:_register_one`` resolves
+#: both axes for the jobs and disk-scans routes and hands them to each panel, which
+#: must *carry* them on; the dashboard blueprints read them at the call.
+_RENDERER_MODULES = (
+    'webapp.jobs.routes',
+    'webapp.disk_scans.routes',
+    'webapp.dashboards.allocations.blueprint',
+    'webapp.dashboards.user.blueprint',
+    'webapp.dashboards.status.blueprint',
+    'webapp.dashboards.admin.facilities_routes',
+)
 
 #: Both render axes are transported identically and fail identically, so this
 #: section is generic over the two. ``theme`` is the dark-mode sibling added in
@@ -108,15 +115,13 @@ _AXES = ('layout', 'theme')
 
 
 def _axis_takers(module, axis):
-    """``{name: fn}`` for everything in the module's namespace that accepts an
-    *axis* argument — its own renderers *and* the imported chart callables,
-    which advertise it through ``chart_view``'s explicit ``__signature__``."""
-    out = {}
+    """Names in the module's namespace that accept an *axis* argument: its own
+    renderers *and* the imported chart callables, which advertise it through
+    ``chart_view``'s explicit ``__signature__``."""
+    out = set()
     for name, fn in vars(module).items():
-        # Plain functions only. The module namespace also holds Flask
-        # `LocalProxy` objects (`current_app`, `request`), and merely asking
-        # one for a signature dereferences it — outside an app context that
-        # raises rather than returning something uninteresting.
+        # Plain functions only: asking a Flask `LocalProxy` for a signature
+        # dereferences it, which raises outside an app context.
         if not inspect.isfunction(fn):
             continue
         try:
@@ -124,48 +129,74 @@ def _axis_takers(module, axis):
         except (TypeError, ValueError):
             continue
         if axis in sig.parameters:
-            out[name] = fn
+            out.add(name)
     return out
+
+
+def _calls_missing_axis(tree, takers, axis):
+    """``['name:line']`` for each call to a taker that does not pass *axis*.
+
+    A taker handed on as the first argument (``wrapper(generate_x, data, ...)``)
+    counts as a call to it: the wrapper forwards its keywords.
+    """
+    missing = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        names = [n.id for n in [node.func, *node.args[:1]] if isinstance(n, ast.Name)]
+        called = next((n for n in names if n in takers), None)
+        if called and not any(kw.arg in (axis, None) for kw in node.keywords):
+            missing.append(f'{called}:{node.lineno}')
+    return missing
 
 
 @pytest.mark.parametrize('axis', _AXES)
 @pytest.mark.parametrize('mod_name', _RENDERER_MODULES)
 def test_renderers_forward_the_axis_they_are_given(mod_name, axis):
-    """A renderer that delegates to something axis-aware must pass it on.
+    """Every call to something axis-aware passes the axis, call by call.
 
-    This is the one hop nothing else can check. The registrar resolves
-    ``read_layout()`` / ``read_theme()`` once and the chart layer honors
-    whatever it is given, so a renderer that accepts the argument and then
-    calls its delegate without it fails *silently* — the fragment renders, at
-    desktop or in light, forever. That is exactly what happened to the three
-    jobs histogram panels (Wait Times, Job Sizes, Durations):
+    The chart layer honors whatever it is given, so a call that leaves the
+    argument off fails *silently*: the fragment renders, at desktop or in
+    light, forever. That happened to the three jobs histogram panels:
     ``_panel_histogram`` took ``layout`` and dropped it, and all three served
     an 18in figure to phones and tablets alike.
 
-    The theme parameterization is not symmetry for its own sake: a dropped
-    theme is the *louder* failure of the two, because a light chart on a dark
-    page is wrong at a glance where a slightly-too-large figure is not.
-
-    Renderers that draw no chart are exempt by construction rather than by
-    allowlist: they call nothing that takes the argument, so there is nothing
-    to forward. ``utils/fragments.py`` states that contract — "panels that draw
-    no chart accept and ignore them".
+    Checked on the syntax tree, per call: a renderer with two delegates that
+    forwards to one of them does not pass. A renderer that draws no chart
+    calls nothing that takes the argument, so it is exempt by construction.
     """
     module = importlib.import_module(mod_name)
     takers = _axis_takers(module, axis)
     assert takers, f'{mod_name} has no {axis}-aware callables — test is stale'
+    missing = _calls_missing_axis(ast.parse(inspect.getsource(module)), takers, axis)
+    assert not missing, f'{mod_name}: {axis} dropped on the way to a chart at {missing}'
 
-    dropped = []
-    for name, fn in takers.items():
-        if getattr(fn, '__module__', None) != mod_name:
-            continue                       # imported chart view, not a renderer
-        src = inspect.getsource(fn)
-        delegates = [d for d in takers
-                     if d != name and re.search(rf'\b{re.escape(d)}\s*\(', src)]
-        if delegates and f'{axis}={axis}' not in src:
-            dropped.append(f'{name} calls {sorted(delegates)} without {axis}=')
-    assert not dropped, (
-        f'{axis} dropped on the way to a chart:\n  ' + '\n  '.join(dropped))
+
+def test_the_per_call_check_sees_one_dropped_delegate_among_two():
+    tree = ast.parse('def panel(layout):\n'
+                     '    a = generate_a(1, layout=layout)\n'
+                     '    b = generate_b(2)\n'
+                     '    c = guard(generate_b, 2)\n'
+                     '    d = guard(generate_b, 2, layout=read_layout())\n')
+    assert _calls_missing_axis(tree, {'generate_a', 'generate_b'}, 'layout') == [
+        'generate_b:3', 'generate_b:4']
+
+
+def test_every_module_that_imports_a_chart_is_checked():
+    """A seventh calling module must join ``_RENDERER_MODULES``."""
+    src = REPO_ROOT / 'src'
+    importers = set()
+    for path in (src / 'webapp').rglob('*.py'):
+        if 'dashboards/charts' in path.as_posix():
+            continue
+        for node in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            charts = (node.module == 'webapp.dashboards.charts'
+                      or (node.level and node.module == 'charts'))   # `from ..charts import`
+            if charts and any(a.name.startswith('generate_') for a in node.names):
+                importers.add('.'.join(path.relative_to(src).with_suffix('').parts))
+    assert importers == set(_RENDERER_MODULES)
 
 
 def test_the_registrar_resolves_both_axes():
@@ -186,7 +217,7 @@ def test_the_registrar_resolves_both_axes():
 # --------------------------------------------------------------------------
 
 class TestCacheKeyPartitionsByLayout:
-    """``/allocations/projects`` renders four pies inline and is
+    """``/allocations/projects`` renders its sunbursts inline and is
     ``@cache.cached``. Its layout arrives on the cookie, which is *not* in the
     query string — so without this, the first visitor to warm the page would
     decide whether every later visitor got phone-sized or desktop-sized pies.

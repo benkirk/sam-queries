@@ -1,19 +1,12 @@
 {# Body of #chartExpandModal. In-modal controls only hx-target the body: a modal
    toggle here would hide the open modal (the PR #464 trap). `windows` is
-   [(label, url, active)] or empty. #}
+   chart_pills dicts, or empty. #}
+{% from 'dashboards/fragments/chart_bits.html' import chart_pills %}
 <h5 class="modal-title" id="chartExpandModalTitle" hx-swap-oob="true">{{ title }}</h5>
 <div class="chart-expand">
     {% if windows %}
     <div class="d-flex justify-content-center mb-2">
-        <div class="btn-group btn-group-sm" role="group" aria-label="Usage window">
-            {% for label, url, active in windows %}
-            <button type="button"
-                    class="btn btn-outline-secondary{% if active %} active{% endif %}"
-                    hx-get="{{ url }}" hx-target="#chartExpandModalBody" hx-swap="innerHTML">
-                {{ label }}
-            </button>
-            {% endfor %}
-        </div>
+        {{ chart_pills('Usage window', windows, '#chartExpandModalBody', swap='innerHTML') }}
     </div>
     {% endif %}
     <figure class="mb-0" aria-label="{{ title }}">{{ chart_svg | safe }}</figure>

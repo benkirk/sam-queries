@@ -187,18 +187,14 @@ class TestThemeRoundTrip:
 # --------------------------------------------------------------------------
 
 class TestCacheKeyPartitionsByTheme:
-    """Five routes cache fully-rendered HTML under ``user_aware_cache_key``.
+    """Routes cache fully-rendered HTML under ``user_aware_cache_key``, and one
+    of them, ``/allocations/projects``, inlines its sunbursts: SVG with the
+    theme's colors baked in.
 
-    Today their bytes are genuinely theme-independent — they are table/card
-    fragments with no chart SVG and no ``data-bs-theme`` of their own, so
-    theming reaches them by CSS inheritance from the page shell. Strictly the
-    key does not need a theme component.
-
-    It has one anyway, because that invariant is real today and completely
-    invisible tomorrow: add one chart to the allocations fragment and one
-    user's dark SVG is served to every light-mode user with the same facility
-    scope. That presents as an intermittent *rendering* bug rather than a
-    caching bug. Make the wrong thing inexpressible — the same argument
+    So the key's theme component is load-bearing. Without it one user's dark
+    charts are served to every light-mode user with the same facility scope,
+    which presents as an intermittent *rendering* bug rather than a caching
+    bug. Make the wrong thing inexpressible — the same argument
     ``charts/base.py:chart_view`` makes about its own aliasing trap.
     """
 
@@ -263,7 +259,7 @@ class TestThemeToggleJs:
             'expected a one-year Max-Age expressed legibly')
 
     def test_reloads_after_flipping(self, js):
-        """16 charts are server-rendered SVG with baked colors. Without the
+        """Every chart is server-rendered SVG with baked colors. Without the
         reload they stay stale — a light chart on a dark page, which is worse
         than the reload it avoids."""
         assert 'location.reload()' in js

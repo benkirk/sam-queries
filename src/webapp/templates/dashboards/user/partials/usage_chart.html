@@ -9,21 +9,21 @@
    additionally links legend usernames to `#sam/user/<name>`, which lands in
    the *other* pane — activateOwningTab switches to it first. #}
 
+{% from 'dashboards/fragments/chart_bits.html' import chart_figure %}
 {% from 'dashboards/user/partials/_resource_details_macros.html' import metric_pills with context %}
 
 {{ metric_pills('user_dashboard.resource_details_usage_chart',
                 available_metrics, metric, '#usage-chart-wrapper',
                 projcode, resource_name, scope, start_date, end_date) }}
 
-<div class="chart-container">
+{% call chart_figure('Daily usage' ~ (' by user' if is_stacked else '')) %}
     {{ chart_svg | safe }}
-</div>
+{% endcall %}
 
 {% if has_data %}
 <div class="text-muted small text-center mt-2">
     <i class="fa-solid fa-hand-pointer me-1"></i>
     Click a bar to expand that day in the table below.
     {% if is_stacked %}Click a username in the legend to open that user in the <em>By User</em> tab.{% endif %}
-    Reload the page to reset all selections.
 </div>
 {% endif %}

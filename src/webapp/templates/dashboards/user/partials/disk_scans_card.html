@@ -32,6 +32,7 @@
    user|project `group_by` the job and queue charts share. Large
    directories keeps its sort/recursive settings per visit.
 #}
+{% from 'dashboards/fragments/chart_bits.html' import chart_loading %}
 {% if mode == 'resource' %}
     {% set _dirs_url  = url_for('disk_scans.directories_resource_fragment',   resource=resource_name, target_id=cid ~ '-directories') %}
     {% set _ent_url   = url_for('disk_scans.entities_resource_fragment',      resource=resource_name, target_id=cid ~ '-entities') %}
@@ -113,32 +114,24 @@
             </a>
         </div>
         <div id="{{ cid }}-directories">
-            <p class="text-muted small mb-0">
-                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading directories…
-            </p>
+            {{ chart_loading('Loading directories…') }}
         </div>
     </div>
     {% if mode != 'user' %}
     <div class="tab-pane fade" id="tab-{{ cid }}-ent" role="tabpanel">
         <div id="{{ cid }}-entities" data-chart-persist-shared="kind:disk-scan">
-            <p class="text-muted small mb-0">
-                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading…
-            </p>
+            {{ chart_loading('Loading…') }}
         </div>
     </div>
     {% endif %}
     <div class="tab-pane fade" id="tab-{{ cid }}-acc" role="tabpanel">
         <div id="{{ cid }}-access" data-chart-persist-shared="metric:disk-scan log:disk-scan">
-            <p class="text-muted small mb-0">
-                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading access history…
-            </p>
+            {{ chart_loading('Loading access history…') }}
         </div>
     </div>
     <div class="tab-pane fade" id="tab-{{ cid }}-files" role="tabpanel">
         <div id="{{ cid }}-files" data-chart-persist-shared="metric:disk-scan log:disk-scan">
-            <p class="text-muted small mb-0">
-                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading file sizes…
-            </p>
+            {{ chart_loading('Loading file sizes…') }}
         </div>
     </div>
 </div>

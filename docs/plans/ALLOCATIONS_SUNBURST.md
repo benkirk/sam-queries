@@ -1,7 +1,7 @@
 # Allocations dashboard: two-ring charts and one-table trees
 
-**Status: implemented, in review (2026-10-02)** · branch `allocations-sunburst` (from
-`origin/staging` after #696 merged).
+**Status: implemented and merged** (#697 on 2026-10-02, the legend follow-up #700 the same
+day) · branch `allocations-sunburst` (from `origin/staging` after #696 merged).
 
 ## Why
 

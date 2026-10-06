@@ -16,7 +16,7 @@ class TestDiskEntityPie:
     wedge/legend sentinels that svg-chart-links.js routes to row expansion."""
 
     def test_cumulative_keep(self):
-        from webapp.dashboards.charts import _pie_cumulative_keep
+        from webapp.dashboards.charts.pie import trim_cumulative as _pie_cumulative_keep
         assert _pie_cumulative_keep([90, 5, 3, 2]) == 1   # one dominant slice
         assert _pie_cumulative_keep([1] * 20) == 9        # hard cap (palette = 10)
         assert _pie_cumulative_keep([5, 4, 3]) == 3       # all fit -> no "Other"
@@ -502,3 +502,14 @@ def test_a_size_band_drill_puts_the_slider_on_that_band(auth_client, active_proj
                     '&min_avg_size=1048576&max_avg_size=10485760')
     assert 'value="1048576"' in body
     assert body.count('Custom range') == 0 or 'Avg file size' in body
+
+
+def test_distribution_with_buckets_and_no_data_is_the_empty_state(app):
+    """Labels alone used to draw empty axes; the jobs histogram already checked values."""
+    from webapp.dashboards.charts import generate_distribution_histogram
+    hist = {'bucket_labels': ['< 30d', '> 30d'],
+            'buckets': {'< 30d': {'data': 0, 'files': 0, 'owners': {}},
+                        '> 30d': {'data': 0, 'files': 0, 'owners': {}}}}
+    with app.test_request_context('/'):
+        out = generate_distribution_histogram(hist)
+    assert '<svg' not in out and 'No distribution data for this scope' in out

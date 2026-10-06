@@ -1,4 +1,5 @@
 {% extends 'dashboards/allocations/base_allocations.html' %}
+{% from 'dashboards/fragments/chart_bits.html' import chart_loading %}
 {% from 'dashboards/fragments/filter_panel.html' import filter_apply, filter_panel_shell %}
 {% from 'dashboards/fragments/form_fields.html' import multiselect_filter %}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
@@ -111,9 +112,7 @@
                                         active_at=active_at, facilities=selected_facilities or []) }}"
                      hx-trigger="intersect once" hx-swap="innerHTML"
                      data-chart-persist-id="cal-{{ pane }}" data-chart-persist-keys="mode">
-                    <div class="text-center text-muted py-5">
-                        <i class="fa-solid fa-spinner fa-spin"></i> Loading calendar…
-                    </div>
+                    {{ chart_loading('Loading calendar…') }}
                 </div>
             </div>
         </div>
@@ -126,8 +125,6 @@
     <i class="fa-solid fa-circle-info"></i> No active allocations found for the selected date.
 </div>
 {% endif %}
-
-{% include 'dashboards/fragments/chart_expand_modal.html' %}
 
 {# Allocation management modals arrive with dashboards/shared/project_details_modal.html
    (included by base_allocations.html). #}

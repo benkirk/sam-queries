@@ -80,3 +80,12 @@ def test_index_loads_hpc_usage_lazily_and_storage_inline(auth_client):
     body = auth_client.get('/allocations/projects').get_data(as_text=True)
     assert '/allocations/htmx/used-sunburst/Derecho' in body
     assert '/allocations/htmx/used-sunburst/Campaign_Store' not in body
+
+
+def test_one_caption_for_the_ring_and_its_expanded_view():
+    from datetime import datetime
+    day = datetime(2026, 10, 3)
+    assert blueprint._used_window_caption(365, day) == (
+        'Charges in the year to 2026-10-03, across allocation renewals.')
+    assert blueprint._used_window_caption(90, day) == (
+        'Charges in the 90 days to 2026-10-03, at an annual rate, across allocation renewals.')

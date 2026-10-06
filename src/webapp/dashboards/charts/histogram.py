@@ -28,8 +28,9 @@ from webapp.dashboards.charts.jobs_metrics import (
     JOBS_METRIC_LABELS, jobs_bucket_segments, jobs_metric_value,
 )
 from webapp.dashboards.charts.layout import profile
+from webapp.dashboards.charts.series import fold_top, other_label
 from webapp.dashboards.charts.theme import (
-    UNITY_PALETTE_10, UNITY_STACK_10, scale_bytes, shade_family,
+    UNITY_NCAR_BLUE, UNITY_STACK_10, scale_bytes, shade_family,
 )
 
 #: Top-N owners drawn as their own stack segment per bar; the rest collapse
@@ -38,20 +39,27 @@ _AH_TOP_SEGMENTS = 10
 
 
 def bucket_segments(owners, metric='data'):
-    """Per-bucket stacked-bar segments, bottom -> top.
+    """Per-bucket stack segments ``[(name, value)]``, bottom -> top.
 
-    Returns a list of segment values (in *metric* units — ``'data'`` bytes or
-    ``'files'`` counts) ordered as the long-tail "other" aggregate (if any)
-    followed by the top-``_AH_TOP_SEGMENTS`` owners ascending — so the largest
-    owner sits at the top of the bar. Empty list when the bucket has no owners
-    (-> drawn as a single flat bar).
+    Values are in *metric* units (``'data'`` bytes or ``'files'`` counts): the
+    folded long tail (``N other``) at the base, then the top
+    ``_AH_TOP_SEGMENTS`` owners ascending, so the largest sits at the top of
+    the bar. Empty when the bucket has no owners (a single flat bar).
     """
     if not owners:
         return []
-    ranked = sorted((d.get(metric, 0) or 0) for d in owners.values())
-    if len(ranked) > _AH_TOP_SEGMENTS:
-        return [sum(ranked[:-_AH_TOP_SEGMENTS])] + ranked[-_AH_TOP_SEGMENTS:]
-    return ranked
+    kept, rest, n_rest = fold_top(
+        [(name, d.get(metric, 0) or 0) for name, d in owners.items()], _AH_TOP_SEGMENTS)
+    return ([(other_label(n_rest), rest)] if n_rest else []) + kept[::-1]
+
+
+def _by_username(owners, username_map):
+    """fs-scans keys its owners by uid (an int, or a string once cached): rekey
+    them by username, else ``uid N``, as the table beside the chart does."""
+    def name(uid):
+        as_int = int(uid) if str(uid).isdigit() else None
+        return username_map.get(as_int) or username_map.get(str(uid)) or f'uid {uid}'
+    return {name(uid): row for uid, row in (owners or {}).items()}
 
 
 class CategoricalStackChart(BaseChart):
@@ -82,7 +90,7 @@ class CategoricalStackChart(BaseChart):
         raise NotImplementedError
 
     def bucket_segments(self, bucket) -> list:
-        """Stack segments bottom -> top, or [] for a flat bar."""
+        """Stack segments ``[(name, value)]`` bottom -> top, or [] for a flat bar."""
         raise NotImplementedError
 
     def bucket_is_clickable(self, bucket) -> bool:
@@ -90,6 +98,16 @@ class CategoricalStackChart(BaseChart):
 
     def ylabel(self) -> str:
         raise NotImplementedError
+
+    def amount(self, value) -> str:
+        """A plotted value as its hover says it."""
+        return fmt.number(value)
+
+    def tooltip_text(self, label, value, owner=None) -> str:
+        """Hover text for one bar, or for one owner's segment of it."""
+        if owner is None:
+            return self.hover(label, self.amount(value))
+        return ' · '.join((label, self.hover(owner, self.amount(value))))
 
     #: True to draw one solid bar per bucket instead of a stack. A log axis
     #: forces it; a subclass may also have no owner data at all.
@@ -122,6 +140,8 @@ class CategoricalStackChart(BaseChart):
                           edgecolor=theme.bar_edge, linewidth=self.bar_edge_width)
             for i, (bucket, rect) in enumerate(zip(self._buckets, bars.patches)):
                 self._link(rect, bucket, i)
+                if self.values[i]:
+                    self.tooltip(rect, self.tooltip_text(self.labels[i], self.values[i]))
             return
 
         for i, bucket in enumerate(self._buckets):
@@ -130,15 +150,20 @@ class CategoricalStackChart(BaseChart):
                 bar = ax.bar(i, self.values[i], color=self.band_colors[i],
                              edgecolor=theme.bar_edge, linewidth=self.bar_edge_width)
                 self._link(bar.patches[0], bucket, i)
+                if self.values[i]:
+                    self.tooltip(bar.patches[0], self.tooltip_text(self.labels[i], self.values[i]))
                 continue
             shades = shade_family(self.band_colors[i], len(segs),
                                   toward=theme.shade_toward)
             bottom = 0.0
-            for seg_val, shade in zip(segs, shades):
+            for (name, seg_val), shade in zip(segs, shades):
                 cont = ax.bar(i, seg_val, bottom=bottom, color=shade,
                               edgecolor=theme.segment_edge,
                               linewidth=self.segment_edge_width)
                 self._link(cont.patches[0], bucket, i)
+                if seg_val:
+                    self.tooltip(cont.patches[0],
+                                 self.tooltip_text(self.labels[i], seg_val, owner=name))
                 bottom += seg_val
 
     def _link(self, artist, bucket, i):
@@ -149,7 +174,7 @@ class CategoricalStackChart(BaseChart):
     def decorate(self, ax, layout, theme):
         ax.set_xticks(range(len(self.labels)))
         ax.set_xticklabels(self.labels, rotation=layout.label_rotation, ha='right')
-        ax.set_ylabel(self.ylabel())
+        ax.set_ylabel(self.ylabel(), **self.label_kw(layout))
         if self.log_y:
             ax.set_yscale('log')
         self.apply_grid(ax, theme)
@@ -186,20 +211,15 @@ class DistributionHistogram(CategoricalStackChart):
         """
         labels = list((hist or {}).get('bucket_labels', []))
         buckets = (hist or {}).get('buckets', {})
+        names = (hist or {}).get('username_map') or {}
         payload = [
-            (lbl,
-             tuple(bucket_segments(buckets.get(lbl, {}).get('owners') or {}, metric)))
+            (lbl, bucket_segments(_by_username(buckets.get(lbl, {}).get('owners'), names), metric))
             for lbl in labels
         ]
         return content_hash(
             [payload, str((hist or {}).get('reference_scan_date', '')),
              bool(log_y), str(metric)]
         )
-
-    # The empty guard here is on bucket_labels, not on totals — a scope with
-    # buckets but no data still renders an (empty) axis today.
-    def is_empty(self) -> bool:
-        return not self.hist.get('bucket_labels')
 
     def buckets(self):
         return list(self.hist.get('bucket_labels') or [])
@@ -214,14 +234,18 @@ class DistributionHistogram(CategoricalStackChart):
         return (self._row(bucket).get(self.metric, 0) or 0) / self.scale
 
     def bucket_segments(self, bucket):
-        owners = self._row(bucket).get('owners') or {}
-        return [s / self.scale for s in bucket_segments(owners, self.metric)]
+        owners = _by_username(self._row(bucket).get('owners'), self.hist.get('username_map') or {})
+        return [(name, v / self.scale) for name, v in bucket_segments(owners, self.metric)]
 
     def bucket_is_clickable(self, bucket):
         return bool(self._row(bucket).get('owners'))
 
     def ylabel(self):
         return self._ylabel
+
+    def amount(self, value):
+        # Plotted values are scaled to the axis unit; a hover gives the real size.
+        return fmt.number(value) if self.metric == 'files' else fmt.size(value * self.scale)
 
     def prepare(self):
         labels = list(self.hist.get('bucket_labels') or [])
@@ -259,21 +283,21 @@ class JobsHistogram(CategoricalStackChart):
     empty_message = 'No jobs in this range'
     drill = links.JH_BUCKET
 
-    def __init__(self, hist, *, metric='jobs', log_y=False):
+    def __init__(self, hist, *, metric='jobs', log_y=False, titles=None):
         self.hist = hist or {}
         self.metric = metric
         self.log_y = log_y
+        self.titles = titles
 
     @staticmethod
-    def cache_key(hist, *, metric='jobs', log_y=False):
+    def cache_key(hist, *, metric='jobs', log_y=False, titles=None):
         """Hash exactly what the SVG depends on: the bucket labels, the chosen
         metric's values and owner-segment split, the dimension, null_count and
         the y-scale (not the full envelope — e.g. min_param/max_param don't
         affect the rendering). The job_count positivity vector joins the key
         because it decides which bars carry drill URLs — an hours-metric SVG
         with matching hours but a different populated-band set must not be
-        reused. Owner names stay out of the key: the SVG carries no owner
-        labels, so only the segment values shape it."""
+        reused. Each segment is keyed with its owner's name."""
         buckets = (hist or {}).get('buckets') or []
         payload = [(b.get('label'), jobs_metric_value(b, metric),
                     tuple(jobs_bucket_segments(b, metric))) for b in buckets]
@@ -281,6 +305,7 @@ class JobsHistogram(CategoricalStackChart):
         return content_hash([
             payload, clickable, str((hist or {}).get('dimension', '')),
             int((hist or {}).get('null_count') or 0), str(metric), bool(log_y),
+            titles or {},
         ])
 
     def buckets(self):
@@ -311,14 +336,14 @@ class JobsHistogram(CategoricalStackChart):
 
     def flat_bar_color(self, i):
         # Without owners the whole chart is one series in the primary color
-        # (UNITY_PALETTE_10[0], the historical flat chart's color — NOT the
-        # stack palette's first entry, which is gold); with owners it keeps
+        # (NCAR blue, as the flat usage trend — NOT the stack palette's first
+        # entry, which is gold); with owners it keeps
         # the per-band palette its stack would have used.
         # `band_colors` is already lifted for the theme; the bare fallback is
         # not, so it needs the same treatment — ncar-blue is 2.27:1 on the
         # dark card, and this branch paints the entire chart with it.
         return (self.band_colors[i] if self._has_owners
-                else self.theme.data_color(UNITY_PALETTE_10[0]))
+                else self.theme.data_color(UNITY_NCAR_BLUE))
 
     def prepare(self):
         self._has_owners = any(b.get('owners')

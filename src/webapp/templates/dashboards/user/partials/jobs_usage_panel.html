@@ -1,5 +1,6 @@
+{% from 'dashboards/fragments/chart_bits.html' import chart_figure %}
 {% from 'dashboards/user/partials/_jobs_macros.html'
-   import jobs_disabled, jobs_error, jobs_empty, metric_pills,
+   import jobs_disabled, jobs_error, jobs_empty, metric_pills, charges_note,
           JOBS_METRIC_NOUNS %}
 {% from 'dashboards/fragments/help.html' import term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_cpu_hours with context %}
@@ -77,17 +78,7 @@
     </span>
   </div>
 
-  {% if metric == 'charges' %}
-    {# Not a rounding artifact: qos_factor is a genuine 0.0 for the
-       'uncharged' QoS, so work can be real and its charges exactly zero.
-       Said here because an empty wedge otherwise reads as missing data. #}
-    <p class="text-muted small mb-2">
-      <i class="fa-solid fa-circle-info me-1"></i>
-      Charges are hours weighted by each job's QoS factor. Uncharged QoS
-      classes have a factor of 0, so an entity can show jobs and CPU-hours
-      while contributing no charges.
-    </p>
-  {% endif %}
+  {{ charges_note(metric, 'an entity') }}
 
   {% if not rows %}
     {{ jobs_empty('No jobs match the current filters.') }}
@@ -96,15 +87,16 @@
        clickable (set_url sentinels -> svg-chart-links.js) and expand the
        matching row below. #}
     {% if pie_svg %}
-    <div class="d-flex justify-content-center mb-3 jobs-user-pie"
-         {% if facility_toggle %}data-chart-expand{% endif %}>
+    {% call chart_figure(JOBS_METRIC_NOUNS[metric] | capitalize ~ ' by ' ~ entity.label | lower,
+                         'mb-3 jobs-user-pie',
+                         attrs=({'data-chart-expand': none} if facility_toggle else {})) %}
       {% if facility_toggle %}
       {{ expand_button(url_for('jobs.by_project_expanded_machine_fragment', machine=machine,
                                metric=metric),
                        include='#jobs-' ~ entity.form_key ~ '-params-' ~ target_id) }}
       {% endif %}
       {{ pie_svg | safe }}
-    </div>
+    {% endcall %}
     {% endif %}
 
     {# MULTI-TBODY (tbody.sortable-group): each row and its lazy drill-down
@@ -162,7 +154,7 @@
               <td class="text-end" data-sort-value="{{ r.job_count }}">{{ r.job_count | fmt_number }}</td>
               <td class="text-end" data-sort-value="{{ r.cpu_hours }}">{{ r.cpu_hours | fmt_number }}</td>
               <td class="text-end" data-sort-value="{{ r.gpu_hours }}">{{ r.gpu_hours | fmt_number }}</td>
-              {# Charges = cpu + gpu, matching charts._JOBS_METRIC_KEYS. #}
+              {# Charges = cpu + gpu, matching charts/jobs_metrics.py JOBS_METRIC_KEYS. #}
               {% set _rc = (r.cpu_charges or 0) + (r.gpu_charges or 0) %}
               <td class="text-end" data-sort-value="{{ _rc }}">{{ _rc | fmt_number }}</td>
             </tr>

@@ -117,6 +117,56 @@ class TestNumber:
 # ============================================================================
 
 
+class TestAxisLabels:
+    """One unit and one precision per axis (`fmt.axis_labels`)."""
+
+    def test_an_axis_crossing_the_threshold_is_compact_throughout(self):
+        ticks = [0, 50_000, 100_000, 150_000, 200_000, 250_000, 300_000, 350_000]
+        assert fmt.axis_labels(ticks) == ['0', '50K', '100K', '150K', '200K', '250K', '300K', '350K']
+
+    def test_an_axis_that_stays_below_keeps_exact_numbers(self):
+        assert fmt.axis_labels([0, 20_000, 40_000, 100_000]) == ['0', '20,000', '40,000', '100,000']
+
+    def test_the_peak_picks_the_unit_and_every_tick_shares_its_decimals(self):
+        ticks = [0, 5e8, 1e9, 1.5e9, 2e9, 2.5e9]
+        assert fmt.axis_labels(ticks) == ['0', '0.5B', '1.0B', '1.5B', '2.0B', '2.5B']
+
+    def test_fractional_ticks_keep_their_decimals(self):
+        assert fmt.axis_labels([0, 0.5, 1.0, 1.5, 2.0]) == ['0', '0.5', '1.0', '1.5', '2.0']
+        assert fmt.axis_labels([0.25, 0.5, 0.75]) == ['0.25', '0.50', '0.75']
+        assert fmt.number(0.5) == '0'    # what the per-tick formatter showed
+
+    def test_whole_ticks_carry_no_decimals(self):
+        assert fmt.axis_labels([0, 1, 2, 3]) == ['0', '1', '2', '3']
+        assert fmt.axis_labels([0.30000000000000004, 0.6]) == ['0.3', '0.6']
+
+    def test_ticks_off_screen_do_not_pick_the_unit(self):
+        ticks = [0, 40_000, 80_000, 120_000]
+        assert fmt.axis_labels(ticks, basis=ticks[:3]) == ['0', '40,000', '80,000', '120,000']
+        assert fmt.axis_labels(ticks) == ['0', '40K', '80K', '120K']
+
+    def test_a_log_axis_formats_each_tick_alone(self):
+        assert fmt.axis_labels([0.1, 1, 10, 1_000, 1_000_000]) == ['0.1', '1', '10', '1,000', '1.00M']
+
+    def test_raw_mode_never_compacts(self):
+        assert fmt.axis_labels([0, 150_000, 300_000], raw=True) == ['0', '150,000', '300,000']
+
+    def test_the_matplotlib_formatter_decides_from_the_visible_ticks(self):
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots()
+        try:
+            ax.bar([0, 1], [50_000, 340_000])
+            ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
+            fig.canvas.draw()
+            labels = [t.get_text() for t in ax.get_yticklabels()]
+        finally:
+            plt.close(fig)
+        assert '100K' in labels and '50K' in labels
+        assert not any(',' in label for label in labels)
+
+
 class TestPlural:
 
     def test_agrees_with_the_count(self):

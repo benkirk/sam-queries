@@ -271,7 +271,7 @@ def test_mobile_renders_smaller_than_desktop(rendered):
     Every chart's mobile figure must be *narrower* than its desktop one.
     This is what turns 9-11pt labels rendered at ~2-3px on a phone into
     labels rendered at roughly their nominal size, and it is the one claim
-    that must hold for all fifteen charts no matter how the tuning moves.
+    that must hold for every chart no matter how the tuning moves.
     """
     wider = []
     for desktop_id, mobile_id in _pairs(rendered, 'mobile'):

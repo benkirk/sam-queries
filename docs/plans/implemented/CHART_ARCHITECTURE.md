@@ -1,8 +1,9 @@
 # SAM chart architecture
 
-**Status: PROPOSED (2026-07-31), verified against source 2026-07-31.**
-Branch `chart-architecture-refactor`. This document is the design; no code has
-been written.
+**Status: built.** Written as a proposal on 2026-07-31 and implemented since; the
+body below is that design record and reads in its tense. Where the code has moved
+on, the blocks marked **As built (2026-10-05)** say what is true now (after the
+charts sweep). The current module layout is in CLAUDE.md, *Charts*.
 
 An OO refactor of `src/webapp/dashboards/charts.py`, plus two new rendering
 axes — **layout** (desktop / mobile) and **theme** (light / dark) — that the
@@ -319,6 +320,14 @@ render(layout, theme)
     └─ to_svg(fig)                  the :85 chokepoint, moved verbatim
 ```
 
+**As built (2026-10-05).** State lives on `self`, not a threaded model, and the hooks
+take `(axes, layout, theme)`. There is no `wire_links`: `draw` and `add_legend` set
+their own URLs. The driver is `prepare`, `is_empty`, `make_figure`,
+`apply_tick_fontsize`, `draw`, `decorate`, `add_legend`, `finish`, `apply_chrome`
+(theme colors onto every chrome artist), then `fig_to_svg`, which also writes the
+hover titles `BaseChart.tooltip` recorded. Date axes go through `apply_date_axis`,
+not `autofmt_xdate`.
+
 | Class attribute | Purpose |
 |---|---|
 | `cache_name`, `cache_maxsize` | **verbatim** from today's decorator args |
@@ -339,6 +348,24 @@ instance method, so a cache hit never constructs the chart or runs `prepare()`.
 | `CategoricalStackChart` (`histogram.py`) | DistributionHistogram, JobsHistogram |
 | `DualPanelTimeSeriesChart` (`dualpanel.py`) | NodetypeHistory, QueueHistory |
 | `PaceChart` (`pace.py`) | direct `BaseChart` subclass — no family |
+
+**As built (2026-10-05).** Seventeen charts. `FacilityPie` and `AllocationTypePie`
+are retired; the allocations and admin pages draw sunbursts instead.
+
+| Family (file) | Concretes |
+|---|---|
+| `PieChart` / `_CumulativePie` (`pie.py`) | DiskEntity, UserUsage, JobsUsage |
+| `TwoRingPie` (`sunburst.py`) | FairShare, Allocation, JobsFacility |
+| `PanelSunburst` (`sunburst.py`) | the three-ring expanded view; its rim entity is `rim_link` / `rim_noun` |
+| `StackedSeriesChart` (`stacked.py`) | UsageTrend, UsageTrendStacked, DiskUsageArea, UserProjArea, JobsTimeseries |
+| `CategoricalStackChart` (`histogram.py`) | DistributionHistogram, JobsHistogram |
+| `DualPanelTimeSeriesChart` (`dualpanel.py`) | NodetypeHistory, QueueHistory |
+| `PaceChart` (`pace.py`) | direct `BaseChart` subclass, no family |
+
+Shared across families since the sweep: one remainder fold and label
+(`series.fold_top`, `other_label`), one legend row signature (`legend_cells(label,
+value)`), one hover join (`BaseChart.hover`, with project titles from a `titles`
+mapping), and tick labels in one unit per axis (`fmt.axis_labels`).
 
 - **Bar vs area is a `stack_mode = 'bar' | 'area'` class attribute** dispatching
   to two ~12-line private methods, not two subclasses. This keeps three levels
@@ -584,6 +611,10 @@ other 16 call sites are unwrapped. Conclusion for the design: **`BaseChart` must
 not swallow exceptions**, or `disk_scans` silently starts rendering blank cards
 where it used to show an error. (Normalizing the 18 call sites is a reasonable
 follow-up; it is not this PR.)
+
+**As built (2026-10-05).** That follow-up is done: every route calls a chart through
+`webapp.utils.charts.draw_chart` (21 sites, gated by `test_chart_errors.py`), which
+logs and returns one shared error state. `BaseChart` still swallows nothing.
 
 ---
 

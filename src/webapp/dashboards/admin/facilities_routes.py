@@ -19,6 +19,7 @@ from webapp.utils.htmx import (
 )
 from webapp.extensions import db
 from webapp.dashboards.charts import generate_fair_share_sunburst
+from webapp.utils.charts import draw_chart
 from webapp.dashboards.charts.theme import facility_slots
 from webapp.utils.rbac import (
     require_permission, require_permission_any_facility, Permission,
@@ -75,8 +76,8 @@ def htmx_facilities_card():
         facilities=facilities,
         active_only=active_only,
         fs_slots=slots,
-        fair_share_chart=generate_fair_share_sunburst(
-            sunburst, layout=read_layout(), theme=read_theme()),
+        fair_share_chart=draw_chart(
+            generate_fair_share_sunburst, sunburst, layout=read_layout(), theme=read_theme()),
     )
 
 

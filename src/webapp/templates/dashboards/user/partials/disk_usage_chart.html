@@ -10,33 +10,21 @@
    scope / fileset / start_date / end_date are threaded through every
    hx-get so swapping metric preserves the current subtree, fileset, and
    timeframe. #}
+{% from 'dashboards/fragments/chart_bits.html' import chart_figure, chart_pills %}
 
 {% set _LABELS = {'bytes': 'Data Volume', 'files': 'File Count'} %}
 
-<ul class="nav nav-tabs mb-3" role="tablist">
-    {% for opt in ['bytes', 'files'] %}
-    <li class="nav-item" role="presentation">
-        <button type="button"
-                class="nav-link{% if metric == opt %} active{% endif %}"
-                role="tab"
-                aria-selected="{{ 'true' if metric == opt else 'false' }}"
-                hx-get="{{ url_for('user_dashboard.resource_details_disk_usage_chart',
-                                   projcode=projcode,
-                                   resource=resource_name,
-                                   scope=scope,
-                                   fileset=fileset,
-                                   start_date=start_date,
-                                   end_date=end_date,
-                                   metric=opt) }}"
-                hx-target="#disk-usage-chart-wrapper"
-                hx-swap="innerHTML">
-            {% if opt == 'bytes' %}<i class="fa-solid fa-hard-drive me-1"></i>{% else %}<i class="fa-solid fa-copy me-1"></i>{% endif %}
-            {{ _LABELS[opt] }}
-        </button>
-    </li>
+<div class="d-flex justify-content-center mb-2">
+    {% set pills = [] %}
+    {% for opt, icon in [('bytes', 'hard-drive'), ('files', 'copy')] %}
+    {% set _ = pills.append(dict(text=_LABELS[opt], icon=icon, on=(metric == opt), url=url_for(
+        'user_dashboard.resource_details_disk_usage_chart', projcode=projcode,
+        resource=resource_name, scope=scope, fileset=fileset, start_date=start_date,
+        end_date=end_date, metric=opt))) %}
     {% endfor %}
-</ul>
-
-<div class="chart-container">
-    {{ chart_svg | safe }}
+    {{ chart_pills('Metric', pills, '#disk-usage-chart-wrapper', swap='innerHTML') }}
 </div>
+
+{% call chart_figure(_LABELS[metric] ~ ' over time by user') %}
+    {{ chart_svg | safe }}
+{% endcall %}

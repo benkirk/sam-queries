@@ -1,5 +1,6 @@
+{% from 'dashboards/fragments/chart_bits.html' import chart_figure, chart_pills %}
 {% from 'dashboards/user/partials/_jobs_macros.html'
-   import jobs_disabled, jobs_error, jobs_empty, metric_pills %}
+   import jobs_disabled, jobs_error, jobs_empty, metric_pills, charges_note %}
 {% from 'dashboards/fragments/help.html' import term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_cpu_hours with context %}
 {#
@@ -55,37 +56,27 @@
     {# Granularity. Auto-selected from the window; an explicit choice is
        honored only while it fits the bar budget, so a stale 'day' from
        localStorage can't be replayed against a five-year window. #}
-    <div class="btn-group btn-group-sm me-1" role="group" aria-label="Granularity">
-      {% for p in period_choices %}
-      <button type="button"
-              class="btn btn-outline-secondary {% if period == p.key %}active{% endif %}"
-              {% if not p.enabled %}disabled
-              title="{{ p.bars | fmt_number }} bars — over the {{ max_bars }}-bar budget for this window"
-              {% else %}title="{{ p.bars | fmt_number }} bars"{% endif %}
-              hx-get="{{ fragment_url }}?period={{ p.key }}&metric={{ metric }}"
-              hx-target="#{{ target_id }}"
-              hx-include="#jobs-timeline-params-{{ target_id }}"
-              hx-swap="innerHTML">
-        {{ p.label }}
-      </button>
-      {% endfor %}
-    </div>
+    {% set pills = [] %}
+    {% for p in period_choices %}
+    {% set _bars = p.bars | fmt_number ~ ' bars' %}
+    {% set _ = pills.append(dict(
+        text=p.label, on=(period == p.key), off=(not p.enabled),
+        title=(_bars if p.enabled else _bars ~ ' — over the ' ~ max_bars ~ '-bar budget for this window'),
+        url=fragment_url ~ '?period=' ~ p.key ~ '&metric=' ~ metric)) %}
+    {% endfor %}
+    {{ chart_pills('Granularity', pills, '#' ~ target_id, swap='innerHTML',
+                   include='#jobs-timeline-params-' ~ target_id, classes='me-1') }}
 
     {% if owners_toggle | default(false) %}
     {# Who owns the stack. Same vocabulary as the histograms and the status
        queue-load chart, so the choice rides the shared preference bucket. #}
-    <div class="btn-group btn-group-sm me-1" role="group" aria-label="Owner dimension">
-      {% for ob, label in [('user', 'User'), ('project', 'Project')] %}
-      <button type="button"
-              class="btn btn-outline-secondary {% if group_by == ob %}active{% endif %}"
-              hx-get="{{ fragment_url }}?group_by={{ ob }}&metric={{ metric }}&period={{ period }}"
-              hx-target="#{{ target_id }}"
-              hx-include="#jobs-timeline-params-{{ target_id }}"
-              hx-swap="innerHTML">
-        {{ label }}
-      </button>
-      {% endfor %}
-    </div>
+    {% set pills = [] %}
+    {% for ob, label in [('user', 'User'), ('project', 'Project')] %}
+    {% set _ = pills.append(dict(text=label, on=(group_by == ob), url=fragment_url ~ '?group_by=' ~ ob
+                                 ~ '&metric=' ~ metric ~ '&period=' ~ period)) %}
+    {% endfor %}
+    {{ chart_pills('Owner dimension', pills, '#' ~ target_id, swap='innerHTML',
+                   include='#jobs-timeline-params-' ~ target_id, classes='me-1') }}
     {% endif %}
 
     <span class="ms-auto text-muted small">
@@ -95,24 +86,14 @@
   </div>
 
   {% if chart_svg %}
-  <div class="d-flex justify-content-center mb-2 jobs-timeline-chart">
+  {% call chart_figure('Jobs over time, stacked by ' ~ group_by, 'mb-2 jobs-timeline-chart') %}
     {{ chart_svg | safe }}
-  </div>
+  {% endcall %}
   {% else %}
     {{ jobs_empty('No jobs match these filters.') }}
   {% endif %}
 
-  {% if metric == 'charges' %}
-    {# Not a rounding artifact: qos_factor is a genuine 0.0 for the
-       'uncharged' QoS, so work can be real and its charges exactly zero.
-       Said here because an empty bar otherwise reads as missing data. #}
-    <p class="text-muted small mb-2">
-      <i class="fa-solid fa-circle-info me-1"></i>
-      Charges are hours weighted by each job's QoS factor. Uncharged QoS
-      classes have a factor of 0, so bands can show jobs and CPU-hours while
-      contributing no charges.
-    </p>
-  {% endif %}
+  {{ charges_note(metric, 'a band') }}
 
   {% if ts.null_count %}
     <p class="text-muted small mb-2">

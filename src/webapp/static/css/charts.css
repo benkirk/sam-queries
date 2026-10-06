@@ -1,0 +1,121 @@
+/* Server-rendered charts: sizing, the below-desktop gutter, the expand opener.
+   One file for every chart host, as allocations.css and filters.css are for
+   theirs. The figures come from charts/layout.py; measurements behind the
+   numbers are in docs/plans/implemented/MOBILE_CHARTS.md and TABLET_CHARTS.md. */
+
+/* ===================================================================
+   Sizing
+   =================================================================== */
+
+/* Every chart sits in a `.chart-container` (chart_bits.html chart_figure), bar
+   the ring charts, which are figures of their own kind below. A chart never
+   exceeds its box and keeps its aspect ratio when it shrinks: without
+   `height: auto` the SVG keeps its intrinsic height and letterboxes. */
+.chart-container {
+    text-align: center;
+}
+
+.chart-container svg {
+    display: block;
+    margin: 0 auto;
+    max-width: 100%;
+    height: auto;
+}
+
+/* Pies and ring charts fill their column up to one cap. */
+.disk-entity-pie svg,
+.fair-share-chart svg,
+.sunburst-chart svg {
+    display: block;
+    width: 100%;
+    max-width: 44rem;
+    height: auto;
+    margin: 0 auto;
+}
+
+/* Pace fills the dashboard column at any width. */
+.pace-chart svg {
+    width: 100%;
+    max-width: none;
+}
+
+/* ===================================================================
+   Gutters below desktop
+   =================================================================== */
+
+/* Status and job-history charts sit in a card inside a card, and each
+   `.card-body` takes 1rem a side, so the chart bleeds back over its own card's
+   padding: it lines up with the card edge and cannot overflow. Not the ring
+   charts: they are capped, centered, and sit in grid columns. */
+@media (max-width: 1199.98px) {
+    .chart-container {
+        margin-left: -1rem;
+        margin-right: -1rem;
+    }
+
+    /* Pace's loader and its fragment are both containers: one gutter, not two. */
+    .chart-container .chart-container {
+        margin-left: 0;
+        margin-right: 0;
+    }
+}
+
+/* Phones only: upscale a figure narrower than its card. No tablet figure is,
+   and on a wide screen it would blur an 18in figure. */
+@media (max-width: 767.98px) {
+    .chart-container svg {
+        width: 100%;
+    }
+}
+
+/* ===================================================================
+   Expand to the fullscreen modal
+   =================================================================== */
+
+/* The opener sits top-right of its chart; a click on the chart off a link opens it too. */
+[data-chart-expand] {
+    position: relative;
+}
+[data-chart-expand] svg {
+    cursor: zoom-in;
+}
+[data-chart-expand] svg a {
+    cursor: pointer;
+}
+.chart-expand-btn {
+    position: absolute;
+    top: 0;
+    right: 0.75rem;
+    z-index: 1;
+}
+[data-chart-expand]:hover .chart-expand-btn {
+    --bs-btn-color: var(--text-link);
+}
+/* The expanded chart fills the fullscreen modal's height; its legend takes the width. */
+.chart-expand svg {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    height: calc(100vh - 9rem);
+    margin: 0 auto;
+}
+
+/* ===================================================================
+   Loading
+   =================================================================== */
+
+/* The one placeholder (chart_bits.html chart_loading). It holds some height, so the
+   page does not jump when the chart lands, and an `intersect` loader fires when its
+   row comes into view, not when a one-line spinner does. A ring holds a ring's. */
+.chart-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 8rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+.sunburst-chart .chart-loading {
+    min-height: 20rem;
+}

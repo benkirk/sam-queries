@@ -30,7 +30,8 @@ def _usage_stacked():
     return {
         'dates': list(_DAYS),
         'series': [
-            {'label': 'Others', 'values': [1.0, 0.0, 2.0, 3.0, 1.5, 0.0, 4.0, 0.5, 2.0, 1.0]},
+            {'label': 'Others', 'count': 7,
+             'values': [1.0, 0.0, 2.0, 3.0, 1.5, 0.0, 4.0, 0.5, 2.0, 1.0]},
             {'label': 'alice', 'values': [5.0, 0.0, 20.0, 30.0, 20.0, 0.0, 40.0, 6.0, 35.0, 2.0]},
             {'label': 'bob', 'values': [4.0, 0.0, 13.5, 29.0, 19.75, 0.0, 44.0, 6.0, 33.0, 2.0]},
         ],
@@ -71,8 +72,8 @@ def _user_proj_timeseries():
 
 def _distribution_hist():
     gib = 1024 ** 3
-    def owners(n, base):
-        return {f'u{i}': {'data': (base + i) * gib, 'files': (base + i) * 100}
+    def owners(n, base):      # keyed by uid, as the scan reports them
+        return {1000 + i: {'data': (base + i) * gib, 'files': (base + i) * 100}
                 for i in range(n)}
     labels = ['< 30d', '30-90d', '90-180d', '> 180d']
     return {
@@ -84,6 +85,7 @@ def _distribution_hist():
             '> 180d':   {'data': 400 * gib, 'files': 40000, 'owners': owners(4, 90)},
         },
         'reference_scan_date': '2026-03-01',
+        'username_map': {1000 + i: f'u{i}' for i in range(11)},   # uid 1011 has no name
     }
 
 
@@ -394,8 +396,8 @@ CASES = [
                                           'row_attr': 'data-job-project'}),
     ('jobs_usage_pie.empty', charts.generate_jobs_usage_pie_chart, ({},), {}),
 
-    # --- 15. jobs user pie (the delegating facade) -----------------------
-    ('jobs_user_pie.delegated', charts.generate_jobs_user_pie_chart,
+    # --- 15. jobs usage pie by user, with an unknown-user row --------------
+    ('jobs_user_pie.delegated', charts.generate_jobs_usage_pie_chart,
      (_jobs_usage(),), {'metric': 'cpu_hours'}),
 
     # --- 16. pace chart ---------------------------------------------------

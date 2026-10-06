@@ -43,6 +43,7 @@ from sam.queries.usage_cache import (
 from sam import fmt
 from sam.dates import parse_ymd, parse_ymd_or, start_of_today
 from webapp.utils.windows import read_log_window
+from webapp.utils.charts import draw_chart, hover_titles, no_chart_failed
 from sam.queries.projects import project_panels, project_titles
 from sam.export import Column, build_workbook
 from sam.schemas.forms import CreateChargeAdjustmentForm
@@ -506,7 +507,7 @@ def adjustments():
 @bp.route('/projects')
 @login_required
 @require_permission_any_facility(Permission.VIEW_PROJECTS)
-@cache.cached(make_cache_key=user_aware_cache_key)
+@cache.cached(make_cache_key=user_aware_cache_key, response_filter=no_chart_failed)
 def projects():
     """
     Main allocations dashboard page.
@@ -657,12 +658,13 @@ def projects():
     for rn, tree in trees.items():
         storage = resource_types.get(rn) in _STORAGE_RESOURCE_TYPES
         sunbursts[rn] = {
-            'alloc': generate_allocation_sunburst(
-                sunburst_rows(tree, 'alloc'), center='Volume' if storage else 'Annual\nrate',
-                layout=layout, theme=theme),
+            'alloc': draw_chart(
+                generate_allocation_sunburst, sunburst_rows(tree, 'alloc'),
+                center='Volume' if storage else 'Annual\nrate', layout=layout, theme=theme),
             # HPC/DAV usage loads as `htmx_used_sunburst`, over a trailing window.
-            'used': generate_allocation_sunburst(
-                sunburst_rows(tree, 'used'), center='Used', layout=layout, theme=theme)
+            'used': draw_chart(
+                generate_allocation_sunburst, sunburst_rows(tree, 'used'), center='Used',
+                layout=layout, theme=theme)
             if storage else None,
         }
 
@@ -756,17 +758,18 @@ def htmx_pace_chart(resource_name):
         burns, through = _calendar_burn(resource_name, active_at, start, end)
         per_project_usage = pace_segments(per_project_usage, burns, through, active_at)
 
-    chart_svg = generate_pace_chart_matplotlib(
-        per_project_usage, active_at, resource_name=resource_name,
-        sort_by=sort_by, layout=read_layout(), theme=read_theme(),
+    chart_svg = draw_chart(
+        generate_pace_chart_matplotlib, per_project_usage, active_at, resource_name=resource_name,
+        sort_by=sort_by, titles=hover_titles(r.get('projcode') for r in per_project_usage),
+        layout=read_layout(), theme=read_theme(),
     )
 
-    # A stable HTML id, matching dashboard.html's
-    # `data-resource="{{ resource_name|replace(' ', '_') }}"` convention. A
-    # single-facility request includes the facility, so a per-facility card's
-    # persisted sort_by does not collide with the resource-wide chart's.
+    # A stable HTML id. A facility card (`card=1`) adds its facility: a page
+    # filtered to one facility draws that card AND the resource-wide chart over
+    # the same scope, and Sort-by targets the id.
     chart_dom_id = 'pace-chart-' + resource_name.replace(' ', '_')
-    if len(requested_facilities) == 1:
+    facility_card = read_flag(request.args, 'card') and len(requested_facilities) == 1
+    if facility_card:
         chart_dom_id += '-' + requested_facilities[0].replace(' ', '_')
 
     # Selector-button URLs MUST carry the original facility scope forward, or
@@ -779,6 +782,8 @@ def htmx_pace_chart(resource_name):
     }
     if requested_facilities:
         selector_kwargs['facilities'] = requested_facilities
+    if facility_card:
+        selector_kwargs['card'] = 1
 
     return render_template(
         'dashboards/allocations/partials/pace_chart.html',
@@ -793,6 +798,13 @@ def htmx_pace_chart(resource_name):
 
 #: The Used sunburst's trailing windows, in days; the last is the default.
 _USED_WINDOW_DAYS = (30, 90, 180, 365)
+
+
+def _used_window_caption(days, active_at) -> str:
+    """What the Used ring and its expanded view measure. A year needs no scaling."""
+    span = 'year' if days == 365 else f'{days} days'
+    rate = '' if days == 365 else ', at an annual rate'
+    return f'Charges in the {span} to {fmt.date_str(active_at)}{rate}, across allocation renewals.'
 
 
 @bp.route('/htmx/used-sunburst/<resource_name>')
@@ -811,9 +823,9 @@ def htmx_used_sunburst(resource_name):
         start=active_at - timedelta(days=days - 1), end=active_at)
     charges = filter_rows_by_facility(charges, selected_facilities)
     facilities = _facility_index()
-    chart_svg = generate_allocation_sunburst(
-        window_sunburst_rows(charges, facilities, 365 / days), center='Use\nrate',
-        layout=read_layout(), theme=read_theme())
+    chart_svg = draw_chart(
+        generate_allocation_sunburst, window_sunburst_rows(charges, facilities, 365 / days),
+        center='Use\nrate', layout=read_layout(), theme=read_theme())
 
     selector_kwargs = {'active_at': active_at.strftime('%Y-%m-%d')}
     if requested_facilities:   # carried forward, or a click widens a scoped chart
@@ -821,7 +833,7 @@ def htmx_used_sunburst(resource_name):
     return render_template(
         'dashboards/allocations/partials/used_sunburst.html',
         resource_name=resource_name, chart_svg=chart_svg, days=days,
-        window_days=_USED_WINDOW_DAYS, active_at=active_at,
+        window_days=_USED_WINDOW_DAYS, caption=_used_window_caption(days, active_at),
         chart_dom_id='used-sunburst-' + resource_name.replace(' ', '_'),
         selector_kwargs=selector_kwargs,
     )
@@ -856,12 +868,12 @@ def htmx_sunburst_expanded(resource_name):
             start=active_at - timedelta(days=days - 1), end=active_at)
         values = {code: c * 365 / days for code, c in charges.items()}
         center, what = 'Use\nrate', 'annual use rate'
-        windows = [('1 yr' if d == 365 else f'{d}d',
-                    url_for('allocations_dashboard.htmx_sunburst_expanded', resource_name=resource_name,
-                            measure='used', days=d, **selector_kwargs), d == days)
+        windows = [dict(text='1 yr' if d == 365 else f'{d}d', on=(d == days),
+                        url=url_for('allocations_dashboard.htmx_sunburst_expanded',
+                                    resource_name=resource_name, measure='used', days=d,
+                                    **selector_kwargs))
                    for d in _USED_WINDOW_DAYS]
-        caption = (f'Charges in the {"year" if days == 365 else f"{days} days"} to '
-                   f'{fmt.date_str(active_at)}, at an annual rate.')
+        caption = _used_window_caption(days, active_at)
     else:
         rows = cached_allocation_usage(
             session=db.session, resource_name=[resource_name], facility_name=None,
@@ -881,8 +893,8 @@ def htmx_sunburst_expanded(resource_name):
         allowed = set(selected_facilities)
         values = {code: v for code, v in values.items() if panels.get(code, (0, None))[1] in allowed}
     slots = facility_slots(fid for fid, _, active in _facility_index() if active)
-    chart_svg = generate_panel_sunburst(panel_rows(values, panels, slots), center=center,
-                                        layout=read_layout(), theme=read_theme())
+    chart_svg = draw_chart(generate_panel_sunburst, panel_rows(values, panels, slots), center=center,
+                           titles=hover_titles(values), layout=read_layout(), theme=read_theme())
     return render_template(
         'dashboards/fragments/chart_expanded.html', chart_svg=chart_svg,
         title=f'{resource_name}: {what} by facility, panel and project',

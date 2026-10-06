@@ -9,6 +9,7 @@ change that keeps the DOM. A restructure moves every element path, so prove that
 --element SELECTOR on both sides and --compare-pixels.
 --headers lists table headers whose sort icon wrapped onto a line of its own (no --out needed).
 --modal OPENER (after any --step) or --recipes FILE shoots the opened dialog and prints its height.
+--pages charts shoots every chart host, each with the steps its lazy tabs need.
 
     python scripts/ui_snapshots.py --out /tmp/before
     python scripts/ui_snapshots.py --out /tmp/after --page /admin/contracts --expand 2
@@ -18,6 +19,7 @@ change that keeps the DOM. A restructure moves every element path, so prove that
     python scripts/ui_snapshots.py --headers --layout desktop --layout mobile --theme light
     python scripts/ui_snapshots.py --out /tmp/m --page /admin/resources --modal '[data-bs-target="#createResourceModal"]'
     python scripts/ui_snapshots.py --out /tmp/m --recipes scripts/ui_snapshots_modals.json --layout desktop --layout mobile
+    python scripts/ui_snapshots.py --out /tmp/c --pages charts --base-url http://localhost:5050
 """
 import argparse
 import gzip
@@ -32,6 +34,32 @@ DEFAULT_PAGES = [
     '/admin/contracts', '/admin/facilities', '/admin/account-requests', '/admin/events',
     '/status/derecho', '/status/casper', '/status/jupyterhub', '/status/events', '/dev/gallery',
 ]
+_JOBS = '/dashboards/user/jobs/machine/derecho/explore'
+_DETAILS = '/user/resource-details/SCSG0001?resource='
+# Named page sets for --pages: (name, url, steps). A chart behind a lazy tab or below the fold
+# needs its tab clicked or its loader scrolled to before the shot.
+PAGE_SETS = {'charts': [
+    ('alloc-share', '/allocations/projects', []),
+    ('alloc-pace', '/allocations/projects', ['click:[aria-controls^="pace-"]:visible',
+                                            'wait:.pace-chart:visible svg']),
+    ('alloc-calendar', '/allocations/projects?view=calendar', []),
+    ('admin-facilities', '/admin/facilities', ['wait:.fair-share-chart svg']),
+    ('status-derecho', '/status/derecho', ['scroll:[id^="user-proj-chart"]']),
+    ('status-queue', '/status/queue-history/derecho/main', ['scroll:[id^="user-proj-chart"]']),
+    ('status-nodetype', '/status/nodetype-history/casper/cpu', []),
+    ('status-partition', '/status/partition-history/derecho/cpu', []),
+    ('status-jobs-byproj', '/status/job-history', ['click:[data-bs-target$="-byproj"]']),
+    ('jobs-timeline', _JOBS, ['wait:.jobs-timeline-chart svg']),
+    ('jobs-byuser', _JOBS, ['click:[data-bs-target$="-byuser"]', 'wait:.jobs-user-pie svg']),
+    ('jobs-byproj', _JOBS, ['click:[data-bs-target$="-byproj"]', 'wait:.jobs-user-pie svg']),
+    ('jobs-wait', _JOBS, ['click:[data-bs-target$="-wait"]', 'wait:.jobs-histogram-chart svg']),
+    ('jobs-sizes', _JOBS, ['click:[data-bs-target$="-sizes"]', 'wait:.jobs-histogram-chart svg']),
+    ('details-compute', _DETAILS + 'Derecho', ['wait:#tab-usage-history svg']),
+    ('details-byuser', _DETAILS + 'Derecho', ['click:[data-bs-target="#tab-usage-byuser"]']),
+    ('details-disk', _DETAILS + 'Campaign_Store', []),
+    ('user-jobs', '/user/jobs', []),
+    ('user-data', '/user/data', []),
+]}
 LAYOUTS = {'mobile': (390, 844), 'tablet': (1024, 1366), 'desktop': (1440, 1000)}
 THEMES = ('light', 'dark')
 
@@ -201,15 +229,15 @@ HEADER_CHECK_JS = """() => {
 
 
 def parse_step(text):
-    """``click:SEL`` / ``wait:SEL`` / ``reveal:SEL`` / ``fill:SEL=TEXT`` -> ``(verb, selector, text)``."""
+    """``click:SEL`` / ``wait:SEL`` / ``reveal:SEL`` / ``scroll:SEL`` / ``fill:SEL=TEXT`` -> ``(verb, selector, text)``."""
     verb, _, rest = text.partition(':')
     if verb == 'fill':
         selector, sep, value = rest.rpartition('=')
         if not sep or not selector:
             raise ValueError(f'fill step needs SEL=TEXT: {text!r}')
         return verb, selector, value
-    if verb not in ('click', 'wait', 'reveal') or not rest:
-        raise ValueError(f'step must be click:SEL, wait:SEL, reveal:SEL or fill:SEL=TEXT: {text!r}')
+    if verb not in ('click', 'wait', 'reveal', 'scroll') or not rest:
+        raise ValueError(f'step must be click:SEL, wait:SEL, reveal:SEL, scroll:SEL or fill:SEL=TEXT: {text!r}')
     return verb, rest, None
 
 
@@ -230,12 +258,18 @@ def _run_steps(page, steps):
         target = page.locator(selector).first
         if verb == 'reveal':   # open collapsed rows without clicking their toggles one by one
             page.evaluate("s => document.querySelectorAll(s).forEach(e => e.classList.add('show'))", selector)
+        elif verb == 'scroll':   # every match: an `intersect once` loader fires when it is seen
+            page.evaluate("s => document.querySelectorAll(s).forEach("
+                          "e => e.offsetParent && e.scrollIntoView({block: 'center'}))", selector)
         elif verb == 'fill':
             target.fill(value)
         elif verb == 'click':
             target.click()
         else:
-            target.wait_for(state='visible', timeout=15_000)
+            try:
+                target.wait_for(state='visible', timeout=15_000)
+            except Exception:  # noqa: BLE001 - a chart with no data here: shoot what loaded
+                print(f'  wait:{selector} never visible')
         _idle(page)
         page.wait_for_timeout(300)   # a debounced typeahead or a collapse transition
 
@@ -311,6 +345,8 @@ def main(argv=None):
     ap.add_argument('--base-url', default='http://localhost:7050')
     ap.add_argument('--out', type=Path)
     ap.add_argument('--page', action='append', dest='pages', help='repeatable; default: admin tables + gallery')
+    ap.add_argument('--pages', choices=PAGE_SETS, dest='page_set',
+                    help='a named page set, each page with its own steps')
     ap.add_argument('--layout', action='append', choices=LAYOUTS, dest='layouts')
     ap.add_argument('--theme', action='append', choices=THEMES, dest='themes')
     ap.add_argument('--expand', type=int, default=1, help='collapse groups to open per page (default 1)')
@@ -370,12 +406,14 @@ def main(argv=None):
                 page = context.new_page()
                 for recipe in recipes or ():
                     _shoot_modal(page, recipe, args.out, f'{layout}-{theme}', args.styles)
-                for url in () if recipes else args.pages or DEFAULT_PAGES:
+                named = PAGE_SETS[args.page_set] if args.page_set else [
+                    (_slug(url), url, ()) for url in args.pages or DEFAULT_PAGES]
+                for name, url, steps in () if recipes else named:
                     page.goto(url)
                     _settle(page, args.expand)
-                    _run_steps(page, args.steps)
+                    _run_steps(page, [*steps, *args.steps])
                     if args.out and args.element:
-                        path = args.out / f'{_slug(url)}__{layout}-{theme}.png'
+                        path = args.out / f'{name}__{layout}-{theme}.png'
                         target = page.locator(f'{args.element} >> visible=true').first
                         try:
                             target.wait_for(state='visible', timeout=8_000)
@@ -386,7 +424,7 @@ def main(argv=None):
                         target.screenshot(path=str(path))
                         print(f"{path} {box['width']:.0f}x{box['height']:.0f}")
                     elif args.out:
-                        path = args.out / f'{_slug(url)}__{layout}-{theme}.png'
+                        path = args.out / f'{name}__{layout}-{theme}.png'
                         page.screenshot(path=str(path), full_page=True)
                         print(path)
                         if args.styles:

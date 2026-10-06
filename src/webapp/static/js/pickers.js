@@ -1,6 +1,6 @@
-/* Date / time range picker behavior, extracted from the inline scripts
- * in fragments/date_range_picker.html and time_range_picker.html (CSP:
- * script-src 'self').
+/* Date range picker behavior, extracted from the inline script in
+ * fragments/date_range_picker.html (CSP: script-src 'self'). The time
+ * range picker needs none: its presets are htmx requests.
  *
  * Component contract:
  *   .drp root  — data-action-url, data-start (YYYY-MM-DD), optional
@@ -8,9 +8,6 @@
  *                class="drp-hidden"> data block with extra query params;
  *                buttons with data-action="drp-days|drp-epoch|
  *                drp-toggle-custom"; a .drp-custom panel.
- *   .trp root  — data-action-url + .trp-hidden data block; buttons with
- *                data-action="trp-hours" data-hours="N". Active state is
- *                server-rendered (hours == N), no client marking needed.
  *
  * Multiple pickers per page work via closest('.drp') scoping — the old
  * uid-suffixed window-global functions are gone.
@@ -60,13 +57,6 @@
         btn.classList.toggle('active', !hidden);
         btn.classList.toggle('btn-outline-primary', hidden);
         btn.classList.toggle('btn-primary', !hidden);
-    });
-
-    registerAction('trp-hours', function (btn) {
-        var root = btn.closest('.trp');
-        var params = hiddenParams(root, '.trp-hidden');
-        params.set('hours', btn.dataset.hours);
-        navigate(root, params);
     });
 
     /* Highlight the date-picker preset matching the current range.

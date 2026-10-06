@@ -1,7 +1,7 @@
 """Unit tests for the job-history chart generators (webapp/dashboards/charts.py).
 
 ``generate_jobs_histogram`` renders the plugin's self-describing histogram
-envelope; ``generate_jobs_user_pie_chart`` renders the jobs_usage_by('user')
+envelope; ``generate_jobs_usage_pie_chart`` renders the jobs_usage_by('user')
 envelope with clickable ``#sam/row/data-job-user/<username>`` sentinels routed by
 svg-chart-links.js. matplotlib's SVG backend rasterizes most text to paths,
 so assertions favor behavior (placeholders, sentinels, distinct output per
@@ -12,13 +12,19 @@ from __future__ import annotations
 
 
 from webapp.dashboards.charts import (
-    _jobs_metric_value,
-    _jobs_timeseries_cache_key,
-    _jobs_timeseries_series,
     generate_jobs_histogram,
     generate_jobs_timeseries_stacked,
-    generate_jobs_user_pie_chart,
+    generate_jobs_usage_pie_chart,
 )
+from webapp.dashboards.charts.jobs_metrics import (
+    jobs_bucket_segments as _jobs_bucket_segments,
+    jobs_metric_value as _jobs_metric_value,
+    jobs_timeseries_series as _jobs_timeseries_series,
+)
+
+_jobs_histogram_cache_key = generate_jobs_histogram.chart_class.cache_key
+_jobs_timeseries_cache_key = generate_jobs_timeseries_stacked.chart_class.cache_key
+_jobs_usage_pie_cache_key = generate_jobs_usage_pie_chart.chart_class.cache_key
 
 
 
@@ -134,7 +140,6 @@ def test_histogram_zero_metric_nonzero_other_metric():
 def test_histogram_dimension_in_cache_key():
     """Identical bucket values under different dimensions must not share a
     cache entry (labels differ in practice, but the key must not rely on it)."""
-    from webapp.dashboards.charts import _jobs_histogram_cache_key
     a = _jobs_histogram_cache_key(_hist(dimension='wait'))
     b = _jobs_histogram_cache_key(_hist(dimension='duration'))
     assert a != b
@@ -160,7 +165,6 @@ def test_histogram_sentinels_follow_job_count_not_metric():
 def test_histogram_count_vector_in_cache_key():
     """Two envelopes with identical hours vectors but different populated
     band sets must not share a cache entry — the drill URLs differ."""
-    from webapp.dashboards.charts import _jobs_histogram_cache_key
     a = _jobs_histogram_cache_key(
         _hist(counts=(10, 5, 3), cpu_hours=(100.0, 50.0, 0.0)),
         metric='cpu_hours')
@@ -191,7 +195,6 @@ def test_histogram_log_scale_keeps_bucket_sentinels():
 
 def test_histogram_log_scale_in_cache_key():
     """Same envelope, different y-scale -> distinct cache entries."""
-    from webapp.dashboards.charts import _jobs_histogram_cache_key
     a = _jobs_histogram_cache_key(_hist())
     b = _jobs_histogram_cache_key(_hist(), log_y=True)
     assert a != b
@@ -235,7 +238,6 @@ def test_histogram_owner_segments_follow_active_metric():
     """Segments are cut in the ACTIVE metric: two envelopes with identical
     job-count splits but different cpu splits share a jobs key and diverge
     on the cpu_hours key."""
-    from webapp.dashboards.charts import _jobs_histogram_cache_key
     a = _with_owners(_hist(), {
         0: {'alice': _owner(5, 90.0), 'bob': _owner(5, 10.0)}})
     b = _with_owners(_hist(), {
@@ -249,27 +251,25 @@ def test_histogram_owner_segments_follow_active_metric():
 def test_histogram_owner_remainder_segment():
     """Owners summing below the bucket total grow a pale base segment —
     the beyond-top-N / NULL-user remainder — reflected in the key."""
-    from webapp.dashboards.charts import _jobs_histogram_cache_key, \
-        _jobs_bucket_segments
     truncated = _with_owners(_hist(), {
         0: {'alice': _owner(6, 60.0)}})     # bucket holds 10 jobs -> 4 unattributed
     assert _jobs_bucket_segments(truncated['buckets'][0], 'job_count') == \
-        [4.0, 6.0]
+        [('Others', 4.0), ('alice', 6.0)]
     even = _with_owners(_hist(), {
         0: {'alice': _owner(5, 50.0), 'bob': _owner(5, 50.0)}})
-    assert _jobs_bucket_segments(even['buckets'][0], 'job_count') == [5.0, 5.0]
+    assert _jobs_bucket_segments(even['buckets'][0], 'job_count') == [('alice', 5.0), ('bob', 5.0)]
     assert _jobs_histogram_cache_key(truncated) != \
         _jobs_histogram_cache_key(even)
     assert '<svg' in generate_jobs_histogram(truncated)
 
 
 def test_histogram_segments_ascending_with_remainder_first():
-    from webapp.dashboards.charts import _jobs_bucket_segments
     b = {'job_count': 20, 'cpu_hours': 200.0, 'gpu_hours': 0.0,
          'owners': {'alice': _owner(9, 90.0), 'bob': _owner(3, 30.0),
                     'carol': _owner(6, 60.0)}}
     # remainder (20-18=2) first, then owners ascending
-    assert _jobs_bucket_segments(b, 'job_count') == [2.0, 3.0, 6.0, 9.0]
+    assert _jobs_bucket_segments(b, 'job_count') == [
+        ('Others', 2.0), ('bob', 3.0), ('carol', 6.0), ('alice', 9.0)]
     assert _jobs_bucket_segments({'job_count': 5}, 'job_count') == []
 
 
@@ -310,11 +310,11 @@ def test_histogram_flat_fallback_without_owners():
 
 
 # ---------------------------------------------------------------------------
-# generate_jobs_user_pie_chart
+# generate_jobs_usage_pie_chart, by user (the default row attribute)
 # ---------------------------------------------------------------------------
 
 def test_pie_wedges_clickable():
-    svg = generate_jobs_user_pie_chart(_usage())
+    svg = generate_jobs_usage_pie_chart(_usage())
     assert '<svg' in svg
     assert '#sam/row/data-job-user/alice' in svg
     assert '#sam/row/data-job-user/bob' in svg
@@ -324,14 +324,14 @@ def test_pie_other_slice_from_pretruncation_totals():
     """rows sum to 600 but totals say 800 — the upstream limit dropped rows,
     and the difference must surface as an inert Other slice (no sentinel)."""
     usage = _usage(totals={'job_count': 100, 'cpu_hours': 800.0, 'gpu_hours': 5.0})
-    svg = generate_jobs_user_pie_chart(usage)
+    svg = generate_jobs_usage_pie_chart(usage)
     assert 'Other' in svg
     assert '#sam/row/data-job-user/Other' not in svg
     assert '#sam/row/data-job-user/None' not in svg
 
 
 def test_pie_no_other_when_rows_cover_totals():
-    svg = generate_jobs_user_pie_chart(_usage())
+    svg = generate_jobs_usage_pie_chart(_usage())
     assert 'Other' not in svg
 
 
@@ -342,7 +342,7 @@ def test_pie_long_tail_lumped_at_hard_cap():
     total = sum(r['cpu_hours'] for r in rows)
     usage = _usage(rows=rows, totals={'job_count': 15, 'cpu_hours': total,
                                       'gpu_hours': 0.0})
-    svg = generate_jobs_user_pie_chart(usage)
+    svg = generate_jobs_usage_pie_chart(usage)
     assert '#sam/row/data-job-user/u0' in svg            # biggest user kept + clickable
     assert '#sam/row/data-job-user/u14' not in svg       # tail folded into Other
     assert 'Other' in svg
@@ -356,8 +356,8 @@ def test_pie_metric_selects_and_resorts():
     ]
     usage = _usage(rows=rows, totals={'job_count': 205, 'cpu_hours': 510.0,
                                       'gpu_hours': 0.0})
-    svg_hours = generate_jobs_user_pie_chart(usage, metric='cpu_hours')
-    svg_jobs  = generate_jobs_user_pie_chart(usage, metric='jobs')
+    svg_hours = generate_jobs_usage_pie_chart(usage, metric='cpu_hours')
+    svg_jobs  = generate_jobs_usage_pie_chart(usage, metric='jobs')
     assert svg_hours != svg_jobs
     assert '#sam/row/data-job-user/bob' in svg_jobs
 
@@ -380,12 +380,12 @@ def test_pie_charges_resorts_and_keeps_its_remainder_in_charge_units():
                    totals={'job_count': 20, 'cpu_hours': 900.0,
                            'gpu_hours': 0.0, 'cpu_charges': 400.0,
                            'gpu_charges': 0.0})
-    svg = generate_jobs_user_pie_chart(usage, metric='charges')
+    svg = generate_jobs_usage_pie_chart(usage, metric='charges')
     assert '<svg' in svg
     assert '#sam/row/data-job-user/bob' in svg          # the only charged entity
     assert 'Other' in svg                  # 400 - 100 of charges beyond rows
     # An hours view of the same envelope is a different picture entirely.
-    assert svg != generate_jobs_user_pie_chart(usage, metric='cpu_hours')
+    assert svg != generate_jobs_usage_pie_chart(usage, metric='cpu_hours')
 
 
 def test_pie_all_uncharged_returns_placeholder():
@@ -393,16 +393,16 @@ def test_pie_all_uncharged_returns_placeholder():
     usage = _usage(totals={'job_count': 60, 'cpu_hours': 600.0,
                            'gpu_hours': 5.0, 'cpu_charges': 0.0,
                            'gpu_charges': 0.0})
-    assert 'No usage data' in generate_jobs_user_pie_chart(
+    assert 'No usage data' in generate_jobs_usage_pie_chart(
         usage, metric='charges')
 
 
 def test_pie_empty_and_zero_total_return_placeholder():
-    assert 'No usage data' in generate_jobs_user_pie_chart(
+    assert 'No usage data' in generate_jobs_usage_pie_chart(
         {'rows': [], 'totals': {}})
-    assert 'No usage data' in generate_jobs_user_pie_chart(
+    assert 'No usage data' in generate_jobs_usage_pie_chart(
         _usage(totals={'job_count': 0, 'cpu_hours': 0.0, 'gpu_hours': 0.0}))
-    assert 'No usage data' in generate_jobs_user_pie_chart(None)
+    assert 'No usage data' in generate_jobs_usage_pie_chart(None)
 
 
 def test_pie_unknown_user_row_is_inert():
@@ -413,7 +413,7 @@ def test_pie_unknown_user_row_is_inert():
     ]
     usage = _usage(rows=rows, totals={'job_count': 7, 'cpu_hours': 70.0,
                                       'gpu_hours': 0.0})
-    svg = generate_jobs_user_pie_chart(usage)
+    svg = generate_jobs_usage_pie_chart(usage)
     assert '#sam/row/data-job-user/alice' in svg
     assert '#sam/row/data-job-user/None' not in svg
 
@@ -435,7 +435,6 @@ def test_pie_row_attr_parameterized():
 def test_pie_row_attr_in_cache_key():
     """Identical usage vectors under different sentinel families must not
     share a cache entry — the embedded drill anchors differ."""
-    from webapp.dashboards.charts import _jobs_usage_pie_cache_key
     a = _jobs_usage_pie_cache_key(_usage(), row_attr='data-job-user')
     b = _jobs_usage_pie_cache_key(_usage(), row_attr='data-job-project')
     assert a != b

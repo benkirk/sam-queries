@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/chart_bits.html' import chart_figure, chart_pills %}
 {% from 'dashboards/user/partials/_disk_scans_macros.html'
    import scans_disabled, scans_error, scans_empty, scans_scope_note %}
 {#
@@ -60,24 +61,12 @@
     {% if metric_toggle %}
       {# Data <-> Files metric pill — re-fetches this same pane with ?metric=,
          preserving the current log-scale state. #}
-      <div class="btn-group btn-group-sm me-1" role="group" aria-label="Chart metric">
-        <button type="button"
-                class="btn btn-outline-secondary {% if not _by_files %}active{% endif %}"
-                hx-get="{{ fragment_url }}?metric=data{{ _log_q }}"
-                hx-target="#{{ target_id }}"
-                hx-include="#disk-scans-metric-params-{{ target_id }}"
-                hx-swap="innerHTML">
-          <i class="fa-solid fa-hard-drive me-1"></i> Data
-        </button>
-        <button type="button"
-                class="btn btn-outline-secondary {% if _by_files %}active{% endif %}"
-                hx-get="{{ fragment_url }}?metric=files{{ _log_q }}"
-                hx-target="#{{ target_id }}"
-                hx-include="#disk-scans-metric-params-{{ target_id }}"
-                hx-swap="innerHTML">
-          <i class="fa-solid fa-hashtag me-1"></i> Files
-        </button>
-      </div>
+      {% set pills = [
+          dict(text='Data', icon='hard-drive', on=(not _by_files), url=fragment_url ~ '?metric=data' ~ _log_q),
+          dict(text='Files', icon='hashtag', on=_by_files, url=fragment_url ~ '?metric=files' ~ _log_q),
+      ] %}
+      {{ chart_pills('Chart metric', pills, '#' ~ target_id, swap='innerHTML',
+                     include='#disk-scans-metric-params-' ~ target_id, classes='me-1') }}
     {% endif %}
     {% if log_toggle %}
       {# Log-scale switch — re-fetches with ?log=, preserving the metric. A log
@@ -134,9 +123,9 @@
       (individual files are not tracked).
     </p>
   {% endif %}
-  <div class="chart-container">
+  {% call chart_figure(('Files' if _by_files else 'Data') ~ ' by ' ~ bucket_header | lower) %}
     {{ chart_svg | safe }}
-  </div>
+  {% endcall %}
 
   {# Per-user breakdown lives inside each bucket's collapse detail row —
      the owners dict (uid -> {data, files}) is already on the histogram, so

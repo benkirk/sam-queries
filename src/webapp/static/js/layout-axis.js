@@ -7,7 +7,8 @@
  * TWO channels, and both are required. A cookie, read by every route, AND an
  * htmx parameter on every fragment request:
  *
- *   - 9 of the 18 chart call sites render in a full-page GET, so
+ *   - some chart call sites render in a full-page GET (the status history
+ *     pages, the allocations sunbursts), so
  *     `htmx:configRequest` never fires for them;
  *   - the cookie cannot be set before the page that sets it. CSP here is
  *     nonce-free by design (utils/csp.py), which rules out an inline head
@@ -70,8 +71,7 @@
          * already encoded in an hx-get URL would produce a duplicate query key
          * and `request.args.get` would return the FIRST — silently defeating
          * this override. Same hazard, and same fix, as `injectSaved` in
-         * nav-view-persistence.js; it bites here too because the status
-         * history pages carry ?layout= forward in their own links. */
+         * nav-view-persistence.js. */
         var path = detail.path;
         if (path && path.indexOf('?') !== -1) {
             var parts = path.split('?');

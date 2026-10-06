@@ -12,8 +12,8 @@ scripts/
 ├── cirrus_weblog_audit.sh       # CIRRUS/k8s traffic + rate-limit + abuse audit
 ├── seed_status_dev.sh           # Reseed system_status_dev from prod (make refresh-dev)
 ├── dev_session_load.py          # Load driver for samuel-dev's authed surface (+ dev_capture_session.py)
-├── ui_snapshots.py              # Pages x layouts x themes screenshots for before/after review (no baselines); --headers checks sort icons; --modal / --recipes shoot dialogs with their heights
-├── ui_snapshots_modals.json     # --recipes input: 42 dialogs as {name, page, steps, modal}; pages name rows of the local dev DB (NMMM0003, CESM0002, allocation 25621), and a recipe whose row is gone prints "not opened" and the run carries on
+├── ui_snapshots.py              # Pages x layouts x themes screenshots for before/after review (no baselines); --headers checks sort icons; --modal / --recipes shoot dialogs with their heights; --pages charts shoots every chart host (+ ui_snapshots_modals.json: 42 dialog recipes naming rows of the local dev DB; one whose row is gone prints "not opened" and the run carries on)
+├── chart_sheet.py               # Every chart sample x layout x theme as SVG plus an index.html sheet (no DB); byte-stable, so --compare proves a drawing refactor changed nothing
 ├── er_diagram.py                # Graphviz ER diagram of named tables, from the ORM (no DB)
 ├── zap_probe_docker.sh          # Dockerized OWASP ZAP scan of the webapp
 ├── apis/                        # Public-API worked examples / smoke tests

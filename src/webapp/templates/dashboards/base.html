@@ -24,6 +24,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/filters.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/charts.css') }}">
     {% block extra_css %}{% endblock %}
 </head>
 {# htmx inherits hx-headers to every descendant hx-post/put/delete, so every
@@ -224,6 +225,8 @@
 
     {% from 'dashboards/fragments/modals.html' import confirm_modal %}
     {{ confirm_modal() }}
+    {# Site-wide: its opener is a macro any chart host may call (expand_button). #}
+    {% include 'dashboards/fragments/chart_expand_modal.html' %}
 
     <!-- Scripts -->
     {{ vendor_js(['bootstrap-js', 'htmx']) }}

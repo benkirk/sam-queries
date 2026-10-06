@@ -1,5 +1,9 @@
 # Panel sunburst: facility, panel and project in one expanded view
 
+**Status: implemented and merged** (#721, 2026-10-04). Since the charts sweep
+(2026-10-05) the modal shell is in `dashboards/base.html`, the rim's entity is
+`rim_link` / `rim_noun`, and a rim hover carries the project's title.
+
 As-built record (2026-10-03). The two-ring sunbursts on Allocations and on Status →
 Job History → By Project open a fullscreen three-ring view: facilities inside,
 allocation panels in the middle, every project on the rim with radial labels.

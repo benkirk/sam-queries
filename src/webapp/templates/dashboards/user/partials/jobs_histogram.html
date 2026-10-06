@@ -1,5 +1,6 @@
+{% from 'dashboards/fragments/chart_bits.html' import chart_figure, chart_pills %}
 {% from 'dashboards/user/partials/_jobs_macros.html'
-   import jobs_disabled, jobs_error, jobs_empty, metric_pills %}
+   import jobs_disabled, jobs_error, jobs_empty, metric_pills, charges_note %}
 {% from 'dashboards/fragments/help.html' import term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_cpu_hours with context %}
 {#
@@ -77,21 +78,14 @@
       {# Dimension pills re-fetch this pane with ?dimension=. The memory
          trio: Req mem = requested (Job.reqmem), Used mem = consumed
          (Job.memory), Wasted = requested − used. #}
-      <div class="btn-group btn-group-sm me-1" role="group" aria-label="Size dimension">
-        {% for d, label in [('nodes', 'Nodes'), ('cpus', 'CPUs'),
-                            ('gpus', 'GPUs'), ('memory', 'Req mem'),
-                            ('memory_used', 'Used mem'),
-                            ('memory_wasted', 'Wasted')] %}
-        <button type="button"
-                class="btn btn-outline-secondary {% if dimension == d %}active{% endif %}"
-                hx-get="{{ fragment_url }}?dimension={{ d }}&metric={{ metric }}"
-                hx-target="#{{ target_id }}"
-                hx-include="#jobs-hist-params-{{ target_id }}"
-                hx-swap="innerHTML">
-          {{ label }}
-        </button>
-        {% endfor %}
-      </div>
+      {% set pills = [] %}
+      {% for d, label in [('nodes', 'Nodes'), ('cpus', 'CPUs'), ('gpus', 'GPUs'), ('memory', 'Req mem'),
+                          ('memory_used', 'Used mem'), ('memory_wasted', 'Wasted')] %}
+      {% set _ = pills.append(dict(text=label, on=(dimension == d),
+                                   url=fragment_url ~ '?dimension=' ~ d ~ '&metric=' ~ metric)) %}
+      {% endfor %}
+      {{ chart_pills('Size dimension', pills, '#' ~ target_id, swap='innerHTML',
+                     include='#jobs-hist-params-' ~ target_id, classes='me-1') }}
     {% endif %}
     {# Metric pills — count, charged hours, or QoS-weighted charges. #}
     {{ metric_pills(metric, fragment_url, target_id,
@@ -102,18 +96,14 @@
     {# Owner-dimension pills — whether users or projects own the stacked
        segments and the per-band tier. The explicit ?group_by= wins over
        the round-trip form's stale value (Werkzeug reads the first). #}
-    <div class="btn-group btn-group-sm me-1" role="group" aria-label="Owner dimension">
-      {% for ob, label in [('user', 'User'), ('project', 'Project')] %}
-      <button type="button"
-              class="btn btn-outline-secondary {% if group_by == ob %}active{% endif %}"
-              hx-get="{{ fragment_url }}?group_by={{ ob }}&metric={{ metric }}{% if dimension_toggle %}&dimension={{ dimension }}{% endif %}"
-              hx-target="#{{ target_id }}"
-              hx-include="#jobs-hist-params-{{ target_id }}"
-              hx-swap="innerHTML">
-        {{ label }}
-      </button>
-      {% endfor %}
-    </div>
+    {% set pills = [] %}
+    {% for ob, label in [('user', 'User'), ('project', 'Project')] %}
+    {% set _ = pills.append(dict(text=label, on=(group_by == ob), url=fragment_url ~ '?group_by=' ~ ob
+                                 ~ '&metric=' ~ metric
+                                 ~ (('&dimension=' ~ dimension) if dimension_toggle else ''))) %}
+    {% endfor %}
+    {{ chart_pills('Owner dimension', pills, '#' ~ target_id, swap='innerHTML',
+                   include='#jobs-hist-params-' ~ target_id, classes='me-1') }}
     {% endif %}
     {# Log-scale switch — the filesystem-scan histograms' affordance, and for
        the same reason: job distributions are long-tailed (most jobs wait
@@ -142,9 +132,9 @@
   </div>
 
   {% if chart_svg %}
-  <div class="d-flex justify-content-center mb-2 jobs-histogram-chart">
+  {% call chart_figure('Jobs by ' ~ (dimension | replace('_', ' ')), 'mb-2 jobs-histogram-chart') %}
     {{ chart_svg | safe }}
-  </div>
+  {% endcall %}
   {% endif %}
 
   {% if dimension == 'memory_wasted' and machine == 'derecho' %}
@@ -158,17 +148,7 @@
     </p>
   {% endif %}
 
-  {% if metric == 'charges' %}
-    {# Not a rounding artifact: qos_factor is a genuine 0.0 for the
-       'uncharged' QoS, so work can be real and its charges exactly zero.
-       Said here because an empty bar otherwise reads as missing data. #}
-    <p class="text-muted small mb-2">
-      <i class="fa-solid fa-circle-info me-1"></i>
-      Charges are hours weighted by each job's QoS factor. Uncharged QoS
-      classes have a factor of 0, so a bucket can show jobs and CPU-hours
-      while contributing no charges.
-    </p>
-  {% endif %}
+  {{ charges_note(metric, 'a bucket') }}
 
   {% if hist.null_count and hist.null_count > 0 %}
     <p class="text-muted small mb-2">
