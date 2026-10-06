@@ -174,6 +174,8 @@
                 {# THE toggle cell — the only one. See the header note. #}
                 {% if r.errors %}
                 <td class="cursor-pointer small" {{ collapse_toggle(errors_id) }}>
+                    {# The chevron and count stay joined; the excerpt may drop to a second line. #}
+                    <span class="text-nowrap">
                     <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
                     {# text-danger-emphasis, NOT text-danger: the latter is the
                        saturated brand red, which measures 3.35:1 against the dark
@@ -182,6 +184,7 @@
                        7.9:1 light. Measured in the browser, not eyeballed. #}
                     <span class="text-danger-emphasis">
                         {{ r.errors | length }} error{{ '' if r.errors | length == 1 else 's' }}
+                    </span>
                     </span>
                     <span class="text-muted ms-1 d-inline-block text-truncate align-bottom"
                           style="max-width:38ch;">{{ r.errors[0] }}</span>
