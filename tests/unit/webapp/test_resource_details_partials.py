@@ -418,3 +418,28 @@ class TestSummaryRow:
         body = resp.get_data(as_text=True)
         assert 'share-bar meter' in body and 'has-elapsed' in body
         assert 'progress-bar' not in body
+
+
+class TestDiskFilesets:
+    """The Filesets card: a path link per row with a copy icon, never a navigate row."""
+
+    def test_rows_link_and_copy_their_path(self, auth_client, session, monkeypatch):
+        from sam import Account, Project, Resource
+        row = (session.query(Project.projcode, Resource.resource_name)
+               .join(Account, Account.project_id == Project.project_id)
+               .join(Resource, Resource.resource_id == Account.resource_id)
+               .filter(Project.is_active, Account.is_active, Resource.resource_name == 'Campaign_Store')
+               .first())
+        if row is None:
+            pytest.skip('snapshot has no project on Campaign_Store')
+        projcode, resource = row
+        dirs = [{'name': '/gpfs/csfs1/a/very/long/fileset/path', 'bytes': 3 * 1024 ** 4,
+                 'files': 10, 'projcode': projcode},
+                {'name': '/gpfs/csfs1/b', 'bytes': 1024 ** 4, 'files': 5, 'projcode': projcode}]
+        monkeypatch.setattr('webapp.dashboards.user.blueprint.get_subtree_directory_usage_at',
+                            lambda *a, **k: dirs)
+        body = auth_client.get(f'/user/resource-details/{projcode}?resource={resource}').get_data(as_text=True)
+        assert 'id="collapseDiskFilesets"' in body
+        assert 'data-copy="/gpfs/csfs1/a/very/long/fileset/path"' in body
+        assert 'data-action="navigate"' not in body
+        assert 'share-bar' in body

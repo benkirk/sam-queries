@@ -41,9 +41,9 @@
               {% if jobs_machine %}{{ jobs_button(jid) }}{% endif %}
             </td>
             <td></td>
-            <td class="text-end"><small>{{ sub.total_jobs | fmt_number }}</small></td>
-            <td class="text-end"><small>{{ sub.total_core_hours | fmt_number }}</small></td>
-            <td class="text-end"><small>{{ sub.total_charges | fmt_number }}</small></td>
+            <td class="col-num"><small>{{ sub.total_jobs | fmt_number }}</small></td>
+            <td class="col-num"><small>{{ sub.total_core_hours | fmt_number }}</small></td>
+            <td class="col-num"><small>{{ sub.total_charges | fmt_number }}</small></td>
           </tr>
           {% if jobs_machine %}
             {{ jobs_collapse_row(jid, projcode, jobs_machine,

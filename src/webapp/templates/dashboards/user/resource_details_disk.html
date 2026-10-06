@@ -144,10 +144,10 @@
                 <table class="table table-sm table-hover mb-0">
                     <thead class="table-subtle">
                         <tr>
-                            {% if _multi_proj %}<th>Project</th>{% endif %}
+                            {% if _multi_proj %}<th class="col-shrink">Project</th>{% endif %}
                             <th>Path</th>
-                            <th class="text-end">Files</th>
-                            <th class="text-end">Size</th>
+                            <th class="col-num">Files</th>
+                            <th class="col-num">Size</th>
                             <th class="col-num">Share</th>
                         </tr>
                     </thead>
@@ -160,14 +160,16 @@
                                                   projcode=projcode, resource=resource_name,
                                                   scope=scope, fileset=d.name,
                                                   start_date=start_date, end_date=end_date) %}
-                        <tr class="cursor-pointer{% if is_active %} tree-node-current{% endif %}"
-                            data-action="navigate" data-href="{{ row_url }}">
+                        <tr{% if is_active %} class="tree-node-current"{% endif %}>
                             {% if _multi_proj %}
-                            <td><strong>{{ d.projcode }}</strong></td>
+                            <td class="col-shrink font-monospace">{{ d.projcode }}</td>
                             {% endif %}
-                            <td><code>{{ d.name }}</code></td>
-                            <td class="text-end">{{ d.files | fmt_number }}</td>
-                            <td class="text-end font-monospace">{{ d.bytes | fmt_size }}</td>
+                            <td class="cell-truncate cell-path" title="{{ d.name }}">
+                                {{- copy_button(d.name, label='Copy path', inline=True) }}
+                                <a href="{{ row_url }}" class="text-decoration-none"><code>{{ d.name }}</code></a>
+                            </td>
+                            <td class="col-num">{{ d.files | fmt_number }}</td>
+                            <td class="col-num">{{ d.bytes | fmt_size }}</td>
                             <td class="col-num">{{ share_bar(_share) }}</td>
                         </tr>
                         {% endfor %}
@@ -285,18 +287,18 @@
                     <thead class="table-subtle">
                         <tr>
                             <th>Username</th>
-                            <th class="text-end">Files</th>
-                            <th class="text-end">Size</th>
-                            <th class="text-end">% of {{ scope }}</th>
+                            <th class="col-num">Files</th>
+                            <th class="col-num">Size</th>
+                            <th class="col-num">% of {{ scope }}</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for row in user_rows %}
                         <tr>
                             <td>{{ user_link(row.username, can_view_users, compact=True) }}</td>
-                            <td class="text-end">{{ row.file_count | fmt_number }}</td>
-                            <td class="text-end">{{ row.bytes | fmt_size }}</td>
-                            <td class="text-end">{{ row.percent_of_project | fmt_pct }}</td>
+                            <td class="col-num">{{ row.file_count | fmt_number }}</td>
+                            <td class="col-num">{{ row.bytes | fmt_size }}</td>
+                            <td class="col-num">{{ row.percent_of_project | fmt_pct }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>

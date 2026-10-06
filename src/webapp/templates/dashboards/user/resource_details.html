@@ -33,18 +33,18 @@
         <thead class="table-subtle">
             <tr>
                 <th class="sortable-header" data-sort="text">Username</th>
-                <th class="sortable-header text-end" data-sort="numeric">Jobs</th>
-                <th class="sortable-header text-end" data-sort="numeric">{{ term('Core-Hours', g_core_hours()) }}</th>
-                <th class="sortable-header text-end sort-desc" data-sort="numeric">{{ term('Charges', g_charges()) }}</th>
+                <th class="sortable-header col-num" data-sort="numeric">Jobs</th>
+                <th class="sortable-header col-num" data-sort="numeric">{{ term('Core-Hours', g_core_hours()) }}</th>
+                <th class="sortable-header col-num sort-desc" data-sort="numeric">{{ term('Charges', g_charges()) }}</th>
             </tr>
         </thead>
         {% if breakdown %}
         <tbody>
             <tr class="table-info fw-bold">
                 <td>Total</td>
-                <td class="text-end">{{ breakdown|sum(attribute='jobs') | fmt_number }}</td>
-                <td class="text-end">{{ breakdown|sum(attribute='core_hours') | fmt_number }}</td>
-                <td class="text-end">{{ breakdown|sum(attribute='charges') | fmt_number }}</td>
+                <td class="col-num">{{ breakdown|sum(attribute='jobs') | fmt_number }}</td>
+                <td class="col-num">{{ breakdown|sum(attribute='core_hours') | fmt_number }}</td>
+                <td class="col-num">{{ breakdown|sum(attribute='charges') | fmt_number }}</td>
             </tr>
         </tbody>
         {% for user in breakdown %}
@@ -59,9 +59,9 @@
                         {{ jobs_button(uid ~ '-jobs') }}
                     {% endif %}
                 </td>
-                <td class="text-end" data-sort-value="{{ user.jobs }}">{{ user.jobs | fmt_number }}</td>
-                <td class="text-end" data-sort-value="{{ user.core_hours }}">{{ user.core_hours | fmt_number }}</td>
-                <td class="text-end" data-sort-value="{{ user.charges }}">{{ user.charges | fmt_number }}</td>
+                <td class="col-num" data-sort-value="{{ user.jobs }}">{{ user.jobs | fmt_number }}</td>
+                <td class="col-num" data-sort-value="{{ user.core_hours }}">{{ user.core_hours | fmt_number }}</td>
+                <td class="col-num" data-sort-value="{{ user.charges }}">{{ user.charges | fmt_number }}</td>
             </tr>
             {% if jobs_machine and single_triple %}
                 {{ jobs_collapse_row(uid ~ '-jobs', projcode, jobs_machine,
@@ -126,10 +126,10 @@
         <thead class="table-subtle">
             <tr>
                 <th>Date</th>
-                <th class="text-end">Users</th>
-                <th class="text-end">Jobs</th>
-                <th class="text-end">Core-Hours</th>
-                <th class="text-end">Charges</th>
+                <th class="col-num">Users</th>
+                <th class="col-num">Jobs</th>
+                <th class="col-num">{{ term('Core-Hours', g_core_hours()) }}</th>
+                <th class="col-num">{{ term('Charges', g_charges()) }}</th>
             </tr>
         </thead>
         {% if breakdown %}
@@ -143,10 +143,10 @@
         <tbody>
             <tr class="table-primary cursor-pointer fw-semibold" {{ collapse_toggle('month-days-' ~ mid) }}>
                 <td>{{ month_key }} <i class="fa-solid fa-chevron-right ms-1 small text-muted collapse-icon"></i></td>
-                <td class="text-end">{{ monthly_user_counts.get(month_key, 0) | fmt_number }}</td>
-                <td class="text-end">{{ m_jobs | fmt_number }}</td>
-                <td class="text-end">{{ m_core_hours | fmt_number }}</td>
-                <td class="text-end">{{ m_charges | fmt_number }}</td>
+                <td class="col-num">{{ monthly_user_counts.get(month_key, 0) | fmt_number }}</td>
+                <td class="col-num">{{ m_jobs | fmt_number }}</td>
+                <td class="col-num">{{ m_core_hours | fmt_number }}</td>
+                <td class="col-num">{{ m_charges | fmt_number }}</td>
             </tr>
         </tbody>
         <tbody class="collapse" id="month-days-{{ mid }}">
@@ -158,10 +158,10 @@
                     {{ day.date }}
                     <i class="fa-solid fa-chevron-right ms-1 small text-muted collapse-icon"></i>
                 </td>
-                <td class="text-end">{{ day.user_count }}</td>
-                <td class="text-end">{{ day.jobs | fmt_number }}</td>
-                <td class="text-end">{{ day.core_hours | fmt_number }}</td>
-                <td class="text-end">{{ day.charges | fmt_number }}</td>
+                <td class="col-num">{{ day.user_count | fmt_number }}</td>
+                <td class="col-num">{{ day.jobs | fmt_number }}</td>
+                <td class="col-num">{{ day.core_hours | fmt_number }}</td>
+                <td class="col-num">{{ day.charges | fmt_number }}</td>
             </tr>
             {# Day-detail placeholder sits immediately after its day
                header — inside the same month-days <tbody> — so the
@@ -197,10 +197,10 @@
                     {{ day.date }}
                     <i class="fa-solid fa-chevron-right ms-1 small text-muted collapse-icon"></i>
                 </td>
-                <td class="text-end">{{ day.user_count }}</td>
-                <td class="text-end">{{ day.jobs | fmt_number }}</td>
-                <td class="text-end">{{ day.core_hours | fmt_number }}</td>
-                <td class="text-end">{{ day.charges | fmt_number }}</td>
+                <td class="col-num">{{ day.user_count | fmt_number }}</td>
+                <td class="col-num">{{ day.jobs | fmt_number }}</td>
+                <td class="col-num">{{ day.core_hours | fmt_number }}</td>
+                <td class="col-num">{{ day.charges | fmt_number }}</td>
             </tr>
             <tr class="collapse" id="day-detail-{{ did }}" data-no-persist
                 hx-get="{{ url_for('user_dashboard.resource_details_day_subtree',

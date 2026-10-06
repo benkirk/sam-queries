@@ -303,6 +303,11 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
     white-space: nowrap;
 }
 
+/* A truncating path keeps its head readable on a phone; its copy button sits before it. */
+.table td.cell-truncate.cell-path {
+    min-width: 12rem;
+}
+
 .row-actions {
     display: inline-flex;
     flex-wrap: nowrap;

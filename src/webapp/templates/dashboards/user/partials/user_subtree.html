@@ -48,9 +48,9 @@
                 <em class="ms-2">{{ q0.queue }}</em>
                 {% if jobs_machine %}{{ jobs_button(djid) }}{% endif %}
               </td>
-              <td class="text-end"><small>{{ d.jobs | fmt_number }}</small></td>
-              <td class="text-end"><small>{{ d.core_hours | fmt_number }}</small></td>
-              <td class="text-end"><small>{{ d.charges | fmt_number }}</small></td>
+              <td class="col-num"><small>{{ d.jobs | fmt_number }}</small></td>
+              <td class="col-num"><small>{{ d.core_hours | fmt_number }}</small></td>
+              <td class="col-num"><small>{{ d.charges | fmt_number }}</small></td>
             </tr>
             {% if jobs_machine %}
               {{ jobs_collapse_row(djid, projcode, jobs_machine,
@@ -71,9 +71,9 @@
                 {% endif %}
                 {% if jobs_machine and queue_is_leaf %}{{ jobs_button(qid ~ '-jobs') }}{% endif %}
               </td>
-              <td class="text-end">{{ q.jobs | fmt_number }}</td>
-              <td class="text-end">{{ q.core_hours | fmt_number }}</td>
-              <td class="text-end">{{ q.charges | fmt_number }}</td>
+              <td class="col-num">{{ q.jobs | fmt_number }}</td>
+              <td class="col-num">{{ q.core_hours | fmt_number }}</td>
+              <td class="col-num">{{ q.charges | fmt_number }}</td>
             </tr>
             {% if jobs_machine and queue_is_leaf %}
               {{ jobs_collapse_row(qid ~ '-jobs', projcode, jobs_machine,
@@ -89,9 +89,9 @@
                     <small>{{ d.date }}</small>
                     {% if jobs_machine %}{{ jobs_button(djid) }}{% endif %}
                   </td>
-                  <td class="text-end"><small>{{ d.jobs | fmt_number }}</small></td>
-                  <td class="text-end"><small>{{ d.core_hours | fmt_number }}</small></td>
-                  <td class="text-end"><small>{{ d.charges | fmt_number }}</small></td>
+                  <td class="col-num"><small>{{ d.jobs | fmt_number }}</small></td>
+                  <td class="col-num"><small>{{ d.core_hours | fmt_number }}</small></td>
+                  <td class="col-num"><small>{{ d.charges | fmt_number }}</small></td>
                 </tr>
                 {% if jobs_machine %}
                   {{ jobs_collapse_row(djid, projcode, jobs_machine,
