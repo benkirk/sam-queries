@@ -207,6 +207,68 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
 .usage-table-4 .ucol-name { width: 40%; }
 .usage-table-4 .ucol-num  { width: 20%; }
 
+/* Resource Details' rolling-rate gauge (rolling_rate_htmx.html): 0-200% of the
+   prorated rate, 100% at the center tick. A cold fill runs left from center, a hot
+   one right; --fill-start / --fill-w / --thresh are percentages of the track. */
+.rate-grid {
+    display: grid;
+    grid-template-columns: 4rem 1fr auto auto;
+    column-gap: 0.5rem;
+    row-gap: 3px;
+    align-items: center;
+}
+.rate-label { font-size: 0.82rem; }
+.rate-note { font-size: 0.78rem; }
+.rate-gauge {
+    position: relative;
+    height: 18px;
+    background: var(--surface-secondary);
+    border-radius: 4px;
+}
+.rate-gauge > * { position: absolute; }
+.rate-zone { top: 0; height: 100%; width: 50%; }
+.rate-zone-cold { left: 0; background: rgba(var(--bs-info-rgb), 0.08); border-radius: 4px 0 0 4px; }
+.rate-zone-hot { left: 50%; background: color-mix(in srgb, var(--bs-orange) 8%, transparent); border-radius: 0 4px 4px 0; }
+.rate-fill {
+    left: var(--fill-start);
+    top: 0;
+    height: 100%;
+    width: var(--fill-w);
+    background: var(--rate-fill);
+    border-radius: 4px;
+    opacity: 0.85;
+}
+.rate-fill.rate-cold { --rate-fill: var(--bs-info); }
+.rate-fill.rate-steady { --rate-fill: var(--bs-success); }
+.rate-fill.rate-hot { --rate-fill: var(--bs-orange); }
+.rate-fill.rate-over_limit { --rate-fill: var(--bs-danger); }
+.rate-pace { left: 50%; top: -2px; bottom: -2px; width: 2px; background: var(--text-primary); opacity: 0.75; }
+.rate-limit { left: var(--thresh); top: -2px; bottom: -2px; width: 0; border-left: 2px dashed var(--bs-danger); opacity: 0.85; }
+.rate-limit-label {
+    left: var(--thresh);
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 0.6rem;
+    font-weight: 600;
+    color: var(--bs-danger);
+    background: rgba(var(--surface-card-rgb), 0.82);
+    padding: 0 3px;
+    border-radius: 2px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 1;
+}
+.rate-scale {
+    position: relative;
+    height: 1.1rem;
+    margin-top: 1px;
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+}
+.rate-scale > span { position: absolute; }
+.rate-scale .rate-scale-mid { left: 50%; transform: translateX(-50%); }
+.rate-scale .rate-scale-end { right: 0; }
+
 /* Help affordances (help.html macros, activated by tooltip-init.js).
    .help-icon — chrome-less ⓘ/? button next to a heading or label.
    .help-term — inline term/column-header with a dotted-underline cue. */
