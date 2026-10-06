@@ -1,6 +1,7 @@
 {# Body of #chartExpandModal. In-modal controls only hx-target the body: a modal
    toggle here would hide the open modal (the PR #464 trap). `windows` is
-   chart_pills dicts, or empty. #}
+   chart_pills dicts, or empty; `rim` names the rim entity (project) and
+   `rim_links` False says its wedges open nothing. #}
 {% from 'dashboards/fragments/chart_bits.html' import chart_pills %}
 <h5 class="modal-title" id="chartExpandModalTitle" hx-swap-oob="true">{{ title }}</h5>
 <div class="chart-expand">
@@ -11,7 +12,8 @@
     {% endif %}
     <figure class="mb-0" aria-label="{{ title }}">{{ chart_svg | safe }}</figure>
     <p class="text-muted small text-center mb-0">
-        {% if caption %}{{ caption }} {% endif %}Hover a wedge to name it; click a project to open it.
-        A muted “+N” wedge gathers a panel’s projects too thin to draw.
+        {% set rim = rim | default('project') %}
+        {% if caption %}{{ caption }} {% endif %}Hover a wedge to name it{% if rim_links is not defined or rim_links %}; click a {{ rim }} to open it{% endif %}.
+        A muted “+N” wedge gathers a panel’s {{ rim }}s too thin to draw.
     </p>
 </div>

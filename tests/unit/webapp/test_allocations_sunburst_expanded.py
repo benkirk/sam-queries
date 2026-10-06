@@ -36,7 +36,7 @@ def captured():
 
 
 def _values(seen):
-    return {p['name']: p['value'] for r in seen['rows'] for pn in r['panels'] for p in pn['projects']}
+    return {p['name']: p['value'] for r in seen['rows'] for pn in r['panels'] for p in pn['rim']}
 
 
 def test_alloc_is_the_root_only_annual_rate(auth_client, captured):
