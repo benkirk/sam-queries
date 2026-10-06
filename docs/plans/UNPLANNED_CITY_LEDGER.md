@@ -999,6 +999,12 @@ everywhere it is drawn: the project's own % and Used, "from <root>", the pool's 
   repeated pair (the whole-snapshot projection read a 4,096 TiB pool as 8,191).
 - [x] `sam-search project`'s shared rows read as on the web; the JSON envelope is unchanged.
 
+**Output changes:** shared DISK rows only. `used` / `remaining` / `percent_used` go from the
+project's own TiB to the pool's, and `self_used` from TiB-years to the project's own TiB, on
+`/api/v1/projects/<projcode>/allocations` and, because the builder feeds
+`Project.get_detailed_allocation_usage()`, on `GET /api/v1/users/<username>/projects` (readable
+with an API key) and in `sam-search --format json project`.
+
 **Parity:** sweep 12's 659-capture set moved 0 values on MySQL and Postgres. It holds no shared
 disk row (its inheriting set is capped alphabetically at 25), so a new untracked
 `utils/profiling/usage_sweep/shared_disk.py` captures all 91 inheriting DISK allocations through
@@ -1091,6 +1097,24 @@ Data/Files), so the macro takes a column spec rather than one fixed table.
   tiers do not; kept as it was.
 - [ ] The By User / By Project drawers and the owner drawers render a full per-job table in a
   spanning cell; on a phone that table widens the outer one (it scrolls as a whole).
+
+**Pre-staging review of entries 13-15 (2026-10-06), on this sweep's PR:**
+
+- [x] Bug: disk Resource Details' Capacity Summary, on a scope drawing on another project's pool,
+  subtracted the scope's own bytes from the pool's amount (P03010039: Remaining 2,796 TiB while
+  NCGD0009's pool is 1,300 TiB over). The row is `allocation_cells` fed by the route:
+  `scope_disk_pool` (moved from the blueprint to `sam/queries/disk_usage.py`) names the pool's
+  owner, and a scope that is not the owner reads as every shared row does. A scope that owns its
+  pool renders as before.
+- [x] The dashboard skill's reuse list and `/dev/gallery` name `drill_toggle`, `lazy_drill_row`,
+  `owner_tier`, `sort_link`'s two arguments, the `ctl-w-*` scale and `copy_button`.
+- [ ] `AllocationWithUsageSchema._disk_caps` is memoized per instance and never cleared (#739
+  gave `_sums` a one-dump lifetime). Fold it into the same `dump()` hook once this branch sits on
+  staging. No live effect: every caller builds a schema per request.
+- [ ] A `?fileset=` view on a project that owns its pool still reads Remaining as the pool's
+  amount minus that one fileset's bytes.
+- [ ] The card's usage badge is silent when only the pool is nearly spent (own 3%, pool 96%); the
+  meter's lighter layer is the one cue. Ben's call; left as entry 14 set it.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
