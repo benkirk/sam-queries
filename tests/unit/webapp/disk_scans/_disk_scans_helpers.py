@@ -233,7 +233,7 @@ _DRILL_ROW = {
 }
 
 
-_DRILL_MARKER = 'fa-folder me-1'   # unique to a drillable row's link
+_DRILL_MARKER = 'title="Browse into '   # a drillable row's link title
 
 
 def _benkirk_uid(session):

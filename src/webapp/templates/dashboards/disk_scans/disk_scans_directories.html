@@ -174,18 +174,17 @@
           {% for r in rows %}
             <tr>
               <td class="cell-truncate cell-path small" title="{{ r.path }}">
-                {{- copy_button(r.path, label='Copy path', inline=True) }}
-                {%- if browse and not filters.leaves_only and r.dir_count_r -%}
+                {# The folder icon is the copy button (Ben, 2026-10-06): one icon per path. #}
+                {{- copy_button(r.path, label='Copy path', icon='fa-solid fa-folder', inline=True) }}
+                {% if browse and not filters.leaves_only and r.dir_count_r -%}
                   {# Drill into this directory's subtree, keeping the active
                      filters (the params form). Leaves (dir_count_r == 0) and
                      the static card tab render a plain path. #}
-                  <a class="text-decoration-none" href="#"
+                  <a class="text-decoration-none" href="#" title="Browse into {{ r.path }}"
                      hx-get="{{ fragment_url }}?fileset={{ r.path | urlencode }}&sort_by={{ sort.sort_by }}{{ _rec_q }}"
                      hx-target="#{{ target_id }}"
                      hx-include="#disk-scans-dir-params-{{ target_id }}"
-                     hx-swap="innerHTML">
-                    <i class="fa-solid fa-folder me-1 text-muted"></i><code>{{ r.path }}</code>
-                  </a>
+                     hx-swap="innerHTML"><code>{{ r.path }}</code></a>
                 {%- else -%}
                   <code>{{ r.path }}</code>
                 {%- endif -%}
