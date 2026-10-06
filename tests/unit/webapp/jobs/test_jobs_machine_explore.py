@@ -80,7 +80,7 @@ def test_machine_by_project_fragment_unscoped(app, auth_client, monkeypatch):
     assert 'account' not in kwargs
     assert 'data-job-project="SCSG0001"' in body
     assert ('/dashboards/user/jobs/machine/derecho'
-            '?machine=derecho&account=SCSG0001') in body
+            '?machine=derecho&account=SCSG0001') in body.replace('&amp;', '&')
 
 
 def test_machine_by_project_threads_metric_sort(app, auth_client, monkeypatch):

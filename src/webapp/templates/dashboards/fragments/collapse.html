@@ -58,3 +58,19 @@ data-bs-toggle="collapse" data-bs-target="#{{ target_id }}" aria-expanded="{{ 't
 <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 me-1" {{ collapse_toggle(target_id) }}
         aria-controls="{{ target_id }}" aria-label="{{ label }}" title="{{ label }}"><i class="fa-solid fa-chevron-right collapse-icon small"></i></button>
 {%- endmacro %}
+
+{#- A collapsed row that fetches its body on first open: tr#<rid>-row, swap target #<rid>-content.
+    Bound to shown.bs.collapse (never click), so a chart-click .show() fires it too. persist=false
+    keeps nav-view-persistence from re-opening it, and re-running its query, on reload. -#}
+{% macro lazy_drill_row(rid, url, colspan, loading, persist=true) -%}
+<tr class="collapse" id="{{ rid }}-row"{% if not persist %} data-no-persist{% endif %}>
+    <td colspan="{{ colspan }}" class="p-0 border-0">
+        <div class="p-2 bg-body-tertiary" id="{{ rid }}-content"
+             hx-get="{{ url }}{{ '&' if '?' in url else '?' }}target_id={{ rid }}-content"
+             hx-trigger="shown.bs.collapse from:closest tr.collapse once"
+             hx-swap="innerHTML">
+            <p class="text-muted small mb-0"><i class="fa-solid fa-spinner fa-spin me-1"></i> {{ loading }}</p>
+        </div>
+    </td>
+</tr>
+{%- endmacro %}
