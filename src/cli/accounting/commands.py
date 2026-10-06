@@ -1603,9 +1603,9 @@ class AccountingAdminCommand(BaseCommand):
 
         # ---- 5. Subtree roll-up via MPPT containment --------------------------
         # NestedSetMixin: P's subtree is every Q sharing P.tree_root with
-        # P.tree_left <= Q.tree_left and P.tree_right >= Q.tree_right. Same rule
-        # as Project.get_subtree_charges(), computed in Python over the
-        # preloaded set to avoid a per-project round-trip.
+        # P.tree_left <= Q.tree_left and P.tree_right >= Q.tree_right: the kernel's
+        # subtree join, computed in Python over the preloaded set to avoid a
+        # per-project round-trip.
         quota_projects = [
             projects_by_code[pc] for pc in own_quota
             if pc in projects_by_code
