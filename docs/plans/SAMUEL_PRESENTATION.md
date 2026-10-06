@@ -678,6 +678,8 @@ shots are Ben's own views (pinned to the signed-in user) and one project-level c
   emails are replaced in the DOM with `user_xxxxxxxx`-style placeholders before each capture,
   rather than blurred afterwards. This would amend "never screenshot prod" above; it needs
   Ben's sign-off.
+  The full protocol, the tooling to build, and the shot list:
+  `SAMUEL_PROD_SCREENSHOTS_HANDOFF.md`.
 
 - **Playwright MCP** drives the local `samuel-dev` (:5050, `docker compose up samuel-dev --watch`)
   through stub Quick Login on obfuscated data. It captures desktop / mobile and light / dark
