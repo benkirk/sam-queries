@@ -223,19 +223,18 @@ def test_single_owner_band_drills_straight_to_directories(app):
     """One owner -> no per-user table; the band row drills to their directories."""
     body = _render_distribution_partial(app, {7: {'data': 100, 'files': 10}})
     assert 'owner_uid=7' in body                       # directory drill present
-    assert 'Top users by' not in body                  # per-user table skipped
+    assert 'Show top users' not in body                # per-user rows skipped
     assert 'Show directories in this band' in body     # band row title
-    assert '>Owners<' not in body                      # uniform-1 column folded
+    assert 'count-badge' not in body                   # uniform-1 user count folded
 
 
 def test_multi_owner_band_keeps_per_user_table(app):
     """Two+ owners -> the per-user aggregation table is retained."""
     body = _render_distribution_partial(
         app, {7: {'data': 60, 'files': 6}, 8: {'data': 40, 'files': 4}})
-    assert 'Top users by' in body                       # per-user table kept
-    assert 'Show top users in this bucket' in body
+    assert 'Show top users in this bucket by data' in body   # per-user rows kept
     assert 'owner_uid=7' in body and 'owner_uid=8' in body   # each user drills
-    assert '>Owners<' in body                            # column shown (≥2 owners)
+    assert 'count-badge' in body                         # user count shown (≥2 owners)
 
 
 def test_single_owner_band_without_window_keeps_table(app):
@@ -257,7 +256,7 @@ def test_single_owner_band_without_window_keeps_table(app):
             log_toggle=False, log_on=False, fragment_url='/frag',
             dir_fragment_url='/dirs')
     assert 'benkirk' in body                            # user still listed
-    assert 'Top users by' in body                       # per-user table kept
+    assert 'Show top users in this bucket' in body      # per-user rows kept
     assert 'owner_uid=7' not in body                    # but no directory drill
 
 

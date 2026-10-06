@@ -420,7 +420,7 @@ def test_file_sizes_renders_svg(app, auth_client, active_project, monkeypatch):
     assert 'data-ah-bucket="0"' in body
     # Data <-> Files metric pill present (file-sizes only) and defaults to Data.
     assert 'metric=files' in body
-    assert 'Top users by data' in body
+    assert 'Show top users in this bucket by data' in body
     # Log-scale switch present and off by default.
     assert 'Log scale' in body
     assert 'disk-scans-log-' in body
@@ -434,7 +434,7 @@ def test_file_sizes_renders_svg(app, auth_client, active_project, monkeypatch):
     assert resp2.status_code == 200
     body2 = resp2.get_data(as_text=True)
     assert '<svg' in body2
-    assert 'Top users by files' in body2   # per-user table re-sorted by metric
+    assert 'Show top users in this bucket by files' in body2   # per-user rows re-sorted by metric
 
     # Log scale on -> still renders (solid bars), switch reflects checked state,
     # and the bar->row drill-down anchor survives.
