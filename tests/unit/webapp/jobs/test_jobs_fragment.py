@@ -283,6 +283,8 @@ def test_jobs_fragment_renders_verbose_drawer(
     assert 'CPU type' in body
     # Drawer renders the values.
     assert 'milan' in body
+    # Exit status is a badge (the helper row exits 1).
+    assert 'Failed (1)' in body
 
 
 def test_jobs_fragment_qos_column_in_table_and_sortable(

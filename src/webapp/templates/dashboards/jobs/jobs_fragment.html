@@ -1,6 +1,6 @@
 {% from 'dashboards/fragments/pagination.html' import pagination %}
 {% from 'dashboards/fragments/collapse.html' import drill_toggle %}
-{% from 'dashboards/jobs/_jobs_macros.html' import jobs_disabled %}
+{% from 'dashboards/jobs/_jobs_macros.html' import jobs_disabled, exit_status_badge %}
 {#
   Per-job rows fragment — embedded into resource_details.html via hx-get.
 
@@ -42,6 +42,8 @@
     {%- else -%}
       {{ val | fmt_date }}
     {%- endif -%}
+  {%- elif col == 'exit_status' -%}
+    {{ exit_status_badge(val) }}
   {%- elif col in ('job_id', 'user') -%}
     <code class="small" title="{{ val }}">{{ val }}</code>
   {%- elif col in ('name', 'resources') -%}
