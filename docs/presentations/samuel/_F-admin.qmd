@@ -55,6 +55,15 @@ Management first and falls back to mail (src/webapp/register/handoff_mail.py:61-
 TICKET_PROVIDER jira-servicedesk with JIRA_WRITE_ENABLED "1" (:408-410).
 :::
 
+## The queue
+
+::: {.notes}
+Admin, Account Requests: seven XRAS-roster requests waiting on an account, grouped, with facet
+chips for status, purpose, origin and readiness. Production, read-only, 2026-10-06. Names and emails are replaced with pseudonyms in the page before capture, never blurred (docs/plans/SAMUEL_PROD_SCREENSHOTS_HANDOFF.md).
+:::
+
+[![](images/admin-account-requests.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/admin/account-requests)
+
 ## Events and invitations {.vcenter scale="1.15"}
 
 - An event is a workshop: create, edit, close, reopen. A listed event shows on the public Status
@@ -94,6 +103,16 @@ inactivate_time from the scheduled time, not the clock (:7-11). Live in prod. ex
 Monday 09:00 MT (expiration_notices.py:57). Records: EXPIRATION_NOTICES.md.
 :::
 
+## What expires next
+
+::: {.notes}
+Admin, Projects, Project Expirations, Upcoming: UNIV and WNA projects whose last allocation ends
+within 31 days, with how much they have used and when the PI was last notified. Project codes and
+titles are real; no people show. Production, read-only, 2026-10-06. Names and emails are replaced with pseudonyms in the page before capture, never blurred (docs/plans/SAMUEL_PROD_SCREENSHOTS_HANDOFF.md).
+:::
+
+[![](images/admin-expirations.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/admin/projects)
+
 ## Mail that can't surprise you {.vcenter scale="1.15"}
 
 - **Off unless switched on:** only production sends. A copy elsewhere can still reach the mail
@@ -116,6 +135,15 @@ family, a kind or {kind}-{facility}, always adding (notifications_routes.py:470-
 real addresses, so its details page is SYSTEM_ADMIN (notifications_routes.py:7-13); the counts on the
 Configuration tab are VIEW_SYSTEM_CONFIG (configuration_card.html:188-268).
 :::
+
+## The delivery log
+
+::: {.notes}
+Admin, Configuration, Notifications (SYSTEM_ADMIN): 520 attempts in 30 days, faceted by status,
+kind and channel. Templates and Addressing are the other two tabs. Production, read-only, 2026-10-06. Names and emails are replaced with pseudonyms in the page before capture, never blurred (docs/plans/SAMUEL_PROD_SCREENSHOTS_HANDOFF.md).
+:::
+
+[![](images/admin-notifications.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/admin/htmx/notifications)
 
 ## Templates operators can edit {.vcenter scale="1.15"}
 
@@ -164,6 +192,14 @@ takes a separate M-prefixed run key, so a replay never claims a real slot; --for
 SAM_TASKS_DISABLED (src/cli/cmds/admin.py:882-933). Record: SCHEDULED_TASKS_DASHBOARD.md.
 :::
 
+## Every run, on the record
+
+::: {.notes}
+The run history: 2,737 runs in 30 days, one row per dispatch that found its slot due. Production, read-only, 2026-10-06. Names and emails are replaced with pseudonyms in the page before capture, never blurred (docs/plans/SAMUEL_PROD_SCREENSHOTS_HANDOFF.md).
+:::
+
+[![](images/admin-tasks.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/admin/htmx/tasks)
+
 ## The Configuration tab {.vcenter scale="1.15"}
 
 - One page for how this deployment is set up: authentication, mail, tickets, tasks, database
@@ -189,6 +225,31 @@ username (last_seen_routes.py:1-6); buckets (src/sam/queries/last_seen_review.py
 management_transaction (src/sam/manage/transaction.py:12) and a before_flush listener
 (src/webapp/audit/events.py:1-35) write AUDIT_LOG_PATH (src/webapp/config.py:148-153).
 :::
+
+## The deployment, read-only
+
+::: {.notes}
+Admin, Configuration: the running pod's settings, captured at process start. Production, read-only, 2026-10-06. Names and emails are replaced with pseudonyms in the page before capture, never blurred (docs/plans/SAMUEL_PROD_SCREENSHOTS_HANDOFF.md).
+:::
+
+[![](images/admin-configuration.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/admin/configuration)
+
+## Rate limits
+
+::: {.notes}
+The tiers in force, and a quiet day: no 429s in 24 hours, nobody blocked. Production, read-only, 2026-10-06. Names and emails are replaced with pseudonyms in the page before capture, never blurred (docs/plans/SAMUEL_PROD_SCREENSHOTS_HANDOFF.md).
+:::
+
+[![](images/admin-rate-limits.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/admin/htmx/rate-limits)
+
+## Who was seen, and when
+
+::: {.notes}
+Admin, Users & Groups, Last seen: 6,669 active SAM users bucketed from "now" to "never seen",
+and by source. Production, read-only, 2026-10-06. Names and emails are replaced with pseudonyms in the page before capture, never blurred (docs/plans/SAMUEL_PROD_SCREENSHOTS_HANDOFF.md).
+:::
+
+[![](images/admin-last-seen.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/admin/users/last-seen)
 
 ## TL;DR - running the shop {.vcenter scale="1.15"}
 

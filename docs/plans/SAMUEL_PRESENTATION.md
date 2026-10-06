@@ -1129,6 +1129,20 @@ Each phase closes with render → visual review → commit in this repo
   - **Result:** all 60 footnotes in the sources are now in the pptx; 211 slides, unchanged.
   - The submodule pin moved to `05e7a0a`.
 
+- **2026-10-06, the reshoot after the UX sweeps (#716 to #746), and the production shoot.** Ben
+  approved production screenshots (2026-10-06): responsible obfuscation, not pedantic.
+  - **Tooling:** `ui_snapshots.py` page-shot recipes plus `--read-only`, `--redact` and `--verify`
+    (#747). `scripts/ui_snapshots_deck.json` reshoots the local shots in one command against
+    `ALT_SAM_DB_PORT=3307 scripts/dev_server_alt.sh <worktree> 5052`;
+    `scripts/ui_snapshots_prod_deck.json` takes the production ones.
+  - **Local, obfuscated DB:** the five tour shots, mobile-dark (no more mid-word splits), Job History
+    activity and table, `/database`. By Project is now the full-screen three-ring view (#721).
+  - **Production, approved by Ben image by image:** tour-status (live collectors, replacing the
+    idle local zeros), and new image slides for Appendix F (account requests, expirations, the
+    delivery log, task runs, configuration, rate limits, last seen) and E (Filesystem Scans).
+    No request was blocked, every shot passed OCR, and the session file was deleted after.
+  - **Not shot:** Events (production has none) and Templates.
+
 ## 11. Voice, tone and the fun
 
 **SAMuel = SAM, updated for extended lifecycle.** That backronym is the deck's premise and its
@@ -1522,3 +1536,8 @@ branch and PR against `staging`. Tick an item once its fix merges, and note the 
   (`admin.py:422,429`), which means "not found" elsewhere.
 - [ ] **No test keeps the CLI conventions in lockstep with `jobhist`,** although CLAUDE.md
   requires it.
+- [ ] **A long project title splits mid-word at desktop width** (found 2026-10-06, the production
+  shoot). Admin, Projects, Expirations: UCIE0001's title wraps "Wil l" at 1440px. The phone sweep
+  (#746) covered phone width only.
+- [ ] **Server Information's note renders larger than its card** (found 2026-10-06). Admin,
+  Configuration: the "Reflects the worker process..." line is body size inside a small-text card.
