@@ -1536,8 +1536,8 @@ branch and PR against `staging`. Tick an item once its fix merges, and note the 
   (`admin.py:422,429`), which means "not found" elsewhere.
 - [ ] **No test keeps the CLI conventions in lockstep with `jobhist`,** although CLAUDE.md
   requires it.
-- [ ] **A long project title splits mid-word at desktop width** (found 2026-10-06, the production
-  shoot). Admin, Projects, Expirations: UCIE0001's title wraps "Wil l" at 1440px. The phone sweep
-  (#746) covered phone width only.
-- [ ] **Server Information's note renders larger than its card** (found 2026-10-06). Admin,
-  Configuration: the "Reflects the worker process..." line is body size inside a small-text card.
+- [ ] **UCIE0001's title has a typo, "Wil l"** (found 2026-10-06, the production shoot). It is in
+  the data (`project.title`), not a wrap: a one-field edit in Admin, if wanted.
+- [x] **A `.small` paragraph in an inner card rendered at 18px** (found 2026-10-06, Server
+  Information's note): `.inner-card p` outranked `.small`. Fixed in #750; the deck's
+  `admin-configuration.png` shows the old size until a reshoot after #750 deploys.
