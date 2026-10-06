@@ -115,18 +115,23 @@ def _build_project_resources_data(project: Project,
 def _apply_disk_capacity_overrides(
     resource_dict: Dict[str, Any],
     cap: Optional[Dict[str, Any]],
+    pool_cap: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """Mutate resource_dict to swap cumulative TiB-yr for point-in-time
-    capacity from ``cap`` (output of bulk_get_subtree_disk_capacity)."""
+    """Swap cumulative TiB-yr for point-in-time capacity (bulk_get_subtree_disk_capacity
+    dicts). ``cap`` is this project's subtree; ``pool_cap``, on a shared row, the pool
+    root's, which becomes ``used`` while ``cap`` becomes ``self_used``."""
     if cap is None:
         return
     allocated = resource_dict.get('allocated', 0.0) or 0.0
-    used_tib = cap['used_tib']
-    pct = (used_tib / allocated * 100) if allocated > 0 else 0.0
+    pool = pool_cap if pool_cap is not None and resource_dict.get('is_inheriting') else cap
+    used_tib = pool['used_tib']
     resource_dict['used'] = used_tib
     resource_dict['remaining'] = allocated - used_tib
-    resource_dict['percent_used'] = pct
-    resource_dict['activity_date'] = cap['activity_date']
+    resource_dict['percent_used'] = (used_tib / allocated * 100) if allocated > 0 else 0.0
+    resource_dict['activity_date'] = pool['activity_date']
+    if resource_dict.get('is_inheriting'):
+        resource_dict['self_used'] = cap['used_tib']
+        resource_dict['self_percent_used'] = (cap['used_tib'] / allocated * 100) if allocated > 0 else 0.0
 
 
 def _read_model_rows(session: Session, project_ids, allocation_ids,
@@ -342,25 +347,30 @@ def build_user_projects_resources_batched(
     # Phase 6: assemble per-project resource dicts.
     out: Dict[int, List[DashboardResource]] = {p.project_id: [] for p in projects}
 
-    # Bulk-resolve disk-capacity overrides for every (project, resource)
-    # pair on a disk resource, so the per-row loop below becomes a pure
-    # dict lookup.
-    disk_pairs = [
-        (project, account.resource.resource_name)
-        for project, account, _qa, rtype, _ed in chosen.values()
-        if rtype == 'DISK'
-    ]
+    # Disk capacity for every DISK row, and for a shared one its pool root's too, keyed
+    # (project_id, resource_name); the per-row loop below is a dict lookup.
+    disk_pairs = []
+    for key, (project, account, _qa, rtype, _ed) in chosen.items():
+        if rtype == 'DISK':
+            disk_pairs.append((project, account.resource.resource_name))
+            if key in root_project_by_key:
+                disk_pairs.append((root_project_by_key[key], account.resource.resource_name))
+    pool_caps: Dict[tuple, Dict[str, Any]] = {}
     if state is not None:
         disk_caps = {}
-        for project, account, query_alloc, rtype, _ed in chosen.values():
+        for key, (project, account, query_alloc, rtype, _ed) in chosen.items():
             row = state[query_alloc.allocation_id]
             if rtype == 'DISK' and row.activity_date is not None:
+                own = row.self_used if row.is_inheriting else row.used
                 disk_caps[(project.project_id, account.resource.resource_name)] = {
-                    'used_tib': row.used, 'activity_date': row.activity_date,
+                    'used_tib': own, 'activity_date': row.activity_date,
                 }
+                pool_caps[key] = {'used_tib': row.used, 'activity_date': row.activity_date}
     elif disk_pairs:
         from sam.queries.disk_usage import bulk_get_subtree_disk_capacity
         disk_caps = bulk_get_subtree_disk_capacity(session, disk_pairs)
+        for key, root in root_project_by_key.items():
+            pool_caps[key] = disk_caps.get((root.project_id, chosen[key][1].resource.resource_name))
     else:
         disk_caps = {}
 
@@ -442,6 +452,7 @@ def build_user_projects_resources_batched(
             _apply_disk_capacity_overrides(
                 resource_dict,
                 disk_caps.get((project.project_id, resource_name)),
+                pool_caps.get(key),
             )
 
         out[project.project_id].append(resource_dict)
@@ -686,6 +697,10 @@ def get_resource_detail_data(
     # Surface the type so the template can label the allocation figure with
     # its unit (hours / TiB) via the alloc_unit filter.
     resource_summary['resource_type'] = str(resource_type)
+    # allocation_cells reads these; a missing key is Jinja Undefined, which `is not none`.
+    resource_summary.setdefault('is_inheriting', False)
+    resource_summary['elapsed_pct'], resource_summary['bar_state'] = allocation_timeline(
+        resource_summary['start_date'], resource_summary['end_date'], datetime.now())
 
     # Resolve the scope project (controls daily charge aggregation)
     if scope_projcode and scope_projcode != projcode:

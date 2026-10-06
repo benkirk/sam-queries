@@ -225,11 +225,11 @@ class AllocationWithUsageSchema(AllocationSchema):
         """Total used amount. For inheriting allocations, this is the
         root project's full subtree consumption (the actual shared pool
         usage). For standalone allocations, this is the single-account
-        charges + adjustments. For DISK it is the subtree's occupancy at
-        the latest snapshot (TiB against a TiB allocation), as on every
-        other surface; the TiB-year integral stays in `charges_by_type`.
+        charges + adjustments. For DISK it is the occupancy at the latest
+        snapshot (TiB against a TiB allocation) of the pool root's subtree,
+        as on every other surface; the TiB-year integral stays in `charges_by_type`.
         """
-        cap = self._disk_capacity(obj)
+        cap = self._disk_capacity(obj, pool=True)
         if cap is not None:
             return cap['used_tib']
         tree_used, _ = self._calculate_tree_usage(obj)
@@ -253,11 +253,14 @@ class AllocationWithUsageSchema(AllocationSchema):
         return 0.0
 
     def get_self_used(self, obj):
-        """This project's contribution to the shared allocation pool.
-        None for non-inheriting allocations.
+        """This project's contribution to the shared allocation pool (on DISK, its own
+        subtree's occupancy). None for non-inheriting allocations.
         """
         if not obj.is_inheriting:
             return None
+        cap = self._disk_capacity(obj)
+        if cap is not None:
+            return cap['used_tib']
         _, _, used = self._calculate_usage(obj)
         return used
 
@@ -265,9 +268,9 @@ class AllocationWithUsageSchema(AllocationSchema):
         """This project's contribution as a percentage of the shared pool.
         None for non-inheriting allocations.
         """
-        if not obj.is_inheriting:
+        used = self.get_self_used(obj)
+        if used is None:
             return None
-        _, _, used = self._calculate_usage(obj)
         allocated = float(obj.amount) if obj.amount else 0.0
         if allocated > 0:
             return (used / allocated) * 100.0
@@ -282,8 +285,9 @@ class AllocationWithUsageSchema(AllocationSchema):
         _, root_projcode = self._calculate_tree_usage(obj)
         return root_projcode
 
-    def _disk_capacity(self, obj):
-        """Subtree snapshot occupancy for a DISK allocation, else None.
+    def _disk_capacity(self, obj, pool=False):
+        """Snapshot occupancy for a DISK allocation, else None: this project's subtree, or
+        with ``pool`` on a shared allocation, the pool root's.
 
         The same `bulk_get_subtree_disk_capacity` figure the dashboards use;
         a read-model row supplies it directly. Memoized per schema instance
@@ -299,20 +303,27 @@ class AllocationWithUsageSchema(AllocationSchema):
             return None
         row = self.context.get('state')
         if row is not None:
-            return {'used_tib': row.used,
-                    'used_bytes': int(round(row.used * BYTES_PER_TIB)),
+            tib = row.self_used if row.is_inheriting and not pool else row.used
+            return {'used_tib': tib,
+                    'used_bytes': int(round(tib * BYTES_PER_TIB)),
                     'activity_date': row.activity_date}
+        project = account.project
+        if pool and obj.is_inheriting:
+            root_account = obj.root.account
+            root = root_account.project if root_account is not None else None
+            if root is not None and root.has_tree_coordinates():
+                project = root
         memo = self.__dict__.setdefault('_disk_caps', {})
-        key = (account.project_id, account.resource.resource_name)
+        key = (project.project_id, account.resource.resource_name)
         if key not in memo:
             from sam.queries.disk_usage import bulk_get_subtree_disk_capacity
             memo[key] = bulk_get_subtree_disk_capacity(
-                session, [(account.project, account.resource.resource_name)]).get(key)
+                session, [(project, account.resource.resource_name)]).get(key)
         return memo[key]
 
     def _current_snapshot(self, obj):
-        """The disk capacity dict when a snapshot exists somewhere in the subtree."""
-        cap = self._disk_capacity(obj)
+        """The disk capacity dict behind `used` when a snapshot exists in that subtree."""
+        cap = self._disk_capacity(obj, pool=True)
         return cap if cap is not None and cap['activity_date'] is not None else None
 
     def get_current_used_bytes(self, obj):

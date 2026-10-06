@@ -1,10 +1,11 @@
 {% from 'dashboards/fragments/chart_bits.html' import chart_figure %}
-{% from 'dashboards/user/partials/_jobs_macros.html'
+{% from 'dashboards/jobs/_jobs_macros.html'
    import jobs_disabled, jobs_error, jobs_empty, metric_pills, charges_note,
           JOBS_METRIC_NOUNS %}
 {% from 'dashboards/fragments/help.html' import term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_cpu_hours with context %}
 {% from 'dashboards/fragments/chart_expand.html' import expand_button %}
+{% from 'dashboards/fragments/collapse.html' import drill_toggle, lazy_drill_row %}
 {#
   Usage-rollup fragment — a per-entity pie + drillable rows. Serves BOTH the
   By User and By Project tabs; they were byte-for-byte the same panel apart
@@ -108,10 +109,10 @@
              server ranks rows by it (and the top-N cut is taken in it). #}
           <tr>
             <th class="sortable-header" data-sort="text">{{ entity.label }}</th>
-            <th class="sortable-header text-end{% if metric == 'jobs' %} sort-desc{% endif %}" data-sort="numeric">Jobs</th>
-            <th class="sortable-header text-end{% if metric == 'cpu_hours' %} sort-desc{% endif %}" data-sort="numeric">{{ term('CPU-hours', g_cpu_hours()) }}</th>
-            <th class="sortable-header text-end{% if metric == 'gpu_hours' %} sort-desc{% endif %}" data-sort="numeric">GPU-hours</th>
-            <th class="sortable-header text-end{% if metric == 'charges' %} sort-desc{% endif %}" data-sort="numeric">Charges</th>
+            <th class="sortable-header col-num{% if metric == 'jobs' %} sort-desc{% endif %}" data-sort="numeric">Jobs</th>
+            <th class="sortable-header col-num{% if metric == 'cpu_hours' %} sort-desc{% endif %}" data-sort="numeric">{{ term('CPU-hours', g_cpu_hours()) }}</th>
+            <th class="sortable-header col-num{% if metric == 'gpu_hours' %} sort-desc{% endif %}" data-sort="numeric">GPU-hours</th>
+            <th class="sortable-header col-num{% if metric == 'charges' %} sort-desc{% endif %}" data-sort="numeric">Charges</th>
           </tr>
         </thead>
         {% for r in rows %}
@@ -125,12 +126,7 @@
                 data-bs-target="#{{ _rid }}-row">
               <td data-sort-value="{{ val or '~' }}">
                 {% if val %}
-                <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
-                        type="button" data-bs-toggle="collapse"
-                        data-bs-target="#{{ _rid }}-row"
-                        aria-expanded="false" aria-controls="{{ _rid }}-row">
-                  <i class="fa-solid fa-chevron-right collapse-icon small"></i>
-                </button>
+                {{ drill_toggle(_rid ~ '-row', 'Show ' ~ val ~ entity.loading_suffix) }}
                 {% if can_view_entity | default(false) %}
                 {# Quick-view modal — the renderer gates this affordance on
                    the modal route's own permission, so the click can't 403.
@@ -151,34 +147,25 @@
                 <span class="text-muted" title="{{ entity.unknown_hint }}">(unknown)</span>
                 {% endif %}
               </td>
-              <td class="text-end" data-sort-value="{{ r.job_count }}">{{ r.job_count | fmt_number }}</td>
-              <td class="text-end" data-sort-value="{{ r.cpu_hours }}">{{ r.cpu_hours | fmt_number }}</td>
-              <td class="text-end" data-sort-value="{{ r.gpu_hours }}">{{ r.gpu_hours | fmt_number }}</td>
+              <td class="col-num" data-sort-value="{{ r.job_count }}">{{ r.job_count | fmt_number }}</td>
+              <td class="col-num" data-sort-value="{{ r.cpu_hours }}">{{ r.cpu_hours | fmt_number }}</td>
+              <td class="col-num" data-sort-value="{{ r.gpu_hours }}">{{ r.gpu_hours | fmt_number }}</td>
               {# Charges = cpu + gpu, matching charts/jobs_metrics.py JOBS_METRIC_KEYS. #}
               {% set _rc = (r.cpu_charges or 0) + (r.gpu_charges or 0) %}
-              <td class="text-end" data-sort-value="{{ _rc }}">{{ _rc | fmt_number }}</td>
+              <td class="col-num" data-sort-value="{{ _rc }}">{{ _rc | fmt_number }}</td>
             </tr>
             {% if val %}
-            <tr class="collapse" id="{{ _rid }}-row">
-              <td colspan="5" class="p-0 border-0">
-                {# Lazy-load this row's job slice on first expand. The drill
-                   param only ever NARROWS the mode's already-scoped fragment
-                   (user pin / server tree / VIEW_ALL_JOB_DATA) — it is
-                   re-validated there and can never widen scope. Bound to
-                   shown.bs.collapse (not click) so it fires under a
-                   pie-wedge open and under nav-view-persistence restore too.
-                   Carries the pane's date window + shared filters. #}
-                <div class="p-2 bg-body-tertiary" id="{{ _rid }}-content"
-                     hx-get="{{ jobs_fragment_url }}?machine={{ machine }}&{{ entity.drill_param }}={{ val }}{% if params.start %}&start={{ params.start }}{% endif %}{% if params.end %}&end={{ params.end }}{% endif %}{% if params.queue %}&queue={{ params.queue }}{% endif %}{% if params.qos %}&qos={{ params.qos }}{% endif %}{% if params.exit_status %}&exit_status={{ params.exit_status }}{% endif %}&target_id={{ _rid }}-content"
-                     hx-trigger="shown.bs.collapse from:closest tr.collapse once"
-                     hx-swap="innerHTML">
-                  <p class="text-muted small mb-0">
-                    <i class="fa-solid fa-spinner fa-spin me-1"></i>
-                    Loading {{ val }}{{ entity.loading_suffix }}…
-                  </p>
-                </div>
-              </td>
-            </tr>
+            {# The drill param only ever NARROWS the mode's already-scoped fragment
+               (user pin / server tree / VIEW_ALL_JOB_DATA): it is re-validated there
+               and can never widen scope. Carries the pane's date window + filters. #}
+            {{ lazy_drill_row(_rid,
+                 jobs_fragment_url ~ '?machine=' ~ machine ~ '&' ~ entity.drill_param ~ '=' ~ val
+                   ~ (('&start=' ~ params.start) if params.start else '')
+                   ~ (('&end=' ~ params.end) if params.end else '')
+                   ~ (('&queue=' ~ params.queue) if params.queue else '')
+                   ~ (('&qos=' ~ params.qos) if params.qos else '')
+                   ~ (('&exit_status=' ~ params.exit_status) if params.exit_status else ''),
+                 5, 'Loading ' ~ val ~ entity.loading_suffix ~ '…') }}
             {% endif %}
           </tbody>
         {% endfor %}
@@ -187,10 +174,10 @@
           <tr class="text-muted">
             <td>Other <span class="small">(beyond top {{ rows | length }} by
               {{ JOBS_METRIC_NOUNS[metric] }})</span></td>
-            <td class="text-end">{{ other.job_count | fmt_number }}</td>
-            <td class="text-end">{{ other.cpu_hours | fmt_number }}</td>
-            <td class="text-end">{{ other.gpu_hours | fmt_number }}</td>
-            <td class="text-end">{{ ((other.cpu_charges or 0)
+            <td class="col-num">{{ other.job_count | fmt_number }}</td>
+            <td class="col-num">{{ other.cpu_hours | fmt_number }}</td>
+            <td class="col-num">{{ other.gpu_hours | fmt_number }}</td>
+            <td class="col-num">{{ ((other.cpu_charges or 0)
                                      + (other.gpu_charges or 0)) | fmt_number }}</td>
           </tr>
         </tbody>

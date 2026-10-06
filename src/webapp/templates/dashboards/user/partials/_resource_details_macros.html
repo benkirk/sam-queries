@@ -1,6 +1,7 @@
 {# Shared macros for the resource-details page and its lazy subtree
    partials (user_subtree.html, day_subtree.html). Extracted from
    resource_details.html so the partials can {% import %} them. #}
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 
 {# Metric selector shared by the usage card's two chart fragments (Usage
    Trend bars, By User pie). Each pill re-fetches its own fragment with a
@@ -42,10 +43,8 @@
    (user, user+queue, or user+queue+date). #}
 {% macro jobs_button(jid) %}
 <button type="button"
-        class="btn  btn-link p-0 ms-2 text-decoration-none"
-        data-bs-toggle="collapse"
-        data-bs-target="#{{ jid }}"
-        aria-expanded="false" aria-controls="{{ jid }}"
+        class="btn btn-link p-0 ms-2 text-decoration-none"
+        {{ collapse_toggle(jid) }} aria-controls="{{ jid }}"
         title="Show individual jobs">
     <i class="fa-solid fa-list-ul small"></i>
     <span class="small">jobs</span>

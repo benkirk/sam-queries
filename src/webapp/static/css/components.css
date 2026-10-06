@@ -27,10 +27,6 @@
    Progress Bar Sizes
    =================================================================== */
 
-.progress-small {
-    height: 8px;
-}
-
 .progress-large {
     height: 20px;
 }
@@ -66,20 +62,8 @@
 }
 
 /* ===================================================================
-   Table Column Widths
-   =================================================================== */
-
-.table-col-usage {
-    width: 200px;
-}
-
-/* ===================================================================
    Utility Classes
    =================================================================== */
-
-.transition-smooth {
-    transition: transform var(--transition-base);
-}
 
 .cursor-pointer {
     cursor: pointer;
@@ -138,10 +122,6 @@ svg a, svg a:hover, svg a:focus, svg a:visited {
 
 /* ── Fragment styles extracted from inline <style> blocks (CSP work) ── */
 
-/* edit_project.html: contracts/orgs tree lists */
-.tree-list { list-style: none; padding-left: 1.25rem; }
-.tree-list > li { border-left: 2px solid var(--border-default); padding: 0.25rem 0.5rem; margin-bottom: 0.1rem; }
-
 /* admin configuration card: two-column definition stats */
 .config-stats {
     display: grid;
@@ -190,9 +170,12 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
     pointer-events: none;
 }
 
-/* resource_details: collapse chevron rotation */
+/* A collapse row's chevron: points right, turns down when open. */
 .collapse-icon { transition: transform 0.2s ease; }
 [aria-expanded="true"] .collapse-icon { transform: rotate(90deg); }
+/* A collapsible card header's chevron: points down, flips up when open. */
+.accordion-chevron { transition: transform var(--transition-base); }
+[aria-expanded="true"] .accordion-chevron { transform: rotate(180deg); }
 
 /* Sortable table headers (sortable_table.js, loaded globally in base.html).
    Pairs the global JS with its indicator so any `.sortable-header` shows a
@@ -219,10 +202,75 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
    Historical Usage (Date + 4 numeric); -4 is Usage by User (Username +
    3 numeric). */
 .usage-table-5, .usage-table-4 { table-layout: fixed; }
+/* Below these widths the fixed columns split header words; the table scrolls instead. */
+.usage-table-5 { min-width: 32rem; }
+.usage-table-4 { min-width: 26rem; }
 .usage-table-5 .ucol-name { width: 36%; }
 .usage-table-5 .ucol-num  { width: 16%; }
 .usage-table-4 .ucol-name { width: 40%; }
 .usage-table-4 .ucol-num  { width: 20%; }
+
+/* Resource Details' rolling-rate gauge (rolling_rate_htmx.html): 0-200% of the
+   prorated rate, 100% at the center tick. A cold fill runs left from center, a hot
+   one right; --fill-start / --fill-w / --thresh are percentages of the track. */
+.rate-grid {
+    display: grid;
+    grid-template-columns: 4rem minmax(6rem, 1fr) auto auto;
+    column-gap: 0.5rem;
+    row-gap: 3px;
+    align-items: center;
+}
+.rate-label { font-size: 0.82rem; }
+.rate-note { font-size: 0.78rem; }
+.rate-gauge {
+    position: relative;
+    height: 18px;
+    background: var(--surface-secondary);
+    border-radius: 4px;
+}
+.rate-gauge > * { position: absolute; }
+.rate-zone { top: 0; height: 100%; width: 50%; }
+.rate-zone-cold { left: 0; background: rgba(var(--bs-info-rgb), 0.08); border-radius: 4px 0 0 4px; }
+.rate-zone-hot { left: 50%; background: color-mix(in srgb, var(--bs-orange) 8%, transparent); border-radius: 0 4px 4px 0; }
+.rate-fill {
+    left: var(--fill-start);
+    top: 0;
+    height: 100%;
+    width: var(--fill-w);
+    background: var(--rate-fill);
+    border-radius: 4px;
+    opacity: 0.85;
+}
+.rate-fill.rate-cold { --rate-fill: var(--bs-info); }
+.rate-fill.rate-steady { --rate-fill: var(--bs-success); }
+.rate-fill.rate-hot { --rate-fill: var(--bs-orange); }
+.rate-fill.rate-over_limit { --rate-fill: var(--bs-danger); }
+.rate-pace { left: 50%; top: -2px; bottom: -2px; width: 2px; background: var(--text-primary); opacity: 0.75; }
+.rate-limit { left: var(--thresh); top: -2px; bottom: -2px; width: 0; border-left: 2px dashed var(--bs-danger); opacity: 0.85; }
+.rate-limit-label {
+    left: var(--thresh);
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 0.6rem;
+    font-weight: 600;
+    color: var(--bs-danger);
+    background: rgba(var(--surface-card-rgb), 0.82);
+    padding: 0 3px;
+    border-radius: 2px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 1;
+}
+.rate-scale {
+    position: relative;
+    height: 1.1rem;
+    margin-top: 1px;
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+}
+.rate-scale > span { position: absolute; }
+.rate-scale .rate-scale-mid { left: 50%; transform: translateX(-50%); }
+.rate-scale .rate-scale-end { right: 0; }
 
 /* Help affordances (help.html macros, activated by tooltip-init.js).
    .help-icon — chrome-less ⓘ/? button next to a heading or label.
@@ -318,6 +366,16 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* A truncating path keeps its head readable on a phone; its copy button sits before it. */
+.table td.cell-truncate.cell-path {
+    min-width: 12rem;
+}
+
+/* A job name keeps its head readable when the per-job table overflows. */
+.table.jobs-fragment-table td.cell-truncate {
+    min-width: 10rem;
 }
 
 .row-actions {
@@ -481,6 +539,13 @@ tr:hover > td .btn.btn-row-attention {
     background-position: 0.95rem 0, calc(0.95rem + var(--tree-step)) 0;
 }
 
+/* Resource Details' scope picker: a project tree that scrolls inside its card. */
+.scope-tree {
+    max-height: 400px;
+    overflow-y: auto;
+    font-size: 0.875em;
+}
+
 /* A share of a parent: a thin bar beside the number, which stays the text. */
 .share {
     display: inline-flex;
@@ -531,6 +596,20 @@ tr:hover > td .btn.btn-row-attention {
 }
 .share-bar.meter-over {
     --share-color: var(--danger-color);
+}
+/* A shared row: the pool's use as a lighter layer of the same hue, this project's share solid
+   over it. The mix is measured: tint vs track and solid vs tint, both themes (ledger entry 14). */
+.share-bar.meter.has-pool {
+    --pool-color: color-mix(in srgb, var(--share-color) 32%, var(--surface-secondary));
+    background:
+        linear-gradient(var(--share-color), var(--share-color)) left / max(var(--share, 0%), 2px) 100% no-repeat,
+        linear-gradient(var(--pool-color), var(--pool-color)) left / var(--pool, 0%) 100% no-repeat,
+        var(--surface-secondary);
+}
+.share-bar.meter.has-pool.share-zero {
+    background:
+        linear-gradient(var(--pool-color), var(--pool-color)) left / var(--pool, 0%) 100% no-repeat,
+        var(--surface-secondary);
 }
 .share-bar.meter.has-elapsed::after {
     content: '';

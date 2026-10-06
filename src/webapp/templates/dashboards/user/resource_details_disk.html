@@ -1,68 +1,31 @@
 {% extends 'dashboards/base.html' %}
 {% from 'dashboards/fragments/chart_bits.html' import chart_loading %}
 {% from 'dashboards/fragments/page_header.html' import page_header %}
-{% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/table_bits.html' import share_bar %}
 {% from 'dashboards/fragments/help.html' import term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_tib with context %}
 {% from 'dashboards/fragments/date_range_picker.html' import date_range_picker %}
 {% from 'dashboards/fragments/user_rows.html' import user_link with context %}
+{% from 'dashboards/fragments/clipboard.html' import copy_button %}
+{% from 'dashboards/shared/project_tree.html' import project_tree_rows, allocation_cells with context %}
 
 {% block title %}Disk Usage Details - {{ resource_name }} - SAM{% endblock %}
 
-{# Filesystem-style project-tree macro (mirrors render_tree_node
-   in resource_details.html, but with disk size + fileset paths
-   instead of cumulative compute hours). #}
-{% macro render_disk_tree_node(node) %}
-{% set is_selected = (node.projcode == scope) %}
-{% set is_clickable = node.account_id is not none or node.children %}
-{% set node_url = url_for('user_dashboard.resource_details',
-                           projcode=projcode, resource=resource_name,
-                           scope=node.projcode,
-                           start_date=start_date, end_date=end_date) %}
-<li{% if is_selected %} class="tree-node-current"{% endif %}>
-    {% if is_clickable %}
-    <a href="{{ node_url }}" class="d-flex align-items-center gap-2 text-decoration-none text-body">
-    {% else %}
-    <span class="d-flex align-items-center gap-2 text-muted" style="cursor: default;" title="No {{ resource_name }} usage">
-    {% endif %}
-        {% if is_selected %}
-        <i class="fa-solid fa-arrow-right text-warning me-1 flex-shrink-0"></i>
-        {% endif %}
-        <strong>{{ node.projcode }}</strong>
-        {% if node.title %}
-        <span class="{% if is_clickable %}text-muted{% endif %} fw-normal text-truncate" style="max-width: 35ch;">- {{ node.title }}</span>
-        {% endif %}
-        {% if node.fileset_paths %}
-        <span class="text-muted small font-monospace"
-              style="max-width: 70ch; white-space: normal; word-break: break-word;">
-            <i class="fa-solid fa-folder-open me-1"></i>{{ node.fileset_paths | join(', ') }}
-        </span>
-        {% endif %}
-        {% if node.current_bytes %}
-        {% if is_selected %}
-        <span class="badge bg-warning ms-auto flex-shrink-0">
-            {{ node.current_bytes | fmt_size }}
-        </span>
-        {% else %}
-        <span class="text-muted small ms-auto flex-shrink-0 font-monospace">
-            {{ node.current_bytes | fmt_size }}
-        </span>
-        {% endif %}
-        {% endif %}
-    {% if is_clickable %}
-    </a>
-    {% else %}
-    </span>
-    {% endif %}
-    {% if node.children %}
-    <ul class="tree-list">
-        {% for child in node.children %}
-        {{ render_disk_tree_node(child) }}
-        {% endfor %}
-    </ul>
-    {% endif %}
-</li>
-{% endmacro %}
+{# Scope-tree cells for project_tree_rows: disk size and the fileset paths in place of
+   compute charges. #}
+{% macro _scope_href(node) -%}
+{%- if node.account_id is not none or node.children -%}
+{{ url_for('user_dashboard.resource_details', projcode=projcode, resource=resource_name,
+           scope=node.projcode, start_date=start_date, end_date=end_date) }}
+{%- endif -%}
+{%- endmacro %}
+{# The paths ride a copy button beside the size: the name cell truncates. #}
+{% macro _scope_value(node) -%}
+{%- if node.fileset_paths -%}
+{{ copy_button(node.fileset_paths | join('\n'), label='Copy fileset path' ~ ('s' if node.fileset_paths | length > 1 else ''), inline=True) }}
+{%- endif %} {% if node.current_bytes %}{{ node.current_bytes | fmt_size }}{% endif -%}
+{%- endmacro %}
 
 {% block breadcrumbs %}
 {% from 'dashboards/fragments/breadcrumbs.html' import breadcrumbs %}
@@ -106,53 +69,35 @@
 
 {# Capacity summary card #}
 <div class="card mb-4">
-    <div class="card-header cursor-pointer"
-         data-bs-toggle="collapse" data-bs-target="#collapseDiskCapacity"
-         aria-expanded="true">
+    <div class="card-header cursor-pointer" {{ collapse_toggle('collapseDiskCapacity', expanded=true) }}>
         <h5 class="mb-0">
             <i class="fa-solid fa-circle-info"></i> Capacity Summary
-            {% set _remaining = capacity.allocated_tib - capacity.used_tib %}
-            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down accordion-chevron float-end" aria-hidden="true"></i>
         </h5>
     </div>
     <div id="collapseDiskCapacity" class="collapse show">
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-sm table-bordered table-hover">
+                <table class="table table-sm table-hover align-middle">
                     <thead class="table-subtle">
                         <tr>
                             <th>Resource</th>
-                            <th>Scope</th>
-                            <th>As of</th>
-                            <th>{{ term('Allocated', g_tib()) }}</th>
-                            <th>Used</th>
-                            <th>Remaining</th>
-                            <th class="text-end">Files</th>
-                            <th class="table-col-usage">Usage</th>
+                            <th class="col-shrink">Scope</th>
+                            <th class="col-shrink">As of</th>
+                            <th class="col-num">% used</th>
+                            <th class="col-num">{{ term('Allocated', g_tib()) }}</th>
+                            <th class="col-num">Used</th>
+                            <th class="col-num">Remaining</th>
+                            <th class="col-num">Files</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr>
-                            <td><strong>{{ resource_name }}</strong></td>
-                            <td><code>{{ scope }}</code></td>
-                            <td>{{ capacity.activity_date | fmt_date }}</td>
-                            <td class="text-primary">
-                                {{ capacity.allocated_tib | fmt_number }} TiB
-                            </td>
-                            <td class="text-warning">
-                                {{ capacity.used_bytes | fmt_size }}
-                                <span class="text-muted small">({{ capacity.used_tib | fmt_number }} TiB)</span>
-                            </td>
-                            <td class="text-success">
-                                {{ _remaining | fmt_number }} TiB
-                            </td>
-                            <td class="text-end">{{ capacity.total_files | fmt_number }}</td>
-                            <td>
-                                {{ render_usage_bar(capacity.percent_used,
-                                                    none,
-                                                    size_class='progress-large',
-                                                    show_label=True) }}
-                            </td>
+                            <td class="fw-semibold">{{ resource_name }}</td>
+                            <td class="col-shrink font-monospace">{{ scope }}</td>
+                            <td class="col-shrink">{{ capacity.activity_date | fmt_date }}</td>
+                            {{ allocation_cells(capacity.row, can_view=true) }}
+                            <td class="col-num">{{ capacity.total_files | fmt_number }}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -171,9 +116,7 @@
                      and (scope_node.directories | map(attribute='projcode') | unique | list | length > 1) %}
 {% if scope_node and scope_node.directories %}
 <div class="card mb-4">
-    <div class="card-header cursor-pointer"
-         data-bs-toggle="collapse" data-bs-target="#collapseDiskFilesets"
-         aria-expanded="true">
+    <div class="card-header cursor-pointer" {{ collapse_toggle('collapseDiskFilesets', expanded=true) }}>
         <h5 class="mb-0">
             <i class="fa-solid fa-folder-open"></i> Filesets
             <small class="text-muted fw-normal ms-2">
@@ -188,7 +131,7 @@
                 <span class="text-muted">— click a row to scope chart + table</span>
                 {% endif %}
             </small>
-            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down accordion-chevron float-end" aria-hidden="true"></i>
         </h5>
     </div>
     <div id="collapseDiskFilesets" class="collapse show">
@@ -197,11 +140,11 @@
                 <table class="table table-sm table-hover mb-0">
                     <thead class="table-subtle">
                         <tr>
-                            {% if _multi_proj %}<th>Project</th>{% endif %}
+                            {% if _multi_proj %}<th class="col-shrink">Project</th>{% endif %}
                             <th>Path</th>
-                            <th class="text-end">Files</th>
-                            <th class="text-end">Size</th>
-                            <th class="table-col-usage">Share</th>
+                            <th class="col-num">Files</th>
+                            <th class="col-num">Size</th>
+                            <th class="col-num">Share</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -213,20 +156,17 @@
                                                   projcode=projcode, resource=resource_name,
                                                   scope=scope, fileset=d.name,
                                                   start_date=start_date, end_date=end_date) %}
-                        <tr class="cursor-pointer{% if is_active %} tree-node-current{% endif %}"
-                            data-action="navigate" data-href="{{ row_url }}">
+                        <tr{% if is_active %} class="tree-node-current"{% endif %}>
                             {% if _multi_proj %}
-                            <td><strong>{{ d.projcode }}</strong></td>
+                            <td class="col-shrink font-monospace">{{ d.projcode }}</td>
                             {% endif %}
-                            <td>
-                                {% if is_active %}
-                                <i class="fa-solid fa-arrow-right text-warning me-1"></i>
-                                {% endif %}
-                                <code>{{ d.name }}</code>
+                            <td class="cell-truncate cell-path" title="{{ d.name }}">
+                                {{- copy_button(d.name, label='Copy path', inline=True) }}
+                                <a href="{{ row_url }}" class="text-decoration-none"><code>{{ d.name }}</code></a>
                             </td>
-                            <td class="text-end">{{ d.files | fmt_number }}</td>
-                            <td class="text-end font-monospace">{{ d.bytes | fmt_size }}</td>
-                            <td>{{ render_usage_bar(_share, none, size_class='progress-small', show_label=True) }}</td>
+                            <td class="col-num">{{ d.files | fmt_number }}</td>
+                            <td class="col-num">{{ d.bytes | fmt_size }}</td>
+                            <td class="col-num">{{ share_bar(_share) }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -240,20 +180,22 @@
 {# Filesystem-style project tree #}
 {% if has_children %}
 <div class="card mb-4">
-    <div class="card-header cursor-pointer"
-         data-bs-toggle="collapse" data-bs-target="#collapseDiskTree"
-         aria-expanded="true">
+    <div class="card-header cursor-pointer" {{ collapse_toggle('collapseDiskTree', expanded=true) }}>
         <h5 class="mb-0">
             <i class="fa-solid fa-sitemap"></i> Project Hierarchy
             <small class="text-muted fw-normal ms-2">Click a project to scope the chart and table below</small>
-            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down accordion-chevron float-end" aria-hidden="true"></i>
         </h5>
     </div>
     <div id="collapseDiskTree" class="collapse show">
-        <div class="card-body p-3 bg-body-tertiary rounded" style="font-size: 0.875em; max-height: 400px; overflow-y: auto;">
-            <ul class="tree-list">
-                {{ render_disk_tree_node(tree_data) }}
-            </ul>
+        <div class="card-body scope-tree">
+            <table class="table table-sm align-middle mb-0 project-tree">
+                <tbody>
+                    {{ project_tree_rows([tree_data], current_projcode=scope, href=_scope_href,
+                                         idle_title='No ' ~ resource_name ~ ' usage',
+                                         value=_scope_value) }}
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
@@ -275,9 +217,7 @@
 
 {# Stacked-area chart #}
 <div class="card mb-4">
-    <div class="card-header cursor-pointer"
-         data-bs-toggle="collapse" data-bs-target="#collapseDiskUsage"
-         aria-expanded="true">
+    <div class="card-header cursor-pointer" {{ collapse_toggle('collapseDiskUsage', expanded=true) }}>
         <h5 class="mb-0">
             <i class="fa-solid fa-chart-area"></i> Usage Over Time
             <small class="text-muted fw-normal ms-2">
@@ -286,7 +226,7 @@
             {% if has_children and scope != projcode %}
             <small class="text-muted fw-normal ms-2">{{ scope }}</small>
             {% endif %}
-            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down accordion-chevron float-end" aria-hidden="true"></i>
         </h5>
     </div>
     <div id="collapseDiskUsage" class="collapse show">
@@ -323,9 +263,7 @@
    whenever scans aren't available for this resource. #}
 {% if not show_scans %}
 <div class="card mb-4">
-    <div class="card-header cursor-pointer"
-         data-bs-toggle="collapse" data-bs-target="#collapseDiskUsers"
-         aria-expanded="true">
+    <div class="card-header cursor-pointer" {{ collapse_toggle('collapseDiskUsers', expanded=true) }}>
         <h5 class="mb-0">
             <i class="fa-solid fa-users"></i> Per-User Occupancy
             {% if capacity.activity_date %}
@@ -334,7 +272,7 @@
             {% if has_children and scope != projcode %}
             <small class="text-muted fw-normal ms-2">{{ scope }}</small>
             {% endif %}
-            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down accordion-chevron float-end" aria-hidden="true"></i>
         </h5>
     </div>
     <div id="collapseDiskUsers" class="collapse show">
@@ -345,18 +283,18 @@
                     <thead class="table-subtle">
                         <tr>
                             <th>Username</th>
-                            <th class="text-end">Files</th>
-                            <th class="text-end">Size</th>
-                            <th class="text-end">% of {{ scope }}</th>
+                            <th class="col-num">Files</th>
+                            <th class="col-num">Size</th>
+                            <th class="col-num">% of {{ scope }}</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for row in user_rows %}
                         <tr>
                             <td>{{ user_link(row.username, can_view_users, compact=True) }}</td>
-                            <td class="text-end">{{ row.file_count | fmt_number }}</td>
-                            <td class="text-end">{{ row.bytes | fmt_size }}</td>
-                            <td class="text-end">{{ row.percent_of_project | fmt_pct }}</td>
+                            <td class="col-num">{{ row.file_count | fmt_number }}</td>
+                            <td class="col-num">{{ row.bytes | fmt_size }}</td>
+                            <td class="col-num">{{ row.percent_of_project | fmt_pct }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -381,9 +319,7 @@
    htmx `from:#collapseDiskScans`. #}
 {% if show_scans %}
 <div class="card mb-4">
-    <div class="card-header cursor-pointer"
-         data-bs-toggle="collapse" data-bs-target="#collapseDiskScans"
-         aria-expanded="false">
+    <div class="card-header cursor-pointer" {{ collapse_toggle('collapseDiskScans') }}>
         <h5 class="mb-0">
             <i class="fa-solid fa-magnifying-glass-chart"></i> Filesystem Scans
             {% if scan_info and scan_info.reference %}
@@ -403,7 +339,7 @@
                 {% if fileset %}— scoped to <code>{{ fileset }}</code>
                 {% elif scope != projcode %}under <code>{{ scope }}</code>{% endif %}
             </small>
-            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down accordion-chevron float-end" aria-hidden="true"></i>
         </h5>
     </div>
     <div id="collapseDiskScans" class="collapse">
@@ -413,7 +349,7 @@
                tab lazy-loads on card-open (collapse) as well as tab show. #}
             {% with mode='project', cid='disk-scans', tablist_id='diskScansTabs',
                     load_trigger='shown.bs.tab once, shown.bs.collapse once from:#collapseDiskScans' %}
-                {% include 'dashboards/user/partials/disk_scans_card.html' %}
+                {% include 'dashboards/disk_scans/disk_scans_card.html' %}
             {% endwith %}
         </div>
     </div>

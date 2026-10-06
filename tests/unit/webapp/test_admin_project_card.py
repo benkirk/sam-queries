@@ -29,13 +29,37 @@ SHARED_ROW = ("{% from 'dashboards/shared/project_tree.html' import allocation_c
               "{{ allocation_cells(res, true) }}")
 
 
+def _shared_row(**over):
+    row = {'is_inheriting': True, 'root_projcode': 'POOL0001', 'resource_type': 'HPC',
+           'self_percent_used': 12.0, 'self_used': 12.0, 'allocated': 100.0, 'used': 40.0,
+           'percent_used': 40.0, 'remaining': 60.0, 'elapsed_pct': 50.0}
+    return {**row, **over}
+
+
 class TestSharedRowHelpTerm:
 
     def test_the_from_term_does_not_run_its_rows_action(self, app):
         """The card's rows are data-action="navigate": a bare click on the term left the page."""
-        res = {'is_inheriting': True, 'root_projcode': 'POOL0001', 'self_percent_used': 12.0,
-               'self_used': 12.0, 'allocated': 100.0, 'used': 40.0, 'remaining': 60.0}
         with app.test_request_context():
-            html = render_template_string(SHARED_ROW, res=res)
+            html = render_template_string(SHARED_ROW, res=_shared_row())
         term = re.search(r'<span class="help-term"[^>]*>from</span>', html)
         assert term and 'data-stop-propagation' in term.group(0)
+
+
+class TestSharedRowMeter:
+    """A shared row's meter: own share solid over the pool's, red once the pool is overdrawn."""
+
+    def _render(self, app, **over):
+        with app.test_request_context():
+            return render_template_string(SHARED_ROW, res=_shared_row(**over))
+
+    def test_the_pool_is_a_second_layer(self, app):
+        html = self._render(app)
+        assert 'has-pool' in html and '--share: 12.0%' in html and '--pool: 40.0%' in html
+        assert 'has-elapsed' in html and 'meter-over' not in html
+        assert "POOL0001&#39;s pool 40.0%" in html or "POOL0001's pool 40.0%" in html
+
+    def test_an_overdrawn_pool_is_red(self, app):
+        html = self._render(app, percent_used=120.0, used=120.0, remaining=-20.0)
+        assert 'meter-over' in html
+        assert re.search(r'<td class="col-num text-danger"[^>]*>-20', html)

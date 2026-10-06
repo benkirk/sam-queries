@@ -178,3 +178,43 @@ class TestTheRouteSetsItForEveryProject:
 
         assert len(calls) == 1
         assert len(calls[0]) == 5
+
+
+class TestUsageBadge:
+    """The card's usage badge reads the % its rows show: a shared row's own share, not its pool's."""
+
+    @staticmethod
+    def _resource(**over):
+        now = datetime.now()
+        row = {'resource_name': 'Casper', 'resource_type': 'DAV', 'allocation_id': 1,
+               'is_inheriting': False, 'root_projcode': None, 'allocated': 100.0, 'used': 96.0,
+               'remaining': 4.0, 'percent_used': 96.0, 'self_used': None, 'self_percent_used': None,
+               'start_date': now - timedelta(days=30), 'end_date': now + timedelta(days=300),
+               'days_until_expiration': 300, 'date_group_key': 'k', 'elapsed_pct': 10.0,
+               'bar_state': 'active', 'rolling_30': None, 'rolling_90': None, 'status': 'Active'}
+        return {**row, **over}
+
+    def _badge(self, app, resource):
+        from flask import render_template_string
+        from webapp.utils.rbac import Permission
+        pd = {'project': _Project(), 'resources': [resource], 'users': []}
+        with app.test_request_context('/'):
+            html = render_template_string(
+                "{%% from '%s' import render_project_card with context %%}"
+                "{{ render_project_card(pd, 0, user, 80, 95) }}" % MACRO,
+                pd=pd, user=_User(), Permission=Permission,
+                has_permission=lambda *_a, **_k: False, can_act_on_project=lambda *_a, **_k: False)
+        import re
+        m = re.search(r'<span class="badge (bg-\w+)" title="([^"]*)">\s*<i[^>]*></i> (\d+)% used', html)
+        return m and m.groups()
+
+    def test_a_dedicated_row_warns_on_its_own_use(self, app):
+        assert self._badge(app, self._resource()) == ('bg-danger', 'Resource usage above 95%', '96')
+
+    def test_a_shared_row_warns_on_its_own_share_not_the_pool(self, app):
+        shared = self._resource(is_inheriting=True, root_projcode='POOL0001',
+                                self_used=3.0, self_percent_used=3.0)
+        assert self._badge(app, shared) is None
+        busy = self._resource(is_inheriting=True, root_projcode='POOL0001',
+                              self_used=85.0, self_percent_used=85.0)
+        assert self._badge(app, busy) == ('bg-warning', 'Resource usage above 80%; a shared pool is at 96.0%', '85')

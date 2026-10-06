@@ -952,6 +952,13 @@ def _group_allocations_by_summary_key(
     return grouped
 
 
+def _pool_root(alloc: Allocation) -> Optional[Project]:
+    """The project owning a shared allocation's pool, or None when it cannot anchor a subtree."""
+    account = alloc.root.account
+    project = account.project if account else None
+    return project if project is not None and project.has_tree_coordinates() else None
+
+
 def _summary_item_key(item: Dict, resource_name, facility_name, allocation_type, projcode) -> tuple:
     """Build the grouping key for a summary item, matching _group_allocations_by_summary_key."""
     key_parts = []
@@ -1152,12 +1159,8 @@ def get_allocation_summary_with_usage(
         for alloc, res_name, res_type, project, account in alloc_list:
             if not alloc.is_inheriting:
                 continue
-            root_alloc = alloc.root
-            root_account = root_alloc.account
-            root_project = root_account.project if root_account else None
+            root_project = _pool_root(alloc)
             if root_project is None:
-                continue
-            if not root_project.has_tree_coordinates():
                 continue
             root_projcode_by_alloc_id[alloc.allocation_id] = root_project.projcode
             root_info, _ = usage_anchor(
@@ -1188,6 +1191,7 @@ def get_allocation_summary_with_usage(
     # Collect the (project, resource_name) pairs we'll need and resolve
     # them in a single fixed-size set of queries.
     disk_capacity_pairs: List[Tuple['Project', str]] = []
+    pool_root_by_pair: Dict[Tuple[int, str], int] = {}
     for alloc_list in alloc_by_key.values():
         if not alloc_list:
             continue
@@ -1199,18 +1203,31 @@ def get_allocation_summary_with_usage(
             only_project = next(iter(unique_projects.values()))
             only_resource = next(iter(unique_resources))
             disk_capacity_pairs.append((only_project, only_resource))
+            # A shared row's pool is its root's subtree capacity (the dashboard builder's rule).
+            roots = {_pool_root(alloc) for alloc, *_ in alloc_list if alloc.is_inheriting}
+            if len(roots) == 1 and None not in roots:
+                root = roots.pop()
+                disk_capacity_pairs.append((root, only_resource))
+                pool_root_by_pair[(only_project.project_id, only_resource)] = root.project_id
     from sam.queries.disk_usage import _EMPTY_CAP
+    pool_caps: Dict[Tuple[int, str], Dict[str, Any]] = {}
     if state is not None:
         disk_caps = {}
         for alloc, res_name, res_type, project, account in (
                 t for group in alloc_by_key.values() for t in group):
             row = state[alloc.allocation_id]
             if res_type == 'DISK' and row.activity_date is not None:
+                own = row.self_used if row.is_inheriting else row.used
                 disk_caps[(project.project_id, res_name)] = {
-                    'used_tib': row.used, 'activity_date': row.activity_date}
+                    'used_tib': own, 'activity_date': row.activity_date}
+                if row.is_inheriting:
+                    pool_caps[(project.project_id, res_name)] = {
+                        'used_tib': row.used, 'activity_date': row.activity_date}
     elif disk_capacity_pairs:
         from sam.queries.disk_usage import bulk_get_subtree_disk_capacity
         disk_caps = bulk_get_subtree_disk_capacity(session, disk_capacity_pairs)
+        for (pid, res), root_id in pool_root_by_pair.items():
+            pool_caps[(pid, res)] = disk_caps.get((root_id, res), _EMPTY_CAP)
     else:
         disk_caps = {}
 
@@ -1302,9 +1319,12 @@ def get_allocation_summary_with_usage(
                 cap = disk_caps.get(
                     (only_project.project_id, only_resource), _EMPTY_CAP,
                 )
-                capacity_used = cap['used_tib']
-                activity_date = cap['activity_date']
+                own_used = cap['used_tib']
+                pool = pool_caps.get((only_project.project_id, only_resource)) if item.get('is_inheriting') else None
+                capacity_used = (pool or cap)['used_tib']
+                activity_date = (pool or cap)['activity_date']
             else:
+                own_used = None
                 capacity_used = 0.0
                 activity_date = None
                 for _, _, _, _, account in item_allocations:
@@ -1320,8 +1340,11 @@ def get_allocation_summary_with_usage(
                 if item['total_allocated'] > 0 else 0
             )
             if 'self_used' in item:
-                item['self_used'] = capacity_used
-                item['self_percent_used'] = item['percent_used']
+                item['self_used'] = capacity_used if own_used is None else own_used
+                item['self_percent_used'] = (
+                    (item['self_used'] / item['total_allocated'] * 100)
+                    if item['total_allocated'] > 0 else 0
+                )
             item['activity_date'] = activity_date
 
     return summary

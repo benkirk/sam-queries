@@ -1,7 +1,8 @@
 {% extends 'dashboards/base.html' %}
-{% from 'dashboards/user/partials/_jobs_filters.html' import jobs_filters %}
-{% from 'dashboards/user/partials/_jobs_macros.html' import jobs_disabled, mode_badge %}
-{% from 'dashboards/user/partials/jobs_card.html' import jobs_card %}
+{% from 'dashboards/jobs/_jobs_filters.html' import jobs_filters %}
+{% from 'dashboards/jobs/_jobs_macros.html' import jobs_disabled %}
+{% from 'dashboards/jobs/jobs_card.html' import jobs_card %}
+{% from 'dashboards/fragments/page_header.html' import page_header %}
 {#
   Standalone jobs-explorer page — all three modes, parameterized by *mode*
   ('project'|'machine'|'user').
@@ -30,31 +31,30 @@
 {% block content %}
 <div class="container-fluid">
 
-  <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
-    <h3 class="mb-0">
-      <i class="fa-solid fa-list-check me-2"></i>
-      {% if mode == 'machine' %}
-        {{ machine | capitalize }}
-        <small class="text-muted fw-normal">— all jobs</small>
-      {% elif mode == 'user' %}
-        My Jobs
-        <small class="text-muted fw-normal">— your jobs on {{ machine | capitalize }}</small>
-      {% else %}
-        {{ scoped_project.projcode if scoped_project else project.projcode }}
-        <small class="text-muted fw-normal">jobs on {{ machine | capitalize if machine }}</small>
-      {% endif %}
-    </h3>
+  {% if mode == 'machine' %}
+    {% set _title, _desc = machine | capitalize, 'All jobs' %}
+  {% elif mode == 'user' %}
+    {% set _title, _desc = 'My Jobs', 'Your jobs on ' ~ (machine | capitalize) %}
+  {% else %}
+    {% set _title = scoped_project.projcode if scoped_project else project.projcode %}
+    {% set _desc = 'Jobs on ' ~ (machine | capitalize if machine else '') %}
+  {% endif %}
+  {% if mode == 'machine' or (mode == 'project' and scope) %}
+  {% call page_header(_title, icon='list-check', description=_desc) %}
     {% if mode == 'machine' %}
       <span class="badge bg-warning-subtle text-warning-emphasis border">
         <i class="fa-solid fa-shield-halved me-1"></i> Machine-wide (operator view)
       </span>
-    {% elif mode == 'project' and scope %}
+    {% else %}
       <span class="badge bg-secondary-subtle text-secondary-emphasis border"
             title="Re-rooted to a subtree of {{ project.projcode }}">
         <i class="fa-solid fa-diagram-project me-1"></i> scope: {{ scope }}
       </span>
     {% endif %}
-  </div>
+  {% endcall %}
+  {% else %}
+  {{ page_header(_title, icon='list-check', description=_desc) }}
+  {% endif %}
 
   {% if not enabled %}
     {{ jobs_disabled() }}

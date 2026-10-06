@@ -1,6 +1,7 @@
 {% from 'dashboards/fragments/chart_bits.html' import chart_figure, chart_pills %}
-{% from 'dashboards/user/partials/_disk_scans_macros.html'
+{% from 'dashboards/disk_scans/_disk_scans_macros.html'
    import scans_disabled, scans_error, scans_empty, scans_scope_note %}
+{% from 'dashboards/fragments/collapse.html' import drill_toggle, lazy_drill_row %}
 {#
   Owner/group rollup fragment — embedded via hx-get from the Filesystem
   Scans card. Context (set in webapp/disk_scans/routes.py):
@@ -69,9 +70,9 @@
         <thead class="table-subtle">
           <tr>
             <th class="sortable-header" data-sort="text">{{ 'User' if _is_owner else 'Group' }}</th>
-            <th class="sortable-header text-end sort-desc" data-sort="numeric">Size</th>
-            <th class="sortable-header text-end" data-sort="numeric">Files</th>
-            <th class="sortable-header text-end" data-sort="numeric">Directories</th>
+            <th class="sortable-header col-num sort-desc" data-sort="numeric">Size</th>
+            <th class="sortable-header col-num" data-sort="numeric">Files</th>
+            <th class="sortable-header col-num" data-sort="numeric">Directories</th>
           </tr>
         </thead>
         {# One loop for both kinds. They were two ~48-line copies differing
@@ -101,41 +102,25 @@
                    (dir_fragment_url): project (scope-rooted) or resource
                    (whole-FS). #}
                 {% if dir_fragment_url %}
-                <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
-                        type="button" data-bs-toggle="collapse"
-                        data-bs-target="#{{ _rid }}-row"
-                        aria-expanded="false" aria-controls="{{ _rid }}-row">
-                  <i class="fa-solid fa-chevron-right collapse-icon small"></i>
-                </button>
+                {{ drill_toggle(_rid ~ '-row', 'Show ' ~ (name or (_ent.id_label ~ ' ' ~ eid)) ~ "'s directories") }}
                 {% endif %}
                 {% if name %}<code>{{ name }}</code>
                 {% else %}<span class="text-muted" title="{{ _ent.unresolved }}">{{ _ent.id_label }} {{ eid }}</span>{% endif %}
               </td>
-              <td class="text-end font-monospace" data-sort-value="{{ r.total_size }}">{{ r.total_size | fmt_size }}</td>
-              <td class="text-end" data-sort-value="{{ r.total_files }}">{{ r.total_files | fmt_number }}</td>
-              <td class="text-end" data-sort-value="{{ r.directory_count }}">{{ r.directory_count | fmt_number }}</td>
+              <td class="col-num font-monospace" data-sort-value="{{ r.total_size }}">{{ r.total_size | fmt_size }}</td>
+              <td class="col-num" data-sort-value="{{ r.total_files }}">{{ r.total_files | fmt_number }}</td>
+              <td class="col-num" data-sort-value="{{ r.directory_count }}">{{ r.directory_count | fmt_number }}</td>
             </tr>
             {% if dir_fragment_url %}
-            <tr class="collapse" id="{{ _rid }}-row">
-              <td colspan="4" class="p-0 border-0">
-                {# Lazy-load this entity's top directories on first expand
-                   (an owner/group filter routes into the short-TTL
-                   'filtered' cache bucket). group_label carries the
-                   resolved name for the filter badge. Bound to
-                   shown.bs.collapse (not click) so it fires under
-                   nav-view-persistence restore too. #}
-                <div class="p-2 bg-body-tertiary"
-                     id="{{ _rid }}"
-                     hx-get="{{ dir_fragment_url }}?{{ _ent.drill }}={{ eid }}{% if not _is_owner and name %}&group_label={{ name | urlencode }}{% endif %}&resource={{ resource_name }}{% if scope %}&scope={{ scope }}{% endif %}{% if fileset %}&fileset={{ fileset }}{% endif %}&target_id={{ _rid }}&limit=20"
-                     hx-trigger="shown.bs.collapse from:closest tr.collapse once"
-                     hx-swap="innerHTML">
-                  <p class="text-muted small mb-0">
-                    <i class="fa-solid fa-spinner fa-spin me-1"></i>
-                    Loading {{ name or (_ent.id_label ~ ' ' ~ eid) }}'s directories…
-                  </p>
-                </div>
-              </td>
-            </tr>
+            {# An owner/group filter routes into the short-TTL 'filtered' cache
+               bucket; group_label carries the resolved name for the filter badge. #}
+            {{ lazy_drill_row(_rid,
+                 dir_fragment_url ~ '?' ~ _ent.drill ~ '=' ~ eid
+                   ~ (('&group_label=' ~ (name | urlencode)) if (not _is_owner and name) else '')
+                   ~ '&resource=' ~ resource_name
+                   ~ (('&scope=' ~ scope) if scope else '')
+                   ~ (('&fileset=' ~ fileset) if fileset else '') ~ '&limit=20',
+                 4, 'Loading ' ~ (name or (_ent.id_label ~ ' ' ~ eid)) ~ "'s directories…") }}
             {% endif %}
           </tbody>
         {% endfor %}

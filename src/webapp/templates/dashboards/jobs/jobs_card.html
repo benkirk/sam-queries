@@ -6,7 +6,7 @@
 
    Import it, don't include it — the parameter surface is explicit:
 
-     {% from 'dashboards/user/partials/jobs_card.html' import jobs_card %}
+     {% from 'dashboards/jobs/jobs_card.html' import jobs_card %}
      {{ jobs_card(mode='project', cid='jobs-hist', …) }}
 
    A context-free import is fine: the only globals the body needs
@@ -211,7 +211,7 @@ tab-pane fade{{ ' show active' if key == active_tab }}
      data-chart-persist-keys="days"
      {%- endif %}>
 {% if facet_chips %}
-{% from 'dashboards/user/partials/_jobs_facet_chips.html' import jobs_facet_chips %}
+{% from 'dashboards/jobs/_jobs_facet_chips.html' import jobs_facet_chips %}
 {{ jobs_facet_chips(facet_chips, facet_filters, facet_form_id) }}
 {% endif %}
 <ul class="nav nav-tabs mb-0" id="{{ tablist_id }}" role="tablist">

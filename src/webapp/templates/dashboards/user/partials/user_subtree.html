@@ -22,6 +22,7 @@
    multi_queue branches; single_triple users never reach this template
    (they render inline on the page itself). #}
 {% from 'dashboards/user/partials/_resource_details_macros.html' import jobs_button, jobs_collapse_row with context %}
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 
 <td colspan="4" class="p-0">
   {% if not user %}
@@ -47,9 +48,9 @@
                 <em class="ms-2">{{ q0.queue }}</em>
                 {% if jobs_machine %}{{ jobs_button(djid) }}{% endif %}
               </td>
-              <td class="text-end"><small>{{ d.jobs | fmt_number }}</small></td>
-              <td class="text-end"><small>{{ d.core_hours | fmt_number }}</small></td>
-              <td class="text-end"><small>{{ d.charges | fmt_number }}</small></td>
+              <td class="col-num"><small>{{ d.jobs | fmt_number }}</small></td>
+              <td class="col-num"><small>{{ d.core_hours | fmt_number }}</small></td>
+              <td class="col-num"><small>{{ d.charges | fmt_number }}</small></td>
             </tr>
             {% if jobs_machine %}
               {{ jobs_collapse_row(djid, projcode, jobs_machine,
@@ -62,7 +63,7 @@
           {% for q in user.queues %}
             {% set qid = uid ~ '-q' ~ loop.index %}
             {% set queue_is_leaf = (q.dates|length == 1) %}
-            <tr {% if q.dates|length > 1 %}class="table-secondary cursor-pointer" data-bs-toggle="collapse" data-bs-target="#user-queue-dates-{{ qid }}" aria-expanded="false"{% else %}class="table-secondary"{% endif %}>
+            <tr {% if q.dates|length > 1 %}class="table-secondary cursor-pointer" {{ collapse_toggle('user-queue-dates-' ~ qid) }}{% else %}class="table-secondary"{% endif %}>
               <td class="ps-4 text-muted">
                 <em>{{ q.queue }}</em>
                 {% if q.dates|length > 1 %}
@@ -70,9 +71,9 @@
                 {% endif %}
                 {% if jobs_machine and queue_is_leaf %}{{ jobs_button(qid ~ '-jobs') }}{% endif %}
               </td>
-              <td class="text-end">{{ q.jobs | fmt_number }}</td>
-              <td class="text-end">{{ q.core_hours | fmt_number }}</td>
-              <td class="text-end">{{ q.charges | fmt_number }}</td>
+              <td class="col-num">{{ q.jobs | fmt_number }}</td>
+              <td class="col-num">{{ q.core_hours | fmt_number }}</td>
+              <td class="col-num">{{ q.charges | fmt_number }}</td>
             </tr>
             {% if jobs_machine and queue_is_leaf %}
               {{ jobs_collapse_row(qid ~ '-jobs', projcode, jobs_machine,
@@ -88,9 +89,9 @@
                     <small>{{ d.date }}</small>
                     {% if jobs_machine %}{{ jobs_button(djid) }}{% endif %}
                   </td>
-                  <td class="text-end"><small>{{ d.jobs | fmt_number }}</small></td>
-                  <td class="text-end"><small>{{ d.core_hours | fmt_number }}</small></td>
-                  <td class="text-end"><small>{{ d.charges | fmt_number }}</small></td>
+                  <td class="col-num"><small>{{ d.jobs | fmt_number }}</small></td>
+                  <td class="col-num"><small>{{ d.core_hours | fmt_number }}</small></td>
+                  <td class="col-num"><small>{{ d.charges | fmt_number }}</small></td>
                 </tr>
                 {% if jobs_machine %}
                   {{ jobs_collapse_row(djid, projcode, jobs_machine,
