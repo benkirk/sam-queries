@@ -102,6 +102,11 @@ Run each pass and collect findings. The examples are real.
     by default, so anything that must not lead a line (a sort icon, `#`) joins its word with
     `&nbsp;`. `scripts/ui_snapshots.py --headers --layout desktop --layout mobile` over every
     page is the proof (wire-dashboard-feature §7).
+  - Text: a word split across two lines marks a column narrower than its longest word
+    (Bootstrap's `.card` sets `word-wrap: break-word`). Fix the layout, not the text: a nested
+    card keys off its own width (`@container`), a fixed table raises its floor, a path gets
+    `<wbr>` at its slashes (`path_breaks`). `ui_snapshots.py --midword --pages wraps --width 360`
+    is the proof; a token with no break point (a DB URL) is the one legal hit.
   - Modals: an alert per fact, prose restating a glossary term beside its own icon, a read-only
     pair restating the title (`modal-alerts`, ratcheted). Facts go in `.modal-facts`, help in
     `tip=` / a term, identity in `modal_title`. Open the opener first: two "modals" in the
