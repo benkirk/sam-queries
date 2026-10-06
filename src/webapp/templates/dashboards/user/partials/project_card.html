@@ -180,8 +180,8 @@
                     <span class="fw-semibold">{{ resource.resource_name }}</span>
                     {% if not is_expired %}
                     {% for label, win in [('30d', resource.rolling_30), ('90d', resource.rolling_90)] if win and win.threshold_pct is not none %}
-                    <div class="small text-muted" title="{{ win.charges | fmt_number }} charged in the last {{ label }}">
-                        {{ label }}: {{ win.pct_of_prorated | fmt_pct }} of steady use (limit {{ win.threshold_pct }}%)
+                    <div class="small text-muted" title="{{ win.charges | fmt_number }} charged in the last {{ label }}{{ ' across the shared pool' if resource.is_inheriting }}">
+                        {{ label }}{{ ' pool' if resource.is_inheriting }}: {{ win.pct_of_prorated | fmt_pct }} of steady use (limit {{ win.threshold_pct }}%)
                     </div>
                     {% endfor %}
                     {% endif %}
@@ -308,14 +308,22 @@
                     {% elif project.admin and project.admin.user_id == user.user_id %}
                         <span class="badge bg-info"><i class="fa-solid fa-user-shield"></i> Admin</span>
                     {% endif %}
-                    {# Show usage warning if any resource exceeds thresholds #}
-                    {% set max_usage = resources | map(attribute='percent_used') | max | default(0) %}
+                    {# Usage warning on the highest % the rows show: a shared row's own share,
+                       with the fullest shared pool named in the title. #}
+                    {% set ns = namespace(own=0, pool=none) %}
+                    {% for r in resources %}
+                        {% set own = (r.self_percent_used if r.is_inheriting else r.percent_used) or 0 %}
+                        {% if own > ns.own %}{% set ns.own = own %}{% endif %}
+                        {% if r.is_inheriting and (ns.pool is none or (r.percent_used or 0) > ns.pool) %}{% set ns.pool = r.percent_used or 0 %}{% endif %}
+                    {% endfor %}
+                    {% set max_usage = ns.own %}
+                    {% set pool_note = ('; a shared pool is at ' ~ (ns.pool | fmt_pct)) if ns.pool is not none else '' %}
                     {% if max_usage >= usage_critical_threshold %}
-                        <span class="badge bg-danger" title="Resource usage above {{ usage_critical_threshold }}%">
+                        <span class="badge bg-danger" title="Resource usage above {{ usage_critical_threshold }}%{{ pool_note }}">
                             <i class="fa-solid fa-circle-exclamation"></i> {{ max_usage | round(0) | int }}% used
                         </span>
                     {% elif max_usage >= usage_warning_threshold %}
-                        <span class="badge bg-warning" title="Resource usage above {{ usage_warning_threshold }}%">
+                        <span class="badge bg-warning" title="Resource usage above {{ usage_warning_threshold }}%{{ pool_note }}">
                             <i class="fa-solid fa-triangle-exclamation"></i> {{ max_usage | round(0) | int }}% used
                         </span>
                     {% endif %}
