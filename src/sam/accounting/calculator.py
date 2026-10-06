@@ -57,46 +57,6 @@ def get_compute_charge_model_for_activity(activity_type: Optional[str]):
     return None
 
 
-def calculate_charges(session: Session,
-                      account_ids: List[int],
-                      start_date: datetime,
-                      end_date: datetime,
-                      activity_type: Optional[str]) -> Dict[str, float]:
-    """
-    Sum charges from the resource's authoritative table (by activity_type).
-    Returns breakdown by charge key, only keys with non-zero values.
-    """
-    totals = {}
-    models = get_charge_models_for_activity(activity_type)
-
-    for key, model in models.items():
-        val = session.query(func.coalesce(func.sum(model.charges), 0))\
-            .filter(
-                model.account_id.in_(account_ids),
-                model.activity_date >= start_date,
-                model.activity_date <= end_date
-            ).scalar()
-
-        # replicate projects.py behavior: only add if truthy (non-zero)
-        if val:
-            totals[key] = float(val)
-
-    return totals
-
-
-def calculate_total_charges(session: Session,
-                            account_ids: List[int],
-                            start_date: datetime,
-                            end_date: datetime,
-                            activity_type: Optional[str]) -> float:
-    """
-    Sum charges from the resource's authoritative table (by activity_type).
-    Returns a single float value.
-    """
-    charges = calculate_charges(session, account_ids, start_date, end_date, activity_type)
-    return sum(charges.values())
-
-
 # Anchored sums: charges per "anchor" (an account, or a project subtree on one
 # resource) inside that anchor's own dates, one statement per charge table.
 

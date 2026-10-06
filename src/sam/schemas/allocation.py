@@ -19,15 +19,13 @@ Usage:
 
 from marshmallow import fields
 from datetime import datetime
-from sqlalchemy import func
 from . import BaseSchema
 from .resource import ResourceSummarySchema
 from .project import ProjectSummarySchema
 from sam.accounting.accounts import Account
 from sam.accounting.allocations import Allocation
-from sam.accounting.adjustments import ChargeAdjustment
 from sam.summaries.disk_summaries import BYTES_PER_TIB
-from sam.accounting.calculator import calculate_charges
+from sam.accounting.calculator import anchored_charges, usage_anchor
 
 
 def _keep_fixed_keys(charges: dict, activity_type) -> dict:
@@ -148,85 +146,48 @@ class AllocationWithUsageSchema(AllocationSchema):
             return ResourceSummarySchema().dump(account.resource)
         return None
 
-    def _calculate_usage(self, obj):
-        """
-        Calculate usage for this allocation.
+    def _live_sums(self, obj):
+        """``{key: {'charges_by_type', 'adjustment'}}`` for ``obj`` (and ``'root'`` when
+        inheriting), one kernel call per allocation per dump."""
+        memo = self.__dict__.setdefault('_sums', {})
+        if obj.allocation_id in memo:
+            return memo[obj.allocation_id]
+        account = self.context['account']
+        session = self.context['session']
+        include_adjustments = self.context.get('include_adjustments', True)
+        start_date, end_date = obj.start_date, obj.end_date or datetime.now()
+        activity_type = account.resource.activity_type if account.resource else None
+        anchors = [usage_anchor('self', account.project, account, activity_type, start_date, end_date)]
+        root_account = obj.root.account if obj.is_inheriting else None
+        root_project = root_account.project if root_account is not None else None
+        if root_project is not None and root_project.has_tree_coordinates():
+            root_type = root_account.resource.activity_type if root_account.resource else None
+            anchors.append((usage_anchor('root', root_project, root_account, root_type,
+                                         start_date, end_date)[0], True))
+        sums = anchored_charges(session, anchors, include_adjustments=include_adjustments)
+        if root_project is not None and 'root' in sums:
+            sums['root']['projcode'] = root_project.projcode
+        memo[obj.allocation_id] = sums
+        return sums
 
-        Returns tuple: (charges_by_type, adjustments, total_used)
-        """
+    def _calculate_usage(self, obj):
+        """``(charges_by_type, adjustments, total_used)`` for this allocation's own anchor."""
         account = self.context.get('account')
         session = self.context.get('session')
         include_adjustments = self.context.get('include_adjustments', True)
-
         if not account or not session:
             return {}, 0.0, 0.0
 
-        # Read-model short-circuit: a row the route resolved through the
-        # freshness gate. Adjustments are stored separately.
         row = self.context.get('state')
         if row is not None:
             charges = {k: float(v) for k, v in row.charges_by_type.items()}
-            # Same shape as the live sums: disk/archive always carry their
-            # key, comp/dav only when non-zero.
-            if row.resource_type in ('DISK', 'ARCHIVE'):
-                charges.setdefault(row.resource_type.lower(), 0.0)
             adjustments = row.adjustments if include_adjustments else 0.0
-            return charges, adjustments, sum(charges.values()) + adjustments
-
-        # Get date range for queries
-        now = datetime.now()
-        start_date = obj.start_date
-        end_date = obj.end_date or now
-
-        # Charges route by the resource's activity_type (its single authoritative
-        # table), not resource_type — see accounting/calculator.py.
+        else:
+            own = self._live_sums(obj).get('self', {'charges_by_type': {}, 'adjustment': 0.0})
+            charges, adjustments = dict(own['charges_by_type']), own['adjustment']
         activity_type = account.resource.activity_type if account.resource else None
-
-        # A parent project's usage is its subtree's, as on every other surface
-        # (dashboards, sam-search, fstree). The account-only sum below is for
-        # leaves, where the subtree is the account.
-        project = account.project
-        if project is not None and project.sums_as_subtree():
-            charges = _keep_fixed_keys(project.get_subtree_charges(
-                account.resource_id, activity_type, start_date, end_date), activity_type)
-            adjustments = 0.0
-            if include_adjustments:
-                adjustments = float(project.get_subtree_adjustments(
-                    account.resource_id, start_date, end_date) or 0.0)
-            return charges, adjustments, sum(charges.values()) + adjustments
-
-        # Calculate charges from the resource's authoritative table (by activity_type)
-        charges = self._get_charges_by_resource_type(
-            session, account.account_id, activity_type, start_date, end_date
-        )
-
-        # Calculate adjustments
-        adjustments = 0.0
-        if include_adjustments:
-            adjustments = session.query(
-                func.coalesce(func.sum(ChargeAdjustment.amount), 0)
-            ).filter(
-                ChargeAdjustment.account_id == account.account_id,
-                ChargeAdjustment.adjustment_date >= start_date,
-                ChargeAdjustment.adjustment_date <= end_date
-            ).scalar()
-            adjustments = float(adjustments) if adjustments else 0.0
-
-        # Calculate total used
-        total_charges = sum(charges.values())
-        total_used = total_charges + adjustments
-
-        return charges, adjustments, total_used
-
-    def _get_charges_by_resource_type(self, session, account_id, activity_type, start_date, end_date):
-        """Sum the resource's authoritative charge table (by activity_type).
-
-        Delegates to the shared calculator so routing lives in exactly one place.
-        DISK/ARCHIVE keep their key even at zero, matching the prior contract.
-        """
-        return _keep_fixed_keys(
-            calculate_charges(session, [account_id], start_date, end_date, activity_type),
-            activity_type)
+        _keep_fixed_keys(charges, activity_type)
+        return charges, adjustments, sum(charges.values()) + adjustments
 
     def get_charges_by_type(self, obj):
         """Get breakdown of charges by type (comp, dav, disk, archive)."""
@@ -239,36 +200,18 @@ class AllocationWithUsageSchema(AllocationSchema):
         return adjustments
 
     def _calculate_tree_usage(self, obj):
-        """For inheriting allocations, sum charges across the root project's
-        full subtree — that's the authoritative shared-pool consumption.
-
-        Returns (tree_used, root_projcode) or (None, None) for non-inheriting.
-        """
-        if not obj.is_inheriting:
+        """``(tree_used, root_projcode)`` for an inheriting allocation: the root project's
+        full subtree is the shared pool's consumption. ``(None, None)`` otherwise."""
+        if not obj.is_inheriting or not self.context.get('session') or not self.context.get('account'):
             return None, None
-        session = self.context.get('session')
         include_adjustments = self.context.get('include_adjustments', True)
-        if not session:
-            return None, None
         row = self.context.get('state')
         if row is not None and include_adjustments and row.root_projcode is not None:
             return row.used, row.root_projcode
-        root_alloc = obj.root
-        root_account = root_alloc.account
-        root_project = root_account.project if root_account else None
-        if root_project is None or not root_project.has_tree_coordinates():
+        root = self._live_sums(obj).get('root')
+        if root is None:
             return None, None
-        now = datetime.now()
-        start_date = obj.start_date
-        end_date = obj.end_date or now
-        activity_type = root_account.resource.activity_type if root_account.resource else None
-        charges = root_project.get_subtree_charges(
-            root_account.resource_id, activity_type, start_date, end_date)
-        tree_used = sum(charges.values())
-        if include_adjustments:
-            tree_used += root_project.get_subtree_adjustments(
-                root_account.resource_id, start_date, end_date)
-        return tree_used, root_project.projcode
+        return sum(root['charges_by_type'].values()) + root['adjustment'], root['projcode']
 
     def get_used(self, obj):
         """Total used amount. For inheriting allocations, this is the

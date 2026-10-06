@@ -1,26 +1,13 @@
 """Dashboard data aggregation queries.
 
-Three surfaces, laid out by entry point with shared helpers above them:
+* ``get_user_dashboard_data`` -- /user/: all of a user's active projects in a
+  fixed-size set of batched queries.
+* ``get_project_dashboard_data`` -- admin single-project search.
+* ``get_resource_detail_data`` -- the per-resource drilldown.
 
-* ``get_user_dashboard_data`` -- /user/. All of a user's active projects in a
-  fixed-size set of batched queries, independent of project count.
-* ``get_project_dashboard_data`` -- admin single-project search. No batching
-  benefit at N=1, and it must coexist with the admin tree views that loop
-  per-node for unrelated reasons.
-* ``get_resource_detail_data`` -- the per-resource drilldown. Self-contained.
-
-Two resource-dict builders coexist deliberately: ``_build_project_resources_data``
-(per project) and ``build_user_projects_resources_batched`` (many at once,
-replacing an N+1 fanout). Merging them would either pessimize N=1 or complicate
-N=many.
-
-WARNING: both must produce identical fields.
-``test_query_functions.py::TestDashboardQueries::test_user_dashboard_batched_matches_per_project``
-compares them field-by-field on every CI run -- change one, keep it green or
-change the other in lockstep.
-
-This module does NOT import from ``sam.queries.fstree_access``; both depend
-only on the durable ``Project`` class methods.
+``build_user_projects_resources_batched`` is the one assembly of allocation
+usage; `Project.get_detailed_allocation_usage` reshapes its rows for a single
+project. This module does NOT import from ``sam.queries.fstree_access``.
 """
 
 from datetime import datetime, date, timedelta
@@ -54,26 +41,7 @@ from sam.queries.rolling_usage import get_project_rolling_usage
 
 
 class DashboardResource(TypedDict):
-    """
-    Per-resource row in the dashboard data structure.
-
-    Single source of truth for the dict shape produced by BOTH
-    _build_project_resources_data() (single-project path) and
-    build_user_projects_resources_batched() (multi-project batched path).
-    Both producers must populate every field listed here; the equivalence
-    test in tests/unit/queries/test_query_functions.py compares them
-    field-by-field at runtime.
-
-    Note: this is a documentation/IDE annotation only. The project does
-    not run mypy in CI, so type errors won't fail the build — but the
-    annotation gives editors enough information to autocomplete field
-    access, catch typos when reading, and serve as the canonical
-    contract for downstream consumers (the project_card.html template,
-    the API serializers, the CLI display helpers).
-
-    If you add or rename a field, update BOTH producers AND the
-    equivalence test's SCALAR_FIELDS / FLOAT_FIELDS tuples in lockstep.
-    """
+    """Per-resource row the dashboards render (documentation only; mypy does not run in CI)."""
     # Identity / FK metadata
     resource_name: str
     allocation_id: Optional[int]
@@ -138,114 +106,10 @@ def allocation_timeline(start_date: Optional[datetime], end_date: Optional[datet
 
 def _build_project_resources_data(project: Project,
                                    active_at: Optional[datetime] = None) -> List[DashboardResource]:
-    """
-    Single-project resource-dict builder.
-
-    Calls Project.get_detailed_allocation_usage() (which fires per-account
-    charge / adjustment / job-statistics queries) and shapes the result
-    into the dict format the dashboard templates consume. Coexists with
-    build_user_projects_resources_batched() — see this module's docstring
-    for the why-two explanation. Both produce identical output and are
-    locked in step by an equivalence test in test_query_functions.py.
-
-    Used by:
-      * get_project_dashboard_data() — admin single-project search
-      * webapp/dashboards/admin/projects_routes.py — admin tree view (loops
-        per node; OK because admin tree views are small and rare)
-
-    The batched version is used by get_user_dashboard_data() instead.
-
-    Args:
-        project: Project object
-        active_at: Reference datetime for determining which allocation is "active".
-                   Defaults to now.
-
-    Returns:
-        List of resource dictionaries with usage details
-    """
-    # Read-model short-circuit: the batched builder consumes the table, so at
-    # N=1 it is the cheap path whenever the gate says the scope is fresh. The
-    # rows are handed over so the builder does not consult the gate again.
-    state = _read_model_rows(project.session, [project.project_id], None, active_at)
-    if state is not None:
-        return build_user_projects_resources_batched(
-            project.session, [project], active_at=active_at, state=state,
-        ).get(project.project_id, [])
-
-    resources = []
-    # Note: disk-capacity overrides for DISK rows are applied inside
-    # get_detailed_allocation_usage() — no per-row override needed here.
-    usage_data = project.get_detailed_allocation_usage(include_adjustments=True,
-                                                        active_at=active_at)
-
-    now = active_at or datetime.now()
-
-    # Rolling-window usage (30d/90d) only when an account has a non-null
-    # threshold: the template gates the block on threshold_pct, so for the vast
-    # majority of projects this would fetch data nothing renders.
-    needs_rolling = any(
-        (acct.first_threshold is not None or acct.second_threshold is not None)
-        for acct in project.accounts
-        if not acct.deleted
-    )
-    rolling_usage = (
-        get_project_rolling_usage(project.session, project.projcode)
-        if needs_rolling else {}
-    )
-
-    for resource_name, usage in usage_data.items():
-        start_date = usage.get('start_date')
-        end_date = usage.get('end_date')
-
-        # Calculate days until expiration
-        days_until_expiration = None
-        if end_date:
-            days_until_expiration = (end_date - now).days
-
-        # Sortable group key for grouping resources with identical date bounds
-        start_str = start_date.strftime('%Y-%m-%d') if start_date else '0000-00-00'
-        end_str   = end_date.strftime('%Y-%m-%d')   if end_date   else 'open'
-        date_group_key = f"{start_str}_{end_str}"
-
-        elapsed_pct, bar_state = allocation_timeline(start_date, end_date, now)
-
-        rwin = rolling_usage.get(resource_name, {}).get('windows', {})
-        resource_type = usage.get('resource_type', 'HPC')
-        resource_dict = {
-            'resource_name': resource_name,
-            'allocation_id': usage.get('allocation_id'),  # Required for edit functionality
-            'parent_allocation_id': usage.get('parent_allocation_id'),
-            'is_inheriting': usage.get('is_inheriting', False),
-            'account_id': usage.get('account_id'),  # Required for permission checks
-            'allocated': usage.get('allocated', 0.0),
-            'used': usage.get('used', 0.0),
-            'remaining': usage.get('remaining', 0.0),
-            'percent_used': usage.get('percent_used', 0.0),
-            # When `is_inheriting`, `used`/`percent_used` reflect the shared
-            # pool's full-tree consumption; `self_used`/`self_percent_used`
-            # carry this project's contribution so the UI can render a
-            # two-tone bar.
-            'self_used': usage.get('self_used'),
-            'self_percent_used': usage.get('self_percent_used'),
-            'root_projcode': usage.get('root_projcode'),
-            'charges_by_type': usage.get('charges_by_type', {}),
-            'adjustments': usage.get('adjustments', 0.0),
-            'status': usage.get('status', 'Unknown'),
-            'start_date': start_date,
-            'end_date': end_date,
-            'days_until_expiration': days_until_expiration,
-            'date_group_key': date_group_key,
-            'elapsed_pct': elapsed_pct,
-            'bar_state': bar_state,
-            'resource_type': resource_type,
-            'activity_date': usage.get('activity_date'),
-            'rolling_30': rwin.get(30),
-            'rolling_90': rwin.get(90),
-        }
-
-        resources.append(resource_dict)
-
-    return resources
+    """The batched builder for one project."""
+    return build_user_projects_resources_batched(
+        project.session, [project], active_at=active_at,
+    ).get(project.project_id, [])
 
 
 def _apply_disk_capacity_overrides(
@@ -294,29 +158,27 @@ def build_user_projects_resources_batched(
     active_at: Optional[datetime] = None,
     *,
     state: Optional[Dict[int, Any]] = None,
+    include_adjustments: bool = True,
+    resource_name: Optional[str] = None,
+    with_project_metadata: bool = True,
 ) -> Dict[int, List[DashboardResource]]:
     """
-    Batched, multi-project equivalent of _build_project_resources_data().
+    ``{project_id: [resource dict, ...]}``: the one assembly of allocation usage.
+
+    ``resource_name`` restricts the rows to one resource. ``with_project_metadata``
+    preloads what the dashboard templates read off each project (lead, admin,
+    contracts, organizations, directories); a caller after the numbers alone
+    passes False.
 
     ``state``: read-model rows by allocation_id a caller already obtained
     from the gate; the builder then does not consult it again. Rows that do
     not cover every chosen allocation send the build live, as the gate would.
+    ``include_adjustments=False`` always builds live (a row's pool figure
+    bakes the root's adjustments in).
 
-    Returns a dict mapping ``project_id`` -> list of resource dicts in
-    EXACTLY the same shape that _build_project_resources_data() produces
-    per-project. The caller can plug each list straight into its existing
-    project_data structure with no template changes.
-
-    Why this exists
-    ---------------
-    The user dashboard renders many projects per request. The per-project
-    helper calls ``Project.get_detailed_allocation_usage()``, which fires
-    ~3-4 charge-aggregation queries per (project, account) pair plus a
-    rolling-usage round trip per project. For a user on 11 projects with
-    ~5 accounts each that became ~290 SQL queries and ~2.9 s wall time
-    (verified via utils/profiling/profile_user_dashboard.py).
-
-    This helper collapses that into a fixed number of batched queries:
+    Every dashboard, the API, the CLI and the notices read usage through this
+    function or `Project.get_detailed_allocation_usage`, which reshapes its
+    rows. The batching:
 
       * ONE consolidated Project ``selectinload`` chain for template metadata
         (lead, admin, allocation_type -> panel -> facility, area_of_interest,
@@ -330,13 +192,6 @@ def build_user_projects_resources_batched(
       * Skipped get_project_rolling_usage() calls for projects whose
         accounts have no rolling thresholds set (the "C1 gate" — most
         projects in production qualify, eliminating ~80-90 queries).
-
-    Equivalence
-    -----------
-    Locked to _build_project_resources_data() field-by-field by
-    tests/unit/queries/test_query_functions.py::TestDashboardQueries
-    ::test_user_dashboard_batched_matches_per_project. Any divergence
-    between the two paths fails CI.
     """
     now = active_at or datetime.now()
 
@@ -352,38 +207,42 @@ def build_user_projects_resources_batched(
     # lazy='selectin' relationships (led_projects, admin_projects, accounts,
     # email_addresses) would then fire for every lead/admin loaded. The template
     # reads only display_name and user_id, so .lazyload() suppresses all four.
-    session.query(Project).options(
-        joinedload(Project.lead).lazyload(User.led_projects),
-        joinedload(Project.lead).lazyload(User.admin_projects),
-        joinedload(Project.lead).lazyload(User.accounts),
-        joinedload(Project.lead).lazyload(User.email_addresses),
-        joinedload(Project.admin).lazyload(User.led_projects),
-        joinedload(Project.admin).lazyload(User.admin_projects),
-        joinedload(Project.admin).lazyload(User.accounts),
-        joinedload(Project.admin).lazyload(User.email_addresses),
-        joinedload(Project.allocation_type)
-            .joinedload(AllocationType.panel)
-            .joinedload(Panel.facility),
-        joinedload(Project.area_of_interest),
-        selectinload(Project.contracts)
-            .joinedload(ProjectContract.contract)
-            .joinedload(Contract.contract_source),
-        selectinload(Project.organizations)
-            .joinedload(ProjectOrganization.organization),
-        selectinload(Project.directories),
-    ).filter(Project.project_id.in_(project_ids)).all()
+    if with_project_metadata:
+        session.query(Project).options(
+            joinedload(Project.lead).lazyload(User.led_projects),
+            joinedload(Project.lead).lazyload(User.admin_projects),
+            joinedload(Project.lead).lazyload(User.accounts),
+            joinedload(Project.lead).lazyload(User.email_addresses),
+            joinedload(Project.admin).lazyload(User.led_projects),
+            joinedload(Project.admin).lazyload(User.admin_projects),
+            joinedload(Project.admin).lazyload(User.accounts),
+            joinedload(Project.admin).lazyload(User.email_addresses),
+            joinedload(Project.allocation_type)
+                .joinedload(AllocationType.panel)
+                .joinedload(Panel.facility),
+            joinedload(Project.area_of_interest),
+            selectinload(Project.contracts)
+                .joinedload(ProjectContract.contract)
+                .joinedload(Contract.contract_source),
+            selectinload(Project.organizations)
+                .joinedload(ProjectOrganization.organization),
+            selectinload(Project.directories),
+        ).filter(Project.project_id.in_(project_ids)).all()
 
     # Phase 2: bulk-load every account (with allocations + resource) for every
     # project the user is on. Bucket by project_id explicitly -- iterating
     # `project.accounts` would defeat the bulk fetch, triggering a per-project
     # lazy load even though the rows are already in the identity map.
-    accounts_for_user = session.query(Account).options(
+    accounts_query = session.query(Account).options(
         selectinload(Account.allocations),
         joinedload(Account.resource).joinedload(Resource.resource_type),
     ).filter(
         Account.project_id.in_(project_ids),
         Account.deleted == False,  # noqa: E712 — SQLAlchemy expression
-    ).all()
+    )
+    if resource_name:
+        accounts_query = accounts_query.join(Account.resource).filter(Resource.resource_name == resource_name)
+    accounts_for_user = accounts_query.all()
 
     accounts_by_project: Dict[int, List[Account]] = {}
     for acct in accounts_for_user:
@@ -444,7 +303,9 @@ def build_user_projects_resources_batched(
     # every chosen allocation has a fresh row, phases 4/5 and the disk override
     # read the rows the hourly task wrote from this same builder.
     chosen_ids = [qa.allocation_id for _p, _a, qa, _rt, _ed in chosen.values()]
-    if state is None:
+    if not include_adjustments:
+        state = None
+    elif state is None:
         state = _read_model_rows(session, project_ids, chosen_ids, active_at)
     elif not set(chosen_ids) <= state.keys():
         state = None
@@ -462,10 +323,9 @@ def build_user_projects_resources_batched(
                 raw_charges[('root', key)] = {'charges_by_type': {'pool': row.used},
                                               'adjustment': 0.0}
     else:
-        raw_charges.update(anchored_charges(session, anchors))
+        raw_charges.update(anchored_charges(session, anchors, include_adjustments=include_adjustments))
 
-    # Phase 5: rolling-usage gate, the same rule `_build_project_resources_data`
-    # applies so both paths agree. The template gates rendering on
+    # Phase 5: rolling-usage gate. The template gates rendering on
     # threshold_pct, and most production projects have none set; skipping saves
     # ~8-9 queries per project, ~93 queries and ~1.2 s for one test user.
     rolling_usage_by_projcode: Dict[str, Dict] = {}
@@ -481,11 +341,7 @@ def build_user_projects_resources_batched(
                 session, project.projcode,
             )
 
-    # Phase 6: assemble per-project resource dicts, mirroring
-    # `_build_project_resources_data`'s shape exactly -- every field, every
-    # default -- so templates are unaffected and the equivalence test can
-    # compare dict-by-dict. A field added or renamed here must be mirrored
-    # there AND added to that test's SCALAR_FIELDS / FLOAT_FIELDS.
+    # Phase 6: assemble per-project resource dicts.
     out: Dict[int, List[DashboardResource]] = {p.project_id: [] for p in projects}
 
     # Bulk-resolve disk-capacity overrides for every (project, resource)
@@ -592,9 +448,7 @@ def build_user_projects_resources_batched(
 
         out[project.project_id].append(resource_dict)
 
-    # Sort each project's resources by resource_name for stable ordering
-    # (matches the implicit ordering of project.get_detailed_allocation_usage()
-    # which iterates accounts in load order — we sort here to be deterministic).
+    # Sort each project's resources by resource_name for stable ordering.
     for pid in out:
         out[pid].sort(key=lambda r: r['resource_name'])
 
