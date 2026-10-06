@@ -146,10 +146,18 @@ class AllocationWithUsageSchema(AllocationSchema):
             return ResourceSummarySchema().dump(account.resource)
         return None
 
+    def dump(self, obj, *, many=None):
+        """The sums memo lives for one dump: a reused instance never serves a prior request's figures."""
+        self._sums = {}
+        try:
+            return super().dump(obj, many=many)
+        finally:
+            del self._sums
+
     def _live_sums(self, obj):
         """``{key: {'charges_by_type', 'adjustment'}}`` for ``obj`` (and ``'root'`` when
         inheriting), one kernel call per allocation per dump."""
-        memo = self.__dict__.setdefault('_sums', {})
+        memo = getattr(self, '_sums', {})
         if obj.allocation_id in memo:
             return memo[obj.allocation_id]
         account = self.context['account']

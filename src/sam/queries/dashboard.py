@@ -249,9 +249,7 @@ def build_user_projects_resources_batched(
         accounts_by_project.setdefault(acct.project_id, []).append(acct)
 
     # Phase 3: per (project, account), pick the allocation to display and
-    # collect a work unit for the batch charge methods. Pure Python, no DB;
-    # `_select_query_alloc` mirrors get_detailed_allocation_usage()'s
-    # active-or-recent selection.
+    # collect a `usage_anchor` for the kernel. Pure Python, no DB.
     anchors: List[tuple] = []
     # (project_id, account_id) -> (project, account, query_alloc, resource_type, end_date)
     chosen: Dict[tuple, tuple] = {}
@@ -581,8 +579,6 @@ def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
     # Get active projects, sorted by project code for consistent display order
     projects = sorted(user.active_projects(), key=lambda p: p.projcode)
 
-    # Batched build (avoids the per-project get_detailed_allocation_usage()
-    # fan-out — see get_projects_dashboard_data / the batched helper docstring).
     project_data_list = get_projects_dashboard_data(session, projects)
 
     return {
@@ -702,8 +698,8 @@ def get_resource_detail_data(
     use_subtree = scope_proj.sums_as_subtree()
 
     if use_subtree:
-        # Use MPPT join pattern (same as Project.get_subtree_charges) to aggregate
-        # daily charges across this project and all descendants.
+        # MPTT containment join (the kernel's subtree path, by day) over this
+        # project and all descendants.
         results = None
         if compute_model is not None:
             # Pull num_jobs + core_hours alongside charges so the Usage

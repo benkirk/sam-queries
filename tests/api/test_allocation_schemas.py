@@ -190,6 +190,33 @@ class TestAllocationSchemas:
                     expected_percent = (used / allocated) * 100
                     assert abs(result['percent_used'] - expected_percent) < 0.01
 
+    def test_a_reused_instance_sums_afresh_on_every_dump(self, session):
+        """The sums memo lives for one dump: a module-level schema must not serve stale figures."""
+        from factories.projects import make_account, make_allocation, make_project
+        from factories.resources import make_resource
+        from factories.summaries import make_comp_charge_summary
+        from sam.resources.resources import ResourceType
+        hpc = make_resource(session, commission_date=datetime(2000, 1, 1),
+                            resource_type=session.query(ResourceType)
+                            .filter_by(resource_type='HPC').one())
+        account = make_account(session, project=make_project(session, facility_name='UNIV'),
+                               resource=hpc)
+        alloc = make_allocation(session, account=account, amount=100.0,
+                                start_date=datetime(2026, 1, 1), end_date=datetime(2026, 12, 31))
+        make_comp_charge_summary(session, account=account, activity_date=datetime(2026, 3, 1),
+                                 charges=40.0)
+
+        schema = AllocationWithUsageSchema()
+        schema.context = {'account': account, 'session': session, 'include_adjustments': True}
+        assert schema.dump(alloc)['used'] == 40.0
+
+        make_comp_charge_summary(session, account=account, activity_date=datetime(2026, 4, 1),
+                                 charges=2.0)
+        assert schema.dump(alloc)['used'] == 42.0
+        schema.context['include_adjustments'] = False
+        assert schema.dump(alloc)['used'] == 42.0
+        assert not hasattr(schema, '_sums')
+
 
 class TestAccountSchemas:
     """Test Account schemas."""

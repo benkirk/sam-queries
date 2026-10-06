@@ -162,8 +162,8 @@ def get_project_rolling_usage(
         # Pool detection — when the active allocation is inheriting, walk to
         # the root allocation and prepare a parallel subtree query against
         # the *root project's* tree, so this window's `charges` reflects
-        # pool burn (the rate that actually depletes the shared allocation).
-        # Mirrors Project.get_detailed_allocation_usage (projects.py:660-673).
+        # pool burn (the rate that actually depletes the shared allocation),
+        # as `build_user_projects_resources_batched` does for `used`.
         is_inheriting = False
         root_projcode = None
         if active_alloc.is_inheriting:

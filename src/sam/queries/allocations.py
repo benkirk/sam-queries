@@ -1123,9 +1123,7 @@ def get_allocation_summary_with_usage(
         all_allocations, resource_name, facility_name, allocation_type, projcode
     )
 
-    # Collect all allocation infos for batch charge computation.
-    # This replaces per-allocation project.get_subtree_charges() / get_charges_by_resource_type()
-    # calls (N scalar queries) with one query per charge model covering all allocations at once.
+    # One `usage_anchor` per allocation: the kernel sums them in one query per charge model.
     anchors = []
     for alloc_list in alloc_by_key.values():
         for alloc, res_name, res_type, project, account in alloc_list:
