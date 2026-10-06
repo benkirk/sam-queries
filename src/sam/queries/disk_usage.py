@@ -195,6 +195,8 @@ def bulk_get_subtree_disk_capacity(
     """
     if not pairs:
         return {}
+    # A repeated pair would collect its accounts twice and double its bytes.
+    pairs = list({(p.project_id, rn): (p, rn) for p, rn in pairs}.values())
 
     out: Dict[Tuple[int, str], Dict[str, Any]] = {
         (p.project_id, rn): dict(_EMPTY_CAP) for p, rn in pairs
