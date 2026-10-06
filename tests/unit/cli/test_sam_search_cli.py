@@ -280,3 +280,24 @@ class TestSamSearchCli:
         result = runner.invoke(cli, ['project'])
         assert result.exit_code == 1
         assert "Error: Please provide exactly one of" in result.output
+
+
+class TestSharedAllocationRow:
+    """A shared row reads as on the web: "from <root>", the project's own Used and %."""
+
+    def test_project_names_the_pool_owner(self, runner, mock_db_session, hpc_resource):
+        from datetime import datetime, timedelta
+        from factories import make_account, make_allocation, make_project
+        session = mock_db_session
+        root = make_project(session, facility_name='UNIV')
+        child = make_project(session, parent=root, facility_name='UNIV')
+        start, end = datetime.now() - timedelta(days=30), datetime.now() + timedelta(days=300)
+        pool = make_allocation(session, account=make_account(session, project=root, resource=hpc_resource),
+                               amount=1000.0, start_date=start, end_date=end)
+        make_allocation(session, account=make_account(session, project=child, resource=hpc_resource),
+                        amount=1000.0, start_date=start, end_date=end, parent=pool)
+        session.refresh(root)
+        result = runner.invoke(cli, ['project', child.projcode], env={'COLUMNS': '200'})
+        assert result.exit_code == 0, result.output
+        assert f'from {root.projcode}' in result.output
+        assert 'yours' not in result.output

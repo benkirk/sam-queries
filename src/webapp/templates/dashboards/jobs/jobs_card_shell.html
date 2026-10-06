@@ -6,7 +6,7 @@
    Every optional arg goes through |default() because the route's context
    only carries the keys that mode needs (projcode/scope are absent in
    machine and user modes). #}
-{% from 'dashboards/user/partials/jobs_card.html' import jobs_card %}
+{% from 'dashboards/jobs/jobs_card.html' import jobs_card %}
 {{- jobs_card(mode=mode, cid=cid, tablist_id=tablist_id, machine=machine,
               load_trigger=load_trigger,
               projcode=projcode | default(none),

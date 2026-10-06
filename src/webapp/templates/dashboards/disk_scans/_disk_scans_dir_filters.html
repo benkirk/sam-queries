@@ -66,17 +66,15 @@
                         layout=layout) }}
       {% else %}
       <label class="form-label"><strong>Accessed after</strong></label>
-      <input type="date" class="form-control"
-             name="accessed_after" value="{{ filters.accessed_after_str }}"
-             style="width:160px;">
+      <input type="date" class="form-control ctl-w-lg"
+             name="accessed_after" value="{{ filters.accessed_after_str }}">
       {% endif %}
     </div>
     {% if not age_bands %}
     <div>
       <label class="form-label"><strong>Accessed before</strong></label>
-      <input type="date" class="form-control"
-             name="accessed_before" value="{{ filters.accessed_before_str }}"
-             style="width:160px;">
+      <input type="date" class="form-control ctl-w-lg"
+             name="accessed_before" value="{{ filters.accessed_before_str }}">
     </div>
     {% endif %}
 
@@ -109,7 +107,7 @@
        so the owner picker is omitted — it must not be possible to re-filter the
        explorer to another owner here. #}
     {% if mode != 'user' %}
-    <div style="min-width:240px;">
+    <div class="ctl-minw-picker">
       {# optional_text='' — drops the muted "(optional)" hint, which is both
          redundant on a filter and low-contrast on the navy panel. #}
       {{ fk_search_field('owner_user_id', 'User', user_search_url,
@@ -131,7 +129,7 @@
 
     <div>
       <label class="form-label"><strong>Rows</strong></label>
-      <select class="form-select" name="limit" style="width:100px;">
+      <select class="form-select ctl-w-xs" name="limit">
         {% for n in limit_options %}
           <option value="{{ n }}" {% if filters.limit == n %}selected{% endif %}>{{ n }}</option>
         {% endfor %}

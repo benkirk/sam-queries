@@ -1,0 +1,193 @@
+{% from 'dashboards/fragments/chart_bits.html' import chart_figure, chart_pills %}
+{% from 'dashboards/jobs/_jobs_macros.html'
+   import jobs_disabled, jobs_error, jobs_empty, metric_pills, charges_note %}
+{% from 'dashboards/fragments/help.html' import term with context %}
+{% from 'dashboards/fragments/glossary.html' import g_cpu_hours with context %}
+{% from 'dashboards/fragments/collapse.html' import drill_toggle, lazy_drill_row, owner_tier, tier_num %}
+{% from 'dashboards/fragments/table_bits.html' import share_bar %}
+{#
+  Activity timeline — the Jobs tab's chart, and the only panel on the card
+  with a TIME axis (the other five are distributional or categorical).
+  Rendered inside the Jobs pane above the table, behind a collapse, as its
+  own fragment: a metric/period pill re-fetches only this, and a sort or
+  page click re-fetches only the table.
+
+  Context (set in webapp/jobs/routes.py::_render_timeline):
+    enabled, error, mode, machine,
+    ts        — plugin jobs_timeseries envelope: {period, owners_by,
+                start, end, bands[{label, start, end, job_count, cpu_hours,
+                gpu_hours, cpu_charges, gpu_charges, owners{}}], totals,
+                null_count, total_count}
+    bands     — ts.bands, hoisted
+    chart_svg — rendered SVG (or None when nothing is populated)
+    metric    — 'jobs' | 'cpu_hours' | 'gpu_hours' | 'charges'
+    period    — 'day' | 'week' | 'month' (server-chosen unless ?period=
+                fits the window)
+    period_choices — [{key,label,bars,enabled}] — over-budget granularities
+                render DISABLED with the bar count as the reason, never
+                hidden: a pill that vanishes reads as a bug.
+    max_bars  — the budget those choices are measured against
+    group_by  — 'user' | 'project': who owns the stacked segments
+    owners_toggle  — offer the User|Project pill
+    entity    — _USAGE_ENTITIES[group_by] (labels, sentinel, drill_param)
+    link_entities  — whether the legend links; False when panel_relevance
+                has suppressed the target pane, since a sentinel into a
+                pane that was never rendered is a silent no-op
+    band_drills    — per-band jobs-fragment URLs (None for empty bands)
+    fragment_url, target_id, params — re-fetch plumbing
+#}
+
+{% if not enabled %}
+  {{ jobs_disabled() }}
+{% elif error %}
+  {{ jobs_error(error) }}
+{% elif not ts or not bands %}
+  {{ jobs_empty('No jobs match these filters.') }}
+{% else %}
+  <form id="jobs-timeline-params-{{ target_id }}" class="d-none">
+    {% for k, v in params.items() %}
+    <input type="hidden" name="{{ k }}" value="{{ v }}">
+    {% endfor %}
+  </form>
+
+  <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+    {{ metric_pills(metric, fragment_url, target_id,
+                    '#jobs-timeline-params-' ~ target_id,
+                    '&period=' ~ period, aria='Timeline metric') }}
+
+    {# Granularity. Auto-selected from the window; an explicit choice is
+       honored only while it fits the bar budget, so a stale 'day' from
+       localStorage can't be replayed against a five-year window. #}
+    {% set pills = [] %}
+    {% for p in period_choices %}
+    {% set _bars = p.bars | fmt_number ~ ' bars' %}
+    {% set _ = pills.append(dict(
+        text=p.label, on=(period == p.key), off=(not p.enabled),
+        title=(_bars if p.enabled else _bars ~ ' — over the ' ~ max_bars ~ '-bar budget for this window'),
+        url=fragment_url ~ '?period=' ~ p.key ~ '&metric=' ~ metric)) %}
+    {% endfor %}
+    {{ chart_pills('Granularity', pills, '#' ~ target_id, swap='innerHTML',
+                   include='#jobs-timeline-params-' ~ target_id, classes='me-1') }}
+
+    {% if owners_toggle | default(false) %}
+    {# Who owns the stack. Same vocabulary as the histograms and the status
+       queue-load chart, so the choice rides the shared preference bucket. #}
+    {% set pills = [] %}
+    {% for ob, label in [('user', 'User'), ('project', 'Project')] %}
+    {% set _ = pills.append(dict(text=label, on=(group_by == ob), url=fragment_url ~ '?group_by=' ~ ob
+                                 ~ '&metric=' ~ metric ~ '&period=' ~ period)) %}
+    {% endfor %}
+    {{ chart_pills('Owner dimension', pills, '#' ~ target_id, swap='innerHTML',
+                   include='#jobs-timeline-params-' ~ target_id, classes='me-1') }}
+    {% endif %}
+
+    <span class="ms-auto text-muted small">
+      {{ ts.total_count | fmt_number }} job{{ '' if ts.total_count == 1 else 's' }}
+      · {{ ts.start }} → {{ ts.end }}
+    </span>
+  </div>
+
+  {% if chart_svg %}
+  {% call chart_figure('Jobs over time, stacked by ' ~ group_by, 'mb-2 jobs-timeline-chart') %}
+    {{ chart_svg | safe }}
+  {% endcall %}
+  {% else %}
+    {{ jobs_empty('No jobs match these filters.') }}
+  {% endif %}
+
+  {{ charges_note(metric, 'a band') }}
+
+  {% if ts.null_count %}
+    <p class="text-muted small mb-2">
+      <i class="fa-solid fa-circle-info me-1"></i>
+      {{ ts.null_count | fmt_number }} job{{ '' if ts.null_count == 1 else 's' }}
+      have no recorded end time and belong to no period.
+    </p>
+  {% endif %}
+
+  {# Period table under the SVG — the same zero-filled band vector the chart
+     draws, so counts are copy/paste-able. Populated bands expand (row click,
+     or bar click via the #sam/row/data-jt-period/<i> anchor and
+     svg-chart-links.js) into its owners' rows (collapse.owner_tier), each
+     lazy-loading its jobs in that band.
+     persist=false: a restored auto-expand would re-fire the drills. #}
+  {% set _mkey = 'job_count' if metric == 'jobs' else metric %}
+  {% set _ns = namespace(whole=0) %}
+  {% for b in bands %}{% set _ns.whole = _ns.whole + (tier_num(b, _mkey) | float) %}{% endfor %}
+  <div class="small text-muted mt-2 mb-1">Period breakdown</div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-subtle">
+        <tr>
+          <th>Period</th>
+          <th class="col-num">Jobs</th>
+          <th class="col-num">{{ term('CPU-hours', g_cpu_hours()) }}</th>
+          <th class="col-num">GPU-hours</th>
+          <th class="col-num">Charges</th>
+          <th class="col-num" title="A period's share of all jobs; an owner's share of its period, by the active metric">Share</th>
+        </tr>
+      </thead>
+      {% for b in bands %}
+        {% set drill_url = band_drills[loop.index0] if band_drills else none %}
+        {% set _rid = target_id ~ '-p' ~ loop.index0 %}
+        {% set owners = b.owners or {} %}
+        {% set _named = owners.values() | selectattr('job_count') | list %}
+        {% set _expandable = drill_url and _named %}
+        {% set _share = share_bar((100 * (tier_num(b, _mkey) | float) / _ns.whole) if _ns.whole else none,
+                                  title='Share of all jobs in range') %}
+        <tbody>
+          {% if _expandable %}
+          <tr class="cursor-pointer"
+              data-jt-period="{{ loop.index0 }}"
+              data-bs-toggle="collapse" data-bs-target="#{{ _rid }}-row"
+              aria-expanded="false" aria-controls="{{ _rid }}-row"
+              title="Show top {{ entity.label | lower }}s in this period">
+            <td>
+              <i class="fa-solid fa-chevron-right collapse-icon small me-1"></i>
+              <code>{{ b.label }}</code>
+            </td>
+            <td class="col-num">{{ b.job_count | fmt_number }}</td>
+            <td class="col-num">{{ b.cpu_hours | fmt_number }}</td>
+            <td class="col-num">{{ b.gpu_hours | fmt_number }}</td>
+            <td class="col-num">{{ tier_num(b, 'charges') | float | fmt_number }}</td>
+            <td class="col-num">{{ _share }}</td>
+          </tr>
+        </tbody>
+          {# Envelope order is the WINDOW-wide rank, identical in every band;
+             re-sort by this band's active metric so the tier reads like its bar. #}
+          {% set ranked = owners.items() | selectattr('1.job_count')
+                          | sort(attribute='1.' ~ _mkey, reverse=true) %}
+          {% call(owner) owner_tier(_rid, b, ranked, dict(
+                cols=[('job_count', 'number'), ('cpu_hours', 'number'), ('gpu_hours', 'number'),
+                      ('charges', 'charges')],
+                share=_mkey, drill_url=drill_url, param=entity.drill_param,
+                loading='jobs in ' ~ b.label, noun='period', persist=false,
+                other='Other ' ~ (entity.label | lower) ~ 's (beyond top ' ~ (owners | length) ~ ')')) %}
+            <span class="font-monospace">{{ owner }}</span>
+          {%- endcall %}
+          {% else %}
+        <tbody>
+          {# Empty band, or a populated one with no resolvable owners: the
+             single-level period -> jobs drill. #}
+          <tr {% if not b.job_count %}class="text-muted"
+              {% else %}data-jt-period="{{ loop.index0 }}"
+                        data-bs-target="#{{ _rid }}-row"{% endif %}>
+            <td>
+              {% if drill_url %}{{ drill_toggle(_rid ~ '-row', 'Show jobs in this period') }}{% endif %}
+              <code>{{ b.label }}</code>
+            </td>
+            <td class="col-num">{{ b.job_count | fmt_number }}</td>
+            <td class="col-num">{{ b.cpu_hours | fmt_number }}</td>
+            <td class="col-num">{{ b.gpu_hours | fmt_number }}</td>
+            <td class="col-num">{{ tier_num(b, 'charges') | float | fmt_number }}</td>
+            <td class="col-num">{{ _share }}</td>
+          </tr>
+          {% if drill_url %}
+          {{ lazy_drill_row(_rid, drill_url, 6, 'Loading jobs in ' ~ b.label ~ '…', persist=false) }}
+          {% endif %}
+        </tbody>
+          {% endif %}
+      {% endfor %}
+    </table>
+  </div>
+{% endif %}

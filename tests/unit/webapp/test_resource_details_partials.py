@@ -443,3 +443,25 @@ class TestDiskFilesets:
         assert 'data-copy="/gpfs/csfs1/a/very/long/fileset/path"' in body
         assert 'data-action="navigate"' not in body
         assert 'share-bar' in body
+
+
+class TestDiskCapacityRow:
+    """A scope drawing on another project's pool reads as a shared row, not as the pool's owner."""
+
+    def test_a_shared_scope_shows_the_pools_remaining(self, auth_client, session):
+        from sam import Account, Allocation, Project, Resource, ResourceType
+        row = (session.query(Project.projcode, Resource.resource_name)
+               .join(Account, Account.project_id == Project.project_id)
+               .join(Resource, Resource.resource_id == Account.resource_id)
+               .join(ResourceType, ResourceType.resource_type_id == Resource.resource_type_id)
+               .join(Allocation, Allocation.account_id == Account.account_id)
+               .filter(Project.is_active, Account.is_active, Allocation.is_active,
+                       Allocation.parent_allocation_id.isnot(None),
+                       ResourceType.resource_type == 'DISK')
+               .first())
+        if row is None:
+            pytest.skip('snapshot has no inheriting disk allocation')
+        projcode, resource = row
+        body = auth_client.get(f'/user/resource-details/{projcode}?resource={resource}').get_data(as_text=True)
+        assert 'id="collapseDiskCapacity"' in body
+        assert 'has-pool' in body and 'pool remaining' in body

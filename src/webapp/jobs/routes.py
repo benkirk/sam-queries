@@ -374,7 +374,7 @@ def _jobs_table_response(*, mode, machine, fragment_url,
         or f'jobs-{scope_key}-{machine}'
 
     return render_template(
-        'dashboards/user/partials/jobs_fragment.html',
+        'dashboards/jobs/jobs_fragment.html',
         project=project,
         username=pinned_user,
         machine=machine,
@@ -402,7 +402,7 @@ def _disabled_jobs_table(project=None, username=None):
     """The per-job table partial in disabled mode — never a 404, so a host
     page can hx-get it unconditionally."""
     return render_template(
-        'dashboards/user/partials/jobs_fragment.html',
+        'dashboards/jobs/jobs_fragment.html',
         project=project, username=username, machine=None, rows=[],
         filters={}, page={'n': 1, 'per_page': _DEFAULT_PER_PAGE},
         sort={'sort_by': None, 'sort_dir': 'desc'},
@@ -1013,7 +1013,7 @@ def _render_usage_panel(*, entity_key, mode, machine, fragment_url,
     the rollup groups by, which ``_USAGE_ENTITIES`` carries.
     """
     entity = _USAGE_ENTITIES[entity_key]
-    template = 'dashboards/user/partials/jobs_usage_panel.html'
+    template = 'dashboards/jobs/jobs_usage_panel.html'
     if not is_enabled():
         return render_template(template, enabled=False, error=None,
                                mode=mode, machine=None, target_id=target_id,
@@ -1209,7 +1209,7 @@ def _render_timeline(*, mode, machine, fragment_url, target_id,
     collapse rather than firing it with the table, while the explorer, whose
     whole point is the filter panel, opens it.
     """
-    template = 'dashboards/user/partials/jobs_timeline.html'
+    template = 'dashboards/jobs/jobs_timeline.html'
     if not is_enabled():
         return render_template(template, enabled=False, error=None,
                                mode=mode, machine=None, target_id=target_id)
@@ -1321,7 +1321,7 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
                       account_projcodes=None, username=None,
                       layout='desktop', theme='light'):
     """Shared renderer for the Wait Times / Job Sizes / Durations tabs."""
-    template = 'dashboards/user/partials/jobs_histogram.html'
+    template = 'dashboards/jobs/jobs_histogram.html'
     if not is_enabled():
         return render_template(template, enabled=False, error=None,
                                mode=mode, machine=None, target_id=target_id,
@@ -1544,7 +1544,7 @@ def _numeric_ladder_ctx(machine: str) -> list:
             'lo_field': lo_f,
             'hi_field': hi_f,
             'step': '1' if factor == 1 else 'any',
-            'width': '90px' if factor == 1 else '110px',
+            'width': 'xs' if factor == 1 else 'sm',   # a ctl-w-* filter width
             'bands': (ladders.band_map(ladders.scaled(ladder, factor), lo_f, hi_f)
                       if ladder else None),
             'span': (ladders.span_for(
@@ -1795,7 +1795,7 @@ def explore_page(project):
     """
     if not is_enabled():
         return render_template(
-            'dashboards/user/jobs_explore_page.html',
+            'dashboards/jobs/jobs_explore_page.html',
             mode='project', enabled=False, project=project,
             scoped_project=project, machine=None,
         )
@@ -1806,7 +1806,7 @@ def explore_page(project):
         mode='project', machine=machine, project=project, scope=scope,
     )
     return render_template(
-        'dashboards/user/jobs_explore_page.html',
+        'dashboards/jobs/jobs_explore_page.html',
         mode='project', enabled=True,
         project=project, scoped_project=scoped, machine=machine,
         scope=scope,
@@ -1829,13 +1829,13 @@ def explore_machine_page(machine):
     """
     if not is_enabled():
         return render_template(
-            'dashboards/user/jobs_explore_page.html',
+            'dashboards/jobs/jobs_explore_page.html',
             mode='machine', enabled=False, machine=machine,
         )
     machine = _machine_or_404(machine)
     panel, card = _explorer_card_context(mode='machine', machine=machine)
     return render_template(
-        'dashboards/user/jobs_explore_page.html',
+        'dashboards/jobs/jobs_explore_page.html',
         mode='machine', enabled=True, machine=machine,
         card_url=_explorer_card_url('machine', machine),
         layout=read_layout(),
@@ -1865,13 +1865,13 @@ def explore_user_page(machine):
     from flask_login import current_user
     if not is_enabled():
         return render_template(
-            'dashboards/user/jobs_explore_page.html',
+            'dashboards/jobs/jobs_explore_page.html',
             mode='user', enabled=False, machine=machine,
         )
     machine = _machine_or_404(machine)
     panel, card = _explorer_card_context(mode='user', machine=machine)
     return render_template(
-        'dashboards/user/jobs_explore_page.html',
+        'dashboards/jobs/jobs_explore_page.html',
         mode='user', enabled=True, machine=machine,
         username=current_user.username,
         card_url=_explorer_card_url('user', machine),
@@ -1954,7 +1954,7 @@ def _render_card_shell(*, mode: str, machine: str, **extra):
     panel_params['start'] = _days_start(days).isoformat()
     panel_params.pop('end', None)
     return render_template(
-        'dashboards/user/partials/jobs_card_shell.html',
+        'dashboards/jobs/jobs_card_shell.html',
         **_card_context(
             mode=mode, machine=machine,
             days=days,
@@ -1984,7 +1984,7 @@ def _render_explorer_shell(*, mode: str, machine: str, project=None,
         mode=mode, machine=machine, project=project, scope=scope,
     )
     return render_template(
-        'dashboards/user/partials/jobs_card_shell.html', **card,
+        'dashboards/jobs/jobs_card_shell.html', **card,
     )
 
 

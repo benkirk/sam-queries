@@ -4,7 +4,8 @@
 #   scripts/dev_server_alt.sh <worktree> <port> [redis-db]
 #
 # Serves <worktree>/src on the host (local MySQL :3306, Redis :6379 on its own DB index, which
-# it flushes so a previous run's fragments cannot leak in). Every outbound lever is forced off.
+# it flushes so a previous run's fragments cannot leak in). Every outbound lever is forced off;
+# ALT_FS_SCANS_ENABLED=1 turns fs-scans on (read-only; default 0).
 # Loads .env (searched upward from this repo) and NEVER prints a value from it: hand-copying a
 # running server's env printed a Jira token into a session transcript.
 set -eo pipefail
@@ -30,7 +31,8 @@ export SAM_DB_PASSWORD=${LOCAL_SAM_DB_PASSWORD:-root} SAM_DB_DRIVER=mysql SAM_DB
 export STATUS_DB_DRIVER=mysql STATUS_DB_SERVER=127.0.0.1 STATUS_DB_USERNAME=root STATUS_DB_PASSWORD=root
 export CACHE_REDIS_URL=redis://127.0.0.1:6379/$REDIS_DB RATELIMIT_STORAGE_URI=memory://
 export NOTIFY_ENABLED=0 NOTIFY_TRANSPORT=null XRAS_API_KEY= XRAS_OUTGOING_ENABLED=0 XRAS_WRITE_ENABLED=0
-export XRAS_ACTIONS_ENABLED=0 JIRA_ENABLED=0 JIRA_WRITE_ENABLED=0 FS_SCANS_ENABLED=0
+export XRAS_ACTIONS_ENABLED=0 JIRA_ENABLED=0 JIRA_WRITE_ENABLED=0
+export FS_SCANS_ENABLED=${ALT_FS_SCANS_ENABLED:-0}
 unset JIRA_TOKEN
 export FLASK_CONFIG=development AUTH_PROVIDER=stub TZ=America/Denver MPLBACKEND=Agg
 export WEBAPP_PORT=$PORT PYTHONPATH=$WT/src PYTHONDONTWRITEBYTECODE=1

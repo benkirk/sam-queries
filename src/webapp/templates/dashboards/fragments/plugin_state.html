@@ -17,7 +17,7 @@
     <small>
       {{ feature }} is unavailable: the
       <code>{{ package }}</code> plugin is not loaded{{ note }}.
-      <a href="/dashboards/admin/configuration"
+      <a href="{{ url_for('admin_dashboard.configuration') }}"
          target="_blank" rel="noopener">
         Check the Database card on the Admin → Configuration page
       </a>

@@ -174,6 +174,28 @@ def get_subtree_disk_capacity(
     return out.get((project.project_id, resource_name), dict(_EMPTY_CAP))
 
 
+def scope_disk_pool(session: Session, project: Project,
+                    resource: Resource) -> Tuple[float, Optional[Project]]:
+    """(pool amount in TiB, the project owning the pool) for a scope on a disk resource.
+
+    The scope's live allocation, else its nearest ancestor's; ``allocation.root`` is the
+    pool whether the scope owns it or inherits it. ``(0.0, None)`` with no live allocation.
+    """
+    for candidate in [project] + project.get_ancestors(include_self=False):
+        account = session.query(Account).filter(
+            Account.project_id == candidate.project_id,
+            Account.resource_id == resource.resource_id,
+            Account.is_active,
+        ).first()
+        if account is None:
+            continue
+        for alloc in account.allocations:
+            if alloc.is_active:
+                root = alloc.root
+                return float(root.amount), root.account.project if root.account else None
+    return 0.0, None
+
+
 def bulk_get_subtree_disk_capacity(
     session: Session,
     pairs: List[Tuple[Project, str]],
@@ -195,6 +217,8 @@ def bulk_get_subtree_disk_capacity(
     """
     if not pairs:
         return {}
+    # A repeated pair would collect its accounts twice and double its bytes.
+    pairs = list({(p.project_id, rn): (p, rn) for p, rn in pairs}.values())
 
     out: Dict[Tuple[int, str], Dict[str, Any]] = {
         (p.project_id, rn): dict(_EMPTY_CAP) for p, rn in pairs

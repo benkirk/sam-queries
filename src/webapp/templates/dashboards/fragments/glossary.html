@@ -37,10 +37,11 @@ early in the allotted period.
 {%- endmacro %}
 
 {% macro g_shared_pool() -%}
-This allocation draws from a pool shared with other projects in the same
-allocation tree — every member carries the full pool amount. The bar shows
-total pool consumption; the lighter inner segment (and "(N yours)") is this
-project's own contribution.
+On a <em>shared</em> allocation the projects of one allocation tree draw down one
+pool. The solid bar and its % are this project's own use; the lighter bar behind
+it is the whole pool's, red once the pool is overdrawn. Allocated names the pool's
+owner (and sorts by the pool's amount), Used is this project's own, and Remaining
+is what is left in the pool.
 {%- endmacro %}
 
 {# Allocation trees: shared / standalone / carve-out / unallocated
@@ -170,11 +171,10 @@ not a usage threshold. Usage to the left of this line means you're under pace.
 {%- endmacro %}
 
 {% macro g_usage_bar() -%}
-The filled portion is consumed usage against the allocated total. On a
-<em>shared</em> allocation it is this project's own use of a pool that sibling
-projects draw down too. The vertical marker, on compute allocations, shows how
-far through the allocation period today falls — a pacing reference, not a
-threshold.
+The filled portion is consumed usage against the allocated total. The vertical
+marker, on compute allocations, shows how far through the allocation period
+today falls — a pacing reference, not a threshold.
+<br><br>{{ g_shared_pool() }}
 {%- endmacro %}
 
 
@@ -331,8 +331,8 @@ always count root allocations, so an amount is never counted twice.
 On, each allocation type lists the top of each allocation tree: projects with no
 parent project, and allocations not drawn from a parent allocation (sub-projects
 sharing a parent&rsquo;s pool and carve-outs from it are folded into their root).
-Off, every project is listed, and a row drawing from a shared pool shows the
-amount that is its own.
+Off, every project is listed, and a row drawing from a shared pool shows its own
+use beside the pool's remaining.
 {%- endmacro %}
 
 {# XRAS Remediations: the contract-blockers strip (popover) #}
