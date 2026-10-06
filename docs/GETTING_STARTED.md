@@ -350,7 +350,7 @@ tests/
 - **Help text**: Making user-friendly CLIs
 
 **Project-specific**:
-- **Main CLI**: `src/sam_search_cli.py` - comprehensive search tool
+- **Main CLI**: `src/cli/` - sam-search / sam-admin (entry points in `src/cli/cmds/`)
 - **Usage**: `sam-search user benkirk --list-projects`
 - **Entry points**: Defined in `pyproject.toml` (sam-search, sam-status)
 
@@ -388,7 +388,7 @@ sam-search project SCSG0001 --list-users --verbose
 **Project-specific**:
 - We use Rich tables extensively for user/project data
 - Progress bars for batch operations
-- See `src/sam_search_cli.py` for implementation examples
+- See `src/cli/user/display.py` for implementation examples
 
 ---
 

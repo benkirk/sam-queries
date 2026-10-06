@@ -595,8 +595,6 @@ sam-queries/
 │   │   ├── xras/                # XRAS action-log commands and display functions
 │   │   └── cmds/                # Entry points (search.py, admin.py)
 │   │
-│   ├── sam_search_cli.py        # Compatibility shim (re-exports from cli.cmds.search)
-│   │
 │   └── webapp/                   # Flask web application
 │       ├── run.py               # Development server
 │       ├── auth/                # Authentication
