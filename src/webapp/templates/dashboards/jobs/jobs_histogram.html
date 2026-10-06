@@ -3,6 +3,8 @@
    import jobs_disabled, jobs_error, jobs_empty, metric_pills, charges_note %}
 {% from 'dashboards/fragments/help.html' import term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_cpu_hours with context %}
+{% from 'dashboards/fragments/collapse.html' import drill_toggle, lazy_drill_row, owner_tier, tier_num %}
+{% from 'dashboards/fragments/table_bits.html' import share_bar %}
 {#
   Histogram fragment — shared by the Wait Times, Job Sizes, and Durations
   tabs (identical envelope shape; only the dimension differs). Embedded
@@ -158,48 +160,35 @@
     </p>
   {% endif %}
 
-  {# Lazy per-owner jobs drill — the fs_scans dir_drill() shape: bound to
-     shown.bs.collapse (never click) so a chart-click .show() and a
-     chevron toggle both fire the fetch; `once` prevents refetch on
-     re-expand. The owner rides the band drill URL exactly like the
-     By User / By Project tables' drills — as user= for user owners,
-     account= for project owners. If the pane already pins ?user=, the
-     single-owner shortcut guarantees the appended duplicate carries the
-     identical value (Werkzeug reads the first) — benign. #}
+  {# The owner rides the band drill URL like the By User / By Project drills: user=
+     for user owners, account= for project owners. If the pane already pins ?user=,
+     the single-owner shortcut appends the identical value (Werkzeug reads the first). #}
   {% set _okey = 'account' if group_by | default('user') == 'project'
      else 'user' %}
-  {% macro owner_jobs_drill(dt_id, owner, drill_url, band_label) %}
-  <div class="p-2 bg-body-tertiary" id="{{ dt_id }}"
-       hx-get="{{ drill_url }}&{{ _okey }}={{ owner | urlencode }}&target_id={{ dt_id }}"
-       hx-trigger="shown.bs.collapse from:closest tr.collapse once"
-       hx-swap="innerHTML">
-    <p class="text-muted small mb-0">
-      <i class="fa-solid fa-spinner fa-spin me-1"></i>
-      Loading {{ owner }}'s jobs in the {{ band_label }} band…
-    </p>
-  </div>
-  {% endmacro %}
 
   {# Bucket table under the SVG — the same full, zero-filled vector the
      chart renders, so counts are copy/paste-able. Populated bands expand
      (row click or bar click via the #sam/row/data-jh-bucket/<i> sentinel and
-     svg-chart-links.js) into a per-owner tier (users, or projects under
-     the Project pill) rendered from the envelope's owners (ranked by the
-     active metric), each owner lazy-loading its jobs in the band
-     (bucket_drills, computed in _render_histogram).
+     svg-chart-links.js) into its owners' rows (users, or projects under the
+     Project pill; collapse.owner_tier), ranked by the active metric, each
+     lazy-loading its jobs in the band (bucket_drills, from _render_histogram).
      Owner-less envelopes fall back to the band -> jobs single level.
-     Every collapse row carries data-no-persist: a restored auto-expand
-     would re-fire the drill fetches on reload. #}
+     persist=false everywhere: a restored auto-expand would re-fire the drills. #}
   {% set _mkey = 'job_count' if metric == 'jobs' else metric %}
+  {% set _ns = namespace(whole=0) %}
+  {% for b in hist.buckets %}{% set _ns.whole = _ns.whole + (tier_num(b, _mkey) | float) %}{% endfor %}
+  {% set _whole = _ns.whole %}
+  {% set _noun = 'projects' if _okey == 'account' else 'users' %}
   <div class="small text-muted mt-2 mb-1">Bucket breakdown</div>
   <div class="table-responsive">
     <table class="table table-sm table-hover align-middle mb-0">
       <thead class="table-subtle">
         <tr>
           <th>Range</th>
-          <th class="text-end">Jobs</th>
-          <th class="text-end">{{ term('CPU-hours', g_cpu_hours()) }}</th>
-          <th class="text-end">GPU-hours</th>
+          <th class="col-num">Jobs</th>
+          <th class="col-num">{{ term('CPU-hours', g_cpu_hours()) }}</th>
+          <th class="col-num">GPU-hours</th>
+          <th class="col-num" title="A band's share of all jobs; an owner's share of its band, by the active metric">Share</th>
         </tr>
       </thead>
       {% for b in hist.buckets %}
@@ -211,6 +200,8 @@
         {% set _rem_jobs = b.job_count - _ojobs %}
         {% set _single = owners | length == 1 and not _rem_jobs %}
         {% set _expandable = drill_url and owners %}
+        {% set _share = share_bar((100 * (tier_num(b, _mkey) | float) / _whole) if _whole else none,
+                                  title='Share of all jobs in range') %}
         <tbody>
           {% if _expandable %}
           <tr class="cursor-pointer"
@@ -225,174 +216,67 @@
               <i class="fa-solid fa-chevron-right collapse-icon small me-1"></i>
               <code>{{ b.label }}</code>
             </td>
-            <td class="text-end">{{ b.job_count | fmt_number }}</td>
-            <td class="text-end">{{ b.cpu_hours | fmt_number }}</td>
-            <td class="text-end">{{ b.gpu_hours | fmt_number }}</td>
+            <td class="col-num">{{ b.job_count | fmt_number }}</td>
+            <td class="col-num">{{ b.cpu_hours | fmt_number }}</td>
+            <td class="col-num">{{ b.gpu_hours | fmt_number }}</td>
+            <td class="col-num">{{ _share }}</td>
           </tr>
-          <tr class="collapse" id="{{ _rid }}-row" data-no-persist>
-            <td colspan="4" class="p-0 border-0">
-              {% if _single %}
-                {# One owner holds the whole band — skip the per-owner
-                   tier and drill straight to its jobs (fs_scans
-                   shortcut). #}
-                {{ owner_jobs_drill(_rid ~ '-content',
-                                    (owners | list | first), drill_url, b.label) }}
-              {% else %}
-                <div class="p-2 bg-body-tertiary">
-                  <div class="table-responsive">
-                    <table class="table table-sm table-hover align-middle mb-0">
-                      <thead>
-                        <tr class="small text-muted">
-                          <th style="width:2rem;" class="text-end">#</th>
-                          <th>{{ 'Project' if _okey == 'account' else 'User' }}</th>
-                          <th class="text-end">Jobs</th>
-                          <th class="text-end">CPU-hours</th>
-                          <th class="text-end">GPU-hours</th>
-                          <th class="text-end">% of band</th>
-                        </tr>
-                      </thead>
-                      {% set ranked = owners.items()
-                         | sort(attribute='1.' ~ _mkey, reverse=true) %}
-                      {% for owner, stats in ranked %}
-                        {% set _urid = _rid ~ '-u' ~ loop.index %}
-                        <tbody>
-                          {# The collapse toggle sits on the chevron and the
-                             stat cells, never the <tr>: Bootstrap's data-api
-                             binds in the capture phase, so a nested modal
-                             button could not stop a row-level toggle (see
-                             dashboards/fragments/collapse.html). #}
-                          <tr title="Show {{ owner }}'s jobs in this band">
-                            <td class="text-end text-muted cursor-pointer"
-                                data-bs-toggle="collapse"
-                                data-bs-target="#{{ _urid }}-row"
-                                aria-controls="{{ _urid }}-row">{{ loop.index }}</td>
-                            <td>
-                              <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
-                                      type="button" data-bs-toggle="collapse"
-                                      data-bs-target="#{{ _urid }}-row"
-                                      aria-expanded="false"
-                                      aria-controls="{{ _urid }}-row">
-                                <i class="fa-solid fa-chevron-right collapse-icon small"></i>
-                              </button>
-                              {% if _okey == 'account' and can_view_projects | default(false) %}
-                              <button class="btn btn-link p-0" type="button"
-                                      title="View project details"
-                                      data-bs-toggle="modal"
-                                      data-bs-target="#projectDetailsModal"
-                                      hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=owner) }}"
-                                      hx-target="#projectDetailsModalBody"
-                                      hx-swap="innerHTML">
-                                <span class="font-monospace">{{ owner }}</span>
-                              </button>
-                              {% elif _okey == 'user' and can_view_users | default(false) %}
-                              <button class="btn btn-link p-0" type="button"
-                                      title="View user details"
-                                      data-bs-toggle="modal"
-                                      data-bs-target="#userDetailsModal"
-                                      hx-get="{{ url_for('admin_dashboard.user_card', username=owner) }}"
-                                      hx-target="#userDetailsModalBody"
-                                      hx-swap="innerHTML">
-                                <span class="font-monospace">{{ owner }}</span>
-                              </button>
-                              {% else %}
-                              <span class="font-monospace">{{ owner }}</span>
-                              {% endif %}
-                            </td>
-                            {% for cell in [stats.job_count, stats.cpu_hours,
-                                            stats.gpu_hours] %}
-                            <td class="text-end cursor-pointer"
-                                data-bs-toggle="collapse"
-                                data-bs-target="#{{ _urid }}-row"
-                                aria-controls="{{ _urid }}-row">{{ cell | fmt_number }}</td>
-                            {% endfor %}
-                            <td class="text-end text-muted cursor-pointer"
-                                data-bs-toggle="collapse"
-                                data-bs-target="#{{ _urid }}-row"
-                                aria-controls="{{ _urid }}-row">
-                              {% if b[_mkey] %}
-                                {{ (100 * (stats[_mkey] or 0) / b[_mkey]) | fmt_pct }}
-                              {% else %}—{% endif %}
-                            </td>
-                          </tr>
-                          <tr class="collapse" id="{{ _urid }}-row" data-no-persist>
-                            <td colspan="6" class="p-0 border-0">
-                              {{ owner_jobs_drill(_urid ~ '-content',
-                                                  owner, drill_url, b.label) }}
-                            </td>
-                          </tr>
-                        </tbody>
-                      {% endfor %}
-                      {% if _rem_jobs > 0 %}
-                      <tbody>
-                        <tr class="text-muted">
-                          <td></td>
-                          <td>
-                            Other {{ 'projects' if _okey == 'account' else 'users' }}
-                            <span class="small">(beyond top {{ owners | length }})</span>
-                          </td>
-                          <td class="text-end">{{ _rem_jobs | fmt_number }}</td>
-                          <td class="text-end">
-                            {{ (b.cpu_hours - (owners.values() | map(attribute='cpu_hours') | sum)) | fmt_number }}
-                          </td>
-                          <td class="text-end">
-                            {{ (b.gpu_hours - (owners.values() | map(attribute='gpu_hours') | sum)) | fmt_number }}
-                          </td>
-                          <td class="text-end">
-                            {% if b[_mkey] %}
-                              {{ (100 * (b[_mkey] - (owners.values() | map(attribute=_mkey) | sum)) / b[_mkey]) | fmt_pct }}
-                            {% else %}—{% endif %}
-                          </td>
-                        </tr>
-                      </tbody>
-                      {% endif %}
-                    </table>
-                  </div>
-                </div>
-              {% endif %}
-            </td>
-          </tr>
+        </tbody>
+          {% if _single %}
+          {# One owner holds the whole band: skip the owner tier and drill
+             straight to its jobs (the fs_scans shortcut). #}
+        <tbody>
+          {{ lazy_drill_row(_rid, drill_url ~ '&' ~ _okey ~ '=' ~ ((owners | list | first) | urlencode), 5,
+                            'Loading ' ~ (owners | list | first) ~ "'s jobs in the " ~ b.label ~ ' band…',
+                            persist=false) }}
+        </tbody>
           {% else %}
-          {# Owner-less bucket (no owners in the envelope, or a populated
-             band whose jobs all lack a username): the original single-level
-             band -> jobs drill, markup preserved verbatim. #}
+          {% set ranked = owners.items() | sort(attribute='1.' ~ _mkey, reverse=true) %}
+          {% call(owner) owner_tier(_rid, b, ranked, dict(
+                cols=[('job_count', 'number'), ('cpu_hours', 'number'), ('gpu_hours', 'number')],
+                share=_mkey, drill_url=drill_url, param=_okey,
+                loading='jobs in the ' ~ b.label ~ ' band', noun='band', persist=false,
+                other='Other ' ~ _noun ~ ' (beyond top ' ~ (owners | length) ~ ')')) %}
+            {%- if _okey == 'account' and can_view_projects | default(false) -%}
+            <button class="btn btn-link btn-entity p-0" type="button" title="View project details"
+                    data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
+                    hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=owner) }}"
+                    hx-target="#projectDetailsModalBody" hx-swap="innerHTML">
+              <span class="font-monospace">{{ owner }}</span>
+            </button>
+            {%- elif _okey == 'user' and can_view_users | default(false) -%}
+            <button class="btn btn-link btn-entity p-0" type="button" title="View user details"
+                    data-bs-toggle="modal" data-bs-target="#userDetailsModal"
+                    hx-get="{{ url_for('admin_dashboard.user_card', username=owner) }}"
+                    hx-target="#userDetailsModalBody" hx-swap="innerHTML">
+              <span class="font-monospace">{{ owner }}</span>
+            </button>
+            {%- else -%}
+            <span class="font-monospace">{{ owner }}</span>
+            {%- endif -%}
+          {% endcall %}
+          {% endif %}
+          {% else %}
+        <tbody>
+          {# Owner-less bucket (no owners in the envelope, or a populated band
+             whose jobs all lack a username): the single-level band -> jobs drill. #}
           <tr {% if not b.job_count %}class="text-muted"
               {% else %}data-jh-bucket="{{ loop.index0 }}"
                         data-bs-target="#{{ _rid }}-row"{% endif %}>
             <td>
-              {% if drill_url %}
-              <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
-                      type="button" data-bs-toggle="collapse"
-                      data-bs-target="#{{ _rid }}-row"
-                      aria-expanded="false" aria-controls="{{ _rid }}-row">
-                <i class="fa-solid fa-chevron-right collapse-icon small"></i>
-              </button>
-              {% endif %}
+              {% if drill_url %}{{ drill_toggle(_rid ~ '-row', 'Show jobs in this band') }}{% endif %}
               <code>{{ b.label }}</code>
             </td>
-            <td class="text-end">{{ b.job_count | fmt_number }}</td>
-            <td class="text-end">{{ b.cpu_hours | fmt_number }}</td>
-            <td class="text-end">{{ b.gpu_hours | fmt_number }}</td>
+            <td class="col-num">{{ b.job_count | fmt_number }}</td>
+            <td class="col-num">{{ b.cpu_hours | fmt_number }}</td>
+            <td class="col-num">{{ b.gpu_hours | fmt_number }}</td>
+            <td class="col-num">{{ _share }}</td>
           </tr>
           {% if drill_url %}
-          <tr class="collapse" id="{{ _rid }}-row" data-no-persist>
-            <td colspan="4" class="p-0 border-0">
-              {# Lazy-load this band's jobs on first expand — bind to
-                 shown.bs.collapse (not click) so a bar-click open
-                 triggers it too. #}
-              <div class="p-2 bg-body-tertiary" id="{{ _rid }}-content"
-                   hx-get="{{ drill_url }}&target_id={{ _rid }}-content"
-                   hx-trigger="shown.bs.collapse from:closest tr.collapse once"
-                   hx-swap="innerHTML">
-                <p class="text-muted small mb-0">
-                  <i class="fa-solid fa-spinner fa-spin me-1"></i>
-                  Loading jobs in the {{ b.label }} band…
-                </p>
-              </div>
-            </td>
-          </tr>
-          {% endif %}
+          {{ lazy_drill_row(_rid, drill_url, 5, 'Loading jobs in the ' ~ b.label ~ ' band…', persist=false) }}
           {% endif %}
         </tbody>
+          {% endif %}
       {% endfor %}
     </table>
   </div>
