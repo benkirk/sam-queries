@@ -1450,16 +1450,6 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     color: var(--text-title);
 }
 
-/* Accordion chevron — reusable affordance for any collapsible header.
-   Rotates 180° when the parent toggle is expanded. */
-.accordion-chevron {
-    transition: transform var(--transition-base);
-}
-
-[aria-expanded="true"] .accordion-chevron {
-    transform: rotate(180deg);
-}
-
 /* Fluid 1800px cap: smoother than Bootstrap's stepped .container breakpoints
    on laptop/desktop, without stretching to ultra-wide monitor edges.  Used
    on navbar, flash messages, footer, and any content block that opts in via

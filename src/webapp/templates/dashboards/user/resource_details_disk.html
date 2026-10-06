@@ -1,6 +1,7 @@
 {% extends 'dashboards/base.html' %}
 {% from 'dashboards/fragments/chart_bits.html' import chart_loading %}
 {% from 'dashboards/fragments/page_header.html' import page_header %}
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/table_bits.html' import share_bar %}
 {% from 'dashboards/fragments/help.html' import term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_tib with context %}
@@ -68,12 +69,10 @@
 
 {# Capacity summary card #}
 <div class="card mb-4">
-    <div class="card-header cursor-pointer"
-         data-bs-toggle="collapse" data-bs-target="#collapseDiskCapacity"
-         aria-expanded="true">
+    <div class="card-header cursor-pointer" {{ collapse_toggle('collapseDiskCapacity', expanded=true) }}>
         <h5 class="mb-0">
             <i class="fa-solid fa-circle-info"></i> Capacity Summary
-            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down accordion-chevron float-end" aria-hidden="true"></i>
         </h5>
     </div>
     <div id="collapseDiskCapacity" class="collapse show">
@@ -121,9 +120,7 @@
                      and (scope_node.directories | map(attribute='projcode') | unique | list | length > 1) %}
 {% if scope_node and scope_node.directories %}
 <div class="card mb-4">
-    <div class="card-header cursor-pointer"
-         data-bs-toggle="collapse" data-bs-target="#collapseDiskFilesets"
-         aria-expanded="true">
+    <div class="card-header cursor-pointer" {{ collapse_toggle('collapseDiskFilesets', expanded=true) }}>
         <h5 class="mb-0">
             <i class="fa-solid fa-folder-open"></i> Filesets
             <small class="text-muted fw-normal ms-2">
@@ -138,7 +135,7 @@
                 <span class="text-muted">— click a row to scope chart + table</span>
                 {% endif %}
             </small>
-            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down accordion-chevron float-end" aria-hidden="true"></i>
         </h5>
     </div>
     <div id="collapseDiskFilesets" class="collapse show">
@@ -185,13 +182,11 @@
 {# Filesystem-style project tree #}
 {% if has_children %}
 <div class="card mb-4">
-    <div class="card-header cursor-pointer"
-         data-bs-toggle="collapse" data-bs-target="#collapseDiskTree"
-         aria-expanded="true">
+    <div class="card-header cursor-pointer" {{ collapse_toggle('collapseDiskTree', expanded=true) }}>
         <h5 class="mb-0">
             <i class="fa-solid fa-sitemap"></i> Project Hierarchy
             <small class="text-muted fw-normal ms-2">Click a project to scope the chart and table below</small>
-            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down accordion-chevron float-end" aria-hidden="true"></i>
         </h5>
     </div>
     <div id="collapseDiskTree" class="collapse show">
@@ -224,9 +219,7 @@
 
 {# Stacked-area chart #}
 <div class="card mb-4">
-    <div class="card-header cursor-pointer"
-         data-bs-toggle="collapse" data-bs-target="#collapseDiskUsage"
-         aria-expanded="true">
+    <div class="card-header cursor-pointer" {{ collapse_toggle('collapseDiskUsage', expanded=true) }}>
         <h5 class="mb-0">
             <i class="fa-solid fa-chart-area"></i> Usage Over Time
             <small class="text-muted fw-normal ms-2">
@@ -235,7 +228,7 @@
             {% if has_children and scope != projcode %}
             <small class="text-muted fw-normal ms-2">{{ scope }}</small>
             {% endif %}
-            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down accordion-chevron float-end" aria-hidden="true"></i>
         </h5>
     </div>
     <div id="collapseDiskUsage" class="collapse show">
@@ -272,9 +265,7 @@
    whenever scans aren't available for this resource. #}
 {% if not show_scans %}
 <div class="card mb-4">
-    <div class="card-header cursor-pointer"
-         data-bs-toggle="collapse" data-bs-target="#collapseDiskUsers"
-         aria-expanded="true">
+    <div class="card-header cursor-pointer" {{ collapse_toggle('collapseDiskUsers', expanded=true) }}>
         <h5 class="mb-0">
             <i class="fa-solid fa-users"></i> Per-User Occupancy
             {% if capacity.activity_date %}
@@ -283,7 +274,7 @@
             {% if has_children and scope != projcode %}
             <small class="text-muted fw-normal ms-2">{{ scope }}</small>
             {% endif %}
-            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down accordion-chevron float-end" aria-hidden="true"></i>
         </h5>
     </div>
     <div id="collapseDiskUsers" class="collapse show">
@@ -330,9 +321,7 @@
    htmx `from:#collapseDiskScans`. #}
 {% if show_scans %}
 <div class="card mb-4">
-    <div class="card-header cursor-pointer"
-         data-bs-toggle="collapse" data-bs-target="#collapseDiskScans"
-         aria-expanded="false">
+    <div class="card-header cursor-pointer" {{ collapse_toggle('collapseDiskScans') }}>
         <h5 class="mb-0">
             <i class="fa-solid fa-magnifying-glass-chart"></i> Filesystem Scans
             {% if scan_info and scan_info.reference %}
@@ -352,7 +341,7 @@
                 {% if fileset %}— scoped to <code>{{ fileset }}</code>
                 {% elif scope != projcode %}under <code>{{ scope }}</code>{% endif %}
             </small>
-            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down accordion-chevron float-end" aria-hidden="true"></i>
         </h5>
     </div>
     <div id="collapseDiskScans" class="collapse">

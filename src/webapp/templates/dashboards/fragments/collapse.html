@@ -51,3 +51,10 @@
 {% macro collapse_toggle(target_id, expanded=false) -%}
 data-bs-toggle="collapse" data-bs-target="#{{ target_id }}" aria-expanded="{{ 'true' if expanded else 'false' }}"
 {%- endmacro %}
+
+{#- The toggle as its own button, for a row that also holds a link: the row keeps
+    data-bs-target (chart drills read it) and only this chevron toggles. -#}
+{% macro drill_toggle(target_id, label='Show breakdown') -%}
+<button type="button" class="btn btn-sm btn-link text-decoration-none p-0 me-1" {{ collapse_toggle(target_id) }}
+        aria-controls="{{ target_id }}" aria-label="{{ label }}" title="{{ label }}"><i class="fa-solid fa-chevron-right collapse-icon small"></i></button>
+{%- endmacro %}

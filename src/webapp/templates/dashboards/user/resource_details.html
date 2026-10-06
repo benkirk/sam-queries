@@ -1,6 +1,8 @@
 {% extends 'dashboards/base.html' %}
 {% from 'dashboards/fragments/chart_bits.html' import chart_loading %}
 {% from 'dashboards/fragments/page_header.html' import page_header %}
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle, drill_toggle %}
+{% from 'dashboards/fragments/user_rows.html' import user_link with context %}
 {% from 'dashboards/user/partials/_resource_details_macros.html' import jobs_button, jobs_collapse_row with context %}
 {% from 'dashboards/fragments/help.html' import term, help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_core_hours, g_charges, g_usage_bar with context %}
@@ -49,12 +51,10 @@
         {% set uid = table_id ~ '-u' ~ loop.index %}
         {% set single_triple = (user.queue_count == 1 and user.date_count == 1) %}
         <tbody class="sortable-group">
-            <tr {% if not single_triple %}class="cursor-pointer" data-bs-toggle="collapse" data-bs-target="#user-tree-{{ uid }}" aria-expanded="false"{% endif %}>
+            <tr{% if not single_triple %} data-bs-target="#user-tree-{{ uid }}"{% endif %}>
                 <td data-sort-value="{{ user.username }}">
-                    <code>{{ user.username }}</code>
-                    {% if not single_triple %}
-                    <i class="fa-solid fa-chevron-right ms-1 small text-muted collapse-icon"></i>
-                    {% endif %}
+                    {%- if not single_triple %}{{ drill_toggle('user-tree-' ~ uid, label='Show queues and dates') }}{% endif -%}
+                    {{ user_link(user.username, can_view_users, compact=True) }}
                     {% if jobs_machine and single_triple %}
                         {{ jobs_button(uid ~ '-jobs') }}
                     {% endif %}
@@ -141,7 +141,7 @@
         {% set m_core_hours = month_days | sum(attribute='core_hours') %}
         {% set m_charges = month_days | sum(attribute='charges') %}
         <tbody>
-            <tr class="table-primary cursor-pointer fw-semibold" data-bs-toggle="collapse" data-bs-target="#month-days-{{ mid }}" aria-expanded="false">
+            <tr class="table-primary cursor-pointer fw-semibold" {{ collapse_toggle('month-days-' ~ mid) }}>
                 <td>{{ month_key }} <i class="fa-solid fa-chevron-right ms-1 small text-muted collapse-icon"></i></td>
                 <td class="text-end">{{ monthly_user_counts.get(month_key, 0) | fmt_number }}</td>
                 <td class="text-end">{{ m_jobs | fmt_number }}</td>
@@ -152,7 +152,7 @@
         <tbody class="collapse" id="month-days-{{ mid }}">
             {% for day in month_days %}
             {% set did = table_id ~ '-' ~ day.date | replace('-', '') %}
-            <tr class="cursor-pointer" data-bs-toggle="collapse" data-bs-target="#day-detail-{{ did }}" aria-expanded="false"
+            <tr class="cursor-pointer" {{ collapse_toggle('day-detail-' ~ did) }}
                 data-date="{{ day.date }}" data-month-target="#month-days-{{ mid }}">
                 <td class="ps-3">
                     {{ day.date }}
@@ -191,7 +191,7 @@
         {% for day in breakdown %}
         {% set did = table_id ~ '-' ~ day.date | replace('-', '') %}
         <tbody>
-            <tr class="cursor-pointer" data-bs-toggle="collapse" data-bs-target="#day-detail-{{ did }}" aria-expanded="false"
+            <tr class="cursor-pointer" {{ collapse_toggle('day-detail-' ~ did) }}
                 data-date="{{ day.date }}">
                 <td>
                     {{ day.date }}
@@ -317,10 +317,10 @@
 
 {% if can_act_on_project(Permission.VIEW_ALLOCATIONS, project) %}
 <div class="card mb-4">
-    <div class="card-header cursor-pointer collapsed" data-bs-toggle="collapse" data-bs-target="#collapseAllocationHistory" aria-expanded="false">
+    <div class="card-header cursor-pointer collapsed" {{ collapse_toggle('collapseAllocationHistory') }}>
         <h5 class="mb-0">
             <i class="fa-solid fa-clock-rotate-left"></i> Allocation History
-            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down accordion-chevron float-end" aria-hidden="true"></i>
         </h5>
     </div>
     <div id="collapseAllocationHistory" class="collapse">
@@ -350,11 +350,11 @@
 
 <!-- Project Scope Tree Card -->
 <div class="card mb-4">
-    <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseTree" aria-expanded="true">
+    <div class="card-header cursor-pointer" {{ collapse_toggle('collapseTree', expanded=true) }}>
         <h5 class="mb-0">
             <i class="fa-solid fa-sitemap"></i> Project Hierarchy
             <small class="text-muted fw-normal ms-2">Click a project to scope the usage card below — figures are charges in the selected window</small>
-            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down accordion-chevron float-end" aria-hidden="true"></i>
         </h5>
     </div>
     <div id="collapseTree" class="collapse show">
@@ -523,13 +523,13 @@ tab-pane fade{{ ' show active' if key == usage_tab }}
      feedback_persisted_collapse_htmx). -->
 {% if jobs_machine %}
 <div class="card mb-4">
-    <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseJobsHist" aria-expanded="false">
+    <div class="card-header cursor-pointer" {{ collapse_toggle('collapseJobsHist') }}>
         <h5 class="mb-0">
             <i class="fa-solid fa-list-check"></i> Job History
             {% if has_children and scope != projcode %}
             <small class="text-muted fw-normal ms-2">{{ scope }}</small>
             {% endif %}
-            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down accordion-chevron float-end" aria-hidden="true"></i>
         </h5>
     </div>
     <div id="collapseJobsHist" class="collapse">

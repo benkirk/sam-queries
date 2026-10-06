@@ -22,6 +22,7 @@
    multi_queue branches; single_triple users never reach this template
    (they render inline on the page itself). #}
 {% from 'dashboards/user/partials/_resource_details_macros.html' import jobs_button, jobs_collapse_row with context %}
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 
 <td colspan="4" class="p-0">
   {% if not user %}
@@ -62,7 +63,7 @@
           {% for q in user.queues %}
             {% set qid = uid ~ '-q' ~ loop.index %}
             {% set queue_is_leaf = (q.dates|length == 1) %}
-            <tr {% if q.dates|length > 1 %}class="table-secondary cursor-pointer" data-bs-toggle="collapse" data-bs-target="#user-queue-dates-{{ qid }}" aria-expanded="false"{% else %}class="table-secondary"{% endif %}>
+            <tr {% if q.dates|length > 1 %}class="table-secondary cursor-pointer" {{ collapse_toggle('user-queue-dates-' ~ qid) }}{% else %}class="table-secondary"{% endif %}>
               <td class="ps-4 text-muted">
                 <em>{{ q.queue }}</em>
                 {% if q.dates|length > 1 %}

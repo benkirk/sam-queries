@@ -65,10 +65,6 @@
    Utility Classes
    =================================================================== */
 
-.transition-smooth {
-    transition: transform var(--transition-base);
-}
-
 .cursor-pointer {
     cursor: pointer;
 }
@@ -174,9 +170,12 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
     pointer-events: none;
 }
 
-/* resource_details: collapse chevron rotation */
+/* A collapse row's chevron: points right, turns down when open. */
 .collapse-icon { transition: transform 0.2s ease; }
 [aria-expanded="true"] .collapse-icon { transform: rotate(90deg); }
+/* A collapsible card header's chevron: points down, flips up when open. */
+.accordion-chevron { transition: transform var(--transition-base); }
+[aria-expanded="true"] .accordion-chevron { transform: rotate(180deg); }
 
 /* Sortable table headers (sortable_table.js, loaded globally in base.html).
    Pairs the global JS with its indicator so any `.sortable-header` shows a
