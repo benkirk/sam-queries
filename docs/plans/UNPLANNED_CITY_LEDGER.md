@@ -30,6 +30,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-05 | `97b8d876` + charts sweep | 50 / 59 / 24 | 2 (3) | 14 / 46 | 16 (16), 2 kept | 4,754 / 50 / 9 | 210 (78) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-05 | `2122755e` + sweep 12 (src from the air) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 16 (16), 2 kept | 4,754 / 50 / 9 | 210 (78) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-06 | `b682c918` + Resource Details round A | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,736 / 50 / 8 | 183 (74) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
+| 2026-10-06 | `b682c918` + round B (shared-usage grammar) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,750 / 50 / 8 | 183 (74) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -972,6 +973,56 @@ and URL differ from compute (no `usage_tab`).
   `disk_activity`); proven by test client + injection. Recheck on samuel-dev.
 - [ ] `css-dead`'s dynamic-stem count is 20 (from 16): the four `rate-{{ state }}` classes.
 - [ ] The threshold inline form (`threshold_form_htmx.html`) keeps its documented inline styles.
+
+## 14. 2026-10-06: area sweep, `templates` + `py` round 7 (one shared-usage grammar, round B)
+
+**Mode:** area, from `RESOURCE_DETAILS_SWEEP_HANDOFF.md` round B, stacked on entry 13's branch.
+**End commit:** `b682c918` (`origin/staging`). One rule for a shared (inheriting) allocation
+everywhere it is drawn: the project's own % and Used, "from <root>", the pool's Remaining.
+
+**Done, in this sweep's PR**, one commit each:
+
+- [x] `alloc_meter(..., pool_pct=)`: the pool as a lighter layer of the same hue under the solid
+  own share; `.meter-over` (red) follows the pool. `allocation_cells` passes it and restores the
+  elapsed tick shared compute rows dropped. A negative Remaining is `text-danger` (bug: muted).
+  B.5 (Ben): Allocated keeps sorting by the pool's amount; its title says so.
+- [x] Glossary: `g_shared_pool` rewritten (it described the tones backwards and had no caller)
+  and carried by `g_usage_bar`, the "% used" help; `g_roots_only` names the pool's Remaining.
+- [x] Bug: the card's usage badge read the pool's % over rows showing the project's own; it
+  now takes the highest % the rows show and names the fullest shared pool in its title. 30d /
+  90d limit lines on a shared row say "pool".
+- [x] Bug: shared DISK rows mixed units and owners (own TiB as `used`, TiB-years as
+  `self_used`; the summaries path forced them equal; the API schema did both). Pool = the root's
+  subtree capacity, self = the project's own, in the builder, the summaries path, the API schema
+  and both read-model paths. Found on the way: `bulk_get_subtree_disk_capacity` double-counted a
+  repeated pair (the whole-snapshot projection read a 4,096 TiB pool as 8,191).
+- [x] `sam-search project`'s shared rows read as on the web; the JSON envelope is unchanged.
+
+**Parity:** sweep 12's 659-capture set moved 0 values on MySQL and Postgres. It holds no shared
+disk row (its inheriting set is capped alphabetically at 25), so a new untracked
+`utils/profiling/usage_sweep/shared_disk.py` captures all 91 inheriting DISK allocations through
+the builder, the summary and the API schema, staging vs branch: only inheriting rows move (58
+`used`, 15 `self_used`, 32 summary `total_used`), MySQL and Postgres agree exactly.
+
+**Design and deviations (brand stance of entry 5):** no new hue; the pool tint is the row's own
+color mixed 32% toward the track. Measured in-page: solid vs tint 3.4:1 light / 3.2:1 dark (40%
+fell to 3.0 / 2.7); tint vs track 1.6:1 / 1.8:1. **Deviation:** the pool layer is below WCAG
+1.4.11's 3:1 against the track; it is supplementary, since every shared row also states the
+pool's Remaining as text and its title names both figures. In the over state the tint spans the
+bar, so only solid vs tint matters (2.3:1, red on red).
+
+**Tried and dropped:**
+- A stronger mix for the over state (45-65%): the tint never meets the track there, and a
+  stronger mix only lowered solid vs tint (2.0 -> 1.6).
+- Keeping the API's `current_used_*` on the project's own subtree: the read-model row carries one
+  snapshot date (the pool's), so on and off could not agree; they follow `used`.
+
+**Open from this sweep:**
+
+- [ ] Read-model rows written before deploy carry the old shared-disk figures until the hourly
+  `refresh_allocation_state` rewrites them; run it once after the deploy.
+- [ ] The rolling-rate fragment keeps its "(N yours)" slice beside the pool's burn: it is a rate
+  gauge, not a meter, and its banner already says the rate covers the pool.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

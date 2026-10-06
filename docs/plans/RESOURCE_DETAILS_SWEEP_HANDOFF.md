@@ -1,6 +1,7 @@
 # Handoff: Resource Details, one shared-usage grammar, the jobs and storage drilldowns
 
-**Status:** round A in review (ledger entry 13); rounds B and C unbuilt. Written 2026-10-06 after
+**Status:** round A in review (ledger entry 13); round B in review, stacked on A (entry 14);
+round C unbuilt. Written 2026-10-06 after
 sweep 12 (#737, the usage kernel). Three rounds, three PRs, each green alone. Round C can be
 dropped if time runs out.
 
