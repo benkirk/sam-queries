@@ -2,7 +2,7 @@
 {% from 'dashboards/disk_scans/_disk_scans_macros.html'
    import scans_disabled, scans_error, scans_empty, scans_scope_note %}
 {% from 'dashboards/fragments/collapse.html' import lazy_drill_row, owner_tier, tier_num %}
-{% from 'dashboards/fragments/table_bits.html' import group_count, share_bar %}
+{% from 'dashboards/fragments/table_bits.html' import share_bar %}
 {#
   Distribution-histogram fragment — shared by the Access-history and
   File-size tabs (they have an identical hist shape). Embedded via hx-get
@@ -113,7 +113,7 @@
   {# A band's users are rows of this table (collapse.owner_tier) from the owners
      dict (uid -> {data, files}) already on the histogram: a client-side expand. #}
   {% set umap = hist.username_map or {} %}
-  {# Drop the band's user count when no band has more than one owner (the
+  {# Fold the Owners column when no band has more than one owner (the
      owner-pinned "My Data" view): the count carries no signal. #}
   {% set _ns_owners = namespace(multi=false) %}
   {% for _lbl in hist.bucket_labels %}
@@ -128,6 +128,7 @@
           <th>{{ bucket_header or 'Bucket' }}</th>
           <th class="col-num">Data</th>
           <th class="col-num">Files</th>
+          {% if _show_owners %}<th class="col-num">Owners</th>{% endif %}
           <th class="col-num" title="A band's share of the whole; a user's share of its band, by {{ 'files' if _by_files else 'data' }}">Share</th>
         </tr>
       </thead>
@@ -161,10 +162,10 @@
             <td>
               {%- if owners %}<i class="fa-solid fa-chevron-right small collapse-icon text-muted me-1"></i>{% endif -%}
               {{ label }}
-              {%- if _show_owners and owners %}{{ group_count(owners | length, title='Users with data in this band') }}{% endif -%}
             </td>
             <td class="col-num font-monospace">{{ (b.get('data', 0) or 0) | fmt_size }}</td>
             <td class="col-num">{{ (b.get('files', 0) or 0) | fmt_number }}</td>
+            {% if _show_owners %}<td class="col-num">{{ owners | length | fmt_number }}</td>{% endif %}
             <td class="col-num">{{ _share }}</td>
           </tr>
         </tbody>
@@ -173,7 +174,7 @@
           {% set _uid = owners | list | first %}
           {% set _uname = umap.get(_uid) or umap.get(_uid | string) or ('uid ' ~ _uid) %}
         <tbody>
-          {{ lazy_drill_row(rowid, _band_url ~ '&owner_uid=' ~ _uid, 4,
+          {{ lazy_drill_row(rowid, _band_url ~ '&owner_uid=' ~ _uid, 5 if _show_owners else 4,
                             'Loading ' ~ _uname ~ "'s directories…") }}
         </tbody>
         {% elif owners %}
@@ -183,7 +184,8 @@
             {% set _ = _names.update({uid: umap.get(uid) or umap.get(uid | string) or ('uid ' ~ uid)}) %}
           {% endfor %}
           {% call(uid) owner_tier(rowid, b, ranked, dict(
-                cols=[('data', 'size'), ('files', 'number')], share=_metric, names=_names,
+                cols=[('data', 'size'), ('files', 'number')] + ([('owners', 'blank')] if _show_owners else []),
+                share=_metric, names=_names,
                 drill_url=_band_url, param='owner_uid', loading='directories in this band',
                 noun='band',
                 other=('Other users (%s more)' % ((owners | length) - 10) | string)

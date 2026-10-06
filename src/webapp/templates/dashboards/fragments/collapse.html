@@ -97,7 +97,7 @@ data-bs-toggle="collapse" data-bs-target="#{{ target_id }}" aria-expanded="{{ 't
 {#- A band's owners as rows of the outer table, in its own columns plus a trailing share (a
     hierarchy is one table). One collapsing <tbody id=<tier_id>-row>, so closing the band also
     hides any owner drawer open under it. caller(owner) renders the name.
-    spec: cols [(key, 'number'|'size'|'charges')], share (key), names (owner -> label),
+    spec: cols [(key, 'number'|'size'|'charges'|'blank')], share (key), names (owner -> label),
     drill_url + param (none: no drawers), loading ("jobs in the X band"), noun, other, persist. -#}
 {% macro owner_tier(tier_id, band, ranked, spec) -%}
 {%- set _whole = tier_num(band, spec.share) | float -%}
@@ -112,7 +112,7 @@ data-bs-toggle="collapse" data-bs-target="#{{ target_id }}" aria-expanded="{{ 't
     <tr{% if _drill %} title="Show {{ _label }}'s {{ spec.loading }}"{% endif %}>
         <td class="cell-child text-nowrap">{% if _drill %}{{ drill_toggle(_rid ~ '-row', "Show " ~ _label ~ "'s " ~ spec.loading) }}{% endif %}{{ caller(owner) }}</td>
         {%- for key, fmt in spec.cols %}
-        <td class="col-num{{ ' cursor-pointer' if _drill }}" {{ _toggle }}>{{ _tier_value(stats, key, fmt) }}</td>
+        <td class="col-num{{ ' cursor-pointer' if _drill }}" {{ _toggle }}>{% if fmt != 'blank' %}{{ _tier_value(stats, key, fmt) }}{% endif %}</td>
         {%- endfor %}
         <td class="col-num{{ ' cursor-pointer' if _drill }}" {{ _toggle }}>{{ share_bar((100 * (tier_num(stats, spec.share) | float) / _whole) if _whole else none, tint=True, title='Share of the ' ~ spec.noun) }}</td>
     </tr>
@@ -126,9 +126,13 @@ data-bs-toggle="collapse" data-bs-target="#{{ target_id }}" aria-expanded="{{ 't
     <tr class="text-muted">
         <td class="cell-child">{{ spec.other }}</td>
         {%- for key, fmt in spec.cols %}
+        {%- if fmt == 'blank' %}
+        <td class="col-num"></td>
+        {%- else %}
         {%- set _k = 'charges' if fmt == 'charges' else key %}
         {%- set _v = (tier_num(band, _k) | float) - (_tier_sum(ranked, _k) | float) %}
         <td class="col-num">{{ (_v | fmt_size) if fmt == 'size' else (_v | fmt_number) }}</td>
+        {%- endif %}
         {%- endfor %}
         {%- set _rest = _whole - (_tier_sum(ranked, spec.share) | float) %}
         <td class="col-num">{{ share_bar((100 * _rest / _whole) if _whole else none, tint=True, title='Share of the ' ~ spec.noun) }}</td>
