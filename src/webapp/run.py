@@ -455,6 +455,8 @@ def create_app(*, config_overrides: dict | None = None):
     # Register centralized formatting filters (fmt_number, fmt_pct, fmt_date, fmt_size)
     import sam.fmt as fmt
     fmt.register_jinja_filters(app)
+    from webapp.utils.template_filters import register_template_filters
+    register_template_filters(app)
 
     # Jinja's mtime-based auto-reload does not reliably see template changes
     # through Docker's bind-mount/watch-sync: the container mtime updates but

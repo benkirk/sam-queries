@@ -130,7 +130,7 @@
     <div class="stat-item stat-item-block stat-item-inline">
       <span class="stat-label">Directories:</span>
       <div class="stat-value text-detail">
-        {% for dir in project.active_directories %}<code class="me-3">{{ dir }}</code>{% endfor %}
+        {% for dir in project.active_directories %}<code class="me-3">{{ dir | path_breaks }}</code>{% endfor %}
       </div>
     </div>
     {% endif %}
