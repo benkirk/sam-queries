@@ -32,6 +32,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-06 | `b682c918` + Resource Details round A | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,736 / 50 / 8 | 183 (74) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-06 | `b682c918` + round B (shared-usage grammar) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,750 / 50 / 8 | 183 (74) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-06 | `b682c918` + round C (jobs, disk scans, drill macros) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,763 / 50 / 8 | 163 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
+| 2026-10-06 | `5f27d3b7` + round E (mid-word breaks) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,810 / 51 / 8 | 163 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -1192,6 +1193,79 @@ first baseline of this round came from a pre-#741 server that way. Check the lis
     The project info grid now stacks its multi-line rows on a phone, and its badges may wrap.
 - [ ] The census is phone-only; no tablet (768px) pass was run.
 
+## 17. 2026-10-06: area sweep, `templates` + `css` (the mid-word break sweep, round E)
+
+**Mode:** area, from `PHONE_MIDWORD_SWEEP_HANDOFF.md` (now under `implemented/`, with an as-built
+section). The branch is `phone-midword` off `origin/staging` (`5f27d3b7`, #745).
+
+**Why:** inside any Bootstrap `.card` (`word-wrap: break-word`) a column narrower than its
+longest word splits the word, so every mid-word break marks a layout too narrow for its content.
+The fix belongs to the layout, not the text.
+
+**Proof rig:** the base (`5f27d3b7`) on 5054 and the branch on 5052, fs-scans on, one saved
+stub login per server. Census before the work at 360px (every collapse and tab open):
+86 hits on 9 pages, 38 + 36 of them the project info grid (nested in the admin Expirations card,
+and the Directories paths on `/user/`), 6 the Resource Details "Charges" headers, 2 the config
+page, 2 the dev gallery. The census keyed one hit per (host, box signature, column), so a `<dl>`
+whose every `dd` split counted once; the promoted detector adds the word.
+
+**Done, in this sweep's PR**, one commit each:
+
+- [x] **Project info grid keys off its own width** — the tree's first container query.
+  `.project-stats-box` is `container: stats / inline-size`; at 24rem a multi-line value goes
+  under its label (replacing #745's `<576px` media rule), at 16rem every label sits over its
+  value. 24rem, not the handoff's 30rem: the user card's box is 27rem on a tablet.
+  - Containment: all 15 emit sites rendered at 360 and 1440px, none 0 wide; tablet and desktop
+    pixel-identical on `/user/`, `/user/info` and the Expirations card (0 of 10 differ).
+  - Nested card values 118 -> 204px. The wire-dashboard skill's section 10 says `@container` is
+    in use and what `inline-size` containment costs.
+- [x] **Bug, directory paths:** `/quasar/HPCD` split as "/quasar/H" / "PCD". A `path_breaks`
+  filter (`webapp/utils/template_filters.py`: escape, then `<wbr>` after every slash) on the
+  Directories row. It lives in the webapp because `sam.fmt`'s registrar also feeds the notify
+  sandbox.
+- [x] **Bug, usage-table floors:** "Charges" needs 85px with its help term and 96px with the
+  sort arrow; the fixed columns gave 82-83. `.usage-table-5` 32 -> 34rem (87px),
+  `.usage-table-4` 26 -> 31rem (99px). This also closes `SAMUEL_PRESENTATION.md`'s "Mobile
+  table headers wrap mid-word" follow-up (#741's floors had cleared Users, Jobs and the values).
+- [x] **Config page, plus the detector.** `.config-stats` stacks dt over dd below 576px (dd
+  120 -> 242px; the caching, server, rate-limits cards and the notification modal share it).
+  `scripts/ui_snapshots.py --midword` (`check_midword`), with `check_wraps` sharing one
+  `open_everything` walk; `e2e/test_phone_wraps.py` asserts no mid-word hits on its pages plus
+  `/admin/projects` with Expirations open, and a 60px card fixture proves the detector live.
+- [x] The unplanned-city skill's Legibility pass has the mid-word heuristic.
+- [x] **Gallery specimen** (`/dev/gallery` → Stat grids): `render_project_info` at the card's
+  width, 22rem and 14rem, so both rungs are visible without finding a nested card. Building it
+  found two facts: a flex item sized by `max-width` alone is shrink-to-fit, so the contained
+  grid collapsed to 156px (the wrappers now have definite widths); and a box cannot query its
+  own width, so the pair count (2 at 768px, 3 at 1200px) stays a viewport rule, with one opt-in
+  `@container stats (max-width: 36rem)` cap for a caller that wraps a narrow box in its own
+  `container: stats` (the gallery's narrow specimens). Real pages are pixel-identical.
+
+**Proof:**
+- `ui_snapshots.py --midword --pages wraps --width 360` on the branch: 3 hits across the 48
+  pages, from 86 before the work: one config-page Postgres URL and the two gallery titles, both
+  on the open list below. At 390: 2 hits, both config-page URLs (the gallery titles fit).
+- `e2e/test_phone_wraps.py`: 18 pass on the branch. Against staging the two mid-word page cases
+  fail (`/user/accounts`: "HPCD"; `/admin/projects`: "Environmental" at 118px and the
+  Directories paths) and the other 16 pass.
+- Phone shots before and after of the Expirations card, a `/user/` card, the two Resource
+  Details headers and the config page, sent to Ben.
+
+**Handoff corrections:**
+- 24rem, not 30rem, for the inline-row rung (measured above).
+- The card template is `dashboards/user/partials/project_card.html`; the `fmt_*` filters are
+  registered from `sam.fmt`, not `create_app()`, so the new filter has its own module.
+- `.config-stats` is shared by four other surfaces.
+- The census under-counted lists (one hit per box signature).
+
+**Open from this sweep:**
+
+- [ ] `/dev/gallery` specimen titles (`date_range_picker.date_range_picker`): a dotted
+  identifier in a card header; dev-only.
+- [ ] `/admin/configuration`'s Postgres URLs still split at 360px: a URL has no break point, and
+  `word-break` is what holds it on a phone. `path_breaks` at the slashes is the candidate.
+- [ ] The census is phone-only; no tablet (768px) pass was run.
+
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
 Surfaced by the first run of `scripts/sweep_inventory.py`. Each item belongs to an area sweep;
@@ -1213,6 +1287,14 @@ sunburst, which started on the allocations page and then moved to job history.
 
 - [x] `collapse.drill_toggle` and `clipboard.copy_button` on a `.cell-path` cell (sweep 13):
   the jobs and disk-scans drilldowns (sweep 15).
+- [ ] `path_breaks` (sweep 17): the other bare path renders, none converted. In a card:
+  `admin/fragments/project_directories_card.html:113`, `project_linked_elements_htmx.html:300`,
+  `bulk_deactivate_project_directories_preview_htmx.html:32,37`,
+  `disk_root_directories_section.html:55`, `configuration_card.html:608` (`AUDIT_LOG_PATH`) and
+  the Postgres URLs on the same card; `disk_scans/_disk_scans_macros.html:33` and
+  `user/resource_details_disk.html:57,129,339` (a fileset name). The `.cell-path` cells
+  (`disk_scans_directories.html:187`, `resource_details_disk.html:165`) truncate at 12rem
+  instead, a different idiom.
 - [ ] `collapse.lazy_drill_row` / `owner_tier` (sweep 15): `_resource_details_macros.jobs_collapse_row`
   stays a two-level shape (`outer_tr_collapse_id` + an inner `div.collapse`, `data-no-persist`), and
   Resource Details' user and day subtrees load as whole `tr.collapse` rows; neither was converted.

@@ -1411,9 +1411,11 @@ branch and PR against `staging`. Tick an item once its fix merges, and note the 
   Consumption Rate gauge collapses to a sliver, and its axis labels overlap ("200%0%").
   Template: `src/webapp/templates/dashboards/user/fragments/rolling_rate_htmx.html`. Found
   2026-09-29 on the obfuscated DB, 390×844, dark.
-- [ ] **Mobile table headers wrap mid-word.** On the same page at phone width, the daily
+- [x] **Mobile table headers wrap mid-word.** On the same page at phone width, the daily
   history table breaks headers and values across lines ("USE RS", "JO BS", "6,80 6"). It needs
-  `white-space: nowrap` plus horizontal scroll, or fewer columns on mobile.
+  `white-space: nowrap` plus horizontal scroll, or fewer columns on mobile. Fixed: the fixed
+  columns got a `min-width` floor in #741 (Users, Jobs and the values), raised in the mid-word
+  sweep so "Charges" fits too (`docs/plans/implemented/PHONE_MIDWORD_SWEEP_HANDOFF.md`).
 - [ ] **Deprecate `sam-status`.** The third CLI (`pyproject.toml`: `sam-status =
   "system_status:main"`, `src/system_status/cli.py`) is slated for removal (Ben, 2026-09-29).
   Once it goes, Part 1's "3 command-line tools" becomes 2: update `clis.count` in

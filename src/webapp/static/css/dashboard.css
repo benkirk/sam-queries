@@ -1477,12 +1477,17 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     /* Paired auto/1fr tracks per column so labels share a per-column auto
        width and values start at a consistent x-position within each column.
        Stat-items use display:contents so their label+value become direct
-       children of this grid. Column count steps by breakpoint. */
+       children of this grid. Column count steps by viewport breakpoint. */
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     column-gap: 24px;
     row-gap: 0;
     transition: all var(--transition-base);
+    /* The @container rules on the rows key off this box's own width: a nested card (card in
+       card) is far narrower than the viewport says. inline-size containment collapses to 0 in
+       a shrink-to-fit parent (a flex item sized by max-width alone); every caller sits in a
+       definite-width one. */
+    container: stats / inline-size;
 }
 
 @media (min-width: 768px) {
@@ -1494,6 +1499,15 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 @media (min-width: 1200px) {
     .project-stats-box {
         grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+    }
+}
+
+/* A box cannot query its own width, so a narrow box at a wide viewport keeps the viewport's
+   pair count unless its caller wraps it in `container: stats / inline-size` (the gallery's
+   narrow specimens do); a pair needs about 300px. */
+@container stats (max-width: 36rem) {
+    .project-stats-box {
+        grid-template-columns: auto minmax(0, 1fr);
     }
 }
 
@@ -1558,11 +1572,20 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     grid-column: 2 / -1;
 }
 
-/* Phone: a multi-line value goes under its label. Beside it, the label track ("Organizations:")
-   left a nested card's values 69px and broke words mid-word. */
-@media (max-width: 575.98px) {
+/* A narrow box: a multi-line value goes under its label. Beside it, the label track
+   ("Organizations:") left a nested card's values 69px and broke words mid-word. 24rem keeps the
+   tablet user card (27rem in a .col-lg-6) two-column; a phone project card is 17.5-19.4rem. */
+@container stats (max-width: 24rem) {
     .stat-item-inline > .stat-label,
     .stat-item-inline > .stat-value {
+        grid-column: 1 / -1;
+    }
+}
+
+/* Narrower still (the nested Expirations card, 13-15rem): every label sits over its value. */
+@container stats (max-width: 16rem) {
+    .stat-item > .stat-label,
+    .stat-item > .stat-value {
         grid-column: 1 / -1;
     }
 }
