@@ -20,9 +20,10 @@
 {%- endmacro %}
 
 {#- % used meter; title carries the % of allocated time elapsed (the tick). -#}
-{% macro usage_meter(pct, elapsed_pct=none, title='') -%}
-{{ alloc_meter(pct, elapsed_pct=elapsed_pct,
-               title=title or ((pct | fmt_pct) ~ ' used' ~ (('; ' ~ (elapsed_pct | fmt_pct) ~ ' of time elapsed') if elapsed_pct is not none else ''))) }}
+{% macro usage_meter(pct, elapsed_pct=none, title='', pool_pct=none) -%}
+{%- set elapsed = ('; ' ~ (elapsed_pct | fmt_pct) ~ ' of time elapsed') if elapsed_pct is not none else '' -%}
+{{ alloc_meter(pct, elapsed_pct=elapsed_pct, pool_pct=pool_pct,
+               title=(title or ((pct | fmt_pct) ~ ' used')) ~ elapsed) }}
 {%- endmacro %}
 
 {#- sort=true: each cell carries its sortable_table.js key (data-sort-value).
@@ -38,12 +39,14 @@
 {%- elif res.is_inheriting -%}
 {#- Drawing on an ancestor's pool: this project's own use leads; the pool's figures are context. -#}
 {%- set pool = res.root_projcode or 'parent' -%}
-<td class="col-num"{{ _sort_key(res.self_percent_used, sort) }}>{{ usage_meter(res.self_percent_used, title=(res.self_percent_used | fmt_pct) ~ ' of ' ~ pool ~ "'s pool used by this project") }}</td>
-<td class="col-num text-muted small"{{ _sort_key(res.allocated, sort) }} title="{{ pool }}'s pool: {{ res.allocated | fmt_number }} allocated">
+<td class="col-num"{{ _sort_key(res.self_percent_used, sort) }}>{{ usage_meter(res.self_percent_used, res.elapsed_pct if res.resource_type in ('HPC', 'DAV') else none,
+    title='This project ' ~ (res.self_percent_used | fmt_pct) ~ ' · ' ~ pool ~ "'s pool " ~ (res.percent_used | fmt_pct),
+    pool_pct=res.percent_used) }}</td>
+<td class="col-num text-muted small"{{ _sort_key(res.allocated, sort) }} title="{{ pool }}'s pool: {{ res.allocated | fmt_number }} allocated (sorts by it)">
   {{- term('from', g_shared_alloc(), rich=True, title='Shared allocation', stop_propagation=True) }} {{ project_link_button(res.root_projcode, can_view) if res.root_projcode else 'parent' -}}
 </td>
 <td class="col-num"{{ _sort_key(res.self_used, sort) }} title="Used by this project; the pool has used {{ res.used | fmt_number }}">{{ res.self_used | fmt_number }}</td>
-<td class="col-num text-muted"{{ _sort_key(res.remaining, sort) }} title="{{ pool }}'s pool remaining">{{ res.remaining | fmt_number }}</td>
+<td class="col-num {{ 'text-danger' if (res.remaining or 0) < 0 else 'text-muted' }}"{{ _sort_key(res.remaining, sort) }} title="{{ pool }}'s pool remaining">{{ res.remaining | fmt_number }}</td>
 {%- else -%}
 {#- Time elapsed means something for a compute allocation, not for storage. -#}
 <td class="col-num"{{ _sort_key(res.percent_used, sort) }}>{{ usage_meter(res.percent_used, res.elapsed_pct if res.resource_type in ('HPC', 'DAV') else none) }}</td>
@@ -56,7 +59,7 @@
   {%- endif %}
 </td>
 <td class="col-num"{{ _sort_key(res.used, sort) }}>{{ res.used | fmt_number }}</td>
-<td class="col-num"{{ _sort_key(res.remaining, sort) }}>{{ res.remaining | fmt_number }}</td>
+<td class="col-num{{ ' text-danger' if (res.remaining or 0) < 0 }}"{{ _sort_key(res.remaining, sort) }}>{{ res.remaining | fmt_number }}</td>
 {%- endif -%}
 {%- endmacro %}
 

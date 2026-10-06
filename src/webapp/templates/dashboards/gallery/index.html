@@ -290,6 +290,14 @@
       </table>
     </div>
   {% endcall %}
+  {% call specimen('table_bits.alloc_meter', 'own % used with the elapsed tick; pool_pct: a shared row, own share solid over the pool; over 100% turns red') %}
+    <div class="d-inline-flex flex-column gap-2 align-items-end">
+      {{ table_bits.alloc_meter(53.0, elapsed_pct=48.0) }}
+      {{ table_bits.alloc_meter(28.9, elapsed_pct=42.0, pool_pct=61.8, title='This project 28.9% · CESM0002\'s pool 61.8%') }}
+      {{ table_bits.alloc_meter(0, pool_pct=40.0) }}
+      {{ table_bits.alloc_meter(12.0, pool_pct=104.0) }}
+    </div>
+  {% endcall %}
   {% call specimen('pagination.pagination', 'windowed page nav') %}
     {{ pagination.pagination(pagination_page, pagination_total, fragment_url, target_id, form_id, sort) }}
   {% endcall %}

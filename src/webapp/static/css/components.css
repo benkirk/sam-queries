@@ -592,6 +592,20 @@ tr:hover > td .btn.btn-row-attention {
 .share-bar.meter-over {
     --share-color: var(--danger-color);
 }
+/* A shared row: the pool's use as a lighter layer of the same hue, this project's share solid
+   over it. The mix is measured: tint vs track and solid vs tint, both themes (ledger entry 14). */
+.share-bar.meter.has-pool {
+    --pool-color: color-mix(in srgb, var(--share-color) 32%, var(--surface-secondary));
+    background:
+        linear-gradient(var(--share-color), var(--share-color)) left / max(var(--share, 0%), 2px) 100% no-repeat,
+        linear-gradient(var(--pool-color), var(--pool-color)) left / var(--pool, 0%) 100% no-repeat,
+        var(--surface-secondary);
+}
+.share-bar.meter.has-pool.share-zero {
+    background:
+        linear-gradient(var(--pool-color), var(--pool-color)) left / var(--pool, 0%) 100% no-repeat,
+        var(--surface-secondary);
+}
 .share-bar.meter.has-elapsed::after {
     content: '';
     position: absolute;
