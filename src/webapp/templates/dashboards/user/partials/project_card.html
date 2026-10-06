@@ -257,6 +257,8 @@
 
     <div class="card project-card mb-3" data-projcode="{{ project.projcode }}">
         <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#{{ card_id }}" aria-expanded="{{ 'true' if is_expanded else 'false' }}">
+            {# First and floated: the title flows around the chevron, which never wraps alone. #}
+            <i class="fa-solid fa-chevron-down accordion-chevron float-end ms-3" aria-hidden="true"></i>
             <div class="d-flex justify-content-between align-items-center">
                 <div>
                     <h5 class="mb-0">
@@ -365,7 +367,6 @@
                             </span>
                         {% endif %}
                     {% endif %}
-                    <i class="fa-solid fa-chevron-down accordion-chevron ms-3" aria-hidden="true"></i>
                 </div>
             </div>
         </div>
@@ -392,21 +393,21 @@
                 <!-- Project Tree Section (Lazy Loaded) -->
                 {% if project_data.has_children or project.parent_id %}
                 <div class="mt-3">
-                    <h6 class="mb-2 d-flex align-items-center">
-                        <span><i class="fa-solid fa-sitemap me-1"></i> Project Hierarchy</span>
-                        <div class="ms-auto d-flex align-items-center gap-2">
-                            <div class="form-check form-switch mb-0">
+                    <h6 class="mb-2 clearfix">
+                        <span class="float-end d-flex flex-nowrap align-items-center gap-2 ms-2">
+                            <span class="form-check form-switch mb-0">
                                 <input class="form-check-input" type="checkbox"
                                        id="treeActiveOnly-{{ card_id }}" checked
                                        data-action-change="tree-toggle-active-only" data-card-id="{{ card_id }}" data-base-url="{{ url_for('user_dashboard.tree_fragment', projcode=project.projcode) }}">
                                 <label class="form-check-label small text-muted fw-normal"
                                        for="treeActiveOnly-{{ card_id }}">Active only</label>
-                            </div>
+                            </span>
                             <button class="btn  btn-link p-0" data-bs-toggle="collapse"
                                     data-bs-target="#tree-{{ card_id }}" aria-expanded="false">
                                 <i class="fa-solid fa-chevron-down"></i>
                             </button>
-                        </div>
+                        </span>
+                        <i class="fa-solid fa-sitemap me-1"></i> Project Hierarchy
                     </h6>
                     <div id="tree-{{ card_id }}" class="collapse">
                         <div class="tree-container"

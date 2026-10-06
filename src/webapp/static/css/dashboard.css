@@ -1444,6 +1444,14 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     font-weight: inherit;
 }
 
+/* Phone: the title row is block flow so the title wraps around the floated chevron. A flex
+   row is its own formatting context and would sit beside the float, a column narrower. */
+@media (max-width: 767.98px) {
+    .project-card .card-header > .d-flex {
+        display: block !important;
+    }
+}
+
 /* Expanded: the accent surface, not a solid brand slab over the whole row. */
 .project-card .card-header[aria-expanded="true"] {
     background-color: var(--surface-accent);
