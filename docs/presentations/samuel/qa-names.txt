@@ -11,3 +11,18 @@ csg-postgres
 jobhist-sync
 gunicorn
 update-helm
+# host names
+sam-sql
+sam-app
+sam-tomcat
+nwc1
+ldap.ucar.edu
+samuel.k8s.ucar.edu
+sam.hpc.ucar.edu
+samuel-dev.k8s.ucar.edu
+casper
+derecho
+# branch names (main is checked by hand: too common a word)
+staging
+cirrus
+cirrus-dev

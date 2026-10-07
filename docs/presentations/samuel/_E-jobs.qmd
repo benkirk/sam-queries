@@ -9,7 +9,7 @@ Your jobs and your files, read from the databases next door.
   directory.
 - **Both are plugins.** Without one, its tab is simply not there, and the app still boots.
 - **Both show only you.** The server fixes the user; a different one in the URL is ignored.
-  Whole-machine views need a staff permission.
+  A project's view shows its members' jobs to its members; whole-machine views need staff.
 
 ::: {.notes}
 My Jobs: /user/jobs (src/webapp/dashboards/user/blueprint.py:198-210), 404 when no machine engine
@@ -23,23 +23,24 @@ Staff views: VIEW_ALL_JOB_DATA (/status/job-history) and VIEW_ALL_FILESYSTEM_DAT
 (src/cli/core/base.py:41-58).
 :::
 
-## My Jobs: three months at a glance
+## Job history: three months of one project {.center}
 
 ::: {.notes}
-Ben's own Derecho jobs, the default 90-day window: 260 jobs. The spike on 2026-09-03 is an
-all-to-all scaling test (next slide). Pills switch the metric (jobs, CPU-hours, GPU-hours,
-charges) and the period (day, week, month); the window is 30, 60 or 90 days or a year
-(src/webapp/jobs/service.py:35,40; an unknown ?days= falls back to 90, routes.py:123-135). Taken
-locally against a copy of the job-history database, logged in as Ben; only his own jobs show.
+WYOM0247 on Derecho, the default 90-day window (2026-07-09 to 10-07): 20,043 jobs, a bar per day,
+stacked by user. The legend's names are removed for the slide. Pills switch the metric (jobs,
+CPU-hours, GPU-hours, charges) and the period (day, week, month); the window is 30, 60 or 90 days
+or a year (src/webapp/jobs/service.py:35,40; an unknown ?days= falls back to 90,
+routes.py:123-135). My Jobs draws the same chart for one person. Production, 2026-10-07, read-only
+(scripts/ui_snapshots_prod_deck.json, jobs-project).
 :::
 
-[![](images/jobs-activity.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/user/jobs)
+[![](images/jobs-project.png){width="100%" fig-align="center"}](https://sam.hpc.ucar.edu/dashboards/user/jobs/WYOM0247/explore?machine=derecho)
 
 ## Every job, one row
 
 ::: {.notes}
-The same page, sorted by CPU charge: the 2026-09-03 spike was alltoall.pbs at 128 to 1,024 nodes
-(131K cores). Default columns: routes.py:74-78; columns that are all zero are hidden
+My Jobs, Ben's own Derecho jobs (taken locally against a copy of the job-history database),
+sorted by CPU charge: the top rows are alltoall.pbs at 128 to 1,024 nodes (131K cores). Default columns: routes.py:74-78; columns that are all zero are hidden
 (routes.py:102-107). The row's drawer adds exit status, queue, submit/end/walltime, MPI ranks and
 threads, memory, CPU/GPU types and memory charges (routes.py:89-99). 50 rows a page by default, up
 to 200 (routes.py:110, src/webapp/utils/htmx.py:165-167). Facet chips filter by queue, QoS and
@@ -59,7 +60,7 @@ exit status, with live counts (service.py:575-581).
 | **Job Sizes** | nodes, CPUs, GPUs, and memory requested, used and wasted |
 | **Durations** | how long jobs ran |
 
-† The same views serve a user, a project and a whole machine; only the scope changes.
+*† The same views serve a user, a project and a whole machine; only the scope changes.*
 
 ::: {.notes}
 One panel registry, three modes: user (login only), project (require_project_access) and machine
@@ -70,7 +71,7 @@ memory_wasted (routes.py:454-455). The timeline is not a tab: it renders inside 
 behind a collapse.
 :::
 
-## A whole machine, by project
+## A whole machine, by project {.center}
 
 ::: {.notes}
 Status, Job History, Derecho, By Project, CPU-hours, opened full screen with the expand icon: facilities
@@ -79,7 +80,7 @@ thin to draw. Staff only (VIEW_ALL_JOB_DATA). Project codes, no people. Taken lo
 of the job-history database, 2026-10-06. Design record: docs/plans/PANEL_SUNBURST.md.
 :::
 
-![](images/jobs-by-facility.png){height="72%" fig-align="center"}
+![](images/jobs-by-facility.png){height="88%" fig-align="center"}
 
 ## My Data: what is filling my space {.smaller .center .fill}
 
@@ -90,7 +91,7 @@ of the job-history database, 2026-10-06. Design record: docs/plans/PANEL_SUNBURS
 | **File sizes** | how your data and files split by average file size |
 | **User / group counts** | who owns what (project and filesystem views only) |
 
-† Counted per directory, not per file: the scans don't track single files.
+*† Counted per directory, not per file: the scans don't track single files.*
 
 ::: {.notes}
 src/webapp/disk_scans/: modes project (require_project_access), resource
@@ -125,7 +126,7 @@ panels My Data shows a user, for the whole filesystem. Production, read-only, 20
 | **Cached** | 15 min (today) or 30 min (older) | until the next scan, 8 days at most |
 | **Slow when** | a filter forces a full scan: ~7 s | a sub-path: 30 s and up |
 
-† Both live on `csg-postgres` (Part 5). The plugins come from `hpc-usage-queries` (Appendix A).
+*† Both live on `csg-postgres` (Part 5). The plugins come from `hpc-usage-queries` (Appendix A).*
 
 ::: {.notes}
 Engines: one per machine (src/webapp/jobs/session.py:53-99; config.py:236-237) and one per

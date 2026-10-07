@@ -2,7 +2,7 @@
 
 What SAM is, who uses it, and what SAMuel puts on top of it.
 
-## SAM in one slide {.vcenter}
+## Systems Accounting Manager (SAM) {.vcenter}
 
 :::: {.columns}
 ::: {.column width="58%"}
@@ -42,9 +42,10 @@ SAM has run CISL's allocations for {{< var legacy.years >}} years:
 - A **web API** feeding the batch scheduler, storage quotas, and friends.
 - A **MySQL database** gluing all of it together.
 - {{< var legacy.loc >}} lines of Java (Spring, Hibernate, JSF/PrimeFaces, Flyway), plus a
-  plethora of shell scripts and cron jobs.
+  plethora of containerized microservices.
 
-*† SAMuel is its extended lifecycle, a modernization and refactoring effort to support another generation. Same database, same data, same groups depending on it.*
+*† SAMuel is **S**AM **u**pdated for an **e**xtended **l**ifecycle: a modernization and
+refactoring effort to support another generation.*
 
 ## Same database, new everything around it {.smaller .center .fill scale="1.15"}
 
@@ -53,24 +54,27 @@ SAM has run CISL's allocations for {{< var legacy.years >}} years:
 | **Code** | Java: Spring, Hibernate | Python: SQLAlchemy 2, Flask |
 | **Web UI** | JSF / PrimeFaces | htmx + Bootstrap 5, mobile and dark mode |
 | **Database** | MySQL | **the same MySQL** (Postgres-ready) |
-| **Background work** | cron + shell scripts | scheduled tasks with a run ledger |
-| **Deployment** | a Tomcat server | containers on CIRRUS (Kubernetes), via GitOps |
+| **Background work** | containerized microservices | scheduled tasks with a run ledger |
+| **Deployment** | VMs with Podman and a Tomcat server | containers on CIRRUS (Kubernetes), via GitOps |
+
+*† Sharing one database allows an overlap phase between the old and new systems. It also brings
+challenges.*
 
 ## How we got here {.vcenter}
 
-- **Oct 2025:** a Python model of the production database, read as-is. *This led to…*
-- **Nov–Dec 2025:** a CLI, a REST API, the first dashboards. *This led to…*
-- **Early 2026:** allocations dashboard, charging, expiration emails. *This led to…*
+- **Oct 2025:** a Python model of the production database, read as-is.
+- **Nov–Dec 2025:** a CLI, a REST API, the first dashboards.
+- **Early 2026:** allocations dashboard, charging, expiration emails.
 - **Apr 2026:** legacy-compatible APIs for the systems that call SAM, and a home on CIRRUS.
-  *This led to…*
-- **{{< var milestones.charge_ingest >}}:** SAMuel takes over the daily charge ingest. *This led to…*
-- **{{< var milestones.read_write >}}:** the web app goes read/write: edits land in the shared database. *This led to…*
-- **{{< var milestones.xras_repoint >}}:** XRAS hands its awards to SAMuel directly. *This led to…*
+- **{{< var milestones.charge_ingest >}}:** SAMuel takes over the daily charge ingest.
+- **{{< var milestones.read_write >}}:** the web app goes read/write: edits land in the shared database.
+- **{{< var milestones.xras_repoint >}}:** XRAS hands its awards to SAMuel directly.
 - **{{< var milestones.fy27_renewals >}}:** FY27 renewals run in SAMuel.
 - *…Which leads to today:* SAMuel is production SAM, at **{{< var hosts.prod >}}**.
 
 ::: {.notes}
-The legacy system still owns a few integrations (the LDAP identity mirror, AMIE); both
+The legacy system still owns a few integrations (the LDAP identity mirror, project groups to
+the UCAR directory, AMIE); both
 systems share one database while those move. Parts 4 and 5 and the appendix have the details.
 Read/write: the webapp switched to the SAM write credential 2026-06-18 (sam-queries #320).
 FY27: the NCAR divisional trees were renewed 2026-09-07 to 09-16
@@ -136,8 +140,8 @@ flowchart TB
 
 - **Invitations and account requests:** a sponsor invites; the request reaches NUSD as a ticket.
 - **Events** for managing large project rosters for e.g. workshops and tutorials.
-- **Email that remembers:** expiration notices with previews and a ledger, so nobody is mailed
-  twice.
+- **Notification framework:** expiration notices with previews and a ledger, so nobody is mailed
+  twice. Currently email, designed for expansion.
 - **Live system status** for Derecho, Casper and JupyterHub, every 5 minutes.
 - **Usage drill-downs:** per project, per user, per day; export to Excel.
 - **Roles and access** managed in the app, scoped by facility.
@@ -194,7 +198,7 @@ view with every project on the rim. Clicking a wedge opens its row. Per resource
 
 [![](images/tour-allocations.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/allocations/projects?resources=Derecho)
 
-## Admin: one project, every knob
+## Admin: managing projects
 
 ::: {.notes}
 The project editor: details, allocations, members and invitations in one place.
@@ -211,6 +215,18 @@ production, 2026-10-06: the local copy's collectors are idle.
 
 [![](images/tour-status.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/status/derecho)
 
+## Status, signed in: which projects are running
+
+::: {.notes}
+The same page for a signed-in user adds the "User / project load over time" card: running cores
+per project code here (it also counts jobs, GPUs and nodes, and groups by user), top 15 plus the
+rest, over the last week; Derecho peaks around 300K cores. Operators
+can click a legend entry through to that project's jobs. Production, 2026-10-07, read-only
+(scripts/ui_snapshots_prod_deck.json, tour-status-load); project codes only, no people.
+:::
+
+[![](images/tour-status-load.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/status/derecho)
+
 ## Mobile and dark mode
 
 :::: {.columns}
@@ -225,7 +241,7 @@ phone-sized chart, not a shrunken desktop one.
 :::
 ::::
 
-## The Progression, continued
+## The Progression {.center}
 
 ::: {.notes}
 Picks up where "Confessions of a Vibe Coder" (March 2026) stopped at ~75K lines. The
@@ -234,7 +250,7 @@ tests ({{< var size.test_lines >}}) are nearly as big as the code they test.
 {{< var size.prs_merged >}} pull requests merged since October 2025.
 :::
 
-![](images/loc_progression.png){height="72%" fig-align="center"}
+![](images/loc_progression.png){height="80%" fig-align="center"}
 
 ## The Good, the Bad, the Murky {.smaller .center .fill}
 

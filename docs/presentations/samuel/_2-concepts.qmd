@@ -9,7 +9,7 @@ Users, projects, resources, allocations, and usage tracking.
   the LDAP feed, PBS's fairshare tree.
 - This part is the model, in words and pictures. Part 3 shows the tables.
 
-† No SQL was harmed in the making of this part.
+*† SQL specifics are deferred to Part 3.*
 
 ::: {.notes}
 Part 1 said what SAMuel is for; this part is the vocabulary every later slide assumes. The
@@ -20,9 +20,13 @@ order matters: people, projects, resources, then the accounts that join them, th
 ## The concepts, in one picture
 
 ::: {.notes}
-Not the schema: Part 3 has the generated ER diagrams. A project holds one account per
-resource; users are authorized on accounts, not on projects; allocations live on accounts;
-charges draw them down. Projects and allocations each have a parent, so both form trees.
+Not the schema: Part 3 has the generated ER diagrams. A project holds
+one account per resource; users are authorized on accounts, not on
+projects; allocations live on accounts; charges draw them
+down. Projects and allocations each have a parent, so both form trees.
+In this way users join projects indirectly, as authorized individuals
+who can use an allocation on an account. This borrows heavily from a
+banking model.
 :::
 
 ```{dot}
@@ -55,14 +59,14 @@ digraph Concepts {
 ## Users: SAM never creates one {.vcenter scale="1.15"}
 
 - People come from the UCAR directory (LDAP), mirrored into SAM by `sam-ldap-syncd`: name,
-  UPID, `unix_uid`, emails, affiliations.
+  UPID, `unix_uid`, emails, affiliations, and so on.
 - **Active** means active *and* not locked.
 - Registration and invitations create an account *request*. The person is created upstream,
   and the mirror brings them in.
 - An **event** (a workshop, a tutorial) gathers many requests under one code and one project.
   Each person joins that project once their account exists.
 
-† A request is fulfilled when its email shows up in `users`. SAM notices; it doesn't decide.
+*† A request is fulfilled when the person's email shows up in `users`. SAM notices; it doesn't decide.*
 
 ::: {.notes}
 docs/xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md: SAM never originates users. The mirror is legacy's
@@ -76,7 +80,9 @@ request into the event's project (enroll_user_in_event, src/sam/manage/account_r
 ## Projects: the unit of accountability {.vcenter scale="1.15"}
 
 - A **projcode** (`SCSG0001`), a title, a facility and an allocation type.
-- **One lead** (the PI) and **at most one admin**.
+- **One lead** (the PI) and **at most one admin** (optional).
+- The lead and admin manage the roster, edit some of the metadata and, in a project tree,
+  redistribute resources among the children.
 - A `unix_gid`: every project is also a unix group. More on that later.
 - **Active** is a flag. An inactive project keeps its history and loses its access.
 
@@ -140,8 +146,8 @@ the same hierarchy as PBS consumes it.
   and a program officer.† A project can cite several.
 - **Area of interest:** the research field. XRAS fills it from the request.
 
-† Both must be SAM users today, so outside PIs and NSF officers get user rows they never use.
-The plan: a separate external-contacts table, so a contract can name someone without an account.
+*† Both must be SAM users today, so outside PIs and NSF officers get user rows they never use.
+The plan: a separate external-contacts table, so a contract can name someone without an account.*
 
 ::: {.notes}
 Organization: src/sam/core/organizations.py; parent_org_id is the real tree (the nested-set
@@ -166,8 +172,8 @@ allocation type; nothing rolls usage up by organization or contract yet.
 - The norm is every user on every resource: `sam-admin project --validate` flags the drift, and
   `--reconcile` repairs it.
 
-† Only the lead and admin are enforced in code. Everyone else is a convention with a repair
-tool.
+*† Only the lead and admin are enforced in code. Everyone else is a convention with a repair
+tool.*
 
 ::: {.notes}
 Project.users = lead + admin + everyone with an unended row; Project.account_linked_users is
@@ -240,8 +246,8 @@ model allows and we rarely want. csgteam is a role account, owned by Ben.
 - So repeat rows are normal: someone who left and came back has two.
 - Nothing sets a `deleted` flag. The ended rows *are* the audit trail.
 
-† This is legacy SAM's convention too, read straight from its Java. Some traditions are worth
-keeping.
+*† This is legacy SAM's convention too, read straight from its Java. Some traditions are worth
+keeping.*
 
 ::: {.notes}
 docs/plans/implemented/ACCOUNT_USER_SOFT_DELETE.md (#618): legacy never deletes an
@@ -258,8 +264,8 @@ change_project_admin needs an unended row.
 - **Fix:** the lead and admin hold a live row on every live account. `Project.update` seeds
   them, `ensure_members` repairs, and `--reconcile-lead-admin` sweeps.
 
-† Two consumers of one fact must derive it the same way. Or one of them will be wrong
-eventually.
+*† Two consumers of one fact must derive it the same way. Or one of them will be wrong
+eventually.*
 
 ::: {.notes}
 docs/plans/implemented/LEAD_ADMIN_MEMBERSHIP.md (#616/#617). The invariant is in CLAUDE.md:
@@ -302,8 +308,8 @@ Derecho allocation (renewed 2026-09-23) starts 2026-10-01.
 - Every surface computes it the same way: the dashboards, the API, `sam-search` and the PBS
   feed.
 
-† *used* also counts charge adjustments: manual refunds, credits and debits, kept in their own
-table.
+*† _used_ also counts charge adjustments: manual refunds, credits and debits, kept in their own
+table.*
 
 ::: {.notes}
 AllocationWithUsageSchema and Project.get_detailed_allocation_usage() share one calculation
@@ -317,17 +323,23 @@ Part 3 shows the tables behind each term.
 - Legacy SAM stored **every job**: a row per job in the activity tables (`comp_job`,
   `comp_activity`, `hpc_activity`, `dav_activity`, …), plus its charge.
 - Years of jobs, from machines long since turned off.
-- Those rows are still in production. They're huge, nothing reads them, and they will be
-  deleted.
+- Those rows are still in production: **{{< var db.per_job_gb >}} of SAM's {{< var db.sam_gb >}} GB**, about {{< var db.per_job_pct >}}. Nothing reads them,
+  and they will be deleted.
 
-† Machines retire. Their jobs, apparently, did not.
+*† Machines retire. Keeping one job schema coherent across 15 years is an unnecessary complication
+that limits flexibility. Per-job information now lives in separate databases that can be retired
+or modified independently.*
 
 ::: {.notes}
 The per-job models still exist in src/sam/activity/ so the schema matches the database. The
 drop waits for legacy SAM's retirement, like the views in docs/plans/SCHEMA_RETIREMENT.md.
+Size from information_schema on production, 2026-10-07, in GiB: 51.2 of 60.1 in the per-job
+activity and charge tables (comp_job 15.8, hpc_activity 11.5, comp_activity 8.1, dav_activity
+6.8, hpc_charge 4.9, dav_charge 4.1); dataset_activity (6.6) is most of the rest. disk_activity and
+disk_charge (0.7) are not counted: SAMuel's disk ingest still writes them.
 :::
 
-## Now: jobs live with their machine {.vcenter scale="1.15"}
+## Now: jobs live with their machine {.vcenter scale="1.05"}
 
 :::: {.columns}
 ::: {.column width="50%"}
@@ -339,12 +351,12 @@ digraph Jobs {
          fillcolor="#E6F0FA", color="#0057C2", fontcolor="#00357A", margin="0.15,0.06"];
   edge  [color="#6B7280"];
   T  [label="Then: a job", pos="0,2.3!", fillcolor="#F3F3F3", color="#999999", fontcolor="#666666"];
-  TS [label="sam\nevery job, forever", pos="2.3,2.3!", shape=cylinder, fillcolor="#F3F3F3",
+  TS [label=<<FONT FACE="Courier">sam</FONT><BR/>every job, forever>, pos="2.3,2.3!", shape=cylinder, fillcolor="#F3F3F3",
       color="#999999", fontcolor="#666666"];
   N  [label="Now: a job", pos="0,1.15!"];
-  NM [label="derecho_jobs\ncasper_jobs", pos="2.3,1.15!", shape=cylinder];
+  NM [label=<<FONT FACE="Courier">derecho_jobs</FONT><BR/><FONT FACE="Courier">casper_jobs</FONT>>, pos="2.3,1.15!", shape=cylinder];
   NR [label="daily roll-up", pos="2.3,0!"];
-  NS [label="sam\nroll-ups only", pos="0,0!", shape=cylinder];
+  NS [label=<<FONT FACE="Courier">sam</FONT><BR/>roll-ups only>, pos="0,0!", shape=cylinder];
   T -> TS; N -> NM -> NR -> NS;
 }
 ```
@@ -353,8 +365,9 @@ digraph Jobs {
 - Job history lives in **one database per machine**, filled by `jobhist-sync`.
 - When a machine retires, its database can retire with it.
 - SAM keeps **daily roll-ups** per account: `sam-admin accounting --comp`.
+- Today's roll-up is partial, refreshed hourly, and final at midnight: charging stays fresh.
 
-† The charging Factor and Formula tables are fossils: SAM no longer computes charges itself.
+*† The charging Factor and Formula tables in MySQL are fossils: SAM no longer computes charges itself.*
 :::
 ::::
 
@@ -375,8 +388,8 @@ Factor/Formula/queue_factor: src/sam/resources/machines.py, "Charging moved out 
 - Replaying the rows in order must land on the stored amount. Convention and tests enforce
   that; the database doesn't know.
 
-† Not to be confused with a *charge* adjustment, which changes what was used, not what was
-allocated.
+*† Not to be confused with a _charge_ adjustment, which changes what was used, not what was
+allocated.*
 
 ::: {.notes}
 AllocationTransaction and LEGACY_TYPE_MAP in src/sam/accounting/allocations.py;
@@ -394,21 +407,6 @@ asserts the replay. replay_amount() in src/sam/accounting/allocations.py mirrors
 semantics. The comment is the author's own, verbatim.
 :::
 
-## The 926 that should have been 465 {.vcenter scale="1.15"}
-
-- An edit once stored the **new total** where the ledger expects the **change**.
-- CESM0002: created at 461M, edited to 465M. The edit row said 465M, not +4M.
-- Replay: 461M + 465M = **926M**. The allocation said **465M**.
-- **Fix:** an edit writes *new − old*, and a test pins that exact fingerprint.
-
-† The ledger is only as honest as its least careful writer.
-
-::: {.notes}
-tests/unit/manage/test_accounting_models.py, test_cesm0002_bug_fingerprint (the duplicate NEW
-row in that history is a second, separate bug the same test pins). Existing rows were repaired
-with corrective transactions, proven by replay before any write.
-:::
-
 ## ⚠︎ A supplement is not a new total {.vcenter scale="1.15"}
 
 - **Update** says "the amount is now X". **Supplement** says "add X".
@@ -416,8 +414,8 @@ with corrective transactions, proven by replay before any write.
 - So there are two primitives: `update_allocation` sets, and `supplement_allocation` adds, down
   the tree.
 
-† In the source this carries a WARNING: "the single most important porting semantic in the
-XRAS integration."
+*† In the source this carries a WARNING: "the single most important porting semantic in the
+XRAS integration."*
 
 ::: {.notes}
 src/sam/manage/allocations.py, supplement_allocation and adjust_allocation (signed), both via
@@ -462,9 +460,10 @@ dispatch: src/sam/xras/dispatch.py, select_service().
   `hpc-dev`.
 - Resources are tagged into branches, many-to-many. Derecho and Casper sit in `hpc` and
   `hpc-data`; Gust GPU sits in `hpc-data` and `hpc-dev`.
-- That is all SAM stores: a branch and its resources. No users, no projects.
+- That is all SAM stores *about a branch*: its name and its resources. Which users and
+  projects appear on it is never written down.
 
-† The rest is derived, every time someone asks.
+*† The rest is derived, every time someone asks.*
 
 ::: {.notes}
 AccessBranch and AccessBranchResource, src/sam/security/access.py. Branch membership from the
@@ -510,7 +509,7 @@ legacy pipeline it reproduces is HibernateSysAcctQuery; docs/apis/SYSTEMS_INTEGR
 has the field-level contract.
 :::
 
-## Two kinds of groups {.vcenter scale="1.15"}
+## Two kinds of groups {.vcenter scale="1.05"}
 
 :::: {.columns}
 ::: {.column width="50%"}
@@ -519,6 +518,7 @@ has the field-level contract.
 - One per project on the branch: `scsg0001`, with the project's `unix_gid`.
 - Members are the project's current account rows.
 - No group row anywhere: the group *is* the project.
+- A new project's `unix_gid` comes from a block reserved for projects, coordinated with UCAR.
 :::
 ::: {.column width="50%"}
 **Adhoc groups: upstream is the truth**
@@ -528,7 +528,8 @@ has the field-level contract.
   match, not a key.
 - SAM passes them through. It doesn't author them.
 
-† And everyone on a branch is in `ncar` (gid 1000), which exists nowhere as a row.
+*† They begin life in Google Groups, upstream even of the directory. And everyone on a branch is
+in `ncar` (gid 1000), which exists nowhere as a row.*
 :::
 ::::
 
@@ -539,11 +540,11 @@ adhoc_system_account_entry (docs/plans/SAM_LDAP_SYNCD_REFERENCE.md). 271 active 
 in the test copy. ncar: DEFAULT_COMMON_GROUP in src/sam/core/groups.py.
 :::
 
-## The fine print {.vcenter scale="1.15"}
+## Project end lifecycle {.vcenter scale="1.15"}
 
 - **Grace:** access outlives an allocation by 90 days.
-- **Status**, as `project_access` reports it: ACTIVE, then EXPIRING (inside 30 days), EXPIRED,
-  and DEAD (180 days past).
+- **Status**, as `project_access` reports it: ACTIVE, then EXPIRING (inside 30 days), EXPIRED
+  (the 90 days of grace), and DEAD; 180 days past, it is not reported at all.
 - **Adhoc members** are emitted only if they are already on the branch through an account.
 - **The `hpc-data` kludge:** on `hpc-data`, home directory and shell come from the GLADE
   resources, not the branch's own. Legacy did it; we reproduce it.
@@ -554,11 +555,50 @@ AUTO_RENEW_PANELS) and directory_access.py (the adhoc-member rule).
 docs/apis/SYSTEMS_INTEGRATION_APIs.md, "hpc-data kludge".
 :::
 
+## The end of an allocation, on a timeline {.center .fill scale="1.1"}
+
+```{dot}
+//| fig-width: 12
+digraph Timeline {
+  graph [layout=neato, splines=false, bgcolor="transparent"];
+  node  [fontname="Helvetica", fontsize=16, fontcolor="#00357A"];
+  edge  [color="#9CA3AF", arrowhead=none];
+  // the axis
+  node [shape=point, width=0.1, color="#0057C2"];
+  a0 [pos="0,1.7!"]; a1 [pos="3,1.7!"]; a2 [pos="6,1.7!"]; a3 [pos="9,1.7!"]; a4 [pos="12,1.7!"];
+  a0 -> a1 -> a2 -> a3 [color="#0057C2", penwidth=2.5];
+  a3 -> a4 [color="#0057C2", penwidth=2.5, style=dashed, arrowhead=normal];
+  // what happens, above the axis
+  node [shape=box, style="rounded,filled", fillcolor="#E6F0FA", color="#0057C2", margin="0.18,0.1"];
+  e0 [label="up to 40 days out\nthe expiration notice\n(weekly, once per person)", pos="0,3.4!"];
+  e1 [label="30 days out\nstatus: EXPIRING", pos="3,3.4!"];
+  e2 [label="end date\nthe allocation ends", pos="6,3.4!", fillcolor="#0057C2", fontcolor="#FFFFFF"];
+  e3 [label="+90 days: grace ends\nlogins and project group go\nstatus: DEAD", pos="9,3.4!"];
+  e4 [label="+180 days\ndropped from\nthe feeds entirely", pos="12,3.4!", fillcolor="#F3F3F3", color="#999999", fontcolor="#666666"];
+  e0 -> a0; e1 -> a1; e2 -> a2; e3 -> a3; e4 -> a4;
+  // what the systems see, below the axis
+  node [style="rounded,filled", fillcolor="#FFF4E0", color="#FAA119", fontcolor="#00357A"];
+  s0 [label="ACTIVE\njobs run, charges land", pos="1.5,0!"];
+  s1 [label="EXPIRED, in grace\nno new allocation, but access stays:\nmove your data", pos="7.5,0!"];
+  s2 [label="no access", pos="10.5,0!", fillcolor="#F3F3F3", color="#999999", fontcolor="#666666"];
+}
+```
+
+*† The 90 days exist mainly so people can move their data. A renewal or extension resets the
+clock, and mints a fresh notice key.*
+
+::: {.notes}
+Milestones from src/sam/queries/expiration_notices.py (one rung today, 0–40 days out, the weekly
+expiration_notices task; a 60/30/7 ladder is a one-tuple edit), the 30-day warning and 180-day
+cutoff from project_access.py, the 90-day ACCESS_GRACE_PERIOD from directory_access.py. The
+dedup key carries the expiration date, so a renewal is never wrongly suppressed.
+:::
+
 ## Who reads it: three frozen endpoints {.smaller .center .fill scale="1.2"}
 
 | Endpoint | What it answers | Read by |
 |---|---|---|
-| `directory_access` | users and groups, per branch | the LDAP populator |
+| `directory_access` | users and groups, per branch | the HPC LDAP provisioner |
 | `project_access` | each project's status, per branch | systems integration |
 | `fstree_access` | the facility, type, project and user tree, with amounts | HSG's cron, then PBS |
 
@@ -594,13 +634,23 @@ project.parent_id, plus tree_root / tree_left / tree_right (NestedSetMixin, src/
 The subtree charge sum (batch_charges) is a range scan on those coordinates. Count from the obfuscated test copy.
 :::
 
+## A tree, as the admin sees it
+
+::: {.notes}
+The project editor's Allocations tab for CESM0002, Derecho expanded: the root's 465M with
+"23.0M unallocated", each child's own carve-out, and CESM0028's children carved out of it in
+turn. From the obfuscated local copy (scripts/ui_snapshots_deck.json, tour-tree).
+:::
+
+[![](images/tour-tree.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/admin/project/CESM0002/edit?tab=allocations)
+
 ## Usage rolls uphill {.vcenter scale="1.15"}
 
 - A child's charges count against itself **and** every ancestor.
 - That follows the *project* tree, always, whatever the allocations say.
 - So a root's "used" is its whole subtree's.
 
-† Charge adjustments roll up with the charges.
+*† Charge adjustments roll up with the charges.*
 
 ::: {.notes}
 legacy_sam/doc/data_structures/project_tree_charging.md. For an inheriting allocation the API
@@ -644,7 +694,7 @@ CESM0002 holds the whole award, 465M on Derecho. Fifteen children carve out 442M
 and CESM0002 keeps 23M for itself; grandchildren carve out of their parent the same way
 (CESM0028). Generated by concepts_data.py from the obfuscated test copy, in SAM amounts: only
 children with a current Derecho allocation are drawn, the largest five plus CESM0028 for its
-subtree.
+subtree. The root box carries the residual: 465M − 442M = 23M kept.
 :::
 
 {{< include _tree_sam_award.qmd >}}
@@ -672,13 +722,16 @@ SAM-to-PBS story.
 
 {{< include _tree_cesm.qmd >}}
 
+*† The parent stays usable with its residual: the yellow self-leaf is the share the root kept for
+itself after the carve-outs, so CESM0002's own jobs still have somewhere to land.*
+
 ## Detach ≠ independence {.vcenter scale="1.15"}
 
 - Detaching gives a child its own amount and its own window…
 - …but its usage still rolls up the *project* tree, into the pool.
 - If the parent goes over, the overspent status cascades to its children, detached or not.
 
-† Detach is a statement about limits, not about who's watching.
+*† Detach is a statement about limits, not about who's watching.*
 
 ::: {.notes}
 legacy_sam/doc/data_structures/project_tree_charging.md §2 and
@@ -712,7 +765,7 @@ digraph Job {
          fillcolor="#E6F0FA", color="#0057C2", fontcolor="#00357A", margin="0.18,0.08"];
   edge  [color="#6B7280"];
   J  [label="job on\nDerecho", pos="0,2.4!"];
-  H  [label="derecho_jobs", pos="2.4,2.4!", shape=cylinder];
+  H  [label=<<FONT FACE="Courier">derecho_jobs</FONT>>, pos="2.4,2.4!", shape=cylinder];
   D  [label="daily\nroll-up", pos="4.8,2.4!"];
   A  [label="SCSG0001's\nDerecho account", pos="7.4,2.4!"];
   W  [label="inside the\nwindow?", pos="7.4,1.2!"];

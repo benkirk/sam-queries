@@ -28,8 +28,8 @@ scripts/apis/systems_integration_apis.sh.
 - **Frozen on purpose:** additive changes only, and never to the bytes a client already reads.
 - Fstree, queues, wallclock exemptions, directory and project access, disk quotas, and XRAS.
 
-† XRAS is held tightest: compared byte for byte, because a swapped first and last name keeps
-the same length.
+*† XRAS is held tightest: compared byte for byte, because a swapped first and last name keeps
+the same length.*
 
 ::: {.notes}
 Part 4's "Same bytes, new address" maps each route to its legacy path. CLAUDE.md, "Legacy-compat
@@ -44,8 +44,8 @@ HashMap order. Repointed: XRAS (2026-08-24, no legacy calls since 08-28).
 | **`fstree_access`** | projects, allocations, usage, users | PBS fairshare | by hand |
 | **`queue`** | queues and wallclock limits | PBS hooks | by hand |
 | **`wallclock_exemption`** | users' exemptions | PBS hooks | by hand |
-| **`directory_access`** | unix groups and accounts | LDAP provisioning | by hand |
-| **`project_access`** | project groups and status | LDAP provisioning | by hand |
+| **`directory_access`** | unix groups and accounts | HPC LDAP provisioning | by hand |
+| **`project_access`** | project groups and status | HPC LDAP provisioning | by hand |
 | **`disk_quota`** | project quotas and paths | disk quotas | schema |
 | **XRAS** (`/api/xras/v1`) | people, requests; actions in | XRAS broker | by hand |
 
@@ -72,8 +72,8 @@ by_resource.setdefault(rname, []).append({
 - **Every key is typed by hand** to match what legacy sent.
 - **Nothing declares the shape,** so nothing would catch it drifting. Hence frozen.
 
-† Not every legacy shape is even consistent: `directory_access` is camelCase on the outside
-and snake_case inside. We match it anyway.
+*† Not every legacy shape is even consistent: `directory_access` is camelCase on the outside
+and snake_case inside. We match it anyway.*
 
 ::: {.notes}
 src/sam/queries/queue_access.py:67-73, behind GET /api/v1/queue. The five frozen query modules
@@ -218,8 +218,8 @@ curl -X POST -u "$SAM_API_USER:$SAM_API_PASS" \
 - **HSG's tools refresh, then download.** SAMuel's own queue edits clear that cache.
 - **Admins clear by category:** `sam-admin cache --refresh`.
 
-† The fstree for every resource takes about 2.8 s to build, and comes back at once from the
-cache.
+*† The fstree for every resource takes about 2.8 s to build, and comes back at once from the
+cache.*
 
 ::: {.notes}
 CACHE_DEFAULT_TIMEOUT=300; Redis in production (CACHE_REDIS_URL), shared across workers and

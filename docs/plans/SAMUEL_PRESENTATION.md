@@ -226,7 +226,8 @@ from it onto slides.
 
 The domain model in words and pictures, before any table appears. It borrows the concepts from
 `sam_and_pbs` (§12) with less of its math. Ben's framing rules:
-- Call them **concepts**, outright. There is no "cast", and no banking analogy.
+- Call them **concepts**, outright. There is no "cast". The banking analogy stays in the
+  speaker notes only (Ben, 2026-10-07).
 - **Accounts:** a project has a list of accounts, one per resource, and each account has its own
   (potentially different) list of authorized users. The data model permits that, but it is
   usually more flexibility than we want. The mental model is "users on a project"; the details
@@ -1143,6 +1144,25 @@ Each phase closes with render → visual review → commit in this repo
     No request was blocked, every shot passed OCR, and the session file was deleted after.
   - **Not shot:** Events (production has none) and Templates.
 
+- **2026-10-07, Ben's editing pass** (branch `samuel-deck-edits`). Ben edited Parts 1–5 and left
+  FIXMEs; Claude swept each change across the deck and resolved the FIXMEs.
+  - **Swept:** the HPC LDAP provisioner, which writes the hosts' LDAP, not the UCAR directory.
+    Legacy SAM feeds project groups back to the UCAR directory: it gets a new row in "Who's still
+    on legacy", and Part 4's loop slide became "The identity chain". All 60 `†` footnotes are
+    italic. Host, branch, tool, database and endpoint names are monospace in diagrams too, in
+    Courier: Graphviz has no metrics for Menlo, so its boxes came out too narrow.
+  - **Sizes,** re-read from production `information_schema` (GiB): `sam` 60.1, the six job tables
+    51.2, plus `dataset_activity` 58. `disk_activity`/`disk_charge` are still written by the disk
+    ingest, so they are not "retiring". The numbers moved into `_variables.yml` (`db:`).
+  - **New slides:** "Balances, worked out ahead: the read model" (Part 3, plain language);
+    "Status, signed in" (running cores by project, production); "Job history: three months of one
+    project" (WYOM0247, production, legend names removed); "Every admin page, one menu" and "A
+    template, previewed" (local).
+  - **Trap:** `--verify` only checks names the recipe's `redact` selectors swapped, so a recipe
+    with no selector has no username check. The first jobs shot leaked legend usernames, passed
+    `--verify`, and was deleted from the scratchpad at once (§14).
+  - `make qa` passes on all 12 decks; the combined deck is 224 slides.
+
 ## 11. Voice, tone and the fun
 
 **SAMuel = SAM, updated for extended lifecycle.** That backronym is the deck's premise and its
@@ -1541,3 +1561,9 @@ branch and PR against `staging`. Tick an item once its fix merges, and note the 
 - [x] **A `.small` paragraph in an inner card rendered at 18px** (found 2026-10-06, Server
   Information's note): `.inner-card p` outranked `.small`. Fixed in #750; the deck's
   `admin-configuration.png` shows the old size until a reshoot after #750 deploys.
+- [ ] **`ui_snapshots.py --verify` misses usernames a recipe didn't select** (found 2026-10-07).
+  `ocr_leaks` checks emails and the names the redactor swapped, nothing else. Fix: also collect
+  usernames from the page's own user links or `/user/` paths, and fail on any that OCR can read.
+- [ ] **The admin tab strip hides its last tabs at desktop width** (found 2026-10-07): it scrolls
+  sideways inside the container even at 1920 px, so Events and Configuration are off-screen.
+  The Admin menu in the top navigation lists them all.
