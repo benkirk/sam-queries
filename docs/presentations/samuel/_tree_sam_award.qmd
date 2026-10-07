@@ -1,7 +1,7 @@
 ```{mermaid}
 %%| fig-width: 6
 graph TD
-    CESM0002["CESM0002<br/>465M"]
+    CESM0002["CESM0002<br/>465M<br/>23.0M kept"]
     CESM0028["CESM0028<br/>20.0M"]
     P93300065["P93300065<br/>16.0M"]
     CESM0027["CESM0027<br/>4.00M"]

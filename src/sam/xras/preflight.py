@@ -231,7 +231,7 @@ def infer_applied(session, synthesis: Synthesis) -> Optional[dict]:
         return None
     from sam.projects.projects import Project
     from sam.xras.wire import get_field
-    from sam.xras.handlers._allocations import (account_is_active,
+    from sam.xras.handlers._allocations import (account_is_extendable,
                                                 effective_end_date,
                                                 latest_allocation)
 
@@ -250,7 +250,7 @@ def infer_applied(session, synthesis: Synthesis) -> Optional[dict]:
         now = datetime.now()
         targets = 0
         for account in project.accounts:
-            if not account_is_active(account, now) or not account.allocations:
+            if not account_is_extendable(account, now) or not account.allocations:
                 continue
             allocation = latest_allocation(account)
             if allocation is None:

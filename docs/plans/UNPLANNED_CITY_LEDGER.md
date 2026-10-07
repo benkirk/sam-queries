@@ -108,7 +108,7 @@ dispatcher (10 unrelated, cheaply guarded listeners; a dispatcher couples 5 file
 
 **Mode:** area, `src/webapp/static/css/` (9 files, 4,817 lines, 70 `!important`). **End commit:**
 `0515333f` (`origin/staging`, the merge of #722; planned stacked on it). Planning record:
-`docs/plans/CSS_SWEEP_HANDOFF.md`. Contract: nothing looks different. Proved with
+`docs/plans/implemented/CSS_SWEEP_HANDOFF.md`. Contract: nothing looks different. Proved with
 `ui_snapshots.py --styles` on a base server and the branch server: 13 pages (gallery, login,
 register, admin resources/organizations/institutions/projects, allocations, status, user
 dashboard, job history, `/database`) x 3 layouts x 2 themes, `--compare` reports 0 of 78
@@ -146,7 +146,7 @@ badges, text colors, tab counters).
 
 **Mode:** area, `src/` Python, focused on helpers written more than once. **End commit:**
 `75f89900` (`origin/staging`, the merge of #723). Planning record:
-`docs/plans/PY_HELPERS_SWEEP_HANDOFF.md`. Ben's constraint: no net new code. `src/` across the
+`docs/plans/implemented/PY_HELPERS_SWEEP_HANDOFF.md`. Ben's constraint: no net new code. `src/` across the
 branch is +445 / -920; every finding commit shrinks `src/` on its own.
 
 **Parity:** an untracked capture (`utils/profiling/py_sweep/`) of 230 calls, run before and after
@@ -432,7 +432,7 @@ to `staging` once that merges.
 
 ## 8. 2026-10-04: area sweep, `templates` round 4 (the Allocations project list)
 
-**Mode:** area, from `docs/plans/ALLOCATIONS_PROJECT_LIST_HANDOFF.md` (entry 7's open item).
+**Mode:** area, from `docs/plans/implemented/ALLOCATIONS_PROJECT_LIST_HANDOFF.md` (entry 7's open item).
 **Stacked on:** sweep 7's branch (`sweep-cards-2026-10`, end commit `a75b9db7`). **Contract:**
 aesthetic, with each commit declaring its change. `src/` is +123 / -192.
 
@@ -500,7 +500,7 @@ widened the column.
 
 ## 9. 2026-10-04: area sweep, `templates` round 5 (the modals)
 
-**Mode:** area, from `docs/plans/MODAL_SWEEP_HANDOFF.md`. **Stacked on:** sweep 8's branch
+**Mode:** area, from `docs/plans/implemented/MODAL_SWEEP_HANDOFF.md`. **Stacked on:** sweep 8's branch
 (`alloc-project-list-2026-10`, #729; end commit `ede454cf`). **PR:** #730, merged with the
 stack as #726.
 **Contract:** aesthetic; each commit declares its change with dialog heights from
@@ -606,7 +606,7 @@ themes). Ben's calls: quiet accent headers everywhere; one PR; the three bugs fi
 
 ## 10. 2026-10-04: area sweep, `templates` + `py` (filters and facets)
 
-**Mode:** area, from `docs/plans/FILTERS_SWEEP_HANDOFF.md`. **Base:** `36e69595` (staging).
+**Mode:** area, from `docs/plans/implemented/FILTERS_SWEEP_HANDOFF.md`. **Base:** `36e69595` (staging).
 **Branch:** `filters-sweep`. **PR:** #733 (draft).
 **Contract:** mixed, declared per commit. Items 7 and 8 must look identical; items 3b, 6 and 11
 are deliberate visual changes; items 1 and 9 change behavior to fix a bug.
@@ -710,7 +710,7 @@ are deliberate visual changes; items 1 and 9 change behavior to fix a bug.
 
 ## 11. 2026-10-05: area sweep, `py` + `templates` (charts)
 
-**Mode:** area, from `docs/plans/CHARTS_SWEEP_HANDOFF.md` (22 items, all picked by Ben).
+**Mode:** area, from `docs/plans/implemented/CHARTS_SWEEP_HANDOFF.md` (22 items, all picked by Ben).
 **Base:** `97b8d876` (staging). **Branch:** `charts-sweep`. **PR:** #735 (draft).
 **Contract:** mixed, declared per commit. Fingerprints are the proof for the package, and
 `scripts/chart_sheet.py --compare` (new) is the stronger one for a refactor: all 227 sample

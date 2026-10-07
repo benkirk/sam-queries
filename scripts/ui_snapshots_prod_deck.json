@@ -118,5 +118,42 @@
   "steps": [
    "top:.main-content .nav-pills, .main-content .nav-tabs ~ * .nav"
   ]
+ },
+ {
+  "name": "tour-status-load",
+  "page": "/status/derecho",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   810
+  ],
+  "steps": [
+   "wait:[data-chart-persist-id=\"upq-chart-derecho\"] svg",
+   "click:[data-chart-persist-id=\"upq-chart-derecho\"] [aria-label=\"Group by\"] button:nth-child(2)",
+   "wait:[data-chart-persist-id=\"upq-chart-derecho\"] [aria-label=\"Group by\"] button:nth-child(2).active",
+   "click:[data-chart-persist-id=\"upq-chart-derecho\"] [aria-label=\"Metric\"] button:nth-child(2)",
+   "wait:[data-chart-persist-id=\"upq-chart-derecho\"] [aria-label=\"Metric\"] button:nth-child(2).active",
+   "wait:[data-chart-persist-id=\"upq-chart-derecho\"] svg",
+   "top:[data-chart-persist-id=\"upq-chart-derecho\"]"
+  ]
+ },
+ {
+  "name": "jobs-project",
+  "page": "/dashboards/user/jobs/WYOM0247/explore?machine=derecho",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   810
+  ],
+  "steps": [
+   "wait:#jobs-explore-timeline svg",
+   "remove:#jobs-explore-timeline svg text:not(g[id^=\"matplotlib.axis\"] text)"
+  ],
+  "element": "#jobs-explore-timeline figure",
+  "redact": [
+   "#jobs-explore-timeline svg text:not(g[id^=\"matplotlib.axis\"] text)"
+  ]
  }
 ]

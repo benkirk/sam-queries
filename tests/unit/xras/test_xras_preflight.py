@@ -263,6 +263,16 @@ class TestInferApplied:
         assert applied is not None
         assert applied['heuristic'] is False
 
+    def test_an_inactive_project_at_the_end_is_applied_exact(self, session):
+        """Lockstep with the handler: project activity is not a gate there either."""
+        alloc = make_allocation(session, end_date=datetime(2027, 8, 31))
+        project = alloc.account.project
+        project.active = False
+        session.flush()
+        applied = infer_applied(session, self._extension(project.projcode, '2027-08-31'))
+        assert applied is not None
+        assert applied['heuristic'] is False
+
     def test_extension_short_of_the_end_is_not_applied(self, session):
         alloc = make_allocation(session, end_date=datetime(2027, 8, 31))
         projcode = alloc.account.project.projcode

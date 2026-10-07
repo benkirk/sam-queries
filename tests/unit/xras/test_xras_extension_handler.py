@@ -18,6 +18,7 @@ See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Extension*.
 """
 
 import json
+import logging
 from datetime import datetime, timedelta
 
 import pytest
@@ -30,12 +31,16 @@ from sam.accounting.allocations import (
 )
 from sam.xras.errors import ActionErrors, XrasActionRejected
 from sam.xras.handlers._allocations import (
-    account_is_active,
+    account_is_extendable,
     effective_end_date,
     latest_allocation,
 )
 from sam.xras.handlers._fields import parse_action_end_date
-from sam.xras.handlers.extension import EXTENSION_COMMENT, handle_extension
+from sam.xras.handlers.extension import (
+    EXTENSION_COMMENT,
+    PROJECT_INACTIVE_WARNING,
+    handle_extension,
+)
 
 from xras_helpers import load_fixture, txns_for
 from xras_helpers import committing  # noqa: F401  — pytest resolves it by name
@@ -90,19 +95,22 @@ class TestParseActionEndDate:
 # ---------------------------------------------------------------------------
 
 
-class TestAccountIsActive:
-    """``project.isActive() && resource.isCommissioned(now) && !creationTime.after(now)``
-    — emphatically **not** ``Account.is_active``, which means "not deleted"."""
+class TestAccountIsExtendable:
+    """Legacy ``project.isActive() && resource.isCommissioned(now) &&
+    !creationTime.after(now)`` keeps only its middle conjunct — and is emphatically
+    **not** ``Account.is_active``, which means "not deleted"."""
 
-    def test_a_normal_account_is_active(self, session):
+    def test_a_normal_account_is_extendable(self, session):
         from factories import make_account
-        assert account_is_active(make_account(session), datetime.now())
+        assert account_is_extendable(make_account(session), datetime.now())
 
-    def test_an_inactive_project_disqualifies_its_accounts(self, session):
+    def test_an_inactive_project_does_not_disqualify_its_accounts(self, session):
+        """Declared divergence (UCLA0042, 2026-10-05): the deactivation sweep ran two
+        days before the Extension arrived and legacy's conjunct made it a no-op."""
         from factories import make_account, make_project
         project = make_project(session, active=False)
         account = make_account(session, project=project)
-        assert not account_is_active(account, datetime.now())
+        assert account_is_extendable(account, datetime.now())
 
     def test_a_decommissioned_resource_disqualifies_its_account(self, session):
         from factories import make_account, make_resource
@@ -110,14 +118,14 @@ class TestAccountIsActive:
         resource.decommission_date = datetime.now() - timedelta(days=1)
         session.flush()
         account = make_account(session, resource=resource)
-        assert not account_is_active(account, datetime.now())
+        assert not account_is_extendable(account, datetime.now())
 
     def test_a_resource_not_yet_commissioned_disqualifies_its_account(self, session):
         from factories import make_account, make_resource
         resource = make_resource(
             session, commission_date=datetime.now() + timedelta(days=30))
         account = make_account(session, resource=resource)
-        assert not account_is_active(account, datetime.now())
+        assert not account_is_extendable(account, datetime.now())
 
     def test_a_recently_created_account_is_not_excluded_by_clock_skew(self, session):
         """WARNING: The conjunct legacy has and this port drops, and the reason why.
@@ -154,7 +162,7 @@ class TestAccountIsActive:
                 'which is neither the documented multi-hour timezone skew nor '
                 'agreement — look at the container TZ before trusting this test')
 
-        assert account_is_active(account, datetime.now())
+        assert account_is_extendable(account, datetime.now())
 
     def test_the_soft_delete_check_is_ours_not_legacys(self, session):
         """Declared divergence: legacy has no equivalent. Unobservable in production
@@ -164,7 +172,7 @@ class TestAccountIsActive:
         account = make_account(session)
         account.deleted = True
         session.flush()
-        assert not account_is_active(account, datetime.now())
+        assert not account_is_extendable(account, datetime.now())
 
 
 class TestEffectiveEndDate:
@@ -321,7 +329,9 @@ class TestHandleExtension:
                                              resources=[]))
         assert allocation.end_date == datetime(2030, 6, 30, 23, 59, 59)
 
-    def test_an_inactive_projects_accounts_are_skipped(self, committing):
+    def test_an_inactive_project_is_extended_and_warned(self, committing):
+        """The dates move, the row carries the warning, the project stays parked
+        for a human — activation is the card's job, not the handler's."""
         session = committing
         from factories import make_account, make_allocation, make_project
         project = make_project(session, active=False)
@@ -331,7 +341,46 @@ class TestHandleExtension:
 
         result = handle_extension(session, action_for(project.projcode, '2030-06-30'))
         assert result.status == 'processed'
+        assert allocation.end_date == datetime(2030, 6, 30, 23, 59, 59)
+        assert result.warnings == (
+            PROJECT_INACTIVE_WARNING.format(projcode=project.projcode),)
+        assert '\n' not in result.warnings[0]       # the row writer splits on newlines
+        assert not project.is_active
+
+    def test_the_inactive_warning_rides_the_validate_only_path(self, committing):
+        """Set in ``assemble()``, so a re-check reports it too; nothing is written."""
+        session = committing
+        from factories import make_account, make_allocation, make_project
+        project = make_project(session, active=False)
+        allocation = make_allocation(session,
+                                     account=make_account(session, project=project),
+                                     end_date=datetime(2027, 1, 31))
+
+        result = handle_extension(session, action_for(project.projcode, '2030-06-30'),
+                                  validate_only=True)
+        assert result.warnings == (
+            PROJECT_INACTIVE_WARNING.format(projcode=project.projcode),)
         assert allocation.end_date == datetime(2027, 1, 31, 23, 59, 59)
+
+    def test_an_active_project_carries_no_warning(self, committing):
+        session = committing
+        from factories import make_account, make_allocation, make_project
+        project = make_project(session)
+        make_allocation(session, account=make_account(session, project=project),
+                        end_date=datetime(2027, 1, 31))
+        result = handle_extension(session, action_for(project.projcode, '2030-06-30'))
+        assert result.warnings == ()
+
+    def test_no_extendable_account_is_logged_as_such(self, committing, caplog):
+        """Not "0 account(s) already end": the two no-op shapes must read differently."""
+        session = committing
+        from factories import make_project
+        project = make_project(session)
+        with caplog.at_level(logging.INFO, logger='sam.xras.handlers.extension'):
+            result = handle_extension(session, action_for(project.projcode, '2030-06-30'))
+        assert result.status == 'processed'
+        assert 'matched no extendable account' in caplog.text
+        assert 'already end' not in caplog.text
 
     def test_only_the_latest_allocation_per_account_moves(self, committing):
         session = committing

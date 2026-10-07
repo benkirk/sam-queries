@@ -76,7 +76,7 @@ gave each database its own label, after a 19 s jobs request logged db=8ms.
 | **`cpu`** | do less work, or cache it | the pace chart: drawing |
 | **rest: waiting** | threads, the pool, a cache | 32 cold charts: 86% waiting |
 
-† Waiting is Python's global lock: 32 chart renders at once take turns.
+*† Waiting is Python's global lock: 32 chart renders at once take turns.*
 
 ::: {.notes}
 fstree cold miss, prod 2026-09-08: ~3.3 s of ~3.5-4.3 s is the sam database
@@ -138,7 +138,7 @@ directories page at 895 and cut it to 12. Allocations dashboard, show_usage, col
 docs/plans/implemented/ALLOC-DASHBOARD-PROFILING.md:130,199-206; warm, it is well under 1 s.
 :::
 
-## The read model
+## The read model, in code
 
 ```python
 oldest = min(r.refreshed_at for r in rows)
@@ -177,7 +177,7 @@ docs/plans/implemented/READ_MODEL.md; #534, #543, #546 (2026-09-09 to 09-11).
 | **Derecho allocation summary** | 733 ms | 201 ms | copy |
 | **one small project's dashboard** | 32 ms | 40 ms | copy |
 
-† Small pages gain nothing. A test checks that every reader gives the same answer either way.
+*† Small pages gain nothing. A test checks that every reader gives the same answer either way.*
 
 ::: {.notes}
 Prod rows 2026-09-11, READ_MODEL.md:221-225 (fstree, warm/cold live); copy rows 2026-09-09,
@@ -201,7 +201,7 @@ cover their slow part.
 | **Disk scans, awards** | 8 days | the query's arguments |
 | **XRAS lookups** | 4 hours – 1 day | the query's arguments |
 
-† Outside data lives long because it changes slowly and costs a lot to fetch.
+*† Outside data lives long because it changes slowly and costs a lot to fetch.*
 
 ::: {.notes}
 All in Redis db0, one key prefix per cache (docs/plans/implemented/REDIS_CACHE_PREFIXES.md).
@@ -238,7 +238,7 @@ Gate: tests/unit/gates/test_static_assets.py.
 - A refresh under load is a stampede: 32 cold chart renders took 16.5 s each (median).
   Nothing yet stops two requests building the same entry.
 
-† Next: invalidation that follows the deploy, so nobody has to remember.
+*† Next: invalidation that follows the deploy, so nobody has to remember.*
 
 ::: {.notes}
 Commit hook: _flush_view_cache, src/webapp/audit/events.py:192-206; collectors commit every few
@@ -273,13 +273,13 @@ tests/perf/test_directory_access_latency.py.
 ## Indexes where the data is big {.smaller .center .fill}
 
 | Query | Before | After | When |
-|--------------------------------------------------|----------|----------|------------|
+|------------------------------------------------------------|--------|--------|--------|
 | **Derecho jobs, a stalled account, newest 50** | 58 s | 0.5 ms | Sep 30 |
 | **Casper jobs, a stalled account, newest 50** | 109 s | 4 ms | Sep 30 |
 | **Campaign Store directories, by owner** | 17.8 s | 0.23 s | Sep 28 |
 | **Jobs usage charts, disk spill per call** | 1.5 GB | none | Sep 12 |
 
-† The jobs tables hold 16 and 27.5 million rows; the directory table, 61 million.
+*† The jobs tables hold 16 and 27.5 million rows; the directory table, 61 million.*
 
 ::: {.notes}
 All production, all in the peer repo hpc-usage-queries. Jobs: (account_id, end)

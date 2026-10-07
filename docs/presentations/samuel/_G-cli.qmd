@@ -1,16 +1,16 @@
-# At the Prompt
+# Command Line Tools
 
 Two commands for people, and JSON for the scripts that drive them.
 
-## Two commands, one shape {.smaller .center .fill}
+## Two commands, one shape {.center .fill scale="1.15"}
 
 | Command | Does | Subcommands |
 |------------------------|------------------------|---------------------------------------------------|
 | `sam-search` | reads | user, project, allocations, accounting, contracts, awards |
 | `sam-admin` | reads, checks and writes | user, project, accounting, contracts, xras, rbac, tasks, cache, last-seen |
-| `sam-status` | shows one system's status | derecho, casper, jupyterhub; to be retired |
+| `sam-status` | shows one system's status | `derecho`, `casper`, `jupyterhub`; to be retired |
 
-† `sam-admin user` and `project` extend the search classes, so every read option is there too.
+*† `sam-admin user` and `project` extend the search classes, so every read option is there too.*
 
 ::: {.notes}
 Entry points: pyproject.toml:63-65 (cli.cmds.search:cli, cli.cmds.admin:cli, system_status:main).
@@ -26,7 +26,7 @@ dashboard (src/system_status/cli.py:60-63); its removal is on the plan's fix-lat
 tests/unit/cli/, 17 files, 243 tests.
 :::
 
-## One question, one line
+## One question, one line {.vcenter .fill}
 
 ```text
 $ sam-search allocations --resource Derecho \
@@ -54,7 +54,7 @@ Formatting: sam.fmt (exact up to 100,000, compact above); SAM_RAW_OUTPUT (src/co
 src/sam/fmt.py:11,116,131).
 :::
 
-## Built for scripts
+## Built for scripts {.vcenter .fill}
 
 ```text
 $ sam-search --format json allocations --resource Derecho \
@@ -84,7 +84,7 @@ tasks --run and accounting --disk. Lockstep with jobhist: CLAUDE.md "Related pro
 enforces it. jobhist adds file exporters (dat, csv, md, json-file); SAMuel's CLIs print rich or json.
 :::
 
-## The operator's commands {.smaller .center .fill}
+## The operator's commands {.center .fill}
 
 | Command | Does | To try it safely |
 |----------------------------------|--------------------------------------------|----------------------|
@@ -96,7 +96,7 @@ enforces it. jobhist adds file exporters (dat, csv, md, json-file); SAMuel's CLI
 | `xras --readiness` and the other reports | XRAS boards from the sweep's snapshot | read-only |
 | `cache --refresh` | clears the running web app's caches | needs an API key |
 
-† All `sam-admin`; the reports and checks never write.
+*† All `sam-admin`; the reports and checks never write.*
 
 ::: {.notes}
 src/cli/cmds/admin.py: project (:85), contracts (:224), accounting (:290), cache (:627), xras (:709),

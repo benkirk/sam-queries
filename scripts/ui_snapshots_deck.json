@@ -136,5 +136,51 @@
   "steps": [
    "top:.breadcrumb"
   ]
+ },
+ {
+  "name": "tour-tree",
+  "page": "/admin/project/CESM0002/edit?tab=allocations",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   900
+  ],
+  "steps": [
+   "wait:#allocResourceTypeTabs",
+   "wait:#allocationTreeContainer table",
+   "click:tr[data-bs-target$=\"-derecho\"]",
+   "wait:tbody[id$=\"-derecho\"].show",
+   "top:#allocResourceTypeTabs"
+  ]
+ },
+ {
+  "name": "admin-tabs",
+  "page": "/admin/projects",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   810
+  ],
+  "steps": [
+   "click:button[aria-label=\"Admin pages\"]",
+   "wait:button[aria-label=\"Admin pages\"] + .dropdown-menu.show"
+  ]
+ },
+ {
+  "name": "admin-templates",
+  "page": "/admin/htmx/notifications?tab=templates&name=expiration-UNIV.html",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   900
+  ],
+  "steps": [
+   "wait:#templateBody",
+   "wait:#templatePreviewPane iframe",
+   "top:#previewControls"
+  ]
  }
 ]

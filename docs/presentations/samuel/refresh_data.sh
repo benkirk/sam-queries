@@ -55,7 +55,7 @@ SAMUEL_REPO=$repo python3 count_tables.py
 SAMUEL_REPO=$repo python3 concepts_data.py
 
 # Part 4: the ncar-hpc-deploy schedule, verbatim (comments dropped but the header). Read from the ref, no DB.
-{ printf '```\n'
+{ printf '```{.yaml code-line-numbers="false"}\n'   # yaml: the comment row colored, the bare rows plain
   git -C "$repo" show "$ref:containers/ncar-hpc-deploy/etc/schedule" | awk '/^# cadence/ || (!/^#/ && NF)'
   printf '```\n'
 } > _out_schedule.qmd

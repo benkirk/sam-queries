@@ -8,15 +8,14 @@ from all three of its predecessors.
 WARNING: **Two account lookups live here and they are deliberately asymmetric.** Read them
 together before using either:
 
-- :func:`account_is_active` filters hard — inactive project or decommissioned resource
-  and the account is skipped. Extension uses it.
+- :func:`account_is_extendable` skips a deleted account and one on a resource not
+  commissioned at ``now``. Extension and the preflight use it. Project activity is
+  NOT a gate — see the function.
 - :func:`account_for_resource` is *unfiltered*, matching ``Project.getAccount(name)``
   case-insensitively over **all** accounts. Supplement, Adjustment and Update use it.
 
 So a Supplement lands on an account whose resource is decommissioned, where an Extension
-would skip it. That is legacy's behavior on both sides. Until this module existed the
-separation-by-file was doing part of the work of keeping them apart; now the warning has
-to.
+skips it. That is legacy's behavior on both sides.
 
 WARNING: **``auth_at_panel_mtg`` reaches a row two different ways**, and the difference is why
 an Adjustment silently lost the flag for a whole sprint. A CREATE row is marked *after
@@ -42,7 +41,7 @@ from ..wire import get_field
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    'account_is_active',
+    'account_is_extendable',
     'effective_end_date',
     'latest_allocation',
     'account_for_resource',
@@ -90,40 +89,30 @@ def effective_end_date(allocation: Allocation) -> Optional[datetime]:
     return min(allocation.end_date, decommission)
 
 
-def account_is_active(account, now: datetime) -> bool:
-    """``Account.isActive(date)`` — ``project.isActive() && resource.isCommissioned(date)
-    && !creationTime.after(date)``, minus the third conjunct. See below.
+def account_is_extendable(account, now: datetime) -> bool:
+    """Legacy ``Account.isActive(date)`` with two of its three conjuncts dropped.
 
-    WARNING: **Not ``Account.is_active``.** SAM's hybrid on this model comes from
-    ``SoftDeleteMixin`` and means "not deleted", which is a different question
-    entirely — using it here would extend allocations on decommissioned resources and
-    on inactive projects. The house rule (CLAUDE.md § 5) is to prefer the hybrid, and
-    this is the case where doing so would be wrong; the composite is built from the
-    other models' documented predicates rather than from raw columns.
+    Legacy: ``project.isActive() && resource.isCommissioned(date) &&
+    !creationTime.after(date)``. Kept: the resource is commissioned at ``now``.
+    Added: the account is not soft-deleted (legacy has no equivalent; zero deleted
+    accounts in production, but extending one would be wrong). Dropped, on purpose:
 
-    WARNING: **``!creationTime.after(now)`` is deliberately not ported.** It compares two
-    clocks that are not the same clock: ``account.creation_time`` carries
-    ``server_default=CURRENT_TIMESTAMP`` and resolves in the **MySQL server's**
-    timezone, which is UTC in the dev and CI containers, while ``now`` is
-    ``datetime.now()`` in SAM's naive-Mountain convention. Measured, today, against the
-    test container: ``NOW()`` returns 12:45 while Python returns 06:45 — a six-hour
-    skew, in the direction that makes every account created in the last six hours look
-    like it was created in the future.
+    - ``project.isActive()``. UCLA0042, 2026-10-05: the monthly deactivation sweep
+      switched the project off two days before XRAS posted its approved Extension;
+      every account was skipped, the row said ``processed``, nothing moved. An
+      approved Extension is authoritative for dates, activation stays a human step
+      on the XRAS card, and the handler stamps a warning on the row. Supplement,
+      Adjustment and Update already write to an inactive project's accounts.
+    - ``!creationTime.after(now)``. ``account.creation_time`` is the MySQL server's
+      clock (UTC in dev/CI) while ``now`` is naive-Mountain: a six-hour skew that
+      made every account created in the last six hours look future-dated, so an
+      Extension posted after a New skipped it. The conjunct can only exclude, so
+      dropping it is a no-op wherever the clocks agree.
 
-    The conjunct can only ever *exclude*, so honoring it under skew means an Extension
-    posted shortly after a New silently skips the account it should extend, reports
-    ``processed``, and writes nothing. Dropping it is a no-op in any deployment where
-    the two clocks agree — which is the intent — and removes the failure mode where
-    they do not. This repo has already been bitten once by the same UTC default (see
-    ``webapp/api/xras/actions.py``'s ``received_time`` comment).
-
-    The soft-delete check is kept **as well**, as a declared divergence: legacy has no
-    equivalent, but extending a deleted account would be wrong regardless. Unobservable
-    today — production has zero deleted accounts out of 17,989.
+    WARNING: **Not ``Account.is_active``** — that hybrid is ``SoftDeleteMixin``'s
+    "not deleted", one of the questions asked here, not the composite.
     """
     if not account.is_active:                      # SoftDeleteMixin: not deleted
-        return False
-    if account.project is None or not account.project.is_active:
         return False
     if account.resource is None or not account.resource.is_commissioned_at(now):
         return False
@@ -160,13 +149,12 @@ def latest_allocation(account) -> Optional[Allocation]:
 def account_for_resource(project: Project, resource: Resource):
     """``Project.getAccount(resourceName)`` — a scan over **all** accounts.
 
-    WARNING: Deliberately unfiltered. Extension's ``account.isActive()`` gate does not apply
-    here, so a supplement lands on an account whose project is inactive or whose
-    resource is decommissioned. Matching on the resource *name*, case-insensitively
-    (``Account.isForResource`` uses ``equalsIgnoreCase``), rather than on the id —
-    because that is the join legacy makes, and the two can disagree if two resource
-    rows ever share a name. See this module's header for the asymmetry with
-    :func:`account_is_active`.
+    WARNING: Deliberately unfiltered. Extension's commissioned-resource gate does not
+    apply here, so a supplement lands on an account whose resource is decommissioned.
+    Matching on the resource *name*, case-insensitively (``Account.isForResource``
+    uses ``equalsIgnoreCase``), rather than on the id — because that is the join
+    legacy makes, and the two can disagree if two resource rows ever share a name.
+    See this module's header for the asymmetry with :func:`account_is_extendable`.
     """
     wanted = (resource.resource_name or '').casefold()
     for account in project.accounts:
