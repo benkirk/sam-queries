@@ -626,7 +626,7 @@ selector.setServiceables(
 | 3 | `actionType == "Supplement"` && project exists | Per resource: create allocation if none (start today, end = latest contract/allocation end), else supplement when `>0`; `≤0` ignored with a warning |
 | 4 | `actionType == "Adjust"` && project exists | As Supplement; legacy silently drops negatives. ⚠️ **Unreachable in legacy** — XRAS sends `"Adjustment"`, so this row has never executed (defect 4, § 9). SAM accepts both spellings |
 | 5 | `actionType == "Transfer"` && project exists | 1 negative source + ≥1 positive destinations, same project, Σ = 0, source clamped to available |
-| 6 | `actionType == "Extension"` && project exists | **Ignores payload resources**; extends the latest allocation of **every active account** to `actionEndDate`; **errors** if that would shrink any |
+| 6 | `actionType == "Extension"` && project exists | **Ignores payload resources**; extends the latest allocation of **every active account** to `actionEndDate`; **errors** if that would shrink any. SAM drops the project-active half of that test (Sprint C finding 4) |
 | — | no match | `BadRequestException` → swallowed → manual-fallback email → **200** |
 
 Assembly does **not** short-circuit: errors accumulate into an ordered `LinkedHashSet` on
@@ -1234,7 +1234,8 @@ rollback-on-error and nothing else. Audit rows exist because manage functions *e
 `log_allocation_transaction`; the context manager only makes the write and its audit row atomic.
 
 1. **Extension (60% of posts, 98.5% success)** — build first, on the easy path. Extend the latest
-   allocation of every **active account** to `actionEndDate`, erroring if that would shrink any;
+   allocation of every account on a commissioned resource (project activity is not a gate — Sprint C
+   finding 4) to `actionEndDate`, erroring if that would shrink any;
    payload resources are ignored. `extend_project_allocations` is tree-scoped and skips shrinks
    silently (§5), so add an account-scoped variant or a strict mode. Expect ~3.3 allocations per
    action. Use comment `XrasAction Extension Request`.

@@ -171,6 +171,55 @@ class TestXrasFragments:
         resp = auth_client.get('/allocations/xras_pending_fragment')
         assert resp.status_code == 200
 
+
+class TestTheErrorsCellShowsWarnings:
+    """A row with only warnings must not read as a clean row (UCLA0042: an Extension
+    on an inactive project is `processed` with a warning and no error). Errors win
+    the cell when both are present; the modal lists the warning text."""
+
+    @staticmethod
+    def _row(**over):
+        from datetime import datetime
+        row = {
+            'action_log_id': 1, 'received_time': datetime(2026, 10, 5, 16, 10),
+            'remote_actor': 'XRAS', 'action_type': 'Extension',
+            'request_number': 'UCLA0042', 'action_id': 403831, 'request_id': 1206968,
+            'status': 'processed', 'service': 'extend', 'outcome_reason': None,
+            'http_status': 200, 'errors': [], 'warnings': [],
+            'projcode_result': 'UCLA0042', 'processed_time': None,
+            'processed_by': None, 'source_action_id': None, 'recheck_count': 0,
+            'request_is_project': False, 'result_is_project': False,
+            'request_is_token': False,
+        }
+        row.update(over)
+        return row
+
+    def _render(self, auth_client, monkeypatch, row):
+        from webapp.dashboards.allocations.xras import card_routes
+        monkeypatch.setattr(card_routes, 'get_recent_xras_actions',
+                            lambda *a, **k: [row])
+        monkeypatch.setattr(card_routes, 'count_recent_xras_actions',
+                            lambda *a, **k: 1)
+        resp = auth_client.get('/allocations/xras_fragment')
+        assert resp.status_code == 200
+        return resp.get_data(as_text=True)
+
+    def test_a_warned_row_shows_the_count(self, auth_client, monkeypatch):
+        body = self._render(auth_client, monkeypatch,
+                            self._row(warnings=['Project UCLA0042 is inactive']))
+        assert '1 warning' in body
+        assert 'error' not in body.split('UCLA0042', 1)[1].split('</tr>')[0]
+
+    def test_errors_win_the_cell(self, auth_client, monkeypatch):
+        body = self._render(auth_client, monkeypatch,
+                            self._row(errors=['Missing title'], warnings=['w']))
+        assert '1 error' in body
+        assert '1 warning' not in body
+
+    def test_a_clean_row_keeps_the_dash(self, auth_client, monkeypatch):
+        body = self._render(auth_client, monkeypatch, self._row())
+        assert 'warning' not in body.split('UCLA0042', 1)[1].split('</tr>')[0]
+
     def test_pending_empty_state_does_not_claim_nothing_is_pending(
             self, auth_client):
         """The card can only see actions this log knows about, so an empty
