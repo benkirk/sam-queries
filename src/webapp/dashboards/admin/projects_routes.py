@@ -871,13 +871,16 @@ def htmx_project_allocation_tree(project):
 
     root = project.get_root() if hasattr(project, 'get_root') else project
 
-    # Always show active projects only in the allocation tree.
-    all_nodes = [n for n in ([root] + root.get_descendants()) if n.active]
     # One batched build for the whole tree (the per-node loop was the ~5.7 s
     # path); the batched builder also consults the read-model when fresh.
+    # Visibility is decided AFTER the build: a node shows by flag or by holding
+    # a row at active_at. Filtering on the flag first hides an inactive root
+    # for every date, so the picker can never answer "what did it hold then".
+    tree = [root] + root.get_descendants()
     by_project = build_user_projects_resources_batched(
-        db.session, all_nodes, active_at=active_at,
+        db.session, tree, active_at=active_at,
     )
+    all_nodes = _visible_tree_nodes(root, tree, by_project)
     resources_by_projcode = {
         node.projcode: {r['resource_name']: r for r in by_project.get(node.project_id, [])}
         for node in all_nodes
@@ -917,9 +920,11 @@ def htmx_project_allocation_tree(project):
     # Computed from the data already loaded above; no extra DB trips.
     can_exchange = can_exchange_allocations(current_user, project)
     can_modify_allocs = can_modify_allocations(current_user, project)
+    # Active descendants only: _exchange_candidates never offers an inactive
+    # project, so counting one here would show a button that opens "needs two".
     descendant_projcodes = {
         n.projcode for n in all_nodes
-        if project.tree_left < n.tree_left < project.tree_right
+        if n.active and project.tree_left < n.tree_left < project.tree_right
     }
     exchange_eligible_resources = set()
     if can_exchange:
@@ -1011,7 +1016,25 @@ def htmx_project_allocation_tree(project):
         can_exchange=can_exchange,
         exchange_eligible_resources=exchange_eligible_resources,
         resource_id_by_name=resource_id_by_name,
+        visible_projcodes={n.projcode for n in all_nodes},
     )
+
+
+def _visible_tree_nodes(root, tree, by_project):
+    """Nodes the Allocations tab shows: active ones, the root, any node holding a
+    displayed allocation at the viewed date, and their ancestors (so rows nest)."""
+    by_id = {n.project_id: n for n in tree}
+    shown = {
+        n.project_id for n in tree
+        if n is root or n.active
+        or any(r.get('allocation_id') for r in by_project.get(n.project_id, []))
+    }
+    for pid in list(shown):
+        parent = by_id.get(by_id[pid].parent_id)
+        while parent is not None and parent.project_id not in shown:
+            shown.add(parent.project_id)
+            parent = by_id.get(parent.parent_id)
+    return [n for n in tree if n.project_id in shown]
 
 
 # Resources a new project usually gets; every other active resource sits behind
