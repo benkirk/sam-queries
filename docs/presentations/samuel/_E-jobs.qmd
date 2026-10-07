@@ -109,7 +109,7 @@ whole filesystem: Ben's own My Data is a few files.
 
 ::: {.notes}
 Status, Filesystem Scans, Campaign Store, Large directories (VIEW_ALL_FILESYSTEM_DATA): the
-panels My Data shows a user, for the whole filesystem. Production, read-only, 2026-10-06. Names and emails are replaced with pseudonyms in the page before capture, never blurred (docs/plans/SAMUEL_PROD_SCREENSHOTS_HANDOFF.md).
+panels My Data shows a user, for the whole filesystem. Production, read-only, 2026-10-06. Names and emails are replaced with pseudonyms in the page before capture, never blurred (docs/plans/implemented/SAMUEL_PROD_SCREENSHOTS_HANDOFF.md).
 :::
 
 [![](images/status-fs-scans.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/status/filesystem-scans)

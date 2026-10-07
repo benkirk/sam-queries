@@ -679,7 +679,7 @@ shots are Ben's own views (pinned to the signed-in user) and one project-level c
   rather than blurred afterwards.
   **Approved by Ben, 2026-10-06:** production shots are allowed under that protocol. The
   principle for the whole effort is a responsible obfuscation, not a pedantic one.
-  The protocol, the tooling to build, and the shot list: `SAMUEL_PROD_SCREENSHOTS_HANDOFF.md`.
+  The protocol, the tooling to build, and the shot list: `implemented/SAMUEL_PROD_SCREENSHOTS_HANDOFF.md`.
 
 - **Playwright MCP** drives the local `samuel-dev` (:5050, `docker compose up samuel-dev --watch`)
   through stub Quick Login on obfuscated data. It captures desktop / mobile and light / dark
@@ -688,7 +688,7 @@ shots are Ben's own views (pinned to the signed-in user) and one project-level c
     re-shooting.
   - ⚠️ **This repo and the framework are both PUBLIC.** Check each shot for real names before
     committing; a dev DB may be unobfuscated. Screenshot prod only under
-    `SAMUEL_PROD_SCREENSHOTS_HANDOFF.md`.
+    `implemented/SAMUEL_PROD_SCREENSHOTS_HANDOFF.md`.
 - **claude-in-chrome skill** uses Ben's browser session for SSO-gated UIs: Argo CD, GitHub
   Actions, the rulesets page, samuel-dev on k8s.
 - **Google Workspace MCP** can mine existing CISL/NCAR Drive decks for framing.
