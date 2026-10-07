@@ -38,13 +38,14 @@ from sam.manage.extend import extend_account_allocation
 
 from .. import errors as e
 from ..dispatch import DispatchResult, register
-from ._allocations import account_is_active, effective_end_date, latest_allocation
+from ._allocations import account_is_extendable, effective_end_date, latest_allocation
 from ._fields import parse_action_end_date
 from .base import ActionHandler
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['ExtensionHandler', 'handle_extension', 'EXTENSION_COMMENT']
+__all__ = ['ExtensionHandler', 'handle_extension', 'EXTENSION_COMMENT',
+           'PROJECT_INACTIVE_WARNING']
 
 #: ``transaction_comment`` on every row this handler writes.
 #:
@@ -57,9 +58,18 @@ __all__ = ['ExtensionHandler', 'handle_extension', 'EXTENSION_COMMENT']
 #: spelling the moment anyone renamed a class.
 EXTENSION_COMMENT = 'XrasAction Extension Request'
 
+#: Stamped on the row when the project is inactive at processing. One line only:
+#: the row writer splits ``warnings`` on newlines.
+PROJECT_INACTIVE_WARNING = ('Project {projcode} is inactive; its allocations are '
+                            'extended but it must be activated before they can be used')
+
 
 class ExtensionHandler(ActionHandler):
-    """Extend the latest allocation of every active account on the project."""
+    """Extend the latest allocation of every account on a commissioned resource.
+
+    Project activity is not a gate — a declared divergence from legacy; see
+    :func:`~sam.xras.handlers._allocations.account_is_extendable`.
+    """
 
     service = 'extend'
 
@@ -76,9 +86,11 @@ class ExtensionHandler(ActionHandler):
         now = datetime.now()
         if self.project is None or self.new_end is None:
             return
+        if not self.project.is_active:
+            self.warnings += (PROJECT_INACTIVE_WARNING.format(projcode=self.projcode),)
 
         for account in self.project.accounts:
-            if not account_is_active(account, now):
+            if not account_is_extendable(account, now):
                 continue
             if not account.allocations:              # Account.hasAllocations()
                 continue
@@ -119,11 +131,14 @@ class ExtensionHandler(ActionHandler):
         ``execute()`` would fire it before the transaction closed, so a run that then
         failed to commit would still have claimed it completed.
         """
-        if not self.extended:
-            # Every target was already at the requested end date. Legacy reports
-            # success here too — its `doExtend` returns early per node and the action
-            # still completes — and this is a candidate explanation for the "2
-            # successful posts that mutated nothing" in § 1.2 of the reference doc.
+        if not self.extended and not self.targets:
+            logger.info(
+                'XRAS extension for %s matched no extendable account (%d account(s): '
+                'decommissioned resource, deleted, or no allocations)',
+                self.projcode, len(self.project.accounts) if self.project else 0)
+        elif not self.extended:
+            # Legacy reports success here too: its `doExtend` returns early on an
+            # equal end date and the action still completes.
             logger.info(
                 'XRAS extension for %s changed nothing: %d account(s) already end %s',
                 self.projcode, len(self.targets),

@@ -317,7 +317,7 @@ otherwise: both Extensions carry a populated `roles[]` that nothing reads. This 
 stronger than the § *roster* note about `resources: []` producing zero add-user
 commands — the factory is never constructed at all.
 
-**Three findings that changed the implementation:**
+**Four findings that changed the implementation:**
 
 1. ⚠️ **`!creationTime.after(now)` is not ported.** It compares two clocks that are not
    the same clock: `account.creation_time` carries `server_default=CURRENT_TIMESTAMP`
@@ -339,12 +339,20 @@ commands — the factory is never constructed at all.
 3. **`Allocation.extend_allocation` could not be reused** — it writes the snapshot
    shape, sets `propagated` on child nodes (production has **zero** propagated XRAS
    rows), has no equal-end-date skip, and takes a non-optional `user_id`.
+4. ⚠️ **`project.isActive()` is not ported either** (2026-10-07). UCLA0042: the monthly
+   `deactivate_expired_projects` sweep switched the project off on 10-03, XRAS posted
+   its approved Extension on 10-05, every account was skipped, the row said
+   `processed` and no allocation moved — legacy behaves identically. An approved
+   Extension is authoritative for dates and activation is already a human step on the
+   XRAS card, so `account_is_extendable` keeps only the commissioned-resource test and
+   the handler stamps `PROJECT_INACTIVE_WARNING` on the row. Record and the deferred
+   automatic-reactivation idea: `docs/plans/XRAS_EXTENSION_INACTIVE_PROJECT.md`.
 
 **`Account.is_active` is the wrong predicate here** and this is the case where the
 house rule (§ 5) gives the wrong answer: SAM's hybrid on that model is `SoftDeleteMixin`
 ("not deleted"), while legacy means `project.isActive() && resource.isCommissioned(now)`.
-Composed explicitly from the other models' documented predicates, with the soft-delete
-check kept *as well* — a declared divergence, unobservable (zero deleted accounts of
+Composed explicitly from the other models' documented predicates (finding 4 drops the
+project half), with the soft-delete check kept *as well* — a declared divergence, unobservable (zero deleted accounts of
 17,989), but extending a deleted account would be wrong regardless.
 
 **Detach writes an audit row; legacy's `disinherit()` does not.** Production holds

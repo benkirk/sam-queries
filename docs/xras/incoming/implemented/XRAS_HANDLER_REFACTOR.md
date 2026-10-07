@@ -180,7 +180,7 @@ a `has_work()` hook that exists for exactly one caller. Say so instead.
 | new module | contents (from) |
 |---|---|
 | `handlers/_fields.py` | `title`, `abstract` (new) · `begin_date` (new), `end_date` (extension) · `transaction_amount`, `resource_comment`, `resolve_resource` (supplement) |
-| `handlers/_allocations.py` | `account_is_active`, `effective_end_date`, `latest_allocation` (extension) · `account_for_resource`, `new_allocation_end_date` (supplement) · `clamp_start_to_commission` (new) · **the two create policies as named functions** — `create_from_action_dates`, `create_from_project_history` |
+| `handlers/_allocations.py` | `account_is_extendable` (then `account_is_active`), `effective_end_date`, `latest_allocation` (extension) · `account_for_resource`, `new_allocation_end_date` (supplement) · `clamp_start_to_commission` (new) · **the two create policies as named functions** — `create_from_action_dates`, `create_from_project_history` |
 
 Naming the create policies is the specific thing that prevents a recurrence of the `auth`
 bug: two call sites of one function cannot drift, where two copies of thirty lines can and

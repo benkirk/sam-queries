@@ -190,7 +190,11 @@
                           style="max-width:38ch;">{{ r.errors[0] }}</span>
                 </td>
                 {% else %}
-                <td class="text-muted small">—</td>
+                {# Warnings are non-fatal and listed in the details modal; the count
+                   keeps a warned row from reading as a clean one. #}
+                <td class="text-muted small">
+                    {%- if r.warnings %}{{ r.warnings | length | fmt_plural('warning', 'warnings') }}{% else %}—{% endif -%}
+                </td>
                 {% endif %}
                 <td class="text-end text-nowrap">
                     <button class="btn btn-row" type="button"
