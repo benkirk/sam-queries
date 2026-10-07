@@ -137,6 +137,10 @@ def tree(session, root_code, *, max_children, include=(), depth=2, resource=RESO
         node, amount = project.projcode, fmt.number(float(alloc.amount))
         if project is root:
             kind, note = 'root', ''
+            if not pool:   # the award's residual: what the root keeps after every carve-out
+                carved = sum(float(a.amount) for k in root.children
+                             if (a := current_allocation(k, resource)) is not None)
+                note = f'<br/>{fmt.number(float(alloc.amount) - carved)} kept'
         elif alloc.parent_allocation_id:
             kind, note = 'linked', ', shared'
         elif pool:

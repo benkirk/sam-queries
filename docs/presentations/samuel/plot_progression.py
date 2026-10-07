@@ -82,4 +82,5 @@ FOOTNOTE = ("† Every text line on main, the method of the March talk. Tests: t
             "   Legacy SAM's ~250K was counted differently, so read it as a landmark, not a race.")
 fig.tight_layout(rect=(0, 0.11, 0.87, 1))            # right margin holds the direct labels
 fig.text(0.01, 0.015, FOOTNOTE, color=MUTED, fontsize=9.5, ha="left", va="bottom")
-fig.savefig(HERE / "images/loc_progression.png", transparent=False, facecolor="white")
+fig.savefig(HERE / "images/loc_progression.png", transparent=False, facecolor="white",
+            bbox_inches="tight", pad_inches=0.15)   # no lopsided right margin

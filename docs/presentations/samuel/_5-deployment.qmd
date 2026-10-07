@@ -18,26 +18,35 @@ digraph Pipeline {
   node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=14,
          fillcolor="#FFFFFF", color="#6B7280", fontcolor="#00357A", margin="0.18,0.08"];
   edge  [fontname="Helvetica", fontsize=12, color="#6B7280", fontcolor="#6B7280"];
-  pr    [label="a pull request", pos="0,1.9!"];
-  ci    [label="GitHub Actions\ntests, build", pos="3,1.9!"];
-  ghcr  [label="GHCR\nthe samuel image", pos="6,1.9!"];
-  pin   [label="cirrus, cirrus-dev\nbranches", pos="9,1.9!"];
-  argo  [label="Argo CD\non CIRRUS", pos="9,0!"];
-  pods  [label="SAMuel pods\nnwc1", pos="6,0!", fillcolor="#0057C2", color="#00357A",
+  // the cluster, drawn first so it sits behind what runs on it
+  nwc1  [label=<CIRRUS:&#160;<FONT FACE="Courier">nwc1</FONT>>, labelloc=t, shape=box, style="rounded,dashed", width=7.4,
+         height=4.2, fixedsize=true, color="#0057C2", fontcolor="#00357A", fontsize=13,
+         pos="6.5,0.85!"];
+  pr    [label="a pull request", pos="0.4,3.7!"];
+  ci    [label="GitHub Actions\ntests, build", pos="3,3.7!"];
+  ghcr  [label="GHCR\nthe samuel image", pos="5.7,3.7!"];
+  pin   [label=<<FONT FACE="Courier">cirrus</FONT>,&#160;<FONT FACE="Courier">cirrus-dev</FONT><BR/>branches>, pos="8.8,3.7!"];
+  argo  [label="Argo CD\nsam-query, sam-query-dev", pos="8.8,1.5!"];
+  prod  [label="production pods\nsam-queries", pos="6.4,2.3!", fillcolor="#0057C2", color="#00357A",
          fontcolor="#FFFFFF"];
-  pg    [label="csg-postgres\n(CNPG)", pos="2.6,0.55!", shape=cylinder, fillcolor="#E6F0FA",
-         color="#0057C2"];
-  sql   [label="sam-sql\nMySQL VM", pos="2.6,-0.65!", shape=cylinder, fillcolor="#FFF4E0",
-         color="#FAA119"];
+  dev   [label="samuel-dev pods\nsam-queries-dev", pos="6.4,0.8!", fillcolor="#E6F0FA", color="#0057C2"];
+  pg    [label=<<FONT FACE="Courier">csg-postgres</FONT>&#160;(CNPG)<BR/>pg-testing: the peer repo's<BR/>chart, deployed on its own>, pos="4.4,-0.5!",
+         shape=cylinder, fillcolor="#E6F0FA", color="#0057C2"];
+  sql   [label=<<FONT FACE="Courier">sam-sql</FONT><BR/>MySQL VM>, pos="1.4,2.6!", shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
   pr -> ci [label="merge"];
   ci -> ghcr [label="push"];
   ghcr -> pin [label="pin sha"];
   pin -> argo [label="watched by"];
-  argo -> pods [label="sync"];
-  pods -> pg;
-  pods -> sql [label="SAM"];
+  argo -> prod [label="sync"];
+  argo -> dev [label="sync"];
+  prod -> sql [label=<<FONT FACE="Courier">sam</FONT>>];
+  prod -> pg [label=<<FONT FACE="Courier">system_status</FONT>, jobs>];
+  dev -> pg [label=<<FONT FACE="Courier">sam_dev</FONT>,&#160;<FONT FACE="Courier">system_status_dev</FONT>, jobs>];
 }
 ```
+
+*† About ten minutes from a merge into `staging` or `main` to new pods on samuel-dev or production.
+SAMuel only _connects_ to `csg-postgres`; `hpc-usage-queries` owns and deploys it.*
 
 ## Walk the pipeline yourself
 
@@ -71,16 +80,16 @@ digraph Branches {
          fillcolor="#FFFFFF", color="#6B7280", fontcolor="#00357A", margin="0.18,0.08"];
   edge  [fontname="Helvetica", fontsize=12, color="#6B7280", fontcolor="#6B7280"];
   feat    [label="feature branch", pos="0,1.3!"];
-  staging [label="staging", pos="3.3,1.3!", fillcolor="#E6F0FA", color="#0057C2"];
+  staging [label=<<FONT FACE="Courier">staging</FONT>>, pos="3.3,1.3!", fillcolor="#E6F0FA", color="#0057C2"];
   promo   [label="promotion PR\n(one, always open)", pos="6.6,2.6!"];
-  main    [label="main", pos="9.9,1.3!", fillcolor="#E6F0FA", color="#0057C2"];
-  dev     [label="cirrus-dev\nsamuel-dev", pos="3.3,0!"];
-  prod    [label="cirrus\nproduction", pos="9.9,0!", fillcolor="#0057C2", color="#00357A",
-           fontcolor="#FFFFFF"];
+  main    [label=<<FONT FACE="Courier">main</FONT>>, pos="9.9,1.3!", fillcolor="#E6F0FA", color="#0057C2"];
+  dev     [label=<<FONT FACE="Courier">cirrus-dev</FONT>: samuel-dev<BR/><FONT FACE="Courier">samuel-dev.k8s.ucar.edu</FONT>>, pos="3.3,0!"];
+  prod    [label=<<FONT FACE="Courier">cirrus</FONT>: production<BR/><FONT FACE="Courier">samuel.k8s.ucar.edu</FONT><BR/><FONT FACE="Courier">sam.hpc.ucar.edu</FONT>>, pos="9.9,0!",
+           fillcolor="#0057C2", color="#00357A", fontcolor="#FFFFFF"];
   feat -> staging [label="PR"];
   staging -> promo [label="opens, refreshes"];
   promo -> main [label="merge"];
-  main -> staging [style=dashed, label="sync resets staging"];
+  main -> staging [style=dashed, label=<sync resets&#160;<FONT FACE="Courier">staging</FONT>>];
   staging -> dev [label="pins"];
   main -> prod [label="pins"];
 }
@@ -90,12 +99,12 @@ digraph Branches {
 
 | Workflow | Does | Runs on |
 |----------------------------------|----------------------------------------|----------------|
-| `sam-ci-docker` | MySQL, Postgres and perf suites | PRs, main |
+| `sam-ci-docker` | MySQL, Postgres and perf suites | PRs, `main` |
 | `browser-smoke` | every dashboard in Chromium | PRs |
 | two install workflows | install paths, CLI smoke | PRs |
 | `ci-staging`, `mega-linter` | secrets, linters, Terraform, Helm | PRs |
-| `build-images-cirrus-deploy` | build `samuel`, pin a cirrus branch | main, staging |
-| two promotion workflows | one staging-to-main PR; reset staging | staging, main |
+| `build-images-cirrus-deploy` | build `samuel`, pin a `cirrus` branch | `main`, `staging` |
+| two promotion workflows | one `staging`-to-`main` PR; reset `staging` | `staging`, `main` |
 | four cleanup workflows | prune images, runs and logs | scheduled |
 | `deploy-staging` | the retired AWS deploy | by hand |
 
@@ -146,6 +155,9 @@ helm/tests/test-dev-render.sh, which proves dev shares nothing with prod (later 
 - Build: **{{< var image.build_min_before >}} to ~{{< var image.build_min_after >}}
   minutes.**
 - One image for the web pods, the CronJob, and the HPC hosts.
+
+*† The arm64 half used to be built under QEMU emulation on an amd64 runner. Native runners
+replaced that, for the speed.*
 :::
 ::::
 
@@ -161,7 +173,7 @@ dispatch-only.
 
 CI writes one line; CIRRUS's Argo CD does the rest. Thanks, CIRRUS.
 
-## CI edits one line {.vcenter .fill scale="1.15"}
+## CI edits one line {.vcenter scale="1.15"}
 
 ```yaml
 # helm/values.yaml, on the cirrus branch
@@ -198,18 +210,18 @@ digraph Publish {
   node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=14,
          fillcolor="#FFFFFF", color="#6B7280", fontcolor="#00357A", margin="0.15,0.07"];
   edge  [fontname="Helvetica", fontsize=12, color="#6B7280", fontcolor="#6B7280"];
-  tmain  [label="push to main,\nor a tag"];
-  tstage [label="push to staging"];
+  tmain  [label=<push to&#160;<FONT FACE="Courier">main</FONT>,<BR/>or a tag>];
+  tstage [label=<push to&#160;<FONT FACE="Courier">staging</FONT>>];
   tdisp  [label="dispatch\n(dev by default)"];
   setup  [label="setup\ntarget, SHAs"];
   amd    [label="build\namd64"];
   arm    [label="build\narm64"];
   merge  [label="merge\none index"];
   ghcr   [label="GHCR\nsha, branch, latest"];
-  helm   [label="update-helm"];
-  prod   [label="cirrus\nproduction", fillcolor="#0057C2", color="#00357A",
+  helm   [label=<<FONT FACE="Courier">update-helm</FONT>>];
+  prod   [label=<<FONT FACE="Courier">cirrus</FONT><BR/>production>, fillcolor="#0057C2", color="#00357A",
           fontcolor="#FFFFFF"];
-  dev    [label="cirrus-dev\nsamuel-dev", fillcolor="#E6F0FA", color="#0057C2"];
+  dev    [label=<<FONT FACE="Courier">cirrus-dev</FONT><BR/>samuel-dev>, fillcolor="#E6F0FA", color="#0057C2"];
   {tmain tstage tdisp} -> setup;
   setup -> {amd arm};
   {amd arm} -> merge;
@@ -220,17 +232,24 @@ digraph Publish {
 }
 ```
 
-## Deploying to dev from any branch {.vcenter scale="1.15"}
+## Deploying to dev from any branch {.vcenter .fill scale="0.95"}
 
 - **`workflow_dispatch`** builds any branch. The target is `dev` by default, and `prod` only
   when asked for by name.
 - That puts a PR's code on samuel-dev before it merges: useful for anything the test suite
   can't see, like OIDC, ingress or real data volumes.
-- **The catch:** the deploy carries *that branch's* `helm/values.yaml`, not staging's. Keep the
-  branch rebased on staging, or dev quietly loses a staging-only chart change.
+- **The catch:** the deploy carries *that branch's* `helm/values.yaml`, not `staging`'s. Keep the
+  branch rebased on `staging`, or dev quietly loses a `staging`-only chart change.
+
+```bash
+# to samuel-dev
+gh workflow run "Publish Images and CIRRUS Deploy" --ref my-branch
+# to production, only ever by name
+gh workflow run "Publish Images and CIRRUS Deploy" --ref main -f target=prod
+```
 
 ::: {.notes}
-`gh workflow run "Publish Images and CIRRUS Deploy" --ref <branch>`. The catch comes from
+The catch comes from
 update-helm resetting the cirrus branch to the triggering ref's tree: a branch cut before a
 chart change deploys the chart without it. It bit #367. The next staging push puts dev back.
 :::
@@ -257,15 +276,15 @@ pipeline: dev is prod with the levers pulled.
 
 ## The HPC hosts, too {.vcenter scale="1.15"}
 
-- The same `samuel` image also runs on casper and derecho: the status collectors and the
+- The same `samuel` image also runs on `casper` and `derecho`: the status collectors and the
   accounting jobs from Part 4.
-- HPC deployments from staging and main are also straightforward.
+- HPC deployments from `staging` and `main` are also straightforward.
 
 ::: {.notes}
 Part 4 covers what those jobs do and when. This part is about where the web application runs.
 :::
 
-# Runtime on nwc1
+# Runtime on `nwc1`
 
 Two pods, a cache, a CronJob, and nine secrets.
 
@@ -290,16 +309,16 @@ digraph Namespace {
   subgraph cluster_ns {
     label="namespace sam-queries"; style="rounded,dashed"; color="#9CA3AF";
     ing   [label="ingress\ntwo hostnames, one cert"];
-    pod1  [label="samuel pod\ngunicorn gthread", fillcolor="#0057C2", color="#00357A",
+    pod1  [label=<samuel pod<BR/><FONT FACE="Courier">gunicorn</FONT>&#160;gthread>, fillcolor="#0057C2", color="#00357A",
            fontcolor="#FFFFFF"];
-    pod2  [label="samuel pod\ngunicorn gthread", fillcolor="#0057C2", color="#00357A",
+    pod2  [label=<samuel pod<BR/><FONT FACE="Courier">gunicorn</FONT>&#160;gthread>, fillcolor="#0057C2", color="#00357A",
            fontcolor="#FFFFFF"];
     redis [label="Redis\ncache, limiter"];
     cron  [label="samuel-tasks\nCronJob", fillcolor="#E6F0FA", color="#0057C2"];
     es    [label="9 ExternalSecrets"];
   }
-  sql [label="sam-sql", shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
-  pg  [label="csg-postgres", shape=cylinder, fillcolor="#E6F0FA", color="#0057C2"];
+  sql [label=<<FONT FACE="Courier">sam-sql</FONT>>, shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
+  pg  [label=<<FONT FACE="Courier">csg-postgres</FONT>>, shape=cylinder, fillcolor="#E6F0FA", color="#0057C2"];
   users -> ing;
   ing -> {pod1 pod2};
   {pod1 pod2} -> redis;
@@ -390,7 +409,7 @@ each task's schedule. State machine: sam-queries docs/plans/implemented/SCHEDULE
 - **The lease must outlive the kill.** Otherwise a killed send is reclaimed while it is still
   sending, and every PI gets a second copy.
 
-† Each trap now has a test that reads or renders the chart.
+*† Each trap now has a test that reads or renders the chart.*
 
 ::: {.notes}
 CLAUDE.md "The account-request tasks". The lease is max(3 × expected_runtime, 900 s) and must
@@ -401,7 +420,7 @@ whole-render grep passes on the Deployment's copy and proves nothing.
 
 # The companion CNPG cluster
 
-csg-postgres: job history, scans, status, and samuel-dev.
+`csg-postgres`: job history, scans, status, and samuel-dev.
 
 ## `csg-postgres` at a glance {.vcenter scale="1.15"}
 
@@ -476,7 +495,7 @@ A laptop, samuel-dev, production, and who watches them.
 | **SAM data** | obfuscated MySQL snapshot | `sam_dev`, a copy | the real thing |
 | **Sign-in** | stub login | Entra ID | Entra ID |
 | **Mail out** | never | never | yes |
-| **Follows** | your working tree | staging | main |
+| **Follows** | your working tree | `staging` | `main` |
 
 ::: {.notes}
 compose.yaml; helm/values-dev.yaml. Every dev environment runs an obfuscated production
@@ -528,7 +547,7 @@ with one prod value at a time. ci-staging runs it (make helm-test) on every PR t
 - **`cirrus_redis_purge.sh`:** dry-run by default. The only one that changes anything, and only
   with `--yes`.
 
-† All four take `--env dev`.
+*† All four take `--env dev`.*
 
 ::: {.notes}
 sam-queries scripts/cirrus_*.sh. cirrus_watch.sh exits 0 quiet, 1 warn, 2 fail, so a scheduler
@@ -541,7 +560,7 @@ not a fault.
 | Skill | Load it | It drives | It reports |
 |----------------------|------------------------|------------------------------|------------------------------|
 | `watch-prod` | for a recurring prod watch | `cirrus_watch.sh` on a timer | changes only; a quiet hour is one line |
-| `watch-dev` | after a staging merge | `cirrus_watch.sh`, with `--env dev` | did the pin roll, is dev healthy |
+| `watch-dev` | after a `staging` merge | `cirrus_watch.sh`, with `--env dev` | did the pin roll, is dev healthy |
 | `profile-dev` | for a load or latency pass | a real signed-in session, at concurrency | where the time went: database, plugin, or Python |
 | `watch-cnpg` | for a cluster watch (peer repo) | `cnpg_watch.sh` | failovers, connections, lag, slow queries |
 
@@ -557,7 +576,7 @@ per-database timing split.
 
 ## TL;DR - deployment & operations {.vcenter scale="1.15"}
 
-- **A merge is a deploy:** staging to samuel-dev, main to production, by one pinned image tag.
+- **A merge is a deploy:** `staging` to samuel-dev, `main` to production, by one pinned image tag.
 - **CI never touches the cluster.** It edits one line on a locked branch; CIRRUS's Argo CD does
   the rest.
 - **One multi-arch image** for the pods, the CronJob, and the HPC hosts.

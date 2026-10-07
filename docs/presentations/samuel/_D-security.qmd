@@ -1,6 +1,6 @@
-# Failing Closed
+# Failing Closed & Other Security Details
 
-What the review found, and the doors we shut.
+What is locked down by default, and what is still open.
 
 ## Every browser write carries a token
 
@@ -16,8 +16,8 @@ What the review found, and the doors we shut.
   12 hours, and so does the token.
 - **htmx only talks to us,** and never evaluates code.
 
-† 14 routes are exempt: an API key has no cookie to forge. Seven are `…/refresh`, which also
-take a session; a refresh is idempotent, so that trade-off is accepted.
+*† 14 routes are exempt: an API key has no cookie to forge. Seven are `…/refresh`, which also
+take a session; a refresh is idempotent, so that trade-off is accepted.*
 
 ::: {.notes}
 src/webapp/templates/dashboards/base.html:18,30 (and a csrf-token meta tag at :9, which tests
@@ -43,7 +43,7 @@ base-uri 'self'; form-action 'self'
   template holds an inline script; behavior lives in our own JavaScript files.
 - A test scans every template. It started with 41 files of inline script; it allows none now.
 
-† Built from the asset registry, so it cannot drift from what the pages load.
+*† Built from the asset registry, so it cannot drift from what the pages load.*
 
 ::: {.notes}
 src/webapp/utils/csp.py:60-89 (the directives; trimmed here: font-src, connect-src, frame-src
@@ -92,7 +92,7 @@ moved the first six CDN assets in, 2026-06-13.
 | **Registration mail** | 3/h each; 10/h in all | email, site | the registration form |
 | **The ingress** | 100/s, 200 open | site | everything |
 
-† Counted in Redis; a 429 carries `Retry-After`. Health checks are never limited.
+*† Counted in Redis; a 429 carries `Retry-After`. Health checks are never limited.*
 
 ::: {.notes}
 src/webapp/limiter/__init__.py (Flask-Limiter, fixed window; key order apikey, user, ip at
@@ -117,7 +117,7 @@ blocks on the admin page.
 - What still holds: signed-in users count per user; registration has per-email and site-wide
   caps, and a human check.
 
-† The fix is the platform team's, at the ingress, and would help every app behind it.
+*† The fix is the platform team's, at the ingress, and would help every app behind it.*
 
 ::: {.notes}
 Confirmed 2026-06-15 with an off-VPN request: X-Forwarded-For arrives as 127.0.0.1, and so does

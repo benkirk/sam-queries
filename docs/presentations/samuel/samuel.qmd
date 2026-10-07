@@ -1,6 +1,6 @@
 ---
 title: "SAMuel"
-subtitle: "SAM, updated for extended lifecycle"
+subtitle: "SAM, updated for an extended lifecycle"
 author: "Ben Kirk, NCAR/CISL"
 date: last-modified
 ---

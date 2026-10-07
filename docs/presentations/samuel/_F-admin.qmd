@@ -1,18 +1,30 @@
-# Running the Shop
+# Administration Features
 
 The admin dashboard, as the people who use it every day see it.
+
+## Every admin page, one menu
+
+::: {.notes}
+The Admin menu in the top navigation, open on the Projects tab: every admin page in one list, in
+the tab strip's order, plus Database (the read-only row browser) and Roles & access. Each entry
+appears only for those allowed to open it. From the obfuscated local copy, signed in with every
+permission (scripts/ui_snapshots_deck.json, admin-tabs). The tab strip itself scrolls sideways at
+desktop width, so its last tabs are off-screen; the menu shows them all.
+:::
+
+[![](images/admin-tabs.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/admin/projects)
 
 ## A tour of the tabs {.smaller .center .fill}
 
 | Tab | Who sees it | For |
 |----------------------|------------------------------|-----------------------------------------|
-| **Projects** | staff, facility managers | projects, members, allocations, expirations |
-| **Users & Groups** | staff, facility managers | users, groups, who was seen lately |
-| **Resources … Facilities** | staff, facility managers | what allocations hang on |
-| **Account Requests** | NUSD | people who need an account |
-| **Events** | CSG, facility managers | workshops and their enrollees |
-| **Configuration** | staff, read-only | how this deployment is set up and doing |
-| **Roles** | nobody, by default | who may do what |
+| [**Projects**](https://sam.hpc.ucar.edu/admin/projects) | staff, facility managers | projects, members, allocations, expirations |
+| [**Users & Groups**](https://sam.hpc.ucar.edu/admin/users-groups) | staff, facility managers | users, groups, who was seen lately |
+| [**Resources … Facilities**](https://sam.hpc.ucar.edu/admin/resources) | staff, facility managers | what allocations hang on |
+| [**Account Requests**](https://sam.hpc.ucar.edu/admin/account-requests) | NUSD | people who need an account |
+| [**Events**](https://sam.hpc.ucar.edu/admin/events) | CSG, facility managers | workshops and their enrollees |
+| [**Configuration**](https://sam.hpc.ucar.edu/admin/configuration) | staff, read-only | how this deployment is set up and doing |
+| [**Roles**](https://sam.hpc.ucar.edu/admin/roles) | nobody, by default | who may do what |
 
 ::: {.notes}
 "Resources … Facilities" is four tabs of reference data: Resources, Organizations, Contracts,
@@ -39,7 +51,7 @@ Defaults: allocation_admin (NUSD) holds MANAGE_ACCOUNT_REQUESTS and IMPERSONATE_
   it, tagged `[SAM-AR-<id>]`. If the ticket service fails, the ticket goes by mail.
 - Reject has a mail preview; every action runs in one audited transaction.
 
-† In production the public form is off; people arrive through a sponsor's invitation or an event.
+*† In production the public form is off; people arrive through a sponsor's invitation or an event.*
 
 ::: {.notes}
 States: src/sam/core/account_requests.py:26; fulfilled is derived from users by email and only
@@ -163,6 +175,18 @@ override on its next build, one SELECT per Notifier. Text selects the facility v
 it. Record: docs/plans/implemented/NOTIFICATION_TEMPLATE_EDITOR.md.
 :::
 
+## A template, previewed
+
+::: {.notes}
+The Templates tab with expiration-UNIV.html selected: every template on the left, grouped by the
+notice it belongs to; Save, "Preview for" and "Preview as" above; the sample render below, addressed
+to "Jane Lead" for SCSG0001. From the obfuscated local copy (scripts/ui_snapshots_deck.json,
+admin-templates): the preview renders through a POST, which the production shoot's read-only guard
+blocks.
+:::
+
+[![](images/admin-templates.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/admin/htmx/notifications?tab=templates&name=expiration-UNIV.html)
+
 ## The tasks, from the dashboard {.smaller .center .fill}
 
 | Task | When | In production |
@@ -176,7 +200,7 @@ it. Record: docs/plans/implemented/NOTIFICATION_TEMPLATE_EDITOR.md.
 | `account_queue_digest` | Mondays, 08:00 | off |
 | `xras_notices` | business hours | off |
 
-† Run history is read-only, with facet chips; a replay is `sam-admin tasks --run X --force`.
+*† Run history is read-only, with facet chips; a replay is `sam-admin tasks --run X --force`.*
 
 ::: {.notes}
 Schedules: cleanup_status.py:33, deactivate_expired.py:33, refresh_allocation_state.py:18,

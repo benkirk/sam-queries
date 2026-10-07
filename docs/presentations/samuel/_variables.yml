@@ -24,6 +24,11 @@ size:
   source_lines: "186K"      # same file, source_lines column
   test_lines: "153K"        # same file, test_lines column
   prs_merged: "645"         # gh pr list --state merged, 2026-09-29
+db:                          # sam on production, information_schema data+index, GiB, 2026-10-07
+  sam_gb: "60"               # all tables (60.1)
+  per_job_gb: "51"           # comp_job, hpc/comp/dav_activity, hpc/dav_charge (51.2)
+  per_job_pct: "85%"
+  legacy_only_gb: "58"       # per_job_gb + dataset_activity (6.6); disk_activity/disk_charge are still written
 
 legacy:
   loc: "~250K"              # "Confessions of a Vibe Coder" (SEA, 2026-03-11), slide 3

@@ -1,4 +1,4 @@
-```
+```{.yaml code-line-numbers="false"}
 # cadence  hosts           lanes     job [args]
 rapid      casper,derecho  prod,dev  collectors
 rapid      casper,derecho  prod      jobhist-sync rapid

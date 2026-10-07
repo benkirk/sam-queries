@@ -26,20 +26,20 @@ digraph DBs {
   xras   [label="XRAS"];
   coll   [label="PBS collectors"];
   ldap   [label="LDAP mirror\n+ legacy SAM"];
-  jhs    [label="jobhist-sync"];
+  jhs    [label=<<FONT FACE="Courier">jobhist-sync</FONT>>];
   scan   [label="disk scanners"];
   samuel [label="SAMuel\nwebapp · CLIs · tasks", fillcolor="#0057C2",
           color="#00357A", fontcolor="#FFFFFF"];
 
   subgraph cluster_mysql {
-    label="MySQL VM (sam-sql)"; style="rounded"; color="#C9D3E0";
-    sam [label="sam\n60 GB†", shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
+    label=<MySQL VM (<FONT FACE="Courier">sam-sql</FONT>)>; style="rounded"; color="#C9D3E0";
+    sam [label=<<FONT FACE="Courier">sam</FONT><BR/>60 GB†>, shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
   }
   subgraph cluster_cnpg {
-    label="CNPG csg-postgres (Kubernetes)"; style="rounded"; color="#C9D3E0";
-    status [label="system_status\n1.2 GB", shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
-    jobs   [label="derecho_jobs 37 GB\ncasper_jobs 54 GB", shape=cylinder];
-    fs     [label="campaign 166 GB\ndestor 2.2 GB", shape=cylinder];
+    label=<CNPG&#160;<FONT FACE="Courier">csg-postgres</FONT>&#160;(Kubernetes)>; style="rounded"; color="#C9D3E0";
+    status [label=<<FONT FACE="Courier">system_status</FONT><BR/>1.2 GB>, shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
+    jobs   [label=<<FONT FACE="Courier">derecho_jobs</FONT>&#160;37 GB<BR/><FONT FACE="Courier">casper_jobs</FONT>&#160;54 GB>, shape=cylinder];
+    fs     [label=<<FONT FACE="Courier">campaign</FONT>&#160;166 GB<BR/><FONT FACE="Courier">destor</FONT>&#160;2.2 GB>, shape=cylinder];
   }
 
   xras -> samuel [label="handoffs"];
@@ -55,8 +55,8 @@ digraph DBs {
 }
 ```
 
-† 58 GB of it is legacy's per-job and dataset-activity tables. SAMuel doesn't write them; they
-go when legacy SAM retires.
+*† {{< var db.legacy_only_gb >}} GB of it is legacy's per-job and dataset-activity tables. SAMuel doesn't write them; they
+go when legacy SAM retires.*
 
 ## Who owns what {.smaller .center .fill scale="1.15"}
 
@@ -106,12 +106,34 @@ way. The invisible layout edges only stack the summaries in two rows.
   allocation runs to now.
 - Disk is the exception: "used" is the latest snapshot's TiB, not a sum.
 
-† The sum used to follow `resource_type`, adding comp + dav. Casper's 2019–2022 history is
-mirrored in both tables. Guess what that did to its totals.
+*† The sum used to follow `resource_type`, adding comp + dav. Casper's 2019–2022 history is
+mirrored in both tables. Guess what that did to its totals.*
 
 ::: {.notes}
 src/sam/accounting/calculator.py, ACTIVITY_TYPE_TO_CHARGE_KEY. hpc_charge_summary carries the
 legacy HPC machines, so a resource_type-based sum also missed them. Fixed in sam-queries #570.
+:::
+
+## Balances, worked out ahead: the read model {.vcenter scale="1.15"}
+
+- **Everyone asks:** how much of my allocation is left?
+- Answering means summing a project tree's charges, for every allocation on the page. The
+  busiest pages ask for thousands.
+- **The read model:** every hour, SAMuel works out every balance and keeps one row per
+  allocation. Pages read the answer instead of redoing the sums.
+- **Never wrong for long:** an edit to an allocation recomputes its tree at once. A table more
+  than two hours old means every page computes live.
+
+*† Built by the function the live pages call, so the two cannot disagree. Code and numbers:
+Appendix C.*
+
+::: {.notes}
+Table account_allocation_state (sam MySQL): allocations active or ended within 90 days, 4,823 rows
+in prod (2026-09-11). Feeder: the hourly refresh_allocation_state task. What marks a tree stale:
+an account, allocation, transaction or charge adjustment newer than the table (_tree_stamps in
+src/sam/queries/allocation_state.py); a new day's charges arrive with the next hourly build. The
+cost it removes is not the summary tables but the work on top of them: subtree rollups, the disk
+snapshot fan-out, adjustments and shared pools (docs/plans/implemented/READ_MODEL.md, Problem).
 :::
 
 ## `is_active`: one question, every model {.vcenter}
@@ -129,6 +151,9 @@ One hybrid property, three uses:
 - **Account, …** (`SoftDeleteMixin`): not `deleted`
 - **AccountUser, …** (`DateRangeMixin`): today is inside start/end
 - **User:** active **and** not locked
+
+*† Little in SAM is ever deleted. A row retires behind a flag or a date window, and `is_active`
+reads whichever one applies.*
 :::
 ::::
 
@@ -151,7 +176,7 @@ CLAUDE.md: never compare raw columns.
 - **MySQL rounds half-up,** so 23:59:59.999 became midnight the next day (fixed in 2016).
   SAMuel floors "now" to the second, and ends a membership at now minus one second.
 
-† Memberships are the exception: they keep the exact moment, because the LDAP sync needs it.
+*† Memberships are the exception: they keep the exact moment, because the LDAP sync needs it.*
 
 ::: {.notes}
 Census on the obfuscated test copy (information_schema, columns named date or time): 146
@@ -167,7 +192,7 @@ and DateRangeMixin in src/sam/base.py; _end_membership in src/sam/manage/__init_
 second back if it lands on midnight). The "why DATETIME" reasons are inferred, not documented.
 :::
 
-## How many tables? Depends who you ask {.vcenter scale="1.15"}
+## How many tables? {.vcenter scale="1.15"}
 
 :::: {.columns}
 ::: {.column width="50%"}
@@ -183,7 +208,7 @@ second back if it lands on midnight). The "why DATETIME" reasons are inferred, n
 - {{< var tables.sam_orm >}} tables + {{< var tables.sam_views >}} views
 - and nothing modeled that the database lacks
 
-† Our own docs said ~100, 97 and ~107. Now a script counts, and the deck quotes it.
+*† Our own docs said ~100, 97 and ~107. Now a script counts, and the deck quotes it.*
 :::
 ::::
 
@@ -200,6 +225,9 @@ tables and views". system_status adds {{< var tables.status >}} more.
 - **Horizon 1 done** (#549–551, 2026-09-12): the 7 views ported, a loader, the dual-backend CI.
   Expected failures went from 416 to 0 in one day.
 - **Still open:** retire the Java SAM, bring the sam schema under Alembic, flip prod.
+
+*† Today that is MySQL 8 on a managed VM, `sam-sql.ucar.edu`. Postgres compatibility was built on
+purpose: it is the path onto CNPG, on CIRRUS.*
 
 ::: {.notes}
 Source: docs/plans/implemented/POSTGRES_MIGRATION.md. The dialect differences Core cannot
@@ -230,7 +258,7 @@ database.
 13. The test suite's own MySQL-isms
 14. `now()` differs in zone, type and timing
 
-† CI runs the full suite on both engines for every PR, so the code stays bilingual.
+*† CI runs the full suite on both engines for every PR, so the code stays bilingual.*
 :::
 ::::
 
@@ -242,7 +270,7 @@ data, on every PR to staging and main. tests/postgres_expected_failures.txt is e
 2026-09-12; an entry there is a strict xfail.
 :::
 
-## `system_status`: the pulse {.vcenter scale="1.15"}
+## `system_status`: what's happening where {.vcenter scale="1.15"}
 
 :::: {.columns}
 ::: {.column width="50%"}
@@ -274,7 +302,7 @@ in prod back to 2011. SAM's own schema stays unmanaged by Alembic while legacy S
 - **Fixes:** `/ready` gates on `sam` alone (a secondary answers 200 "degraded"); connect
   timeouts and keepalives on every engine; CNPG switches over instead of restarting (<1 s).
 
-† The rule now lives in CLAUDE.md: never add a secondary database to `/ready`.
+*† The rule now lives in CLAUDE.md: never add a secondary database to `/ready`.*
 
 ::: {.notes}
 docs/plans/implemented/CNPG_ROLL_RESILIENCE.md. The trigger was an unrelated change in
@@ -301,8 +329,8 @@ Postgres side names its pod and plugin: `sam-webapp:<pod>:job_history:<machine>`
 | **Pool** | 5 + 10 overflow | owned by the plugin |
 | **Off switch** | `JOB_HISTORY_MACHINES=` | `FS_SCANS_ENABLED=0` |
 
-† Both read from the replica, through the cluster's read-only service, so SAMuel's queries never
-compete with the writers on the primary (Part 5).
+*† Both read from the replica, through the cluster's read-only service, so SAMuel's queries never
+compete with the writers on the primary (Part 5).*
 
 ## /database: every engine, read-only
 

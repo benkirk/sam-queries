@@ -28,8 +28,8 @@ Everything else here is a private NCAR repo, so it is named, not linked. Retired
 - About {{< var peers.huq_lines >}} lines of Python and {{< var peers.huq_tests >}} tests,
   public on GitHub.
 
-† Same CLI shape as SAMuel's on purpose: commands, exit codes, JSON output. The two change
-together.
+*† Same CLI shape as SAMuel's on purpose: commands, exit codes, JSON output. The two change
+together.*
 
 ::: {.notes}
 github.com/benkirk/hpc-usage-queries. Both toolkits ship in one wheel; SAMuel installs it
@@ -51,10 +51,10 @@ digraph Jobs {
          fillcolor="#FFFFFF", color="#6B7280", fontcolor="#00357A", margin="0.18,0.08"];
   edge  [fontname="Helvetica", fontsize=12, color="#6B7280", fontcolor="#6B7280"];
   logs  [label="PBS accounting logs", fillcolor="#FFF4E0", color="#FAA119"];
-  sync  [label="jobhist-sync (pbsparse)"];
-  jobs  [label="derecho_jobs\ncasper_jobs", shape=cylinder, fillcolor="#E6F0FA", color="#0057C2"];
-  acct  [label="sam-admin accounting"];
-  sam   [label="sam\ncharge summaries", shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
+  sync  [label=<<FONT FACE="Courier">jobhist-sync</FONT>&#160;(<FONT FACE="Courier">pbsparse</FONT>)>];
+  jobs  [label=<<FONT FACE="Courier">derecho_jobs</FONT><BR/><FONT FACE="Courier">casper_jobs</FONT>>, shape=cylinder, fillcolor="#E6F0FA", color="#0057C2"];
+  acct  [label=<<FONT FACE="Courier">sam-admin</FONT>&#160;accounting>];
+  sam   [label=<<FONT FACE="Courier">sam</FONT><BR/>charge summaries>, shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
   logs -> sync -> jobs;
   jobs -> acct [label=" daily_summary"];
   acct -> sam;
@@ -115,7 +115,7 @@ sam-search accounting --jobs off, rather than failing.
   wallclock exemptions.
 - Casper, Derecho and Gust. A private NCAR repo.
 
-† HSG runs and maintains their own hooks and `samuel2sql`; ours have moved on from theirs.
+*† HSG runs and maintains their own hooks and `samuel2sql`; ours have moved on from theirs.*
 
 ::: {.notes}
 github.com/NCAR/hpc-scheduling-tools (private). The accounting hook rejects a bad -A account at
@@ -149,7 +149,7 @@ served by the API: HSG builds it with their own samuel2sql from the legacy-shape
 - **On the `sam-tomcat` VM,** sharing `sam-sql` with SAMuel.
 - **In service for {{< var legacy.years >}} years.** A private NCAR repo.
 
-† Part 4 has how the two apps share the database, and who still calls legacy.
+*† Part 4 has how the two apps share the database, and who still calls legacy.*
 
 ::: {.notes}
 github.com/NCAR/sam (private): about 2,900 .java files and 229 .xhtml pages, Maven-built.
@@ -165,7 +165,7 @@ Part 4: "Two apps, one database" and "Who's still on legacy".
 | **Base images** | `sweet`, `sweet-pl5` | no |
 | **Host config** | `sam-app` | no |
 
-† All run on the `sam-app` VM. Only two of them call legacy SAM's API.
+*† All run on the `sam-app` VM. Only two of them call legacy SAM's API.*
 
 ::: {.notes}
 legacy_sam/container_zoo/: "Repos for all the helper / synchronizers SAM uses." Each is its own

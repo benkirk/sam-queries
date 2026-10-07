@@ -23,25 +23,25 @@ digraph Map {
          fillcolor="#FFFFFF", color="#6B7280", fontcolor="#00357A", margin="0.15,0.07"];
   edge  [fontname="Helvetica", fontsize=12, color="#6B7280", fontcolor="#6B7280"];
 
-  dir     [label="UCAR directory (LDAP)\nldap.ucar.edu", pos="0,4.2!"];
-  helpers [label="sam-app VM: LDAP replica,\ntransformer, sam-ldap-syncd", pos="3.6,4.2!",
+  dir     [label=<UCAR directory (LDAP)<BR/><FONT FACE="Courier">ldap.ucar.edu</FONT>>, pos="0,4.2!"];
+  helpers [label=<<FONT FACE="Courier">sam-app</FONT>&#160;VM: LDAP replica,<BR/>transformer,&#160;<FONT FACE="Courier">sam-ldap-syncd</FONT>>, pos="3.6,4.2!",
            fillcolor="#E5E7EB", fontcolor="#374151"];
-  tomcat  [label="legacy SAM (Java)\nsam-tomcat VM", pos="7.2,4.2!",
+  tomcat  [label=<legacy SAM (Java)<BR/><FONT FACE="Courier">sam-tomcat</FONT>&#160;VM>, pos="7.2,4.2!",
            fillcolor="#E5E7EB", fontcolor="#374151"];
   other   [label="AMIE, HEUV", pos="10.8,4.2!", fillcolor="#E5E7EB", fontcolor="#374151"];
 
   entra   [label="Entra ID\nsign-in", pos="0,2.7!"];
-  sql     [label="sam-sql.ucar.edu\nMySQL VM", pos="10.8,2.7!", shape=cylinder,
+  sql     [label=<<FONT FACE="Courier">sam-sql</FONT>.ucar.edu<BR/>MySQL VM>, pos="10.8,2.7!", shape=cylinder,
            fillcolor="#FFF4E0", color="#FAA119"];
 
   xras    [label="XRAS\n(ACCESS)", pos="3.6,1.2!"];
-  samuel  [label="SAMuel on CIRRUS\nsam.hpc.ucar.edu", pos="7.2,1.2!",
+  samuel  [label=<SAMuel on CIRRUS<BR/><FONT FACE="Courier">sam.hpc.ucar.edu</FONT>>, pos="7.2,1.2!",
            fillcolor="#0057C2", color="#00357A", fontcolor="#FFFFFF"];
   mail    [label="mail relay,\nithelp Jira", pos="10.8,1.2!"];
 
   gh      [label="GitHub Actions\n+ GHCR", pos="0,-0.4!"];
-  lanes   [label="ncar-hpc-deploy\ncasper, derecho", pos="3.6,-0.4!"];
-  pg      [label="csg-postgres.k8s.ucar.edu\n(CNPG on CIRRUS)", pos="7.2,-0.4!", shape=cylinder,
+  lanes   [label=<<FONT FACE="Courier">ncar-hpc-deploy</FONT><BR/><FONT FACE="Courier">casper</FONT>,&#160;<FONT FACE="Courier">derecho</FONT>>, pos="3.6,-0.4!"];
+  pg      [label=<<FONT FACE="Courier">csg-postgres</FONT>.k8s.ucar.edu<BR/>(CNPG on CIRRUS)>, pos="7.2,-0.4!", shape=cylinder,
            fillcolor="#E6F0FA", color="#0057C2"];
   pbs     [label="PBS scheduling\nHSG cron", pos="10.8,-0.4!"];
 
@@ -69,7 +69,7 @@ digraph Map {
 | **Identity in** | UCAR directory to `sam-ldap-syncd` to legacy SAM | per change | legacy SAM |
 | **Allocations, both ways** | ARC → XRAS → SAMuel; SAMuel reads XRAS back | per approval; hourly | SAMuel |
 | **Usage in** | PBS to collectors, job history and charging | 5 min to daily | HPC lanes |
-| **Access out** | SAMuel's APIs → PBS, LDAP provisioning, disk quotas | polled | the callers |
+| **Access out** | SAMuel's APIs → PBS, HPC LDAP provisioning, disk quotas | polled | the callers |
 
 ::: {.notes}
 Read the "Runs on" column as the overlap: one of the four flows still lives entirely on the
@@ -87,7 +87,7 @@ legacy side. The rest of this part takes them in order, then the outbound side-c
 - **Until legacy retires, SAMuel gives way:** it keeps the rows legacy reads, rather than
   deleting them.
 
-† `sam-app` is a third host: it runs the identity helpers, not the Java app.
+*† `sam-app` is a third host: it runs the identity helpers, not the Java app.*
 :::
 ::: {.column width="45%"}
 ```{dot}
@@ -100,7 +100,7 @@ digraph Two {
           fontcolor="#374151"];
   samuel [label="SAMuel\nPython, CIRRUS", fillcolor="#0057C2", color="#00357A",
           fontcolor="#FFFFFF"];
-  sql    [label="sam-sql\nMySQL", shape=cylinder, fillcolor="#FFF4E0", color="#FAA119",
+  sql    [label=<<FONT FACE="Courier">sam-sql</FONT><BR/>MySQL>, shape=cylinder, fillcolor="#FFF4E0", color="#FAA119",
           fontcolor="#00357A"];
   {rank=same; legacy; samuel}
   legacy -> sql;
@@ -159,7 +159,7 @@ schema is not under Alembic (Part 3), and why Postgres in prod waits on legacy's
 - **Now:** `/` compares the ORM to the live schema and goes 503 on drift, so monitoring pages.
   `/ready` stays 200, so Kubernetes doesn't empty the Service mid-fix.
 
-† Nobody did anything wrong: two applications, one schema, two release trains.
+*† Nobody did anything wrong: two applications, one schema, two release trains.*
 
 ::: {.notes}
 Source: sam-queries tests/api/test_health_endpoints.py (TestSchemaDriftContract, "the
@@ -177,6 +177,7 @@ same readiness reasoning as Part 3's CNPG PSA: degrade, don't vanish.
 | HEUV portal | legacy `…/heuv` | not ported |
 | XRAS | SAMuel `/api/xras/v1` | moved 2026-08-24 |
 | PBS, provisioning, disk quotas | SAMuel `/api/v1` | ported; both serve them |
+| UCAR directory | project groups, fed by legacy SAM | **live**, not ported |
 
 ::: {.notes}
 From the Tomcat access-log census in sam-queries docs/plans/LDAP_SYNC_API.md Appendix B. AMIE
@@ -206,18 +207,18 @@ digraph Identity {
   node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=14,
          fillcolor="#E5E7EB", color="#6B7280", fontcolor="#374151", margin="0.18,0.08"];
   edge  [fontname="Helvetica", fontsize=12, color="#6B7280", fontcolor="#6B7280"];
-  dir    [label="UCAR directory\nldap.ucar.edu", fillcolor="#FFFFFF", fontcolor="#00357A"];
+  dir    [label=<UCAR directory<BR/><FONT FACE="Courier">ldap.ucar.edu</FONT>>, fillcolor="#FFFFFF", fontcolor="#00357A"];
   subgraph cluster_app {
-    label="sam-app VM"; style="rounded,dashed"; color="#6B7280";
+    label=<<FONT FACE="Courier">sam-app</FONT>&#160;VM>; style="rounded,dashed"; color="#6B7280";
     repl  [label="LDAP replica"];
     xf    [label="transformer\n60 s poll"];
-    syncd [label="sam-ldap-syncd"];
+    syncd [label=<<FONT FACE="Courier">sam-ldap-syncd</FONT>>];
   }
   subgraph cluster_tomcat {
-    label="sam-tomcat VM"; labelloc=b; style="rounded,dashed"; color="#6B7280";
+    label=<<FONT FACE="Courier">sam-tomcat</FONT>&#160;VM>; labelloc=b; style="rounded,dashed"; color="#6B7280";
     tomcat [label="legacy SAM\nldapsync API"];
   }
-  sql    [label="sam-sql.ucar.edu\nMySQL VM", shape=cylinder, fillcolor="#FFF4E0",
+  sql    [label=<<FONT FACE="Courier">sam-sql</FONT>.ucar.edu<BR/>MySQL VM>, shape=cylinder, fillcolor="#FFF4E0",
           color="#FAA119", fontcolor="#00357A"];
   subgraph cluster_cirrus {
     label="CIRRUS, Kubernetes pods"; labelloc=b; style="rounded,dashed"; color="#0057C2";
@@ -238,7 +239,7 @@ digraph Identity {
 }
 ```
 
-† Adhoc groups, organizations and institutions take the same path into SAM.
+*† Adhoc groups, organizations and institutions take the same path into SAM.*
 
 ## What the synchronizer writes {.vcenter scale="1.15"}
 
@@ -276,8 +277,8 @@ SAMuel writes is primary_gid via User.set_primary_gid().
 - Legacy stays the rollback: point it back.
 - After that, identity's only grey box is the daemon itself.
 
-† "SAM never creates users" means *originates*. A faithful mirror writer is the rule's
-implementation, not a violation.
+*† "SAM never creates users" means _originates_. A faithful mirror writer is the rule's
+implementation, not a violation.*
 
 ::: {.notes}
 sam-queries docs/plans/LDAP_SYNC_API.md: the daemon keeps its SAM_URL; the new side answers
@@ -302,7 +303,7 @@ reference doc carries a ~30-item census of client-side quirks to preserve or fix
 - Keys from the environment, or from `api_credentials`, **shared with legacy**.
 - Each key is held to the routes its role allows.
 
-† SAMuel never talks LDAP itself. Its LDAP login provider is a stub that raises.
+*† SAMuel never talks LDAP itself. Its LDAP login provider is a stub that raises.*
 :::
 ::::
 
@@ -336,8 +337,8 @@ digraph Xras {
   xras   [label="XRAS\nreview, approve"];
   legacy [label="legacy SAM\nuntil 2026-08-24", fillcolor="#E5E7EB", fontcolor="#374151"];
   mail   [label="PI notice"];
-  sql    [label="sam-sql", shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
-  samuel [label="SAMuel\n/api/xras/v1", fillcolor="#0057C2", color="#00357A",
+  sql    [label=<<FONT FACE="Courier">sam-sql</FONT>>, shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
+  samuel [label=<SAMuel<BR/><FONT FACE="Courier">/api/xras/v1</FONT>>, fillcolor="#0057C2", color="#00357A",
           fontcolor="#FFFFFF"];
   {rank=same; pi; arc; xras}
   {rank=same; legacy; samuel}
@@ -359,8 +360,8 @@ digraph Xras {
   had no XRAS calls since.
 - An action SAMuel can't apply is **parked** for a human, never half-applied.
 
-† "Any status other than 200/OK is considered an error." Thanks, Steve Peckins: so a parked
-action still answers 200, with a different body.
+*† "Any status other than 200/OK is considered an error." Thanks, Steve Peckins: so a parked
+action still answers 200, with a different body.*
 
 ::: {.notes}
 sam-queries docs/xras/README.md and children. The repoint was 2026-08-24 (XRAS_TRIAGE_WEEK.md);
@@ -401,31 +402,41 @@ sam-admin accounting reads the jobs and writes charge summaries into sam. The lo
 ```{dot}
 //| fig-width: 10
 digraph InOut {
-  graph [rankdir=LR, nodesep=0.45, ranksep=0.8, bgcolor="transparent"];
+  graph [rankdir=TB, newrank=true, nodesep=0.5, ranksep=0.9, bgcolor="transparent", fontname="Helvetica",
+         fontsize=13, fontcolor="#374151"];
   node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=14,
          fillcolor="#FFFFFF", color="#6B7280", fontcolor="#00357A", margin="0.18,0.08"];
   edge  [fontname="Helvetica", fontsize=12, color="#6B7280", fontcolor="#6B7280"];
-  pbs    [label="PBS\ncasper, derecho", fillcolor="#FFF4E0", color="#FAA119"];
-  coll   [label="collectors\nevery 5 min"];
-  jhs    [label="jobhist-sync\n5 min to weekly"];
-  hst    [label="HSG cron processes\naccounting hooks & fairshare"];
-  acct   [label="sam-admin\naccounting"];
-  pg     [label="csg-postgres (CNPG)\nsystem_status,\nderecho_jobs, casper_jobs", shape=cylinder,
-          fillcolor="#E6F0FA", color="#0057C2"];
-  sql    [label="sam-sql (MySQL)\nsam", shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
-  samuel [label="SAMuel", fillcolor="#0057C2", color="#00357A", fontcolor="#FFFFFF"];
-  {rank=same; coll; jhs; hst}
-  {rank=same; pg; sql}
-  pbs -> coll [label="status"];
+  subgraph cluster_hpc {
+    label=<HPC login nodes:&#160;<FONT FACE="Courier">casper</FONT>,&#160;<FONT FACE="Courier">derecho</FONT>>; style="rounded,dashed"; color="#FAA119";
+    hst    [label="HSG cron processes\naccounting hooks, fairshare"];
+    pbs    [label="PBS", fillcolor="#FFF4E0", color="#FAA119"];
+    coll   [label="collectors\nevery 5 min"];
+    jhs    [label=<<FONT FACE="Courier">jobhist-sync</FONT><BR/>5 min to weekly>];
+    acct   [label=<<FONT FACE="Courier">sam-admin</FONT>&#160;accounting<BR/>hourly: the day's charges,<BR/>accrued incrementally>];
+  }
+  subgraph cluster_cirrus {
+    label="CIRRUS, Kubernetes"; labelloc=b; style="rounded,dashed"; color="#0057C2";
+    fontcolor="#00357A";
+    samuel [label="SAMuel", fillcolor="#0057C2", color="#00357A", fontcolor="#FFFFFF"];
+    pg     [label=<<FONT FACE="Courier">csg-postgres</FONT>&#160;(CNPG)<BR/><FONT FACE="Courier">system_status</FONT>,<BR/><FONT FACE="Courier">derecho_jobs</FONT>,&#160;<FONT FACE="Courier">casper_jobs</FONT>>, shape=cylinder,
+            fillcolor="#E6F0FA", color="#0057C2"];
+  }
+  sql    [label=<<FONT FACE="Courier">sam-sql</FONT>&#160;(MySQL VM)<BR/><FONT FACE="Courier">sam</FONT>>, shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
+  {rank=same; hst; pbs; coll; jhs; acct}
+  {rank=same; samuel; pg; sql}
+  hst -> pbs [style=invis]; pbs -> coll [style=invis]; coll -> jhs [style=invis]; jhs -> acct [style=invis];
+  samuel -> pg [style=invis]; pg -> sql [style=invis];
+  hst -> pbs [label="tree, hooks DB", constraint=false];
+  pbs -> coll [label="qstat, pbsnodes"];
   pbs -> jhs [label="logs"];
   coll -> samuel [label="status API"];
   jhs -> pg [label="jobs"];
-  pg -> acct [label="jobs"];
-  acct -> sql [label="charges"];
-  samuel -> pg [dir=both];
-  samuel -> sql [dir=both];
-  samuel -> hst [label="fairshare, queues", constraint=false];
-  hst -> pbs [label="tree, DB", constraint=false];
+  acct -> pg [label="jobs", dir=back];
+  acct -> sql [label="charge summaries"];
+  hst -> samuel [label="API: fairshare tree,\nqueues, hook data", dir=back];
+  samuel -> pg [dir=both, constraint=false];
+  samuel:s -> sql:s [dir=both, constraint=false];
 }
 ```
 
@@ -433,9 +444,9 @@ digraph InOut {
 
 - On each host, a script snapshots PBS into a spool directory.
 - The same `samuel` image parses the spool and POSTs `/api/v1/status/…`: Casper and
-  JupyterHub from casper, Derecho from derecho.
+  JupyterHub from `casper`, Derecho from `derecho`.
 - **Every 5 minutes**, with a key that may post status and charge summaries, nothing else.
-- Lands in `system_status` on the CNPG primary: the Status dashboard, and Part 3's "pulse".
+- Lands in `system_status` on the CNPG primary, where the Status dashboard reads it.
 
 ::: {.notes}
 sam-queries collectors/README.md (spool mode: run-manifest.sh on the host, --spool in the
@@ -458,11 +469,11 @@ MANAGE_CHARGE_SUMMARIES; src/sam/security/rbac_defaults.py), enforced under RBAC
 
 - `sam-admin accounting --comp` rolls jobs into daily summaries, hourly (2 days) and daily
   (7 days).
-- Disk: the daily `acct.<fs>` files, from casper. Tracks Campaign, Destor, Quasar.
+- Disk: the daily `acct.<fs>` files, from `casper`. Tracks Campaign, Destor, Quasar.
 - Archive: none currently (deprecated).
 
-† The rapid sync looks at today's scheduler log. The infrequent longer sweeps fill in holes
-over midnight or around downtimes.
+*† The rapid sync looks at today's scheduler log. The infrequent longer sweeps fill in holes
+over midnight or around downtimes.*
 
 ‡ The REST route `POST /api/v1/charge-summaries/…` exists too. Nobody calls it.
 :::
@@ -492,9 +503,9 @@ The API, and who calls it.
 ## Four API families {.smaller .center .fill scale="1.25"}
 
 | Family | Prefix | Routes | Who calls |
-|--------------|--------------------------|-------:|----------------------------------|
+|----------------|--------------------|--------:|----------------------------------------|
 | **Core** | `/api/v1` | 39 | dashboards, CLIs, collectors |
-| **Legacy shapes** | `/api/v1` | 21 | PBS, LDAP provisioning, disk quotas |
+| **Legacy shapes** | `/api/v1` | 21 | PBS, HPC LDAP provisioning, disk quotas |
 | **Fairshare** | `/api/v1/fairshare` | 1 | HSG's cron |
 | **XRAS** | `/api/xras/v1` | 11 | the XRAS broker |
 
@@ -513,8 +524,8 @@ mounted at /api/protected: those paths still belong to legacy SAM.
 | `/api/v1/fstree_access` | `…/ssg/fairShareTree/v3` | PBS fairshare |
 | `/api/v1/queue` | `…/ssg/queue` | PBS queues |
 | `/api/v1/wallclock_exemption` | `…/ssg/wallClockExemption` | PBS limits |
-| `/api/v1/directory_access` | `…/sysacct/directoryaccess` | LDAP provisioning |
-| `/api/v1/project_access` | `…/sysacct/groupstatus` | LDAP provisioning |
+| `/api/v1/directory_access` | `…/sysacct/directoryaccess` | HPC LDAP provisioning |
+| `/api/v1/project_access` | `…/sysacct/groupstatus` | HPC LDAP provisioning |
 | `/api/v1/disk_quota` | `…/dasg/diskquota` | disk quotas |
 
 ::: {.notes}
@@ -527,13 +538,14 @@ legacy-shaped endpoint. Legacy-era 30-day volumes: fairShareTree ~21K, wallClock
 queue ~9K, directoryaccess ~2.8K.
 :::
 
-## The loop closes
+## The identity chain
 
 ::: {.notes}
-Identity enters from the UCAR directory through the legacy-side synchronizer; project groups
-leave through directory_access to the provisioner, which writes unix groups back to LDAP. So
-LDAP is both SAM's source and one of its sinks, through two different systems, one of them
-legacy. sam/provisioning.py compares what SAM believes against what a host actually provisions.
+Identity enters from the UCAR directory through the legacy-side synchronizer, along with the hpc
+group definitions (born in Google Groups). Project groups go back out two ways: legacy SAM feeds
+them to the UCAR directory (Ben, 2026-10-07), and directory_access hands them to the HPC LDAP
+provisioner (Bob's), which writes unix groups into the HPC hosts' LDAP. sam/provisioning.py compares what SAM believes against what a host
+actually provisions.
 :::
 
 ```{dot}
@@ -543,23 +555,35 @@ digraph Loop {
   node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=14,
          fillcolor="#FFFFFF", color="#6B7280", fontcolor="#00357A", margin="0.18,0.08"];
   edge  [fontname="Helvetica", fontsize=12, color="#6B7280", fontcolor="#6B7280"];
-  ldap   [label="LDAP\npeople, groups", pos="0,2.2!"];
-  syncd  [label="identity sync\n(legacy side)", pos="3.2,2.2!", fillcolor="#E5E7EB",
-          fontcolor="#374151"];
-  sql    [label="sam-sql", pos="6.4,2.2!", shape=cylinder, fillcolor="#FFF4E0",
-          color="#FAA119"];
-  samuel [label="SAMuel\ndirectory_access", pos="6.4,0!", fillcolor="#0057C2",
-          color="#00357A", fontcolor="#FFFFFF"];
-  prov   [label="LDAP provisioner", pos="0,0!"];
-  ldap -> syncd [label="people"];
-  syncd -> sql;
+  // the sam-app VM, drawn first so it sits behind its three services
+  box    [label=<<FONT FACE="Courier">sam-app</FONT>&#160;VM>, labelloc=t, shape=box, style="rounded,dashed", width=6.0, height=1.3,
+          fixedsize=true, color="#6B7280", fontcolor="#374151", fontsize=13, pos="5.3,2.6!"];
+  dir    [label=<UCAR directory<BR/><FONT FACE="Courier">ldap.ucar.edu</FONT><BR/>people, groups>, pos="0.4,2.6!"];
+  repl   [label="LDAP replica", pos="3.3,2.45!", fillcolor="#E5E7EB", fontcolor="#374151"];
+  xf     [label="transformer", pos="5.3,2.45!", fillcolor="#E5E7EB", fontcolor="#374151"];
+  syncd  [label=<<FONT FACE="Courier">sam-ldap-syncd</FONT>>, pos="7.3,2.45!", fillcolor="#E5E7EB", fontcolor="#374151"];
+  tomcat [label="legacy SAM\nldapsync API", pos="10.4,2.6!", fillcolor="#E5E7EB", fontcolor="#374151"];
+  sql    [label=<<FONT FACE="Courier">sam-sql</FONT>>, pos="10.4,0!", shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
+  samuel [label=<SAMuel<BR/><FONT FACE="Courier">directory_access</FONT>>, pos="7.0,0!", fillcolor="#0057C2", color="#00357A",
+          fontcolor="#FFFFFF"];
+  prov   [label="HPC LDAP provisioner\n(Bob)", pos="3.6,0!"];
+  hpcldap [label="HPC LDAP\nthe hosts' directory", pos="0.4,0!"];
+  dir -> repl [label="syncrepl"];
+  repl -> xf; xf -> syncd;
+  syncd -> tomcat [label="PUT"];
+  tomcat -> sql [label="people,\nhpc group definitions"];
+  // project groups go back over the top, through an invisible waypoint
+  wp     [label="project groups", shape=plaintext, style="", fontsize=12, fontcolor="#6B7280",
+          pos="5.3,3.75!"];
+  tomcat -> wp [arrowhead=none];
+  wp -> dir;
   sql -> samuel [label="projects, members"];
   samuel -> prov [label="group lists"];
-  prov -> ldap [label="unix groups"];
+  prov -> hpcldap [label="unix groups"];
 }
 ```
 
-## SAMuel to PBS, in one slide {.vcenter scale="1.15"}
+## SAMuel to PBS, in one slide {.vcenter scale="1.05"}
 
 - **HSG's cron processes call SAMuel's API.** None of our Python runs on their hosts.
 - **Accounting hooks:** projects, users, status, queues and exemptions, from the
@@ -567,8 +591,10 @@ digraph Loop {
 - **`fairshare`:** `/api/v1/fairshare/<machine>` returns the PBS tree ready-made.
   `fsparsetree_mr` runs inside the API, so nobody installs it on a scheduler host.
 - HSG installs: swapping the database is free; a new tree costs a scheduler pause.
+- `fsparsetree_mr` comes from the [`hpc-scheduling-tools`](https://github.com/NCAR/hpc-scheduling-tools)
+  plugin, by design: it is developed in parallel with SAMuel, and can be swapped out when needed.
 
-† The full story, with the trees, is the *SAM & PBS* deck, in this same repo.
+*† The full story, with the trees, is the _SAM & PBS_ deck, in this same repo.*
 
 ::: {.notes}
 The outbound half of data in / data out. HSG's cron downloads from SAMuel; it does not run
@@ -601,12 +627,12 @@ power sam-search awards. No test may open an SMTP socket or make an outbound req
 
 ## The overlap, mapped {.vcenter scale="1.15"}
 
-- **Next:** the ldapsync endpoints move to SAMuel. Identity's grey box shrinks to the daemon.
+- **Next:** the `ldapsync` endpoints move to SAMuel. Identity's grey box shrinks to the daemon.
 - **By decision:** AMIE (idle) and HEUV (not ported): port, replace, or retire.
 - **Last:** the schema. Once nothing grey writes `sam-sql`, it comes under migrations, and
   Postgres in production becomes possible.
 
-† Until then, SAMuel is a careful tenant in a shared house.
+*† Until then, SAMuel is a careful tenant in a shared house.*
 
 ::: {.notes}
 The order is a dependency chain, not a calendar. Horizon 2 in
