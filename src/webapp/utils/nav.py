@@ -241,10 +241,10 @@ NAV_SECTIONS = (
              'icon': 'fa-solid fa-database', 'visible': _can_browse_database,
              'active_endpoints': ('db_browser.source', 'db_browser.table',
                                   'db_browser.table_schema', 'db_browser.row')},
-            {'endpoint': 'admin_dashboard.configuration', 'label': 'Configuration',
-             'icon': 'fa-solid fa-sliders', 'visible': _can_view_config},
             {'endpoint': 'admin_dashboard.roles', 'label': 'Roles & access',
              'icon': 'fa-solid fa-user-shield', 'visible': _can_manage_roles},
+            {'endpoint': 'admin_dashboard.configuration', 'label': 'Configuration',
+             'icon': 'fa-solid fa-sliders', 'visible': _can_view_config},
         ),
     },
 )
