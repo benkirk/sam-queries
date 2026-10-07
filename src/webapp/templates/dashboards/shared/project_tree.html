@@ -101,13 +101,15 @@
 
 {#- Picker mode (Resource Details' scope tree): href(node) returns a row's URL, or nothing for
     a muted row titled idle_title; value(node) fills a trailing number cell. Both are macros
-    taking the node. -#}
+    taking the node. visible (a set of projcodes) replaces active_only as the whole
+    visibility rule when given; an inactive row it admits is muted and tagged. -#}
 {% macro project_tree_rows(nodes, depth=0, current_projcode='', can_view=false, active_only=false,
                            alloc_by_projcode=none, can_edit_allocations=false, exchange_url=none,
-                           href=none, link_attrs='', idle_title='', value=none) %}
+                           href=none, link_attrs='', idle_title='', value=none, visible=none) %}
 {%- for node in nodes -%}
 {%- set is_active = node.active if node.active is defined else true -%}
-{%- if not active_only or is_active -%}
+{%- set shown = (node.projcode in visible) if visible is not none else (not active_only or is_active) -%}
+{%- if shown -%}
 {%- set is_current = node.projcode == current_projcode -%}
 <tr class="{{ 'tree-node-current' if is_current }}{{ ' row-inactive' if not is_active }}">
   <td class="tree-cell tree-guides cell-truncate" style="--depth: {{ depth }};" title="{{ node.projcode }}{{ ' — ' ~ node.title if node.title }}">
@@ -135,11 +137,15 @@
   {{ allocation_actions(res, is_current, can_edit_allocations, exchange_url) }}
   {%- endif %}
 </tr>
+{%- if visible is not none -%}
+{%- set children = node.children | selectattr('projcode', 'in', visible) | list -%}
+{%- else -%}
 {%- set children = node.children | selectattr('active') | list if active_only else node.children | list -%}
+{%- endif -%}
 {%- if children -%}
 {{ project_tree_rows(children | sort(attribute='projcode'), depth + 1, current_projcode, can_view, active_only,
                      alloc_by_projcode, can_edit_allocations, exchange_url,
-                     href, link_attrs, idle_title, value) }}
+                     href, link_attrs, idle_title, value, visible) }}
 {%- endif -%}
 {%- endif -%}
 {%- endfor -%}

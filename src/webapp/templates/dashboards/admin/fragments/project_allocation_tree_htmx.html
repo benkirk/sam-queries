@@ -7,6 +7,7 @@
     projcode            — projcode of the project being edited
     resources_by_tab    — OrderedDict {tab_label: {names, rtypes, rtypes_str}}
     resources_by_projcode — dict {projcode: {resource_name: resource_dict}}
+    visible_projcodes   — set of projcodes the tree shows (active, root, or holding a row at active_at)
 
   Layout:
     - Bootstrap pill tabs, one per non-empty resource type (HPC/DAV, Disk, etc.)
@@ -142,7 +143,7 @@
                                          resource_id=resource_id_by_name[resource_name]) -%}
       {%- endif -%}
       <tbody id="{{ body_id }}" class="collapse alloc-tree-body">
-        {{ project_tree_rows([root], current_projcode=projcode, can_view=true, active_only=true,
+        {{ project_tree_rows([root], current_projcode=projcode, can_view=true, visible=visible_projcodes,
                              alloc_by_projcode=alloc_by_projcode, can_edit_allocations=can_modify_allocations,
                              exchange_url=_exchange_url) }}
       </tbody>

@@ -1127,11 +1127,17 @@ class TestActionTypeRollup:
                 == summary['total'])
 
     def test_request_number_narrows_the_rollup(self, session):
-        """The one table filter the summary used to ignore."""
-        _action(session, request_number='UCUB0166')
-        _action(session, request_number='UFSU0023')
-        scoped = summarize_xras_actions(session, request_number='UCUB0166')
-        assert scoped['total'] >= 1
+        """The one table filter the summary used to ignore.
+
+        Unique request numbers: route tests commit real UCUB0166 rows, and under
+        Postgres READ COMMITTED one can appear in the scoped count and be cleaned
+        up before the unscoped one runs (CI 2026-10-07: ``assert 2 < 2``).
+        """
+        mine, other = _unique_request_number(), _unique_request_number()
+        _action(session, request_number=mine)
+        _action(session, request_number=other)
+        scoped = summarize_xras_actions(session, request_number=mine)
+        assert scoped['total'] == 1
         assert scoped['total'] < summarize_xras_actions(session)['total']
 
 
