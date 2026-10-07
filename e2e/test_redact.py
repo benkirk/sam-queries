@@ -1,7 +1,7 @@
 """scripts/ui_snapshots.py --redact: names and emails never reach a production screenshot.
 
 A browser fact: the swap runs in the page, over text, attributes, SVG and content htmx adds later.
-Protocol: docs/plans/SAMUEL_PROD_SCREENSHOTS_HANDOFF.md.
+Protocol: docs/plans/implemented/SAMUEL_PROD_SCREENSHOTS_HANDOFF.md.
 """
 import importlib.util
 
