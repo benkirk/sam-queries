@@ -70,7 +70,7 @@ challenges.*
 - **{{< var milestones.read_write >}}:** the web app goes read/write: edits land in the shared database.
 - **{{< var milestones.xras_repoint >}}:** XRAS hands its awards to SAMuel directly.
 - **{{< var milestones.fy27_renewals >}}:** FY27 renewals run in SAMuel.
-- *…Which leads to today:* SAMuel is production SAM, at **{{< var hosts.prod >}}**.
+- **Today:** SAMuel is production SAM, at **{{< var hosts.prod >}}**.
 
 ::: {.notes}
 The legacy system still owns a few integrations (the LDAP identity mirror, project groups to
