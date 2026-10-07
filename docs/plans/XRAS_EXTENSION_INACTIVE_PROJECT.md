@@ -64,8 +64,13 @@ that `deactivate_expired_projects` switched off — as opposed to one a human
 deactivated for cause — SAM could call `Project.reactivate()` in the same
 `management_transaction` and record an `xras_activation_event` with
 `created_by='xras:<service>'`, closing the gap the card currently asks a human to
-close. The blocker is telling the two deactivation sources apart: `inactivate_time`
-records *when*, not *who*. Options are a `created_by`-style stamp on the task's
-writes, or reading the task ledger for a run whose `detail` names the projcode.
-Either is a small change once the policy question — should an XRAS approval override
-a deliberate deactivation? — is answered by NUSD.
+close. The two deactivation sources are already distinguishable without a schema
+change (SAM does not own the `project` table): the task stamps `inactivate_time`
+with its schedule occurrence (`deactivate_expired_projects(when=to_local_naive(
+ctx.occurrence))`, exactly `04:30:00` local on the 3rd — 88 of the 89 rows since
+2026-08-01), while the Details-tab checkbox and the admin **Deactivate Expired**
+button stamp `datetime.now()`. The task ledger's `detail.projcodes` (status DB,
+capped at 200 per run) is the explicit cross-check. Neither the XRAS action log nor
+`xras_activation_event` records a deactivation, so the inference lives on the
+project row and the ledger, not on the card's tables. What remains is the policy
+question — should an XRAS approval override a deliberate deactivation? — for NUSD.
