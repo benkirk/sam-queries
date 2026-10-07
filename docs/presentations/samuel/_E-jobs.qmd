@@ -54,7 +54,7 @@ exit status, with live counts (service.py:575-581).
 |---------------|------------------------------------------------------------------|
 | **Jobs** | the table, with the activity chart above it and facet chips for queue, QoS and exit status |
 | **By User** | who used the hours (project and machine views only) |
-| **By Project** | which projects used them, optionally as rings by facility |
+| **By Project** | which projects used them, as rings by facility, or full screen by facility, panel and project |
 | **Wait Times** | how long jobs queued before they started |
 | **Job Sizes** | nodes, CPUs, GPUs, and memory requested, used and wasted |
 | **Durations** | how long jobs ran |
@@ -73,9 +73,10 @@ behind a collapse.
 ## A whole machine, by project
 
 ::: {.notes}
-Status, Job History, Casper, By Project, CPU-hours with "By facility" on: the inner ring is the
-facility, the outer ring its projects. Staff only (VIEW_ALL_JOB_DATA). Project codes, no people.
-Captured 2026-10-02.
+Status, Job History, Derecho, By Project, CPU-hours, opened full screen with the expand icon: facilities
+inside, allocation panels in the middle, every project on the rim, with a "+N" wedge for the ones too
+thin to draw. Staff only (VIEW_ALL_JOB_DATA). Project codes, no people. Taken locally against a copy
+of the job-history database, 2026-10-06. Design record: docs/plans/PANEL_SUNBURST.md.
 :::
 
 ![](images/jobs-by-facility.png){height="72%" fig-align="center"}
@@ -100,9 +101,18 @@ size, files, dirs, atime, path (routes.py:74-76); 50 by default, up to 500 (rout
 106-112). Access history uses 10 bands, "< 1 Month" to "7+ Years" (FS_SCANS_WEBUI.md:30). The
 page's own notes: "computed by directory and grouped by most recent access" and "approximate,
 computed as average file sizes per directory". Filesystems: FS_SCAN_RESOURCES defaults to
-Campaign_Store and Destor (src/webapp/config.py:290-293). A screenshot waits for a production
-shoot: the local data for Ben is a few files.
+Campaign_Store and Destor (src/webapp/config.py:290-293). The next slide shows the same panels for a
+whole filesystem: Ben's own My Data is a few files.
 :::
+
+## The same panels, a whole filesystem
+
+::: {.notes}
+Status, Filesystem Scans, Campaign Store, Large directories (VIEW_ALL_FILESYSTEM_DATA): the
+panels My Data shows a user, for the whole filesystem. Production, read-only, 2026-10-06. Names and emails are replaced with pseudonyms in the page before capture, never blurred (docs/plans/SAMUEL_PROD_SCREENSHOTS_HANDOFF.md).
+:::
+
+[![](images/status-fs-scans.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/status/filesystem-scans)
 
 ## Where the data comes from {.smaller .center .fill}
 

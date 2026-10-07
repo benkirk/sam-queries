@@ -127,3 +127,55 @@ def test_chart_sheet_compare_names_the_differing_rendering(tmp_path, capsys):
     assert sheet.main(['--compare', str(tmp_path / 'a'), str(tmp_path / 'b')]) == 0
     assert sheet.main(['--compare', str(tmp_path / 'a'), str(tmp_path / 'c')]) == 1
     assert 'pace.small__desktop-light.svg: differs' in capsys.readouterr().out
+
+
+def test_top_and_remove_are_steps():
+    assert snap.parse_step('top:#Derecho-tab') == ('top', '#Derecho-tab', None)
+    assert snap.parse_step('remove:.alert-warning') == ('remove', '.alert-warning', None)
+
+
+def test_deck_recipes_parse_and_name_each_shot_once():
+    for name in ('ui_snapshots_deck.json', 'ui_snapshots_prod_deck.json'):
+        recipes = json.loads((REPO / 'scripts' / name).read_text())
+        names = [r['name'] for r in recipes]
+        assert len(names) == len(set(names))
+        for r in recipes:
+            assert r['page'].startswith('/') and r['layout'] in snap.LAYOUTS and r['theme'] in snap.THEMES
+            [snap.parse_step(s) for s in r.get('steps', ())]
+
+
+def test_a_server_off_localhost_needs_read_only():
+    with pytest.raises(SystemExit):
+        snap.main(['--out', '/tmp/x', '--base-url', 'https://sam.hpc.ucar.edu'])
+
+
+class _Route:
+    def __init__(self, method, url):
+        self.request = type('Req', (), {'method': method, 'url': url})()
+        self.outcome = None
+
+    def continue_(self):
+        self.outcome = 'continued'
+
+    def abort(self):
+        self.outcome = 'aborted'
+
+
+@pytest.mark.parametrize('method,url,outcome', [
+    ('GET', 'https://sam/admin/events', 'continued'),
+    ('HEAD', 'https://sam/', 'continued'),
+    ('POST', 'https://sam/admin/account-requests/1/claim', 'aborted'),
+    ('DELETE', 'https://sam/admin/htmx/x', 'aborted'),
+    ('GET', 'https://sam/auth/logout', 'aborted'),   # would end the captured session
+])
+def test_read_only_guard_lets_only_reads_through(method, url, outcome):
+    capture, route = snap.Capture(read_only=True), _Route(method, url)
+    capture._guard(route)
+    assert route.outcome == outcome
+    assert bool(capture.blocked) == (outcome == 'aborted')
+
+
+def test_ocr_leaks_flags_emails_and_swapped_originals_only():
+    text = 'Person  user_1234abcd\nJane   Doe  jane.doe@ucar.edu  user_99@example.org  Bob'
+    assert snap.ocr_leaks(text, {'Jane Doe', 'Bob', 'jdoe'}) == ['jane.doe@ucar.edu', 'Jane Doe']
+    assert snap.ocr_leaks('nothing here', {'Jane Doe'}) == []

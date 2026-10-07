@@ -12,6 +12,9 @@ wrapped away from their text and --midword words split across two lines (a colum
 its content), both with every collapse and tab open (none of the three needs --out).
 --modal OPENER (after any --step) or --recipes FILE shoots the opened dialog and prints its height.
 --pages charts shoots every chart host, each with the steps its lazy tabs need.
+A recipe without "modal" is a page shot (the deck's: ui_snapshots_deck.json). Against production:
+--read-only aborts every request but GET/HEAD, --redact swaps names and emails for pseudonyms in the
+page before capture, --verify OCRs each PNG and deletes it on a leak (SAMUEL_PROD_SCREENSHOTS_HANDOFF.md).
 
     python scripts/ui_snapshots.py --out /tmp/before
     python scripts/ui_snapshots.py --out /tmp/after --page /admin/contracts --expand 2
@@ -24,12 +27,18 @@ its content), both with every collapse and tab open (none of the three needs --o
     python scripts/ui_snapshots.py --out /tmp/m --page /admin/resources --modal '[data-bs-target="#createResourceModal"]'
     python scripts/ui_snapshots.py --out /tmp/m --recipes scripts/ui_snapshots_modals.json --layout desktop --layout mobile
     python scripts/ui_snapshots.py --out /tmp/c --pages charts --base-url http://localhost:5050
+    python scripts/ui_snapshots.py --out /tmp/deck --recipes scripts/ui_snapshots_deck.json --base-url http://localhost:5052
+    python scripts/ui_snapshots.py --out /tmp/f --recipes scripts/ui_snapshots_prod_deck.json --base-url https://sam.hpc.ucar.edu \
+        --storage-state /tmp/prod_state.json --read-only --redact --verify
 """
 import argparse
 import gzip
 import json
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 DEFAULT_PAGES = [
@@ -371,16 +380,19 @@ def check_midword(page, max_tabs=14):
     return _collect(page, MIDWORD_JS, max_tabs)
 
 
+_VERBS = ('click', 'wait', 'reveal', 'scroll', 'top', 'remove')
+
+
 def parse_step(text):
-    """``click:SEL`` / ``wait:SEL`` / ``reveal:SEL`` / ``scroll:SEL`` / ``fill:SEL=TEXT`` -> ``(verb, selector, text)``."""
+    """``VERB:SEL`` (one of ``_VERBS``) or ``fill:SEL=TEXT`` -> ``(verb, selector, text)``."""
     verb, _, rest = text.partition(':')
     if verb == 'fill':
         selector, sep, value = rest.rpartition('=')
         if not sep or not selector:
             raise ValueError(f'fill step needs SEL=TEXT: {text!r}')
         return verb, selector, value
-    if verb not in ('click', 'wait', 'reveal', 'scroll') or not rest:
-        raise ValueError(f'step must be click:SEL, wait:SEL, reveal:SEL, scroll:SEL or fill:SEL=TEXT: {text!r}')
+    if verb not in _VERBS or not rest:
+        raise ValueError(f'step must be {", ".join(v + ":SEL" for v in _VERBS)} or fill:SEL=TEXT: {text!r}')
     return verb, rest, None
 
 
@@ -404,6 +416,12 @@ def _run_steps(page, steps):
         elif verb == 'scroll':   # every match: an `intersect once` loader fires when it is seen
             page.evaluate("s => document.querySelectorAll(s).forEach("
                           "e => e.offsetParent && e.scrollIntoView({block: 'center'}))", selector)
+        elif verb == 'top':   # the first visible match at the top of the window, for a viewport shot
+            page.evaluate("s => { const e = [...document.querySelectorAll(s)].find(e => e.offsetParent);"
+                          " if (e) window.scrollTo(0, e.getBoundingClientRect().top + window.scrollY - 16); }",
+                          selector)
+        elif verb == 'remove':   # chrome a shot should not carry (a stale-collector banner)
+            page.evaluate("s => document.querySelectorAll(s).forEach(e => e.remove())", selector)
         elif verb == 'fill':
             target.fill(value)
         elif verb == 'click':
@@ -452,12 +470,13 @@ def _settle(page, expand):
         page.wait_for_timeout(400)
 
 
-def _shoot_modal(page, recipe, out, state, styles):
+def _shoot_modal(page, recipe, out, state, styles, capture):
     name = recipe.get('name') or f"{_slug(recipe['page'])}__{_slug(recipe['modal'])}"
     for attempt in (1, 2):   # one retry: a laptop's network can suspend mid-run
         try:
             page.goto(recipe['page'])
             _settle(page, 0)
+            capture.arm(page, recipe)
             _open_modal(page, recipe)
             break
         except Exception as e:  # noqa: BLE001 - one missing opener must not lose the rest of the run
@@ -475,12 +494,162 @@ def _shoot_modal(page, recipe, out, state, styles):
     if tall > viewport['height']:
         page.set_viewport_size({'width': viewport['width'], 'height': int(tall)})
         page.wait_for_timeout(200)
+    capture.before(page)
     page.locator('.modal.show .modal-dialog').screenshot(path=str(path))
     page.set_viewport_size(viewport)
     tag.evaluate('el => el.remove()')
+    if not capture.after(path):
+        return
     with (out / 'heights.tsv').open('a') as f:
         f.write(f"{name}\t{state}\t{size['height']}\t{size['natural']}\n")
     print(f"{path} height={size['height']} natural={size['natural']}")
+
+
+def _shoot_page(page, recipe, out, state, capture):
+    """A recipe without "modal": the viewport (or "element", or "full_page") after its steps."""
+    name = recipe.get('name') or _slug(recipe['page'])
+    viewport = page.viewport_size
+    if recipe.get('viewport'):
+        page.set_viewport_size({'width': recipe['viewport'][0], 'height': recipe['viewport'][1]})
+    try:
+        page.goto(recipe['page'])
+        _settle(page, 0)
+        capture.arm(page, recipe)
+        _run_steps(page, recipe.get('steps', ()))
+        page.evaluate('document.activeElement && document.activeElement.blur()')   # no focus ring or hover
+        page.mouse.move(0, 0)                                                          # left by a click step
+        capture.before(page)
+        path = out / f'{name}__{state}.png'
+        if recipe.get('element'):
+            page.locator(f"{recipe['element']} >> visible=true").first.screenshot(path=str(path))
+        else:
+            page.screenshot(path=str(path), full_page=bool(recipe.get('full_page')))
+    except Exception as e:  # noqa: BLE001 - one broken recipe must not lose the rest of the run
+        print(f'{name} [{state}]: not shot ({type(e).__name__}: {str(e).splitlines()[0]})')
+        return
+    finally:
+        page.set_viewport_size(viewport)
+    if capture.after(path):
+        print(path)
+
+
+# Swaps names and emails for user_<hash8> pseudonyms in the page, before capture, so the real text
+# never reaches a PNG. Emails by shape; names by the recipe's "redact" selectors; then every other
+# occurrence of a swapped name (a path segment, a hover title). A MutationObserver redoes it for htmx swaps.
+REDACT_JS = r"""(() => {
+  if (window.__samRedact) return;
+  const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+  const ATTRS = ['title', 'href', 'value', 'aria-label', 'alt', 'placeholder', 'data-bs-title', 'data-bs-original-title'];
+  const names = new Map(), emails = new Map();
+  let selectors = [], pattern = null, queued = false;
+  const hash = s => { let h = 0x811c9dc5; for (const c of s) { h ^= c.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+                      return h.toString(16).padStart(8, '0'); };
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const name = s => { if (!names.has(s)) { names.set(s, 'user_' + hash(s)); pattern = null; } return names.get(s); };
+  const known = () => pattern || (names.size && (pattern = new RegExp('(?<![A-Za-z0-9_])(' +
+      [...names.keys()].sort((a, b) => b.length - a.length).map(esc).join('|') + ')(?![A-Za-z0-9_])', 'g')));
+  const scrub = t => {
+    t = t.replace(EMAIL, m => m.endsWith('@example.org') ? m
+                  : (emails.has(m) || emails.set(m, 'user_' + hash(m) + '@example.org'), emails.get(m)));
+    const re = known();
+    return re ? t.replace(re, m => names.get(m)) : t;
+  };
+  const register = el => {
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n; (n = w.nextNode());) {
+      const t = n.textContent.trim();
+      if (!/[A-Za-z]/.test(t) || t.length < 2 || /^user_[0-9a-f]{8}(@example\.org)?$/.test(t)) continue;
+      name(t);
+      const parts = t.match(/^(.+?)\s*\(([^()\s]{3,})\)$/);   // "Jane Doe (jdoe)": each half alone, too
+      if (parts) { name(parts[1]); name(parts[2]); }
+    }
+  };
+  const run = () => {
+    queued = false;
+    if (!document.body) return;
+    if (selectors.length) document.querySelectorAll(selectors.join(',')).forEach(register);
+    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n; (n = w.nextNode());) {
+      if (n.parentElement && n.parentElement.closest('script, style')) continue;
+      const t = scrub(n.textContent);
+      if (t !== n.textContent) n.textContent = t;
+    }
+    for (const el of document.querySelectorAll(ATTRS.map(a => `[${a}]`).join(','))) {
+      for (const a of ATTRS) {
+        const v = el.getAttribute(a);
+        if (v !== null) { const t = scrub(v); if (t !== v) el.setAttribute(a, t); }
+      }
+    }
+    document.title = scrub(document.title);
+  };
+  const queue = () => { if (!queued) { queued = true; setTimeout(run, 0); } };
+  new MutationObserver(queue).observe(document,
+      {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ATTRS});
+  document.addEventListener('DOMContentLoaded', run);
+  window.__samRedact = {
+    select: list => { selectors = list || []; run(); },
+    run,
+    originals: () => [...names.keys(), ...emails.keys()],
+  };
+})();"""
+_EMAIL = re.compile(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}')
+
+
+def ocr_leaks(text, originals):
+    """Email-shaped tokens and swapped-out originals still legible in OCR ``text``."""
+    flat = ' '.join(text.split()).lower()
+    leaks = [m for m in _EMAIL.findall(text) if not m.lower().endswith('example.org')]
+    return leaks + sorted(o for o in originals if len(o) >= 4 and ' '.join(o.split()).lower() in flat)
+
+
+class Capture:
+    """The production protocol around each shot: the write guard, redaction, and the OCR check."""
+
+    def __init__(self, read_only=False, redact=False, verify=False):
+        self.read_only, self.redact, self.verify = read_only, redact, verify
+        self.originals, self.blocked, self.failed = set(), [], 0
+
+    def attach(self, context):
+        if self.read_only:
+            context.route('**/*', self._guard)
+        if self.redact:
+            context.add_init_script(REDACT_JS)
+
+    def _guard(self, route):
+        req = route.request
+        if req.method in ('GET', 'HEAD') and '/logout' not in req.url:
+            route.continue_()
+        else:
+            self.blocked.append(f'{req.method} {req.url}')
+            print(f'  blocked {req.method} {req.url}', flush=True)
+            route.abort()
+
+    def arm(self, page, recipe):
+        if self.redact:
+            page.evaluate('s => window.__samRedact.select(s)', recipe.get('redact', []))
+
+    def before(self, page):
+        if self.redact:
+            page.evaluate('window.__samRedact.run()')
+            self.originals.update(page.evaluate('window.__samRedact.originals()'))
+
+    def after(self, path):
+        """True to keep ``path``; a leak deletes it."""
+        if not self.verify:
+            return True
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as tmp:
+            big = Path(tmp) / 'ocr.png'
+            img = Image.open(path).convert('L')
+            img.resize((img.width * 2, img.height * 2)).save(big)
+            text = subprocess.run(['tesseract', str(big), 'stdout', '--psm', '11'],
+                                  capture_output=True, text=True, check=True).stdout
+        leaks = ocr_leaks(text, self.originals)
+        if leaks:
+            path.unlink()
+            self.failed += 1
+            print(f'{path}: DELETED, legible: {", ".join(leaks[:5])}', flush=True)
+        return not leaks
 
 
 def main(argv=None):
@@ -518,7 +687,14 @@ def main(argv=None):
                     help='before the shot, in order: click:SEL, wait:SEL, reveal:SEL or fill:SEL=TEXT')
     ap.add_argument('--modal', help='opener to click on each --page; shoots .modal.show .modal-dialog')
     ap.add_argument('--recipes', type=Path,
-                    help='JSON list of {name, page, steps, modal, inject: {file, into}}; needs --out')
+                    help='JSON list of {name, page, steps, modal, inject: {file, into}}; without "modal" a page'
+                         ' shot ({element, full_page, viewport, layout, theme, redact}); needs --out')
+    ap.add_argument('--read-only', action='store_true',
+                    help='abort every request but GET/HEAD (and logout); required off localhost')
+    ap.add_argument('--redact', action='store_true',
+                    help='swap emails, and names under each recipe\'s "redact" selectors, for pseudonyms before capture')
+    ap.add_argument('--verify', action='store_true',
+                    help='OCR each PNG (tesseract) and delete it if an email or a swapped name is legible')
     args = ap.parse_args(argv)
     if args.compare:
         return compare_dirs(*args.compare, strict=args.strict, px_tolerance=args.px_tolerance)
@@ -536,12 +712,17 @@ def main(argv=None):
     checks = args.headers or args.wraps or args.midword
     if args.out is None and not checks:
         ap.error('--out is required unless --compare, --compare-pixels, --headers, --wraps or --midword is given')
+    host = re.sub(r'^https?://', '', args.base_url).split('/')[0].split(':')[0]
+    if host not in ('localhost', '127.0.0.1') and not args.read_only:
+        ap.error(f'{host} is not local: --read-only is required')
+    if args.verify and not shutil.which('tesseract'):
+        ap.error('--verify needs tesseract on PATH')
+    capture = Capture(args.read_only, args.redact, args.verify)
     from playwright.sync_api import sync_playwright
 
     if args.out:
         args.out.mkdir(parents=True, exist_ok=True)
     problems = 0
-    host = re.sub(r'^https?://', '', args.base_url).split('/')[0].split(':')[0]
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
         state = args.storage_state or _login(browser, args.base_url, args.username, args.password)
@@ -549,13 +730,19 @@ def main(argv=None):
             width, height = LAYOUTS[layout]
             width = args.width or width
             for theme in args.themes or THEMES:
-                context = browser.new_context(base_url=args.base_url, storage_state=state,
+                context = browser.new_context(base_url=args.base_url, storage_state=state, color_scheme=theme,
                                               viewport={'width': width, 'height': height})
+                capture.attach(context)
                 context.add_cookies([{'name': 'sam_theme', 'value': theme, 'domain': host, 'path': '/'},
                                      {'name': 'sam_layout', 'value': layout, 'domain': host, 'path': '/'}])
                 page = context.new_page()
                 for recipe in recipes or ():
-                    _shoot_modal(page, recipe, args.out, f'{layout}-{theme}', args.styles)
+                    if recipe.get('layout', layout) != layout or recipe.get('theme', theme) != theme:
+                        continue
+                    if recipe.get('modal'):
+                        _shoot_modal(page, recipe, args.out, f'{layout}-{theme}', args.styles, capture)
+                    else:
+                        _shoot_page(page, recipe, args.out, f'{layout}-{theme}', capture)
                 named = PAGE_SETS[args.page_set] if args.page_set else [
                     (_slug(url), url, ()) for url in args.pages or DEFAULT_PAGES]
                 for name, url, steps in () if recipes else named:
@@ -594,7 +781,11 @@ def main(argv=None):
         browser.close()
     if checks:
         print(f'{problems} finding(s)')
-    return 1 if problems else 0
+    if capture.blocked:
+        print(f'{len(capture.blocked)} request(s) blocked by --read-only')
+    if capture.failed:
+        print(f'{capture.failed} shot(s) deleted by --verify')
+    return 1 if problems or capture.failed else 0
 
 
 if __name__ == '__main__':

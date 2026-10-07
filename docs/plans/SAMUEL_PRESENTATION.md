@@ -676,8 +676,10 @@ shots are Ben's own views (pinned to the signed-in user) and one project-level c
   Appendix F (admin pages that are empty locally and full of addresses in production). The
   proposal: Ben's own browser session (the claude-in-chrome skill), viewing only. Names and
   emails are replaced in the DOM with `user_xxxxxxxx`-style placeholders before each capture,
-  rather than blurred afterwards. This would amend "never screenshot prod" above; it needs
-  Ben's sign-off.
+  rather than blurred afterwards.
+  **Approved by Ben, 2026-10-06:** production shots are allowed under that protocol. The
+  principle for the whole effort is a responsible obfuscation, not a pedantic one.
+  The protocol, the tooling to build, and the shot list: `SAMUEL_PROD_SCREENSHOTS_HANDOFF.md`.
 
 - **Playwright MCP** drives the local `samuel-dev` (:5050, `docker compose up samuel-dev --watch`)
   through stub Quick Login on obfuscated data. It captures desktop / mobile and light / dark
@@ -685,7 +687,8 @@ shots are Ben's own views (pinned to the signed-in user) and one project-level c
   - `.playwright-mcp/` already holds ~1,089 PNGs from past UI work. Check there before
     re-shooting.
   - ⚠️ **This repo and the framework are both PUBLIC.** Check each shot for real names before
-    committing; a dev DB may be unobfuscated. Never screenshot prod.
+    committing; a dev DB may be unobfuscated. Screenshot prod only under
+    `SAMUEL_PROD_SCREENSHOTS_HANDOFF.md`.
 - **claude-in-chrome skill** uses Ben's browser session for SSO-gated UIs: Argo CD, GitHub
   Actions, the rulesets page, samuel-dev on k8s.
 - **Google Workspace MCP** can mine existing CISL/NCAR Drive decks for framing.
@@ -1126,6 +1129,20 @@ Each phase closes with render → visual review → commit in this repo
   - **Result:** all 60 footnotes in the sources are now in the pptx; 211 slides, unchanged.
   - The submodule pin moved to `05e7a0a`.
 
+- **2026-10-06, the reshoot after the UX sweeps (#716 to #746), and the production shoot.** Ben
+  approved production screenshots (2026-10-06): responsible obfuscation, not pedantic.
+  - **Tooling:** `ui_snapshots.py` page-shot recipes plus `--read-only`, `--redact` and `--verify`
+    (#747). `scripts/ui_snapshots_deck.json` reshoots the local shots in one command against
+    `ALT_SAM_DB_PORT=3307 scripts/dev_server_alt.sh <worktree> 5052`;
+    `scripts/ui_snapshots_prod_deck.json` takes the production ones.
+  - **Local, obfuscated DB:** the five tour shots, mobile-dark (no more mid-word splits), Job History
+    activity and table, `/database`. By Project is now the full-screen three-ring view (#721).
+  - **Production, approved by Ben image by image:** tour-status (live collectors, replacing the
+    idle local zeros), and new image slides for Appendix F (account requests, expirations, the
+    delivery log, task runs, configuration, rate limits, last seen) and E (Filesystem Scans).
+    No request was blocked, every shot passed OCR, and the session file was deleted after.
+  - **Not shot:** Events (production has none) and Templates.
+
 ## 11. Voice, tone and the fun
 
 **SAMuel = SAM, updated for extended lifecycle.** That backronym is the deck's premise and its
@@ -1519,3 +1536,8 @@ branch and PR against `staging`. Tick an item once its fix merges, and note the 
   (`admin.py:422,429`), which means "not found" elsewhere.
 - [ ] **No test keeps the CLI conventions in lockstep with `jobhist`,** although CLAUDE.md
   requires it.
+- [ ] **UCIE0001's title has a typo, "Wil l"** (found 2026-10-06, the production shoot). It is in
+  the data (`project.title`), not a wrap: a one-field edit in Admin, if wanted.
+- [x] **A `.small` paragraph in an inner card rendered at 18px** (found 2026-10-06, Server
+  Information's note): `.inner-card p` outranked `.small`. Fixed in #750; the deck's
+  `admin-configuration.png` shows the old size until a reshoot after #750 deploys.

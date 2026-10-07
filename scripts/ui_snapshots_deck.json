@@ -1,0 +1,140 @@
+[
+ {
+  "name": "tour-project",
+  "page": "/user/",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   810
+  ],
+  "steps": [
+   "click:[data-bs-target=\"#project-2\"]",
+   "wait:#project-2.show",
+   "top:[data-bs-target=\"#project-1\"]"
+  ]
+ },
+ {
+  "name": "tour-usage",
+  "page": "/user/resource-details/WYOM0247?resource=Derecho",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   810
+  ],
+  "steps": [
+   "wait:#tab-usage-history svg",
+   "top:[data-bs-target=\"#collapseAllocationHistory\"]"
+  ]
+ },
+ {
+  "name": "tour-allocations",
+  "page": "/allocations/projects?resources=Derecho",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   810
+  ],
+  "steps": [
+   "wait:#share-derecho svg",
+   "top:#Derecho-tab"
+  ]
+ },
+ {
+  "name": "tour-admin",
+  "page": "/admin/project/SCSG0001/edit",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   810
+  ]
+ },
+ {
+  "name": "tour-mobile-dark",
+  "page": "/user/resource-details/WYOM0247?resource=Derecho",
+  "layout": "mobile",
+  "theme": "dark",
+  "viewport": [
+   390,
+   844
+  ],
+  "steps": [
+   "wait:#tab-usage-history svg",
+   "top:[data-bs-target=\"#collapseAllocationHistory\"]"
+  ]
+ },
+ {
+  "name": "jobs-activity",
+  "page": "/user/jobs",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   810
+  ],
+  "steps": [
+   "wait:#my-jobs-m1-timeline svg",
+   "top:#my-jobs-m1-jobs-tab"
+  ]
+ },
+ {
+  "name": "jobs-table",
+  "page": "/user/jobs",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   810
+  ],
+  "steps": [
+   "wait:#my-jobs-m1-jobs table",
+   "click:[data-bs-target=\"#my-jobs-m1-timeline-wrap\"]",
+   "click:#my-jobs-m1-jobs thead th:last-child",
+   "wait:#my-jobs-m1-jobs table",
+   "top:#my-jobs-m1-jobs-tab"
+  ]
+ },
+ {
+  "name": "jobs-by-facility",
+  "page": "/status/job-history",
+  "layout": "desktop",
+  "theme": "light",
+  "steps": [
+   "click:#jobs-m1-byproj-tab",
+   "wait:#jobs-m1-byproj svg",
+   "click:#jobs-byfac-jobs-m1-byproj",
+   "wait:#jobs-byfac-jobs-m1-byproj:checked",
+   "wait:#jobs-m1-byproj svg"
+  ],
+  "element": "#jobs-m1-byproj figure.chart-container svg"
+ },
+ {
+  "name": "jobs-by-facility-expanded",
+  "page": "/status/job-history",
+  "layout": "desktop",
+  "theme": "light",
+  "steps": [
+   "click:#jobs-m1-byproj-tab",
+   "wait:#jobs-m1-byproj svg",
+   "click:#jobs-m1-byproj .chart-expand-btn",
+   "wait:#chartExpandModalBody svg"
+  ],
+  "element": "#chartExpandModal .modal-content"
+ },
+ {
+  "name": "database-resources",
+  "page": "/database/sam/resources",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   670
+  ],
+  "steps": [
+   "top:.breadcrumb"
+  ]
+ }
+]

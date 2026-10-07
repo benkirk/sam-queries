@@ -654,9 +654,11 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     padding: 0;
 }
 
-.inner-card p {
+/* A default, so a size utility on the <p> (.small) still wins: :where() drops the specificity,
+   and the unitless line-height (30px at 18px) scales with the size it ends up at. */
+:where(.inner-card) p {
     font-size: 1.125rem;
-    line-height: 1.875rem;
+    line-height: 1.6667;
 }
 
 .card-header h5 {

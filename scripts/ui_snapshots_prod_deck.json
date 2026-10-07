@@ -1,0 +1,122 @@
+[
+ {
+  "name": "tour-status",
+  "page": "/status/derecho",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   810
+  ],
+  "steps": [
+   "top:.card-body > h6.mb-3:nth-of-type(2)"
+  ]
+ },
+ {
+  "name": "admin-account-requests",
+  "page": "/admin/account-requests",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   810
+  ],
+  "steps": [
+   "top:#account-requests-card"
+  ],
+  "redact": [
+   "#account-requests-card tbody tr[id^=\"account-request-\"] > td:nth-child(2)"
+  ]
+ },
+ {
+  "name": "admin-expirations",
+  "page": "/admin/projects",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   810
+  ],
+  "steps": [
+   "click:[data-bs-target=\"#expirations-section\"]",
+   "wait:#expirations-section table",
+   "top:[data-bs-target=\"#expirations-section\"]"
+  ]
+ },
+ {
+  "name": "admin-notifications",
+  "page": "/admin/htmx/notifications",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   810
+  ]
+ },
+ {
+  "name": "admin-tasks",
+  "page": "/admin/htmx/tasks",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   810
+  ]
+ },
+ {
+  "name": "admin-configuration",
+  "page": "/admin/configuration",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   810
+  ],
+  "steps": [
+   "top:#configurationSection"
+  ]
+ },
+ {
+  "name": "admin-rate-limits",
+  "page": "/admin/htmx/rate-limits",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   810
+  ],
+  "redact": [
+   "main table tbody td:first-child"
+  ]
+ },
+ {
+  "name": "admin-last-seen",
+  "page": "/admin/users/last-seen",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   810
+  ],
+  "redact": [
+   "#lastSeenTableContainer tbody td:nth-child(1) code",
+   "#lastSeenTableContainer tbody td:nth-child(2)"
+  ],
+  "steps": [
+   "top:#lastSeenTableContainer"
+  ]
+ },
+ {
+  "name": "status-fs-scans",
+  "page": "/status/filesystem-scans",
+  "layout": "desktop",
+  "theme": "light",
+  "viewport": [
+   1440,
+   810
+  ],
+  "steps": [
+   "top:.main-content .nav-pills, .main-content .nav-tabs ~ * .nav"
+  ]
+ }
+]
