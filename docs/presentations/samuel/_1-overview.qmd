@@ -41,8 +41,8 @@ SAM has run CISL's allocations for {{< var legacy.years >}} years:
 - **Back-end processing** for identity management and accounting.
 - A **web API** feeding the batch scheduler, storage quotas, and friends.
 - A **MySQL database** gluing all of it together.
-- {{< var legacy.loc >}} lines of Java (Spring, Hibernate, JSF/PrimeFaces, Flyway), plus a
-  plethora of containerized microservices.
+- {{< var legacy.code >}} lines of code, mostly Java (Spring, Hibernate, JSF/PrimeFaces, Flyway),
+  plus {{< var legacy.zoo >}} more in a plethora of containerized microservices.
 
 *† SAMuel is **SAM** **u**pdated for an **e**xtended **l**ifecycle: a modernization and
 refactoring effort to support another generation.*
@@ -246,7 +246,7 @@ phone-sized chart, not a shrunken desktop one.
 ::: {.notes}
 Picks up where "Confessions of a Vibe Coder" (March 2026) stopped at ~75K lines. The
 twist: source alone is {{< var size.source_lines >}} ({{< var size.source_code >}} of code and
-{{< var size.source_docs >}} of comments and docstrings), still under legacy's ~250K, and the tests
+{{< var size.source_docs >}} of comments and docstrings), still under legacy's {{< var legacy.code >}}, and the tests
 ({{< var size.test_lines >}}) are nearly as big as the code they test. The gray dots mark this
 deck's milestones.
 {{< var size.prs_merged >}} pull requests merged since October 2025.

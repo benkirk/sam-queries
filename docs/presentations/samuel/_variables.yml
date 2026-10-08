@@ -32,9 +32,12 @@ db:                          # sam on production, information_schema data+index,
   per_job_pct: "85%"
   legacy_only_gb: "58"       # per_job_gb + dataset_activity (6.6); disk_activity/disk_charge are still written
 
-legacy:
-  loc: "~250K"              # "Confessions of a Vibe Coder" (SEA, 2026-03-11), slide 3
-  years: "nearly 15"        # same slide
+legacy:                     # data/legacy_loc.tsv (legacy_loc.py): code files, tests in; master + container_zoo, 2026-10-08
+  java: "221K"              # .java: 133K main, 87K src/test
+  code: "255K"              # Java plus XHTML, XML, SQL, scripts and config (the March talk's "~250K")
+  zoo: "57K"                # container_zoo code, less amieclient (upstream) and sftp-server (retired)
+  with_zoo: "313K"
+  years: "nearly 15"        # "Confessions of a Vibe Coder" (SEA, 2026-03-11), slide 3
 
 hosts:
   prod: "sam.hpc.ucar.edu"  # docs/AUTHENTICATION.md, 2026-09-29

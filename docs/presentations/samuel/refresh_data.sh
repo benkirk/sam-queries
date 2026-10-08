@@ -48,6 +48,8 @@ for end in $(month_ends "$first"); do
 done
 cat "$out"
 
+# Legacy SAM's code lines, the chart's reference lines (legacy_sam/ beside this checkout).
+python3 legacy_loc.py "$repo/legacy_sam"
 python3 plot_progression.py
 
 # Table counts, live vs ORM (count_tables.py refuses anything but port 3307).

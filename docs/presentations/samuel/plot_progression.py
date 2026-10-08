@@ -22,7 +22,8 @@ BANDS = [("code_lines", "Source code", "#0057C2"),
          ("source_doc_lines", "Comments & docstrings", "#7FA7DE"),
          ("test_lines", "Tests", "#E8890C"),
          ("other_lines", "Docs & other", "#B8BEC7")]
-LEGACY_LOC = 250_000          # "roughly 250K lines", Confessions of a Vibe Coder, slide 3
+LEGACY = {r["measure"]: int(r["lines"])               # legacy_loc.py: code lines, legacy SAM
+          for r in csv.DictReader(open(HERE / "data/legacy_loc.tsv"), delimiter="\t")}
 TALK = date(2026, 3, 11)      # the March talk the series picks up from
 
 rows = list(csv.DictReader(open(HERE / "data/loc_progression.tsv"), delimiter="\t"))
@@ -38,12 +39,18 @@ fig, ax = plt.subplots(figsize=(10, 4.2), dpi=200)
 ax.stackplot(x, *series, colors=[c for _, _, c in BANDS],
              edgecolor="white", linewidth=2)          # 2px surface seam between bands
 
-ax.axhline(LEGACY_LOC, color=MUTED, linewidth=1.2, linestyle=(0, (4, 3)))
-ax.text(x[0], LEGACY_LOC, "legacy SAM, ~250K lines†", color=MUTED, fontsize=11,
-        va="bottom", ha="left")
 
 def k(v):
     return f"{v/1e3:,.1f}K" if v < 10_000 else f"{v/1e3:,.0f}K"
+
+# Legacy SAM for scale: its Java, all its code, and that plus the container zoo beside it.
+# Labeled from late December, the clear stretch between the first milestone and the March talk.
+for key, label, dash, va in (("java", "legacy Java", (1, 2), "top"),
+                             ("legacy_code", "legacy SAM, all code†", (4, 3), "bottom"),
+                             ("legacy_with_zoo", "+ its container zoo", (4, 3), "bottom")):
+    ax.axhline(LEGACY[key], color=MUTED, linewidth=1.1, linestyle=(0, dash))
+    ax.text(date(2025, 12, 22), LEGACY[key], f"{label}  {k(LEGACY[key])}", color=MUTED,
+            fontsize=9, va=va, ha="left")
 
 # Direct labels: each band at its vertical middle on the last point.
 last, base = len(x) - 1, 0
@@ -64,7 +71,7 @@ def mark(i, label, dx, dy, ha="center"):
 
 talk = max(i for i, d in enumerate(x) if d <= TALK)
 mark(0, k(total[0]), 4, 12, ha="left")
-mark(talk, f"the March talk\n{k(total[talk])}", 0, 14)
+mark(talk, f"March talk  {k(total[talk])}", 0, 12)
 
 # The deck's other milestones (Part 1, "How we got here"): small and muted, in a row along the
 # top, each dotted down to its point on the total. Two heights, set per label (row 0 high, 1 low)
@@ -102,7 +109,8 @@ ax.set_xticks(x, ["" if i and (d - x[i - 1]).days < 20 else
 FOOTNOTE = ("† Every text line on main, the method of the March talk. Tests: tests/ and test_*.py; "
             "docs & other: docs/ and non-code files.\n"
             "   Comments & docstrings: the Python source's, as scripts/doc_ratio.py counts them.\n"
-            "   Legacy SAM's ~250K was counted differently, so read it as a landmark, not a race.")
+            "   Legacy SAM: code files only, tests in, data and docs out (legacy_loc.py). A landmark, "
+            "not a race.")
 fig.tight_layout(rect=(0, 0.15, 0.84, 1))            # right margin holds the direct labels
 fig.text(0.01, 0.015, FOOTNOTE, color=MUTED, fontsize=9.5, ha="left", va="bottom")
 fig.savefig(HERE / "images/loc_progression.png", transparent=False, facecolor="white",
