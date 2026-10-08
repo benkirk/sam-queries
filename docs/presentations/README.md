@@ -42,6 +42,33 @@ make qa DECKS=samuel # layout checks on one deck
 The framework has its own environment. This repo's `conda-env` doesn't build
 decks.
 
+## Publishing
+
+The HTML decks are published to GitHub Pages at
+<https://benkirk.github.io/sam-queries/presentations/samuel/>: every deck, an
+index, and the companion pages.
+
+```bash
+cd docs/presentations/samuel
+make site      # _site/: the decks, one shared libs/, images/, companion/, index.html
+python3 -m http.server -d _site   # look at it first
+make publish   # pushes _site/ as the one commit on gh-pages
+```
+
+The `gh-pages` branch is a build artifact, not a record: each publish replaces
+it with a single parentless commit, so it never grows, and each publish uploads
+the whole site (about 17 MB). Pages serves the branch tip and keeps no versions.
+Enable it once, from the branch (`gh api -X POST repos/benkirk/sam-queries/pages
+-f build_type=legacy -f 'source[branch]=gh-pages' -f 'source[path]=/'`).
+
+The URL is public but every page carries `noindex` (`SITE_NOINDEX` in the
+Makefile), so search engines leave it alone. The repo is public too, so the
+rule from `samuel/companion/README.md` holds for everything that renders: no
+IPs, no OpenBao paths, no real names in slides or screenshots. The knobs
+(`SITE_EXTRA`, `SITE_NOINDEX`, `PUBLISH_PREFIX`, `PUBLISH_BRANCH`) are the
+framework's: README "Publishing the HTML decks". Decision record:
+`docs/plans/DECK_PUBLISHING.md`.
+
 ## Changing the framework
 
 Fix the framework upstream, then move the pin here. Don't edit the submodule
