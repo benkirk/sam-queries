@@ -27,6 +27,7 @@ from cli.last_seen.commands import LastSeenCommand
 from cli.security.commands import RbacCommand
 from cli.tasks.commands import TasksCommand
 from cli.xras.commands import XrasCommand
+from sam.queries.xras_actions import XRAS_ACTION_STATUSES
 
 # Default base URL for the running webapp (matches the systems-integration
 # shell client, scripts/apis/systems_integration_apis.sh).
@@ -739,8 +740,7 @@ def cache(ctx: Context, refresh: bool, category, base_url):
 @click.option('--family', type=str, default=None,
               help='[tree] A projcode\'s full request lifecycle (New + renewals/actions)')
 @click.option('--status', multiple=True,
-              type=click.Choice(['received', 'processed', 'manual',
-                                 'failed', 'rechecked']),
+              type=click.Choice(XRAS_ACTION_STATUSES),
               help='[list/rollup] Filter by status (repeatable)')
 @click.option('--type', 'action_type', multiple=True,
               help='[list/rollup] Filter by action type, e.g. New (repeatable)')
