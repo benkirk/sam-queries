@@ -17,7 +17,7 @@ order matters: people, projects, resources, then the accounts that join them, th
 (allocations and charges), then access, then trees.
 :::
 
-## The concepts, in one picture
+## The concepts & linkage
 
 ::: {.notes}
 Not the schema: Part 3 has the generated ER diagrams. A project holds
@@ -39,12 +39,13 @@ digraph Concepts {
   edge  [fontname="Helvetica", fontsize=11, color="#6B7280", fontcolor="#6B7280"];
 
   user     [label="User"];
-  project  [label="Project"];
-  resource [label="Resource"];
-  account  [label="Account\nproject × resource", fillcolor="#0057C2", color="#00357A",
-            fontcolor="#FFFFFF"];
-  alloc    [label="Allocation\namount × window"];
-  charges  [label="Charges\ndaily roll-ups", fillcolor="#FFF4E0", color="#FAA119"];
+  project  [label=<Project<BR/><FONT POINT-SIZE="10" COLOR="#6B7C99">lead (PI), admin,<BR/>facility, type, metadata</FONT>>];
+  resource [label=<Resource<BR/><FONT POINT-SIZE="10" COLOR="#6B7C99">Derecho, Casper,<BR/>Campaign Store, &#8230;</FONT>>];
+  account  [label=<Account<BR/><FONT POINT-SIZE="10" COLOR="#BFD7F5">project × resource</FONT>>,
+            fillcolor="#0057C2", color="#00357A", fontcolor="#FFFFFF"];
+  alloc    [label=<Allocation<BR/><FONT POINT-SIZE="10" COLOR="#6B7C99">amount × window</FONT>>];
+  charges  [label=<Charges<BR/><FONT POINT-SIZE="10" COLOR="#6B7C99">daily roll-ups</FONT>>,
+            fillcolor="#FFF4E0", color="#FAA119"];
 
   project  -> account [label="one per resource"];
   resource -> account;
@@ -67,6 +68,9 @@ digraph Concepts {
   Each person joins that project once their account exists.
 
 *† A request is fulfilled when the person's email shows up in `users`. SAM notices; it doesn't decide.*
+
+*‡ Groups are subtler. A project defines its unix group implicitly, by its members; adhoc groups
+come from upstream, like people. Details later in this part.*
 
 ::: {.notes}
 docs/xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md: SAM never originates users. The mirror is legacy's
@@ -118,15 +122,24 @@ typed HPC, not DAV.
 
 ## Facility, panel, allocation type, project {.vcenter}
 
+:::: {.columns}
+::: {.column width="68%"}
 ```{mermaid}
-%%| fig-width: 9
+%%| fig-width: 7
 graph LR
     F["Facility<br/>whose share:<br/>UNIV, WNA, NCAR, …"] --> PN["Panel<br/>who reviewed<br/>the request"]
     PN --> AT["Allocation type<br/>the program:<br/>University, Staff, …"]
     AT --> P["Project"]
 ```
+:::
+::: {.column width="32%"}
+![](images/concepts-sunburst.png){fig-align="center"}
+:::
+::::
 
 ::: {.notes}
+The ring: Derecho's annual rate on the Allocations dashboard, facilities inside and their
+allocation types outside (cropped from images/tour-allocations.png); panels are not drawn.
 Six facilities: NCAR, UNIV, CSL, WNA, CISL, ASD. Each owns a fair-share percentage of each
 resource, which is the top of PBS's tree. src/sam/resources/facilities.py (Facility, FacilityResource with the fair-share percentage,
 Panel, PanelSession) and AllocationType in src/sam/accounting/allocations.py. Active counts on
