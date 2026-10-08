@@ -22,6 +22,7 @@ from click.testing import CliRunner
 
 from cli.cmds.admin import cli
 from cli.core.utils import EXIT_ERROR, EXIT_NOT_FOUND, EXIT_SUCCESS
+from sam.queries.xras_actions import XRAS_ACTION_STATUSES
 
 
 @pytest.fixture
@@ -74,6 +75,13 @@ class TestListMode:
     def test_an_invalid_status_is_rejected_by_click(self, runner, cli_session):
         result = runner.invoke(cli, ['xras', '--status', 'nonsense'])
         assert result.exit_code != 0
+
+    @pytest.mark.parametrize('status', XRAS_ACTION_STATUSES)
+    def test_every_status_in_the_vocabulary_is_selectable(self, runner, cli_session, status):
+        """The choice is derived from XRAS_ACTION_STATUSES, so `unmapped` is reachable."""
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--status', status])
+        assert result.exit_code == 0
+        assert json.loads(result.stdout)['filters']['status'] == [status]
 
     def test_last_window_is_applied(self, runner, cli_session):
         result = runner.invoke(cli, ['--format', 'json', 'xras', '--last', '7d'])

@@ -299,7 +299,12 @@ bare `/v1/*` surface.
   175 real posts go to bare `/api/xras/v1/actions`**, the only form SAM maps. If the broker is ever
   corrected to match its own docs, every post 404s — **map both forms defensively.**
 - Spec endpoints SAM does not implement, and which are out of scope here: `GET /test_auth`,
-  `GET /v1/usage/by_month/…`, `DELETE /v1/roles/…`, and the `/v1/users/…` family.
+  `GET /v1/usage/by_month/…`, `DELETE /v1/roles/…`, and the `/v1/users/…` family. ACCESS's
+  accounting service (`allocations-api.access-ci.org/xacct/`) serves all of them because
+  XRAS is ACCESS's system of record for allocation membership; NCAR's is SAM. In six weeks
+  of production traffic the catch-all below recorded one request for any of them
+  (`/v1/users/projects/<u>`, our own probe), so the gap is theoretical;
+  `sam-admin xras --status unmapped` is the tripwire.
 
 ### 2.2 Auth
 
@@ -1523,7 +1528,7 @@ Seven divergences, each recorded so re-standardising later is a local edit:
 | 2 | `requests/role/{bogus}` → **500** with the opaque timestamp body | **400** carrying a real `message` | `IllegalArgumentException` falling into the catch-all — a client error answered with a server error. Zero traffic. Same reasoning as the 422 decision (§2.5) |
 | 3 | `masters[]` in Java **`HashMap` bucket order** | sorted by projcode | See below |
 | 4 | roster order *incidental* (no `ORDER BY`) | explicit `ORDER BY u.user_id` | Reproduces observed output **and** makes it deterministic — strictly better than legacy |
-| 5 | unmapped path → **401** unauthenticated, **404** (431 B Tomcat HTML) authenticated | Flask's own 404 in both cases | Legacy 401s because the filter runs *before* routing; Flask routes first, so a blueprint `errorhandler(404)` never sees a routing miss. Reproducing it means a catch-all that turns every typo into a 401 — worse to debug, for a case no client exercises |
+| 5 | unmapped path → **401** unauthenticated, **404** (431 B Tomcat HTML) authenticated | **401** unauthenticated (no row); the envelope 404 plus an `xras_action_log` row (`status='unmapped'`) authenticated | The catch-all route above sits behind auth, so the status ladder matches legacy's; the body is the envelope instead of Tomcat HTML, and the row is the point — a request for a path we do not serve leaves a trace |
 | 6 | `allocations[]` order under a **`start_date` tie** is arbitrary | primary-key tiebreaker | See below |
 | 7 | processed `POST /actions` → `{"message":"OK","result":null}` | `{"message":"OK","result":{"projcode":…}}` | Additive: `message` stays the ACCESS-facing `'OK'`; the affected projcode rides in `result` so the operator sees which project a post touched. `result` is SAM's purview (confirmed by Steven Peckins, XRAS/UIUC), same standing as the 422 `result.errors` member |
 

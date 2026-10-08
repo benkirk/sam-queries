@@ -42,10 +42,11 @@ In the order you will reach for them:
 
 Add `--format json` for anything you want to pipe.
 
-⚠️ **`--status unmapped` is not selectable from the CLI.** The `click.Choice` in
-`src/cli/cmds/admin.py` predates the status and lists only five of the six in
-`XRAS_ACTION_STATUSES`. Those rows *are* counted by `--summary` and *are* filterable on
-the dashboard — use one of those. Left unfixed on purpose (see § 6).
+`sam-admin xras --status unmapped` lists every request for a path this API does not
+serve (the `click.Choice` is `XRAS_ACTION_STATUSES`, so the six statuses and the CLI
+cannot drift). It is the one-command answer to "does XRAS want something we don't
+implement": one row in six weeks of production traffic, #182, our own `/v1/projects`
+probe.
 
 ### What "normal" looks like — do not chase these
 
@@ -363,7 +364,7 @@ The rest of that `detail`, in the order it is worth reading:
 
 | Type | Why |
 |---|---|
-| `Date Adjustment` | No serviceable in legacy either, so parking is parity-correct. Discovered 2026-08-11; 4 of the 41 corpus payloads. The payloads are Extension-shaped but carry an `actionBeginDate` that Extension ignores, and the type most likely exists to move dates in directions Extension rejects. **Whether to service it is a question for ACCESS** |
+| `Date Adjustment` | No serviceable in legacy either, so parking is parity-correct. Discovered 2026-08-11; 4 of the 41 corpus payloads. The payloads are Extension-shaped but carry an `actionBeginDate` that Extension ignores, and the type most likely exists to move dates in directions Extension rejects. **Whether to service it is a question for ACCESS** — and the data says not yet: none posted in the six weeks after cutover (New 124, Extension 115, Supplement 45; 0 Adjustment, Transfer, Renewal, Date Adjustment), and ACCESS's own accounting service has no such type |
 | `Transfer` | Registered handler that parks with a reason. Zero production traffic, no sampled payload |
 | `Advance` | No `select_service` arm. Zero samples |
 
@@ -432,7 +433,7 @@ Two rows were overtaken by #458/#459 and are marked so; the rest stand unchanged
 | Mnemonic failures dominate the `New` failure bucket | A bulk organization-mnemonic linker, plus a report of which orgs would unblock the most awards. This is the highest-leverage data fix available |
 | Contract 422s recur beyond the two known cases | **BUILT** (PR #482): `--contract-report` and the Remediations strip, the mnemonic report's shape for contracts. Phase 2 (NSF prefill in the sweep, re-check after create) is in `docs/plans/implemented/XRAS_CONTRACT_BLOCKERS.md` |
 | Operators repeatedly fix a row, re-check it green, and wait on ACCESS | **A re-apply path.** Explicitly deferred in `recheck.py`; it needs an idempotency key enforced on `action_id` *first*, because 4 of the 6 handlers double-apply — Supplement and Adjustment are additive, and a re-applied successful `New` routes to `update` and supplements the allocation it just created. Do not build the second half before the first |
-| You reach for `--status unmapped` and cannot | Derive the CLI `click.Choice` from `XRAS_ACTION_STATUSES` rather than restating it, and give `unmapped` a style in `src/cli/xras/display.py`. One line each; both are restatements of a vocabulary that already exists in one place. ⚠️ Still both unbuilt — and #458 edited a *neighboring* `click.Choice` on the same command without noticing this one |
+| You reach for `--status unmapped` and cannot | **BUILT** (the XRAS-vs-ACCESS sweep, 2026-10-08): the CLI `click.Choice` is `XRAS_ACTION_STATUSES` and `unmapped` has a style in `src/cli/xras/display.py` |
 | Polling the dashboard stops being enough | A digest of `failed` / `manual` / `unmapped` rows. ⚠️ A new entry in `src/scheduling/tasks/` goes live on the next hourly wake unless `SAM_TASKS_DISABLED` names it in the **same** change — the registry is code-side, the list is chart-side, and nothing couples them but the reviewer. `xras_sweep` is **not** this: it digests the *outbound* enumeration and mails nobody. Its arrival did make that warning load-bearing, though — three tasks are live now, not one |
 
 **Removed from this table:** *"a withheld opportunity mapping needs a decision"* — built,
@@ -462,7 +463,10 @@ These are listed in full at [`XRAS_CUTOVER_RUNBOOK.md`](XRAS_CUTOVER_RUNBOOK.md)
 - **`POST /v1/roles` answers 404/409 where legacy answered 400.** A 409 means "project or
   user is inactive" and the `message` says which. Zero traffic in 58 days of access logs.
 - **`unmapped` is not a failure.** It means the broker asked for something we do not
-  implement — `DELETE /v1/roles/…` is the documented candidate.
+  implement. Six weeks of production traffic hold one: `GET /v1/users/projects/<u>`,
+  XRAS proxying our own `/v1/projects` probe (`XRAS_OUTGOING_QUERIES.md` § 4.6). The
+  families ACCESS's accounting service serves and we do not (`/v1/users/…`,
+  `/v1/usage/by_month`, `DELETE /v1/roles/…`, `/test_auth`) have never been requested.
 - **SMTP is fail-closed.** If `NOTIFY_ENABLED` is unset, every notice records `suppressed`
   and nothing is delivered, silently. Check Admin → Configuration → Notifications.
 - **`xras_notices`, the hourly automatic-notice task, is switched off** through triage
