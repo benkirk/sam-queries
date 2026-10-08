@@ -1,4 +1,4 @@
-# Who Talks to Whom
+# Integrations
 
 Identity in, allocations both ways, usage in, access out, and the legacy SAM still beside us.
 
@@ -315,7 +315,7 @@ during the overlap. RBAC: docs/plans/implemented/RBAC_DB_ROLES.md.
 
 # Allocations: XRAS
 
-Awards in by POST, reports back by sweep.
+Allocations in by POST, reports back by sweep.
 
 ## ARC → XRAS → SAMuel
 
@@ -640,7 +640,7 @@ docs/plans/implemented/POSTGRES_MIGRATION.md (prod on csg-postgres) is gated on 
 SAM; so is putting the SAM schema under Alembic. Part 5 is where SAMuel itself runs.
 :::
 
-## TL;DR - who talks to whom {.vcenter scale="1.15"}
+## TL;DR - integrations {.vcenter scale="1.15"}
 
 - **Four flows:** identity in, allocations both ways, usage in, access out.
 - **Legacy SAM is still running,** and identity still flows through it.

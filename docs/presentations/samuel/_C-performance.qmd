@@ -1,4 +1,4 @@
-# Keeping It Snappy
+# Performance
 
 Measure first, then fix what the measurement points at.
 
@@ -306,7 +306,7 @@ shared Ingress drops a new connection for ~8 s every minute or two (DEV_LOAD_CAM
 finding F), handed to the platform team.
 :::
 
-## TL;DR - keeping it snappy {.vcenter scale="1.15"}
+## TL;DR - performance {.vcenter scale="1.15"}
 
 - **Measure first:** every request logs its CPU and **its time in each database**.
 - **Pin the count:** `make perf` and the production watch catch an **N+1** early.

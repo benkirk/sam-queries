@@ -1,7 +1,7 @@
 ---
 title: "SAMuel, Appendix B"
-subtitle: "Two Dialects"
-author: "Ben Kirk, NCAR/CISL"
+subtitle: "APIs & Why Two Dialects"
+author: "NSF NCAR/CISL"
 date: last-modified
 ---
 

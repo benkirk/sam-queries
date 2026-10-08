@@ -1,7 +1,7 @@
 ---
 title: "SAMuel, Appendix A"
-subtitle: "The Neighbors"
-author: "Ben Kirk, NCAR/CISL"
+subtitle: "Peer Projects"
+author: "NSF NCAR/CISL"
 date: last-modified
 ---
 

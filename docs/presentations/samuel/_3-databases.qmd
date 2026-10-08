@@ -1,4 +1,4 @@
-# Where State Lives
+# Databases
 
 Four databases, two engines, one browser.
 
@@ -344,7 +344,7 @@ the resources table are Bluefire and Yellowstone.
 
 [![](images/database-resources.png){width="78%" fig-align="center"}](https://sam.hpc.ucar.edu/database/sam/resources)
 
-## TL;DR - where state lives {.vcenter scale="1.15"}
+## TL;DR - databases {.vcenter scale="1.15"}
 
 - **Two owned** (`sam`, `system_status`), **two borrowed** (`job_history`, `fs_scans`).
 - **SAM's schema belongs to the database,** and legacy SAM still shares it.

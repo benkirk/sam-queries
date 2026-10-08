@@ -1,4 +1,4 @@
-# The Neighbors
+# Peer Projects
 
 The repos SAMuel loads, feeds, or replaces.
 
@@ -202,7 +202,7 @@ deleted from legacy 2026-07-04. The jobhist crontab moved into SAMuel's ncar-hpc
 Order of the "soon" column follows Part 4's "The overlap, mapped".
 :::
 
-## TL;DR - the neighbors {.vcenter scale="1.15"}
+## TL;DR - peer projects {.vcenter scale="1.15"}
 
 - **`hpc-usage-queries`:** job history, charging rules and filesystem scans; two plugins and
   the Postgres cluster.

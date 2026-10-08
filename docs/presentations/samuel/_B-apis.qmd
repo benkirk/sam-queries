@@ -1,4 +1,4 @@
-# Two Dialects
+# APIs & Why Two Dialects
 
 The APIs: what callers can count on, and how we add to them.
 
