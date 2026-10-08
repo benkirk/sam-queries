@@ -241,7 +241,7 @@ phone-sized chart, not a shrunken desktop one.
 :::
 ::::
 
-## The Progression {.center}
+## The Progression {.vcenter}
 
 ::: {.notes}
 Picks up where "Confessions of a Vibe Coder" (March 2026) stopped at ~75K lines. The
@@ -249,10 +249,15 @@ twist: source alone is {{< var size.source_lines >}} ({{< var size.source_code >
 {{< var size.source_docs >}} of comments and docstrings), still under legacy's {{< var legacy.code >}}, and the tests
 ({{< var size.test_lines >}}) are nearly as big as the code they test. The gray dots mark this
 deck's milestones.
-{{< var size.prs_merged >}} pull requests merged since October 2025.
+{{< var size.prs_merged >}} pull requests merged since October 2025. Method: tests are tests/ dirs,
+test_*.py and conftest.py; docs & other is docs/ and every non-code file; comments & docstrings
+are the Python source's, by scripts/doc_ratio.py. The legacy lines come from legacy_loc.py.
 :::
 
-![](images/loc_progression.png){height="80%" fig-align="center"}
+![](images/loc_progression.png){height="64%" fig-align="center"}
+
+*† Every text line on main, as the March talk counted. Legacy SAM: code files only, tests in, data
+and docs out. A landmark, not a race.*
 
 ## The Good, the Bad, the Murky {.smaller .center .fill}
 

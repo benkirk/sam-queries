@@ -486,7 +486,7 @@ MANAGE_CHARGE_SUMMARIES; src/sam/security/rbac_defaults.py), enforced under RBAC
 *† The rapid sync looks at today's scheduler log. The infrequent longer sweeps fill in holes
 over midnight or around downtimes.*
 
-‡ The REST route `POST /api/v1/charge-summaries/…` exists too. Nobody calls it.
+*‡ The REST route `POST /api/v1/charge-summaries/…` exists too. Nobody calls it.*
 :::
 ::::
 
