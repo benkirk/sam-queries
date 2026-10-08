@@ -37,15 +37,16 @@
 # This audit only surfaces signals; the layered defenses below are follow-ups
 # tracked in docs/plans (see the approved plan). Quick reference:
 #   R1  Edge rate limiting — webapp.ingress.rateLimit in helm/values.yaml
-#       (limit-rps / limit-connections / limit-burst-multiplier). NOTE: on the
-#       nwc1 controller every client collapses to 127.0.0.1 (see R2), so these
-#       act as a GLOBAL bucket, not per-IP — set high as a flood backstop.
-#       rps: 0 disables it.
-#   R2  Real client IP — CONFIRMED lost upstream: the nginx-external controller
-#       hands the app X-Forwarded-For: 127.0.0.1 (verified from an external,
-#       off-VPN request). Not fixable here — needs the controller's
-#       use-forwarded-headers / use-proxy-protocol config. PROXYFIX_X_FOR stays
-#       1 (there is no real client IP to recover). Section 2 flags the symptom.
+#       (limit-rps / limit-connections / limit-burst-multiplier), rendered only
+#       for an nginx class. On nginx-external every client collapses to
+#       127.0.0.1 (see R2), so these act as a GLOBAL bucket, not per-IP. On a
+#       traefik class there is no edge limit: Flask-Limiter is the limiter and
+#       the headroom check below is skipped (no annotation to read).
+#   R2  Real client IP — on nginx-external the app sees X-Forwarded-For:
+#       127.0.0.1 (verified from an external, off-VPN request); a traefik class
+#       forwards the real address. PROXYFIX_X_FOR must equal the number of
+#       proxies that append to the header: re-measure it from the xff= field
+#       per controller. Section 2 flags the collapsed symptom.
 #   R3  Scheduling — run on a cron/CI runner with --no-color and alert on a
 #       non-zero exit (wire into scripts/cron/).
 #   R4  CSP reporting — add a report-uri so injection attempts become a

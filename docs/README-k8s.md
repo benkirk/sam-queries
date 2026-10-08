@@ -19,7 +19,7 @@ The production chart depends on three things that don't exist locally:
 | Dependency | Production | Local |
 |---|---|---|
 | **Secrets** | External Secrets Operator pulls creds from OpenBao | `helm/local-secrets.sh` creates k8s Secrets from `../.env` |
-| **Ingress** | `nginx-external` ingress controller + InCommon TLS via cert-manager | Skipped — use `kubectl port-forward` instead |
+| **Ingress** | `webapp.ingress.className`: prod `nginx-external`, dev `traefik-external` (the Traefik canary, 2026-10; `docs/plans/TRAEFIK_INGRESS.md`) + InCommon TLS via cert-manager | Skipped — use `kubectl port-forward` instead |
 | **Databases** | `sam-sql.ucar.edu`, `csg-postgres.k8s.ucar.edu` | Local MySQL via `host.docker.internal` |
 
 `helm/values-local.yaml` sets `useExternalSecret: false` on all three credential blocks,
@@ -127,7 +127,7 @@ First-Time Setup to start fresh.
 | `useExternalSecret` | `false` | `true` |
 | CPU request | 0.5 | 4 |
 | Memory request | 512M | 4096M |
-| Ingress | Rendered but inactive | Active via `nginx-external` |
+| Ingress | Rendered but inactive | Active via `webapp.ingress.className` (prod `nginx-external`, dev `traefik-external`) |
 | TLS | None | InCommon cert via cert-manager |
 
 ---
@@ -140,7 +140,7 @@ CIRRUS provides the dependencies the chart expects:
 
 - **External Secrets Operator (ESO)** — syncs secrets from OpenBao into k8s Secrets
 - **SecretStore `csg-ro`** — read-only OpenBao connection for the `csg/` secret path
-- **nginx ingress controller** (`nginx-external`) — routes traffic to pods
+- **Ingress controller** (`webapp.ingress.className`: prod `nginx-external`, dev `traefik-external`) — routes traffic to pods
 - **cert-manager** — auto-provisions TLS certificates via the `incommon` ClusterIssuer
 
 You do not manage any of these directly. They are cluster-wide services.
@@ -268,8 +268,8 @@ templates and Terraform modules stay identical.
 
 ### Accessing the App
 
-No port-forward needed. Once deployed, the `nginx-external` ingress controller
-routes HTTPS traffic automatically. Two hostnames serve the **same** deployment
+No port-forward needed. Once deployed, the controller named by `webapp.ingress.className`
+(prod `nginx-external`; dev `traefik-external`, VIP via `kubectl get ingress -o wide`) routes HTTPS. Two hostnames serve the **same** deployment
 in parallel — there is no redirect between them:
 
 | Hostname | Role |

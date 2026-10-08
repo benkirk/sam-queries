@@ -210,6 +210,7 @@ from .orgs import (
     CreateNsfProgramForm,
 )
 from .projects import (
+    ABSTRACT_MAX_CHARS,
     CreateProjectForm,
     EditProjectForm,
     AddLinkedOrganizationForm,
@@ -339,6 +340,7 @@ __all__ = [
     'EditNsfProgramForm',
     'CreateNsfProgramForm',
     # Projects
+    'ABSTRACT_MAX_CHARS',
     'CreateProjectForm',
     'EditProjectForm',
     'AddLinkedOrganizationForm',

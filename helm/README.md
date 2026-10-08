@@ -5,7 +5,8 @@ only — the full deployment guides live elsewhere:
 
 - **[docs/README-k8s.md](../docs/README-k8s.md)** — how to deploy, both
   locally (Docker Desktop Kubernetes) and to CIRRUS
-  (dependency matrix: External Secrets/OpenBao, nginx-external ingress +
+  (dependency matrix: External Secrets/OpenBao, an ingress class per env
+  (`webapp.ingress.className`: nginx-external on prod, traefik-external on dev) +
   cert-manager, `csg-postgres` for fs-scans).
 - **[docs/CIRRUS_PUBLISHING.md](../docs/CIRRUS_PUBLISHING.md)** — how a
   merge to `main` (or `staging`) becomes a GHCR image and a force-pushed
