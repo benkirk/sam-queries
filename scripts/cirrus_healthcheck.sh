@@ -543,8 +543,8 @@ if "${KCTL_NS[@]}" get certificate "$TLS_SECRET" >/dev/null 2>&1; then
     #   spec.dnsNames — the REQUEST. Updates the instant the ingress changes,
     #                   whether or not issuance ever succeeds. Never trust it
     #                   as evidence of what a browser sees.
-    #   the Secret's tls.crt SANs — GROUND TRUTH. This is the cert nginx
-    #                   actually presents.
+    #   the Secret's tls.crt SANs — GROUND TRUTH. This is the cert the ingress
+    #                   controller actually presents.
     CERT_REQ=$("${KCTL_NS[@]}" get certificate "$TLS_SECRET" -o json 2>/dev/null \
                 | jq -r '.spec.dnsNames[]? // empty' | sort -u)
     CERT_SANS=$("${KCTL_NS[@]}" get secret "$TLS_SECRET" -o jsonpath='{.data.tls\.crt}' 2>/dev/null \

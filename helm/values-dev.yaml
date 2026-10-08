@@ -22,6 +22,8 @@ webapp:
     fqdn: samuel-dev.k8s.ucar.edu
     extraHosts: []
     secretName: incommon-cert-samuel-dev
+  ingress:
+    className: traefik-external           # dev is the Traefik canary; prod stays on nginx-external until PR 2
   container:
     requests:
       memory: 1024M

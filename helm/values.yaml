@@ -86,19 +86,18 @@ webapp:
       - sam.hpc.ucar.edu
     secretName: incommon-cert-samuel      # one multi-SAN secret covers every host above
   ingress:
-    visibility: external                  # internal or external
-    # Edge rate limiting (nginx ingress controller), IN FRONT of the app-layer
-    # Flask-Limiter. IMPORTANT: on the nwc1 nginx-external controller every
-    # client currently presents as 127.0.0.1 — X-Forwarded-For is not
-    # propagated to the controller (see proxyFixForwardedHops) — so limit-rps /
-    # limit-connections act as ONE GLOBAL bucket, NOT per-client. Values below
-    # are a deliberately HIGH blunt flood-backstop that legitimate aggregate
-    # traffic should not reach; revisit to proper per-IP values once the
-    # controller forwards real client IPs. Set rps: 0 to disable all three.
+    # IngressClass name as CIRRUS gives it. nwc1 retired ingress-nginx
+    # (nginx-external) for Traefik (traefik-external), 2026-10. Dev moved
+    # first (values-dev.yaml); prod follows once the dev soak is clean
+    # (docs/plans/TRAEFIK_INGRESS.md).
+    className: nginx-external
+    # nginx-only edge limit, rendered only while className starts with "nginx".
+    # Inert in practice (docs/plans/implemented/DEV_LOAD_CAMPAIGN.md): Flask-Limiter
+    # is the limiter. Goes away with the nginx class. rps: 0 disables it.
     rateLimit:
-      rps: 100                            # global req/sec backstop (limit-rps)
-      connections: 200                    # global concurrent connections (limit-connections)
-      burstMultiplier: 5                  # short-burst allowance = rps * this (limit-burst-multiplier)
+      rps: 100
+      connections: 200
+      burstMultiplier: 5
   # Trusted proxy hops for ProxyFix (X-Forwarded-For depth). Sets PROXYFIX_X_FOR.
   # MUST equal the exact number of proxies that append to X-Forwarded-For, or a
   # client can spoof its IP. Start at 1 (safe), then confirm the real depth from

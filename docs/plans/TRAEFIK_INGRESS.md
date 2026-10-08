@@ -1,7 +1,7 @@
 # Traefik ingress: move SAMuel off `nginx-external`
 
-Status: plan, 2026-10-07. Rollout is dev first; prod waits on the dev soak and the
-probe comparison below.
+Status: PR 1 (dev on `traefik-external`) is the PR that carries this file. Prod waits
+on the dev soak and the probe comparison below.
 
 ## Why
 
