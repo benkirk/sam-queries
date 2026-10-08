@@ -165,7 +165,7 @@ helm install samuel ./helm -f helm/values.yaml -n <namespace>
 
 ### How Secrets Work on CIRRUS
 
-The `ExternalSecret` CRD resources rendered by the chart (nine for prod, seven for
+The `ExternalSecret` CRD resources rendered by the chart (nine for prod, eight for
 dev) instruct ESO to pull credentials from OpenBao and create k8s Secrets
 automatically. Names are `<webapp.name>-<block>-credentials`:
 
@@ -176,7 +176,7 @@ automatically. Names are `<webapp.name>-<block>-credentials`:
 | `…-jh-db-credentials` | `csg/pg-appuser` | same | `JOB_HISTORY_PG_USER`, `JOB_HISTORY_PG_PASSWORD` |
 | `…-fs-db-credentials` | `csg/pg-appuser` | same | `FS_SCAN_PG_USER`, `FS_SCAN_PG_PASSWORD` |
 | `…-jh-credentials` | `csg/jh-api-token` | same | `JUPYTERHUB_API_TOKEN` |
-| `…-xras-api-credentials` | `csg/xras-api-key` | not synced | `XRAS_API_KEY` |
+| `…-xras-api-credentials` | `csg/xras-api-key` | `csg/xras-dev-api-key` (prod's value, own path; dev calls XRAS's demo instance) | `XRAS_API_KEY` |
 | `…-jira-credentials` | `csg/sam-jira-token` | not synced | `JIRA_TOKEN` (ithelp `rc-sam-bot` PAT; `docs/plans/implemented/TICKET_PROVIDER.md` §8.4) |
 | `…-oidc-credentials` | `csg/sam-oidc` | `csg/sam-dev-oidc` | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_ISSUER`, `FLASK_SECRET_KEY` |
 | `…-human-check-credentials` | `csg/sam-turnstile` | same | `HUMAN_CHECK_SITE_KEY`, `HUMAN_CHECK_SECRET_KEY` (setup: `docs/plans/implemented/ACCOUNT_REGISTRATION.md` §6.3) |
@@ -260,7 +260,7 @@ Scheduled tasks, by environment:
 | Local Docker Compose (`samuel-dev`) | n/a — no chart | Run by hand: `sam-admin tasks --run-due` |
 | Local k8s (Docker Desktop) | `false` | Nothing should silently DELETE local data |
 | CIRRUS k8s (this chart) | `true`, kill-switched | Staged enable; the switch names what is not yet live. `SAM_TASKS_DISABLED=xras_notices,account_queue_digest` |
-| CIRRUS k8s dev (`samuel-dev-tasks`) | `true`, own ledger in `system_status_dev` | Mail tasks, the sweep and the account-request tasks off: `SAM_TASKS_DISABLED=expiration_notices,xras_notices,xras_sweep,account_requests_reconcile,account_queue_digest` |
+| CIRRUS k8s dev (`samuel-dev-tasks`) | `true`, own ledger in `system_status_dev` | Mail tasks and the account-request tasks off; the sweep runs against XRAS's demo instance: `SAM_TASKS_DISABLED=expiration_notices,xras_notices,account_requests_reconcile,account_queue_digest` |
 
 When the per-environment Entra app strategy is adopted (separate `sam-production`
 and `sam-staging` Entra apps), only the OpenBao / SSM values change — the chart
@@ -411,8 +411,9 @@ A second install of the same chart in its own namespace, `sam-queries-dev`,
 deployed by Argo CD application `sam-query-dev` from the `cirrus-dev` pin and
 rendered with `helm/values-dev.yaml` on top of `values.yaml`: every object is named
 `samuel-dev*`, it serves `https://samuel-dev.k8s.ucar.edu`, reads the Postgres
-`sam_dev` copy and its own `system_status_dev`, sends no mail, never holds the
-XRAS API key, and accepts only its own collector API key.
+`sam_dev` copy and its own `system_status_dev`, sends no mail, talks to XRAS's
+demo instance only (the key at its own OpenBao path), and accepts only its own
+collector API key.
 `helm/tests/test-dev-render.sh` proves each of those and that the render shares
 no name, label, host or TLS secret with prod. Design, decisions and the
 outside-the-repo checklist: `docs/plans/implemented/K8S_DEV_ENVIRONMENT.md`.

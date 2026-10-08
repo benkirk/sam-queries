@@ -49,12 +49,19 @@ webapp:
     NOTIFY_XRAS_CC: ""
     NOTIFY_XRAS_REPLY_TO: ""
     NOTIFY_ACCOUNT_TICKET_TO: ""          # dev never files a Jira ticket
-    XRAS_OUTGOING_ENABLED: "0"
-    XRAS_WRITE_ENABLED: "0"
+    # XRAS, both directions, against XRAS's DEMO instance and never api.xras.org:
+    # xras-admin-demo posts here, and the sweep and the write client call the
+    # demo API with prod's key at its own OpenBao path (xrasApiCredentials below).
+    # test-dev-render.sh rejects the production base URL and secret path.
+    # Dispatch is live: sam_dev.xras_action_log was empty at the flip (2026-10-08)
+    # and refresh-dev empties it again. Record: docs/plans/XRAS_SUBMISSION.md section 5.
+    XRAS_API_BASE: "https://xras-submit-api-demo.xsede.org"
+    XRAS_OUTGOING_ENABLED: "1"
+    XRAS_WRITE_ENABLED: "1"
+    XRAS_ACTIONS_CAPTURE_ONLY: "0"
     TICKET_PROVIDER: ""                   # dev files no API ticket
     JIRA_ENABLED: "0"
     JIRA_WRITE_ENABLED: "0"
-    XRAS_ACTIONS_CAPTURE_ONLY: "1"
     # Role catalog: "defaults" reads the code bundles, "db" the samuel_role_*
     # tables (seeded by `sam-admin rbac --seed`, then --seed-keys) with no
     # fallback, and holds API keys to each token route's Permission. Flip only
@@ -80,7 +87,7 @@ webapp:
   oidcCredentials:
     secretPath: csg/sam-dev-oidc
   xrasApiCredentials:
-    enabled: false                        # lever off; do not hold the prod key
+    secretPath: csg/xras-dev-api-key      # prod's key today, at a path of its own
   jiraCredentials:
     enabled: false                        # levers off; do not hold the PAT
 
@@ -88,4 +95,5 @@ tasks:
   name: samuel-dev-tasks
   env:
     SAM_API_BASE: "https://samuel-dev.k8s.ucar.edu"
-    SAM_TASKS_DISABLED: "expiration_notices,xras_notices,xras_sweep,account_requests_reconcile,account_queue_digest"
+    # xras_sweep runs: it and XRAS_OUTGOING_ENABLED are one decision.
+    SAM_TASKS_DISABLED: "expiration_notices,xras_notices,account_requests_reconcile,account_queue_digest"

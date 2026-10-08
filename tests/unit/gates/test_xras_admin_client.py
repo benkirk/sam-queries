@@ -224,6 +224,20 @@ class TestHelmWriteLever:
             'the task pod must never carry the XRAS write lever'
 
 
+class TestDev:
+    """samuel-dev runs both directions against XRAS's demo instance, never production."""
+
+    def test_dev_targets_the_demo_instance_with_its_own_key_path(self):
+        prod = yaml.safe_load((REPO_ROOT / 'helm' / 'values.yaml').read_text())['webapp']
+        dev = yaml.safe_load((REPO_ROOT / 'helm' / 'values-dev.yaml').read_text())['webapp']
+        env = dev['env']
+        assert env['XRAS_API_BASE'] != prod['env']['XRAS_API_BASE']
+        assert 'api.xras.org' not in env['XRAS_API_BASE']
+        assert (env['XRAS_OUTGOING_ENABLED'], env['XRAS_WRITE_ENABLED'],
+                env['XRAS_ACTIONS_CAPTURE_ONLY']) == ('1', '1', '0')
+        assert dev['xrasApiCredentials']['secretPath'] != prod['xrasApiCredentials']['secretPath']
+
+
 # structure
 
 class TestItIsASiblingNotASubclass:

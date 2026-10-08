@@ -9,7 +9,8 @@
 #     live signal when kubectl RBAC is missing in the namespace
 #   - XRAS xras_action_log — new rows since the last tick (classify per the
 #     watch-prod skill), read from the prod DB (skipped when the env has no
-#     DB host: dev SAM is Postgres and XRAS never posts to dev)
+#     DB host: the read is MySQL-only and dev SAM is Postgres; dev's rows are
+#     read with psql)
 #   - web traffic — gunicorn 2xx/3xx/4xx/5xx, latency percentiles, slow (>5s)
 #     requests, query-count hits (an N+1 shape, whatever its latency),
 #     probe-path hits, from the webapp pod logs

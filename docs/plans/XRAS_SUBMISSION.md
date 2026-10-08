@@ -446,19 +446,19 @@ Three changes to the handoff path, each small, in the order they land:
 | **WRAP** | stays `email:wrap@uwyo.edu` until WNA opts in | flip the policy row |
 | **XRAS's own mail** | submit and notify mails are XRAS-side settings (§ 3.4); once phase 1 ships, SAM's `xras_*` notices can be the only mail | optional coordination, not a prerequisite |
 
-**The clean loop is samuel-dev ↔ the XRAS test instance.** SAM has the
+**The clean loop is samuel-dev ↔ the XRAS demo instance — built 2026-10-08.** SAM has the
 internet-reachable development deployment (`https://samuel-dev.k8s.ucar.edu`,
-`implemented/K8S_DEV_ENVIRONMENT.md`), and Steve offered "a test instance of xras_admin … against
-your new accounting service" on 2026-08-11 (`docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md`).
-Priced from the chart:
+`implemented/K8S_DEV_ENVIRONMENT.md`); XRAS's demo is `xras-admin-demo.xsede.org` (the
+admin app, repointed at samuel-dev by Steve on 2026-10-01) and
+`xras-submit-api-demo.xsede.org` (the API, `/v1/…`, process `NCAR`, which accepts the
+production key — proven with `sam-admin xras --validate-opportunities` against it).
+What landed:
 
 | Side | Change |
 |---|---|
-| Ask to Steve | the test instance's API base URL and allocations-process name; a key with the same `submit` + `report` grant; the test `xras_admin` pointed at `https://samuel-dev.k8s.ucar.edu/api/xras/v1` |
-| Outbound (samuel-dev → test XRAS) | `helm/values-dev.yaml`: `XRAS_API_BASE`, `XRAS_ALLOCATIONS_PROCESS`, `XRAS_OUTGOING_ENABLED=1`, `XRAS_WRITE_ENABLED=1`, `xrasApiCredentials.enabled=true` with its own OpenBao path (`csg/xras-dev-api-key`). `helm/tests/test-dev-render.sh` asserts the levers off and the key absent, and rejects turning them on; those assertions become "not production XRAS" (base URL and secret path differ from `helm/values.yaml`). `test-dev-render.sh` also requires `XRAS_ACTIONS_CAPTURE_ONLY` to render `1`; `scripts/lib/cirrus_common.sh` sets `XRAS_ES_EXPECTED=0` for dev. All three follow |
-| Inbound (test XRAS → samuel-dev) | nothing in the chart pins a caller. `sam_dev` ships `api_credentials` **empty** (`containers/sam-sql-dev/config.yaml`), so a `ROLE_XRAS` row must be seeded and survive `make refresh-dev` (`scripts/gen_api_key.py --username samuel --sql` emits it; `scripts/xras/seed_dev_actions.py` is host-guarded to localhost); `XRAS_ACTIONS_CAPTURE_ONLY=0` |
-
-The order is the ask, then the chart change, then the seeding.
+| Outbound (samuel-dev → demo XRAS) | `helm/values-dev.yaml`: `XRAS_API_BASE` = the demo API, `XRAS_OUTGOING_ENABLED=1`, `XRAS_WRITE_ENABLED=1`, `xras_sweep` enabled, the key from OpenBao `csg/xras-dev-api-key` (prod's value at a path of its own, so the gate can pin the path). `helm/tests/test-dev-render.sh` asserts "not production XRAS" — base URL and secret path differ from `helm/values.yaml`, both levers on, the key on both manifests — and rejects the production URL and path; `tests/unit/gates/test_xras_admin_client.py::TestDev` pins the same; `scripts/lib/cirrus_common.sh` expects the dev ExternalSecret |
+| Inbound (demo XRAS → samuel-dev) | nothing to seed: `sam_dev` carries prod's `api_credentials` rows and `ROLE_XRAS` grants with every `make refresh-dev` (#690), so the demo admin app authenticates with the production credential. `XRAS_ACTIONS_CAPTURE_ONLY=0` — `xras_action_log` was empty at the flip, and the refresh empties it again (`containers/sam-sql-dev/config.yaml`) |
+| Still open | a demo key with the `review`/`admin` contexts (`XRAS_ADMIN_CONTEXT_ENABLED`); RADIUS for the demo admin app from NCAR (HELP-62166, dev server `18.218.198.107`) |
 
 ## 6. References
 
