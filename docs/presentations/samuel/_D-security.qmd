@@ -106,7 +106,7 @@ counts per worker process, so treat the ingress numbers as a floor. Admins can s
 blocks on the admin page.
 :::
 
-## ⚠︎ We can't see the client's address {.vcenter scale="1.15"}
+## ⚠︎ We can't see the client's address {.caution .vcenter scale="1.15"}
 
 - Every request arrives from 127.0.0.1. The address is lost before the app, and nothing on our
   side can recover it.

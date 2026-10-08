@@ -269,7 +269,7 @@ from two places; it now ends the row (_end_membership in src/sam/manage/__init__
 change_project_admin needs an unended row.
 :::
 
-## ⚠︎ Don't let this happen to you… {.vcenter scale="1.15"}
+## ⚠︎ Don't let this happen to you… {.caution .vcenter scale="1.15"}
 
 - A project lead held **zero** account rows. SAM's own pages still showed them as the lead.
 - The LDAP feed builds unix groups from account rows only. It never reads the lead column.
@@ -420,7 +420,7 @@ asserts the replay. replay_amount() in src/sam/accounting/allocations.py mirrors
 semantics. The comment is the author's own, verbatim.
 :::
 
-## ⚠︎ A supplement is not a new total {.vcenter scale="1.15"}
+## ⚠︎ A supplement is not a new total {.caution .vcenter scale="1.15"}
 
 - **Update** says "the amount is now X". **Supplement** says "add X".
 - Send a supplement through update, and a 4,000,000-hour allocation becomes a 250,000-hour one.

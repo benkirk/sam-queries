@@ -230,7 +230,7 @@ content hash, not mtime: a rebuild restamps every mtime. PROD_PERF_WATCH.md:19 f
 Gate: tests/unit/gates/test_static_assets.py.
 :::
 
-## ⚠︎ Cache traps {.vcenter scale="1.15"}
+## ⚠︎ Cache traps {.caution .vcenter scale="1.15"}
 
 - No targeted invalidation for a cached page: any database commit clears them all.
 - Charts are keyed by their data, not their code. After a visual change, refresh them.

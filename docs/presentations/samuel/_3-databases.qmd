@@ -293,7 +293,7 @@ src/system_status/models/; migrations/system_status/versions/. user_last_seen wa
 in prod back to 2011. SAM's own schema stays unmanaged by Alembic while legacy SAM shares it.
 :::
 
-## ⚠︎ Don't let this happen to you… {.vcenter scale="1.15"}
+## ⚠︎ Don't let this happen to you… {.caution .vcenter scale="1.15"}
 
 - **2026-09-13, 03:24 UTC:** a CPU-limit change made CNPG recreate both Postgres pods; the
   primary restarted in place.
