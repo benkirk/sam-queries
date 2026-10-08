@@ -1,7 +1,7 @@
 ---
 title: "SAMuel, Appendix D"
-subtitle: "Failing Closed"
-author: "Ben Kirk, NCAR/CISL"
+subtitle: "Failing Closed & Other Security Details"
+author: "NSF NCAR/CISL"
 date: last-modified
 ---
 

@@ -109,7 +109,7 @@ nothing. cache --refresh POSTs to /api/v1/admin/cache/refresh and needs SAM_API_
 (admin.py:639-694). Network: sam-search awards (NSF, USAspending) and contracts --check-sources.
 :::
 
-## TL;DR - at the prompt {.vcenter scale="1.15"}
+## TL;DR - command line tools {.vcenter scale="1.15"}
 
 - **`sam-search` reads, `sam-admin` also writes,** extending the same user and project commands.
 - **TOTAL folds any grouping;** numbers read like the web pages.

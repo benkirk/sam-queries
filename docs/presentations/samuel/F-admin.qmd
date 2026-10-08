@@ -1,7 +1,7 @@
 ---
 title: "SAMuel, Appendix F"
-subtitle: "Running the Shop"
-author: "Ben Kirk, NCAR/CISL"
+subtitle: "Administration Features"
+author: "NSF NCAR/CISL"
 date: last-modified
 ---
 

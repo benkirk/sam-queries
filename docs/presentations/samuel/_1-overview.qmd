@@ -1,4 +1,4 @@
-# The Lay of the Land
+# SAM Overview
 
 What SAM is, who uses it, and what SAMuel puts on top of it.
 
@@ -10,7 +10,7 @@ SAM is the system of record for **who** may compute, **on what**, and **how much
 
 - **Projects** hold **allocations** on each resource: an amount, a date window, a balance.
 - **Users** belong to projects, and their jobs are **charged** against those allocations.
-- University awards arrive through **XRAS**; NCAR, WNA and CSL have their own paths.
+- University allocations arrive through **XRAS**; NCAR, WNA and CSL have their own paths.
 - People come from NCAR's identity system. SAM never creates users; it mirrors them.
 - Lots of organizational and grant-related metadata, tying usage to funding agencies etc... for reporting purposes.
 :::
@@ -41,10 +41,10 @@ SAM has run CISL's allocations for {{< var legacy.years >}} years:
 - **Back-end processing** for identity management and accounting.
 - A **web API** feeding the batch scheduler, storage quotas, and friends.
 - A **MySQL database** gluing all of it together.
-- {{< var legacy.loc >}} lines of Java (Spring, Hibernate, JSF/PrimeFaces, Flyway), plus a
-  plethora of containerized microservices.
+- {{< var legacy.code >}} lines of code, mostly Java (Spring, Hibernate, JSF/PrimeFaces, Flyway),
+  plus {{< var legacy.zoo >}} more in a plethora of containerized microservices.
 
-*† SAMuel is **S**AM **u**pdated for an **e**xtended **l**ifecycle: a modernization and
+*† SAMuel is **SAM** **u**pdated for an **e**xtended **l**ifecycle: a modernization and
 refactoring effort to support another generation.*
 
 ## Same database, new everything around it {.smaller .center .fill scale="1.15"}
@@ -68,7 +68,7 @@ challenges.*
 - **Apr 2026:** legacy-compatible APIs for the systems that call SAM, and a home on CIRRUS.
 - **{{< var milestones.charge_ingest >}}:** SAMuel takes over the daily charge ingest.
 - **{{< var milestones.read_write >}}:** the web app goes read/write: edits land in the shared database.
-- **{{< var milestones.xras_repoint >}}:** XRAS hands its awards to SAMuel directly.
+- **{{< var milestones.xras_repoint >}}:** XRAS hands its approved allocations to SAMuel directly.
 - **{{< var milestones.fy27_renewals >}}:** FY27 renewals run in SAMuel.
 - **Today:** SAMuel is production SAM, at **{{< var hosts.prod >}}**.
 
@@ -102,7 +102,7 @@ hourly, which the diagram leaves out to stay legible.
 ```{mermaid}
 %%| fig-width: 10
 flowchart TB
-    XRAS["ARC / XRAS<br/>NSF API<br/>allocation awards"]:::inb
+    XRAS["ARC / XRAS<br/>NSF API<br/>allocation approvals"]:::inb
     LDAP["NCAR identity<br/>people, groups,<br/>organizations,<br/>institutions"]:::inb
     COL["PBS queue status<br/>system usage metrics"]:::inb
     JOBS["PBS job history<br/>finished jobs"]:::inb
@@ -112,7 +112,7 @@ flowchart TB
     PBS["PBS scheduling<br/>fairshare, queues"]:::out
     PROV["Provisioning<br/>UNIX users & groups"]:::out
     MAIL["Email<br/>notices, invites"]:::out
-    XRAS -->|awards| SAM
+    XRAS -->|allocations| SAM
     LDAP -->|identities| SAM
     COL -->|every 5 min| SAM
     JOBS -->|charges, hourly| SAM
@@ -241,16 +241,23 @@ phone-sized chart, not a shrunken desktop one.
 :::
 ::::
 
-## The Progression {.center}
+## The Progression {.vcenter}
 
 ::: {.notes}
 Picks up where "Confessions of a Vibe Coder" (March 2026) stopped at ~75K lines. The
-twist: source alone is {{< var size.source_lines >}}, still under legacy's ~250K, and the
-tests ({{< var size.test_lines >}}) are nearly as big as the code they test.
-{{< var size.prs_merged >}} pull requests merged since October 2025.
+twist: source alone is {{< var size.source_lines >}} ({{< var size.source_code >}} of code and
+{{< var size.source_docs >}} of comments and docstrings), still under legacy's {{< var legacy.code >}}, and the tests
+({{< var size.test_lines >}}) are nearly as big as the code they test. The gray dots mark this
+deck's milestones.
+{{< var size.prs_merged >}} pull requests merged since October 2025. Method: tests are tests/ dirs,
+test_*.py and conftest.py; docs & other is docs/ and every non-code file; comments & docstrings
+are the Python source's, by scripts/doc_ratio.py. The legacy lines come from legacy_loc.py.
 :::
 
-![](images/loc_progression.png){height="80%" fig-align="center"}
+![](images/loc_progression.png){height="64%" fig-align="center"}
+
+*† Every text line on main, as the March talk counted. Legacy SAM: code files only, tests in, data
+and docs out. A landmark, not a race.*
 
 ## The Good, the Bad, the Murky {.smaller .center .fill}
 

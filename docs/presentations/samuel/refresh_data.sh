@@ -16,7 +16,8 @@ ref=${SAMUEL_REF:-origin/main}
 # method as the March 2026 "Project SAMuel Progression" slide, which it
 # reproduces exactly (8,791 / 51,829 / 64,202 / 75,420).
 # Split: tests = tests/ dirs, test_*.py, conftest.py; other = docs/ and every non-code file;
-# source = code files everywhere else.
+# source = code files everywhere else; source_doc_lines = its Python comments and docstrings
+# (source_docs.py, scripts/doc_ratio.py's rule).
 split() {
     git -C "$repo" grep -I -c '' "$1" -- . | awk -F: '
         { p = $2; n = $NF; all += n }
@@ -28,7 +29,7 @@ split() {
 }
 
 out=data/loc_progression.tsv
-printf 'date\tcommits\tlines\tsource_lines\ttest_lines\tother_lines\tpython_lines\n' > "$out"
+printf 'date\tcommits\tlines\tsource_lines\ttest_lines\tother_lines\tpython_lines\tsource_doc_lines\n' > "$out"
 first=$(git -C "$repo" log --reverse --format=%ad --date=short "$ref" | awk 'NR == 1')
 # Month-ends from the first commit through today (today closes the series).
 month_ends() {
@@ -42,10 +43,13 @@ while True:
 }
 for end in $(month_ends "$first"); do
     rev=$(git -C "$repo" rev-list -1 --before="$end 23:59:59" "$ref")
-    printf '%s\t%s\t%s\n' "$end" "$(git -C "$repo" rev-list --count "$rev")" "$(split "$rev")" >> "$out"
+    printf '%s\t%s\t%s\t%s\n' "$end" "$(git -C "$repo" rev-list --count "$rev")" "$(split "$rev")" \
+        "$(python3 source_docs.py "$repo" "$rev")" >> "$out"
 done
 cat "$out"
 
+# Legacy SAM's code lines, the chart's reference lines (legacy_sam/ beside this checkout).
+python3 legacy_loc.py "$repo/legacy_sam"
 python3 plot_progression.py
 
 # Table counts, live vs ORM (count_tables.py refuses anything but port 3307).
