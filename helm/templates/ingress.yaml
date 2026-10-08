@@ -7,15 +7,18 @@ metadata:
     group: {{ .Values.webapp.group }}
   annotations:
     cert-manager.io/cluster-issuer: "incommon"
+{{- $class := required "webapp.ingress.className is required" .Values.webapp.ingress.className }}
+{{- if hasPrefix "nginx" $class }}
     {{- with .Values.webapp.ingress.rateLimit }}
     {{- if gt (int .rps) 0 }}
-    # Edge rate limiting ahead of Flask-Limiter (currently a GLOBAL bucket on
-    # this controller — see values.yaml webapp.ingress.rateLimit).
     nginx.ingress.kubernetes.io/limit-rps: {{ .rps | quote }}
     nginx.ingress.kubernetes.io/limit-connections: {{ .connections | quote }}
     nginx.ingress.kubernetes.io/limit-burst-multiplier: {{ .burstMultiplier | quote }}
     {{- end }}
     {{- end }}
+{{- else if .Values.webapp.ingress.traefik.entrypoints }}
+    traefik.ingress.kubernetes.io/router.entrypoints: {{ .Values.webapp.ingress.traefik.entrypoints | quote }}
+{{- end }}
 {{- /*
   Every host this ingress answers for: the platform-primary `fqdn` (which
   becomes the cert CN) followed by any advertised aliases. Listing them all in
@@ -26,7 +29,7 @@ metadata:
 */}}
 {{- $hosts := concat (list .Values.webapp.tls.fqdn) (default (list) .Values.webapp.tls.extraHosts) }}
 spec:
-  ingressClassName: nginx-{{ .Values.webapp.ingress.visibility }}
+  ingressClassName: {{ $class }}
   tls:
     - hosts:
         {{- range $hosts }}

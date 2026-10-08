@@ -15,7 +15,7 @@ webapp:
     extraHosts: []                        # local dev serves one host only
     secretName: samuel-tls-local
   ingress:
-    visibility: nginx
+    className: nginx                    # local ingress-nginx
   container:
     requests:
       memory: 512M

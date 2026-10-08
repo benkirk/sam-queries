@@ -178,6 +178,15 @@ check_dev() {
   [[ -z "$shared" ]] || { red "FAIL: dev and prod share an ingress host: $shared"; return 1; }
   shared=$(comm -12 <(grep -E 'secretName: ' <<<"$prod" | sort -u) <(grep -E 'secretName: ' <<<"$whole" | sort -u))
   [[ -z "$shared" ]] || { red "FAIL: dev and prod share a TLS secret: $shared"; return 1; }
+
+  # --- 5. the ingress controller: dev is the Traefik canary ------------------
+  # (docs/plans/TRAEFIK_INGRESS.md). nginx annotations render only for an nginx class.
+  grep -qE '^\s+ingressClassName: traefik-external$' <<<"$whole" || { red "FAIL: dev must render ingressClassName traefik-external"; return 1; }
+  grep -q 'nginx.ingress.kubernetes.io/' <<<"$whole" && { red "FAIL: dev on traefik must carry no nginx.ingress.kubernetes.io/ annotation"; return 1; }
+  grep -qE 'router.entrypoints: "websecure"$' <<<"$whole" || { red "FAIL: dev on traefik must bind the router to websecure (no plaintext on :80)"; return 1; }
+  grep -q 'router.entrypoints' <<<"$prod" && { red "FAIL: prod on nginx must carry no traefik annotation"; return 1; }
+  grep -qE '^\s+ingressClassName: nginx-external$' <<<"$prod" || { red "FAIL: prod stays on ingressClassName nginx-external until PR 2"; return 1; }
+  grep -q 'nginx.ingress.kubernetes.io/limit-rps' <<<"$prod" || { red "FAIL: prod on nginx keeps its edge rate-limit annotations"; return 1; }
 }
 
 # --- the positive path -------------------------------------------------------
@@ -207,6 +216,8 @@ assert_contains "$prod_deploy" "name: HUMAN_CHECK_SECRET_KEY" "prod injects the 
 assert_contains "$(render prod -s templates/external_secret.yaml)" "key: csg/sam-turnstile" "prod syncs csg/sam-turnstile"
 local_whole=$(render local)
 assert_not_contains "$local_whole" "human-check-credentials" "local k8s has no OpenBao: no human-check Secret"
+assert_contains "$local_whole" "ingressClassName: nginx" "local k8s uses the plain nginx ingress class"
+assert_not_contains "$local_whole" "ingressClassName: nginx-nginx" "the class is one string, not a composed prefix"
 [[ "$(env_value "$(render local -s templates/deployment.yaml)" HUMAN_CHECK_PROVIDER)" == "none" ]] || {
   red "FAIL: local k8s must run with HUMAN_CHECK_PROVIDER=none"; exit 1; }
 
