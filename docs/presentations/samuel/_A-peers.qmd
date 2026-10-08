@@ -1,4 +1,4 @@
-# The Neighbors
+# Peer Projects
 
 The repos SAMuel loads, feeds, or replaces.
 
@@ -143,7 +143,7 @@ served by the API: HSG builds it with their own samuel2sql from the legacy-shape
 
 ## Legacy SAM: the original {.vcenter scale="1.15"}
 
-- **{{< var legacy.loc >}} lines of Java:** Spring, Hibernate and a JSF/PrimeFaces UI, built
+- **{{< var legacy.java >}} lines of Java:** Spring, Hibernate and a JSF/PrimeFaces UI, built
   into one WAR on Tomcat.
 - **Two surfaces:** the web UI, and the REST APIs that SAMuel has been porting.
 - **On the `sam-tomcat` VM,** sharing `sam-sql` with SAMuel.
@@ -202,7 +202,7 @@ deleted from legacy 2026-07-04. The jobhist crontab moved into SAMuel's ncar-hpc
 Order of the "soon" column follows Part 4's "The overlap, mapped".
 :::
 
-## TL;DR - the neighbors {.vcenter scale="1.15"}
+## TL;DR - peer projects {.vcenter scale="1.15"}
 
 - **`hpc-usage-queries`:** job history, charging rules and filesystem scans; two plugins and
   the Postgres cluster.

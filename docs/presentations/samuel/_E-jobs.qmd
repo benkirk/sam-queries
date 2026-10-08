@@ -1,4 +1,4 @@
-# Where the Hours Went
+# Job History & Disk Scans
 
 Your jobs and your files, read from the databases next door.
 
@@ -142,7 +142,7 @@ A whole-collection root is sub-second; a sub-path takes 30-120 s or 30-200 s (tw
 disagree, disk_scans/cache.py:9-11 and routes.py:19-22).
 :::
 
-## TL;DR - where the hours went {.vcenter scale="1.15"}
+## TL;DR - job history & disk scans {.vcenter scale="1.15"}
 
 - **My Jobs** answers "where did my hours go?": six views, every job a row.
 - **My Data** answers "what is filling my space?", from the weekly scans.

@@ -35,7 +35,7 @@ the other is a controller difference, not an app one.
 | `http: ready …` | **The outside-in health signal.** `/api/v1/health/ready` over HTTPS: `sam` must be healthy (FAIL otherwise); `system_status` down reads `degraded` (WARN). |
 | `web:` / `pods:` / `cache:` / `tasks:` | As on prod (kubectl RBAC in `sam-queries-dev` landed 2026-09-26). One replica, one Redis, the dev dispatcher. |
 | `k8s: no RBAC in sam-queries-dev` | Printed only for a user without kubectl access there: the four pod-log sections are skipped and `http:` is the one live line. Not a fault on dev. |
-| `xras: skipped` / `dbload: skipped` | By design: XRAS never posts to dev, and dev SAM is Postgres. |
+| `xras: skipped` / `dbload: skipped` | Those reads are MySQL-only and dev SAM is Postgres. XRAS's demo instance does post to dev (both directions live since 2026-10-08); read `sam_dev.xras_action_log` with `psql` (`SAM_DEV_PG_*` in `.env`). |
 | `hosts:` | The `dev` lane on GLADE (`:staging`): rapid collectors on both hosts, hourly `accounting-comp`, no `jobhist-sync` rows (job_history is shared with prod). `update` runs hourly, so `current` moves with every staging push; map its git sha like the pin. |
 
 For the database side, run the peer repo's `cnpg_watch.sh --database sam_dev`
@@ -53,14 +53,15 @@ probe a route the change added or removed (for example `/dev/gallery/`, mounted
 by #603: 302 to login when live, 404 when not).
 
 `cirrus_healthcheck.sh --env dev` reads three WARNs on a healthy dev: the kill
-switch (values-dev disables five tasks on purpose) and, during a roll, a startup
+switch (values-dev disables four tasks on purpose) and, during a roll, a startup
 probe "connection refused" event. A PodDisruptionBudget is not expected at one
 replica and the check says so.
 
 ## 4. What is normal on dev and not on prod
 
-- Mail is off (`NOTIFY_ENABLED=0`) and XRAS is capture-only, so a task "sending
-  nothing" is correct.
+- Mail is off (`NOTIFY_ENABLED=0`), so a task "sending nothing" is correct.
+  XRAS is live against the demo instance (`xras-submit-api-demo.xsede.org`):
+  the hourly `xras_sweep` runs and posts from `xras-admin-demo` dispatch.
 - The limiter tiers are effectively off, so a load test (`profile-dev`) looks like
   real load. Check who is driving before calling a spike a fault.
 - `make refresh-dev` / `sync-dev` swap the databases and evict the pods'

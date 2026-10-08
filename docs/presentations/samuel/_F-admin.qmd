@@ -275,7 +275,7 @@ and by source. Production, read-only, 2026-10-06. Names and emails are replaced 
 
 [![](images/admin-last-seen.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/admin/users/last-seen)
 
-## TL;DR - running the shop {.vcenter scale="1.15"}
+## TL;DR - administration features {.vcenter scale="1.15"}
 
 - **Account requests are a queue:** claim, vouch, one ticket, fulfillment found by itself.
 - **Expirations warn on Mondays** and deactivate on the 3rd, or now, at the button.

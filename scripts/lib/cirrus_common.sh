@@ -47,8 +47,9 @@ HEALTH_PATH="/api/v1/health/ready"
 # `app: <tasks.name>` — NOT `app.kubernetes.io/component=tasks`, which matches
 # nothing and reads as "the dispatcher never fired". XRAS_ES_EXPECTED and
 # JIRA_ES_EXPECTED say whether the chart syncs the XRAS key / Jira token for
-# this env (values-dev.yaml turns both off). DEFAULT_WATCH_DB_HOST empty = no XRAS/db-load reads (dev SAM is
-# Postgres and XRAS never posts to dev).
+# this env (values-dev.yaml syncs its own XRAS key, no Jira token).
+# DEFAULT_WATCH_DB_HOST empty = no XRAS/db-load reads: those are MySQL-only and
+# dev SAM is Postgres, so dev's xras_action_log is read with psql instead.
 cirrus_set_env() {
     SAM_ENV="$1"
     case "$SAM_ENV" in
@@ -74,7 +75,7 @@ cirrus_set_env() {
             INGRESS_HOST="samuel-dev.k8s.ucar.edu"
             INGRESS_HOSTS=("samuel-dev.k8s.ucar.edu")
             TLS_SECRET="incommon-cert-samuel-dev"
-            XRAS_ES_EXPECTED=0
+            XRAS_ES_EXPECTED=1
             JIRA_ES_EXPECTED=0
             DEFAULT_WATCH_DB_HOST=""
             ;;

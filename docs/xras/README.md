@@ -14,6 +14,11 @@ Allocations API at `https://api.xras.org/v1/…`. Read-only and GET-only — the
 same credential can create requests, modify roles and merge one person into
 another, so the client has no verb method but an internal `_get`.
 
+**samuel-dev** (`https://samuel-dev.k8s.ucar.edu`) runs the same loop against
+XRAS's demo instance: `xras-admin-demo.xsede.org` posts to it, and it calls
+`xras-submit-api-demo.xsede.org` with the production key at its own OpenBao
+path (`docs/plans/XRAS_SUBMISSION.md` § 5).
+
 ## Start here
 
 | Doc | What it is |

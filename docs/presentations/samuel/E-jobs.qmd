@@ -1,7 +1,7 @@
 ---
 title: "SAMuel, Appendix E"
-subtitle: "Where the Hours Went"
-author: "Ben Kirk, NCAR/CISL"
+subtitle: "Job History & Disk Scans"
+author: "NSF NCAR/CISL"
 date: last-modified
 ---
 

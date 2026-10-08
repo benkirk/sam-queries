@@ -1,7 +1,7 @@
 ---
 title: "SAMuel, Part 3"
-subtitle: "Where State Lives"
-author: "Ben Kirk, NCAR/CISL"
+subtitle: "Databases"
+author: "NSF NCAR/CISL"
 date: last-modified
 ---
 

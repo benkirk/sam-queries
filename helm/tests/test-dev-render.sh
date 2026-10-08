@@ -3,7 +3,9 @@
 #
 # Asserts, per manifest (-s), that dev is:
 #   1. authenticated (production config, OIDC, no auth bypass)
-#   2. mute (mail off or redirected; XRAS levers off; no prod XRAS key)
+#   2. mute (mail off or redirected; Jira off) and on XRAS's demo instance
+#      (both XRAS levers on, dispatch live, the key from the dev OpenBao path;
+#      never the production base URL or key path)
 #   3. on its own data (sam_dev / system_status_dev on BOTH manifests, its own
 #      OpenBao paths, its own API key)
 #   4. disjoint from prod (no shared object name, label, host or TLS secret)
@@ -87,12 +89,21 @@ check_dev() {
       red "FAIL: mail must be off (NOTIFY_ENABLED=0) or redirected (NOTIFY_REDIRECT_TO) on both manifests"; return 1
     fi
   done
-  same_on_both "$deploy" "$cron" XRAS_OUTGOING_ENABLED "0"
-  [[ "$(env_value "$deploy" XRAS_WRITE_ENABLED)" == "0" ]] || { red "FAIL: XRAS_WRITE_ENABLED must be 0 on dev"; return 1; }
-  [[ "$(env_value "$deploy" XRAS_ACTIONS_CAPTURE_ONLY)" == "1" ]] || { red "FAIL: XRAS_ACTIONS_CAPTURE_ONLY must be 1 on dev"; return 1; }
   assert_not_contains "$whole" "sam.hpc.ucar.edu" "dev must not mail links to the production host"
-  assert_not_contains "$whole" "name: XRAS_API_KEY" "dev must not hold the XRAS API key"
-  assert_not_contains "$whole" "xras-api-credentials" "dev must not sync the XRAS key from OpenBao"
+  # XRAS: the invariant is the target, not the levers. Dev runs both directions
+  # live against XRAS's demo instance; production XRAS is never a legal target.
+  local xras_base
+  xras_base=$(env_value "$deploy" XRAS_API_BASE)
+  same_on_both "$deploy" "$cron" XRAS_API_BASE ""
+  [[ -n "$xras_base" && "$xras_base" != "$(env_value "$prod" XRAS_API_BASE)" ]] || { red "FAIL: dev must not point at production XRAS (XRAS_API_BASE='$xras_base')"; return 1; }
+  grep -q 'api.xras.org' <<<"$xras_base" && { red "FAIL: dev XRAS_API_BASE must not name api.xras.org"; return 1; }
+  same_on_both "$deploy" "$cron" XRAS_OUTGOING_ENABLED "1"
+  [[ "$(env_value "$deploy" XRAS_WRITE_ENABLED)" == "1" ]] || { red "FAIL: XRAS_WRITE_ENABLED must be 1 on dev (the demo instance is the write test bed)"; return 1; }
+  [[ "$(env_value "$deploy" XRAS_ACTIONS_CAPTURE_ONLY)" == "0" ]] || { red "FAIL: XRAS_ACTIONS_CAPTURE_ONLY must be 0 on dev (demo posts dispatch)"; return 1; }
+  assert_contains "$deploy" "name: XRAS_API_KEY" "webapp holds the dev XRAS key"
+  assert_contains "$cron"   "name: XRAS_API_KEY" "the sweep holds the dev XRAS key"
+  assert_contains "$whole" "key: csg/xras-dev-api-key" "the XRAS key comes from the dev OpenBao path"
+  assert_not_contains "$whole" "key: csg/xras-api-key" "dev must never sync the production XRAS key path"
   same_on_both "$deploy" "$cron" JIRA_ENABLED "0"
   [[ "$(env_value "$deploy" JIRA_WRITE_ENABLED)" == "0" ]] || { red "FAIL: JIRA_WRITE_ENABLED must be 0 on dev"; return 1; }
   [[ -z "$(env_value "$deploy" TICKET_PROVIDER)" ]] || { red "FAIL: dev must file no API ticket (TICKET_PROVIDER empty)"; return 1; }
@@ -113,9 +124,8 @@ check_dev() {
   for t in expiration_notices xras_notices; do
     grep -q "$t" <<<"$switch" || { red "FAIL: $t (mails PIs) must be in SAM_TASKS_DISABLED on dev"; return 1; }
   done
-  if [[ "$(env_value "$cron" XRAS_OUTGOING_ENABLED)" != "1" ]]; then
-    grep -q xras_sweep <<<"$switch" || { red "FAIL: xras_sweep must be disabled while XRAS_OUTGOING_ENABLED is off"; return 1; }
-  fi
+  # The sweep and XRAS_OUTGOING_ENABLED (pinned to 1 above) are one decision.
+  grep -q xras_sweep <<<"$switch" && { red "FAIL: xras_sweep must run while XRAS_OUTGOING_ENABLED is on"; return 1; }
 
   # Load-test target: the three traffic tiers are raised, the login tier is not.
   [[ -n "$(env_value "$deploy" RATELIMIT_M2M)" ]] || { red "FAIL: dev must raise RATELIMIT_M2M (load-test target)"; return 1; }
@@ -239,10 +249,10 @@ expect_reject --set webapp.env.HUMAN_CHECK_PROVIDER=none
 expect_reject --set webapp.env.FLASK_CONFIG=development
 expect_reject --set webapp.env.AUTH_PROVIDER=stub
 expect_reject --set webapp.env.NOTIFY_ENABLED=1
-expect_reject --set webapp.env.XRAS_OUTGOING_ENABLED=1
-expect_reject --set webapp.env.XRAS_WRITE_ENABLED=1
-expect_reject --set webapp.env.XRAS_ACTIONS_CAPTURE_ONLY=0
-expect_reject --set webapp.xrasApiCredentials.enabled=true
+expect_reject --set webapp.env.XRAS_API_BASE=https://api.xras.org
+expect_reject --set webapp.xrasApiCredentials.secretPath=csg/xras-api-key
+expect_reject --set webapp.xrasApiCredentials.enabled=false
+expect_reject --set tasks.env.SAM_TASKS_DISABLED=expiration_notices\\,xras_notices\\,xras_sweep
 expect_reject --set webapp.env.JIRA_ENABLED=1
 expect_reject --set webapp.env.JIRA_WRITE_ENABLED=1
 expect_reject --set webapp.env.TICKET_PROVIDER=jira-servicedesk
@@ -262,4 +272,4 @@ expect_reject --set tasks.env.SAM_TASKS_DISABLED=xras_notices
 expect_reject --set podDisruptionBudget.enabled=true
 expect_reject --set-string "webapp.env.API_KEYS_COLLECTOR=${prod_hash}"
 
-green "OK: samuel-dev renders authenticated, mute, on its own data, disjoint from prod (30 rejections proven)"
+green "OK: samuel-dev renders authenticated, mute, on XRAS demo, on its own data, disjoint from prod (30 rejections proven)"

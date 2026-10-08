@@ -1,4 +1,4 @@
-# Who Talks to Whom
+# Integrations
 
 Identity in, allocations both ways, usage in, access out, and the legacy SAM still beside us.
 
@@ -6,7 +6,8 @@ Identity in, allocations both ways, usage in, access out, and the legacy SAM sti
 
 ::: {.notes}
 Blue is SAMuel, grey is legacy SAM (still running), orange is the shared database, white is
-everyone else. Dashed edges are legacy-only traffic or deployment rather than data. Every box
+everyone else. Upstream of the directory: Fischer Identity (people, institutions) and Google
+Groups (adhoc groups). Dashed edges are legacy-only traffic or deployment rather than data. Every box
 gets its own slide in this part except GitHub, which is Part 5's. Appendix A lists the repos
 behind these boxes. Three VMs on the legacy side: sam-app (the identity helpers), sam-tomcat
 (legacy SAM, behind sam.ucar.edu) and sam-sql (MySQL).
@@ -23,6 +24,8 @@ digraph Map {
          fillcolor="#FFFFFF", color="#6B7280", fontcolor="#00357A", margin="0.15,0.07"];
   edge  [fontname="Helvetica", fontsize=12, color="#6B7280", fontcolor="#6B7280"];
 
+  fi      [label="Fischer Identity (FI)\npeople, institutions", pos="-1.3,5.6!"];
+  gg      [label="Google Groups\nadhoc groups", pos="1.6,5.6!"];
   dir     [label=<UCAR directory (LDAP)<BR/><FONT FACE="Courier">ldap.ucar.edu</FONT>>, pos="0,4.2!"];
   helpers [label=<<FONT FACE="Courier">sam-app</FONT>&#160;VM: LDAP replica,<BR/>transformer,&#160;<FONT FACE="Courier">sam-ldap-syncd</FONT>>, pos="3.6,4.2!",
            fillcolor="#E5E7EB", fontcolor="#374151"];
@@ -45,6 +48,8 @@ digraph Map {
            fillcolor="#E6F0FA", color="#0057C2"];
   pbs     [label="PBS scheduling\nHSG cron", pos="10.8,-0.4!"];
 
+  fi -> dir;
+  gg -> dir;
   dir -> helpers [label="syncrepl"];
   helpers -> tomcat [label="ldapsync"];
   other -> tomcat [style=dashed];
@@ -150,7 +155,7 @@ the database is the source of truth; don't modify the SAM schema. That is why th
 schema is not under Alembic (Part 3), and why Postgres in prod waits on legacy's retirement.
 :::
 
-## ⚠︎ Don't let this happen to you… again {.vcenter scale="1.15"}
+## ⚠︎ Don't let this happen to you… again {.caution .vcenter scale="1.15"}
 
 - **2026-08-10, the schema edition:** the identity-sync cutover shipped legacy migration V37,
   dropping two columns from `users` and seven other tables.
@@ -193,7 +198,8 @@ SAM never originates a user.
 ## From the directory to `users`
 
 ::: {.notes}
-Everything grey is legacy-side and George's: the replica, the transformer and the daemon
+The directory is itself fed: Fischer Identity (FI) supplies people and institutions, Google
+Groups the adhoc groups. Everything grey is legacy-side and George's: the replica, the transformer and the daemon
 (NCAR/sam-ldap-syncd). The UCAR directory is replicated into an OpenLDAP copy on sam-app; the
 transformer turns its changes into .jsl files on a 60-second poll; the daemon PUTs them to
 legacy SAM on sam-tomcat, which reads and writes MySQL on sam-sql. SAMuel reads the result.
@@ -207,6 +213,8 @@ digraph Identity {
   node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=14,
          fillcolor="#E5E7EB", color="#6B7280", fontcolor="#374151", margin="0.18,0.08"];
   edge  [fontname="Helvetica", fontsize=12, color="#6B7280", fontcolor="#6B7280"];
+  fi     [label="Fischer Identity (FI)\npeople, institutions", fillcolor="#FFFFFF", fontcolor="#00357A"];
+  gg     [label="Google Groups\nadhoc groups", fillcolor="#FFFFFF", fontcolor="#00357A"];
   dir    [label=<UCAR directory<BR/><FONT FACE="Courier">ldap.ucar.edu</FONT>>, fillcolor="#FFFFFF", fontcolor="#00357A"];
   subgraph cluster_app {
     label=<<FONT FACE="Courier">sam-app</FONT>&#160;VM>; style="rounded,dashed"; color="#6B7280";
@@ -227,6 +235,9 @@ digraph Identity {
   }
   {rank=same; dir; repl; xf; syncd}
   {rank=same; samuel; sql; tomcat}
+  {rank=same; fi; gg}
+  fi -> dir;
+  gg -> dir;
   dir -> repl [label="syncrepl"];
   repl -> xf;
   xf -> syncd [label=".jsl files"];
@@ -315,7 +326,7 @@ during the overlap. RBAC: docs/plans/implemented/RBAC_DB_ROLES.md.
 
 # Allocations: XRAS
 
-Awards in by POST, reports back by sweep.
+Allocations in by POST, reports back by sweep.
 
 ## ARC → XRAS → SAMuel
 
@@ -475,7 +486,7 @@ MANAGE_CHARGE_SUMMARIES; src/sam/security/rbac_defaults.py), enforced under RBAC
 *† The rapid sync looks at today's scheduler log. The infrequent longer sweeps fill in holes
 over midnight or around downtimes.*
 
-‡ The REST route `POST /api/v1/charge-summaries/…` exists too. Nobody calls it.
+*‡ The REST route `POST /api/v1/charge-summaries/…` exists too. Nobody calls it.*
 :::
 ::::
 
@@ -544,7 +555,8 @@ queue ~9K, directoryaccess ~2.8K.
 Identity enters from the UCAR directory through the legacy-side synchronizer, along with the hpc
 group definitions (born in Google Groups). Project groups go back out two ways: legacy SAM feeds
 them to the UCAR directory (Ben, 2026-10-07), and directory_access hands them to the HPC LDAP
-provisioner (Bob's), which writes unix groups into the HPC hosts' LDAP. sam/provisioning.py compares what SAM believes against what a host
+provisioner, which writes unix groups into the HPC hosts' LDAP, bob. Nicknames: the UCAR
+directory is filip, its replica on sam-app is stella. sam/provisioning.py compares what SAM believes against what a host
 actually provisions.
 :::
 
@@ -558,16 +570,20 @@ digraph Loop {
   // the sam-app VM, drawn first so it sits behind its three services
   box    [label=<<FONT FACE="Courier">sam-app</FONT>&#160;VM>, labelloc=t, shape=box, style="rounded,dashed", width=6.0, height=1.3,
           fixedsize=true, color="#6B7280", fontcolor="#374151", fontsize=13, pos="5.3,2.6!"];
-  dir    [label=<UCAR directory<BR/><FONT FACE="Courier">ldap.ucar.edu</FONT><BR/>people, groups>, pos="0.4,2.6!"];
-  repl   [label="LDAP replica", pos="3.3,2.45!", fillcolor="#E5E7EB", fontcolor="#374151"];
+  fi     [label="Fischer Identity (FI)\npeople, institutions", pos="-0.9,4.1!"];
+  gg     [label="Google Groups\nadhoc groups", pos="1.7,4.1!"];
+  dir    [label=<UCAR directory, <FONT FACE="Courier">filip</FONT><BR/><FONT FACE="Courier">ldap.ucar.edu</FONT><BR/>people, groups,<BR/>institutions>, pos="0.4,2.6!"];
+  repl   [label=<LDAP replica<BR/><FONT FACE="Courier">stella</FONT>>, pos="3.3,2.45!", fillcolor="#E5E7EB", fontcolor="#374151"];
   xf     [label="transformer", pos="5.3,2.45!", fillcolor="#E5E7EB", fontcolor="#374151"];
   syncd  [label=<<FONT FACE="Courier">sam-ldap-syncd</FONT>>, pos="7.3,2.45!", fillcolor="#E5E7EB", fontcolor="#374151"];
   tomcat [label="legacy SAM\nldapsync API", pos="10.4,2.6!", fillcolor="#E5E7EB", fontcolor="#374151"];
   sql    [label=<<FONT FACE="Courier">sam-sql</FONT>>, pos="10.4,0!", shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
   samuel [label=<SAMuel<BR/><FONT FACE="Courier">directory_access</FONT>>, pos="7.0,0!", fillcolor="#0057C2", color="#00357A",
           fontcolor="#FFFFFF"];
-  prov   [label="HPC LDAP provisioner\n(Bob)", pos="3.6,0!"];
-  hpcldap [label="HPC LDAP\nthe hosts' directory", pos="0.4,0!"];
+  prov   [label="HPC LDAP\nprovisioner", pos="3.4,0!"];
+  hpcldap [label=<HPC LDAP, <FONT FACE="Courier">bob</FONT><BR/>the hosts' directory>, pos="0.4,0!"];
+  fi -> dir;
+  gg -> dir;
   dir -> repl [label="syncrepl"];
   repl -> xf; xf -> syncd;
   syncd -> tomcat [label="PUT"];
@@ -582,6 +598,63 @@ digraph Loop {
   prov -> hpcldap [label="unix groups"];
 }
 ```
+
+## The identity chain, host by host {.full}
+
+::: {.notes}
+The same chain with every piece on the machine it runs on. sam-app holds the replica (stella),
+the transformer and sam-ldap-syncd; sam-tomcat holds legacy SAM; sam-sql holds the sam
+database; SAMuel runs as pods on CIRRUS. filip is the UCAR directory, bob the HPC hosts' LDAP.
+:::
+
+```{dot}
+//| fig-width: 10
+digraph Hosts {
+  graph [layout=neato, splines=true, bgcolor="transparent"];
+  node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=14,
+         fillcolor="#FFFFFF", color="#6B7280", fontcolor="#00357A", margin="0.18,0.08"];
+  edge  [fontname="Helvetica", fontsize=12, color="#6B7280", fontcolor="#6B7280"];
+  // the hosts, drawn first so they sit behind what runs on them
+  app    [label=<<FONT FACE="Courier">sam-app</FONT>&#160;VM>, labelloc=t, style="rounded,dashed", width=7.2,
+          height=1.6, fixedsize=true, color="#6B7280", fontcolor="#374151", fontsize=13, pos="6.6,4.3!"];
+  tomvm  [label=<<FONT FACE="Courier">sam-tomcat</FONT>&#160;VM>, labelloc=t, style="rounded,dashed", width=2.6,
+          height=1.6, fixedsize=true, color="#6B7280", fontcolor="#374151", fontsize=13, pos="12.3,4.3!"];
+  sqlvm  [label=<<FONT FACE="Courier">sam-sql</FONT>&#160;VM>, labelloc=b, style="rounded,dashed", width=2.6,
+          height=1.7, fixedsize=true, color="#6B7280", fontcolor="#374151", fontsize=13, pos="12.3,0.9!"];
+  k8s    [label="CIRRUS, Kubernetes", labelloc=t, style="rounded,dashed", width=2.8, height=1.7,
+          fixedsize=true, color="#0057C2", fontcolor="#00357A", fontsize=13, pos="7.6,0.9!"];
+  fi     [label="Fischer Identity (FI)\npeople, institutions", pos="-0.8,6.3!"];
+  gg     [label="Google Groups\nadhoc groups", pos="2.0,6.3!"];
+  dir    [label=<UCAR directory, <FONT FACE="Courier">filip</FONT><BR/><FONT FACE="Courier">ldap.ucar.edu</FONT><BR/>people, groups,<BR/>institutions>, pos="0.3,4.2!"];
+  repl   [label=<LDAP replica<BR/><FONT FACE="Courier">stella</FONT>>, pos="4.3,4.1!", fillcolor="#E5E7EB", fontcolor="#374151"];
+  xf     [label="transformer\n60 s poll", pos="6.6,4.1!", fillcolor="#E5E7EB", fontcolor="#374151"];
+  syncd  [label=<<FONT FACE="Courier">sam-ldap-syncd</FONT>>, pos="9.0,4.1!", fillcolor="#E5E7EB", fontcolor="#374151"];
+  tomcat [label="legacy SAM\nldapsync API", pos="12.3,4.1!", fillcolor="#E5E7EB", fontcolor="#374151"];
+  db     [label=<<FONT FACE="Courier">sam</FONT><BR/>MySQL database>, pos="12.3,0.7!", shape=cylinder, fillcolor="#FFF4E0",
+          color="#FAA119"];
+  samuel [label=<SAMuel<BR/><FONT FACE="Courier">directory_access</FONT>>, pos="7.6,0.7!", fillcolor="#0057C2", color="#00357A",
+          fontcolor="#FFFFFF"];
+  prov   [label="HPC LDAP\nprovisioner", pos="3.6,0.7!"];
+  hpcldap [label=<HPC LDAP, <FONT FACE="Courier">bob</FONT><BR/>the hosts' directory>, pos="0.6,0.7!"];
+  fi -> dir;
+  gg -> dir;
+  dir -> repl [label="syncrepl"];
+  repl -> xf;
+  xf -> syncd [label=".jsl files"];
+  syncd -> tomcat [label="PUT"];
+  tomcat -> db [label="people,\nhpc group definitions"];
+  // project groups go back over the top, through an invisible waypoint
+  wp     [label="project groups", shape=plaintext, style="", fontsize=12, fontcolor="#6B7280",
+          pos="6.6,5.75!"];
+  tomcat -> wp [arrowhead=none];
+  wp -> dir;
+  db -> samuel [label="projects,\nmembers"];
+  samuel -> prov [label="group lists"];
+  prov -> hpcldap [label="unix groups"];
+}
+```
+
+The identity chain, host by host: dashed boxes are the machines each piece runs on.
 
 ## SAMuel to PBS, in one slide {.vcenter scale="1.05"}
 
@@ -640,7 +713,7 @@ docs/plans/implemented/POSTGRES_MIGRATION.md (prod on csg-postgres) is gated on 
 SAM; so is putting the SAM schema under Alembic. Part 5 is where SAMuel itself runs.
 :::
 
-## TL;DR - who talks to whom {.vcenter scale="1.15"}
+## TL;DR - integrations {.vcenter scale="1.15"}
 
 - **Four flows:** identity in, allocations both ways, usage in, access out.
 - **Legacy SAM is still running,** and identity still flows through it.

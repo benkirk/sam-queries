@@ -1,7 +1,7 @@
 ---
 title: "SAMuel, Part 4"
-subtitle: "Who Talks to Whom"
-author: "Ben Kirk, NCAR/CISL"
+subtitle: "Integrations"
+author: "NSF NCAR/CISL"
 date: last-modified
 ---
 
