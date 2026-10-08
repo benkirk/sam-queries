@@ -2,28 +2,30 @@
 # Each entry: the source it was read from (sam-queries repo path unless noted) and the as-of date.
 
 tests:
-  collected: "9,296"        # docs/TESTING.md, measured 2026-09-18
+  collected: "11,071"       # pytest --collect-only on staging + this branch, 2026-10-08 (docs/TESTING.md still says 9,296)
 
 dashboards:
-  count: "4"                # src/webapp/dashboards/{user,admin,allocations,status}; gallery is dev-only (helm/values.yaml), 2026-09-29
+  count: "4"                # src/webapp/dashboards/{user,admin,allocations,status}; gallery is dev-only (helm/values.yaml), rechecked 2026-10-08
 
 api:
-  modules: "14"             # src/webapp/api/v1/*.py minus __init__, all registered in src/webapp/run.py, 2026-09-29
+  modules: "14"             # src/webapp/api/v1/*.py minus __init__, all registered in src/webapp/run.py, rechecked 2026-10-08
   legacy_compat: "5"        # directory_access, project_access, fstree_access, queue, wallclock_exemption (CLAUDE.md), 2026-09-29
 
 clis:
-  count: "3"                # sam-search, sam-admin, sam-status (pyproject.toml [project.scripts]), 2026-09-29
+  count: "3"                # sam-search, sam-admin, sam-status (pyproject.toml [project.scripts]), rechecked 2026-10-08
 
 tasks:
-  count: "8"                # src/scheduling/tasks/__init__.py registry, 2026-09-29
+  count: "8"                # src/scheduling/tasks/__init__.py registry, rechecked 2026-10-08
   cadence: "15 minutes"     # read as "checked every 15 minutes"; helm/values.yaml samuel-tasks CronJob, 7,22,37,52 * * * *, 2026-09-29
 
 size:
-  lines: "444K"             # data/loc_progression.tsv (refresh_data.sh), origin/main 2026-09-30
-  python_lines: "254K"      # same file, python_lines column
+  lines: "472K"             # data/loc_progression.tsv (refresh_data.sh), origin/main 2026-10-08
+  python_lines: "262K"      # same file, python_lines column
   source_lines: "186K"      # same file, source_lines column
-  test_lines: "153K"        # same file, test_lines column
-  prs_merged: "645"         # gh pr list --state merged, 2026-09-29
+  source_code: "147K"       # source_lines less source_doc_lines
+  source_docs: "39K"        # same file, source_doc_lines column (source_docs.py)
+  test_lines: "166K"        # same file, test_lines column
+  prs_merged: "728"         # gh pr list --state merged, 2026-10-08
 db:                          # sam on production, information_schema data+index, GiB, 2026-10-07
   sam_gb: "60"               # all tables (60.1)
   per_job_gb: "51"           # comp_job, hpc/comp/dav_activity, hpc/dav_charge (51.2)
@@ -57,7 +59,7 @@ schema:                      # legacy src/main/resources/db/migration CREATE TAB
   samuel_own: "16"           # modeled tables no legacy migration creates (scripts/sql/ DDL)
 
 ci:
-  workflows: "14"           # .github/workflows/*.yaml on origin/staging 1b624fc3, 2026-10-01
+  workflows: "14"           # .github/workflows/*.yaml on origin/staging, rechecked 2026-10-08
 
 image:                       # docs/plans/implemented/JOBS_IMAGE.md (#660-#672), 2026-09-30
   size_before: "2.07 GB"     # uncompressed, arm64, the pre-change production image
@@ -82,4 +84,4 @@ cnpg:                        # peer repo hpc-usage-queries helm/values.yaml + #1
 
 peers:                       # peer repos, read 2026-10-01 (Appendix A)
   huq_lines: "34K"           # hpc-usage-queries: Python lines incl. tests, job_history + fs_scans
-  huq_tests: "920"           # same repo, `def test_` count
+  huq_tests: "930"           # same repo, `def test_` count, origin/main 2026-10-08

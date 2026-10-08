@@ -245,8 +245,10 @@ phone-sized chart, not a shrunken desktop one.
 
 ::: {.notes}
 Picks up where "Confessions of a Vibe Coder" (March 2026) stopped at ~75K lines. The
-twist: source alone is {{< var size.source_lines >}}, still under legacy's ~250K, and the
-tests ({{< var size.test_lines >}}) are nearly as big as the code they test.
+twist: source alone is {{< var size.source_lines >}} ({{< var size.source_code >}} of code and
+{{< var size.source_docs >}} of comments and docstrings), still under legacy's ~250K, and the tests
+({{< var size.test_lines >}}) are nearly as big as the code they test. The gray dots mark this
+deck's milestones.
 {{< var size.prs_merged >}} pull requests merged since October 2025.
 :::
 
