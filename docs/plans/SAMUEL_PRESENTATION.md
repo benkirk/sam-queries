@@ -708,8 +708,10 @@ shots are Ben's own views (pinned to the signed-in user) and one project-level c
 - [x] ER diagrams: not eralchemy2. sam-queries' `scripts/er_diagram.py` (#680) emits Graphviz
   from the ORM metadata, with no DB and no dependency. The deck freezes its output into
   fragments (§3).
-- [ ] Publish the combined HTML deck: a claude.ai artifact, GitHub Pages on the framework repo,
-  or neither?
+- [x] Publish the combined HTML deck: resolved 2026-10-07, GitHub Pages on **this** repo, every
+  deck plus the companion pages, `make -C docs/presentations/samuel publish`; public URL, every
+  page `noindex`. Decision record and the frequent-publish cost model:
+  `docs/plans/DECK_PUBLISHING.md`.
 - [x] Format strategy: superseded by the mixed, per-part strategy in §13 (2026-09-29).
 - [x] LibreOffice installed 2026-09-29 (26.8.0, `brew install --cask --appdir=~/Applications libreoffice`; the `--appdir` avoids the `sudo` prompt that fails under `!`). Verified on `sam_and_pbs.pptx`: 17 s to PDF. Caveats:
   - LibreOffice ignores the theme-font mapping, so slides render in a serif fallback, not Poppins. Treat it as a check for overflow, splits and diagrams, not for exact wrapping.

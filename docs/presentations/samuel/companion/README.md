@@ -1,12 +1,14 @@
 # Companion pages
 
-Interactive pages that go deeper than a slide can. Each is published as a public claude.ai
-Artifact and linked from a slide. **The file here is canonical:** edit it, then republish. Never
-edit the live page and leave this copy behind.
+Interactive pages that go deeper than a slide can. Each ships with the published decks
+(`make publish`, `../../README.md` "Publishing") under `companion/`, and is also a public
+claude.ai Artifact, the slide's link until the Pages site is live. **The file here is
+canonical:** edit it, then publish or republish. Never edit the live page and leave this copy
+behind.
 
-| File | Live page | Linked from |
-|---|---|---|
-| `pipeline.html` | <https://claude.ai/artifact/Tp4XaBDH7BmvUbPT6UUbtS> | Part 5, "Walk the pipeline yourself" |
+| File | Published | Artifact | Linked from |
+|---|---|---|---|
+| `pipeline.html` | <https://benkirk.github.io/sam-queries/presentations/samuel/companion/pipeline.html> | <https://claude.ai/artifact/Tp4XaBDH7BmvUbPT6UUbtS> | Part 5, "Walk the pipeline yourself" (`_5-deployment.qmd`, the Artifact) |
 
 ## `pipeline.html`: from a pull request to a running pod
 

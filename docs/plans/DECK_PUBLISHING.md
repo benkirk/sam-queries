@@ -1,8 +1,8 @@
 # Publish the SAMuel decks: `make publish` to GitHub Pages, CI later
 
-**Status:** PR 1 open (quarto-docs-framework#28, 2026-10-07); PR 2 not started. Branch
-`deck-publishing` (this doc only). Implementation is two PRs: one in `quarto-docs-framework`,
-then a submodule bump here on a branch cut from the then-current `origin/staging`.
+**Status:** built. quarto-docs-framework#28 merged 2026-10-07; the SAM side (submodule bump,
+Makefile knobs, docs) rides this branch, `deck-publishing`, rebased onto staging. What remains
+is Ben's: enable Pages once and run `make publish`; Stage 2 (a workflow driver) is a later PR.
 
 Related: `docs/plans/SAMUEL_PRESENTATION.md` § 7 (the open "publish the HTML deck" item),
 `docs/presentations/README.md`, `docs/presentations/samuel/companion/README.md`.
@@ -11,10 +11,10 @@ Related: `docs/plans/SAMUEL_PRESENTATION.md` § 7 (the open "publish the HTML de
 
 - [x] Framework PR: `site` and `publish` targets in `docs/Make.common`, `site_index.py`,
       `ci-consumer.yaml` exercises `make site`, README "Publishing" section
-      (quarto-docs-framework#28, 2026-10-07; awaiting merge)
-- [ ] Here: bump the submodule pin
-- [ ] Here: `Makefile` (`SITE_EXTRA`, `SITE_NOINDEX`, `PUBLISH_PREFIX`), `.gitignore` `/*/_site/`
-- [ ] Here: `docs/presentations/README.md` "Publishing"; companion README live page; tick
+      (quarto-docs-framework#28, merged 2026-10-07)
+- [x] Here: bump the submodule pin (to #28's merge, `dc83216`)
+- [x] Here: `Makefile` (`SITE_EXTRA`, `SITE_NOINDEX`, `PUBLISH_PREFIX`), `.gitignore` `/*/_site/`
+- [x] Here: `docs/presentations/README.md` "Publishing"; companion README live page; tick
       `SAMUEL_PRESENTATION.md` § 7
 - [ ] Ben: enable Pages on `gh-pages` (one `gh api` call, below), run `make publish`, load the URL
 - [ ] Later, separate PR: the workflow driver (Stage 2)
