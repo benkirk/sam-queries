@@ -59,8 +59,8 @@ digraph Concepts {
 
 ## Users: SAM never creates one {.vcenter scale="1.15"}
 
-- People come from the UCAR directory (LDAP), mirrored into SAM by `sam-ldap-syncd`: name,
-  UPID, `unix_uid`, emails, affiliations, and so on.
+- People start in Fischer Identity, reach the UCAR directory (LDAP), and are mirrored into SAM
+  by `sam-ldap-syncd`: name, UPID, `unix_uid`, emails, affiliations, and so on.
 - **Active** means active *and* not locked.
 - Registration and invitations create an account *request*. The person is created upstream,
   and the mirror brings them in.

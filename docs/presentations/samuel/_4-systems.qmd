@@ -6,7 +6,8 @@ Identity in, allocations both ways, usage in, access out, and the legacy SAM sti
 
 ::: {.notes}
 Blue is SAMuel, grey is legacy SAM (still running), orange is the shared database, white is
-everyone else. Dashed edges are legacy-only traffic or deployment rather than data. Every box
+everyone else. Upstream of the directory: Fischer Identity (people, institutions) and Google
+Groups (adhoc groups). Dashed edges are legacy-only traffic or deployment rather than data. Every box
 gets its own slide in this part except GitHub, which is Part 5's. Appendix A lists the repos
 behind these boxes. Three VMs on the legacy side: sam-app (the identity helpers), sam-tomcat
 (legacy SAM, behind sam.ucar.edu) and sam-sql (MySQL).
@@ -23,6 +24,8 @@ digraph Map {
          fillcolor="#FFFFFF", color="#6B7280", fontcolor="#00357A", margin="0.15,0.07"];
   edge  [fontname="Helvetica", fontsize=12, color="#6B7280", fontcolor="#6B7280"];
 
+  fi      [label="Fischer Identity (FI)\npeople, institutions", pos="-1.3,5.6!"];
+  gg      [label="Google Groups\nadhoc groups", pos="1.6,5.6!"];
   dir     [label=<UCAR directory (LDAP)<BR/><FONT FACE="Courier">ldap.ucar.edu</FONT>>, pos="0,4.2!"];
   helpers [label=<<FONT FACE="Courier">sam-app</FONT>&#160;VM: LDAP replica,<BR/>transformer,&#160;<FONT FACE="Courier">sam-ldap-syncd</FONT>>, pos="3.6,4.2!",
            fillcolor="#E5E7EB", fontcolor="#374151"];
@@ -45,6 +48,8 @@ digraph Map {
            fillcolor="#E6F0FA", color="#0057C2"];
   pbs     [label="PBS scheduling\nHSG cron", pos="10.8,-0.4!"];
 
+  fi -> dir;
+  gg -> dir;
   dir -> helpers [label="syncrepl"];
   helpers -> tomcat [label="ldapsync"];
   other -> tomcat [style=dashed];
@@ -193,7 +198,8 @@ SAM never originates a user.
 ## From the directory to `users`
 
 ::: {.notes}
-Everything grey is legacy-side and George's: the replica, the transformer and the daemon
+The directory is itself fed: Fischer Identity (FI) supplies people and institutions, Google
+Groups the adhoc groups. Everything grey is legacy-side and George's: the replica, the transformer and the daemon
 (NCAR/sam-ldap-syncd). The UCAR directory is replicated into an OpenLDAP copy on sam-app; the
 transformer turns its changes into .jsl files on a 60-second poll; the daemon PUTs them to
 legacy SAM on sam-tomcat, which reads and writes MySQL on sam-sql. SAMuel reads the result.
@@ -207,6 +213,8 @@ digraph Identity {
   node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=14,
          fillcolor="#E5E7EB", color="#6B7280", fontcolor="#374151", margin="0.18,0.08"];
   edge  [fontname="Helvetica", fontsize=12, color="#6B7280", fontcolor="#6B7280"];
+  fi     [label="Fischer Identity (FI)\npeople, institutions", fillcolor="#FFFFFF", fontcolor="#00357A"];
+  gg     [label="Google Groups\nadhoc groups", fillcolor="#FFFFFF", fontcolor="#00357A"];
   dir    [label=<UCAR directory<BR/><FONT FACE="Courier">ldap.ucar.edu</FONT>>, fillcolor="#FFFFFF", fontcolor="#00357A"];
   subgraph cluster_app {
     label=<<FONT FACE="Courier">sam-app</FONT>&#160;VM>; style="rounded,dashed"; color="#6B7280";
@@ -227,6 +235,9 @@ digraph Identity {
   }
   {rank=same; dir; repl; xf; syncd}
   {rank=same; samuel; sql; tomcat}
+  {rank=same; fi; gg}
+  fi -> dir;
+  gg -> dir;
   dir -> repl [label="syncrepl"];
   repl -> xf;
   xf -> syncd [label=".jsl files"];
@@ -558,6 +569,8 @@ digraph Loop {
   // the sam-app VM, drawn first so it sits behind its three services
   box    [label=<<FONT FACE="Courier">sam-app</FONT>&#160;VM>, labelloc=t, shape=box, style="rounded,dashed", width=6.0, height=1.3,
           fixedsize=true, color="#6B7280", fontcolor="#374151", fontsize=13, pos="5.3,2.6!"];
+  fi     [label="Fischer Identity (FI)\npeople, institutions", pos="-0.9,4.1!"];
+  gg     [label="Google Groups\nadhoc groups", pos="1.7,4.1!"];
   dir    [label=<UCAR directory<BR/><FONT FACE="Courier">ldap.ucar.edu</FONT><BR/>people, groups>, pos="0.4,2.6!"];
   repl   [label="LDAP replica", pos="3.3,2.45!", fillcolor="#E5E7EB", fontcolor="#374151"];
   xf     [label="transformer", pos="5.3,2.45!", fillcolor="#E5E7EB", fontcolor="#374151"];
@@ -568,6 +581,8 @@ digraph Loop {
           fontcolor="#FFFFFF"];
   prov   [label="HPC LDAP provisioner\n(Bob)", pos="3.6,0!"];
   hpcldap [label="HPC LDAP\nthe hosts' directory", pos="0.4,0!"];
+  fi -> dir;
+  gg -> dir;
   dir -> repl [label="syncrepl"];
   repl -> xf; xf -> syncd;
   syncd -> tomcat [label="PUT"];
