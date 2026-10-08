@@ -53,7 +53,7 @@ probe a route the change added or removed (for example `/dev/gallery/`, mounted
 by #603: 302 to login when live, 404 when not).
 
 `cirrus_healthcheck.sh --env dev` reads three WARNs on a healthy dev: the kill
-switch (values-dev disables five tasks on purpose) and, during a roll, a startup
+switch (values-dev disables four tasks on purpose) and, during a roll, a startup
 probe "connection refused" event. A PodDisruptionBudget is not expected at one
 replica and the check says so.
 
