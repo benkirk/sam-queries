@@ -1,18 +1,19 @@
 # Publish the SAMuel decks: `make publish` to GitHub Pages, CI later
 
-**Status:** Proposal, 2026-10-07. Awaiting Ben's review; nothing built. Branch `deck-publishing`
-(this doc only). Implementation is two PRs: one in `quarto-docs-framework`, then a submodule bump
-here.
+**Status:** PR 1 open (quarto-docs-framework#28, 2026-10-07); PR 2 not started. Branch
+`deck-publishing` (this doc only). Implementation is two PRs: one in `quarto-docs-framework`,
+then a submodule bump here on a branch cut from the then-current `origin/staging`.
 
 Related: `docs/plans/SAMUEL_PRESENTATION.md` § 7 (the open "publish the HTML deck" item),
 `docs/presentations/README.md`, `docs/presentations/samuel/companion/README.md`.
 
 ## Progress
 
-- [ ] Framework PR: `site` and `publish` targets in `docs/Make.common`, `site_index.py`,
+- [x] Framework PR: `site` and `publish` targets in `docs/Make.common`, `site_index.py`,
       `ci-consumer.yaml` exercises `make site`, README "Publishing" section
+      (quarto-docs-framework#28, 2026-10-07; awaiting merge)
 - [ ] Here: bump the submodule pin
-- [ ] Here: `_metadata.yml` (noindex), `Makefile` (`SITE_EXTRA`, `PUBLISH_PREFIX`), `.gitignore` `/*/_site/`
+- [ ] Here: `Makefile` (`SITE_EXTRA`, `SITE_NOINDEX`, `PUBLISH_PREFIX`), `.gitignore` `/*/_site/`
 - [ ] Here: `docs/presentations/README.md` "Publishing"; companion README live page; tick
       `SAMUEL_PRESENTATION.md` § 7
 - [ ] Ben: enable Pages on `gh-pages` (one `gh api` call, below), run `make publish`, load the URL
@@ -78,30 +79,28 @@ framework first, then a submodule bump. Alternative, if one PR is preferred: put
 
 ### PR 1: `quarto-docs-framework`, `site` and `publish` targets in `docs/Make.common`
 
-1. **`site`** (depends on `html`): build `$(SITE)` (default `_site/`), gitignored:
-   - copy each `$(DECKS).html`;
-   - merge every `*_files/libs/` into one `$(SITE)/libs/` (`rsync -a` per deck gives the union;
-     identical files overwrite harmlessly) and rewrite `<deck>_files/libs/` → `libs/` in each HTML
-     (32 references per deck; a `sed` in the recipe, or a few lines in the index script);
-   - copy any other `*_files/` content per deck (none today; keeps future python figures working);
-   - copy `images/` if present;
-   - copy `$(SITE_EXTRA)` directories verbatim (consumer hook; SAMuel sets `companion`);
-   - write `.nojekyll`;
-   - write `index.html` with a new `docs/common/utils/site_index.py`: reads each deck's `.qmd`
-     front matter (`title`, `subtitle`), lists decks in `DECKS` order plus any `SITE_EXTRA`
-     pages, inline CSS in the brand style (same approach as `companion/pipeline.html`).
+As built in quarto-docs-framework#28 (`docs/Make.common`, `docs/common/utils/site_index.py`):
+
+1. **`site`** (depends on `html`): builds `$(SITE)` (default `_site/`, gitignored):
+   - every `<deck>_files/libs/` merged into one `$(SITE)/libs/` (`rsync -a` per deck gives the
+     union) and `<deck>_files/libs/` rewritten to `libs/` in each HTML (32 references per deck);
+   - any other `*_files/` content per deck (none today), `images/`, and `$(SITE_EXTRA)` directories
+     verbatim (SAMuel sets `companion`);
+   - `index.html` from `site_index.py`: each deck's `.qmd` front matter (`title`, `subtitle`) in
+     `DECKS` order, then every `*.html` under the extra directories by its `<title>`; brand
+     colors and Poppins, light and dark;
+   - `SITE_NOINDEX=1` puts `<meta name="robots" content="noindex">` on every deck and the index.
+     That is the whole "not indexed" mechanism; no `robots.txt` `Disallow`, which would stop
+     crawlers from ever reading the tag.
 2. **`publish`** (depends on `site`): `PUBLISH_BRANCH ?= gh-pages`, `PUBLISH_REMOTE ?= origin`,
    `PUBLISH_PREFIX ?=` (path under the Pages root; SAMuel uses `presentations/samuel` so the root
-   stays free for other decks later). Recipe: stage `$(SITE)` into a scratch git repo,
-   `git fetch $(PUBLISH_REMOTE) $(PUBLISH_BRANCH)` first (so the push negotiation knows what the
-   remote already holds and sends only changed objects: the deduped `libs/` never changes, so a
-   typical publish moves ~1 MB, not 16), then one **orphan** commit with a clean message (no
-   skip-ci tokens: the branch triggers nothing anyway, but the message is grepped repo-wide),
-   `git push --force $(PUBLISH_REMOTE) HEAD:refs/heads/$(PUBLISH_BRANCH)`, then print the Pages
-   URL. `.nojekyll` lives at the branch root.
-3. `DEPS` gains `$(wildcard _metadata.yml)` (see PR 2) and `clean` removes `$(SITE)`.
-4. `ci-consumer.yaml`: add `make -C "$DECK" site` and assert `grep -q 'libs/revealjs' hello.html`
-   in `_site/` and that no `_files/libs` remains. README gains a "Publishing" section.
+   stays free for other decks later). Stages `$(SITE)` under the prefix in a scratch repo with
+   `.nojekyll` at the root, one **parentless** commit with a clean message (no skip-ci tokens:
+   the branch triggers nothing anyway, but the message is grepped repo-wide), `git push --force`
+   to the branch, then prints the Pages URL for a GitHub remote.
+3. `DEPS` gains `$(wildcard _metadata.yml)`, `clean` removes `$(SITE)`, `ci-consumer.yaml` builds
+   the site for the hello deck and checks the rewrite, the tag and the index. README gains
+   "Publishing the HTML decks".
 
 **Why frequent publishing never grows the repo.** Pages keeps no versions; it serves the branch
 tip. The branch holds exactly one commit at any time; the previous one goes unreachable and
@@ -111,33 +110,29 @@ is soft-limited to 10 builds per hour, and each push shows up in the Actions tab
 `pages-build-deployment` run (free on a public repo). Stage 2's workflow-driven deploy lifts the
 hourly cap if it ever matters.
 
+**Every publish uploads the whole site** (~17 MB for SAMuel). Measured while building #28: a
+parentless commit gives git no edge to delta against, so fetching the old tip first changes
+nothing (166 objects pushed either way, trees identical). Keeping history would make the
+transfer small and the branch grow; the one-commit branch was the decision, so the upload is
+the price. Seconds on a laptop, nothing in CI.
+
 ### PR 2: this repo
 
 1. Bump the submodule pin to PR 1's merge.
-2. `docs/presentations/samuel/Makefile`: `SITE_EXTRA := companion`,
-   `PUBLISH_PREFIX := presentations/samuel`.
-3. New `docs/presentations/samuel/_metadata.yml` (directory metadata, applies to every deck in
-   the directory; pptx and beamer are untouched because it is scoped to the one format):
-   ```yaml
-   format:
-     ncar-revealjs:
-       include-in-header:
-         text: '<meta name="robots" content="noindex">'
-   ```
-   `noindex` on every page is the whole "not indexed" mechanism. No `robots.txt` `Disallow`,
-   which would stop crawlers from ever reading the meta tag.
-4. `docs/presentations/.gitignore`: add `/*/_site/`.
-5. `docs/presentations/samuel/companion/README.md`: the live page becomes the Pages URL
+2. `docs/presentations/samuel/Makefile`, before the include: `SITE_EXTRA := companion`,
+   `SITE_NOINDEX := 1`, `PUBLISH_PREFIX := presentations/samuel`.
+3. `docs/presentations/.gitignore`: add `/*/_site/`.
+4. `docs/presentations/samuel/companion/README.md`: the live page becomes the Pages URL
    (`.../presentations/samuel/companion/pipeline.html`); the Artifact URL stays listed as the
    previous home until the slide link in `_5-deployment.qmd` is repointed.
-6. `docs/presentations/README.md`, a "Publishing" section: the one-time Pages enable (Ben runs
+5. `docs/presentations/README.md`, a "Publishing" section: the one-time Pages enable (Ben runs
    it), then `make -C docs/presentations/samuel publish`, and the public-repo hygiene rule already
    in the companion README (no IPs, OpenBao paths, real names in slides or screenshots).
    ```bash
    gh api -X POST repos/benkirk/sam-queries/pages \
      -f build_type=legacy -f 'source[branch]=gh-pages' -f 'source[path]=/'
    ```
-7. `docs/plans/SAMUEL_PRESENTATION.md` § 7: tick the publish item with the decision and URL.
+6. `docs/plans/SAMUEL_PRESENTATION.md` § 7: tick the publish item with the decision and URL.
 
 ### Stage 2 (not in this plan; sketch for the record)
 
