@@ -107,11 +107,11 @@ Argo syncs `sam-query-dev`, in order:
 - Cert: the `incommon-cert-samuel-dev` Secret and Certificate resourceVersion
   unchanged; served SANs match (`scripts/cirrus_healthcheck.sh --env dev`).
 - `curl -sI --http2 https://samuel-dev.k8s.ucar.edu/api/v1/health/live` answers 200
-  over HTTP/2. `curl -sI http://samuel-dev.k8s.ucar.edu/` should answer 301/308 to
-  https. A 200 or 404 is the redirect gap: ask CIRRUS to enable it on the entrypoint
-  (the right fix, for every tenant); interim
-  `traefik.ingress.kubernetes.io/router.entrypoints: websecure` so :80 404s instead of
-  serving plaintext. The session cookie is `Secure`, so a plaintext login fails loudly.
+  over HTTP/2. On :80 Traefik served the app in plaintext (checked 2026-10-08; nginx
+  answered 308), and the tenant may not create a `Middleware` (`auth can-i` says no),
+  so the chart binds the router to `websecure` (`webapp.ingress.traefik.entrypoints`)
+  and :80 answers 404. A real redirect is CIRRUS's: on the `web` entrypoint,
+  cluster-wide. The session cookie is `Secure`, so a plaintext login fails loudly.
 - An OIDC round trip in a browser (proves the forwarded host and proto).
 - gunicorn's `xff=` field in the pod log: expect real client IPs. One hop means
   `proxyFixForwardedHops: 1` stays; two means bump to 2. Measure, do not guess.

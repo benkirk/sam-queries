@@ -183,6 +183,8 @@ check_dev() {
   # (docs/plans/TRAEFIK_INGRESS.md). nginx annotations render only for an nginx class.
   grep -qE '^\s+ingressClassName: traefik-external$' <<<"$whole" || { red "FAIL: dev must render ingressClassName traefik-external"; return 1; }
   grep -q 'nginx.ingress.kubernetes.io/' <<<"$whole" && { red "FAIL: dev on traefik must carry no nginx.ingress.kubernetes.io/ annotation"; return 1; }
+  grep -qE 'router.entrypoints: "websecure"$' <<<"$whole" || { red "FAIL: dev on traefik must bind the router to websecure (no plaintext on :80)"; return 1; }
+  grep -q 'router.entrypoints' <<<"$prod" && { red "FAIL: prod on nginx must carry no traefik annotation"; return 1; }
   grep -qE '^\s+ingressClassName: nginx-external$' <<<"$prod" || { red "FAIL: prod stays on ingressClassName nginx-external until PR 2"; return 1; }
   grep -q 'nginx.ingress.kubernetes.io/limit-rps' <<<"$prod" || { red "FAIL: prod on nginx keeps its edge rate-limit annotations"; return 1; }
 }

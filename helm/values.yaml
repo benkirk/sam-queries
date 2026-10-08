@@ -98,6 +98,12 @@ webapp:
       rps: 100
       connections: 200
       burstMultiplier: 5
+    # Traefik only (any non-nginx class). Traefik does not redirect :80 and the
+    # tenant may not create a Middleware, so the router is bound to the TLS
+    # entrypoint and plain http answers 404 instead of serving the app. Empty
+    # binds every entrypoint (plaintext on :80).
+    traefik:
+      entrypoints: websecure
   # Trusted proxy hops for ProxyFix (X-Forwarded-For depth). Sets PROXYFIX_X_FOR.
   # MUST equal the exact number of proxies that append to X-Forwarded-For, or a
   # client can spoof its IP. Start at 1 (safe), then confirm the real depth from
