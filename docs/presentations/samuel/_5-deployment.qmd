@@ -474,6 +474,95 @@ to 4 in #113. Because Argo renders the chart, helm list shows nothing, and mergi
 change rolls the cluster: #113 merged at 03:11Z and the pods were recreated at 03:22Z.
 :::
 
+## `csg-postgres`, drawn {.full}
+
+::: {.notes}
+hpc-usage-queries helm/: the CNPG Cluster (two instances, 512Gi Ceph RBD volumes), two
+LoadBalancer Services with external-dns names (primary and -ro at the replica), a self-signed
+cert-manager certificate, and the superuser and app-user credentials from OpenBao through
+External Secrets. SAMuel reaches it by those external names even from inside CIRRUS:
+STATUS_DB_SERVER on the primary, JOB_HISTORY_PG_HOST and FS_SCAN_PG_HOST on -ro
+(helm/values.yaml); samuel-dev's SAM_DB_SERVER is the primary. The instances trade roles on a
+switchover, so "primary" is a role, not a pod. Backups: weekly volume snapshots, four kept;
+the Boreas object store is configured but off (docs/plans/CNPG_BACKUPS.md).
+The secrets and TLS pieces are on the next slide, in Argo's tree.
+:::
+
+```{dot}
+//| fig-width: 10
+digraph CNPG {
+  graph [rankdir=LR, compound=true, newrank=true, nodesep=0.35, ranksep=0.7, bgcolor="transparent",
+         fontname="Helvetica", fontsize=13, fontcolor="#00357A"];
+  node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=13,
+         fillcolor="#FFFFFF", color="#6B7280", fontcolor="#00357A", margin="0.14,0.06"];
+  edge  [fontname="Helvetica", fontsize=11, color="#6B7280", fontcolor="#6B7280"];
+
+  subgraph cluster_cirrus {
+    label="CIRRUS, nwc1"; labelloc=t; style="rounded,dashed"; color="#0057C2";
+    subgraph cluster_prod {
+      label=<<FONT FACE="Courier">sam-queries</FONT>>; style="rounded,dotted"; color="#0057C2";
+      samuel [label="SAMuel", fillcolor="#0057C2", color="#00357A", fontcolor="#FFFFFF"];
+    }
+    subgraph cluster_dev {
+      label=<<FONT FACE="Courier">sam-queries-dev</FONT>>; style="rounded,dotted"; color="#0057C2";
+      dev [label="samuel-dev", fillcolor="#E6F0FA", color="#0057C2"];
+    }
+    subgraph cluster_pg {
+      label=<<FONT FACE="Courier">pg-testing</FONT>, rendered by Argo from <FONT FACE="Courier">hpc-usage-queries</FONT>>;
+      style="rounded,dotted"; color="#FAA119";
+      ro [label=<LoadBalancer, read-only<BR/><FONT FACE="Courier">csg-postgres-ro.k8s.ucar.edu</FONT>>];
+      rw [label=<LoadBalancer, read-write<BR/><FONT FACE="Courier">csg-postgres.k8s.ucar.edu</FONT>>];
+      subgraph cluster_cnpg {
+        label="CloudNativePG cluster"; style="rounded,filled"; fillcolor="#FFF8EC"; color="#FAA119";
+        p2 [label="replica\n512Gi volume", shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
+        p1 [label="primary\n512Gi volume", shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
+      }
+    }
+  }
+  subgraph cluster_hpc {
+    label=<HPC hosts: <FONT FACE="Courier">casper</FONT>, <FONT FACE="Courier">derecho</FONT>>; labelloc=b;
+    style="rounded,dashed"; color="#6B7280";
+    col   [label="status collectors\nevery 5 min"];
+    jh    [label=<<FONT FACE="Courier">jobhist-sync</FONT><BR/>hourly>];
+    scans [label="scans rebuild\nweekly PBS job"];
+  }
+  snap   [label="volume snapshots\nweekly, four kept"];
+  boreas [label="Boreas object store\nplanned", style="rounded,dashed", fontcolor="#6B7C99"];
+
+  {rank=same; samuel; dev; col; jh; scans}
+  {rank=same; ro; rw}
+  {rank=same; p1; p2}
+  samuel -> ro [label="jobs, fs_scans"];
+  samuel -> rw [label="system_status"];
+  dev -> rw [label="sam_dev, system_status_dev"];
+  col -> samuel [xlabel="POST", constraint=false];
+  jh -> rw [label="jobs"];
+  scans -> rw [label="fs_scans"];
+  ro -> p2;
+  rw -> p1;
+  p1 -> p2 [xlabel="streaming\nreplication"];
+  p1 -> snap [ltail=cluster_cnpg];
+  p1 -> boreas [ltail=cluster_cnpg, style=dashed];
+}
+```
+
+Who writes and reads through which name; the two instances trade roles on a switchover.
+
+## `csg-postgres` in Argo CD {.full}
+
+![](images/argo-cnpg-tree.png)
+
+The `csg-hpc-usage-queries` app: a certificate, two secrets, the cluster and all it owns.
+
+::: {.notes}
+Tree view, 2026-10-08. The chart's own objects: the TLS certificate and its self-signed issuer,
+two ExternalSecrets (app user and superuser, from OpenBao), the Cluster, and its two
+LoadBalancer Services (csg-postgres and csg-postgres-ro). The operator then owns the rest: a
+service account, role and binding, a disruption budget on the primary, one volume claim per
+instance, and CNPG's three in-cluster Services (-rw, -ro, -r). Last sync 2026-09-13, the
+64Gi memory change that drove a switchover.
+:::
+
 ## What it hosts {.smaller .center .fill scale="1.15"}
 
 | Database | Written by | Read by |

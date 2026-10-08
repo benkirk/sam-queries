@@ -205,14 +205,13 @@ Existing writes: project members (POST/DELETE, PUT admin), PUT allocations, POST
 charge-summaries, the status collectors.
 :::
 
-## Cached, and how to refresh {.vcenter scale="1.15"}
+## Cached, and how to refresh {.vcenter scale="0.9"}
 
 - **Responses live for 5 minutes** in a shared cache, one entry per query string.
 - **Need it fresh?** Each legacy-shaped endpoint has `POST …/refresh`:
 
 ```bash
-curl -X POST -u "$SAM_API_USER:$SAM_API_PASS" \
-     "$SAM_API_BASE/api/v1/queue/refresh"
+curl -X POST -u "$SAM_API_USER:$SAM_API_PASS" "$SAM_API_BASE/api/v1/queue/refresh"
 ```
 
 - **HSG's tools refresh, then download.** SAMuel's own queue edits clear that cache.
