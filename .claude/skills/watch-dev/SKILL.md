@@ -23,10 +23,9 @@ scripts/cirrus_watch.sh --context nwc1 --env dev
 
 `--env dev` selects namespace `sam-queries-dev`, release `samuel-dev`, host
 `samuel-dev.k8s.ucar.edu` and its own state file (`sam-watch/state-dev`). The
-preflight probes the ingress on 443, not a DB. Dev rides the `traefik-external`
-class (its own VIP; `kubectl -n sam-queries-dev get ingress samuel-dev -o wide`)
-while prod is still on `nginx-external`, so an edge symptom seen on one and not
-the other is a controller difference, not an app one.
+preflight probes the ingress on 443, not a DB. Both envs ride the `traefik-external`
+class (VIP 128.117.41.125, the ADDRESS in `kubectl -n sam-queries-dev get ingress
+samuel-dev -o wide`); the retired nginx class (.126) is a legacy branch of the chart.
 
 ## 2. What the tick can see
 

@@ -8,6 +8,7 @@ metadata:
   annotations:
     cert-manager.io/cluster-issuer: "incommon"
 {{- $class := required "webapp.ingress.className is required" .Values.webapp.ingress.className }}
+{{- /* LEGACY branch: ingress-nginx annotations, unused on a traefik class. */}}
 {{- if hasPrefix "nginx" $class }}
     {{- with .Values.webapp.ingress.rateLimit }}
     {{- if gt (int .rps) 0 }}

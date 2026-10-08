@@ -189,14 +189,26 @@ check_dev() {
   shared=$(comm -12 <(grep -E 'secretName: ' <<<"$prod" | sort -u) <(grep -E 'secretName: ' <<<"$whole" | sort -u))
   [[ -z "$shared" ]] || { red "FAIL: dev and prod share a TLS secret: $shared"; return 1; }
 
-  # --- 5. the ingress controller: dev is the Traefik canary ------------------
-  # (docs/plans/TRAEFIK_INGRESS.md). nginx annotations render only for an nginx class.
-  grep -qE '^\s+ingressClassName: traefik-external$' <<<"$whole" || { red "FAIL: dev must render ingressClassName traefik-external"; return 1; }
-  grep -q 'nginx.ingress.kubernetes.io/' <<<"$whole" && { red "FAIL: dev on traefik must carry no nginx.ingress.kubernetes.io/ annotation"; return 1; }
-  grep -qE 'router.entrypoints: "websecure"$' <<<"$whole" || { red "FAIL: dev on traefik must bind the router to websecure (no plaintext on :80)"; return 1; }
-  grep -q 'router.entrypoints' <<<"$prod" && { red "FAIL: prod on nginx must carry no traefik annotation"; return 1; }
-  grep -qE '^\s+ingressClassName: nginx-external$' <<<"$prod" || { red "FAIL: prod stays on ingressClassName nginx-external until PR 2"; return 1; }
-  grep -q 'nginx.ingress.kubernetes.io/limit-rps' <<<"$prod" || { red "FAIL: prod on nginx keeps its edge rate-limit annotations"; return 1; }
+  # --- 5. the ingress controller: both envs on Traefik -----------------------
+  # (docs/plans/TRAEFIK_INGRESS.md). The nginx branch is legacy: it renders only
+  # for an nginx class (the rollback path), and the cutover bridge only on prod.
+  for env_render in "dev:$whole" "prod:$prod"; do
+    local env="${env_render%%:*}" rendered="${env_render#*:}"
+    grep -qE '^\s+ingressClassName: traefik-external$' <<<"$rendered" || { red "FAIL: $env must render ingressClassName traefik-external"; return 1; }
+    grep -q 'nginx.ingress.kubernetes.io/' <<<"$rendered" && { red "FAIL: $env on traefik must carry no nginx.ingress.kubernetes.io/ annotation"; return 1; }
+    grep -qE 'router.entrypoints: "websecure"$' <<<"$rendered" || { red "FAIL: $env on traefik must bind the router to websecure (no plaintext on :80)"; return 1; }
+  done
+  grep -q 'name: samuel-dev-legacy' <<<"$whole" && { red "FAIL: dev renders no cutover bridge (its DNS already moved)"; return 1; }
+  grep -q 'name: samuel-legacy' <<<"$prod" || { red "FAIL: prod renders the samuel-legacy cutover bridge while legacyBridge.enabled"; return 1; }
+  local bridge
+  bridge=$(render prod -s templates/ingress-legacy.yaml)
+  grep -qE '^\s+ingressClassName: nginx-external$' <<<"$bridge" || { red "FAIL: the bridge Ingress must sit on nginx-external"; return 1; }
+  grep -q 'cert-manager.io' <<<"$bridge" && { red "FAIL: the bridge must not ask cert-manager for a cert (it reuses the Secret)"; return 1; }
+  local rollback
+  rollback=$(render prod --set webapp.ingress.className=nginx-external -s templates/ingress.yaml)
+  grep -q 'nginx.ingress.kubernetes.io/limit-rps' <<<"$rollback" || { red "FAIL: the legacy nginx branch must still render on an nginx class (rollback path)"; return 1; }
+  grep -q 'router.entrypoints' <<<"$rollback" && { red "FAIL: an nginx class must carry no traefik annotation"; return 1; }
+  return 0
 }
 
 # --- the positive path -------------------------------------------------------
@@ -228,6 +240,7 @@ local_whole=$(render local)
 assert_not_contains "$local_whole" "human-check-credentials" "local k8s has no OpenBao: no human-check Secret"
 assert_contains "$local_whole" "ingressClassName: nginx" "local k8s uses the plain nginx ingress class"
 assert_not_contains "$local_whole" "ingressClassName: nginx-nginx" "the class is one string, not a composed prefix"
+assert_not_contains "$local_whole" "samuel-legacy" "local k8s renders no cutover bridge"
 [[ "$(env_value "$(render local -s templates/deployment.yaml)" HUMAN_CHECK_PROVIDER)" == "none" ]] || {
   red "FAIL: local k8s must run with HUMAN_CHECK_PROVIDER=none"; exit 1; }
 
