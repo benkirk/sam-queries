@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta name="robots" content="noindex">
+<script src="libs/clipboard/clipboard.min.js"></script>
+<script src="libs/quarto-html/tabby.min.js"></script>
+<script src="libs/quarto-html/popper.min.js"></script>
+<script src="libs/quarto-html/tippy.umd.min.js"></script>
+<link href="libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="libs/quarto-html/light-border.css" rel="stylesheet">
+<link href="libs/quarto-html/quarto-syntax-highlighting-e68d02262ef1f4d9486a2dabcf6f9961.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="libs/quarto-contrib/ncar-revealjs-2.8.0/ncar-revealjs.js"></script>
+<link href="libs/quarto-contrib/ncar-revealjs-2.8.0/ncar-revealjs.css" rel="stylesheet"><meta charset="utf-8">
+  <meta name="generator" content="quarto-1.9.38">
+
+  <meta name="author" content="NSF NCAR/CISL">
+  <meta name="dcterms.date" content="2026-10-08">
+  <title>SAMuel, Appendix B</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
+  <link rel="stylesheet" href="libs/revealjs/dist/reset.css">
+  <link rel="stylesheet" href="libs/revealjs/dist/reveal.css">
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    ul.task-list{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+      vertical-align: middle;
+    }
+    /* CSS for syntax highlighting */
+    html { -webkit-text-size-adjust: 100%; }
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #6b7c99;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #6b7c99;  padding-left: 4px; }
+    div.sourceCode
+      { color: #011837; background-color: #f1f0ee; }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #b5540a; font-weight: bold; } /* Alert */
+    code span.an { color: #6b7c99; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #00357a; } /* Attribute */
+    code span.bn { color: #00818f; } /* BaseN */
+    code span.bu { color: #00357a; } /* BuiltIn */
+    code span.cf { color: #0057c2; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #00818f; } /* Char */
+    code span.cn { color: #00818f; } /* Constant */
+    code span.co { color: #6b7c99; font-style: italic; } /* Comment */
+    code span.cv { color: #6b7c99; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #6b7c99; font-style: italic; } /* Documentation */
+    code span.dt { color: #00357a; } /* DataType */
+    code span.dv { color: #00818f; } /* DecVal */
+    code span.er { color: #b5540a; font-weight: bold; } /* Error */
+    code span.ex { color: #011837; } /* Extension */
+    code span.fl { color: #00818f; } /* Float */
+    code span.fu { color: #00357a; font-weight: bold; } /* Function */
+    code span.im { color: #0057c2; } /* Import */
+    code span.in { color: #6b7c99; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #0057c2; font-weight: bold; } /* Keyword */
+    code span.op { color: #011837; } /* Operator */
+    code span.ot { color: #00357a; } /* Other */
+    code span.pp { color: #0057c2; } /* Preprocessor */
+    code span.re { color: #6b7c99; } /* RegionMarker */
+    code span.sc { color: #00818f; } /* SpecialChar */
+    code span.ss { color: #00818f; } /* SpecialString */
+    code span.st { color: #00818f; } /* String */
+    code span.va { color: #011837; } /* Variable */
+    code span.vs { color: #00818f; } /* VerbatimString */
+    code span.wa { color: #b5540a; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  <link rel="stylesheet" href="libs/revealjs/dist/theme/quarto-f88b1c43c23c42339fb17813e04aec7e.css">
+  <link href="libs/revealjs/plugin/quarto-line-highlight/line-highlight.css" rel="stylesheet">
+  <link href="libs/revealjs/plugin/reveal-menu/menu.css" rel="stylesheet">
+  <link href="libs/revealjs/plugin/reveal-menu/quarto-menu.css" rel="stylesheet">
+  <link href="libs/revealjs/plugin/reveal-chalkboard/font-awesome/css/all.css" rel="stylesheet">
+  <link href="libs/revealjs/plugin/reveal-chalkboard/style.css" rel="stylesheet">
+  <link href="libs/revealjs/plugin/quarto-support/footer.css" rel="stylesheet">
+  <style type="text/css">
+    .reveal div.sourceCode {
+      margin: 0;
+      overflow: auto;
+    }
+    .reveal div.hanging-indent {
+      margin-left: 1em;
+      text-indent: -1em;
+    }
+    .reveal .slide:not(.center) {
+      height: 100%;
+    }
+    .reveal .slide.scrollable {
+      overflow-y: auto;
+    }
+    .reveal .footnotes {
+      height: 100%;
+      overflow-y: auto;
+    }
+    .reveal .slide .absolute {
+      position: absolute;
+      display: block;
+    }
+    .reveal .footnotes ol {
+      counter-reset: ol;
+      list-style-type: none; 
+      margin-left: 0;
+    }
+    .reveal .footnotes ol li:before {
+      counter-increment: ol;
+      content: counter(ol) ". "; 
+    }
+    .reveal .footnotes ol li > p:first-child {
+      display: inline-block;
+    }
+    .reveal .slide ul,
+    .reveal .slide ol {
+      margin-bottom: 0.5em;
+    }
+    .reveal .slide ul li,
+    .reveal .slide ol li {
+      margin-top: 0.4em;
+      margin-bottom: 0.2em;
+    }
+    .reveal .slide ul[role="tablist"] li {
+      margin-bottom: 0;
+    }
+    .reveal .slide ul li > *:first-child,
+    .reveal .slide ol li > *:first-child {
+      margin-block-start: 0;
+    }
+    .reveal .slide ul li > *:last-child,
+    .reveal .slide ol li > *:last-child {
+      margin-block-end: 0;
+    }
+    .reveal .slide .columns:nth-child(3) {
+      margin-block-start: 0.8em;
+    }
+    .reveal blockquote {
+      box-shadow: none;
+    }
+    .reveal .tippy-content>* {
+      margin-top: 0.2em;
+      margin-bottom: 0.7em;
+    }
+    .reveal .tippy-content>*:last-child {
+      margin-bottom: 0.2em;
+    }
+    .reveal .slide > img.stretch.quarto-figure-center,
+    .reveal .slide > img.r-stretch.quarto-figure-center {
+      display: block;
+      margin-left: auto;
+      margin-right: auto; 
+    }
+    .reveal .slide > img.stretch.quarto-figure-left,
+    .reveal .slide > img.r-stretch.quarto-figure-left  {
+      display: block;
+      margin-left: 0;
+      margin-right: auto; 
+    }
+    .reveal .slide > img.stretch.quarto-figure-right,
+    .reveal .slide > img.r-stretch.quarto-figure-right  {
+      display: block;
+      margin-left: auto;
+      margin-right: 0; 
+    }
+  </style>
+  <script>document.documentElement.classList.add('ncar-brand-ncar','ncar-title-dark')</script>
+</head>
+<body class="quarto-light">
+  <div class="reveal">
+    <div class="slides">
+
+<section data-background-color="#0057C2" class="quarto-title-block ncar-title ncar-field center">
+  <svg class="ncar-waves" viewbox="0 0 1600 900" preserveaspectratio="none" aria-hidden="true" focusable="false"><path d="M 1045.3 -1200.0 L 1045.3 -1200.0 C 1045.3 -260.0 1045.3 -260.0 1077.7 -100.0 L 1097.9 0.0 C 1133.9 177.8 1290.9 446.9 1290.9 608.9 C 1290.9 786.7 1241.0 871.3 1227.8 900.0 L 1182.1 1000.0 C 1109.0 1160.0 1109.0 1160.0 1109.0 2100.0 L 1121.5 2100.0 C 1121.5 1160.0 1121.5 1160.0 1219.0 1000.0 L 1280.0 900.0 C 1325.8 824.9 1371.2 747.6 1371.2 578.1 C 1371.2 427.2 1184.3 142.5 1142.1 0.0 L 1112.4 -100.0 C 1065.0 -260.0 1065.0 -260.0 1065.0 -1200.0 Z" fill="#42C0FF" fill-opacity="0.18"></path><path d="M 1065.0 -1200.0 L 1065.0 -1200.0 C 1065.0 -260.0 1065.0 -260.0 1112.4 -100.0 L 1142.1 0.0 C 1184.3 142.5 1371.2 427.2 1371.2 578.1 C 1371.2 747.6 1325.8 824.9 1280.0 900.0 L 1219.0 1000.0 C 1121.5 1160.0 1121.5 1160.0 1121.5 2100.0 L 1135.9 2100.0 C 1135.9 1160.0 1135.9 1160.0 1256.1 1000.0 L 1331.2 900.0 C 1382.2 832.0 1451.7 741.8 1451.7 556.4 C 1451.7 396.9 1241.9 124.3 1188.3 0.0 L 1145.2 -100.0 C 1076.2 -260.0 1076.2 -260.0 1076.2 -1200.0 Z" fill="#42C0FF" fill-opacity="0.1"></path><path d="M 1045.3 -1200.0 L 1045.3 -1200.0 C 1045.3 -260.0 1045.3 -260.0 1077.7 -100.0 L 1097.9 0.0 C 1133.9 177.8 1290.9 446.9 1290.9 608.9 C 1290.9 786.7 1241.0 871.3 1227.8 900.0 L 1182.1 1000.0 C 1109.0 1160.0 1109.0 1160.0 1109.0 2100.0" fill="none" stroke="#42C0FF" stroke-width="2.4"></path><path d="M 1065.0 -1200.0 L 1065.0 -1200.0 C 1065.0 -260.0 1065.0 -260.0 1112.4 -100.0 L 1142.1 0.0 C 1184.3 142.5 1371.2 427.2 1371.2 578.1 C 1371.2 747.6 1325.8 824.9 1280.0 900.0 L 1219.0 1000.0 C 1121.5 1160.0 1121.5 1160.0 1121.5 2100.0" fill="none" stroke="#42C0FF" stroke-width="2.4"></path><path d="M 1076.2 -1200.0 L 1076.2 -1200.0 C 1076.2 -260.0 1076.2 -260.0 1145.2 -100.0 L 1188.3 0.0 C 1241.9 124.3 1451.7 396.9 1451.7 556.4 C 1451.7 741.8 1382.2 832.0 1331.2 900.0 L 1256.1 1000.0 C 1135.9 1160.0 1135.9 1160.0 1135.9 2100.0" fill="none" stroke="#42C0FF" stroke-width="2.4"></path></svg>
+  <div class="ncar-title-text">
+    <p class="date">October 8, 2026</p>
+    <h1 class="title">SAMuel, Appendix B</h1>
+    <p class="subtitle">APIs &amp; Why Two Dialects</p>
+    <div class="ncar-title-rule"></div>
+    <p class="author">NSF NCAR/CISL</p>
+  </div>
+</section>
+<section>
+<section class="title-slide slide level1 ncar-section ncar-field center" data-background-color="#0057C2" data-ncar-section="1">
+<h1>APIs &amp; Why Two Dialects</h1>
+<svg class="ncar-waves" viewbox="0 0 1600 900" preserveaspectratio="none" aria-hidden="true" focusable="false"><path d="M 1141.3 -1200.0 L 1141.3 -1200.0 C 1141.3 -260.0 1141.3 -260.0 1173.7 -100.0 L 1193.9 0.0 C 1229.9 177.8 1386.9 446.9 1386.9 608.9 C 1386.9 786.7 1337.0 871.3 1323.8 900.0 L 1278.1 1000.0 C 1205.0 1160.0 1205.0 1160.0 1205.0 2100.0 L 1217.5 2100.0 C 1217.5 1160.0 1217.5 1160.0 1315.0 1000.0 L 1376.0 900.0 C 1421.8 824.9 1467.2 747.6 1467.2 578.1 C 1467.2 427.2 1280.3 142.5 1238.1 0.0 L 1208.4 -100.0 C 1161.0 -260.0 1161.0 -260.0 1161.0 -1200.0 Z" fill="#42C0FF" fill-opacity="0.18"></path><path d="M 1161.0 -1200.0 L 1161.0 -1200.0 C 1161.0 -260.0 1161.0 -260.0 1208.4 -100.0 L 1238.1 0.0 C 1280.3 142.5 1467.2 427.2 1467.2 578.1 C 1467.2 747.6 1421.8 824.9 1376.0 900.0 L 1315.0 1000.0 C 1217.5 1160.0 1217.5 1160.0 1217.5 2100.0 L 1231.9 2100.0 C 1231.9 1160.0 1231.9 1160.0 1352.1 1000.0 L 1427.2 900.0 C 1478.2 832.0 1547.7 741.8 1547.7 556.4 C 1547.7 396.9 1337.9 124.3 1284.3 0.0 L 1241.2 -100.0 C 1172.2 -260.0 1172.2 -260.0 1172.2 -1200.0 Z" fill="#42C0FF" fill-opacity="0.1"></path><path d="M 1141.3 -1200.0 L 1141.3 -1200.0 C 1141.3 -260.0 1141.3 -260.0 1173.7 -100.0 L 1193.9 0.0 C 1229.9 177.8 1386.9 446.9 1386.9 608.9 C 1386.9 786.7 1337.0 871.3 1323.8 900.0 L 1278.1 1000.0 C 1205.0 1160.0 1205.0 1160.0 1205.0 2100.0" fill="none" stroke="#42C0FF" stroke-width="2.4"></path><path d="M 1161.0 -1200.0 L 1161.0 -1200.0 C 1161.0 -260.0 1161.0 -260.0 1208.4 -100.0 L 1238.1 0.0 C 1280.3 142.5 1467.2 427.2 1467.2 578.1 C 1467.2 747.6 1421.8 824.9 1376.0 900.0 L 1315.0 1000.0 C 1217.5 1160.0 1217.5 1160.0 1217.5 2100.0" fill="none" stroke="#42C0FF" stroke-width="2.4"></path><path d="M 1172.2 -1200.0 L 1172.2 -1200.0 C 1172.2 -260.0 1172.2 -260.0 1241.2 -100.0 L 1284.3 0.0 C 1337.9 124.3 1547.7 396.9 1547.7 556.4 C 1547.7 741.8 1478.2 832.0 1427.2 900.0 L 1352.1 1000.0 C 1231.9 1160.0 1231.9 1160.0 1231.9 2100.0" fill="none" stroke="#42C0FF" stroke-width="2.4"></path></svg>
+<div class="ncar-subtitle">
+<p>The APIs: what callers can count on, and how we add to them.</p>
+</div>
+</section>
+<section class="slide level2 ncar-layout ncar-vcenter" data-ncar-scale="1.15">
+<h2>One front door</h2>
+<svg class="ncar-waves" viewbox="0 0 1600 900" preserveaspectratio="none" aria-hidden="true" focusable="false"><path d="M 1157.3 -1200.0 L 1157.3 -1200.0 C 1157.3 -260.0 1157.3 -260.0 1189.7 -100.0 L 1209.9 0.0 C 1245.9 177.8 1402.9 446.9 1402.9 608.9 C 1402.9 786.7 1353.0 871.3 1339.8 900.0 L 1294.1 1000.0 C 1221.0 1160.0 1221.0 1160.0 1221.0 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1177.0 -1200.0 L 1177.0 -1200.0 C 1177.0 -260.0 1177.0 -260.0 1224.4 -100.0 L 1254.1 0.0 C 1296.3 142.5 1483.2 427.2 1483.2 578.1 C 1483.2 747.6 1437.8 824.9 1392.0 900.0 L 1331.0 1000.0 C 1233.5 1160.0 1233.5 1160.0 1233.5 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1188.2 -1200.0 L 1188.2 -1200.0 C 1188.2 -260.0 1188.2 -260.0 1257.2 -100.0 L 1300.3 0.0 C 1353.9 124.3 1563.7 396.9 1563.7 556.4 C 1563.7 741.8 1494.2 832.0 1443.2 900.0 L 1368.1 1000.0 C 1247.9 1160.0 1247.9 1160.0 1247.9 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path></svg>
+<div class="ncar-body">
+<ul>
+<li><strong>72 routes in four families:</strong> core, legacy shapes, fairshare, XRAS. Part 4 has the table.</li>
+<li><strong>Two ways in:</strong> a browser session, or an API key over HTTP Basic.</li>
+<li><strong>Each key holds only the permissions it was granted,</strong> route by route, and is limited to 120 requests a minute.</li>
+<li><strong>Errors look alike:</strong> <code>{"error": "…"}</code> with the usual status codes.</li>
+<li><strong>Docs:</strong> <code>docs/apis/</code> in the repo, with a runnable script for the systems endpoints.</li>
+</ul>
+</div>
+<aside class="notes">
+<p>Route counts are decorator counts (src/webapp/run.py:437-453): core 39, legacy shapes 21, fairshare 1, XRAS 11. Nothing is mounted at /api/protected and there is no /api/v2. login_or_token_required (src/webapp/utils/api_auth.py): keys are bcrypt-hashed, and a good check is cached because bcrypt costs ~260 ms. Under RBAC_SOURCE=db (prod) a key needs a samuel_role_grant for the route’s Permission. RATELIMIT_M2M is 120 per minute, counted in Redis. docs/apis/: SYSTEMS_INTEGRATION_APIs.md, HPC_DATA_COLLECTORS_GUIDE.md, CHARGING_INTEGRATION.md; scripts/apis/systems_integration_apis.sh.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section class="slide level2 ncar-layout ncar-vcenter" data-ncar-scale="1.15">
+<h2>The old dialect: no client change</h2>
+<svg class="ncar-waves" viewbox="0 0 1600 900" preserveaspectratio="none" aria-hidden="true" focusable="false"><path d="M 1157.3 -1200.0 L 1157.3 -1200.0 C 1157.3 -260.0 1157.3 -260.0 1189.7 -100.0 L 1209.9 0.0 C 1245.9 177.8 1402.9 446.9 1402.9 608.9 C 1402.9 786.7 1353.0 871.3 1339.8 900.0 L 1294.1 1000.0 C 1221.0 1160.0 1221.0 1160.0 1221.0 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1177.0 -1200.0 L 1177.0 -1200.0 C 1177.0 -260.0 1177.0 -260.0 1224.4 -100.0 L 1254.1 0.0 C 1296.3 142.5 1483.2 427.2 1483.2 578.1 C 1483.2 747.6 1437.8 824.9 1392.0 900.0 L 1331.0 1000.0 C 1233.5 1160.0 1233.5 1160.0 1233.5 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1188.2 -1200.0 L 1188.2 -1200.0 C 1188.2 -260.0 1188.2 -260.0 1257.2 -100.0 L 1300.3 0.0 C 1353.9 124.3 1563.7 396.9 1563.7 556.4 C 1563.7 741.8 1494.2 832.0 1443.2 900.0 L 1368.1 1000.0 C 1247.9 1160.0 1247.9 1160.0 1247.9 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path></svg>
+<div class="ncar-body">
+<ul>
+<li><strong>Legacy’s JSON, at a new address.</strong> Same keys, same nesting, same camelCase.</li>
+<li><strong>A client changes its base URL and its key.</strong> Nothing else.</li>
+<li><strong>Frozen on purpose:</strong> additive changes only, and never to the bytes a client already reads.</li>
+<li>Fstree, queues, wallclock exemptions, directory and project access, disk quotas, and XRAS.</li>
+</ul>
+</div>
+<div class="ncar-footnotes">
+<p><span class="ncar-dagger">†</span><em>XRAS is held tightest: compared byte for byte, because a swapped first and last name keeps the same length.</em></p>
+</div>
+<aside class="notes">
+<p>Part 4’s “Same bytes, new address” maps each route to its legacy path. CLAUDE.md, “Legacy-compat blueprints — DO NOT REFACTOR”. The one XRAS relaxation: masters[] is sorted rather than in Java HashMap order. Repointed: XRAS (2026-08-24, no legacy calls since 08-28).</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section class="slide level2 smaller ncar-layout ncar-hcenter ncar-vcenter ncar-fill">
+<h2>The legacy-shaped endpoints</h2>
+<svg class="ncar-waves" viewbox="0 0 1600 900" preserveaspectratio="none" aria-hidden="true" focusable="false"><path d="M 1157.3 -1200.0 L 1157.3 -1200.0 C 1157.3 -260.0 1157.3 -260.0 1189.7 -100.0 L 1209.9 0.0 C 1245.9 177.8 1402.9 446.9 1402.9 608.9 C 1402.9 786.7 1353.0 871.3 1339.8 900.0 L 1294.1 1000.0 C 1221.0 1160.0 1221.0 1160.0 1221.0 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1177.0 -1200.0 L 1177.0 -1200.0 C 1177.0 -260.0 1177.0 -260.0 1224.4 -100.0 L 1254.1 0.0 C 1296.3 142.5 1483.2 427.2 1483.2 578.1 C 1483.2 747.6 1437.8 824.9 1392.0 900.0 L 1331.0 1000.0 C 1233.5 1160.0 1233.5 1160.0 1233.5 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1188.2 -1200.0 L 1188.2 -1200.0 C 1188.2 -260.0 1188.2 -260.0 1257.2 -100.0 L 1300.3 0.0 C 1353.9 124.3 1563.7 396.9 1563.7 556.4 C 1563.7 741.8 1494.2 832.0 1443.2 900.0 L 1368.1 1000.0 C 1247.9 1160.0 1247.9 1160.0 1247.9 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path></svg>
+<div class="ncar-body">
+<table class="caption-top">
+<colgroup>
+<col style="width: 30%">
+<col style="width: 35%">
+<col style="width: 21%">
+<col style="width: 11%">
+</colgroup>
+<thead>
+<tr class="header">
+<th><code>/api/v1/…</code></th>
+<th>Returns</th>
+<th>Caller</th>
+<th>Built</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>fstree_access</code></strong></td>
+<td>projects, allocations, usage, users</td>
+<td>PBS fairshare</td>
+<td>by hand</td>
+</tr>
+<tr class="even">
+<td><strong><code>queue</code></strong></td>
+<td>queues and wallclock limits</td>
+<td>PBS hooks</td>
+<td>by hand</td>
+</tr>
+<tr class="odd">
+<td><strong><code>wallclock_exemption</code></strong></td>
+<td>users’ exemptions</td>
+<td>PBS hooks</td>
+<td>by hand</td>
+</tr>
+<tr class="even">
+<td><strong><code>directory_access</code></strong></td>
+<td>unix groups and accounts</td>
+<td>HPC LDAP provisioning</td>
+<td>by hand</td>
+</tr>
+<tr class="odd">
+<td><strong><code>project_access</code></strong></td>
+<td>project groups and status</td>
+<td>HPC LDAP provisioning</td>
+<td>by hand</td>
+</tr>
+<tr class="even">
+<td><strong><code>disk_quota</code></strong></td>
+<td>project quotas and paths</td>
+<td>disk quotas</td>
+<td>schema</td>
+</tr>
+<tr class="odd">
+<td><strong>XRAS</strong> (<code>/api/xras/v1</code>)</td>
+<td>people, requests; actions in</td>
+<td>XRAS broker</td>
+<td>by hand</td>
+</tr>
+</tbody>
+</table>
+</div>
+<aside class="notes">
+<p>21 legacy-shaped routes in six modules, plus 11 XRAS routes in five. Most take a resource or a branch in the path: fstree_access also answers <code>/projects/&lt;projcode&gt;</code> and <code>/users/&lt;username&gt;</code>; directory_access and project_access take a <code>&lt;branch&gt;</code> (hpc, hpc-dev, …). Each legacy-shaped family also has POST …/refresh. Part 4’s “Same bytes, new address” maps each to its legacy path.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section class="slide level2 ncar-layout ncar-vcenter" data-ncar-scale="1.15">
+<h2>Hand-built, on purpose</h2>
+<svg class="ncar-waves" viewbox="0 0 1600 900" preserveaspectratio="none" aria-hidden="true" focusable="false"><path d="M 1157.3 -1200.0 L 1157.3 -1200.0 C 1157.3 -260.0 1157.3 -260.0 1189.7 -100.0 L 1209.9 0.0 C 1245.9 177.8 1402.9 446.9 1402.9 608.9 C 1402.9 786.7 1353.0 871.3 1339.8 900.0 L 1294.1 1000.0 C 1221.0 1160.0 1221.0 1160.0 1221.0 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1177.0 -1200.0 L 1177.0 -1200.0 C 1177.0 -260.0 1177.0 -260.0 1224.4 -100.0 L 1254.1 0.0 C 1296.3 142.5 1483.2 427.2 1483.2 578.1 C 1483.2 747.6 1437.8 824.9 1392.0 900.0 L 1331.0 1000.0 C 1233.5 1160.0 1233.5 1160.0 1233.5 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1188.2 -1200.0 L 1188.2 -1200.0 C 1188.2 -260.0 1188.2 -260.0 1257.2 -100.0 L 1300.3 0.0 C 1353.9 124.3 1563.7 396.9 1563.7 556.4 C 1563.7 741.8 1494.2 832.0 1443.2 900.0 L 1368.1 1000.0 C 1247.9 1160.0 1247.9 1160.0 1247.9 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path></svg>
+<div class="ncar-body">
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href=""></a>by_resource.setdefault(rname, []).append({</span>
+<span id="cb1-2"><a href=""></a>    <span class="st">'queueName'</span>:           queue.queue_name,</span>
+<span id="cb1-3"><a href=""></a>    <span class="st">'wallClockHoursLimit'</span>: queue.wall_clock_hours_limit,</span>
+<span id="cb1-4"><a href=""></a>    <span class="st">'startDate'</span>:           _iso(queue.start_date),</span>
+<span id="cb1-5"><a href=""></a>    <span class="st">'endDate'</span>:             _iso(queue.end_date),</span>
+<span id="cb1-6"><a href=""></a>    <span class="st">'cosId'</span>:               queue.cos_id,</span>
+<span id="cb1-7"><a href=""></a>})</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<ul>
+<li><strong>Every key is typed by hand</strong> to match what legacy sent.</li>
+<li><strong>Nothing declares the shape,</strong> so nothing would catch it drifting. Hence frozen.</li>
+</ul>
+</div>
+<div class="ncar-footnotes">
+<p><span class="ncar-dagger">†</span><em>Not every legacy shape is even consistent: <code>directory_access</code> is camelCase on the outside and snake_case inside. We match it anyway.</em></p>
+</div>
+<aside class="notes">
+<p>src/sam/queries/queue_access.py:67-73, behind GET /api/v1/queue. The five frozen query modules are src/sam/queries/{directory_access,project_access,fstree_access,queue_access, wallclock_exemption_access}.py. directory_access: unixGroups/unixAccounts outside, group_name/home_directory inside.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section class="slide level2 ncar-layout ncar-vcenter" data-ncar-scale="1.15">
+<h2>Proving it</h2>
+<svg class="ncar-waves" viewbox="0 0 1600 900" preserveaspectratio="none" aria-hidden="true" focusable="false"><path d="M 1157.3 -1200.0 L 1157.3 -1200.0 C 1157.3 -260.0 1157.3 -260.0 1189.7 -100.0 L 1209.9 0.0 C 1245.9 177.8 1402.9 446.9 1402.9 608.9 C 1402.9 786.7 1353.0 871.3 1339.8 900.0 L 1294.1 1000.0 C 1221.0 1160.0 1221.0 1160.0 1221.0 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1177.0 -1200.0 L 1177.0 -1200.0 C 1177.0 -260.0 1177.0 -260.0 1224.4 -100.0 L 1254.1 0.0 C 1296.3 142.5 1483.2 427.2 1483.2 578.1 C 1483.2 747.6 1437.8 824.9 1392.0 900.0 L 1331.0 1000.0 C 1233.5 1160.0 1233.5 1160.0 1233.5 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1188.2 -1200.0 L 1188.2 -1200.0 C 1188.2 -260.0 1188.2 -260.0 1257.2 -100.0 L 1300.3 0.0 C 1353.9 124.3 1563.7 396.9 1563.7 556.4 C 1563.7 741.8 1494.2 832.0 1443.2 900.0 L 1368.1 1000.0 C 1247.9 1160.0 1247.9 1160.0 1247.9 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path></svg>
+<div class="ncar-body">
+<ul>
+<li><strong>A parity harness</strong> asks both hosts the same questions: about 40 rules, per endpoint.</li>
+<li><strong>Disk quotas: 590 of 590.</strong> The other gaps were a row or two of mirror lag.</li>
+<li><strong>Byte-identical was the proof.</strong> Now that callers have moved, an explainable difference beats copying a legacy bug.</li>
+<li><strong>Example:</strong> legacy picked one of a user’s duplicate phone rows at random. We pick the same one every time.</li>
+</ul>
+</div>
+<aside class="notes">
+<p>utils/parity/check_legacy_apis.py (+ comparators.py, clients.py, README.md): not pytest; it hits SAMuel and sam.ucar.edu over the VPN, –api directory|project|fstree|queue|wallclock|xras. Rules are mostly one-directional (legacy is a subset of new), with count tolerances for mirror lag. Results table: docs/apis/SYSTEMS_INTEGRATION_APIs.md. The phone fix is MIN() (src/sam/queries/directory_access.py:185-188); it reproduces legacy’s choice on real data. Other explained differences: a soft-deleted allocation counted (ufsu0023), a start_date bound on queues, a NULL commission_date treated as commissioned. Ben, 2026-09-02: “explainable differences are acceptable now”.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section class="slide level2 ncar-layout ncar-vcenter" data-ncar-scale="1.15">
+<h2>The bridge: legacy shape, schema inside</h2>
+<svg class="ncar-waves" viewbox="0 0 1600 900" preserveaspectratio="none" aria-hidden="true" focusable="false"><path d="M 1157.3 -1200.0 L 1157.3 -1200.0 C 1157.3 -260.0 1157.3 -260.0 1189.7 -100.0 L 1209.9 0.0 C 1245.9 177.8 1402.9 446.9 1402.9 608.9 C 1402.9 786.7 1353.0 871.3 1339.8 900.0 L 1294.1 1000.0 C 1221.0 1160.0 1221.0 1160.0 1221.0 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1177.0 -1200.0 L 1177.0 -1200.0 C 1177.0 -260.0 1177.0 -260.0 1224.4 -100.0 L 1254.1 0.0 C 1296.3 142.5 1483.2 427.2 1483.2 578.1 C 1483.2 747.6 1437.8 824.9 1392.0 900.0 L 1331.0 1000.0 C 1233.5 1160.0 1233.5 1160.0 1233.5 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1188.2 -1200.0 L 1188.2 -1200.0 C 1188.2 -260.0 1188.2 -260.0 1257.2 -100.0 L 1300.3 0.0 C 1353.9 124.3 1563.7 396.9 1563.7 556.4 C 1563.7 741.8 1494.2 832.0 1443.2 900.0 L 1368.1 1000.0 C 1247.9 1160.0 1247.9 1160.0 1247.9 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path></svg>
+<div class="ncar-body">
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a><span class="kw">class</span> DiskQuotaSchema(Schema):</span>
+<span id="cb2-2"><a href=""></a>    projcode <span class="op">=</span> fields.String()</span>
+<span id="cb2-3"><a href=""></a>    group_name <span class="op">=</span> fields.String(data_key<span class="op">=</span><span class="st">'groupName'</span>)</span>
+<span id="cb2-4"><a href=""></a>    data_manager <span class="op">=</span> fields.String(data_key<span class="op">=</span><span class="st">'dataManager'</span>)</span>
+<span id="cb2-5"><a href=""></a>    resource_name <span class="op">=</span> fields.String(data_key<span class="op">=</span><span class="st">'resourceName'</span>)</span>
+<span id="cb2-6"><a href=""></a>    quota <span class="op">=</span> fields.Float()</span>
+<span id="cb2-7"><a href=""></a>    paths <span class="op">=</span> fields.List(fields.String())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<ul>
+<li><strong>A new legacy-shaped endpoint starts here:</strong> the shape is declared, and <code>data_key</code> makes the camelCase.</li>
+<li><strong>ORM by default.</strong> Raw SQL only for a measured cost, with a benchmark: <code>directory_access</code> became about 4× faster (Appendix C).</li>
+</ul>
+</div>
+<aside class="notes">
+<p>src/sam/schemas/disk_quota.py:13-21 (allow_none trimmed), the reference (CLAUDE.md, “Output shaping”). Its consumer is DASG; legacy path dasg/diskquota. directory_access split-and-assemble: legacy’s one join fanned each user out ~14x into ~135K rows; now one DISTINCT membership query plus small bulk lookups merged in Python: 1.5 s to 0.38 s on a production copy; 6.9 s in prod before (2026-09-02). Benchmark: tests/perf/test_directory_access_latency.py, <code>make perf</code>. Deep nested trees (fstree, wallclock) stay hand-built: the documented exception.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section class="slide level2 ncar-layout ncar-vcenter" data-ncar-scale="1.15">
+<h2>The new dialect</h2>
+<svg class="ncar-waves" viewbox="0 0 1600 900" preserveaspectratio="none" aria-hidden="true" focusable="false"><path d="M 1157.3 -1200.0 L 1157.3 -1200.0 C 1157.3 -260.0 1157.3 -260.0 1189.7 -100.0 L 1209.9 0.0 C 1245.9 177.8 1402.9 446.9 1402.9 608.9 C 1402.9 786.7 1353.0 871.3 1339.8 900.0 L 1294.1 1000.0 C 1221.0 1160.0 1221.0 1160.0 1221.0 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1177.0 -1200.0 L 1177.0 -1200.0 C 1177.0 -260.0 1177.0 -260.0 1224.4 -100.0 L 1254.1 0.0 C 1296.3 142.5 1483.2 427.2 1483.2 578.1 C 1483.2 747.6 1437.8 824.9 1392.0 900.0 L 1331.0 1000.0 C 1233.5 1160.0 1233.5 1160.0 1233.5 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1188.2 -1200.0 L 1188.2 -1200.0 C 1188.2 -260.0 1188.2 -260.0 1257.2 -100.0 L 1300.3 0.0 C 1353.9 124.3 1563.7 396.9 1563.7 556.4 C 1563.7 741.8 1494.2 832.0 1443.2 900.0 L 1368.1 1000.0 C 1247.9 1160.0 1247.9 1160.0 1247.9 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path></svg>
+<div class="ncar-body">
+<div class="columns">
+<div class="column" style="width:55%;">
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>out <span class="op">=</span> ProjectListSchema(many<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb3-2"><a href=""></a><span class="cf">return</span> jsonify({</span>
+<span id="cb3-3"><a href=""></a>    <span class="st">'projects'</span>: out.dump(rows),</span>
+<span id="cb3-4"><a href=""></a>    <span class="st">'page'</span>: page,</span>
+<span id="cb3-5"><a href=""></a>    <span class="st">'per_page'</span>: per_page,</span>
+<span id="cb3-6"><a href=""></a>    <span class="st">'total'</span>: total,</span>
+<span id="cb3-7"><a href=""></a>})</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<ul>
+<li><strong>snake_case, ISO dates, paged.</strong> Shapes are declared in schemas.</li>
+</ul>
+</div><div class="column" style="width:45%;">
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode numberSource json number-lines code-with-copy"><code class="sourceCode json"><span id="cb4-1"><a href=""></a><span class="fu">{</span><span class="dt">"projects"</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb4-2"><a href=""></a>   <span class="fu">{</span><span class="dt">"projcode"</span><span class="fu">:</span> <span class="st">"SCSG0001"</span><span class="fu">,</span></span>
+<span id="cb4-3"><a href=""></a>    <span class="dt">"active"</span><span class="fu">:</span> <span class="kw">true</span><span class="fu">,</span> <span class="er">...</span><span class="fu">}</span><span class="ot">]</span><span class="fu">,</span></span>
+<span id="cb4-4"><a href=""></a> <span class="dt">"page"</span><span class="fu">:</span> <span class="dv">1</span><span class="fu">,</span></span>
+<span id="cb4-5"><a href=""></a> <span class="dt">"per_page"</span><span class="fu">:</span> <span class="dv">50</span><span class="fu">,</span></span>
+<span id="cb4-6"><a href=""></a> <span class="dt">"total"</span><span class="fu">:</span> <span class="er">…</span><span class="fu">}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<ul>
+<li><strong>Three tiers per entity:</strong> full, list, and summary for nesting.</li>
+</ul>
+</div></div>
+</div>
+<aside class="notes">
+<p>GET /api/v1/projects/ (src/webapp/api/v1/projects.py:108), trimmed; per_page max 1000. Schemas: src/sam/schemas/, ProjectSchema / ProjectListSchema / ProjectSummarySchema, the same for users. AllocationWithUsageSchema adds used, remaining, percent_used and charges_by_type, matching the CLI and the dashboards.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section class="slide level2 smaller ncar-layout ncar-hcenter ncar-vcenter ncar-fill">
+<h2>The new endpoints</h2>
+<svg class="ncar-waves" viewbox="0 0 1600 900" preserveaspectratio="none" aria-hidden="true" focusable="false"><path d="M 1157.3 -1200.0 L 1157.3 -1200.0 C 1157.3 -260.0 1157.3 -260.0 1189.7 -100.0 L 1209.9 0.0 C 1245.9 177.8 1402.9 446.9 1402.9 608.9 C 1402.9 786.7 1353.0 871.3 1339.8 900.0 L 1294.1 1000.0 C 1221.0 1160.0 1221.0 1160.0 1221.0 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1177.0 -1200.0 L 1177.0 -1200.0 C 1177.0 -260.0 1177.0 -260.0 1224.4 -100.0 L 1254.1 0.0 C 1296.3 142.5 1483.2 427.2 1483.2 578.1 C 1483.2 747.6 1437.8 824.9 1392.0 900.0 L 1331.0 1000.0 C 1233.5 1160.0 1233.5 1160.0 1233.5 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1188.2 -1200.0 L 1188.2 -1200.0 C 1188.2 -260.0 1188.2 -260.0 1257.2 -100.0 L 1300.3 0.0 C 1353.9 124.3 1563.7 396.9 1563.7 556.4 C 1563.7 741.8 1494.2 832.0 1443.2 900.0 L 1368.1 1000.0 C 1247.9 1160.0 1247.9 1160.0 1247.9 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path></svg>
+<div class="ncar-body">
+<table class="caption-top">
+<colgroup>
+<col style="width: 35%">
+<col style="width: 45%">
+<col style="width: 19%">
+</colgroup>
+<thead>
+<tr class="header">
+<th><code>/api/v1/…</code></th>
+<th>Serves</th>
+<th>Methods</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>projects</code></strong></td>
+<td>list, detail, members, allocations, jobs</td>
+<td>GET; members POST, DELETE</td>
+</tr>
+<tr class="even">
+<td><strong><code>users</code></strong></td>
+<td>list, search, detail, projects, <code>me</code></td>
+<td>GET</td>
+</tr>
+<tr class="odd">
+<td><strong><code>allocations/&lt;id&gt;</code></strong></td>
+<td>one allocation, and edits</td>
+<td>GET, PUT</td>
+</tr>
+<tr class="even">
+<td><strong><code>projects/&lt;code&gt;/charges</code></strong></td>
+<td>detailed and summary charges</td>
+<td>GET</td>
+</tr>
+<tr class="odd">
+<td><strong><code>charge-summaries/…</code></strong></td>
+<td>daily charges in</td>
+<td>POST</td>
+</tr>
+<tr class="even">
+<td><strong><code>status</code></strong></td>
+<td>collectors in; status and outages out</td>
+<td>POST, GET, PATCH</td>
+</tr>
+<tr class="odd">
+<td><strong><code>fairshare/&lt;machine&gt;</code></strong></td>
+<td>the PBS fairshare tree, ready-made</td>
+<td>GET</td>
+</tr>
+<tr class="even">
+<td><strong><code>health</code></strong></td>
+<td>liveness, readiness</td>
+<td>GET</td>
+</tr>
+<tr class="odd">
+<td><strong><code>admin/cache/refresh</code></strong></td>
+<td>clear the caches, by category</td>
+<td>POST</td>
+</tr>
+</tbody>
+</table>
+</div>
+<aside class="notes">
+<p>39 core routes in seven modules, plus fairshare: projects 10, status 11, users 6, charges 5, health 4, allocations 2, admin 1 (src/webapp/run.py:437-453). Also: projects/expiring and recently_expired, PUT <code>projects/&lt;code&gt;/admin</code>, status reservations and outage DELETE, health/db-pool. Charge summaries: comp, disk, archive. Callers: the dashboards and CLIs, the status collectors (by API key, MANAGE_SYSTEM_STATUS), HSG (fairshare), Kubernetes probes (health). Projects, allocations and charges take a session login only; users take a session or a key. Health, the cache refresh and fairshare are small hand-built replies; the rest dump schemas.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section class="slide level2 ncar-layout ncar-vcenter" data-ncar-scale="1.15">
+<h2>Writes follow the web app’s rules</h2>
+<svg class="ncar-waves" viewbox="0 0 1600 900" preserveaspectratio="none" aria-hidden="true" focusable="false"><path d="M 1157.3 -1200.0 L 1157.3 -1200.0 C 1157.3 -260.0 1157.3 -260.0 1189.7 -100.0 L 1209.9 0.0 C 1245.9 177.8 1402.9 446.9 1402.9 608.9 C 1402.9 786.7 1353.0 871.3 1339.8 900.0 L 1294.1 1000.0 C 1221.0 1160.0 1221.0 1160.0 1221.0 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1177.0 -1200.0 L 1177.0 -1200.0 C 1177.0 -260.0 1177.0 -260.0 1224.4 -100.0 L 1254.1 0.0 C 1296.3 142.5 1483.2 427.2 1483.2 578.1 C 1483.2 747.6 1437.8 824.9 1392.0 900.0 L 1331.0 1000.0 C 1233.5 1160.0 1233.5 1160.0 1233.5 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1188.2 -1200.0 L 1188.2 -1200.0 C 1188.2 -260.0 1188.2 -260.0 1257.2 -100.0 L 1300.3 0.0 C 1353.9 124.3 1563.7 396.9 1563.7 556.4 C 1563.7 741.8 1494.2 832.0 1443.2 900.0 L 1368.1 1000.0 C 1247.9 1160.0 1247.9 1160.0 1247.9 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path></svg>
+<div class="ncar-body">
+<ul>
+<li><strong>Same path as a click:</strong> a form schema checks the input, then one transaction, then the same <code>sam.manage</code> function the dashboard calls.</li>
+<li><strong>Example:</strong> <code>POST /projects/&lt;code&gt;/members</code> reuses the Add Member form and function.</li>
+<li><strong>So a new write is cheap</strong> when its dashboard route is thin: about 15 lines.</li>
+<li>About 87 of 160 dashboard writes qualify. Five have an API twin today.</li>
+</ul>
+</div>
+<aside class="notes">
+<p>sam.schemas.forms (AddMemberForm, EditAllocationForm), management_transaction (audit logging), sam.manage. docs/plans/HTMX_API_READINESS.md is the census: ~87 clean, ~46 glue, ~15 stuck, ~11 UI-only; eight extraction clusters, allocation exchange flagged as security-relevant. Existing writes: project members (POST/DELETE, PUT admin), PUT allocations, POST charge-summaries, the status collectors.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section class="slide level2 ncar-layout ncar-vcenter" data-ncar-scale="0.9">
+<h2>Cached, and how to refresh</h2>
+<svg class="ncar-waves" viewbox="0 0 1600 900" preserveaspectratio="none" aria-hidden="true" focusable="false"><path d="M 1157.3 -1200.0 L 1157.3 -1200.0 C 1157.3 -260.0 1157.3 -260.0 1189.7 -100.0 L 1209.9 0.0 C 1245.9 177.8 1402.9 446.9 1402.9 608.9 C 1402.9 786.7 1353.0 871.3 1339.8 900.0 L 1294.1 1000.0 C 1221.0 1160.0 1221.0 1160.0 1221.0 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1177.0 -1200.0 L 1177.0 -1200.0 C 1177.0 -260.0 1177.0 -260.0 1224.4 -100.0 L 1254.1 0.0 C 1296.3 142.5 1483.2 427.2 1483.2 578.1 C 1483.2 747.6 1437.8 824.9 1392.0 900.0 L 1331.0 1000.0 C 1233.5 1160.0 1233.5 1160.0 1233.5 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1188.2 -1200.0 L 1188.2 -1200.0 C 1188.2 -260.0 1188.2 -260.0 1257.2 -100.0 L 1300.3 0.0 C 1353.9 124.3 1563.7 396.9 1563.7 556.4 C 1563.7 741.8 1494.2 832.0 1443.2 900.0 L 1368.1 1000.0 C 1247.9 1160.0 1247.9 1160.0 1247.9 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path></svg>
+<div class="ncar-body">
+<ul>
+<li><strong>Responses live for 5 minutes</strong> in a shared cache, one entry per query string.</li>
+<li><strong>Need it fresh?</strong> Each legacy-shaped endpoint has <code>POST …/refresh</code>:</li>
+</ul>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode numberSource bash number-lines code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href=""></a><span class="ex">curl</span> <span class="at">-X</span> POST <span class="at">-u</span> <span class="st">"</span><span class="va">$SAM_API_USER</span><span class="st">:</span><span class="va">$SAM_API_PASS</span><span class="st">"</span> <span class="st">"</span><span class="va">$SAM_API_BASE</span><span class="st">/api/v1/queue/refresh"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<ul>
+<li><strong>HSG’s tools refresh, then download.</strong> SAMuel’s own queue edits clear that cache.</li>
+<li><strong>Admins clear by category:</strong> <code>sam-admin cache --refresh</code>.</li>
+</ul>
+</div>
+<div class="ncar-footnotes">
+<p><span class="ncar-dagger">†</span><em>The fstree for every resource takes about 2.8 s to build, and comes back at once from the cache.</em></p>
+</div>
+<aside class="notes">
+<p>CACHE_DEFAULT_TIMEOUT=300; Redis in production (CACHE_REDIS_URL), shared across workers and pods; <span class="citation" data-cites="cache.cached">@cache.cached</span>(query_string=True). Refresh routes: directory_access, project_access, fstree_access, queue, wallclock_exemption, plus disk_quota and the status family. The admin route is POST /api/v1/admin/cache/refresh?category=flask|chart|usage|scans|jobs (SYSTEM_ADMIN). invalidate_queue_cache() is called by the admin queue edits. hpc-scheduling-tools’ fsparsetree_mr posts v1/fstree_access/refresh before it reads. Fairshare takes ?clear_cache=1. scripts/apis/systems_integration_apis.sh walks download, refresh, download again. The 2.8 s is docs/apis/SYSTEMS_INTEGRATION_APIs.md:572 (one resource ~0.7 s); Appendix C has the prod cold-miss and read-model numbers.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section class="slide level2 ncar-layout ncar-vcenter" data-ncar-scale="1.15">
+<h2>Need more? Ask.</h2>
+<svg class="ncar-waves" viewbox="0 0 1600 900" preserveaspectratio="none" aria-hidden="true" focusable="false"><path d="M 1157.3 -1200.0 L 1157.3 -1200.0 C 1157.3 -260.0 1157.3 -260.0 1189.7 -100.0 L 1209.9 0.0 C 1245.9 177.8 1402.9 446.9 1402.9 608.9 C 1402.9 786.7 1353.0 871.3 1339.8 900.0 L 1294.1 1000.0 C 1221.0 1160.0 1221.0 1160.0 1221.0 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1177.0 -1200.0 L 1177.0 -1200.0 C 1177.0 -260.0 1177.0 -260.0 1224.4 -100.0 L 1254.1 0.0 C 1296.3 142.5 1483.2 427.2 1483.2 578.1 C 1483.2 747.6 1437.8 824.9 1392.0 900.0 L 1331.0 1000.0 C 1233.5 1160.0 1233.5 1160.0 1233.5 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1188.2 -1200.0 L 1188.2 -1200.0 C 1188.2 -260.0 1188.2 -260.0 1257.2 -100.0 L 1300.3 0.0 C 1353.9 124.3 1563.7 396.9 1563.7 556.4 C 1563.7 741.8 1494.2 832.0 1443.2 900.0 L 1368.1 1000.0 C 1247.9 1160.0 1247.9 1160.0 1247.9 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path></svg>
+<div class="ncar-body">
+<ul>
+<li><strong>Still on an old endpoint?</strong> It keeps working. Moving is a URL change.</li>
+<li><strong>Want something legacy never gave you?</strong> Ask. It comes in the new dialect, or in a legacy shape if your tooling expects one.</li>
+<li><strong>We can do the computing:</strong> the fairshare tree comes ready-made, so nobody runs the builder on a scheduler host.</li>
+<li><strong>Next on our side:</strong> the ldapsync endpoints, a shared paging helper, and published API docs.</li>
+</ul>
+</div>
+<aside class="notes">
+<p>Aimed at HSG and groups like them: teams tied to old endpoints, or who would want more but have not asked. Honest state of the new dialect: paging is hand-rolled per route (only projects and users page), and there is no OpenAPI yet; both are on the fix-later list in the plan (SAMUEL_PRESENTATION.md §14). ldapsync scope: docs/plans/LDAP_SYNC_API.md.</p>
+<style type="text/css">
+        span.MJX_Assistive_MathML {
+          position:absolute!important;
+          clip: rect(1px, 1px, 1px, 1px);
+          padding: 1px 0 0 0!important;
+          border: 0!important;
+          height: 1px!important;
+          width: 1px!important;
+          overflow: hidden!important;
+          display:block!important;
+      }</style></aside>
+</section>
+<section class="slide level2 ncar-layout ncar-vcenter" data-ncar-scale="1.15">
+<h2>TL;DR - two dialects</h2>
+<svg class="ncar-waves" viewbox="0 0 1600 900" preserveaspectratio="none" aria-hidden="true" focusable="false"><path d="M 1157.3 -1200.0 L 1157.3 -1200.0 C 1157.3 -260.0 1157.3 -260.0 1189.7 -100.0 L 1209.9 0.0 C 1245.9 177.8 1402.9 446.9 1402.9 608.9 C 1402.9 786.7 1353.0 871.3 1339.8 900.0 L 1294.1 1000.0 C 1221.0 1160.0 1221.0 1160.0 1221.0 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1177.0 -1200.0 L 1177.0 -1200.0 C 1177.0 -260.0 1177.0 -260.0 1224.4 -100.0 L 1254.1 0.0 C 1296.3 142.5 1483.2 427.2 1483.2 578.1 C 1483.2 747.6 1437.8 824.9 1392.0 900.0 L 1331.0 1000.0 C 1233.5 1160.0 1233.5 1160.0 1233.5 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path><path d="M 1188.2 -1200.0 L 1188.2 -1200.0 C 1188.2 -260.0 1188.2 -260.0 1257.2 -100.0 L 1300.3 0.0 C 1353.9 124.3 1563.7 396.9 1563.7 556.4 C 1563.7 741.8 1494.2 832.0 1443.2 900.0 L 1368.1 1000.0 C 1247.9 1160.0 1247.9 1160.0 1247.9 2100.0" fill="none" stroke="#F1F0EE" stroke-width="2.4"></path></svg>
+<div class="ncar-body">
+<ul>
+<li><strong>The old dialect</strong> is legacy’s JSON at a new address: <strong>no client change</strong>, frozen.</li>
+<li><strong>Proven by parity,</strong> and an <strong>explainable difference</strong> beats a copied bug.</li>
+<li><strong>The new dialect</strong> is snake_case, <strong>paged, and declared in schemas</strong>; legacy shapes built today use schemas too.</li>
+<li><strong>Writes reuse the web app’s rules,</strong> so new ones are cheap.</li>
+<li><strong>Cached for five minutes,</strong> with a <strong>refresh</strong> for when that’s too long.</li>
+<li><strong>The API is where SAMuel grows:</strong> if you need more, <strong>ask</strong>.</li>
+</ul>
+
+</div>
+</section></section>
+    </div>
+  <div class="quarto-auto-generated-content" style="display: none;">
+<div class="footer footer-default">
+
+</div>
+</div></div>
+
+  <script>window.backupDefine = window.define; window.define = undefined;</script>
+  <script src="libs/revealjs/dist/reveal.js"></script>
+  <!-- reveal.js plugins -->
+  <script src="libs/revealjs/plugin/quarto-line-highlight/line-highlight.js"></script>
+  <script src="libs/revealjs/plugin/pdf-export/pdfexport.js"></script>
+  <script src="libs/revealjs/plugin/reveal-menu/menu.js"></script>
+  <script src="libs/revealjs/plugin/reveal-menu/quarto-menu.js"></script>
+  <script src="libs/revealjs/plugin/reveal-chalkboard/plugin.js"></script>
+  <script src="libs/revealjs/plugin/quarto-support/support.js"></script>
+  
+
+  <script src="libs/revealjs/plugin/notes/notes.js"></script>
+  <script src="libs/revealjs/plugin/search/search.js"></script>
+  <script src="libs/revealjs/plugin/zoom/zoom.js"></script>
+  <script src="libs/revealjs/plugin/math/math.js"></script>
+  <script>window.define = window.backupDefine; window.backupDefine = undefined;</script>
+
+  <script>
+
+      // Full list of configuration options available at:
+      // https://revealjs.com/config/
+      Reveal.initialize({
+'controlsAuto': true,
+'previewLinksAuto': true,
+'pdfSeparateFragments': false,
+'autoAnimateEasing': "ease",
+'autoAnimateDuration': 1,
+'autoAnimateUnmatched': true,
+'jumpToSlide': true,
+'menu': {"side":"left","useTextContentForMissingTitles":true,"markers":false,"loadIcons":false,"custom":[{"title":"Tools","icon":"<i class=\"fas fa-gear\"></i>","content":"<ul class=\"slide-menu-items\">\n<li class=\"slide-tool-item active\" data-item=\"0\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.fullscreen(event)\"><kbd>f</kbd> Fullscreen</a></li>\n<li class=\"slide-tool-item\" data-item=\"1\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.speakerMode(event)\"><kbd>s</kbd> Speaker View</a></li>\n<li class=\"slide-tool-item\" data-item=\"2\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.overview(event)\"><kbd>o</kbd> Slide Overview</a></li>\n<li class=\"slide-tool-item\" data-item=\"3\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.togglePdfExport(event)\"><kbd>e</kbd> PDF Export Mode</a></li>\n<li class=\"slide-tool-item\" data-item=\"4\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.toggleScrollView(event)\"><kbd>r</kbd> Scroll View Mode</a></li>\n<li class=\"slide-tool-item\" data-item=\"5\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.toggleChalkboard(event)\"><kbd>b</kbd> Toggle Chalkboard</a></li>\n<li class=\"slide-tool-item\" data-item=\"6\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.toggleNotesCanvas(event)\"><kbd>c</kbd> Toggle Notes Canvas</a></li>\n<li class=\"slide-tool-item\" data-item=\"7\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.downloadDrawings(event)\"><kbd>d</kbd> Download Drawings</a></li>\n<li class=\"slide-tool-item\" data-item=\"8\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.keyboardHelp(event)\"><kbd>?</kbd> Keyboard Help</a></li>\n</ul>"}],"openButton":true,"numbers":true},
+'chalkboard': {"buttons":false},
+'smaller': false,
+ 
+        // Display controls in the bottom right corner
+        controls: false,
+
+        // Help the user learn the controls by providing hints, for example by
+        // bouncing the down arrow when they first encounter a vertical slide
+        controlsTutorial: false,
+
+        // Determines where controls appear, "edges" or "bottom-right"
+        controlsLayout: 'edges',
+
+        // Visibility rule for backwards navigation arrows; "faded", "hidden"
+        // or "visible"
+        controlsBackArrows: 'faded',
+
+        // Display a presentation progress bar
+        progress: true,
+
+        // Display the page number of the current slide
+        slideNumber: 'c/t',
+
+        // 'all', 'print', or 'speaker'
+        showSlideNumber: 'all',
+
+        // Add the current slide number to the URL hash so that reloading the
+        // page/copying the URL will return you to the same slide
+        hash: true,
+
+        // Start with 1 for the hash rather than 0
+        hashOneBasedIndex: false,
+
+        // Flags if we should monitor the hash and change slides accordingly
+        respondToHashChanges: true,
+
+        // Push each slide change to the browser history
+        history: true,
+
+        // Enable keyboard shortcuts for navigation
+        keyboard: true,
+
+        // Enable the slide overview mode
+        overview: true,
+
+        // Disables the default reveal.js slide layout (scaling and centering)
+        // so that you can use custom CSS layout
+        disableLayout: false,
+
+        // Vertical centering of slides
+        center: false,
+
+        // Enables touch navigation on devices with touch input
+        touch: true,
+
+        // Loop the presentation
+        loop: false,
+
+        // Change the presentation direction to be RTL
+        rtl: false,
+
+        // see https://revealjs.com/vertical-slides/#navigation-mode
+        navigationMode: 'linear',
+
+        // Randomizes the order of slides each time the presentation loads
+        shuffle: false,
+
+        // Turns fragments on and off globally
+        fragments: true,
+
+        // Flags whether to include the current fragment in the URL,
+        // so that reloading brings you to the same fragment position
+        fragmentInURL: false,
+
+        // Flags if the presentation is running in an embedded mode,
+        // i.e. contained within a limited portion of the screen
+        embedded: false,
+
+        // Flags if we should show a help overlay when the questionmark
+        // key is pressed
+        help: true,
+
+        // Flags if it should be possible to pause the presentation (blackout)
+        pause: true,
+
+        // Flags if speaker notes should be visible to all viewers
+        showNotes: false,
+
+        // Global override for autoplaying embedded media (null/true/false)
+        autoPlayMedia: null,
+
+        // Global override for preloading lazy-loaded iframes (null/true/false)
+        preloadIframes: null,
+
+        // Number of milliseconds between automatically proceeding to the
+        // next slide, disabled when set to 0, this value can be overwritten
+        // by using a data-autoslide attribute on your slides
+        autoSlide: 0,
+
+        // Stop auto-sliding after user input
+        autoSlideStoppable: true,
+
+        // Use this method for navigation when auto-sliding
+        autoSlideMethod: null,
+
+        // Specify the average time in seconds that you think you will spend
+        // presenting each slide. This is used to show a pacing timer in the
+        // speaker view
+        defaultTiming: null,
+
+        // Enable slide navigation via mouse wheel
+        mouseWheel: false,
+
+        // The display mode that will be used to show slides
+        display: 'block',
+
+        // Hide cursor if inactive
+        hideInactiveCursor: true,
+
+        // Time before the cursor is hidden (in ms)
+        hideCursorTime: 5000,
+
+        // Opens links in an iframe preview overlay
+        previewLinks: false,
+
+        // Transition style (none/fade/slide/convex/concave/zoom)
+        transition: 'fade',
+
+        // Transition speed (default/fast/slow)
+        transitionSpeed: 'fast',
+
+        // Transition style for full page slide backgrounds
+        // (none/fade/slide/convex/concave/zoom)
+        backgroundTransition: 'fade',
+
+        // Number of slides away from the current that are visible
+        viewDistance: 3,
+
+        // Number of slides away from the current that are visible on mobile
+        // devices. It is advisable to set this to a lower number than
+        // viewDistance in order to save resources.
+        mobileViewDistance: 2,
+
+        // The "normal" size of the presentation, aspect ratio will be preserved
+        // when the presentation is scaled to fit different resolutions. Can be
+        // specified using percentage units.
+        width: 1600,
+
+        height: 900,
+
+        // Factor of the display size that should remain empty around the content
+        margin: 0,
+
+        math: {
+          mathjax: 'https://cdn.jsdelivr.net/npm/mathjax@2.7.9/MathJax.js',
+          config: 'TeX-AMS_HTML-full',
+          tex2jax: {
+            inlineMath: [['\\(','\\)']],
+            displayMath: [['\\[','\\]']],
+            balanceBraces: true,
+            processEscapes: false,
+            processRefs: true,
+            processEnvironments: true,
+            preview: 'TeX',
+            skipTags: ['script','noscript','style','textarea','pre','code'],
+            ignoreClass: 'tex2jax_ignore',
+            processClass: 'tex2jax_process'
+          },
+        },
+
+        // reveal.js plugins
+        plugins: [QuartoLineHighlight, PdfExport, RevealMenu, RevealChalkboard, QuartoSupport,
+
+          RevealMath,
+          RevealNotes,
+          RevealSearch,
+          RevealZoom
+        ]
+      });
+    </script>
+    <script id="quarto-html-after-body" type="application/javascript">
+      window.document.addEventListener("DOMContentLoaded", function (event) {
+        const tabsets =  window.document.querySelectorAll(".panel-tabset-tabby")
+        tabsets.forEach(function(tabset) {
+          const tabby = new Tabby('#' + tabset.id);
+        });
+        const isCodeAnnotation = (el) => {
+          for (const clz of el.classList) {
+            if (clz.startsWith('code-annotation-')) {                     
+              return true;
+            }
+          }
+          return false;
+        }
+        const onCopySuccess = function(e) {
+          // button target
+          const button = e.trigger;
+          // don't keep focus
+          button.blur();
+          // flash "checked"
+          button.classList.add('code-copy-button-checked');
+          var currentTitle = button.getAttribute("title");
+          button.setAttribute("title", "Copied!");
+          let tooltip;
+          if (window.bootstrap) {
+            button.setAttribute("data-bs-toggle", "tooltip");
+            button.setAttribute("data-bs-placement", "left");
+            button.setAttribute("data-bs-title", "Copied!");
+            tooltip = new bootstrap.Tooltip(button, 
+              { trigger: "manual", 
+                customClass: "code-copy-button-tooltip",
+                offset: [0, -8]});
+            tooltip.show();    
+          }
+          setTimeout(function() {
+            if (tooltip) {
+              tooltip.hide();
+              button.removeAttribute("data-bs-title");
+              button.removeAttribute("data-bs-toggle");
+              button.removeAttribute("data-bs-placement");
+            }
+            button.setAttribute("title", currentTitle);
+            button.classList.remove('code-copy-button-checked');
+          }, 1000);
+          // clear code selection
+          e.clearSelection();
+        }
+        const getTextToCopy = function(trigger) {
+          const outerScaffold = trigger.parentElement.cloneNode(true);
+          const codeEl = outerScaffold.querySelector('code');
+          for (const childEl of codeEl.children) {
+            if (isCodeAnnotation(childEl)) {
+              childEl.remove();
+            }
+          }
+          return codeEl.innerText;
+        }
+        const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+          text: getTextToCopy
+        });
+        clipboard.on('success', onCopySuccess);
+        if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+          const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+            text: getTextToCopy,
+            container: window.document.getElementById('quarto-embedded-source-code-modal')
+          });
+          clipboardModal.on('success', onCopySuccess);
+        }
+          var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+          var mailtoRegex = new RegExp(/^mailto:/);
+            var filterRegex = new RegExp('/' + window.location.host + '/');
+          var isInternal = (href) => {
+              return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+          }
+          // Inspect non-navigation links and adorn them if external
+         var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+          for (var i=0; i<links.length; i++) {
+            const link = links[i];
+            if (!isInternal(link.href)) {
+              // undo the damage that might have been done by quarto-nav.js in the case of
+              // links that we want to consider external
+              if (link.dataset.originalHref !== undefined) {
+                link.href = link.dataset.originalHref;
+              }
+            }
+          }
+        function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+          const config = {
+            allowHTML: true,
+            maxWidth: 500,
+            delay: 100,
+            arrow: false,
+            appendTo: function(el) {
+                return el.closest('section.slide') || el.parentElement;
+            },
+            interactive: true,
+            interactiveBorder: 10,
+            theme: 'light-border',
+            placement: 'bottom-start',
+          };
+          if (contentFn) {
+            config.content = contentFn;
+          }
+          if (onTriggerFn) {
+            config.onTrigger = onTriggerFn;
+          }
+          if (onUntriggerFn) {
+            config.onUntrigger = onUntriggerFn;
+          }
+            config['offset'] = [0,0];
+            config['maxWidth'] = 700;
+          window.tippy(el, config); 
+        }
+        const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+        for (var i=0; i<noterefs.length; i++) {
+          const ref = noterefs[i];
+          tippyHover(ref, function() {
+            // use id or data attribute instead here
+            let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+            try { href = new URL(href).hash; } catch {}
+            const id = href.replace(/^#\/?/, "");
+            const note = window.document.getElementById(id);
+            if (note) {
+              return note.innerHTML;
+            } else {
+              return "";
+            }
+          });
+        }
+        const findCites = (el) => {
+          const parentEl = el.parentElement;
+          if (parentEl) {
+            const cites = parentEl.dataset.cites;
+            if (cites) {
+              return {
+                el,
+                cites: cites.split(' ')
+              };
+            } else {
+              return findCites(el.parentElement)
+            }
+          } else {
+            return undefined;
+          }
+        };
+        var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+        for (var i=0; i<bibliorefs.length; i++) {
+          const ref = bibliorefs[i];
+          const citeInfo = findCites(ref);
+          if (citeInfo) {
+            tippyHover(citeInfo.el, function() {
+              var popup = window.document.createElement('div');
+              citeInfo.cites.forEach(function(cite) {
+                var citeDiv = window.document.createElement('div');
+                citeDiv.classList.add('hanging-indent');
+                citeDiv.classList.add('csl-entry');
+                var biblioDiv = window.document.getElementById('ref-' + cite);
+                if (biblioDiv) {
+                  citeDiv.innerHTML = biblioDiv.innerHTML;
+                }
+                popup.appendChild(citeDiv);
+              });
+              return popup.innerHTML;
+            });
+          }
+        }
+      });
+      </script>
+    
+
+</body></html>

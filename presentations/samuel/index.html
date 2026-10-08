@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>SAMuel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
+<style>
+:root {
+  --bg: #F1F0EE; --surface: #FFFFFF; --ink: #00357A; --text: #1F2A3C; --muted: #6B7C99;
+  --line: #D9DBE0; --brand: #0057C2; --accent: #FAA119;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #011837; --surface: #0A2246; --ink: #E3EAF4; --text: #D5DEEA; --muted: #9AABC2;
+    --line: #22395E; --brand: #42C0FF; color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: Poppins, Helvetica, Arial, sans-serif; font-size: 16px; line-height: 1.5;
+  padding: 40px 16px 56px;
+}
+main { max-width: 760px; margin: 0 auto; }
+header { border-left: 6px solid var(--accent); padding-left: 18px; margin-bottom: 32px; }
+h1 { margin: 0; color: var(--ink); font-size: clamp(26px, 4vw, 36px); line-height: 1.15; font-weight: 700; }
+.sub { margin: 6px 0 0; color: var(--muted); font-size: 18px; }
+h2 { color: var(--ink); font-size: 14px; letter-spacing: .08em; text-transform: uppercase; margin: 32px 0 10px; }
+ol, ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+a.card {
+  display: grid; grid-template-columns: 3.2em 1fr; align-items: baseline; gap: 12px;
+  background: var(--surface); border: 1px solid var(--line); padding: 12px 16px;
+  color: inherit; text-decoration: none;
+}
+a.card:hover, a.card:focus-visible { border-color: var(--brand); outline: none; }
+a.card .n { color: var(--brand); font-weight: 600; font-variant-numeric: tabular-nums; }
+a.card .t { color: var(--ink); font-weight: 600; }
+a.card .s { color: var(--muted); display: block; font-size: 14px; }
+footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+<header>
+<h1>SAMuel</h1>
+<p class="sub">SAM, updated for an extended lifecycle</p>
+</header>
+<h2>Decks</h2>
+<ol>
+<li><a class="card" href="samuel.html"><span class="n">1</span><span><span class="t">SAMuel</span><span class="s">SAM, updated for an extended lifecycle</span></span></a></li>
+<li><a class="card" href="1-overview.html"><span class="n">2</span><span><span class="t">SAMuel, Part 1</span><span class="s">Overview</span></span></a></li>
+<li><a class="card" href="2-concepts.html"><span class="n">3</span><span><span class="t">SAMuel, Part 2</span><span class="s">Concepts</span></span></a></li>
+<li><a class="card" href="3-databases.html"><span class="n">4</span><span><span class="t">SAMuel, Part 3</span><span class="s">Databases</span></span></a></li>
+<li><a class="card" href="4-systems.html"><span class="n">5</span><span><span class="t">SAMuel, Part 4</span><span class="s">Integrations</span></span></a></li>
+<li><a class="card" href="5-deployment.html"><span class="n">6</span><span><span class="t">SAMuel, Part 5</span><span class="s">Deployment &amp; Operations</span></span></a></li>
+<li><a class="card" href="A-peers.html"><span class="n">7</span><span><span class="t">SAMuel, Appendix A</span><span class="s">Peer Projects</span></span></a></li>
+<li><a class="card" href="B-apis.html"><span class="n">8</span><span><span class="t">SAMuel, Appendix B</span><span class="s">APIs &amp; Why Two Dialects</span></span></a></li>
+<li><a class="card" href="C-performance.html"><span class="n">9</span><span><span class="t">SAMuel, Appendix C</span><span class="s">Performance</span></span></a></li>
+<li><a class="card" href="D-security.html"><span class="n">10</span><span><span class="t">SAMuel, Appendix D</span><span class="s">Failing Closed &amp; Other Security Details</span></span></a></li>
+<li><a class="card" href="E-jobs.html"><span class="n">11</span><span><span class="t">SAMuel, Appendix E</span><span class="s">Job History &amp; Disk Scans</span></span></a></li>
+<li><a class="card" href="F-admin.html"><span class="n">12</span><span><span class="t">SAMuel, Appendix F</span><span class="s">Administration Features</span></span></a></li>
+<li><a class="card" href="G-cli.html"><span class="n">13</span><span><span class="t">SAMuel, Appendix G</span><span class="s">Command Line Tools</span></span></a></li>
+</ol>
+<h2>Companion pages</h2>
+<ul>
+<li><a class="card" href="companion/pipeline.html"><span class="n"></span><span><span class="t">SAMuel Deploy Pipeline</span></span></a></li>
+</ul>
+<footer>Built October 8, 2026. Open a deck, then press <kbd>?</kbd> for the keyboard controls.</footer>
+</main>
+</body>
+</html>
