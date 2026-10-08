@@ -274,6 +274,18 @@ system_status_dev, so its task ledger never settles a prod slot. Same chart, sam
 pipeline: dev is prod with the levers pulled.
 :::
 
+## Two Argo apps, in Argo CD {.full}
+
+![](images/argo-apps.png)
+
+`sam-query` follows `cirrus`, `sam-query-dev` follows `cirrus-dev`; the third app is the Postgres cluster.
+
+::: {.notes}
+nwc1-argo.k8s.ucar.edu, 2026-10-08. csg-hpc-usage-queries is the hpc-usage-queries chart that
+runs the csg-postgres CNPG cluster (namespace pg-testing; the companion cluster, later in this
+part). All three Healthy and Synced; auto-sync is on, so a pin commit is the whole deploy.
+:::
+
 ## The HPC hosts, too {.vcenter scale="1.15"}
 
 - The same `samuel` image also runs on `casper` and `derecho`: the status collectors and the
@@ -327,6 +339,18 @@ digraph Namespace {
   bao -> es [style=dashed];
 }
 ```
+
+## The namespace, as Argo CD draws it {.full}
+
+![](images/argo-network.png)
+
+`sam-query` in Argo CD: the ingress, the `samuel` service, the CronJob's task pods and Redis.
+
+::: {.notes}
+The app's network view, 2026-10-08, synced to the cirrus pin f7c57c2 by the deployer bot. Left:
+the ingress's public address and its load balancer. The completed pods are the CronJob's recent
+runs; samuel-redis is the cache; the web pods sit behind the samuel service.
+:::
 
 ## Rolling without a gap {.vcenter scale="1.15"}
 
