@@ -154,8 +154,9 @@
                 required=True, maxlength=255, default=project.title,
                 label_class='form-label fw-semibold', id='editProjectTitle') }}
 
+  {# maxlength mirrors ABSTRACT_MAX_CHARS in sam.schemas.forms.projects #}
   {{ textarea_field('abstract', 'Abstract',
-                    rows=3, default=project.abstract or '',
+                    rows=3, default=project.abstract or '', maxlength=20000,
                     placeholder="Brief description of the project's scientific goals…",
                     id='editProjectAbstract') }}
 

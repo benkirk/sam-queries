@@ -127,8 +127,9 @@
                       label_class='form-label fw-semibold',
                       id='createProjectTitle') }}
 
+        {# maxlength mirrors ABSTRACT_MAX_CHARS in sam.schemas.forms.projects #}
         {{ textarea_field('abstract', 'Abstract',
-                          rows=3,
+                          rows=3, maxlength=20000,
                           placeholder="Brief description of the project's scientific goals…",
                           id='createProjectAbstract') }}
 
