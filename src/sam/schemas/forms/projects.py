@@ -9,6 +9,12 @@ import re
 
 from . import HtmxFormSchema
 
+#: Characters, both project forms. The XRAS attributes form carries the same bound;
+#: the largest genuine abstract in production is ~17 K. Legacy once grew one to
+#: 300 K characters of encoding garbage (UCLA0042, 2026-10-07), which the
+#: textarea would have re-submitted on every save.
+ABSTRACT_MAX_CHARS = 20000
+
 
 class CreateProjectForm(HtmxFormSchema):
     """Basic type-coercion schema for project creation.
@@ -26,7 +32,7 @@ class CreateProjectForm(HtmxFormSchema):
     projcode = f.Str(load_default=None)
     mnemonic_code_id = f.Int(load_default=None)
     title = f.Str(required=True, validate=v.Length(min=1, max=255))
-    abstract = f.Str(load_default=None)
+    abstract = f.Str(load_default=None, validate=v.Length(max=ABSTRACT_MAX_CHARS))
     facility_id = f.Int(required=True)
     panel_id = f.Int(required=True)
     project_lead_user_id = f.Int(required=True)
@@ -81,7 +87,7 @@ class EditProjectForm(HtmxFormSchema):
     FK existence checks remain in the route (require DB access).
     """
     title = f.Str(required=True, validate=v.Length(min=1, max=255))
-    abstract = f.Str(load_default=None)
+    abstract = f.Str(load_default=None, validate=v.Length(max=ABSTRACT_MAX_CHARS))
     area_of_interest_id = f.Int(required=True)
     allocation_type_id = f.Int(load_default=None)
     charging_exempt = f.Bool(load_default=False)
