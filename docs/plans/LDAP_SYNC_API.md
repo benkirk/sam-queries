@@ -664,9 +664,10 @@ ever enabled without review, a ledger table behind `restore_user_deactivation` r
 
 ### 10.6 Still to do before cutover
 
-1. syncd patches we carry (`SAM_LDAP_SYNCD_REFERENCE.md` N5, bug 15, N23): proven on the
-   testbed 2026-10-09 (PR #774; with them the daemon delivers its own full stream, 1,344 x
-   200 and the two 400s skipped). File them upstream; until then prod runs without them.
+1. syncd patches we carry (`SAM_LDAP_SYNCD_REFERENCE.md` N5, bug 15, N23, N22): proven on
+   the testbed 2026-10-09 (PR #774; with them the daemon delivers its own full stream and the
+   acronym institution is accepted, leaving one legacy-known 400). File them upstream; until
+   then prod runs without them.
 2. Confirm the prod `admin` `api_credentials` row with `ROLE_API_ADMIN`.
 3. samuel-dev rehearsal, then flip `SAM_URL`; rollback is the same variable.
 4. For George: the cron configuration (bug 13) and, before `LDAPSYNC_LIFECYCLE_ENABLED`,
