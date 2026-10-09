@@ -12,6 +12,7 @@ from datetime import date as _date, datetime
 
 from config import SAMConfig
 from cli.core.context import Context
+from cli.core.options import provisioning_option, verbose_option
 from cli.core.utils import EXIT_SUCCESS, EXIT_ERROR, configure_logging
 from cli.user.commands import UserAdminCommand
 from cli.project.commands import (
@@ -66,24 +67,17 @@ def cli(ctx: Context, verbose: bool, output_format: str):
 @click.argument('username')
 @click.option('--validate', is_flag=True, help='Validate user data integrity')
 @click.option('--list-projects', is_flag=True, help='List all projects')
-@click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
-@click.option('--provisioning/--no-provisioning', default=None,
-              help='Cross-check host provisioning (auto-on on a provisioned host)')
+@verbose_option()
+@provisioning_option
 @click.option('--deactivation', is_flag=True,
               help="Show the memberships the user's last deactivation closed (read-only)")
 @click.option('--restore-deactivation', 'restore_deactivation', is_flag=True,
               help='Reopen the memberships the last deactivation closed')
 @click.option('--dry-run', is_flag=True, help='With --restore-deactivation: report only')
 @pass_context
-def user(ctx: Context, username, validate, list_projects, verbose, provisioning,
+def user(ctx: Context, username, validate, list_projects, verbose,
          deactivation, restore_deactivation, dry_run):
     """Administrative user commands."""
-    if verbose:
-        ctx.verbose = True
-
-    if provisioning is not None:
-        ctx.check_provisioning = provisioning
-
     command = UserAdminCommand(ctx)
     exit_code = command.execute(username, validate=validate, list_projects=list_projects,
                                 deactivation=deactivation,
@@ -104,8 +98,8 @@ def user(ctx: Context, username, validate, list_projects, verbose, provisioning,
               help='Audit project allocation trees DB-wide (no projcode needed)')
 @click.option('--resource', 'audit_resource', type=str, default=None,
               help='[audit-trees] Limit the audit to one resource (e.g. Derecho)')
-@click.option('--upcoming-expirations', is_flag=True, help='Search for upcoming project expirations')
-@click.option('--recent-expirations', is_flag=True, help='Show recently expired projects')
+@click.option('--upcoming-expirations', '-f', is_flag=True, help='Search for upcoming project expirations')
+@click.option('--recent-expirations', '-p', is_flag=True, help='Show recently expired projects')
 @click.option('--notify', is_flag=True, help='Send email notifications (requires --upcoming-expirations)')
 @click.option('--dry-run', is_flag=True,
               help='With --notify: preview emails without sending. '
@@ -120,19 +114,14 @@ def user(ctx: Context, username, validate, list_projects, verbose, provisioning,
               help='Look back to this date for --recent-expirations (e.g., 2024-01-01)')
 @click.option('--list-users', is_flag=True, help='List all users')
 @click.option('--facilities', '-F', multiple=True, default=['UNIV', 'WNA'], help='Facilities to include (default: UNIV, WNA). Use * for all facilities.')
-@click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
-@click.option('--provisioning/--no-provisioning', default=None,
-              help='Cross-check host provisioning (auto-on on a provisioned host)')
+@verbose_option()
+@provisioning_option
 @pass_context
 def project(ctx: Context, projcode, validate, reconcile, reconcile_lead_admin, all_projects, audit_trees, audit_resource,
             upcoming_expirations, recent_expirations,
-            notify, dry_run, email_list, deactivate, force, since, list_users, facilities, verbose, provisioning):
+            notify, dry_run, email_list, deactivate, force, since, list_users, facilities, verbose):
     """Administrative project commands."""
-    if verbose:
-        ctx.verbose = True
 
-    if provisioning is not None:
-        ctx.check_provisioning = provisioning
 
     # Validate that --resource requires --audit-trees
     if audit_resource and not audit_trees:
@@ -243,7 +232,7 @@ def project(ctx: Context, projcode, validate, reconcile, reconcile_lead_admin, a
 @click.option('--sleep', 'sleep_between', type=float, default=0.3,
               show_default=True,
               help='[check-sources] Seconds to wait between provider requests')
-@click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
+@verbose_option()
 @pass_context
 def contracts(ctx: Context, validate, audit_all, check_sources, limit,
               sleep_between, verbose):
@@ -266,8 +255,6 @@ def contracts(ctx: Context, validate, audit_all, check_sources, limit,
     per-process fallback holds AWARD_LOOKUP_CACHE_SIZE (256) entries, fewer
     than the open contract count, so a full run partially evicts itself.
     """
-    if verbose:
-        ctx.verbose = True
 
     if audit_all and not validate:
         ctx.console.print("Error: --all requires --validate", style="bold red")
@@ -318,8 +305,7 @@ def contracts(ctx: Context, validate, audit_all, check_sources, limit,
               help='[comp/disk] Rows per database transaction')
 @click.option('--include-deleted-accounts', is_flag=True,
               help='[comp/disk] Allow posting to accounts marked deleted (for backfill)')
-@click.option('--verbose', '-v', is_flag=True,
-              help='Show per-row warnings and details')
+@verbose_option('Show per-row warnings and details')
 # --- HPC (--comp) ----------------------------------------------------------
 @click.option('--machine', '-m', type=click.Choice(['derecho', 'casper']), default=None,
               help='[comp] HPC machine (required)')
@@ -423,8 +409,6 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
            --force                      Override the live-path safety gate
                                         (requires --deactivate-orphaned)
     """
-    if verbose:
-        ctx.verbose = True
 
     # --- Mode validation ----------------------------------------------------
     charge_mode = bool(comp or disk or archive)
@@ -758,7 +742,7 @@ def cache(ctx: Context, refresh: bool, category, base_url):
               help='[list/rollup] Time window, e.g. 7d, 24h, 2w (default: all time)')
 @click.option('--limit', type=int, default=50, show_default=True,
               help='[list] Maximum rows to return')
-@click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
+@verbose_option()
 @pass_context
 def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mapping,
          validate_opportunities, validate_vocabulary, accounts, readiness,
@@ -842,8 +826,6 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
       sam-admin xras --recheck 42
       sam-admin --format json xras --summary | jq .by_status
     """
-    if verbose:
-        ctx.verbose = True
 
     if show_payload and action_id is None:
         ctx.console.print('Error: --payload requires --show', style='bold red')
@@ -907,7 +889,7 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
                    '2026-11-23T09:00 (naive UTC). A task computes everything '
                    'from its occurrence, so this asks "what would that run '
                    'have done?" without waiting for it.')
-@click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
+@verbose_option()
 @pass_context
 def tasks(ctx: Context, list_tasks, run_due, run, history, task, limit,
           dry_run, force, occurrence, verbose):
@@ -915,8 +897,6 @@ def tasks(ctx: Context, list_tasks, run_due, run, history, task, limit,
 
     The ledger lives in system_status, so these commands do not need SAM MySQL.
     """
-    if verbose:
-        ctx.verbose = True
 
     modes = [bool(list_tasks), bool(run_due), bool(run), bool(history)]
     if sum(modes) > 1:
@@ -1003,7 +983,7 @@ def last_seen(ctx: Context, username, backfill, dry_run):
 @click.option('--revoke', type=int, metavar='ID', help='Revoke a grant by id (a stamp, not a delete)')
 @click.option('--include-revoked', 'include_revoked', is_flag=True,
               help='[list] Show revoked grants too')
-@click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
+@verbose_option()
 @pass_context
 def rbac(ctx: Context, seed, seed_keys, keys, effective, diff, grant, role, permission,
          facility, note, revoke, include_revoked, verbose):
@@ -1011,8 +991,6 @@ def rbac(ctx: Context, seed, seed_keys, keys, effective, diff, grant, role, perm
 
     Always reads the tables, whatever RBAC_SOURCE the webapp runs with.
     """
-    if verbose:
-        ctx.verbose = True
     modes = [bool(seed), bool(seed_keys), bool(keys), bool(effective), bool(diff),
              bool(grant), revoke is not None]
     if sum(modes) > 1:
