@@ -2,7 +2,7 @@
 # shellcheck disable=SC2218  # 0.11 misreports fail/host/need as defined later
 # Fail-closed checks run before ldap / syncd start. Usage: guard.sh ldap|syncd|test
 # Nothing leaves this testbed: LDAP staging is always stubbed, and SAM writes are
-# stubbed unless SAM_URL is our own webapp.
+# stubbed unless SAM_URL is our own webapp (a laptop server or samuel-dev).
 mode=${1:?"usage: guard.sh ldap|syncd|test"}
 S=${SECRETS_VOL:-/run/secrets}
 
@@ -36,8 +36,11 @@ check_syncd() {
     need "LDAPSTAGING_AUTH_${LDAPSTAGING_USER:-citldapsam}"
 
     sam=$(host "$SAM_URL")
+    # Writes may reach only our own webapp: a laptop server, or samuel-dev by exact name
+    # (docs/plans/LDAPSYNC_DEV_SHADOW.md). Prod stays refused by the case below.
     if [ -z "$SAM_UPDATES_STUB" ] && [ "$sam" != host.docker.internal ] \
-            && [ "$sam" != localhost ] && [ "$sam" != 127.0.0.1 ]; then
+            && [ "$sam" != localhost ] && [ "$sam" != 127.0.0.1 ] \
+            && [ "$sam" != samuel-dev.k8s.ucar.edu ]; then
         fail "SAM_UPDATES_STUB is empty and SAM_URL ($sam) is not our webapp"
     fi
     case $sam in
