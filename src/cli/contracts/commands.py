@@ -126,14 +126,8 @@ class ContractSearchCommand(BaseContractCommand):
         try:
             contract = self.get_contract(contract_number)
             if contract is None:
-                if self.ctx.output_format == 'json':
-                    output_json({'kind': 'contract', 'error': 'not_found',
-                                 'contract_number': contract_number})
-                else:
-                    self.console.print(
-                        f"❌ Contract not found: {contract_number}",
-                        style="bold red")
-                return EXIT_NOT_FOUND
+                return self.not_found('contract', f"❌ Contract not found: {contract_number}",
+                                      contract_number=contract_number)
 
             # Reload through the detail loader so the project chain and the
             # two user FKs are warm before serialization.
@@ -141,11 +135,7 @@ class ContractSearchCommand(BaseContractCommand):
             detailed = get_contract_detail(self.session, contract.contract_id)
             data = build_contract(detailed or contract)
 
-            if self.ctx.output_format == 'json':
-                output_json(data)
-            else:
-                display_contract(self.ctx, data, list_projects)
-            return EXIT_SUCCESS
+            return self.emit(data, display_contract, list_projects)
         except Exception as e:
             return self.handle_exception(e)
 
@@ -170,10 +160,7 @@ class ContractPatternSearchCommand(BaseContractCommand):
                          'program': program},
                 scope='open' if active_only else 'all')
 
-            if self.ctx.output_format == 'json':
-                output_json(data)
-            else:
-                display_contract_search(self.ctx, data)
+            self.emit(data, display_contract_search)
 
             # A JSON not-found still emits its envelope, then exits 1.
             return EXIT_SUCCESS if contracts else EXIT_NOT_FOUND

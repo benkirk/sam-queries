@@ -17,7 +17,7 @@ from typing import Optional
 
 from cli.core.base import BaseCommand
 from cli.core.output import output_json
-from cli.core.utils import EXIT_ERROR, EXIT_NOT_FOUND, EXIT_SUCCESS
+from cli.core.utils import EXIT_ERROR, EXIT_SUCCESS
 from cli.tasks import builders, display
 
 #: Outcomes that mean a dispatch did real work badly. § 7: exit 2 so a nonzero
@@ -57,11 +57,7 @@ class TasksCommand(BaseCommand):
 
         payload = builders.build_task_list(registry, ledger, now=now,
                                            disabled=disabled_tasks())
-        if self.ctx.output_format == 'json':
-            output_json(payload)
-            return EXIT_SUCCESS
-        display.display_task_list(self.ctx, payload)
-        return EXIT_SUCCESS
+        return self.emit(payload, display.display_task_list)
 
     def _history(self, *, task_name: Optional[str], limit: int) -> int:
         registry, ledger, _now = self._wire()
@@ -71,11 +67,7 @@ class TasksCommand(BaseCommand):
 
         payload = builders.build_task_history(ledger, task_name=task_name,
                                               limit=limit)
-        if self.ctx.output_format == 'json':
-            output_json(payload)
-            return EXIT_SUCCESS
-        display.display_task_history(self.ctx, payload)
-        return EXIT_SUCCESS
+        return self.emit(payload, display.display_task_history)
 
     def _dispatch(self, *, only: Optional[str], dry_run: bool,
                   force: bool, occurrence: Optional[str] = None) -> int:
@@ -105,10 +97,7 @@ class TasksCommand(BaseCommand):
         )
         payload = builders.build_task_dispatch(result, dry_run=dry_run)
 
-        if self.ctx.output_format == 'json':
-            output_json(payload)
-        else:
-            display.display_task_dispatch(self.ctx, payload)
+        self.emit(payload, display.display_task_dispatch)
 
         # Exit 2 on any bad outcome, following the *audit* convention in
         # src/cli/README.md § Exit Codes — here the CI gating on it is
@@ -173,10 +162,5 @@ class TasksCommand(BaseCommand):
         return EXIT_ERROR
 
     def _not_found(self, kind: str, name: str) -> int:
-        if self.ctx.output_format == 'json':
-            output_json({'kind': kind, 'error': 'not_found', 'task': name})
-        else:
-            self.ctx.stderr_console.print(
-                f"Unknown task '{name}'. Try `sam-admin tasks --list`.",
-                style='bold red')
-        return EXIT_NOT_FOUND
+        return self.not_found(kind, f"Unknown task '{name}'. Try `sam-admin tasks --list`.",
+                              task=name)

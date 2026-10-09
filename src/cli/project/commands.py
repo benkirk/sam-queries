@@ -52,12 +52,8 @@ class ProjectSearchCommand(BaseProjectCommand):
             project = self.get_project(projcode)
 
             if not project:
-                if self.ctx.output_format == 'json':
-                    output_json({'kind': 'project', 'error': 'not_found',
-                                 'projcode': projcode})
-                else:
-                    self.console.print(f"❌ Project not found: {projcode}", style="bold red")
-                return EXIT_NOT_FOUND
+                return self.not_found('project', f"❌ Project not found: {projcode}",
+                                      projcode=projcode)
 
             json_mode = self.ctx.output_format == 'json'
             verbose = self.ctx.verbose
@@ -75,11 +71,7 @@ class ProjectSearchCommand(BaseProjectCommand):
             if self.ctx.check_provisioning:
                 data['provisioning'] = build_project_provisioning(project)
 
-            if json_mode:
-                output_json(data)
-            else:
-                display_project(self.ctx, data, list_users=list_users)
-            return EXIT_SUCCESS
+            return self.emit(data, display_project, list_users=list_users)
 
         except Exception as e:
             return self.handle_exception(e)
@@ -110,11 +102,7 @@ class ProjectPatternSearchCommand(BaseProjectCommand):
             data = build_project_search_results(
                 projects, pattern, verbose=(json_mode or self.ctx.verbose)
             )
-            if json_mode:
-                output_json(data)
-            else:
-                display_project_search_results(self.ctx, data)
-            return EXIT_SUCCESS
+            return self.emit(data, display_project_search_results)
         except Exception as e:
             return self.handle_exception(e)
 
@@ -482,11 +470,7 @@ class ProjectReconcileCommand(BaseProjectCommand):
             'dry_run': dry_run,
             'added': rows,
         }
-        if json_mode:
-            output_json(result)
-        else:
-            display_reconcile_results(self.ctx, result)
-        return EXIT_SUCCESS
+        return self.emit(result, display_reconcile_results)
 
     def _active_projects(self) -> list:
         return (self.session.query(Project).filter(Project.is_active)

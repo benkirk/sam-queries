@@ -3,7 +3,6 @@
 from datetime import datetime, timedelta
 
 from cli.core.base import BaseCommand
-from cli.core.output import output_json
 from cli.core.utils import EXIT_ERROR, EXIT_NOT_FOUND, EXIT_SUCCESS
 from cli.xras import builders, display
 
@@ -79,10 +78,7 @@ class XrasCommand(BaseCommand):
         """
         payload = builders.build_mapping_report(self.session,
                                                 xras_keys=self._live_keys())
-        if self.ctx.output_format == 'json':
-            output_json(payload)
-        else:
-            display.display_mapping_report(self.ctx, payload)
+        self.emit(payload, display.display_mapping_report)
         # Two failing states now: a dangling key (a broken FK on our side) and
         # a key XRAS sends that SAM cannot resolve — the one that breaks awards.
         return (EXIT_NOT_FOUND
@@ -128,10 +124,7 @@ class XrasCommand(BaseCommand):
         payload = builders.build_vocabulary_report(
             self.session, live_role_types=live_role_types,
             live_panels=live_panels)
-        if self.ctx.output_format == 'json':
-            output_json(payload)
-        else:
-            display.display_vocabulary_report(self.ctx, payload)
+        self.emit(payload, display.display_vocabulary_report)
         return (EXIT_NOT_FOUND if payload['drift'] or payload['unresolved']
                 else EXIT_SUCCESS)
 
@@ -184,10 +177,7 @@ class XrasCommand(BaseCommand):
         """
         payload = builders.build_opportunity_report(
             self.session, opportunities=self._live_opportunities())
-        if self.ctx.output_format == 'json':
-            output_json(payload)
-        else:
-            display.display_opportunity_report(self.ctx, payload)
+        self.emit(payload, display.display_opportunity_report)
         return (EXIT_NOT_FOUND if payload['dangling_ids'] else EXIT_SUCCESS)
 
     def _live_opportunities(self):
@@ -238,11 +228,7 @@ class XrasCommand(BaseCommand):
             self.session, since=filters.get('start_date'),
             until=filters.get('end_date'), enrich=enrich,
             pending_rows=pending, pending_checked=checked)
-        if self.ctx.output_format == 'json':
-            output_json(payload)
-        else:
-            display.display_account_worklist(self.ctx, payload)
-        return EXIT_SUCCESS
+        return self.emit(payload, display.display_account_worklist)
 
     def _readiness(self) -> int:
         """The push-readiness board, from the sweep's published snapshot (no network).
@@ -253,11 +239,7 @@ class XrasCommand(BaseCommand):
         from sam.integration.xras_api.cache import load_requests_index
 
         payload = builders.build_readiness(load_requests_index())
-        if self.ctx.output_format == 'json':
-            output_json(payload)
-        else:
-            display.display_readiness(self.ctx, payload)
-        return EXIT_SUCCESS
+        return self.emit(payload, display.display_readiness)
 
     def _mnemonic_report(self) -> int:
         """Orgs to link, ranked by the failing pushes each would unblock (snapshot; no network).
@@ -268,22 +250,14 @@ class XrasCommand(BaseCommand):
         from sam.integration.xras_api.cache import load_requests_index
 
         payload = builders.build_mnemonic_report(self.session, load_requests_index())
-        if self.ctx.output_format == 'json':
-            output_json(payload)
-        else:
-            display.display_mnemonic_report(self.ctx, payload)
-        return EXIT_SUCCESS
+        return self.emit(payload, display.display_mnemonic_report)
 
     def _contract_report(self) -> int:
         """Contracts to create, ranked by the failing pushes each would unblock (snapshot; no network)."""
         from sam.integration.xras_api.cache import load_requests_index
 
         payload = builders.build_contract_report(self.session, load_requests_index())
-        if self.ctx.output_format == 'json':
-            output_json(payload)
-        else:
-            display.display_contract_report(self.ctx, payload)
-        return EXIT_SUCCESS
+        return self.emit(payload, display.display_contract_report)
 
     def _identity_report(self) -> int:
         """Placeholders to merge, ranked by the pushes each would unblock.
@@ -296,11 +270,7 @@ class XrasCommand(BaseCommand):
         pending, _checked = self._pending_worklist()
         payload = builders.build_identity_report(
             self.session, pending_rows=pending, enrich=xras_api_configured())
-        if self.ctx.output_format == 'json':
-            output_json(payload)
-        else:
-            display.display_identity_report(self.ctx, payload)
-        return EXIT_SUCCESS
+        return self.emit(payload, display.display_identity_report)
 
     def _pending_worklist(self):
         """Feed B, as ``xras_sweep`` last published it — via the query layer.
@@ -352,10 +322,7 @@ class XrasCommand(BaseCommand):
             return EXIT_ERROR
 
         payload = builders.build_person_report(username, person)
-        if self.ctx.output_format == 'json':
-            output_json(payload)
-        else:
-            display.display_person(self.ctx, payload)
+        self.emit(payload, display.display_person)
         return EXIT_SUCCESS if person else EXIT_NOT_FOUND
 
     def _family(self, projcode) -> int:
@@ -381,46 +348,26 @@ class XrasCommand(BaseCommand):
             return EXIT_ERROR
 
         payload = builders.build_family_report(projcode, lines)
-        if self.ctx.output_format == 'json':
-            output_json(payload)
-        else:
-            display.display_family(self.ctx, payload)
+        self.emit(payload, display.display_family)
         return EXIT_SUCCESS if payload.get('family') else EXIT_NOT_FOUND
 
     def _list(self, filters, limit) -> int:
         payload = builders.build_action_list(self.session, filters=filters,
                                              limit=limit)
-        if self.ctx.output_format == 'json':
-            output_json(payload)
-            return EXIT_SUCCESS
-        display.display_action_list(self.ctx, payload)
-        return EXIT_SUCCESS
+        return self.emit(payload, display.display_action_list)
 
     def _show(self, action_id, show_payload) -> int:
         payload = builders.build_action_detail(self.session, action_id,
                                                include_payload=show_payload)
         if payload is None:
-            if self.ctx.output_format == 'json':
-                output_json({'kind': 'xras_action', 'error': 'not_found',
-                             'action_log_id': action_id})
-            else:
-                self.ctx.stderr_console.print(
-                    f'No XRAS action with id {action_id}.', style='bold red')
-            return EXIT_NOT_FOUND
+            return self.not_found('xras_action', f'No XRAS action with id {action_id}.',
+                                  action_log_id=action_id)
 
-        if self.ctx.output_format == 'json':
-            output_json(payload)
-            return EXIT_SUCCESS
-        display.display_action_detail(self.ctx, payload)
-        return EXIT_SUCCESS
+        return self.emit(payload, display.display_action_detail)
 
     def _summary(self, filters) -> int:
         payload = builders.build_summary(self.session, filters=filters)
-        if self.ctx.output_format == 'json':
-            output_json(payload)
-            return EXIT_SUCCESS
-        display.display_summary(self.ctx, payload)
-        return EXIT_SUCCESS
+        return self.emit(payload, display.display_summary)
 
     def _recheck(self, action_id) -> int:
         """Re-submit a stored payload.
