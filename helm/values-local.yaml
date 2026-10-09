@@ -15,9 +15,9 @@ webapp:
     extraHosts: []                        # local dev serves one host only
     secretName: samuel-tls-local
   ingress:
-    className: nginx                    # local ingress-nginx
-    legacyBridge:
-      enabled: false                    # no cutover locally
+    className: nginx                    # local ingress-nginx (no traefik annotation applies)
+    traefik:
+      entrypoints: ""
   container:
     requests:
       memory: 512M

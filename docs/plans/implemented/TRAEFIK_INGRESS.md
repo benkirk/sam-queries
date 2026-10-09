@@ -1,8 +1,10 @@
 # Traefik ingress: move SAMuel off `nginx-external`
 
-Status: PR 1 (#761, dev) merged 2026-10-08; PR 2 (prod) is the PR that carries this
-update, after a 24 h soak. The nginx path stays in the chart as legacy (rollback is
-the one `className` line) with a cutover bridge; PR 3 retires both.
+Status: implemented. PR 1 (#761) moved dev 2026-10-08 01:40Z; PR 2 (#766, promoted
+in #768) moved prod 2026-10-09 00:30Z with no dark window (the bridge served the old
+VIP while CIRRUS's DNS sync followed the Ingress status in under six minutes); PR 3
+removed the bridge and the legacy nginx branch. Prod and dev are on `traefik-external`
+at 128.117.41.125.
 
 ## Why
 
