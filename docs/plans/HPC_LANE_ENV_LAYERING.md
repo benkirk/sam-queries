@@ -114,12 +114,43 @@ sam-queries/env                       0644  non-secrets: hosts (the -ro ones), D
 | 0 | Claude | privilege census | done (§ 1) |
 | 1 | Ben (as postgres) + Claude | `pg_scram_verifier.py --generate` → OpenBao `csg/hpc-reader-pg`; run `create_hpc_reader_pg.sql` | § 4 checks of the SQL as `hpc_reader` on `csg-postgres-ro`; Casper/Derecho reach `csg-postgres-ro:5432` |
 | 2 | Claude | § 5 app PR | unit tests per backend; parity capture unchanged |
-| 3 | Claude | § 4 wrapper PR + `smoke.sh` cases (plain user, admin ACL, csgteam) | `--help` and a query as each identity; `sam-admin` refused for a plain user |
-| 4 | Ben + Claude | write the layered files on GLADE: the § 6a tarball | `NHD_DEBUG=1` layer list per identity; cron `tick` unchanged |
+| 3 | Ben + Claude | write the layered files on GLADE: the § 6a tarball (works with today's loader) | cron `tick` unchanged; `smoke --lane prod` passes |
+| 4 | Claude | § 4 wrapper PR + `smoke.sh` cases (plain user, admin ACL, csgteam) | `--help` and a query as each identity; `sam-admin` refused for a plain user; `NHD_DEBUG=1` layer list |
 | 5 | Ben | point the module's `sam-search` at the lane `bin/`; retire the conda `.env` | re-time (ledger 20), with the SIF `.pyc` follow-on |
 | 6 | Ben | revoke `pguser`'s exposure: rotate after step 5 | conda `.env` gone or holds no `pguser` |
 
 ### 6a. The GLADE files: a tarball and a finalize script
+
+**Current files (key names read 2026-10-09 via `sudo -u csgteam cat`, values masked):**
+- `prod/env` holds one file's worth of everything:
+  - `hpc-writer` (SAM) and `pguser` (jobs, via `CIRRUS_PG_*` on the **primary**).
+  - `JUPYTERHUB_*` and `STATUS_API_*` (collectors).
+  - A commented-out test-instance `hpc-writer` block. **Its password was exposed in the session
+    transcript (a masking miss on comment lines): rotate it on test-sam-sql and drop the block.**
+- `prod/env.jobhist-sync` re-declares `JOB_HISTORY_PG_*` after its `CIRRUS_PG_*`, so the overlay
+  works.
+- `dev/env` holds the `sam_dev` owner role, a copy of `pguser`, and the collector and JupyterHub
+  tokens.
+
+**Prod lane after the split** (every file sets its final names; no `${}` aliases):
+
+| file | mode | contents |
+|---|---|---|
+| `env` | 0644 | `SAM_DB_*` = `hpc-reader` on sam-sql, `SAM_DB_READ_ONLY=1`; `JOB_HISTORY_*` and `STATUS_DB_*` = `hpc_reader` on `csg-postgres-ro`, `STATUS_DB_READ_ONLY=1` |
+| `env.sam-admin` | 0640 + ACL | `SAM_DB_USERNAME/PASSWORD` = `hpc-writer`, `SAM_DB_READ_ONLY=0` |
+| `env.accounting-comp`, `env.accounting-disk` | symlink → `env.sam-admin` | one writer secret, three names |
+| `env.collectors` | 0600 | `STATUS_API_*`, `JUPYTERHUB_*` |
+| `env.jobhist-sync` | 0600 | `JOB_HISTORY_*` = `jobhist_writer` on the primary |
+
+**Order:**
+1. `hpc_reader` exists (step 1). The public `env` may not exist before it does, or it would
+   have to carry `pguser`.
+2. The tarball (step 4) works with today's loader. The cron jobs get `env` + `env.<job>`, which
+   is unchanged behavior with fewer secrets per job.
+3. The wrapper (step 3) is what makes the lane usable by a plain user. Before it, a plain user
+   still stops at `mkdir`, which is harmless.
+
+The dev lane stays csgteam-only (all 0600) until a dev reader exists on `sam_dev`.
 
 **Build (Claude, on the laptop):**
 - The input is the current `lanes/<lane>/env*` files. They are 0600 csgteam with group `---`,
