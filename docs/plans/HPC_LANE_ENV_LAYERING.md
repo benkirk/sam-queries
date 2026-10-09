@@ -1,0 +1,149 @@
+# HPC lanes for every user: layered, permission-scoped env
+
+**Status:** plan, 2026-10-09. Step 0 (privilege census) done; nothing else applied.
+**Goal:** a regular Casper/Derecho user runs `sam-search` (last-seen and `accounting --jobs`
+included) from the ncar-hpc-deploy SIF lanes with read-only database access; `sam-admin` stays
+gated to named groups. Replaces the conda install's world-readable `.env`.
+**See also:** `containers/ncar-hpc-deploy/README.md`, `JOBHIST_WRITER_ROLE.md` (the role-creation
+precedent), ledger entry 20 (`UNPLANNED_CITY_LEDGER.md`).
+
+## 1. Where we are (measured 2026-10-09)
+
+- **Lanes:** `lanes/{prod,dev}/env` and `lanes/prod/env.jobhist-sync` are 0600 csgteam, no
+  ACL. A regular user's `bin/sam-search` stops at "missing lane env".
+- **Merge needs write access:** `nhd_exec` writes its `env` + `env.<tool>` merge into `state/`,
+  and `nhd_lane_init` runs `mkdir -p` there. Neither works for anyone but csgteam.
+- **Conda install:** `/glade/u/apps/opt/sam-queries/.env` is **0644, no ACL**. `make fixperms`
+  (`Makefile:148`) would set a group ACL, but was never applied on GLADE.
+- **Census of that file**, by read-only privilege check (Ben-authorized):
+
+| credential | role | can do |
+|---|---|---|
+| `SAM_DB_*` (= `PROD_`, `TEST_`) | `hpc-reader` | `SELECT, SHOW VIEW ON sam.*` |
+| `LOCAL_SAM_DB_*`, `STATUS_DB_*` | — | point at 127.0.0.1; unusable from Casper |
+| `JOB_HISTORY_PG_*` = `CIRRUS_PG_*` | `pguser` | read jobs DBs, `campaign` (117 of 126 tables), `destor`; **DML on all 20 tables of `system_status` and `system_status_dev`** |
+
+**Accepted for now (Ben, 2026-10-09):** the `pguser` exposure stays until `hpc_reader` (§ 3)
+replaces it in the public layer. The password is not rotated immediately.
+
+## 2. The rule
+
+The database grant is the security boundary; a file mode only decides who can read which grant.
+Every env file holds credentials for exactly one audience, and its mode matches that
+audience. A writer never shares a file with anything wider than its own audience. The census
+above is what breaking this rule looks like.
+
+## 3. Roles
+
+| need | public layer (any user) | gated layer |
+|---|---|---|
+| SAM MySQL | `hpc-reader` (exists) | `hpc-writer` (`env.sam-admin`, the cron overlays) |
+| job_history PG | `hpc_reader` on `csg-postgres-ro` | `jobhist_writer` (`env.jobhist-sync`) |
+| system_status PG | `hpc_reader` on `csg-postgres-ro`, last-seen tables only | `pguser` stays in k8s and never goes in a GLADE file |
+
+`hpc_reader` (`scripts/sql/create_hpc_reader_pg.sql`) has:
+- `LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`, `CONNECTION LIMIT 40`;
+- at the role level, `default_transaction_read_only=on`, `statement_timeout=60s` and
+  `idle_in_transaction_session_timeout=60s`;
+- SELECT on `access_sources`, `user_last_seen`, `systems` and `status_users` (system_status and
+  `_dev`), and on the 8 job_history tables (casper_jobs, derecho_jobs).
+
+The password is a verifier from `scripts/pg_scram_verifier.py`, stored in OpenBao
+`csg/hpc-reader-pg`.
+
+Proven on postgres-test 2026-10-09:
+- The verifier logs in and a wrong password is refused.
+- With the role settings, SELECT on a granted table works. INSERT, DDL, an ungranted table and
+  a 5 s query under a 2 s timeout are all refused.
+
+The read-only default can be `SET` off by a client, so the grants and the replica are the
+boundary. The default and the timeouts are the bounds that protect the server.
+
+**Your call (Ben):**
+- A world-readable `hpc-reader` (MySQL) lets any HPC user run arbitrary SELECTs on `sam`,
+  including tables `sam-search` never shows: `api_credentials` (bcrypt hashes),
+  `account_request`, `notification_log`. This is true today through the conda `.env`. The
+  fix is a DBA request: REVOKE on those tables, or a view-based grant.
+- PG gives `CONNECT` to `PUBLIC` on every database by default. `hpc_reader` can connect to
+  `campaign`/`destor` but reads nothing there unless something is granted to PUBLIC.
+
+## 4. Layered env in the wrapper (`libexec/lane.sh`)
+
+The loader walks from the install root down to the lane. At each level it reads `env`, then
+`env.<tool>`, skipping any file it cannot read; a deeper level overrides a shallower one.
+
+```
+sam-queries/env                       0644  non-secrets: hosts (the -ro ones), DB names, SSL, TZ, JOB_HISTORY_MACHINES
+  containers/ncar-hpc-deploy/lanes/<lane>/
+    env                               0644  hpc-reader / hpc_reader, SAM_DB_READ_ONLY=1, STATUS_DB_READ_ONLY=1
+    env.sam-admin                     0640  csgteam + setfacl g:<admins>:r   hpc-writer, XRAS, MAIL, NOTIFY; READ_ONLY=0
+    env.jobhist-sync                  0600  csgteam   jobhist_writer
+    env.<cron job>                    0600  csgteam   per-job writers (accounting-comp, accounting-disk, collectors)
+```
+
+- **Merge:** concatenate the readable layers, in order, into `mktemp` under `$TMPDIR` (umask 077,
+  trap rm), then `--env-file`. Each layer sets final names. No cross-layer `${VAR}` aliases (the
+  `JOB_HISTORY_PG_USER=${CIRRUS_PG_USER}` ambiguity the census found).
+- **Gate:** `sam-admin` (and any tool listed in `NHD_GATED_TOOLS`) dies with "needs read access to
+  `env.<tool>` (group X)" when its overlay is unreadable. It never falls back to the public
+  read-only credentials.
+- **Regular users:** no `mkdir` when `state/` is not writable. `MPLCONFIGDIR` goes to
+  `$TMPDIR`. `NHD_DEBUG=1` prints the layer *names* loaded, never values.
+- **Unchanged:** `--cleanenv` stays, and the image ships no `.env`. Cron jobs read the same
+  chain, and their overlays win.
+
+## 5. App changes (one PR, sam-queries)
+
+- `sam.session.connect_args(driver, require_ssl, application_name, read_only=False)`:
+  - Postgres: `target_session_attrs` is `any` when `read_only`, else `read-write`.
+    `read-write` assumed the primary; it refuses a standby and a read-only session.
+  - Postgres also gets `options=-c default_transaction_read_only=on`; MySQL gets
+    `init_command='SET SESSION TRANSACTION READ ONLY'`.
+- `SAM_DB_READ_ONLY` / `STATUS_DB_READ_ONLY` choose it per bind. It is general: any
+  context can read through a replica or a reader role.
+- `system_status.session`: honor `STATUS_DB_PORT` (the URL ignores a port today).
+- `SAMConfig.validate`: don't require `SAM_DB_*` for subcommands that never open SAM
+  (`tasks`, `cache`).
+- **Peer repo (hpc-usage-queries):** `JOB_HISTORY_PG_READ_ONLY`, the same shape, for the plugin's
+  engine. Optional; the role and the replica already enforce it.
+
+## 6. Rollout
+
+| # | who | step | verify |
+|---|---|---|---|
+| 0 | Claude | privilege census | done (§ 1) |
+| 1 | Ben (as postgres) + Claude | `pg_scram_verifier.py --generate` → OpenBao `csg/hpc-reader-pg`; run `create_hpc_reader_pg.sql` | § 4 checks of the SQL as `hpc_reader` on `csg-postgres-ro`; Casper/Derecho reach `csg-postgres-ro:5432` |
+| 2 | Claude | § 5 app PR | unit tests per backend; parity capture unchanged |
+| 3 | Claude | § 4 wrapper PR + `smoke.sh` cases (plain user, admin ACL, csgteam) | `--help` and a query as each identity; `sam-admin` refused for a plain user |
+| 4 | Ben + Claude | write the layered files on GLADE: the § 6a tarball | `NHD_DEBUG=1` layer list per identity; cron `tick` unchanged |
+| 5 | Ben | point the module's `sam-search` at the lane `bin/`; retire the conda `.env` | re-time (ledger 20), with the SIF `.pyc` follow-on |
+| 6 | Ben | revoke `pguser`'s exposure: rotate after step 5 | conda `.env` gone or holds no `pguser` |
+
+### 6a. The GLADE files: a tarball and a finalize script
+
+**Build (Claude, on the laptop):**
+- The input is the current `lanes/<lane>/env*` files. They are 0600 csgteam with group `---`,
+  so benkirk cannot read them even as a csgteam group member. Ben, as csgteam, stages a copy:
+  `tar czf ~csgteam/env-snapshot.tgz -C <deploy root> lanes/prod/env lanes/prod/env.jobhist-sync
+  lanes/dev/env && chmod 600 … && setfacl -m u:benkirk:r …`. Claude reads it, and Ben deletes
+  it after the install.
+- Split them into the § 4 layers, add `hpc_reader` from OpenBao, and write the tree under the
+  session scratchpad with umask 077. The tree also holds `finalize.sh` and a `MANIFEST` that
+  lists, per file, the path, mode, ACL and SHA-256 (no values).
+- The tarball never enters the repo; delete the local copy once Ben confirms the install.
+
+**Install (Ben, as csgteam):** `tar xf` into a staging directory beside the install root, then
+`./finalize.sh` (dry run by default; `--apply` to write). It:
+- refuses unless `id -un` is csgteam, and checks every file against `MANIFEST`;
+- backs up each file it replaces to `<file>.bak-YYYYMMDD-HHMM` (0600), and removes nothing;
+- installs each file with its mode and ACL (`setfacl --set` for `env.sam-admin`), atomically
+  (copy to a temp file beside the target, then `mv`);
+- prints the final `ls -l` / `getfacl` table and the `NHD_DEBUG=1` layer list as csgteam;
+- `--rollback` restores the newest `.bak-*` of each file.
+
+## 7. Decisions open
+
+- `sam-admin` ACL groups (csgteam plus ...?).
+- `hpc-reader` MySQL grant narrowing (§ 3).
+- Whether `hpc_reader` also reads the other status tables (queue/node status) for future HPC tools.
+  Today: the last-seen four only.
