@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional
 from sam import User
 from sam.provisioning import check_user_provisioning
+from sam.queries.allocations import latest_allocation_end_by_project
 
 
 def build_user_core(user: User) -> dict:
@@ -68,26 +69,22 @@ def build_user_projects(user: User, inactive: bool) -> list:
         and (au.end_date is None or au.end_date >= now)
     }
 
+    latest_ends = latest_allocation_end_by_project(user.session, [p.project_id for p in projects])
     out = []
     for p in projects:
-        if p.lead == user:
+        if p.project_lead_user_id == user.user_id:
             role = 'Lead'
-        elif p.admin == user:
+        elif p.project_admin_user_id == user.user_id:
             role = 'Admin'
         else:
             role = 'Member'
-        latest_end = None
-        for account in p.accounts:
-            for alloc in account.allocations:
-                if alloc.end_date and (latest_end is None or alloc.end_date > latest_end):
-                    latest_end = alloc.end_date
         out.append({
             'projcode': p.projcode,
             'title': p.title,
             'role': role,
             'active': p.active,
             'membership_active': p.projcode in active_membership_codes,
-            'latest_allocation_end': latest_end,
+            'latest_allocation_end': latest_ends.get(p.project_id),
         })
     return out
 

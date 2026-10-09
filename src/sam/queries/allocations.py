@@ -107,6 +107,17 @@ def get_latest_allocation_for_project(session: Session, project_id: int) -> Opti
         .first()
 
 
+def latest_allocation_end_by_project(session: Session, project_ids) -> Dict[int, datetime]:
+    """The latest allocation ``end_date`` on each project's accounts, in one statement."""
+    if not project_ids:
+        return {}
+    rows = session.query(Account.project_id, func.max(Allocation.end_date))\
+        .join(Allocation, Allocation.account_id == Account.account_id)\
+        .filter(Account.project_id.in_(list(project_ids)))\
+        .group_by(Account.project_id)
+    return {pid: end for pid, end in rows if end is not None}
+
+
 def get_allocation_history(
     session: Session,
     projcode: str
