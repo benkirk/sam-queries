@@ -282,6 +282,17 @@ class TestGroup:
         gid, _ = _group(session, key=project.projcode)
         assert project.unix_gid == gid
 
+    def test_project_gid_held_elsewhere_is_inconsistent(self, session):
+        """project.unix_gid has no unique key, so the check is here."""
+        project, other = make_project(session), make_project(session)
+        project.unix_gid, other.unix_gid = None, 93_000_000 + next_int('ldapsync_gid')
+        group = make_adhoc_group(session)
+        session.flush()
+        for gid in (other.unix_gid, group.unix_gid):
+            with pytest.raises(SyncValidationError, match='Inconsistency with group key'):
+                _group(session, key=project.projcode, posixGid=gid)
+        assert project.unix_gid is None
+
     def test_project_with_gid_is_untouched(self, session):
         project = make_project(session)
         project.unix_gid = 94_000_000 + next_int('ldapsync_gid')

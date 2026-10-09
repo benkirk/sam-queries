@@ -411,6 +411,13 @@ def sync_group(session, data: dict) -> int:
         return gid
 
     if project is not None:
+        # project.unix_gid has no unique key; refuse a gid a project or adhoc group holds.
+        taken = (session.query(Project.project_id)
+                 .filter(Project.unix_gid == gid, Project.project_id != project.project_id)
+                 .first() is not None) or AdhocGroup.get_by_unix_gid(session, gid) is not None
+        if taken:
+            raise SyncValidationError(
+                f'Inconsistency with group key {key} and unix gid {gid} (constraint violation).')
         project.update(unix_gid=gid)
         return gid
 
