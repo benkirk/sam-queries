@@ -116,8 +116,10 @@ class TestUpdate:
     def test_matched_by_username_case_insensitively_identity_untouched(self, session):
         user = make_user(session, upid=True)
         uid, name = user.unix_uid, user.username
-        _sync(session, _payload_for(user, userName=name.upper(), unixUid=1, firstname='Renamed'))
+        key = _sync(session, _payload_for(user, userName=name.upper(), unixUid=1, firstname='Renamed'))
         assert (user.first_name, user.unix_uid, user.username) == ('Renamed', uid, name)
+        # The daemon GETs ldapsync/user/<key> after a PUT; the stored uid is the one that answers.
+        assert key == uid
 
     def test_identical_put_writes_nothing(self, session, writes):
         """Legacy restamped modified_time on every affiliation row of every PUT."""

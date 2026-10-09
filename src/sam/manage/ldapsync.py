@@ -361,7 +361,7 @@ def sync_user(session, data: dict, *, now: Optional[datetime] = None,
 
     if closed_at is not None and on_reactivate is not None:
         on_reactivate(user, closed_at)
-    return data['unix_uid'] if data['unix_uid'] is not None else user.unix_uid
+    return user.unix_uid
 
 
 # ---------------------------------------------------------------------------
