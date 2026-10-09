@@ -60,6 +60,11 @@ webapp:
     TICKET_PROVIDER: ""                   # dev files no API ticket
     JIRA_ENABLED: "0"
     JIRA_WRITE_ENABLED: "0"
+    # The LDAP sync shadow (docs/plans/LDAPSYNC_DEV_SHADOW.md): purge and restore live,
+    # lifecycle off (the daemon cannot call it; the #774 comment). Prod keeps all three off.
+    LDAPSYNC_PURGE_ENABLED: "1"
+    LDAPSYNC_RESTORE_ON_REACTIVATE: "1"
+    LDAPSYNC_LIFECYCLE_ENABLED: "0"
     # Role catalog: "defaults" reads the code bundles, "db" the samuel_role_*
     # tables (seeded by `sam-admin rbac --seed`, then --seed-keys) with no
     # fallback, and holds API keys to each token route's Permission. Flip only
