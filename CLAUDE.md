@@ -349,7 +349,7 @@ def create(cls, session, *, required_field, optional_field=None):
     return obj
 ```
 
-**Caller pattern**: load object first (caller handles not-found), then call the method.
+**Caller pattern**: load object first (caller handles not-found), then call the method. Exception: `User.apply_sync(**fields)` writes `None` (the sync sends every column), hence its own name.
 
 **What stays in `sam.manage`**: complex multi-entity ops (`add_user_to_project`),
 audit-trail-heavy ops (`update_allocation` + transaction logging), summary

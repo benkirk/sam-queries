@@ -685,9 +685,9 @@ class User(Base, TimestampMixin, SessionMixin):
     # Writes (the identity sync is the only producer; SAM never originates users)
     # ============================================================================
 
-    #: Columns ``update`` may write. Identity columns (username, unix_uid, upid)
+    #: Columns ``apply_sync`` may write. Identity columns (username, unix_uid, upid)
     #: are set once, at create, and never changed by a sync.
-    UPDATABLE_FIELDS = frozenset({
+    SYNC_FIELDS = frozenset({
         'active', 'deactivate', 'locked', 'title', 'first_name', 'middle_name',
         'last_name', 'nickname', 'name_suffix', 'charging_exempt', 'token_type',
         'contact_person_upid', 'deleted', 'academic_status_id', 'login_type_id',
@@ -696,18 +696,18 @@ class User(Base, TimestampMixin, SessionMixin):
     @classmethod
     def create(cls, session, *, username: str, unix_uid: int, upid: Optional[int] = None,
                active: bool = True) -> 'User':
-        """Insert a user mirrored from the identity service; ``update`` fills the rest."""
+        """Insert a user mirrored from the identity service; ``apply_sync`` fills the rest."""
         user = cls(username=username, unix_uid=unix_uid, upid=upid, active=active,
                    locked=False, charging_exempt=False)
         session.add(user)
         session.flush()
         return user
 
-    def update(self, **fields) -> 'User':
-        """Write each given column as given (None clears); identity columns are refused."""
-        unknown = set(fields) - self.UPDATABLE_FIELDS
+    def apply_sync(self, **fields) -> 'User':
+        """Write each column as the sync sent it, None included (unlike ``update()`` elsewhere, which skips None)."""
+        unknown = set(fields) - self.SYNC_FIELDS
         if unknown:
-            raise TypeError(f'not updatable User fields: {sorted(unknown)}')
+            raise TypeError(f'not sync fields: {sorted(unknown)}')
         for name, value in fields.items():
             setattr(self, name, value)
         self.session.flush()

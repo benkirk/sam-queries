@@ -347,7 +347,7 @@ def sync_user(session, data: dict, *, now: Optional[datetime] = None,
         AcademicStatus.academic_status_id, 'academic status')
     fields['login_type_id'] = _lookup_id(
         session, data['type_of_login'], LoginType.type, LoginType.login_type_id, 'login type')
-    user.update(**fields)
+    user.apply_sync(**fields)
 
     _sync_emails(user, data['emails'])
     _sync_phones(session, user, data['phones'])

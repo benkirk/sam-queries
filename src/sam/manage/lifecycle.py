@@ -48,7 +48,7 @@ def finish_user_deactivation(session, username: str, now: Optional[datetime] = N
             .filter(AccountUser.user_id == user.user_id, unended(now)).all())
     for row in live:
         end_membership(session, row, now)      # one stamp for every row; a future start is deleted
-    user.update(active=False, deactivate=membership_cutoff(now))
+    user.apply_sync(active=False, deactivate=membership_cutoff(now))
     logger.info('ldapsync: finished deactivation of %s, %d memberships closed',
                 user.username, len(live))
     return len(live)

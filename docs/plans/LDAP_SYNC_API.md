@@ -296,7 +296,7 @@ on both group routes. Responses: permit `{<idField>, purgeable, message}`; purge
 ### P1c — user PUT and group PUT (the hard track)
 
 - `User.create(session, *, username, unix_uid, upid, active, ...)` and
-  `User.update(...)` that never touches `username`, `unix_uid`, `upid`
+  `User.apply_sync(...)` that never touches `username`, `unix_uid`, `upid`
   (`sam/core/users.py`). `src/sam/manage/ldapsync.py::sync_user` owns the rules:
   - a user with this `upid` exists but none with this `userName` → 400
     "Upid {0} matches username {1} (username change in ID Service?)";

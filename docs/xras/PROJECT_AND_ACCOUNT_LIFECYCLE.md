@@ -63,7 +63,7 @@ What that looks like in the tree, all of it checkable:
 
 | | |
 |---|---|
-| `User.create()` / `User.update()` | exist for the sync alone; the only callers are `sam.manage.ldapsync` and its tests |
+| `User.create()` / `User.apply_sync()` | exist for the sync alone; the callers are `sam.manage.ldapsync`, `sam.manage.lifecycle` and their tests |
 | Anything else writing `users.active` / `users.locked` | the deactivation finish (`sam.manage.lifecycle`), driven by the same daemon |
 | What SAM writes on its own initiative | `primary_gid`, via `User.set_primary_gid()` |
 
