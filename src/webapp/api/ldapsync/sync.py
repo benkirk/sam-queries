@@ -1,9 +1,10 @@
 """``/ldapsync/*`` -- the collections the daemon loads and the upserts it pushes."""
 
-from flask import request
+from flask import current_app, request
 
 from sam.manage import ldapsync as sync
 from sam.manage.ldapsync import SyncValidationError
+from sam.manage.lifecycle import restore_user_deactivation
 from sam.manage.transaction import management_transaction
 from sam.queries import ldapsync as q
 from sam.schemas import ldapsync as s
@@ -122,11 +123,22 @@ def put_gid_allocation():
     return _apply(GidAllocationSyncInput, sync.sync_gid_allocation)
 
 
+def _restore_hook():
+    """The undo of a finished deactivation, when ``LDAPSYNC_RESTORE_ON_REACTIVATE`` is on."""
+    if not current_app.config.get('LDAPSYNC_RESTORE_ON_REACTIVATE'):
+        return None
+    window = current_app.config.get('LDAPSYNC_RESTORE_WINDOW_DAYS', 90)
+    return lambda user: restore_user_deactivation(db.session, user, within_days=window)
+
+
 @_put('user')
 @csrf.exempt
 @ldapsync_api_required()
 def put_user():
-    return _apply(UserSyncInput, sync.sync_user)
+    data = UserSyncInput().load(read_json_body())
+    with management_transaction(db.session):
+        key = sync.sync_user(db.session, data, on_reactivate=_restore_hook())
+    return json_response(key)
 
 
 @_put('group')

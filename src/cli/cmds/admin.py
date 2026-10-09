@@ -69,8 +69,14 @@ def cli(ctx: Context, verbose: bool, output_format: str):
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
 @click.option('--provisioning/--no-provisioning', default=None,
               help='Cross-check host provisioning (auto-on on a provisioned host)')
+@click.option('--deactivation', is_flag=True,
+              help="Show the memberships the user's last deactivation closed (read-only)")
+@click.option('--restore-deactivation', 'restore_deactivation', is_flag=True,
+              help='Reopen the memberships the last deactivation closed')
+@click.option('--dry-run', is_flag=True, help='With --restore-deactivation: report only')
 @pass_context
-def user(ctx: Context, username, validate, list_projects, verbose, provisioning):
+def user(ctx: Context, username, validate, list_projects, verbose, provisioning,
+         deactivation, restore_deactivation, dry_run):
     """Administrative user commands."""
     if verbose:
         ctx.verbose = True
@@ -79,7 +85,9 @@ def user(ctx: Context, username, validate, list_projects, verbose, provisioning)
         ctx.check_provisioning = provisioning
 
     command = UserAdminCommand(ctx)
-    exit_code = command.execute(username, validate=validate, list_projects=list_projects)
+    exit_code = command.execute(username, validate=validate, list_projects=list_projects,
+                                deactivation=deactivation,
+                                restore_deactivation=restore_deactivation, dry_run=dry_run)
     sys.exit(exit_code)
 
 

@@ -206,6 +206,52 @@ class TestPurgeRoutes:
         assert resp.status_code == 400
 
 
+# --- lifecycle levers ------------------------------------------------------
+
+class TestLifecycleRoutes:
+
+    def test_disabled_pending_list_is_empty(self, ldapsync_client):
+        resp = _get(ldapsync_client, 'userlifecycle/pendingdeactivations/24')
+        assert resp.status_code == 200 and resp.get_json() == []
+
+    @pytest.mark.parametrize('rule', ['userlifecycle/pendingdeactivations/0',
+                                      'userlifecycle/pendingdeactivations/?0'])
+    def test_enabled_pending_list_takes_both_forms(self, ldapsync_client, app, monkeypatch,
+                                                   rule):
+        """The client sends ``/?24`` (its bare-query quirk); legacy only served ``/24``."""
+        monkeypatch.setitem(app.config, 'LDAPSYNC_LIFECYCLE_ENABLED', True)
+        resp = _get(ldapsync_client, rule)
+        assert resp.status_code == 200 and isinstance(resp.get_json(), list)
+
+    def test_bad_hours_is_400_not_404(self, ldapsync_client):
+        """A 404 would be retried forever."""
+        assert _get(ldapsync_client, 'userlifecycle/pendingdeactivations/abc').status_code == 400
+
+    def test_disabled_deactivate_is_refused(self, ldapsync_client):
+        resp = ldapsync_client.put(f'{PREFIX}/userlifecycle/deactivate/someone', data='""',
+                                   headers=admin_auth(), content_type='application/json')
+        assert resp.status_code == 400
+        assert 'Lifecycle updates are disabled in SAM.' in resp.get_json()['errorMessage']
+
+    def test_enabled_deactivate_finishes(self, ldapsync_client, app, monkeypatch):
+        import webapp.api.ldapsync.lifecycle as route
+        calls = []
+        monkeypatch.setitem(app.config, 'LDAPSYNC_LIFECYCLE_ENABLED', True)
+        monkeypatch.setattr(route, 'finish_user_deactivation',
+                            lambda session, username: calls.append(username))
+        resp = ldapsync_client.put(f'{PREFIX}/userlifecycle/deactivate/someone', data='""',
+                                   headers=admin_auth(), content_type='application/json')
+        assert resp.status_code == 200 and resp.data == b'""'
+        assert calls == ['someone']
+
+    def test_restore_hook_follows_its_lever(self, app, monkeypatch):
+        from webapp.api.ldapsync.sync import _restore_hook
+        with app.app_context():
+            assert _restore_hook() is None
+            monkeypatch.setitem(app.config, 'LDAPSYNC_RESTORE_ON_REACTIVATE', True)
+            assert callable(_restore_hook())
+
+
 # --- limiter ---------------------------------------------------------------
 
 @pytest.fixture
