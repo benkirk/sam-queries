@@ -32,7 +32,7 @@ def read_log_window(args, default_days):
     if 'start_date' not in args and 'end_date' not in args:
         return start_of_today() - timedelta(days=default_days), None
     return (parse_ymd_or((args.get('start_date') or '').strip()),
-            parse_ymd_or((args.get('end_date') or '').strip(), end_of_day=True))
+            parse_ymd_or((args.get('end_date') or '').strip(), at_end_of_day=True))
 
 
 def read_chart_window(args, default_days):

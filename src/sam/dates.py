@@ -18,20 +18,25 @@ def parse_ymd(s: str) -> datetime:
     return datetime.strptime(s, YMD)
 
 
-def parse_ymd_end_of_day(s: str) -> datetime:
-    """``YYYY-MM-DD`` as 23:59:59, the stored end-date convention."""
-    return parse_ymd(s).replace(hour=23, minute=59, second=59)
-
-
 def end_of_day(value: Optional[datetime]) -> Optional[datetime]:
     """The same day at 23:59:59; None stays None."""
     return None if value is None else value.replace(hour=23, minute=59, second=59, microsecond=0)
 
 
-def parse_ymd_or(s, default=None, end_of_day=False):
+def parse_ymd_end_of_day(s: str) -> datetime:
+    """``YYYY-MM-DD`` as 23:59:59, the stored end-date convention."""
+    return end_of_day(parse_ymd(s))
+
+
+def format_ymd(value) -> Optional[str]:
+    """``yyyy-MM-dd`` as the Java side renders a date on the wire; None stays None."""
+    return None if value is None else value.strftime(YMD)
+
+
+def parse_ymd_or(s, default=None, at_end_of_day=False):
     """``parse_ymd`` (or ``parse_ymd_end_of_day``), else ``default`` for a missing or malformed string."""
     try:
-        return (parse_ymd_end_of_day if end_of_day else parse_ymd)(s) if s else default
+        return (parse_ymd_end_of_day if at_end_of_day else parse_ymd)(s) if s else default
     except ValueError:
         return default
 

@@ -17,6 +17,8 @@ from typing import Optional
 from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
+from sam.dates import end_of_day, format_ymd
+
 #: Legacy ``userlifecycle.{disk,deactivation}.gracePeriod.days`` defaults.
 DISK_GRACE_DAYS = 90
 DEACTIVATION_GRACE_DAYS = 90
@@ -24,14 +26,9 @@ DEACTIVATION_GRACE_DAYS = 90
 _FOREVER = datetime.max
 
 
-def _ymd(value: Optional[datetime]) -> Optional[str]:
-    return None if value is None else value.strftime('%Y-%m-%d')
-
-
 def _grace_end(day: datetime, days: int) -> datetime:
     """``days`` after *day*, at 23:59:59 (legacy: start of day + days + 1, minus a second)."""
-    return datetime.combine(day.date() + timedelta(days=days), datetime.max.time()).replace(
-        microsecond=0)
+    return end_of_day(day + timedelta(days=days))
 
 
 def _flag(value) -> bool:
@@ -171,7 +168,7 @@ class _Snapshot:
 
 
 def _assoc(kind: str, description: str, end: Optional[datetime]) -> dict:
-    return {'type': kind, 'description': description, 'end_date': _ymd(end)}
+    return {'type': kind, 'description': description, 'end_date': format_ymd(end)}
 
 
 def _associations(snap: _Snapshot, user) -> list:
@@ -215,7 +212,7 @@ def _associations(snap: _Snapshot, user) -> list:
     for project_id, d in snap.legit_disk.get(uid, ()):
         proj = snap.projects.get(project_id)
         name = proj.projcode if proj else f'(id={project_id})'
-        day = _ymd(d.activity_date)
+        day = format_ymd(d.activity_date)
         expiry = _grace_end(d.activity_date, DISK_GRACE_DAYS)
         alloc = snap.alloc_by_project_resource.get((project_id, d.resource_name))
         if alloc is None or expiry > (alloc.end_date or _FOREVER):
@@ -229,7 +226,7 @@ def _associations(snap: _Snapshot, user) -> list:
     for d in snap.rogue_disk.get(user.username, ()):
         out.append(_assoc('Disk Holdings (rogue)',
                           f'Directory {d.directory_name} group {d.groupname} from '
-                          f'{_ymd(d.activity_date)} ({d.number_of_files} files)',
+                          f'{format_ymd(d.activity_date)} ({d.number_of_files} files)',
                           _grace_end(d.activity_date, DISK_GRACE_DAYS)))
 
     # Legacy order: an open end first, then latest first (yyyy-MM-dd sorts as a date).
@@ -245,15 +242,15 @@ def user_status(snap: _Snapshot, user) -> dict:
     active_collab, active_staff = uid in snap.collab_end, uid in snap.position_end
     collab_end, position_end = snap.collab_end.get(uid), snap.position_end.get(uid)
     if not active_staff and not associations and collab_end is None:
-        today = snap.now.strftime('%Y-%m-%d')
+        today = format_ymd(snap.now)
         associations.append(_assoc('(None)', f'Deactivation grace period from {today}',
                                    _grace_end(snap.now, DEACTIVATION_GRACE_DAYS)))
     nominal = None if active_staff or not associations else associations[0]['end_date']
     return {
         'user_id': uid, 'upid': user.upid, 'unix_uid': user.unix_uid,
         'username': user.username,
-        'current_collaboration_end_date': _ymd(collab_end),
-        'current_position_end_date': _ymd(position_end),
+        'current_collaboration_end_date': format_ymd(collab_end),
+        'current_position_end_date': format_ymd(position_end),
         'type': 'Staff' if active_staff else 'Collaborator' if active_collab else 'Orphan',
         'dated_associations': associations,
         'nominal_expiry': nominal,

@@ -20,7 +20,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from flask import abort
 from webapp.extensions import db
 
-from sam.dates import to_epoch_millis
+from sam.dates import format_ymd, to_epoch_millis
 from sam.queries import xras_access
 
 from . import bp, xras_api_required
@@ -52,15 +52,6 @@ def _amount_string(value):
     return str(Decimal(float(value)).quantize(_QUANT, rounding=ROUND_HALF_UP))
 
 
-def _date_string(value):
-    """`DateUtil.getDateAsString` — Joda `yyyy-MM-dd`.
-
-    Several sources are `datetime` columns, and legacy truncates the time of
-    day exactly like this.
-    """
-    return None if value is None else value.strftime('%Y-%m-%d')
-
-
 def _epoch_millis(value):
     """A date as epoch milliseconds at server-local midnight (Jackson's `java.util.Date`).
 
@@ -81,8 +72,8 @@ def _build_action(row, order_applied):
         'orderApplied': order_applied,
         'actionType': row.actionType,
         'amount': _amount_string(row.amount),
-        'endDate': _date_string(row.endDate),
-        'dateApplied': _date_string(row.dateApplied),
+        'endDate': format_ymd(row.endDate),
+        'dateApplied': format_ymd(row.dateApplied),
     })
 
 
@@ -98,8 +89,8 @@ def _build_allocation(row, action_rows):
     the latter is the unmapped-resource gap surfacing on the wire.
     """
     return omit_none({
-        'allocationBeginDate': _date_string(row.allocationBeginDate),
-        'allocationEndDate': _date_string(row.allocationEndDate),
+        'allocationBeginDate': format_ymd(row.allocationBeginDate),
+        'allocationEndDate': format_ymd(row.allocationEndDate),
         'allocatedAmount': _amount_string(row.allocatedAmount),
         'remainingAmount': _amount_string(row.remainingAmount),
         'resourceRepositoryKey': row.resourceRepositoryKey,
@@ -117,8 +108,8 @@ def _build_request(row, request_type, allocations):
     """
     return omit_none({
         'requestType': request_type,
-        'requestBeginDate': _date_string(row.requestBeginDate),
-        'requestEndDate': _date_string(row.requestEndDate),
+        'requestBeginDate': format_ymd(row.requestBeginDate),
+        'requestEndDate': format_ymd(row.requestEndDate),
         'allocationType': row.allocationType,
         'projectTitle': row.projectTitle,
         'projectId': row.projectId,
