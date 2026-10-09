@@ -1,0 +1,116 @@
+From 1ccd41a98e112b67284a61342c99c8d550d9a02b Mon Sep 17 00:00:00 2001
+From: Benjamin Kirk <benkirk@ucar.edu>
+Date: Fri, 9 Oct 2026 11:52:16 -0600
+Subject: [PATCH 6/6] Truncate a tombstone acronym with the variable that holds
+ the limit
+
+delete() computed $maxlen and then cut with $maxLen, which is unset, so
+any institution acronym over 36 characters (organization: 11) became
+" --x" on its tombstone. 65 institutions and 22 organizations in SAM are
+over that length today.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01EgPyNLobhxFie7ZK1MJxqX
+---
+ lib/SamInstitutionData.pm  |  2 +-
+ lib/SamInstitutionData.t   | 11 ++++++++++-
+ lib/SamOrganizationData.pm |  2 +-
+ lib/SamOrganizationData.t  | 12 +++++++++++-
+ 4 files changed, 23 insertions(+), 4 deletions(-)
+
+diff --git a/lib/SamInstitutionData.pm b/lib/SamInstitutionData.pm
+index 7735359..6b9ce8b 100644
+--- a/lib/SamInstitutionData.pm
++++ b/lib/SamInstitutionData.pm
+@@ -125,7 +125,7 @@ sub delete {
+     my $sl = length($suffix);
+     my $maxlen = 40 - $sl;
+     if (length($acronym) > $maxlen) {
+-        $acronym = substr($acronym,0,$maxLen);
++        $acronym = substr($acronym,0,$maxlen);
+     }
+     $acronym = $acronym . $suffix;
+     
+diff --git a/lib/SamInstitutionData.t b/lib/SamInstitutionData.t
+index ed8ee6e..21d815e 100755
+--- a/lib/SamInstitutionData.t
++++ b/lib/SamInstitutionData.t
+@@ -2,6 +2,7 @@
+ use Try::Tiny;
+ use Data::Dumper::Concise;
+ use Scalar::Util qw( refaddr );
++use Storable qw( dclone );
+ use Vprint;
+ 
+ use IMDBCore;
+@@ -9,7 +10,7 @@ use SamDataManager;
+ 
+ use TestData;
+ 
+-use Test::Most tests => 10;
++use Test::Most tests => 11;
+ 
+ 
+ require_ok('SamInstitutionData');
+@@ -63,3 +64,11 @@ my $longRec = { institutionId => 40, acronym => 'A' x 56 };
+ $instMgr->normalize($longRec);
+ ok($longRec->{'acronym'} eq 'A' x 40,
+    '$instMgr->normalize() truncates the acronym to 40 characters');
++
++my $longInst = dclone($TestData::TEST_DATA{'SamInstitutionData'}->{'test1normal'});
++$longInst->{'institutionId'} = 41;
++$longInst->{'acronym'} = 'A' x 38;
++$instMgr->addOrUpdate($longInst);
++$inst = $instMgr->delete(41);
++is($inst->{'acronym'}, ('A' x 36) . ' --x',
++   '$instMgr->delete() keeps a long acronym within 40 characters');
+diff --git a/lib/SamOrganizationData.pm b/lib/SamOrganizationData.pm
+index 0274b2f..1a05cd4 100644
+--- a/lib/SamOrganizationData.pm
++++ b/lib/SamOrganizationData.pm
+@@ -434,7 +434,7 @@ sub delete {
+     my $sl = length($suffix);
+     my $maxlen = 15 - $sl;
+     if (length($acronym) > $maxlen) {
+-        $acronym = substr($acronym,0,$maxLen);
++        $acronym = substr($acronym,0,$maxlen);
+     }
+     $acronym = $acronym . $suffix;
+     
+diff --git a/lib/SamOrganizationData.t b/lib/SamOrganizationData.t
+index c619a58..7c18fe5 100755
+--- a/lib/SamOrganizationData.t
++++ b/lib/SamOrganizationData.t
+@@ -2,6 +2,7 @@
+ use Try::Tiny;
+ use Data::Dumper::Concise;
+ use Scalar::Util qw( refaddr );
++use Storable qw( dclone );
+ use Vprint;
+ 
+ use IMDBCore;
+@@ -9,7 +10,7 @@ use SamDataManager;
+ 
+ use TestData;
+ 
+-use Test::Most tests => 24;
++use Test::Most tests => 25;
+ 
+ 
+ require_ok('SamOrganizationData');
+@@ -135,3 +136,12 @@ $org = $orgMgr->lookup("CONT","acronym");
+ ok(!defined($org),
+    '$orgMgr->lookup() with acronym returns undef after delete');
+ 
++
++my $longOrg = dclone($TestData::TEST_DATA{'SamOrganizationData'}->{'test3normal'});
++$longOrg->{'organizationId'} = 1001;
++$longOrg->{'acronym'} = 'B' x 14;
++$orgMgr->normalize($longOrg);
++$orgMgr->addOrUpdate($longOrg);
++$org = $orgMgr->delete(1001);
++is($org->{'acronym'}, ('B' x 11) . ' --x',
++   '$orgMgr->delete() keeps a long acronym within 15 characters');
+-- 
+2.55.0
+
