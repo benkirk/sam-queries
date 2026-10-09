@@ -53,9 +53,9 @@ architectural conventions deliberately:
 - Same `Context` / `BaseCommand` hierarchy shape
 - Same exit codes (`EXIT_SUCCESS=0` / `EXIT_NOT_FOUND=1` / `EXIT_ERROR=2` / `EXIT_KEYBOARD_INTERRUPT=130`)
 - Same JSON envelope conventions (top-level `kind`, ISO-8601 dates, `float(Decimal)`, sorted sets, `indent=2`, `sort_keys=False`)
-- Same `ExporterRegistry` interface (`rich` / `json` for stdout; `dat` / `csv` / `md` / `json-file` for files)
+- Same `rich` / `json` stdout formats; jobhist alone adds an `ExporterRegistry` for file exports (`dat` / `csv` / `md` / `json-file`)
 
-If you change the shape of the JSON envelope, the `Exporter` ABC, or
+If you change the shape of the JSON envelope or
 the `EXIT_*` codes in this repo, check the parallel structures in
 `hpc-usage-queries/devel/job_history/cli/` before merging — and update
 both repos in lockstep. See `hpc-usage-queries/devel/job_history/README.md`
@@ -697,9 +697,9 @@ sam-admin project --reconcile-lead-admin --all --dry-run   # bulk, active resour
 sam-admin accounting --disk --dry-run                   # summary rebuild/reconcile ops
 sam-admin xras --readiness | --mnemonic-report | --contract-report | --identity-report   # XRAS boards (docs/xras/)
 sam-admin rbac [--seed | --seed-keys | --keys | --effective USER | --diff | --grant SUBJECT --role R | --revoke ID]   # the samuel_role_* catalog
-# Cache refresh — HTTP client for POST /api/v1/admin/cache/refresh (caches live
-# in the running webapp + Redis, NOT the DB). Needs SAM_API_USER / SAM_API_PASS.
-sam-admin cache --refresh [--category flask|chart|usage|scans|jobs]
+sam-admin tasks [--list | --history | --run NAME | --run-due] ; sam-admin last-seen USER | --backfill   # task dispatcher; sightings ledger
+# Cache refresh: POSTs /api/v1/admin/cache/refresh (webapp + Redis, NOT the DB); needs SAM_API_USER/PASS.
+sam-admin cache --refresh [--category flask|chart|usage|scans|jobs|awards|xras_api]
 ```
 
 ---

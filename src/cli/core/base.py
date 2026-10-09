@@ -1,8 +1,9 @@
 """Base command classes for SAM CLI."""
 
 from abc import ABC, abstractmethod
-from typing import Optional
 from cli.core.context import Context
+from cli.core.output import output_json
+from cli.core.utils import EXIT_ERROR, EXIT_NOT_FOUND, EXIT_SUCCESS
 from sam.plugins import Plugin, PluginUnavailableError
 
 
@@ -30,13 +31,29 @@ class BaseCommand(ABC):
         """Execute command. Returns exit code."""
         pass
 
+    def emit(self, payload: dict, renderer, *args, **kwargs) -> int:
+        """Print ``payload`` as JSON, or render it with ``renderer(ctx, payload, ...)``."""
+        if self.ctx.output_format == 'json':
+            output_json(payload)
+        else:
+            renderer(self.ctx, payload, *args, **kwargs)
+        return EXIT_SUCCESS
+
+    def not_found(self, kind: str, message: str, **ids) -> int:
+        """The ``not_found`` envelope in JSON mode, else ``message`` on stderr."""
+        if self.ctx.output_format == 'json':
+            output_json({'kind': kind, 'error': 'not_found', **ids})
+        else:
+            self.ctx.stderr_console.print(message, style='bold red')
+        return EXIT_NOT_FOUND
+
     def handle_exception(self, e: Exception) -> int:
         """Common error handling."""
         self.ctx.stderr_console.print(f"❌ Error: {e}", style="bold red")
         if self.ctx.verbose:
             import traceback
-            self.console.print(traceback.format_exc(), style="dim")
-        return 2
+            self.ctx.stderr_console.print(traceback.format_exc(), style="dim")
+        return EXIT_ERROR
 
     def require_plugin(self, plugin: Plugin):
         """Load an optional plugin module, printing a friendly error on failure.
@@ -54,7 +71,7 @@ class BaseCommand(ABC):
         try:
             return plugin.load()
         except PluginUnavailableError as exc:
-            self.console.print(str(exc))
+            self.ctx.stderr_console.print(str(exc))
             return None
 
 

@@ -61,12 +61,7 @@ class UserSearchCommand(BaseUserCommand):
         try:
             user = self.get_user(username)
             if not user:
-                if self.ctx.output_format == 'json':
-                    output_json({'kind': 'user', 'error': 'not_found',
-                                 'username': username})
-                else:
-                    self.console.print(f"❌ User not found: {username}", style="bold red")
-                return EXIT_NOT_FOUND
+                return self.not_found('user', f"❌ User not found: {username}", username=username)
 
             json_mode = self.ctx.output_format == 'json'
 
@@ -84,11 +79,7 @@ class UserSearchCommand(BaseUserCommand):
             if last_seen is not _UNCONFIGURED:
                 data['last_seen'] = last_seen
 
-            if json_mode:
-                output_json(data)
-            else:
-                display_user(self.ctx, data, list_projects)
-            return EXIT_SUCCESS
+            return self.emit(data, display_user, list_projects)
         except Exception as e:
             return self.handle_exception(e)
 
@@ -115,11 +106,7 @@ class UserPatternSearchCommand(BaseUserCommand):
                 return EXIT_NOT_FOUND
 
             data = build_user_search_results(users, pattern)
-            if self.ctx.output_format == 'json':
-                output_json(data)
-            else:
-                display_user_search_results(self.ctx, data)
-            return EXIT_SUCCESS
+            return self.emit(data, display_user_search_results)
         except Exception as e:
             return self.handle_exception(e)
 
@@ -142,11 +129,7 @@ class UserAbandonedCommand(BaseUserCommand):
                     abandoned_users.add(user)
 
             data = build_abandoned_users(abandoned_users, len(active_users))
-            if json_mode:
-                output_json(data)
-            else:
-                display_abandoned_users(self.ctx, data)
-            return EXIT_SUCCESS
+            return self.emit(data, display_abandoned_users)
         except Exception as e:
             return self.handle_exception(e)
 
@@ -211,11 +194,7 @@ class UserNotSeenCommand(BaseUserCommand):
                 rows, projects, emails, spec=spec, cutoff=cutoff, source=source,
                 abandoned=abandoned, total_considered=len(directory),
                 active_only=not self.ctx.inactive_users)
-            if self.ctx.output_format == 'json':
-                output_json(data)
-            else:
-                display_not_seen_users(self.ctx, data)
-            return EXIT_SUCCESS
+            return self.emit(data, display_not_seen_users)
         except Exception as e:
             return self.handle_exception(e)
 
@@ -251,28 +230,21 @@ class UserAdminCommand(UserSearchCommand):
             return EXIT_ERROR
         user = self.get_user(username)
         if user is None:
-            if json_mode:
-                output_json({'kind': 'deactivation_restore', 'error': 'not_found',
-                             'username': username})
-            else:
-                self.console.print(f"User not found: {username}", style="bold red")
-            return EXIT_NOT_FOUND
+            return self.not_found('deactivation_restore', f"User not found: {username}",
+                                  username=username)
         if dry_run:
             report = restore_user_deactivation(self.session, user, dry_run=True)
         else:
             with management_transaction(self.session):
                 report = restore_user_deactivation(self.session, user)
         data = build_deactivation_restore(report, dry_run)
-        if json_mode:
-            output_json(data)
-        else:
-            display_deactivation_restore(self.ctx, data)
+        self.emit(data, display_deactivation_restore)
         return EXIT_SUCCESS if report.instant is not None else EXIT_NOT_FOUND
 
     def _validate_user(self, username: str) -> int:
         """Admin-only: validate user data integrity."""
         user = self.get_user(username)
-        self.console.print(f"[dim]Validating user {username}...[/dim]")
+        self.ctx.message_console.print(f"[dim]Validating user {username}...[/dim]")
 
         # Placeholder validation logic
         issues = []
@@ -282,10 +254,10 @@ class UserAdminCommand(UserSearchCommand):
             issues.append("Missing unix_uid")
 
         if issues:
-            self.console.print(f"⚠️  Validation issues:", style="yellow")
+            self.ctx.message_console.print("⚠️  Validation issues:", style="yellow")
             for issue in issues:
-                self.console.print(f"  - {issue}", style="yellow")
+                self.ctx.message_console.print(f"  - {issue}", style="yellow")
             return EXIT_ERROR
 
-        self.console.print(f"✅ User {username} validated", style="green")
+        self.ctx.message_console.print(f"✅ User {username} validated", style="green")
         return EXIT_SUCCESS

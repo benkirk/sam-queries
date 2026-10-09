@@ -228,5 +228,13 @@
     "allocations_project_table_route": {
         "queries": 27,
         "notes": "measured 18 (2026-10-04) on UNIV/Small, 239 rows, force_refresh; flat in rows (18 at 33 and 410 rows too). Was 495 (18 + 2 per row: one find_project_by_code per title), 837 at 410 rows"
+    },
+    "cli_build_project_core": {
+        "queries": 27,
+        "notes": "measured 18 (2026-10-09): sam-search project <code> core + detail. Was 136: get_user_count loaded every member (5 statements each) and the latest end walked account.allocations"
+    },
+    "cli_build_user_projects": {
+        "queries": 15,
+        "notes": "measured 10 (2026-10-09), flat in projects. Was 187: lead/admin loaded per project and account.allocations walked per account"
     }
 }

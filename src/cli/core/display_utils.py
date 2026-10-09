@@ -1,17 +1,13 @@
-"""Cell formatters shared by the contract and award display modules.
+"""Rich display helpers shared across the CLI's display modules.
 
-Both packages render the same payloads — `ContractSummarySchema` output and
-`compare_contract` results — so they need the same three coercions. They grew
-a private copy each (#403 then #404) and the copies drifted: one `_date` was
-missing the `date`/`datetime` guard, and an empty string rendered as `—` in
-award output but as `''` in contract output. These are the more-correct
-versions of each.
-
-All date formatting still goes through `sam.fmt` rather than a local
-`strftime` or a string slice, per the house rule.
+Cell coercions (`text`, `truncate`, `date_cell`, `stamp`, `styled`), the JSON-aware
+progress bar and the provisioning issues table. Dates go through `sam.fmt`.
 """
 
 from datetime import date, datetime
+
+from rich import box
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 
 from sam import fmt
 
@@ -54,3 +50,35 @@ def date_cell(value) -> str:
     if isinstance(value, (date, datetime)):
         return fmt.date_str(value)
     return str(value)
+
+
+def progress(ctx) -> Progress:
+    """The CLI's progress bar; disabled in JSON mode so stdout stays one document."""
+    return Progress(TextColumn("[progress.description]{task.description}"), BarColumn(),
+                    MofNCompleteColumn(), TimeElapsedColumn(), console=ctx.console,
+                    disable=ctx.output_format == 'json')
+
+
+def styled(value, styles: dict, default: str = 'white') -> str:
+    """``value`` as Rich markup in its style from ``styles``."""
+    style = styles.get(value, default)
+    return f'[{style}]{text(value)}[/{style}]'
+
+
+def stamp(value, seconds: bool = True) -> str:
+    """A datetime, or the ISO text a builder emitted, to the second or the minute."""
+    if isinstance(value, str) and value:
+        value = datetime.fromisoformat(value)
+    return fmt.date_str(value or None, fmt='%Y-%m-%d %H:%M:%S' if seconds else '%Y-%m-%d %H:%M')
+
+
+def issues_table(ctx, subject: str, issues: list) -> None:
+    """The host-provisioning findings for ``subject``: (check, detail) rows under a heading."""
+    from rich.table import Table
+    ctx.console.print(f"\n[bold yellow]Host provisioning issues for {subject}:[/]")
+    table = Table(box=box.SIMPLE, show_header=False)
+    table.add_column("Check", style="cyan")
+    table.add_column("Detail", style="yellow")
+    for label, detail in issues:
+        table.add_row(label, detail)
+    ctx.console.print(table)

@@ -1,20 +1,10 @@
 """Award command classes — the provider side of contracts.
 
-Where ``cli.contracts`` asks SAM, this asks the funding agencies. The two are
-separate subcommands rather than modes of one because they have different data
-sources, different envelope shapes and independent exit-code semantics.
+Where ``cli.contracts`` asks SAM, this asks the funding agencies.
 
-**Exit codes, three outcomes never conflated** — exactly the model
-``htmx_contract_award_lookup`` uses for its three render paths:
-
-===================================  ================
-found                                ``EXIT_SUCCESS``
-no such award / no matching results  ``EXIT_NOT_FOUND``
-source unreachable                   ``EXIT_ERROR``
-===================================  ================
-
-"NSF has no award 1234567" and "NSF is down" are different answers and the
-caller must be able to tell them apart.
+Three outcomes, never conflated (as in ``htmx_contract_award_lookup``): found is
+``EXIT_SUCCESS``, no such award ``EXIT_NOT_FOUND``, source unreachable ``EXIT_ERROR``.
+"NSF has no award 1234567" and "NSF is down" are different answers.
 """
 
 from cli.awards.builders import build_award, build_award_search, build_in_sam
@@ -65,27 +55,16 @@ class AwardSearchCommand(BaseContractCommand):
             return self.handle_exception(e)
 
         if record is None:
-            if json_mode:
-                output_json({'kind': 'award', 'error': 'not_found',
-                             'contract_number': contract_number,
-                             'source': source})
-            else:
-                self.console.print(
-                    f"❌ No award found for {contract_number}"
-                    + (f" at {source}" if source else ""),
-                    style="bold red")
-            return EXIT_NOT_FOUND
+            return self.not_found(
+                'award', f"❌ No award found for {contract_number}" + (f" at {source}" if source else ""),
+                contract_number=contract_number, source=source)
 
         try:
             in_sam = self._cross_reference(contract, record)
             data = build_award(record, contract_number=contract_number,
                                source=source, in_sam=in_sam)
 
-            if json_mode:
-                output_json(data)
-            else:
-                display_award(self.ctx, data)
-            return EXIT_SUCCESS
+            return self.emit(data, display_award)
         except Exception as e:
             return self.handle_exception(e)
 
@@ -138,7 +117,6 @@ class AwardPatternSearchCommand(BaseContractCommand):
     def execute(self, query: str, source: str = None, limit: int = 10) -> int:
         from sam.integration.awards import search_awards
 
-        json_mode = self.ctx.output_format == 'json'
         sources = [source] if source else None
 
         try:
@@ -149,10 +127,7 @@ class AwardPatternSearchCommand(BaseContractCommand):
                 records, errors, query=query, limit=limit, sources=sources,
                 known=self._known_numbers(records))
 
-            if json_mode:
-                output_json(data)
-            else:
-                display_award_search(self.ctx, data)
+            self.emit(data, display_award_search)
         except Exception as e:
             return self.handle_exception(e)
 

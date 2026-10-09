@@ -65,17 +65,17 @@ class TestGuards:
 
     def test_all_requires_validate(self, runner, mock_db_session):
         result = runner.invoke(cli, ['contracts', '--all'])
-        assert result.exit_code == 1
+        assert result.exit_code == 2 and result.stdout == ""
         assert '--all requires --validate' in result.output
 
     def test_check_sources_requires_validate(self, runner, mock_db_session):
         result = runner.invoke(cli, ['contracts', '--check-sources'])
-        assert result.exit_code == 1
+        assert result.exit_code == 2 and result.stdout == ""
         assert '--check-sources requires --validate' in result.output
 
     def test_limit_requires_check_sources(self, runner, mock_db_session):
         result = runner.invoke(cli, ['contracts', '--validate', '--limit', '5'])
-        assert result.exit_code == 1
+        assert result.exit_code == 2 and result.stdout == ""
         assert '--limit requires --check-sources' in result.output
 
 

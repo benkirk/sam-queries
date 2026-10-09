@@ -54,6 +54,24 @@ def test_validate_flags_reconcile_fixes(runner, mock_db_session):
     assert 'nothing to add' in result.output
 
 
+
+def test_json_stdout_is_one_document_with_validate_and_reconcile(runner, mock_db_session):
+    project = _project_with_rowless_lead(mock_db_session)
+    result = runner.invoke(cli, ['--format', 'json', 'project', project.projcode, '--validate'])
+    assert result.exit_code == 2, result.output
+    assert json.loads(result.stdout)['kind'] == 'project'
+    assert 'is not a member on:' in result.stderr
+
+    result = runner.invoke(cli, ['--format', 'json', 'project', project.projcode,
+                                 '--validate', '--reconcile', '--dry-run'])
+    assert result.exit_code == 2 and result.stdout == ''   # validation stops it, as in Rich mode
+
+    result = runner.invoke(cli, ['--format', 'json', 'project', project.projcode,
+                                 '--reconcile', '--dry-run'])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload['kind'] == 'project_reconcile' and payload['dry_run'] is True
+
 def test_validate_flags_an_admin_with_only_expired_rows(runner, mock_db_session):
     session = mock_db_session
     project = make_project(session, facility_name='UNIV')
@@ -83,7 +101,7 @@ def _live_lead_rows(session, project):
 ])
 def test_flag_guards(runner, mock_db_session, args, message):
     result = runner.invoke(cli, ['project', *args])
-    assert result.exit_code == 1
+    assert result.exit_code == 2 and result.stdout == ""
     assert message in result.output
 
 

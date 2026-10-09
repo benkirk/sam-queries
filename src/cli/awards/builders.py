@@ -1,19 +1,8 @@
 """Data extraction for award CLI output. No Rich, no I/O.
 
-Turns :class:`~sam.integration.awards.AwardRecord` objects into the plain-dict
-envelopes that feed both ``output_json()`` and ``cli.awards.display`` — one
-payload, two renderers, so ``--format json`` can never drift from the Rich
-report.
-
-Two things every award payload must carry, because they are the difference
-between a useful answer and a misleading one:
-
-* ``provenance`` per record. NSF and USAspending disagree about what they can
-  supply, so a row without its source is uninterpretable.
-* ``unavailable`` as an explicit **positive** note rather than a blank.
-  USAspending structurally has no PI or program officer (FFATA/DATA Act does
-  not collect them), and "cannot supply" is a different statement from
-  "happens to be empty".
+Every award payload carries ``provenance`` per record (NSF and USAspending supply
+different fields) and ``unavailable`` as an explicit note rather than a blank:
+USAspending has no PI or program officer, and "cannot supply" is not "empty".
 """
 
 from cli.contracts.builders import contract_dict

@@ -6,7 +6,6 @@ from rich.table import Table
 
 from cli.core.context import Context
 from cli.core.display_utils import date_cell, text, truncate
-from sam import fmt
 
 #: How a cross-referenced status reads, and in what style.
 _STATUS_NOTE = {

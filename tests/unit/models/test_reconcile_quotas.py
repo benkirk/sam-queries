@@ -804,7 +804,7 @@ class TestTreeRollup:
         quota_path = _write_quota_file(tmp_path, {})  # no quota -> orphan
 
         captured = {}
-        import cli.accounting.commands as cmd_mod
+        import cli.accounting.quota_reconcile as cmd_mod
 
         def _spy(ctx, resource_name, matched, mismatched, orphaned,
                  unmapped, *, path_exists=None):

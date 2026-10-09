@@ -8,7 +8,6 @@ from __future__ import annotations
 import time
 
 from cli.core.base import BaseCommand
-from cli.core.output import output_json
 from cli.core.utils import EXIT_NOT_FOUND, EXIT_SUCCESS
 from cli.last_seen import display
 
@@ -40,10 +39,7 @@ class LastSeenCommand(BaseCommand):
         with status_session() as status:
             sources = get_last_seen(status, username)
         payload = {'kind': 'last_seen', 'username': username, 'sources': sources}
-        if self.ctx.output_format == 'json':
-            output_json(payload)
-        else:
-            display.display_last_seen(self.ctx, payload)
+        self.emit(payload, display.display_last_seen)
         return EXIT_SUCCESS if sources else EXIT_NOT_FOUND
 
     def _backfill(self, *, dry_run: bool) -> int:
@@ -79,8 +75,4 @@ class LastSeenCommand(BaseCommand):
                         for s, u in sorted(plan.items())],
             'skipped': skipped,
         }
-        if self.ctx.output_format == 'json':
-            output_json(payload)
-        else:
-            display.display_backfill(self.ctx, payload)
-        return EXIT_SUCCESS
+        return self.emit(payload, display.display_backfill)

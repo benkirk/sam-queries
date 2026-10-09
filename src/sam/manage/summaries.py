@@ -34,7 +34,7 @@ from sam.summaries.disk_summaries import DiskChargeSummary
 from sam.summaries.archive_summaries import ArchiveChargeSummary
 
 
-def _resolve_user(session: Session, act_username: str, act_unix_uid: Optional[int]) -> User:
+def resolve_user(session: Session, act_username: str, act_unix_uid: Optional[int]) -> User:
     """
     Look up user by username; fall back to unix_uid if username not found.
     act_unix_uid may be None for jobs submitted before identity sync.
@@ -207,7 +207,7 @@ def upsert_comp_charge_summary(
     Insert or update a CompChargeSummary row.
 
     Entity resolution order (stops on first error):
-      1. User  (_resolve_user)
+      1. User  (resolve_user)
       2. Project  (_resolve_project)
       3. Resource  (_resolve_resource)
       4. Account  (_resolve_account)
@@ -225,7 +225,7 @@ def upsert_comp_charge_summary(
         PUT semantics: all mutable fields replaced; omitted optionals write NULL.
         Pass include_deleted_accounts=True for historical charge backfill.
     """
-    user = _resolve_user(session, act_username, act_unix_uid)
+    user = resolve_user(session, act_username, act_unix_uid)
     project = _resolve_project(session, act_projcode)
     res = _resolve_resource(session, resource_name)
     account = _resolve_account(session, project, res, include_deleted=include_deleted_accounts)
@@ -349,7 +349,7 @@ def _upsert_storage_summary(
     without that user actually existing under the audit name.
     """
     if user is None:
-        user = _resolve_user(session, act_username, act_unix_uid)
+        user = resolve_user(session, act_username, act_unix_uid)
     res = _resolve_resource(session, resource_name)
     if account is None:
         if project is None:

@@ -9,7 +9,7 @@ Key order in these dicts is the wire order: ``output_json`` uses
 sees.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from sam.queries.xras_actions import (
     audit_opportunity_mapping,
