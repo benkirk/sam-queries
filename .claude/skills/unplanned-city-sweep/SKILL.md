@@ -116,6 +116,10 @@ Run each pass and collect findings. The examples are real.
   modules, query helpers. For each, find an older surface doing the same job the old way. The
   sunburst started on the allocations page and then moved to job history; that is the shape to
   look for. Record candidates in the ledger even when nobody picks them.
+- **Default route.** When a later step records state in an existing column or file, trace
+  the *default* configuration's path through it: a lever that ships off must not clear the
+  record on its way past. Example: #773's reactivation hook cleared `users.deactivate`, the
+  undo's key, whether or not `LDAPSYNC_RESTORE_ON_REACTIVATE` had restored anything (sweep 19).
 - **Ratchet.** Where a fix is cheap to pin, add an equality ratchet so the city does not regrow.
   Models: `tests/unit/gates/test_css_tokens.py` (raw colors) and
   `tests/unit/gates/test_no_fstring_sql.py`. Only ratchet a count that is going down.

@@ -34,6 +34,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-06 | `b682c918` + round C (jobs, disk scans, drill macros) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,763 / 50 / 8 | 163 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-06 | `5f27d3b7` + round E (mid-word breaks) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,810 / 51 / 8 | 163 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-08 | `0bf88a49` + sweep 18 (XRAS incoming vs ACCESS) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,810 / 51 / 8 | 163 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
+| 2026-10-09 | `afafd5b9` + sweep 19 (#773 from the air) | 50 / 59 / 24 | 1 (2) | 15 / 49 | 20 (20), 2 kept | 4,822 / 51 / 7 | 165 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -219,7 +220,7 @@ the two intended changes below. Perf tier: 64 passed before and after; `baseline
 - [ ] jscpd clones not read (sweep 12 read the first: ~60-line loops differing in four places,
   a merge decision recorded at `adjustment.py:59`; leave): `sam/xras/handlers/adjustment.py` / `supplement.py`,
   `sam/summaries/archive_summaries.py` / `disk_summaries.py`, the `cli/*/display.py` pairs.
-- [ ] dup-functions left: `active_account_users` on User and Project. (The duplicate `decorate`
+- [x] dup-functions left: `active_account_users` on User and Project (sweep 19 deleted the dead `User` copy). (The duplicate `decorate`
   in `charts/stacked.py` went in sweep 11.)
 - [ ] `CacheBase` has no `bytes_used`, which `chart_cached` reads; both backends define it.
 
@@ -1317,6 +1318,76 @@ pins read ⊆ declared); the XRAS census deferred in entry 12, still until
 - [ ] Asks for Steve, recorded in `XRAS_SUBMISSION.md` § 5: an `admin`-context approve verb
   or an auto-approve rule on the demo instance; whether ARC calls `/v1/projects` for NCAR;
   whether `xras_admin` would render `/v1/usage/by_month` if we served it.
+
+## 19. 2026-10-09: area sweep, PR #773 (the LDAP sync API) from the air
+
+**Mode:** area, the open branch `ldapsync-api` read against the whole tree, base
+`origin/staging` (`afafd5b9`). Commits landed on the PR's own branch (still draft), so there is
+no sweep PR; the soak of the converged stack ran on throughout.
+
+**Why:** #773 adds ~2,000 lines and several concepts at once (a legacy-compat blueprint with its
+own envelope, a matching ladder, purge permits, a recorded deactivation undo, epoch-ms dates, the
+first `User` producer). Each piece was right alone; the question was what it duplicated, which
+idiom should be the house idiom, what prose it left behind, and whether a silent path sat on the
+default route.
+
+**Done, on `ldapsync-api`**, one commit each:
+
+- [x] The lifecycle finish and restore use `unended(now)`, the window every other removal uses
+  (a future-start membership is deleted on finish, counted on restore); `end_membership` and
+  `unended` went public, which also cleared the window's `private-imports` lead.
+- [x] `read_since` with an oversized integer overflowed into a 500; now None. Seven
+  warn-and-continue paths got tests.
+- [x] Lookups through `User.get_by_username` / `get_by_upid`: `users.username` collates
+  case-insensitively on both backends, so the `lower()` fallback was dead and purge's
+  `func.lower` skipped `username_uk`.
+- [x] `User.update` → `apply_sync`: it writes `None`, the opposite of every other `update()`
+  (CLAUDE.md § 7 records the exception).
+- [x] Deleted the dead, broken `User.active_account_users` / `User.users` (the detector's lead
+  since 2026-10-03; `ACCOUNT_USER_SOFT_DELETE.md` had asked for it).
+- [x] `sam/schemas/wire.py`: the lenient string, the optional factories, the ignore-unknown base
+  and `EpochMillis`, shared by the XRAS and sync input schemas (XRAS bytes unchanged).
+- [x] `webapp/api/helpers.flatten_errors` / `compact_json`, shared by XRAS and the sync.
+- [x] `sam.dates.end_of_day` adopted at its six hand-rolled twins (three in the allocation
+  usage queries, the renew handoff, `parse_ymd_end_of_day`, the lifecycle grace end);
+  `format_ymd` replaces the sync's `_ymd` and XRAS's `_date_string`; `parse_ymd_or`'s keyword
+  no longer shadows the function.
+- [x] The CLI undo follows the JSON conventions (`not_found` envelope,
+  `json_unsupported_for_writes`, datetimes via the encoder, `date_cell`).
+- [x] Prose: inline "superseded by Dnn" pointers in LDAP_SYNC_API.md's plan sections and the
+  names the code has; "never creates users" → "never originates users" in seven places;
+  CLAUDE.md (ROLE_API_ADMIN, the blueprint, the raw-`active` exception, `membership_cutoff`,
+  the undo flags); run.py and the webapp README; two "raw on purpose" notes.
+- [x] Small drift: one `parse_int` for the three id readers, `sam.text.ci_unique`, `_blank`
+  via `strip_or_none`, `USER_LOGIN` named, XRAS's `_epoch_millis` passthrough inlined,
+  `fmt.to_local_dt` says which data its naive-UTC rule covers.
+
+**Deferred (Ben, 2026-10-09):**
+
+- [ ] The reactivation path clears `users.deactivate` (the undo's key) whether or not
+  `LDAPSYNC_RESTORE_ON_REACTIVATE` restored anything, so with the lever off — the shipped
+  default — the operator undo finds nothing afterwards. Left as is: the feature goes to
+  dev/k8s soon and the lever is enabled almost at once; nobody calls the hook-off path in
+  practice. If that changes: log `closed_at` when no restore ran and give the CLI `--closed-at`.
+- [ ] `Institution.upsert_from_sync` ≡ `Organization.upsert_from_sync`: two copies of twelve
+  lines; a `SyncUpsertMixin` waits for a third sync-owned table.
+
+**Leave (read, not changed):** the per-module `_enabled()` lever readers (the house idiom);
+`_int_arg` answering 400; the width tables (pinned to the ORM); the purge blocker tuples and
+the savepoint delete (no counterpart); `read_json_body`; `_deny`/`roles=` (the house hook;
+`/api/v1` keeps the session path); raw `active` checks in the sync (each would change meaning
+under `is_active`; noted in CLAUDE.md § 5).
+
+**Open:**
+
+- [ ] `GidAllocation.create_block` sets `next_gid=start_gid`; the model's docstring says NULL
+  until the first draw. Ask whether legacy's gidAllocation PUT set it before changing.
+- [ ] `LDAPSYNC_TESTBED_VERIFICATION.md` (Status: done) retires to `docs/plans/implemented/`
+  once #773 merges — window mode after that merge.
+- [ ] `Project.active_account_users` drops the `start_date` guard (nrit review B3, P1-18); the
+  `User` twin is gone, this one is still called.
+
+**Growth rule:** a **Default route** heuristic in § 4 of the skill, from the deferred finding.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
