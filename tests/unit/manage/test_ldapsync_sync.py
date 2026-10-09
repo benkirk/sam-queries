@@ -6,7 +6,10 @@ import pytest
 
 from factories import make_gid_allocation, make_institution, make_organization, next_int
 from sam.core.groups import GidAllocation
+from sam.core.groups import AdhocSystemAccountEntry
 from sam.core.organizations import Institution, Organization
+from sam.core.users import User
+from sam.manage import ldapsync as manage
 from sam.manage.ldapsync import (
     SyncValidationError,
     sync_gid_allocation,
@@ -138,3 +141,17 @@ class TestGidAllocation:
             {'startGid': start, 'endGid': start + 99}))
         new = session.query(GidAllocation).filter(GidAllocation.start_gid == start).one()
         assert new.next_gid == start
+
+
+@pytest.mark.parametrize('model, widths', [
+    (Institution, manage.INSTITUTION_WIDTHS),
+    (Organization, manage.ORGANIZATION_WIDTHS),
+    (User, manage.USER_WIDTHS),
+])
+def test_width_tables_match_the_columns(model, widths):
+    """The 400-before-the-database widths (D7) are the columns' own."""
+    for name, width in widths.items():
+        column = 'username' if name == 'user_name' else name
+        assert model.__table__.c[column].type.length == width, name
+    assert (AdhocSystemAccountEntry.__table__.c.username.type.length
+            == manage.ENTRY_USERNAME_WIDTH)
