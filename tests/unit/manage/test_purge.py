@@ -1,8 +1,11 @@
 """Purge permits and hard deletes for the LDAP sync API (``sam.manage.purge``)."""
 
+from datetime import datetime
+
 import pytest
 
 from factories import (
+    make_account,
     make_adhoc_group,
     make_adhoc_group_tag,
     make_adhoc_system_account_entry,
@@ -11,15 +14,20 @@ from factories import (
     make_organization,
     make_phone,
     make_project,
+    make_resource,
+    make_role,
     make_user,
     make_user_institution,
     make_user_organization,
 )
+from sam.accounting.accounts import ResponsibleParty
+from sam.activity.hpc import HPCActivity, HPCCharge
 from sam.core.groups import AdhocGroup
 from sam.core.organizations import Institution, Organization
-from sam.core.users import EmailAddress, User
+from sam.core.users import EmailAddress, User, UserAlias
 from sam.manage import purge
 from sam.manage.ldapsync import SyncValidationError
+from sam.security.roles import RoleUser
 
 
 class TestUserPermit:
@@ -43,6 +51,34 @@ class TestUserPermit:
         session.flush()
         message = purge.user_permit(session, username=lead.username)['message']
         assert f'SAM user {lead.username} is project lead.' in message.split('\n')
+
+    def test_roles_aliases_parties_and_charges_block(self, session):
+        """D12: references legacy left to the foreign key each block the permit."""
+        user = make_user(session, active=False)
+        account = make_account(session, project=make_project(session),
+                               resource=make_resource(session))
+        when = datetime.now()
+        epoch = int(when.timestamp())
+        activity = HPCActivity(job_id=f'purge-{user.unix_uid}', job_idx=0, username=user.username,
+                               unix_uid=user.unix_uid, projcode='PURGE000', queue_name='q',
+                               machine='m', start_time=epoch, end_time=epoch,
+                               submit_time=epoch, load_date=when)
+        session.add(activity)
+        session.flush()
+        session.add_all([
+            RoleUser(role_id=make_role(session).role_id, user_id=user.user_id),
+            UserAlias(user_id=user.user_id, username=user.username),
+            ResponsibleParty(account_id=account.account_id, user_id=user.user_id,
+                             responsible_party_type='owner'),
+            HPCCharge(account_id=account.account_id, user_id=user.user_id,
+                      hpc_activity_id=activity.hpc_activity_id, charge_date=when),
+        ])
+        session.flush()
+        lines = set(purge.user_permit(session, username=user.username)['message'].split('\n'))
+        assert {f'SAM user {user.username} holds SAM roles.',
+                f'SAM user {user.username} has an alias record.',
+                f'SAM user {user.username} is a responsible party.',
+                f'SAM user {user.username} has hpc charge records.'} <= lines
 
     def test_lever_off_refuses_an_existing_user(self, session):
         user = make_user(session, active=False)
@@ -109,6 +145,14 @@ class TestInstitutionAndOrganization:
         make_organization(session, parent_org_id=parent.organization_id)
         message = purge.organization_permit(session, parent.organization_id)['message']
         assert 'has child organizations.' in message
+
+    def test_organization_responsible_for_a_resource_is_blocked(self, session):
+        """D23: a delete would NULL the resource's responsible organization."""
+        org = make_organization(session)
+        make_resource(session).prim_responsible_org_id = org.organization_id
+        session.flush()
+        message = purge.organization_permit(session, org.organization_id)['message']
+        assert f'SAM organization id {org.organization_id} is responsible for resources.' in message
 
     def test_free_organization_is_purged(self, session):
         org = make_organization(session)
