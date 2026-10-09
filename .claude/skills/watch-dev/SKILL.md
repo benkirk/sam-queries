@@ -25,7 +25,7 @@ scripts/cirrus_watch.sh --context nwc1 --env dev
 `samuel-dev.k8s.ucar.edu` and its own state file (`sam-watch/state-dev`). The
 preflight probes the ingress on 443, not a DB. Both envs ride the `traefik-external`
 class (VIP 128.117.41.125, the ADDRESS in `kubectl -n sam-queries-dev get ingress
-samuel-dev -o wide`); the retired nginx class (.126) is a legacy branch of the chart.
+samuel-dev -o wide`).
 
 ## 2. What the tick can see
 

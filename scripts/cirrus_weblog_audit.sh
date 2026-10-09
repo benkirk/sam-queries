@@ -36,17 +36,15 @@
 # Hardening recommendations (NOT enforced by this script)
 # This audit only surfaces signals; the layered defenses below are follow-ups
 # tracked in docs/plans (see the approved plan). Quick reference:
-#   R1  Edge rate limiting — webapp.ingress.rateLimit in helm/values.yaml
-#       (limit-rps / limit-connections / limit-burst-multiplier), rendered only
-#       for an nginx class. On nginx-external every client collapses to
-#       127.0.0.1 (see R2), so these act as a GLOBAL bucket, not per-IP. On a
-#       traefik class there is no edge limit: Flask-Limiter is the limiter and
-#       the headroom check below is skipped (no annotation to read).
-#   R2  Real client IP — on nginx-external the app sees X-Forwarded-For:
-#       127.0.0.1 (verified from an external, off-VPN request); a traefik class
-#       forwards the real address. PROXYFIX_X_FOR must equal the number of
-#       proxies that append to the header: re-measure it from the xff= field
-#       per controller. Section 2 flags the collapsed symptom.
+#   R1  Edge rate limiting — none at the ingress (traefik-external since
+#       2026-10; the tenant may not create a Traefik Middleware). Flask-Limiter
+#       is the limiter.
+#   R2  Real client IP — Traefik forwards what it sees, and under
+#       externalTrafficPolicy: Cluster that is the node's overlay address
+#       (10.0.x.x), not the client. PROXYFIX_X_FOR must equal the number of
+#       proxies that append to X-Forwarded-For; re-measure from the xff= field
+#       if the controller or its traffic policy changes. Section 2 flags the
+#       collapsed symptom.
 #   R3  Scheduling — run on a cron/CI runner with --no-color and alert on a
 #       non-zero exit (wire into scripts/cron/).
 #   R4  CSP reporting — add a report-uri so injection attempts become a
@@ -206,33 +204,6 @@ else
         pass "4xx rate ${PCT4}% within tolerance"
     fi
 
-    # Edge rate-limit headroom (R1). Compares observed peak load to the live
-    # ingress limit-rps. On this controller the limit is a GLOBAL bucket (every
-    # client = 127.0.0.1), so peak-vs-ceiling is the signal for whether to raise
-    # it. NOTE: actual edge rejections are 503s returned by the controller and
-    # do NOT appear in these app logs — this is a headroom indicator, not a
-    # rejection count.
-    EDGE_RPS=$("${KCTL_NS[@]}" get ingress "$WEBAPP_NAME" \
-        -o jsonpath='{.metadata.annotations.nginx\.ingress\.kubernetes\.io/limit-rps}' 2>/dev/null || true)
-    if [[ "$EDGE_RPS" =~ ^[0-9]+$ && "$EDGE_RPS" -gt 0 ]]; then
-        PEAK_RPS=$(printf '%s\n' "$LOGS" | awk -F'"' '
-            $2 ~ /^(GET|POST|PUT|DELETE|HEAD|PATCH|OPTIONS|CONNECT|TRACE) / {
-                if (match($1, /\[[^]]+\]/)) {
-                    ts = substr($1, RSTART+1, RLENGTH-2); sub(/ .*/, "", ts); c[ts]++
-                }
-            }
-            END { m = 0; for (k in c) if (c[k] > m) m = c[k]; print m + 0 }')
-        echo
-        echo "  Edge limit-rps: ${EDGE_RPS}/s (global) · observed peak: ${PEAK_RPS}/s in a single second"
-        if [[ "$PEAK_RPS" -ge "$EDGE_RPS" ]]; then
-            warn "peak load ${PEAK_RPS}/s ≥ edge limit ${EDGE_RPS}/s — legit traffic may be hitting 503s at the ingress; raise webapp.ingress.rateLimit.rps"
-        elif awk -v p="$PEAK_RPS" -v l="$EDGE_RPS" 'BEGIN{exit !(p >= 0.8*l)}'; then
-            warn "peak load ${PEAK_RPS}/s within 80% of edge limit ${EDGE_RPS}/s — consider raising webapp.ingress.rateLimit.rps"
-        else
-            pass "peak load ${PEAK_RPS}/s well under edge limit ${EDGE_RPS}/s"
-        fi
-        explain "Edge-limit 503s are returned by the controller and aren't in app logs; this compares observed load to the ceiling."
-    fi
 fi
 
 # ============================================================================

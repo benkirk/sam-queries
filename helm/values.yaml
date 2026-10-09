@@ -86,32 +86,15 @@ webapp:
       - sam.hpc.ucar.edu
     secretName: incommon-cert-samuel      # one multi-SAN secret covers every host above
   ingress:
-    # IngressClass name as CIRRUS gives it: traefik-external (both envs since
-    # 2026-10; docs/plans/TRAEFIK_INGRESS.md). Rollback to nginx-external is this
-    # one line while CIRRUS keeps that controller running.
+    # IngressClass name as CIRRUS gives it: traefik-external on both envs since
+    # 2026-10 (docs/plans/implemented/TRAEFIK_INGRESS.md). There is no edge
+    # rate limit; Flask-Limiter is the limiter.
     className: traefik-external
-    # Traefik only (any non-nginx class). Traefik does not redirect :80 and the
-    # tenant may not create a Middleware, so the router is bound to the TLS
-    # entrypoint and plain http answers 404 instead of serving the app. Empty
-    # binds every entrypoint (plaintext on :80).
+    # Traefik does not redirect :80 and the tenant may not create a Middleware,
+    # so the router is bound to the TLS entrypoint and plain http answers 404
+    # instead of serving the app. Empty binds every entrypoint (plaintext on :80).
     traefik:
       entrypoints: websecure
-    # LEGACY, UNUSED: ingress-nginx edge limit, rendered only while className
-    # starts with "nginx" (the nginx branch of templates/ingress.yaml). It was
-    # inert in practice (docs/plans/implemented/DEV_LOAD_CAMPAIGN.md); Flask-Limiter
-    # is the limiter. Kept for the rollback path; likely retired with it.
-    rateLimit:
-      rps: 100
-      connections: 200
-      burstMultiplier: 5
-    # Cutover bridge: a second Ingress (<name>-legacy) on the retired nginx class
-    # with the same hosts and TLS secret, so the old VIP keeps answering while
-    # the A record moves to Traefik's VIP (CIRRUS syncs it from the Ingress
-    # status, 300 s TTL). Set false once dig shows the new address; the bridge
-    # is retired with the legacy block.
-    legacyBridge:
-      enabled: true
-      className: nginx-external
   # Trusted proxy hops for ProxyFix (X-Forwarded-For depth). Sets PROXYFIX_X_FOR.
   # MUST equal the exact number of proxies that append to X-Forwarded-For, or a
   # client can spoof its IP. Start at 1 (safe), then confirm the real depth from
