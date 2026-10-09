@@ -236,5 +236,9 @@
     "cli_build_user_projects": {
         "queries": 15,
         "notes": "measured 10 (2026-10-09), flat in projects. Was 187: lead/admin loaded per project and account.allocations walked per account"
+    },
+    "project_users": {
+        "queries": 22,
+        "notes": "measured 15 (2026-10-09) on the most-member project (187), cold; flat in members. Was 62: account.users -> au.user loaded each member alone, and every User load runs its four selectin relationships"
     }
 }
