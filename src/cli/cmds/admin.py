@@ -8,7 +8,7 @@ Administrative commands for SAM database management and validation.
 import os
 import sys
 import click
-from datetime import date as _date, datetime
+from datetime import datetime
 
 from config import SAMConfig
 from cli.core.context import Context
@@ -265,8 +265,6 @@ def contracts(ctx: Context, validate, audit_all, check_sources, limit,
               help='Mode: post computational charge summaries')
 @click.option('--disk', is_flag=True,
               help='Mode: post disk charge summaries')
-@click.option('--archive', is_flag=True,
-              help='Mode: post archive charge summaries (not yet implemented)')
 @click.option('--reconcile-quotas', 'reconcile_quotas', type=click.Path(exists=True, dir_okay=False),
               default=None, metavar='PATH',
               help='Mode: reconcile SAM allocations against a storage quota file (requires --resource)')
@@ -343,7 +341,7 @@ def contracts(ctx: Context, validate, audit_all, check_sources, limit,
 @click.option('--verify-host', 'verify_host', type=str, default=None, metavar='HOST',
               help='[reconcile] SSH host to use for --verify-paths (default: auto-detect)')
 @pass_context
-def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
+def accounting(ctx: Context, comp, disk, reconcile_quotas, resource,
                machine,
                user_usage_path, quotas_path, reporting_interval,
                unidentified_label, reconcile_quota_gap,
@@ -358,7 +356,7 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
 
     \b
     Three modes:
-      1. Post HPC charge summaries  (--comp / --archive)
+      1. Post HPC charge summaries  (--comp)
          Required: --machine and a date selection.
          Date Selection:
            --date YYYY-MM-DD   Single specific date
@@ -387,11 +385,13 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
     """
 
     # --- Mode validation ----------------------------------------------------
-    charge_mode = bool(comp or disk or archive)
+    charge_mode = bool(comp or disk)
     reconcile_mode = reconcile_quotas is not None
 
+    if not (charge_mode or reconcile_mode):
+        usage_error(ctx, "Error: specify --comp, --disk or --reconcile-quotas")
     if reconcile_mode and charge_mode:
-        usage_error(ctx, "Error: --reconcile-quotas is mutually exclusive with --comp/--disk/--archive")
+        usage_error(ctx, "Error: --reconcile-quotas is mutually exclusive with --comp/--disk")
 
     if (verify_paths or verify_host) and not reconcile_mode:
         usage_error(ctx, "Error: --verify-paths/--verify-host require --reconcile-quotas")
@@ -403,7 +403,7 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
     # without touching mismatch updates, or vice versa). --force is
     # specifically the live-path safety override, so it only makes
     # sense alongside --deactivate-orphaned. Charge-posting modes
-    # (--comp/--disk/--archive) ignore these flags.
+    # (--comp/--disk) ignore these flags.
     if (update_accounting_system or deactivate_orphaned) and not reconcile_mode:
         usage_error(ctx, "Error: --update-accounting-system / --deactivate-orphaned "
                          "require --reconcile-quotas")
@@ -416,7 +416,7 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
 
     # --- --epoch parse + scope check --------------------------------------
     # --epoch only applies to --comp / --disk. Reject early elsewhere so
-    # operators don't get a silent no-op under --reconcile-quotas/--archive.
+    # operators don't get a silent no-op under --reconcile-quotas.
     epoch_date = None
     if epoch_str:
         if not (comp or disk):
@@ -502,7 +502,7 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
         )
         sys.exit(exit_code)
 
-    # Charge-posting mode (--comp / --archive): machine + dates required
+    # Charge-posting mode (--comp): machine + dates required
     if not machine:
         usage_error(ctx, "Error: --machine is required with --comp")
 
@@ -511,7 +511,6 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
     command = AccountingAdminCommand(ctx)
     exit_code = command.execute(
         comp=comp,
-        archive=archive,
         machine=machine,
         start_date=start_date,
         end_date=end_date,

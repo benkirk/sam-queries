@@ -21,10 +21,6 @@ class QuotaEntry:
         return self.limit_bytes / BYTES_PER_TIB
 
     @property
-    def usage_tib(self) -> float:
-        return self.usage_bytes / BYTES_PER_TIB
-
-    @property
     def utilization(self) -> float:
         """Fraction of limit used, in [0, 1+]. Returns 0 if limit_bytes is 0."""
         if not self.limit_bytes:

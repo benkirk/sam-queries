@@ -14,7 +14,7 @@ from cli.accounting.display import (
 )
 from cli.accounting.disk_usage import get_disk_usage_reader, DiskUsageEntry
 from sam.manage.summaries import (
-    _resolve_user,
+    resolve_user,
     upsert_disk_charge_summary,
     upsert_disk_activity, upsert_disk_charge,
 )
@@ -371,7 +371,6 @@ class DiskIngestMixin:
         # /quasar/rda, as tier-3 grouping by label already charges it). A row that
         # fails gets a report category (_DiskResolution.reason) instead of an error.
         from sam.projects.projects import ProjectDirectory, Project
-        from sam.accounting.accounts import Account
         from sam.accounting.allocations import Allocation
         pd_path_to_project: dict[str, "Project"] = {
             pd.directory_name: proj
@@ -814,7 +813,7 @@ class DiskIngestMixin:
                                 )
                             else:
                                 try:
-                                    user = _resolve_user(
+                                    user = resolve_user(
                                         self.session, e.username, None,
                                     )
                                 except ValueError as uexc:

@@ -389,25 +389,6 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
             self.session.flush()
         return self
 
-    # # Active account users (filtered join)
-    # account_users = relationship(
-    #     'AccountUser',
-    #     secondary='account',
-    #     primaryjoin=(project_id == Account.project_id),
-    #     secondaryjoin=and_(
-    #         Account.account_id == AccountUser.account_id,
-    #         or_(AccountUser.end_date.is_(None), AccountUser.end_date >= func.now())
-    #     ),
-    #     viewonly=True,
-    #     lazy='selectin',
-    #     collection_class=set,
-    # )
-
-    # @property
-    # def users(self) -> List['User']:
-    #     """Return a deduplicated list of active users on this project."""
-    #     return list({au.user for au in self.account_users if au.user is not None})
-
     @property
     def live_accounts(self) -> List['Account']:
         """Non-deleted accounts on an active (commissioned, not decommissioned) resource."""

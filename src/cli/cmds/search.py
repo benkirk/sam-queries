@@ -66,14 +66,6 @@ def cli(ctx: Context, verbose: bool, inactive_projects: bool, inactive_users: bo
     # use. Kept in step with sam-admin; see SCHEDULED_TASKS.md § 3.2.
 
 
-@cli.result_callback()
-def process_result(result, **kwargs):
-    """Cleanup session after command execution"""
-    # This might not run if the command fails with an exception,
-    # but the OS will clean up the socket/connection anyway.
-    pass
-
-
 # ========================================================================
 # User Commands
 # ========================================================================

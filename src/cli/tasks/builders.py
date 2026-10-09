@@ -36,12 +36,12 @@ def build_task_list(registry, ledger, *, now: datetime,
             'misfire_grace_s': int(task.misfire_grace.total_seconds()),
             'last_run':        _run_summary(latest),
             # Display only — the control flow must never reason forward.
-            'next_occurrence': _iso(task.schedule.next_occurrence(now)),
+            'next_occurrence': task.schedule.next_occurrence(now),
         })
 
     return {
         'kind':     'task_list',
-        'now':      now.isoformat(),
+        'now':      now,
         'count':    len(tasks),
         'disabled': sorted(disabled),
         'tasks':    tasks,
@@ -82,13 +82,9 @@ def _run_summary(row: Optional[dict]) -> Optional[Dict[str, Any]]:
         'state':       row['state'],
         'trigger':     row['trigger'],
         'attempt':     row['attempt'],
-        'claimed_at':  _iso(row['claimed_at']),
-        'finished_at': _iso(row['finished_at']),
+        'claimed_at':  row['claimed_at'],
+        'finished_at': row['finished_at'],
         'duration_ms': row['duration_ms'],
         'runner_id':   row['runner_id'],
         'detail':      row['detail'],
     }
-
-
-def _iso(value) -> Optional[str]:
-    return None if value is None else value.isoformat()

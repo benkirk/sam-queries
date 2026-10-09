@@ -1,7 +1,6 @@
 """Data extraction for user CLI output. No Rich, no I/O."""
 
 from datetime import datetime
-from typing import Optional
 from sam import User
 from sam.provisioning import check_user_provisioning
 from sam.queries.allocations import latest_allocation_end_by_project

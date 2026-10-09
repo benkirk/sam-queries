@@ -254,7 +254,7 @@ class UserAdminCommand(UserSearchCommand):
             issues.append("Missing unix_uid")
 
         if issues:
-            self.ctx.message_console.print(f"⚠️  Validation issues:", style="yellow")
+            self.ctx.message_console.print("⚠️  Validation issues:", style="yellow")
             for issue in issues:
                 self.ctx.message_console.print(f"  - {issue}", style="yellow")
             return EXIT_ERROR

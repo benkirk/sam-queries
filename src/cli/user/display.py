@@ -245,15 +245,6 @@ def display_users_with_projects(ctx: Context, data: dict, list_projects: bool = 
         style="green"
     )
 
-    if ctx.verbose:
-        # Verbose mode renders each user as a full panel.  For that we
-        # need core+detail dicts, which build_users_with_projects does
-        # not produce — it has only the brief summary.  Fall back to
-        # the same flat table layout as non-verbose for now; if a user
-        # wants per-user verbose detail, they can run `sam-search user
-        # <name> --verbose` directly.
-        pass
-
     table = Table(show_header=False, box=None)
     table.add_column("User")
     for u in data['users']:

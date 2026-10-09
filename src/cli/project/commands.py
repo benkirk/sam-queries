@@ -165,7 +165,7 @@ class ProjectExpirationCommand(BaseProjectCommand):
                 if since:
                     max_days = (datetime.now() - since).days
                     if max_days < 0:
-                        self.console.print(f"Error: --since date cannot be in the future", style="bold red")
+                        self.console.print("Error: --since date cannot be in the future", style="bold red")
                         return EXIT_ERROR
                 else:
                     max_days = 365
@@ -422,7 +422,7 @@ class ProjectAdminCommand(ProjectSearchCommand):
                               f"{', '.join(missing)} (fix with --reconcile)")
 
         if issues:
-            self.ctx.message_console.print(f"⚠️  Validation issues:", style="yellow")
+            self.ctx.message_console.print("⚠️  Validation issues:", style="yellow")
             for issue in issues:
                 self.ctx.message_console.print(f"  - {issue}", style="yellow")
             return EXIT_ERROR

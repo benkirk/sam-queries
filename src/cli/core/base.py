@@ -1,7 +1,6 @@
 """Base command classes for SAM CLI."""
 
 from abc import ABC, abstractmethod
-from typing import Optional
 from cli.core.context import Context
 from cli.core.output import output_json
 from cli.core.utils import EXIT_ERROR, EXIT_NOT_FOUND, EXIT_SUCCESS

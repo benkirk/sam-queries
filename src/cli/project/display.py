@@ -413,18 +413,8 @@ def _display_project_verbose(ctx: Context, project, extra_title: str, list_users
 
 
 def display_abandoned_users_from_expired_projects(ctx: Context, abandoned_users):
-    """Display users whose only active projects have expired.
-
-    Accepts either a set of ORM users (from the existing command path)
-    or a list of dicts with username/display_name/primary_email keys.
-    """
-    rows = []
-    for u in abandoned_users:
-        if isinstance(u, dict):
-            rows.append((u['username'], u['display_name'], u['primary_email']))
-        else:
-            rows.append((u.username, u.display_name, u.primary_email))
-    rows.sort(key=lambda r: r[0])
+    """Users whose only active projects have expired: dicts from `_abandoned_users`."""
+    rows = sorted((u['username'], u['display_name'], u['primary_email']) for u in abandoned_users)
 
     ctx.console.print(f"Found {len(rows)} expiring users:", style="bold red")
     table = Table(show_header=False, box=None)

@@ -34,7 +34,6 @@ class AccountingAdminCommand(CompIngestMixin, DiskIngestMixin, QuotaReconcileMix
         *,
         comp: bool = False,
         disk: bool = False,
-        archive: bool = False,
         reconcile_quotas: Optional[str] = None,
         resource: Optional[str] = None,
         machine: Optional[str] = None,
@@ -101,11 +100,8 @@ class AccountingAdminCommand(CompIngestMixin, DiskIngestMixin, QuotaReconcileMix
                 epoch=epoch,
                 reconcile_directories=reconcile_directories,
             )
-        if archive:
-            self.console.print("[yellow]--archive: not yet implemented[/yellow]")
-            return EXIT_SUCCESS
         self.console.print(
-            "Error: specify --comp, --disk, --archive, or --reconcile-quotas",
+            "Error: specify --comp, --disk, or --reconcile-quotas",
             style="bold red",
         )
         return EXIT_ERROR

@@ -22,7 +22,7 @@ vestigial: charging derives the interval from snapshot tick spacing, and
 import csv
 import os
 import re
-from datetime import date, datetime
+from datetime import date
 from typing import Optional
 
 from .base import DiskUsageEntry, DiskUsageReader
