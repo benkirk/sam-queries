@@ -14,7 +14,7 @@ from typing import Optional
 
 from cli.core.base import BaseCommand
 from cli.core.output import output_json
-from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn
+from cli.core.display_utils import progress as progress_bar
 from cli.accounting.display import (
     display_dry_run_table,
     display_disk_dry_run_table,
@@ -518,13 +518,7 @@ class AccountingAdminCommand(BaseCommand):
 
         chunks = [rows[i:i + kwargs["chunk_size"]] for i in range(0, len(rows), kwargs["chunk_size"])]
 
-        with Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
-            console=self.console,
-        ) as progress:
+        with progress_bar(self.ctx) as progress:
             task = progress.add_task(f"Posting {machine} charges...", total=len(rows))
 
             for chunk_idx, chunk in enumerate(chunks, start=1):
@@ -972,14 +966,7 @@ class AccountingAdminCommand(BaseCommand):
             for i in range(0, len(entries_to_upsert), chunk_size)
         ]
 
-        with Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
-            console=self.console,
-            disable=json_mode,
-        ) as progress:
+        with progress_bar(self.ctx) as progress:
             task = progress.add_task(
                 f"Posting {resource_name} disk charges...",
                 total=len(entries_to_upsert),
@@ -1170,14 +1157,7 @@ class AccountingAdminCommand(BaseCommand):
             for i in range(0, len(writable), chunk_size)
         ]
 
-        with Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
-            console=self.console,
-            disable=self.ctx.output_format == 'json',
-        ) as progress:
+        with progress_bar(self.ctx) as progress:
             task = progress.add_task(
                 f"Writing {resource_name} disk_activity/disk_charge...",
                 total=len(writable),

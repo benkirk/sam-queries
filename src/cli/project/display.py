@@ -5,6 +5,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 
 from cli.core.context import Context
+from cli.core.display_utils import progress as progress_bar
 from cli.project.builders import (
     build_project_core,
     build_project_detail,
@@ -19,9 +20,6 @@ from rich.panel import Panel
 from rich.text import Text
 from rich import box
 from rich.tree import Tree
-from rich.progress import (
-    Progress, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn,
-)
 
 
 def display_project(ctx: Context, data: dict, extra_title_info: str = "",
@@ -572,14 +570,7 @@ def notification_progress(ctx: Context, total: int,
     duck-typed off the CLI ``Context`` — which is a large part of why the
     mailer could not be lifted as-is.
     """
-    with Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        TimeElapsedColumn(),
-        console=ctx.console,
-        transient=False,
-    ) as progress:
+    with progress_bar(ctx) as progress:
         task = progress.add_task(description, total=total)
         yield lambda result: progress.advance(task)
 

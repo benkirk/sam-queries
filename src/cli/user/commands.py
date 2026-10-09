@@ -272,7 +272,7 @@ class UserAdminCommand(UserSearchCommand):
     def _validate_user(self, username: str) -> int:
         """Admin-only: validate user data integrity."""
         user = self.get_user(username)
-        self.console.print(f"[dim]Validating user {username}...[/dim]")
+        self.ctx.message_console.print(f"[dim]Validating user {username}...[/dim]")
 
         # Placeholder validation logic
         issues = []
@@ -282,10 +282,10 @@ class UserAdminCommand(UserSearchCommand):
             issues.append("Missing unix_uid")
 
         if issues:
-            self.console.print(f"⚠️  Validation issues:", style="yellow")
+            self.ctx.message_console.print(f"⚠️  Validation issues:", style="yellow")
             for issue in issues:
-                self.console.print(f"  - {issue}", style="yellow")
+                self.ctx.message_console.print(f"  - {issue}", style="yellow")
             return EXIT_ERROR
 
-        self.console.print(f"✅ User {username} validated", style="green")
+        self.ctx.message_console.print(f"✅ User {username} validated", style="green")
         return EXIT_SUCCESS

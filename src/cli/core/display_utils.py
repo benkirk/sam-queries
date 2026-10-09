@@ -13,6 +13,8 @@ All date formatting still goes through `sam.fmt` rather than a local
 
 from datetime import date, datetime
 
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
+
 from sam import fmt
 
 #: What every formatter here renders for "nothing to show". Matches
@@ -54,3 +56,10 @@ def date_cell(value) -> str:
     if isinstance(value, (date, datetime)):
         return fmt.date_str(value)
     return str(value)
+
+
+def progress(ctx) -> Progress:
+    """The CLI's progress bar; disabled in JSON mode so stdout stays one document."""
+    return Progress(TextColumn("[progress.description]{task.description}"), BarColumn(),
+                    MofNCompleteColumn(), TimeElapsedColumn(), console=ctx.console,
+                    disable=ctx.output_format == 'json')

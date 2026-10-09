@@ -35,7 +35,7 @@ class BaseCommand(ABC):
         self.ctx.stderr_console.print(f"❌ Error: {e}", style="bold red")
         if self.ctx.verbose:
             import traceback
-            self.console.print(traceback.format_exc(), style="dim")
+            self.ctx.stderr_console.print(traceback.format_exc(), style="dim")
         return 2
 
     def require_plugin(self, plugin: Plugin):
@@ -54,7 +54,7 @@ class BaseCommand(ABC):
         try:
             return plugin.load()
         except PluginUnavailableError as exc:
-            self.console.print(str(exc))
+            self.ctx.stderr_console.print(str(exc))
             return None
 
 

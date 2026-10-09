@@ -85,6 +85,11 @@ class Context:
                     f"Error connecting to database: {e}") from e
         return self._session
 
+    @property
+    def message_console(self) -> Console:
+        """Stdout for Rich output; stderr in JSON mode, so stdout stays one JSON document."""
+        return self.stderr_console if self.output_format == 'json' else self.console
+
     def require_sam(self) -> Session:
         """Return the SAM MySQL session, connecting on first use. **Exits on failure.**
 

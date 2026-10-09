@@ -90,7 +90,8 @@ class RbacCommand(BaseCommand):
     def _effective(self, subject: str) -> int:
         payload = builders.build_effective(self.session, subject)
         if not payload['grants']:
-            self.console.print(f'{payload["subject_type"]}:{payload["subject_name"]} holds no grant.')
+            self.ctx.message_console.print(
+                f'{payload["subject_type"]}:{payload["subject_name"]} holds no grant.')
             if self.ctx.output_format == 'json':
                 output_json(payload)
             return EXIT_NOT_FOUND
