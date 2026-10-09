@@ -39,33 +39,38 @@ above is what breaking this rule looks like.
 |---|---|---|
 | SAM MySQL | `hpc-reader` (exists) | `hpc-writer` (`env.sam-admin`, the cron overlays) |
 | job_history PG | `hpc_reader` on `csg-postgres-ro` | `jobhist_writer` (`env.jobhist-sync`) |
-| system_status PG | `hpc_reader` on `csg-postgres-ro`, last-seen tables only | `pguser` stays in k8s and never goes in a GLADE file |
+| system_status PG | `hpc_reader` on `csg-postgres-ro` | `pguser` stays in k8s and never goes in a GLADE file |
 
-`hpc_reader` (`scripts/sql/create_hpc_reader_pg.sql`) has:
-- `LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`, `CONNECTION LIMIT 40`;
-- at the role level, `default_transaction_read_only=on`, `statement_timeout=60s` and
-  `idle_in_transaction_session_timeout=60s`;
-- SELECT on `access_sources`, `user_last_seen`, `systems` and `status_users` (system_status and
-  `_dev`), and on the 8 job_history tables (casper_jobs, derecho_jobs).
+`hpc_reader` (`scripts/sql/create_hpc_reader_pg.sql`) **reads everything** (Ben, 2026-10-09):
+- `GRANT pg_read_all_data`: every table, view and sequence in every schema and database,
+  including later ones.
+- `LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE`, `CONNECTION LIMIT 40`.
+- At the role level, `default_transaction_read_only=on`, `statement_timeout=60s` and
+  `idle_in_transaction_session_timeout=60s`.
 
 The password is a verifier from `scripts/pg_scram_verifier.py`, stored in OpenBao
-`csg/hpc-reader-pg`.
+`csg/hpc-reader-pg`. `csg-postgres` is 18.3 (`pg_read_all_data` needs 14+). Casper reaches
+`csg-postgres-ro`, which reports `pg_is_in_recovery() = true`.
 
-Proven on postgres-test 2026-10-09:
-- The verifier logs in and a wrong password is refused.
-- With the role settings, SELECT on a granted table works. INSERT, DDL, an ungranted table and
-  a 5 s query under a 2 s timeout are all refused.
+Proven on postgres-test (18.6), 2026-10-09:
+- The verifier logs in, and a wrong password is refused.
+- With `pg_read_all_data`, SELECT works in `public` and in another schema, in two databases,
+  and on a table created after the grant.
+- INSERT is refused (read-only transaction). After `SET default_transaction_read_only = off`
+  an INSERT is still refused (permission denied). CREATE TABLE is refused.
+- With the role settings, a 5 s query under a 2 s timeout is cancelled.
 
-The read-only default can be `SET` off by a client, so the grants and the replica are the
-boundary. The default and the timeouts are the bounds that protect the server.
+`INHERIT` matters: under `NOINHERIT` the membership grants nothing without `SET ROLE`.
 
 **Your call (Ben):**
 - A world-readable `hpc-reader` (MySQL) lets any HPC user run arbitrary SELECTs on `sam`,
   including tables `sam-search` never shows: `api_credentials` (bcrypt hashes),
   `account_request`, `notification_log`. This is true today through the conda `.env`. The
   fix is a DBA request: REVOKE on those tables, or a view-based grant.
-- PG gives `CONNECT` to `PUBLIC` on every database by default. `hpc_reader` can connect to
-  `campaign`/`destor` but reads nothing there unless something is granted to PUBLIC.
+- With `pg_read_all_data`, a world-readable `hpc_reader` lets any HPC user read every database
+  on csg-postgres. That includes `sam_dev`, a prod snapshot that may not be obfuscated, and
+  `campaign`/`destor` (filesystem scans: paths and owners). This is the same question as the
+  MySQL one above, for Postgres.
 
 ## 4. Layered env in the wrapper (`libexec/lane.sh`)
 
@@ -176,5 +181,4 @@ The dev lane stays csgteam-only (all 0600) until a dev reader exists on `sam_dev
 
 - `sam-admin` ACL groups (csgteam plus ...?).
 - `hpc-reader` MySQL grant narrowing (§ 3).
-- Whether `hpc_reader` also reads the other status tables (queue/node status) for future HPC tools.
-  Today: the last-seen four only.
+- ~~Whether `hpc_reader` reads more than the last-seen tables~~: it reads everything (Ben).
