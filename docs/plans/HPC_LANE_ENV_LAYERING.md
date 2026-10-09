@@ -74,12 +74,14 @@ Proven on postgres-test (18.6), 2026-10-09:
 
 ## 4. Layered env in the wrapper (`libexec/lane.sh`)
 
-The loader walks from the install root down to the lane. At each level it reads `env`, then
-`env.<tool>`, skipping any file it cannot read; a deeper level overrides a shallower one.
+The loader walks from the **deploy root** (`NCAR_HPC_DEPLOY_ROOT`, i.e.
+`sam-queries/containers/ncar-hpc-deploy/`) down to the lane. It does not start at the install
+root, so the conda `.env` and the lane files never see each other. At each level it reads `env`,
+then `env.<tool>`, skipping any file it cannot read; a deeper level overrides a shallower one.
 
 ```
-sam-queries/env                       0644  non-secrets: hosts (the -ro ones), DB names, SSL, TZ, JOB_HISTORY_MACHINES
-  containers/ncar-hpc-deploy/lanes/<lane>/
+containers/ncar-hpc-deploy/env        0644  non-secrets shared by lanes: TZ, JOB_HISTORY_MACHINES (optional)
+  lanes/<lane>/
     env                               0644  hpc-reader / hpc_reader, SAM_DB_READ_ONLY=1, STATUS_DB_READ_ONLY=1
     env.sam-admin                     0640  csgteam + setfacl g:<admins>:r   hpc-writer, XRAS, MAIL, NOTIFY; READ_ONLY=0
     env.jobhist-sync                  0600  csgteam   jobhist_writer
@@ -121,8 +123,13 @@ sam-queries/env                       0644  non-secrets: hosts (the -ro ones), D
 | 2 | Claude | § 5 app PR | unit tests per backend; parity capture unchanged |
 | 3 | Ben + Claude | write the layered files on GLADE: the § 6a tarball (works with today's loader) | cron `tick` unchanged; `smoke --lane prod` passes |
 | 4 | Claude | § 4 wrapper PR + `smoke.sh` cases (plain user, admin ACL, csgteam) | `--help` and a query as each identity; `sam-admin` refused for a plain user; `NHD_DEBUG=1` layer list |
-| 5 | Ben | point the module's `sam-search` at the lane `bin/`; retire the conda `.env` | re-time (ledger 20), with the SIF `.pyc` follow-on |
-| 6 | Ben | revoke `pguser`'s exposure: rotate after step 5 | conda `.env` gone or holds no `pguser` |
+| 5 | Ben | point the module's `sam-search` at the lane `bin/` (rollback: repoint at the conda wrapper) | conda and lane outputs and timings compared side by side first; re-time (ledger 20) with the SIF `.pyc` follow-on |
+| 6 | Ben | remove the install-root `.env` once nothing reads it; rotate `pguser` | no reader of the root `.env` left |
+
+**Coexistence:** steps 1–4 touch only `containers/ncar-hpc-deploy/`. The conda path keeps its
+install-root `.env` until step 6. The one earlier edit there, optional, right after step 1: swap
+its `JOB_HISTORY_PG_*` / `CIRRUS_PG_*` lines to `hpc_reader` on `csg-postgres-ro`. Conda users
+keep working, and the world-readable `pguser` copy is gone before the cutover.
 
 ### 6a. The GLADE files: a tarball and a finalize script
 
