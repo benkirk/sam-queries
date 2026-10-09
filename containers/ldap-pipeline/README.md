@@ -83,13 +83,21 @@ kept on purpose, so the cron behavior matches prod (NCAR/sam-ldap-syncd#6).
 
 ## Running it
 
+Hybrid mode, `env.example`'s default: the replica is seeded from prod's own stage-1 data
+and carried forward by `ldap-poll` ("Choosing the LDAP source" says why there is no
+syncrepl from a laptop).
+
 ```bash
-docker compose --profile init run --rm volume-init     # lay out /var/data; RESET=1 to wipe
-docker compose --profile test run --rm syncdTest       # SAM check; the staging half fails by design
-docker compose up -d ldap                              # full refresh from the provider
-docker compose logs -f ldap                            # wait for INITIALIZING to clear
-docker compose up -d transformer syncd
-bin/collect                                            # stub logs + syncd logs -> out/<ts>/
+rsync sam-app.ucar.edu:/data/tomcat-sam/prod/sam-ldap-syncd/auditlog.d/<ts>Z-1-slapcat seed/
+rsync sam-app.ucar.edu:/data/tomcat-sam/prod/sam-ldap-syncd/auditlog.d/<ts>Z-combined-auditlog.ldif seed/
+bin/ldif-scrub seed/<dump> seed/dump.ldif          # the seven subtrees, no password attributes
+bin/ldif-scrub seed/<audit> seed/audit.ldif
+bin/ldif-fold seed/dump.ldif seed/audit.ldif seed/folded.ldif   # the directory as of the copy
+RESET=1 docker compose --profile init run --rm volume-init      # lay out /var/data
+docker compose up -d ldap; docker compose stop ldap  # bootstraps slapd.d, then idles in INITIALIZING
+docker compose --profile seed run --rm ldap-seed    # slapadd, offline; RESEED=1 to replace
+docker compose up -d ldap transformer syncd ldap-poll
+bin/collect                                        # stub logs + syncd logs -> out/<ts>/
 ```
 
 | Stage | Watch |
@@ -101,7 +109,34 @@ bin/collect                                            # stub logs + syncd logs 
 `syncd` runs `-vvvvv --redirect` as in prod, so its output goes to `log-syncd.{o,e}` in
 the data volume, not `docker compose logs`. Like prod, nothing restarts a container that
 exits, except `ldap-poll` (`unless-stopped`). Docker Desktop pauses with the Mac, so an
-overnight run needs the machine awake.
+overnight run needs the machine awake (`caffeinate -is`, on AC, lid open).
+
+### Operating
+
+```bash
+docker ps --filter name=ldap-pipeline --format '{{.Names}}\t{{.Status}}'
+docker compose logs --since 1h ldap-poll | tail     # one line per poll: errors=0, watermark advancing
+docker compose --profile tools run --rm -T shell -c \
+  'grep -c " to api" /var/data/syncd/sam-update-stub.log; tail -3 /var/data/log-syncd.e'
+```
+
+`docker compose stop` pauses everything; the `data` volume keeps the replica, the poller
+watermark (`ldap-poll.json`), the spool and syncd's state, and `docker compose up -d ldap
+transformer syncd ldap-poll` resumes. A restarted syncd reloads `sam-data.json`, folds
+`sam-log.jsl` into it and truncates the log, so run `bin/collect` first. A **reset**,
+prod's `reset.sh -s` (stop syncd, empty `/var/data/syncd/`, `touch /var/data/.reset` owned by
+tomcat-sam, start), makes the transformer rebuild `add.jsl` from the latest dump and
+syncd download SAM afresh and diff the two: one prod read and the whole seed-diff PUT
+stream again. `bin/collect` copies into `out/<ts>/` the stub logs, syncd's logs,
+`sam-data.json` and `sam-log.jsl` (the daemon's own per-change log; it holds the live
+stream only, while the stub log also holds the seed diff).
+
+`sam-data.json` is the daemon's in-memory copy of SAM, rewritten after every applied file,
+so it already reflects the PUTs the stub swallowed. To capture SAM *before* a PUT stream,
+reset with `syncdInit` in between: empty `/var/data/syncd/`, `touch /var/data/.reset`, `docker
+compose --profile init run --rm syncdInit` (downloads and writes the dump, applies
+nothing), `bin/collect`, then `docker compose up -d syncd`. The diff of each PUT body
+against that dump is the field-level change the port has to make.
 
 ### Choosing the SAM
 
@@ -111,8 +146,10 @@ overnight run needs the machine awake.
 | `http://host.docker.internal:5050` | SAMuel (`docker compose up samuel-dev`); the only target that may take writes |
 | `https://test-sam.ucar.edu:443` | unusable: 404 on every path (2026-10-08), and the daemon retries a 404 forever, silently |
 
-Reading from prod has a cost. Every syncd start downloads all seven collections (`user`
-is 24 MB and ~30 s of Tomcat time), so start it deliberately, not in a loop. Never run
+Reading from prod has a cost. A syncd start that finds no `/var/data/syncd/sam-data.json` and
+`sam-log.jsl` downloads all seven collections (`user` is 24 MB and ~30 s of Tomcat time);
+a restart that finds them reloads the dump instead. So a reset is deliberate, never in a
+loop (see "Operating"). Never run
 `syncdTest` there: `ldapsync/status` answers 500 on prod, and legacy mails every 500 to
 SWEG. The guard enforces both.
 
@@ -132,19 +169,9 @@ critical for anonymous clients (`ldapsearch -E sync=ro` hides this, since it sen
 control as non-critical).
 
 **Hybrid** (`COMPOSE_FILE=compose.yaml:compose.hybrid.yaml` in `.env`) runs the replica
-with no syncrepl and seeds it from prod's own stage-1 data:
-
-```bash
-rsync sam-app.ucar.edu:/data/tomcat-sam/prod/sam-ldap-syncd/auditlog.d/<ts>Z-1-slapcat seed/
-rsync sam-app.ucar.edu:/data/tomcat-sam/prod/sam-ldap-syncd/auditlog.d/<ts>Z-combined-auditlog.ldif seed/
-bin/ldif-scrub seed/<dump> seed/dump.ldif          # the seven subtrees, no password attributes
-bin/ldif-scrub seed/<audit> seed/audit.ldif
-bin/ldif-fold seed/dump.ldif seed/audit.ldif seed/folded.ldif   # the directory as of the copy
-RESET=1 docker compose --profile init run --rm volume-init
-docker compose up -d ldap; docker compose stop ldap  # bootstraps slapd.d, then idles in INITIALIZING
-docker compose --profile seed run --rm ldap-seed    # slapadd, offline; RESEED=1 to replace
-docker compose up -d ldap transformer syncd ldap-poll
-```
+with no syncrepl and seeds it from prod's own stage-1 data, the recipe under "Running it".
+Without that line `compose.yaml` alone is prod's path: `docker compose up -d ldap` starts a
+full refresh from fdb, `docker compose logs -f ldap` shows INITIALIZING clearing.
 
 `ldap-poll` carries the seed forward: every `POLL_INTERVAL_SECS` (300) it reads the
 entries ldap.ucar.edu modified since its watermark and writes the differences into the
@@ -154,8 +181,11 @@ in prod. Every `POLL_SWEEP_SECS` (3600) a DN/`entryUUID` listing (about 7 MB) ca
 deletes and renames. It never removes an attribute anonymous readers cannot see, so a
 seeded `x-ucar-contactPerson` stays put; a service account added after the seed arrives
 without one. The subtree roots carry each replica's own `entryUUID`, so entries are
-matched by UUID, then by DN. State: `/var/data/ldap-poll.json`; log: `docker compose
-logs ldap-poll`. `entryCSN` cannot be set, even under relax, so local CSNs are local.
+matched by UUID, then by DN. A sweep whose upstream listing is empty for any subtree is
+abandoned (slapd answers a missing root the way it answers an empty one), and one that
+would delete more than `POLL_MAX_DELETES` (200) applies none of its deletes. State:
+`/var/data/ldap-poll.json`; log: `docker compose logs ldap-poll`. `entryCSN` cannot be
+set, even under relax, so local CSNs are local.
 
 Never copy the `-0-slapcat` dump: it is prod's cn=config, citldapsam password included.
 Prod's replica copies the whole tree, password hashes too, so scrub before anything else.

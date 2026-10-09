@@ -25,6 +25,8 @@ PASSWORD = os.environ.get("POLL_PASSWORD_FILE", "/run/secrets/admin_password")
 STATE = os.environ.get("POLL_STATE", "/var/data/ldap-poll.json")
 INTERVAL = int(os.environ.get("POLL_INTERVAL_SECS", "300"))
 SWEEP = int(os.environ.get("POLL_SWEEP_SECS", "3600"))
+# A sweep that would delete more than this applies none of its deletes.
+MAX_DELETES = int(os.environ.get("POLL_MAX_DELETES", "200"))
 MARGIN = datetime.timedelta(seconds=int(os.environ.get("POLL_MARGIN_SECS", "120")))
 TS = "%Y%m%d%H%M%SZ"
 # Never written: slapd owns them, or (entryCSN) refuses them even under relax.
@@ -36,7 +38,7 @@ BATCH = 50
 
 
 def log(msg):
-    print("%s ldap-poll: %s" % (datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), msg),
+    print("%s ldap-poll: %s" % (datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), msg),
           flush=True)
 
 
@@ -125,7 +127,12 @@ def cycle(state, bind, sweep):
                 everywhere(UPSTREAM, "(modifyTimestamp>=%s)" % since.strftime(TS), ["*", "+"])}
     deletes = []
     if sweep:
-        up = {e.first("entryUUID"): e.dn for e in everywhere(UPSTREAM, "(objectClass=*)", ["entryUUID"])}
+        up = {}
+        for st in SUBTREES:
+            found = search(UPSTREAM, "%s,%s" % (st, BASE), "(objectClass=*)", ["entryUUID"])
+            if not found:       # rc 32 on a root would otherwise read as "all deleted"
+                raise RuntimeError("sweep: upstream listed nothing under %s" % st)
+            up.update((e.first("entryUUID"), e.dn) for e in found)
         here = {e.first("entryUUID"): e.dn for e in everywhere(LOCAL, "(objectClass=*)", ["entryUUID"], bind)}
         # The subtree roots and a few replica-local entries carry each replica's own
         # entryUUID; a DN present on both sides is the same entry whatever its UUID.
@@ -134,6 +141,9 @@ def cycle(state, bind, sweep):
         upstream.update(by_uuid(UPSTREAM, missing - set(upstream)))
         deletes = sorted((here[u] for u in set(here) - set(up) if norm(here[u]) not in up_dns),
                          key=lambda d: -d.count(","))
+        if len(deletes) > MAX_DELETES:
+            log("sweep: %d deletes exceed POLL_MAX_DELETES=%d; none applied" % (len(deletes), MAX_DELETES))
+            deletes = []
     local = by_uuid(LOCAL, upstream.keys(), bind)
     adds, renames, mods = [], [], []
     for uuid, u in upstream.items():

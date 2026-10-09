@@ -404,11 +404,20 @@ on both group routes. Responses: permit `{<idField>, purgeable, message}`; purge
 - **Replay**: `scripts/ldapsync_replay.py` posts a captured `syncd/sam-log.jsl` (the
   exact PUT stream the daemon wrote; ask George for one day) at webdev, exercising
   every write path with production-shaped payloads.
-- **Local pipeline** (`containers/ldap-pipeline/`, 2026-10-08): the three sam-app
-  containers built from the deployed commits, replicating live from fdb with their own
-  RID (168), every write stubbed to a log until `SAM_URL` is our webapp. Against
-  test-sam its `sam-update-stub.log` is the PUT corpus the replay needs, without asking
-  George; against `host.docker.internal:5050` it is the real client hitting P1a–P1d.
+- **Local pipeline** (`containers/ldap-pipeline/`, 2026-10-09): the three sam-app
+  containers built from the deployed commits. The replica is seeded from prod's own dump
+  and kept current by anonymous polls of ldap.ucar.edu (fdb refuses citldapsam off
+  sam-app); syncd reads prod SAM; every write is stubbed to a log until `SAM_URL` is our
+  webapp. Its `sam-update-stub.log` is the PUT corpus the replay needs without asking
+  George (1,338 PUTs from the seed diff plus the live stream); `sam-log.jsl`, the format
+  above, holds the live stream since the last syncd start, which folds it into the dump
+  and truncates it; `sam-data.json` is the daemon's copy of SAM, rewritten
+  after each applied file, so it reflects the stubbed PUTs; the README's `syncdInit`
+  reset recipe captures the state before them. Against `host.docker.internal:5050`
+  it is the real client hitting P1a–P1d. Wire facts from the first run: `upid` arrives as
+  an int or a string (`"upid":71592`, `"upid":"71215"`); email and phone rows never carry
+  SAM ids; the daemon defers a user whose `userName` equals the upid ("unclaimed
+  account") rather than PUT it.
 - **Postgres**: run every purge on the :5434 dual backend; FK cascade behavior differs
   from MySQL.
 

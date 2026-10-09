@@ -6,17 +6,20 @@ cd "$(dirname "$0")/.."
 stamp=$(date +%Y%m%dT%H%M%S)
 jsl=0
 [[ ${1:-} == --jsl ]] && jsl=1
+umask 077
 mkdir -p "out/$stamp"
+# sam-log.jsl is the daemon's own per-change PUT log (the replay format); the stub log
+# also holds the initial-diff PUTs, which sam-log.jsl does not.
 docker compose --profile tools run --rm -T shell -c "
     set -e
     cd /var/data
     o=/out/$stamp
     ls -la . syncd auditlog.d >\$o/listing.txt 2>&1 || true
-    for f in log-syncd.o log-syncd.e ldap-poll.json syncd/*stub.log syncd/*dbg.log syncd/sam-data.*; do
+    for f in log-syncd.o log-syncd.e ldap-poll.json syncd/*stub.log syncd/*dbg.log syncd/sam-data.* syncd/sam-log.jsl; do
         [ -e \"\$f\" ] && cp -p \"\$f\" \$o/ || true
     done
     [ $jsl = 1 ] && cp -p syncd/*.jsl \$o/ 2>/dev/null || true
-    chmod -R a+rX \$o
+    chmod -R u+rwX,go-rwx \$o
 "
 docker compose logs --no-color ldap-poll >"out/$stamp/ldap-poll.log" 2>/dev/null || true
 echo "out/$stamp:"
