@@ -189,3 +189,26 @@ class OrganizationPurgePermitSchema(Schema):
     organization_id = _Int(data_key='organizationId')
     purgeable = fields.Boolean()
     message = _Str()
+
+
+class DatedAssociationSchema(Schema):
+    type = _Str()
+    description = _Str()
+    end_date = _Str(data_key='endDate')
+
+
+class ActiveUserStatusSchema(Schema):
+    """Legacy ``ActiveUserStatus``; its ``@JsonPropertyOrder`` named no real property,
+    so the two booleans trail, and dates are ``yyyy-MM-dd`` strings."""
+    user_id = _Int(data_key='userId')
+    upid = _Int()
+    unix_uid = _Int(data_key='unixUid')
+    username = _Str()
+    current_collaboration_end_date = _Str(data_key='currentCollaborationEndDate')
+    current_position_end_date = _Str(data_key='currentPositionEndDate')
+    type = _Str()
+    dated_associations = fields.List(fields.Nested(DatedAssociationSchema),
+                                     data_key='datedAssociations')
+    nominal_expiry = _Str(data_key='nominalExpiry')
+    active_collaborator = fields.Boolean(data_key='activeCollaborator')
+    active_staff = fields.Boolean(data_key='activeStaff')

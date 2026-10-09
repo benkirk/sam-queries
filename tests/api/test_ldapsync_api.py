@@ -74,6 +74,11 @@ class TestCollections:
         assert resp.mimetype == 'application/json'
         assert isinstance(json.loads(resp.data), list)
 
+    def test_collab_expiry_updates_is_a_json_list(self, ldapsync_client):
+        resp = _get(ldapsync_client, 'userlifecycle/collabexpiryupdates')
+        assert resp.status_code == 200
+        assert isinstance(resp.get_json(), list)
+
     def test_trailing_slash_serves_the_list(self, ldapsync_client):
         """An older daemon image asked for ``ldapsync/user/``; legacy served the list."""
         resp = _get(ldapsync_client, 'ldapsync/groupTag/')
