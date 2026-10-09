@@ -23,7 +23,7 @@ path (`docs/plans/XRAS_SUBMISSION.md` § 5).
 
 | Doc | What it is |
 |---|---|
-| [`PROJECT_AND_ACCOUNT_LIFECYCLE.md`](PROJECT_AND_ACCOUNT_LIFECYCLE.md) | Where a project comes from — ARC → XRAS → SAM, and the internal path beside it. ⚠️ **SAM never creates users**: `users` is mirrored in from an organizational LDAP, which is why the account worklist is a worklist and not a button |
+| [`PROJECT_AND_ACCOUNT_LIFECYCLE.md`](PROJECT_AND_ACCOUNT_LIFECYCLE.md) | Where a project comes from — ARC → XRAS → SAM, and the internal path beside it. ⚠️ **SAM never originates users**: `users` is mirrored in from an organizational LDAP, which is why the account worklist is a worklist and not a button |
 
 ## Live docs — `incoming/`
 

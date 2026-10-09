@@ -449,8 +449,8 @@ def create_app(*, config_overrides: dict | None = None):
     app.register_blueprint(api_disk_quota_bp, url_prefix='/api/v1/disk_quota')
     app.register_blueprint(api_wallclock_exemption_bp, url_prefix='/api/v1/wallclock_exemption')
     app.register_blueprint(api_admin_bp, url_prefix='/api/v1/admin')
-    # XRAS is the one API surface not under /api/v1 — the prefix is legacy's,
-    # mapped by web.xml to a dedicated DispatcherServlet at /api/xras/*.
+    # XRAS's prefix is legacy's, mapped by web.xml to a dedicated DispatcherServlet
+    # at /api/xras/*; the identity sync below is the other surface outside /api/v1.
     app.register_blueprint(api_xras_bp, url_prefix='/api/xras/v1')
     # sam-ldap-syncd's legacy prefix. One trusted sequential caller whose replays
     # peak at ~350 PUTs/min, so the blueprint is exempt from the global limit.

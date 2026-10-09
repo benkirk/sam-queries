@@ -7,7 +7,7 @@ ships without new tables or new mail. Each item names what it is, why it was def
 what would justify picking it up.
 
 Context first: [`../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md`](../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md)
-— in particular **SAM never creates users**, which is what makes this a queue handed to
+— in particular **SAM never originates users**, which is what makes this a queue handed to
 another team rather than a control surface.
 
 ---

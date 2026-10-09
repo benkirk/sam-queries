@@ -185,7 +185,7 @@ sam-queries/
   `register/handoff_mail.py`, ACCOUNT_REGISTRATION.md D22); the digest stays off.
 
 ### Security / Integration
-- **Role**, **ApiCredentials**, **RoleApiCredentials** — legacy; only the API-key role names (`ROLE_XRAS`) are read
+- **Role**, **ApiCredentials**, **RoleApiCredentials** — legacy; only the API-key role names (`ROLE_XRAS`, `ROLE_API_ADMIN`) are read
 - **SamuelRole** / **SamuelRolePermission** / **SamuelRoleGrant** (`sam/security/samuel_roles.py`,
   DDL `scripts/sql/create_samuel_roles.sql`): the RBAC catalog — roles extend one parent,
   SYSTEM_ADMIN implies everything, a grant names a `user` / `group` / `apikey` (optionally one
@@ -233,7 +233,7 @@ Form-validation schemas are a separate concern — see §9 below; they live in
 ## API Endpoints (webapp `api/v1/`)
 
 Registered blueprints: `projects`, `users`, `charges`, `allocations`, `status`,
-`health`, `admin`, plus the **legacy-compat** set below.
+`health`, `admin`, plus the **legacy-compat** set below and `api/ldapsync/` at `/api/protected/admin` (`sam-ldap-syncd`'s contract; `docs/apis/SYSTEMS_INTEGRATION_APIs.md` § 8).
 
 Key endpoints (all JSON):
 - `GET /api/v1/users/`, `/users/<username>`, `/users/<username>/projects` — accept an
@@ -320,8 +320,9 @@ session.query(Machine).filter(Machine.decommission_date == None).all()
 | Custom hybrids (Resource, Machine, Queue, PanelSession, …) | commissioned / within date range |
 | `User.is_active` | `active == True AND locked == False` |
 
-**Exception — `sam/queries/statistics.py`**: `User.active == True` is kept
-intentionally so `active_users` and `locked_users` remain separate counters.
+**Exceptions**: `sam/queries/statistics.py` keeps `User.active == True` so `active_users`
+and `locked_users` stay separate counters; the identity sync (`sam/manage/{ldapsync,lifecycle,purge}.py`,
+`sam/queries/ldapsync.py`) reads `active` raw because legacy's rules do, and `is_active` would fold in `locked`.
 
 ### 6. Views
 Mark with `__table_args__ = {'info': {'is_view': True}}`. Never INSERT/UPDATE/DELETE.
@@ -363,7 +364,7 @@ Membership invariant: the lead and admin hold a live row on every live account
 never set in practice); `Project.update` seeds a new one (`ensure_members`).
 `Project.users` is lead + admin + row holders; `account_linked_users` is rows only.
 Reconcile (`reconcile_project_access`, CLI and web) skips users who are not `User.is_active`.
-Removal is a soft delete: started rows get `end_date` = now floored − 1 s (never-started rows are deleted, ended rows are history); `change_project_admin` needs an unended row.
+Removal is a soft delete: started rows get `end_date` = `membership_cutoff(now)` (now floored − 1 s; a midnight result steps back to 23:59:59), never-started rows are deleted, ended rows are history; `change_project_admin` needs an unended row.
 
 ### 8. API Route Protection (webapp)
 
@@ -690,7 +691,7 @@ sam-search accounting --jobs --last 365d --job-id 6049117[28].desched1
 sam-search --format json project SCSG0001 | jq          # JSON envelopes everywhere
 
 # Admin (superset of search)
-sam-admin user benkirk --validate
+sam-admin user benkirk --validate ; sam-admin user <u> --deactivation | --restore-deactivation [--dry-run]   # the identity sync's closure undo
 sam-admin project SCSG0001 --validate ; sam-admin project SCSG0001 --reconcile   # reconcile = everyone on every resource
 sam-admin project --reconcile-lead-admin --all --dry-run   # bulk, active resources only; drop --dry-run to write
 sam-admin accounting --disk --dry-run                   # summary rebuild/reconcile ops
@@ -1027,8 +1028,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - **User**: Ben Kirk (benkirk@ucar.edu)
 - **Organization**: CISL USS (University Services Section)
 - **Project**: SCSG0001 (CSG systems project)
-- **Facilities**: UNIV (university), WNA (Wyoming-NCAR Alliance)
-- **Resources**: Derecho, Casper, Gust (HPC); Stratus, Campaign Store (disk)
+- **Facilities / resources**: UNIV (university), WNA (Wyoming-NCAR Alliance); Derecho, Casper, Gust (HPC); Stratus, Campaign Store (disk)
 
 ---
 

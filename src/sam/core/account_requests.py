@@ -1,6 +1,6 @@
 """HPC account requests: the record of a person who needs an account.
 
-SAM never creates users (docs/xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md section 2);
+SAM never originates users (docs/xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md section 2);
 NUSD does. These two tables hold what SAM cannot re-derive from the mirror:
 who asked, who vouched, whether NUSD was told, and who set a row aside. Whether
 the account now EXISTS is derived from ``users`` at read time and stamped by

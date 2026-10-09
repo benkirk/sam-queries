@@ -32,6 +32,7 @@ SKIPPED_ALREADY_MEMBER = 'skipped_already_member'   # re-added since; reopening 
 def pending_deactivations(session, hours: int, now: Optional[datetime] = None) -> list:
     """Usernames stamped for deactivation more than *hours* ago and still active."""
     cutoff = (now or datetime.now()) - timedelta(hours=hours)
+    # Raw on purpose: a locked user still finishes (User.is_active folds in locked).
     return list(session.scalars(
         select(User.username)
         .where(User.active.is_(True), User.deactivate.is_not(None), User.deactivate < cutoff)

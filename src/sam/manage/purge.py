@@ -105,6 +105,7 @@ def find_user(session, *, unix_uid=None, upid=None, username=None,
 
 
 def user_violations(session, user: User) -> list:
+    # Raw on purpose: legacy's check; is_active would make a locked, active user purgeable.
     out = ['SAM user %s is active.'] if user.active else []
     out += [msg for sql, msg in _USER_BLOCKERS if _exists(session, sql, uid=user.user_id)]
     for kind, sql in _USER_SUMMARY_COUNTS:
