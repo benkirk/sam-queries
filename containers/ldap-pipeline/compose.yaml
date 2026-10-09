@@ -25,7 +25,7 @@ x-ldap-mounts: &ldap-mounts
 
 x-syncd: &syncd
   <<: *image
-  image: ghcr.io/ncar/sam-ldap-syncd:${PIPELINE_TAG:-pipeline-local}
+  image: ghcr.io/ncar/sam-ldap-syncd:${SYNCD_TAG:-${PIPELINE_TAG:-pipeline-local}}
   volumes: *mounts
   environment:
     SERVICE: syncd
@@ -37,7 +37,7 @@ x-syncd: &syncd
 
 x-guard: &guard
   <<: *image
-  image: ghcr.io/ncar/sam-ldap-syncd:${PIPELINE_TAG:-pipeline-local}
+  image: ghcr.io/ncar/sam-ldap-syncd:${SYNCD_TAG:-${PIPELINE_TAG:-pipeline-local}}
   user: root
   entrypoint: ["/bin/sh", "/guard.sh"]
   volumes:
@@ -151,7 +151,7 @@ services:
   # Root shell on the data volume; bin/collect copies out of it.
   shell:
     <<: *image
-    image: ghcr.io/ncar/sam-ldap-syncd:${PIPELINE_TAG:-pipeline-local}
+    image: ghcr.io/ncar/sam-ldap-syncd:${SYNCD_TAG:-${PIPELINE_TAG:-pipeline-local}}
     user: root
     entrypoint: ["/bin/sh"]
     volumes:

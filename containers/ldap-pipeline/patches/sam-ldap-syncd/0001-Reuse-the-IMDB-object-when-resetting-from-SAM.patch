@@ -1,0 +1,47 @@
+From d9bcecf67675d5fe44f3ea59660acc11c2b2b8cf Mon Sep 17 00:00:00 2001
+From: Benjamin Kirk <benkirk@ucar.edu>
+Date: Fri, 9 Oct 2026 08:56:57 -0600
+Subject: [PATCH 1/6] Reuse the IMDB object when resetting from SAM
+
+_checkForReset built a new IMDB and stored it in $self->{imdb}, but
+runSyncToSamLoop and ProjectGroupUpdater kept the old object, so after
+an in-loop rebuild they worked on stale data.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01EgPyNLobhxFie7ZK1MJxqX
+---
+ lib/Synchronizer.pm | 9 ++++-----
+ 1 file changed, 4 insertions(+), 5 deletions(-)
+
+diff --git a/lib/Synchronizer.pm b/lib/Synchronizer.pm
+index 630d6eb..b8748c5 100644
+--- a/lib/Synchronizer.pm
++++ b/lib/Synchronizer.pm
+@@ -207,7 +207,9 @@ sub runSyncToSamLoop {
+         my $safetyPause = 0;
+         my $latestUpdFile = $imdb->getLatestUpdateFile();
+         try {
+-            $self->_checkForReset($imdb);
++            if ($self->_checkForReset($imdb)) {
++                $latestUpdFile = $imdb->getLatestUpdateFile();
++            }
+             $self->_synchronizeTransformer($imdb);
+ 
+             $self->_checkForSnapshotRequest($imdb);
+@@ -399,12 +401,9 @@ sub _checkForReset {
+     # Make sure both files are gone
+     unlink($samDataFile, $samLogFile);
+ 
+-    my $icData = IMDBCore::create();
+-    my $imdb = IMDB->new();
+-    $imdb->attachData($icData);
++    $imdb->attachData(IMDBCore::create());
+ 
+     $self->_initializeIMDBFromSAM($imdb);
+-    $self->{'imdb'} = $imdb;
+ 
+     vprintf(INFO,"SAM data loaded, writing dump file...\n");
+     $self->_writeIMDB($imdb);
+-- 
+2.55.0
+

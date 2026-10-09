@@ -1,0 +1,210 @@
+From 7b707abfd26b12373a7267c992063a28a0549260 Mon Sep 17 00:00:00 2001
+From: Benjamin Kirk <benkirk@ucar.edu>
+Date: Fri, 9 Oct 2026 09:00:07 -0600
+Subject: [PATCH 2/6] Restore and skip a record SAM rejects instead of losing
+ the pass
+
+The IMDB is updated before the PUT, so a rejected update was dropped and,
+during a full dump, every record after it was lost too. Now a rejected
+record is put back in the IMDB (a later pass re-sends it) and the pass
+continues; 3xx, 401 and 403 invalidate the IMDB instead.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01EgPyNLobhxFie7ZK1MJxqX
+---
+ lib/IDMSDumpSynchronizer.pm | 10 +++---
+ lib/SamUpdatePropagator.pm  | 41 +++++++++++++++++++++++++
+ lib/SamUpdatePropagator.t   | 61 ++++++++++++++++++++++++++++++++++++-
+ lib/Synchronizer.pm         |  2 +-
+ 4 files changed, 108 insertions(+), 6 deletions(-)
+
+diff --git a/lib/IDMSDumpSynchronizer.pm b/lib/IDMSDumpSynchronizer.pm
+index 7018f24..3ff6b1b 100644
+--- a/lib/IDMSDumpSynchronizer.pm
++++ b/lib/IDMSDumpSynchronizer.pm
+@@ -73,7 +73,7 @@ my %MIN_COUNTS_BY_TYPE = (
+     my $idmsDumpSyncer = IDMSDumpSynchronizer->new($idmsFileMgr,$propagator);
+ 
+ Constructor for IDMSDumpSynchronizer class. The first argument is a
+-IDMSFileManager instance, and the second is an object with a propagate()
++IDMSFileManager instance, and the second is an object with a propagateOrRestore()
+ method that will propagate SamUpdate records to SAM.
+ 
+ =cut
+@@ -330,8 +330,8 @@ sub _propagateToSam {
+     if (isVprintable(INFO)) {
+         $self->_reportPropagationCounts(INFO,$samType,$addList,$delList);
+     }
+-    $self->_propagateSamUpdates($samDataMgr,$addList);
+-    $self->_propagateSamUpdates($samDataMgr,$delList);
++    $self->_propagateSamUpdates($samDataMgr,$addList,$oldSamData);
++    $self->_propagateSamUpdates($samDataMgr,$delList,$oldSamData);
+ }
+ 
+ #
+@@ -496,10 +496,12 @@ sub _propagateSamUpdates {
+     my $self = shift;
+     my $samDataMgr = shift;
+     my $samUpdates = shift;
++    my $oldRecs = shift;
+ 
+     my $propagator = $self->{'propagator'};
+     for my $samUpdate (@$samUpdates) {
+-        $propagator->propagate($samUpdate);
++        my $oldRec = $oldRecs->{SamUpdate::key($samUpdate)};
++        $propagator->propagateOrRestore($samUpdate,$oldRec);
+     }
+ }
+ 
+diff --git a/lib/SamUpdatePropagator.pm b/lib/SamUpdatePropagator.pm
+index f60ea58..e59dbe6 100644
+--- a/lib/SamUpdatePropagator.pm
++++ b/lib/SamUpdatePropagator.pm
+@@ -29,7 +29,9 @@ use Test::Deep::NoTest;
+ 
+ use Constants;
+ use Sweet;
++use Scalar::Util ();
+ use AppException qw( :throw );
++use IMDBStateException qw( :throw );
+ use Vprint qw( :print );
+ 
+ use SamClient;
+@@ -118,6 +120,45 @@ sub propagate {
+     $samFileMgr->appendToSamLog($samUpdate);
+ }
+ 
++=pod
++
++=head3 C<SamUpdatePropagator::propagateOrRestore()>
++
++    $samPropagator->propagateOrRestore($samUpdate,$oldRec);
++
++Like propagate(), but when SAM rejects the record, put C<$oldRec> back in the
++IMDB so a later pass sends it again, and continue.
++
++=cut
++
++sub propagateOrRestore {
++    my $self = shift;
++    my $samUpdate = shift;
++    my $oldRec = shift;
++
++    try {
++        $self->propagate($samUpdate);
++    } catch {
++        my $ex = $_;
++        die $ex unless Scalar::Util::blessed($ex) && $ex->isa('AppException')
++            && $ex->type() eq 'APPERROR' && $ex->status() >= 300;
++        my $status = $ex->status();
++        if ($status < 400 || $status == 401 || $status == 403) {
++            throwIMDBStateException($ex->message());
++        }
++        my $type = SamUpdate::dataType($samUpdate);
++        my $key = SamUpdate::key($samUpdate);
++        my $samDataMgr = SamDataManager::getManagerByType($type);
++        if (defined($oldRec)) {
++            $samDataMgr->addOrUpdate($oldRec);
++        } else {
++            $samDataMgr->delete($key);
++        }
++        vprintf(ERROR,"SAM rejected %s %s (%d), skipped: %s\n",
++                $type,$key,$status,$ex->message());
++    };
++}
++
+ sub _propagateAddOrUpdate {
+     my $self = shift;
+     my $samUpdate = shift;
+diff --git a/lib/SamUpdatePropagator.t b/lib/SamUpdatePropagator.t
+index c6d32d7..9a00e07 100755
+--- a/lib/SamUpdatePropagator.t
++++ b/lib/SamUpdatePropagator.t
+@@ -14,7 +14,7 @@ use SamFileManager;
+ use MockSamClient;
+ 
+ use TestData;
+-use Test::Most tests => 22;
++use Test::Most tests => 30;
+ 
+ 
+ require_ok('SamUpdatePropagator');
+@@ -170,3 +170,62 @@ ok(scalar(@{$updBuffer->{'group'}}) == 2,
+    'completed group IS transmitted to SAM');
+ ok(samLogLines() == 8,
+    'completed group is appended to the SAM log');
++
++#
++# A rejected record is put back in the IMDB and not logged; auth failures
++# invalidate the IMDB instead
++#
++my ($rejKey) = sort keys(%{$userMgr->samData()});
++my $rejOld = dclone($userMgr->samData()->{$rejKey});
++my $rejNew = dclone($rejOld);
++$rejNew->{'firstname'} = 'Rejected';
++$userMgr->addOrUpdate($rejNew);
++my $rejStatus = 400;
++{
++    no warnings 'redefine';
++    *MockSamClient::addOrUpdate = sub {
++        AppException::throwError($rejStatus,"rejected");
++    };
++}
++my $nLog = samLogLines();
++$samUpdate = SamUpdate::create('addOrUpdate','user',$rejKey,$rejNew);
++lives_ok { $propagator->propagateOrRestore($samUpdate,$rejOld) }
++   'propagateOrRestore() continues after a 400';
++is_deeply([$userMgr->samData()->{$rejKey}, samLogLines()], [$rejOld, $nLog],
++   'rejected record is restored in the IMDB and not logged');
++$rejStatus = 401;
++throws_ok { $propagator->propagateOrRestore($samUpdate,$rejOld) }
++   qr/IMDB should be re-initialized/,
++   'propagateOrRestore() raises IMDBStateException on a 401';
++
++#
++# A rejected new record has nothing to restore: it leaves the IMDB
++#
++$rejStatus = 400;
++my $newRec = dclone($rejOld);
++$newRec->{'userName'} = 'rejectednew';
++my $newKey = $userMgr->getKey($newRec);
++$userMgr->addOrUpdate($newRec);
++$samUpdate = SamUpdate::create('addOrUpdate','user',$newKey,$newRec);
++lives_ok { $propagator->propagateOrRestore($samUpdate,undef) }
++   'propagateOrRestore() continues after a rejected new record';
++ok(!exists($userMgr->samData()->{$newKey}),
++   'a rejected new record is removed from the IMDB');
++
++#
++# A rejected delete (sent as a tombstone, purgePermit=0) is restored
++#
++$userMgr->delete($rejKey);
++$samUpdate = SamUpdate::create('delete','user',$rejKey,$rejOld);
++lives_ok { $propagator->propagateOrRestore($samUpdate,$rejOld) }
++   'propagateOrRestore() continues after a rejected delete';
++is_deeply($userMgr->samData()->{$rejKey}, $rejOld,
++   'a rejected delete is restored in the IMDB');
++
++#
++# SAM's own 500 is a rejected record too, not a reset
++#
++$rejStatus = 500;
++$samUpdate = SamUpdate::create('addOrUpdate','user',$rejKey,$rejNew);
++lives_ok { $propagator->propagateOrRestore($samUpdate,$rejOld) }
++   'propagateOrRestore() continues after a 500';
+diff --git a/lib/Synchronizer.pm b/lib/Synchronizer.pm
+index b8748c5..248bf25 100644
+--- a/lib/Synchronizer.pm
++++ b/lib/Synchronizer.pm
+@@ -572,7 +572,7 @@ sub _applyUpdateFiles {
+ 
+         my $samUpdate = $samDataMgr->makeSamUpdate($updType,$oldRec,$newRec);
+         if (defined($samUpdate)) {
+-            $updatePropagator->propagate($samUpdate);
++            $updatePropagator->propagateOrRestore($samUpdate,$oldRec);
+         }
+ 
+     };
+-- 
+2.55.0
+

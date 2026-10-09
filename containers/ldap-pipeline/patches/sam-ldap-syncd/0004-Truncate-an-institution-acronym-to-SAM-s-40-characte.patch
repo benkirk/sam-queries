@@ -1,0 +1,55 @@
+From 13e772ffe8590d7dd7b223a3585c7b6a81b87e73 Mon Sep 17 00:00:00 2001
+From: Benjamin Kirk <benkirk@ucar.edu>
+Date: Fri, 9 Oct 2026 09:56:31 -0600
+Subject: [PATCH 4/6] Truncate an institution acronym to SAM's 40 characters
+
+SAM's institution.acronym is varchar(40). A longer acronym was sent as is,
+so SAM rejected the institution on every pass. Truncate it in normalize(),
+as delete() already intends for tombstones, so the IMDB matches what SAM
+stores.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01EgPyNLobhxFie7ZK1MJxqX
+---
+ lib/SamInstitutionData.pm | 2 ++
+ lib/SamInstitutionData.t  | 7 ++++++-
+ 2 files changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/lib/SamInstitutionData.pm b/lib/SamInstitutionData.pm
+index 1234eec..7735359 100644
+--- a/lib/SamInstitutionData.pm
++++ b/lib/SamInstitutionData.pm
+@@ -53,6 +53,8 @@ sub new {
+     my $self = $class->SUPER::new('institution','institutionId');
+     
+     $self->setNormalizer('institutionId',\&SamDataUtil::integerNormalizer);
++    $self->setNormalizer('acronym',
++        sub { my $v = shift; defined($v) ? substr($v,0,40) : $v });
+     $self->setNormalizer('nsfOrgCode',\&SamDataUtil::emptyStringNormalizer);
+     $self->setNormalizer('address',\&SamDataUtil::emptyStringNormalizer);
+     $self->setNormalizer('city',\&SamDataUtil::emptyStringNormalizer);
+diff --git a/lib/SamInstitutionData.t b/lib/SamInstitutionData.t
+index 2b0be5c..ed8ee6e 100755
+--- a/lib/SamInstitutionData.t
++++ b/lib/SamInstitutionData.t
+@@ -9,7 +9,7 @@ use SamDataManager;
+ 
+ use TestData;
+ 
+-use Test::Most tests => 9;
++use Test::Most tests => 10;
+ 
+ 
+ require_ok('SamInstitutionData');
+@@ -58,3 +58,8 @@ is_deeply($inst,$delData,
+ $inst = $instMgr->lookup(39);
+ ok(!defined($inst),
+    '$instMgr->lookup() returns undef after delete');
++
++my $longRec = { institutionId => 40, acronym => 'A' x 56 };
++$instMgr->normalize($longRec);
++ok($longRec->{'acronym'} eq 'A' x 40,
++   '$instMgr->normalize() truncates the acronym to 40 characters');
+-- 
+2.55.0
+
