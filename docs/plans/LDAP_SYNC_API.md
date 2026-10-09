@@ -621,6 +621,11 @@ before the transition clears it, bounded by `LDAPSYNC_RESTORE_WINDOW_DAYS` (90) 
 returning after a real departure is not re-added. The operator command
 (`sam-admin user <u> --deactivation` / `--restore-deactivation`) uses the same match.
 
+Levers, all shipped off in `helm/values.yaml`: `LDAPSYNC_LIFECYCLE_ENABLED` gates the
+finish pair (`pendingdeactivations` answers `[]`, `deactivate` is refused),
+`LDAPSYNC_RESTORE_ON_REACTIVATE` the hook above, `LDAPSYNC_PURGE_ENABLED` every purge of
+an existing row (`docs/apis/SYSTEMS_INTEGRATION_APIs.md` § 8).
+
 ### 10.5 Verification so far
 
 - Unit, query and HTTP tiers on MySQL and Postgres; gates and helm renders green.
