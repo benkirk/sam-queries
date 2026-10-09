@@ -6,6 +6,8 @@ A local copy of the identity pipeline that runs on sam-app.ucar.edu: **sam-idms-
 `/api/protected/admin/ldapsync/*`). It is built from the commits running in production
 and configured like production, bugs included, so that SAMuel's port of those endpoints
 can be tested against the real client before a cutover.
+The one deliberate exception is opt-in: `patches/` holds fixes to syncd we carry until
+they go upstream, built only with `PATCHED=1` and run only with `SYNCD_TAG` set.
 
 What the daemon does and why: `docs/plans/SAM_LDAP_SYNCD_REFERENCE.md`. What SAMuel has
 to serve: `docs/plans/LDAP_SYNC_API.md`.
@@ -217,6 +219,7 @@ and `telephoneNumber`, of which the transformer maps only the service-account
 | File | |
 |---|---|
 | `pins` | the prod commits, read by `bin/build-images` |
+| `patches/` | syncd fixes we carry, opt-in (`PATCHED=1`, `SYNCD_TAG`) |
 | `compose.yaml` | sam-app's prod compose, adapted as its header says |
 | `env.example` | prod `.env`, with the `LOCAL` lines |
 | `bin/guard.sh` | the checks above |
@@ -231,3 +234,8 @@ and `telephoneNumber`, of which the transformer maps only the service-account
 The same harness builds George's repos at any ref (`REF_<REPO>=`), so a fix to one of
 the defects in NCAR/sam-ldap-syncd#6 can be shown working end to end before it is
 proposed. `pins` changes only when sam-app is redeployed.
+
+Fixes we have made are in `patches/sam-ldap-syncd/`, one per defect, with a table in
+`patches/README.md`. `PATCHED=1 bin/build-images sam-ldap-syncd` builds
+`sam-ldap-syncd:<tag>-patched`; `SYNCD_TAG=<tag>-patched` in `.env` runs it, and unsetting it
+goes back to the prod code.

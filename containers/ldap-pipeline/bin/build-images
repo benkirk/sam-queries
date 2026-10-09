@@ -23,6 +23,7 @@ must already exist under the same tag.
 
   ZOO_DIR            clones of the NCAR repos (default: $ZOO_DIR)
   REF_<REPO>         build another ref, e.g. REF_SAM_LDAP_SYNCD=376b1a6
+  PATCHED=1          apply patches/<repo>/*.patch and tag :<tag>-patched (see patches/README.md)
   PIPELINE_TAG       image tag (default: .env's, else pipeline-local)
   PIPELINE_PLATFORM  default: .env's, else linux/amd64 as in prod; linux/arm64 is native.
                      Give each platform its own tag; compose runs the pair in .env.
@@ -81,8 +82,15 @@ for i in "${!REPOS[@]}"; do
         curl -fsSL "$aws" -o "$ctx/awscli/awscliv2.zip"
         curl -fsSL "$aws.sig" -o "$ctx/awscli/awscliv2.sig"
     fi
-    note=""
+    note="" tag=$TAG version=$sha
     [[ $sha == "${PINS[$i]}"* ]] || note="  (NOT the prod pin ${PINS[$i]})"
+    if [[ ${PATCHED:-} == 1 && -d $HERE/patches/$repo ]]; then
+        for p in "$HERE/patches/$repo"/*.patch; do
+            (cd "$ctx" && git apply "$p") || { echo "build-images: $p does not apply" >&2; exit 2; }
+            note+="  +$(basename "$p")"
+        done
+        tag=$TAG-patched version=$sha.patched
+    fi
     echo "==> $repo @ $sha$note"
     docker build --platform "$PLATFORM" \
         --build-arg DEBIAN_QUALIFIER=":$DEBIAN_BASE" \
@@ -90,11 +98,11 @@ for i in "${!REPOS[@]}"; do
         --build-arg SFTP_SERVER_QUALIFIER="$Q" \
         --build-arg SWEET_PL5_QUALIFIER="$Q" \
         --build-arg UCAR_LDAP_QUALIFIER="$Q" \
-        --build-arg IMAGE_VERSION="0.0.1-pipeline.$sha" \
+        --build-arg IMAGE_VERSION="0.0.1-pipeline.$version" \
         --build-arg BRANCH="$ref" \
         --label org.opencontainers.image.revision="$sha" \
         --label org.opencontainers.image.source="https://github.com/NCAR/$repo" \
-        -t "ghcr.io/ncar/$repo:$TAG" "$ctx"
+        -t "ghcr.io/ncar/$repo:$tag" "$ctx"
 done
 
 # compose.hybrid.yaml runs this variant: synccons-off.sh baked over the bootstrap
