@@ -3,7 +3,7 @@
 import click
 
 from cli.core.context import Context
-from cli.core.utils import configure_logging
+from cli.core.utils import EXIT_ERROR, configure_logging
 
 
 def verbose_option(help: str = 'Show detailed information'):
@@ -24,3 +24,12 @@ def provisioning_option(f):
     return click.option('--provisioning/--no-provisioning', default=None, expose_value=False,
                         callback=callback,
                         help='Cross-check host provisioning (auto-on on a provisioned host)')(f)
+
+
+def usage_error(ctx: Context, message: str, show_help: bool = False):
+    """Reject a bad flag combination: ``message`` (and the help) on stderr, exit EXIT_ERROR."""
+    import sys
+    ctx.stderr_console.print(message, style='bold red')
+    if show_help:
+        click.echo(click.get_current_context().get_help(), err=True)
+    sys.exit(EXIT_ERROR)

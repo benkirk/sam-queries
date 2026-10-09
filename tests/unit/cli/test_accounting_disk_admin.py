@@ -1017,5 +1017,5 @@ class TestReconcileDirectories:
     def test_flag_is_rejected_outside_disk(self, runner, mock_db_session):
         result = runner.invoke(cli, [
             'accounting', '--comp', '--machine', 'derecho', '--reconcile-directories'])
-        assert result.exit_code == 1
+        assert result.exit_code == 2 and result.stdout == ""
         assert '--reconcile-directories only applies to --disk' in result.output

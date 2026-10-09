@@ -12,7 +12,7 @@ from datetime import date as _date, datetime
 
 from config import SAMConfig
 from cli.core.context import Context
-from cli.core.options import provisioning_option, verbose_option
+from cli.core.options import provisioning_option, usage_error, verbose_option
 from cli.core.utils import EXIT_SUCCESS, EXIT_ERROR, configure_logging
 from cli.user.commands import UserAdminCommand
 from cli.project.commands import (
@@ -51,7 +51,7 @@ def cli(ctx: Context, verbose: bool, output_format: str):
         SAMConfig.validate()
     except EnvironmentError as e:
         ctx.stderr_console.print(str(e), style="bold red")
-        sys.exit(2)
+        sys.exit(EXIT_ERROR)
 
     ctx.verbose = verbose
     configure_logging(verbose)
@@ -125,31 +125,23 @@ def project(ctx: Context, projcode, validate, reconcile, reconcile_lead_admin, a
 
     # Validate that --resource requires --audit-trees
     if audit_resource and not audit_trees:
-        ctx.console.print("Error: --resource requires --audit-trees", style="bold red")
-        sys.exit(1)
+        usage_error(ctx, "Error: --resource requires --audit-trees")
 
     # Validate that --notify requires --upcoming-expirations
     if notify and not upcoming_expirations:
-        ctx.console.print("Error: --notify requires --upcoming-expirations", style="bold red")
-        sys.exit(1)
+        usage_error(ctx, "Error: --notify requires --upcoming-expirations")
 
     any_reconcile = reconcile or reconcile_lead_admin
     if reconcile and reconcile_lead_admin:
-        ctx.console.print("Error: use one of --reconcile / --reconcile-lead-admin", style="bold red")
-        sys.exit(1)
+        usage_error(ctx, "Error: use one of --reconcile / --reconcile-lead-admin")
     if all_projects and not any_reconcile:
-        ctx.console.print("Error: --all requires --reconcile or --reconcile-lead-admin",
-                          style="bold red")
-        sys.exit(1)
+        usage_error(ctx, "Error: --all requires --reconcile or --reconcile-lead-admin")
     if all_projects and projcode:
-        ctx.console.print("Error: give a projcode or --all, not both", style="bold red")
-        sys.exit(1)
+        usage_error(ctx, "Error: give a projcode or --all, not both")
 
     # Validate that --dry-run requires --notify or a reconcile flag
     if dry_run and not (notify or any_reconcile):
-        ctx.console.print("Error: --dry-run requires --notify, --reconcile or --reconcile-lead-admin",
-                          style="bold red")
-        sys.exit(1)
+        usage_error(ctx, "Error: --dry-run requires --notify, --reconcile or --reconcile-lead-admin")
 
     if all_projects:
         sys.exit(ProjectReconcileCommand(ctx).execute(
@@ -157,15 +149,12 @@ def project(ctx: Context, projcode, validate, reconcile, reconcile_lead_admin, a
 
     # Validate that --deactivate requires --recent-expirations
     if deactivate and not recent_expirations:
-        ctx.console.print("Error: --deactivate requires --recent-expirations", style="bold red")
-        sys.exit(1)
+        usage_error(ctx, "Error: --deactivate requires --recent-expirations")
 
     # --force means "skip the protection" on both surfaces that have one:
     # the deactivation confirmation prompt, and notification suppression.
     if force and not (deactivate or notify):
-        ctx.console.print("Error: --force requires --deactivate or --notify",
-                          style="bold red")
-        sys.exit(1)
+        usage_error(ctx, "Error: --force requires --deactivate or --notify")
 
     # DB-wide tree audit — no projcode (the invariant spans trees, not projects)
     if audit_trees:
@@ -204,13 +193,8 @@ def project(ctx: Context, projcode, validate, reconcile, reconcile_lead_admin, a
 
     # Require projcode for other operations
     if not projcode:
-        ctx.console.print(
-            "Error: projcode argument is required unless using --upcoming-expirations, "
-            "--recent-expirations, --audit-trees, or --all",
-            style="bold red"
-        )
-        click.echo(click.get_current_context().get_help())
-        sys.exit(1)
+        usage_error(ctx, "Error: projcode argument is required unless using --upcoming-expirations, "
+                         "--recent-expirations, --audit-trees, or --all", show_help=True)
 
     command = ProjectAdminCommand(ctx)
     exit_code = command.execute(projcode, validate=validate, reconcile=any_reconcile,
@@ -257,24 +241,16 @@ def contracts(ctx: Context, validate, audit_all, check_sources, limit,
     """
 
     if audit_all and not validate:
-        ctx.console.print("Error: --all requires --validate", style="bold red")
-        sys.exit(1)
+        usage_error(ctx, "Error: --all requires --validate")
 
     if check_sources and not validate:
-        ctx.console.print("Error: --check-sources requires --validate",
-                          style="bold red")
-        sys.exit(1)
+        usage_error(ctx, "Error: --check-sources requires --validate")
 
     if limit is not None and not check_sources:
-        ctx.console.print("Error: --limit requires --check-sources",
-                          style="bold red")
-        sys.exit(1)
+        usage_error(ctx, "Error: --limit requires --check-sources")
 
     if not validate:
-        ctx.console.print("Error: no action specified (use --validate)",
-                          style="bold red")
-        click.echo(click.get_current_context().get_help())
-        sys.exit(EXIT_ERROR)
+        usage_error(ctx, "Error: no action specified (use --validate)", show_help=True)
 
     command = ContractsAuditCommand(ctx)
     sys.exit(command.execute(active_only=not audit_all,
@@ -415,24 +391,12 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
     reconcile_mode = reconcile_quotas is not None
 
     if reconcile_mode and charge_mode:
-        ctx.console.print(
-            "Error: --reconcile-quotas is mutually exclusive with --comp/--disk/--archive",
-            style="bold red",
-        )
-        sys.exit(1)
+        usage_error(ctx, "Error: --reconcile-quotas is mutually exclusive with --comp/--disk/--archive")
 
     if (verify_paths or verify_host) and not reconcile_mode:
-        ctx.console.print(
-            "Error: --verify-paths/--verify-host require --reconcile-quotas",
-            style="bold red",
-        )
-        sys.exit(1)
+        usage_error(ctx, "Error: --verify-paths/--verify-host require --reconcile-quotas")
     if verify_host and not verify_paths:
-        ctx.console.print(
-            "Error: --verify-host requires --verify-paths",
-            style="bold red",
-        )
-        sys.exit(1)
+        usage_error(ctx, "Error: --verify-host requires --verify-paths")
 
     # Reconcile-mode write flags. The two write flags are independent so
     # admins can act on either bucket alone (e.g. deactivate orphans
@@ -441,26 +405,14 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
     # sense alongside --deactivate-orphaned. Charge-posting modes
     # (--comp/--disk/--archive) ignore these flags.
     if (update_accounting_system or deactivate_orphaned) and not reconcile_mode:
-        ctx.console.print(
-            "Error: --update-accounting-system / --deactivate-orphaned "
-            "require --reconcile-quotas",
-            style="bold red",
-        )
-        sys.exit(1)
+        usage_error(ctx, "Error: --update-accounting-system / --deactivate-orphaned "
+                         "require --reconcile-quotas")
     if force and reconcile_mode and not deactivate_orphaned:
-        ctx.console.print(
-            "Error: --force requires --deactivate-orphaned (overrides the "
-            "live-path safety gate when deactivating orphans)",
-            style="bold red",
-        )
-        sys.exit(1)
+        usage_error(ctx, "Error: --force requires --deactivate-orphaned (overrides the "
+                         "live-path safety gate when deactivating orphans)")
 
     if reconcile_directories and not disk:
-        ctx.console.print(
-            "Error: --reconcile-directories only applies to --disk",
-            style="bold red",
-        )
-        sys.exit(1)
+        usage_error(ctx, "Error: --reconcile-directories only applies to --disk")
 
     # --- --epoch parse + scope check --------------------------------------
     # --epoch only applies to --comp / --disk. Reject early elsewhere so
@@ -468,27 +420,15 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
     epoch_date = None
     if epoch_str:
         if not (comp or disk):
-            ctx.console.print(
-                "Error: --epoch only applies to --comp or --disk",
-                style="bold red",
-            )
-            sys.exit(1)
+            usage_error(ctx, "Error: --epoch only applies to --comp or --disk")
         try:
             epoch_date = datetime.strptime(epoch_str, '%Y-%m-%d').date()
         except ValueError:
-            ctx.console.print(
-                "Error: --epoch must be in YYYY-MM-DD format",
-                style="bold red",
-            )
-            sys.exit(1)
+            usage_error(ctx, "Error: --epoch must be in YYYY-MM-DD format")
 
     if reconcile_mode:
         if not resource:
-            ctx.console.print(
-                "Error: --reconcile-quotas requires --resource",
-                style="bold red",
-            )
-            sys.exit(1)
+            usage_error(ctx, "Error: --reconcile-quotas requires --resource")
         command = AccountingAdminCommand(ctx)
         exit_code = command.execute(
             reconcile_quotas=reconcile_quotas,
@@ -504,29 +444,13 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
     # --- Disk charge import (separate validation path) ---------------------
     if disk:
         if not resource:
-            ctx.console.print(
-                "Error: --disk requires --resource",
-                style="bold red",
-            )
-            sys.exit(1)
+            usage_error(ctx, "Error: --disk requires --resource")
         if machine:
-            ctx.console.print(
-                "Error: --machine is HPC-only; do not pass it with --disk",
-                style="bold red",
-            )
-            sys.exit(1)
+            usage_error(ctx, "Error: --machine is HPC-only; do not pass it with --disk")
         if not user_usage_path:
-            ctx.console.print(
-                "Error: --disk requires --user-usage <path>",
-                style="bold red",
-            )
-            sys.exit(1)
+            usage_error(ctx, "Error: --disk requires --user-usage <path>")
         if reconcile_quota_gap and not quotas_path:
-            ctx.console.print(
-                "Error: --reconcile-quota-gap requires --quotas <path>",
-                style="bold red",
-            )
-            sys.exit(1)
+            usage_error(ctx, "Error: --reconcile-quota-gap requires --quotas <path>")
         # Reject HPC-mode-only flags. The snapshot date comes from the
         # input file, not from a date range — there is no meaningful
         # interpretation of `--today` / `--last 7d` / `--start..--end`
@@ -539,20 +463,12 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
         if start:      rejected.append('--start')
         if end:        rejected.append('--end')
         if rejected:
-            ctx.console.print(
-                f"Error: {', '.join(rejected)} not valid with --disk; "
-                "the snapshot date is read from the user-usage file. "
-                "Use --date YYYY-MM-DD if you want to assert the "
-                "expected snapshot date as a safety check.",
-                style="bold red",
-            )
-            sys.exit(1)
+            usage_error(ctx, f"Error: {', '.join(rejected)} not valid with --disk; "
+                             "the snapshot date is read from the user-usage file. "
+                             "Use --date YYYY-MM-DD if you want to assert the "
+                             "expected snapshot date as a safety check.")
         if create_queues:
-            ctx.console.print(
-                "Error: --create-queues is HPC-only; do not pass it with --disk",
-                style="bold red",
-            )
-            sys.exit(1)
+            usage_error(ctx, "Error: --create-queues is HPC-only; do not pass it with --disk")
 
         # --date is optional: when supplied, the snapshot in the file
         # must match this date exactly (otherwise abort). When omitted,
@@ -562,11 +478,7 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
             try:
                 expected_date = datetime.strptime(date_str, '%Y-%m-%d').date()
             except ValueError:
-                ctx.console.print(
-                    "Error: --date must be in YYYY-MM-DD format",
-                    style="bold red",
-                )
-                sys.exit(1)
+                usage_error(ctx, "Error: --date must be in YYYY-MM-DD format")
 
         command = AccountingAdminCommand(ctx)
         exit_code = command.execute(
@@ -592,11 +504,7 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
 
     # Charge-posting mode (--comp / --archive): machine + dates required
     if not machine:
-        ctx.console.print(
-            "Error: --machine is required with --comp",
-            style="bold red",
-        )
-        sys.exit(1)
+        usage_error(ctx, "Error: --machine is required with --comp")
 
     validate_accounting_dates(date_str, start, end, today_flag, last)
     start_date, end_date = resolve_accounting_dates(date_str, start, end, today_flag, last)
@@ -647,21 +555,13 @@ def cache(ctx: Context, refresh: bool, category, base_url):
       sam-admin cache --refresh --category chart
     """
     if not refresh:
-        ctx.console.print(
-            "Error: specify an action (currently only --refresh)",
-            style="bold red",
-        )
-        sys.exit(EXIT_ERROR)
+        usage_error(ctx, "Error: specify an action (currently only --refresh)")
 
     base = (base_url or os.getenv('SAM_API_BASE') or _DEFAULT_API_BASE).rstrip('/')
     user = os.getenv('SAM_API_USER')
     password = os.getenv('SAM_API_PASS')
     if not user or not password:
-        ctx.console.print(
-            "Error: SAM_API_USER and SAM_API_PASS must be set (API-key credentials).",
-            style="bold red",
-        )
-        sys.exit(EXIT_ERROR)
+        usage_error(ctx, "Error: SAM_API_USER and SAM_API_PASS must be set (API-key credentials).")
 
     import requests
 
@@ -670,15 +570,12 @@ def cache(ctx: Context, refresh: bool, category, base_url):
     try:
         resp = requests.post(url, auth=(user, password), params=params, timeout=60)
     except requests.RequestException as e:
-        ctx.console.print(f"Error: could not reach {url}: {e}", style="bold red")
+        ctx.stderr_console.print(f"Error: could not reach {url}: {e}", style='bold red')
         sys.exit(EXIT_ERROR)
 
     if resp.status_code != 200:
         body = resp.text.strip()
-        ctx.console.print(
-            f"Error: cache refresh failed (HTTP {resp.status_code}): {body}",
-            style="bold red",
-        )
+        ctx.stderr_console.print(f"Error: cache refresh failed (HTTP {resp.status_code}): {body}", style='bold red')
         sys.exit(EXIT_ERROR)
 
     payload = resp.json()
@@ -828,12 +725,10 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
     """
 
     if show_payload and action_id is None:
-        ctx.console.print('Error: --payload requires --show', style='bold red')
-        sys.exit(EXIT_ERROR)
+        usage_error(ctx, 'Error: --payload requires --show')
 
     if enrich and not accounts:
-        ctx.console.print('Error: --enrich requires --accounts', style='bold red')
-        sys.exit(EXIT_ERROR)
+        usage_error(ctx, 'Error: --enrich requires --accounts')
 
     # Writes have no JSON contract: the envelope is for consumers reading state,
     # and a machine-readable success receipt for a side-effecting command invites
@@ -900,33 +795,23 @@ def tasks(ctx: Context, list_tasks, run_due, run, history, task, limit,
 
     modes = [bool(list_tasks), bool(run_due), bool(run), bool(history)]
     if sum(modes) > 1:
-        ctx.console.print(
-            'Error: --list, --run-due, --run and --history are mutually exclusive',
-            style='bold red')
-        sys.exit(EXIT_ERROR)
+        usage_error(ctx, 'Error: --list, --run-due, --run and --history are mutually exclusive')
 
     if dry_run and not (run_due or run):
-        ctx.console.print('Error: --dry-run requires --run-due or --run',
-                          style='bold red')
-        sys.exit(EXIT_ERROR)
+        usage_error(ctx, 'Error: --dry-run requires --run-due or --run')
 
     if force and not run:
-        ctx.console.print('Error: --force requires --run', style='bold red')
-        sys.exit(EXIT_ERROR)
+        usage_error(ctx, 'Error: --force requires --run')
 
     # --occurrence is honored only on the forced path, where the ledger key is
     # already `M`-prefixed and so cannot collide with — or satisfy — a real
     # scheduled slot. Accepting it without --force would let a replay claim a
     # scheduled occurrence and suppress the run that slot was for.
     if occurrence and not (run and force):
-        ctx.console.print('Error: --occurrence requires --run and --force',
-                          style='bold red')
-        sys.exit(EXIT_ERROR)
+        usage_error(ctx, 'Error: --occurrence requires --run and --force')
 
     if (task or limit != 20) and not history:
-        ctx.console.print('Error: --task and --limit require --history',
-                          style='bold red')
-        sys.exit(EXIT_ERROR)
+        usage_error(ctx, 'Error: --task and --limit require --history')
 
     # NOTE: no `json_unsupported_for_writes` guard here, unlike `xras --recheck`
     # above, and that is deliberate — see src/cli/README.md § Exit Codes. The
@@ -955,11 +840,9 @@ def tasks(ctx: Context, list_tasks, run_due, run, history, task, limit,
 def last_seen(ctx: Context, username, backfill, dry_run):
     """When a user was last seen, per source (the system_status ledger)."""
     if bool(username) == backfill:
-        ctx.console.print('Error: give a USERNAME or --backfill, not both', style='bold red')
-        sys.exit(EXIT_ERROR)
+        usage_error(ctx, 'Error: give a USERNAME or --backfill, not both')
     if dry_run and not backfill:
-        ctx.console.print('Error: --dry-run requires --backfill', style='bold red')
-        sys.exit(EXIT_ERROR)
+        usage_error(ctx, 'Error: --dry-run requires --backfill')
     sys.exit(LastSeenCommand(ctx).execute(username=username, backfill=backfill, dry_run=dry_run))
 
 
@@ -994,13 +877,10 @@ def rbac(ctx: Context, seed, seed_keys, keys, effective, diff, grant, role, perm
     modes = [bool(seed), bool(seed_keys), bool(keys), bool(effective), bool(diff),
              bool(grant), revoke is not None]
     if sum(modes) > 1:
-        ctx.console.print('Error: --seed, --seed-keys, --keys, --effective, --diff, --grant '
-                          'and --revoke are mutually exclusive', style='bold red')
-        sys.exit(EXIT_ERROR)
+        usage_error(ctx, 'Error: --seed, --seed-keys, --keys, --effective, --diff, --grant '
+                         'and --revoke are mutually exclusive')
     if (role or permission or facility or note) and not grant:
-        ctx.console.print('Error: --role, --permission, --facility and --note require --grant',
-                          style='bold red')
-        sys.exit(EXIT_ERROR)
+        usage_error(ctx, 'Error: --role, --permission, --facility and --note require --grant')
     sys.exit(RbacCommand(ctx).execute(
         seed=seed, seed_keys=seed_keys, keys=keys, effective=effective, diff=diff,
         grant=grant, revoke=revoke, role=role, permission=permission,

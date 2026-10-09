@@ -10,7 +10,7 @@ import click
 
 from config import SAMConfig
 from cli.core.context import Context
-from cli.core.options import provisioning_option, verbose_option
+from cli.core.options import provisioning_option, usage_error, verbose_option
 from cli.core.utils import EXIT_ERROR, configure_logging, parse_duration_days
 from cli.user.commands import (
     UserSearchCommand,
@@ -54,7 +54,7 @@ def cli(ctx: Context, verbose: bool, inactive_projects: bool, inactive_users: bo
         SAMConfig.validate()
     except EnvironmentError as e:
         ctx.stderr_console.print(str(e), style="bold red")
-        sys.exit(2)
+        sys.exit(EXIT_ERROR)
 
     ctx.verbose = verbose
     configure_logging(verbose)
@@ -104,11 +104,9 @@ def user(ctx: Context, username, search, abandoned, has_active_project, not_seen
     # Enforce mutual exclusivity; --abandoned and --not-seen-since are one mode together.
     inputs = [bool(username), bool(search), abandoned or bool(not_seen_since), has_active_project]
     if sum(inputs) != 1 or (source and not not_seen_since):
-        ctx.console.print("Error: Please provide exactly one of: username, --search, --abandoned "
-                          "and/or --not-seen-since, or --has-active-project "
-                          "(--source needs --not-seen-since)", style="bold red")
-        click.echo(click.get_current_context().get_help())
-        sys.exit(1)
+        usage_error(ctx, "Error: Please provide exactly one of: username, --search, --abandoned "
+                         "and/or --not-seen-since, or --has-active-project "
+                         "(--source needs --not-seen-since)", show_help=True)
     days = parse_duration_days(not_seen_since, '--not-seen-since') if not_seen_since else None
 
     if very_verbose:
@@ -170,9 +168,7 @@ def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirat
     """
     inputs = [bool(projcode), bool(search), upcoming_expirations, recent_expirations]
     if sum(inputs) != 1:
-        ctx.console.print("Error: Please provide exactly one of: projcode, --search, --upcoming-expirations, or --recent-expirations", style="bold red")
-        click.echo(click.get_current_context().get_help())
-        sys.exit(1)
+        usage_error(ctx, "Error: Please provide exactly one of: projcode, --search, --upcoming-expirations, or --recent-expirations", show_help=True)
 
     if very_verbose:
         ctx.very_verbose = ctx.verbose = True
@@ -414,12 +410,8 @@ def contracts(ctx: Context, contract_number, search, search_all, source, pi,
     # Filters alone are a legitimate query ("every open NSF contract"), so
     # they stand in for --search rather than requiring an empty one.
     if sum(inputs) != 1 and not filters_only:
-        ctx.console.print(
-            "Error: Please provide exactly one of: contract number, --search, "
-            "or at least one filter (--source/--pi/--monitor/--program)",
-            style="bold red")
-        click.echo(click.get_current_context().get_help())
-        sys.exit(1)
+        usage_error(ctx, "Error: Please provide exactly one of: contract number, --search, "
+                         "or at least one filter (--source/--pi/--monitor/--program)", show_help=True)
 
 
     if contract_number:
@@ -469,11 +461,7 @@ def awards(ctx: Context, contract_number, search, source, limit, verbose):
     """
     inputs = [bool(contract_number), bool(search)]
     if sum(inputs) != 1:
-        ctx.console.print(
-            "Error: Please provide exactly one of: award number or --search",
-            style="bold red")
-        click.echo(click.get_current_context().get_help())
-        sys.exit(1)
+        usage_error(ctx, "Error: Please provide exactly one of: award number or --search", show_help=True)
 
 
     if contract_number:

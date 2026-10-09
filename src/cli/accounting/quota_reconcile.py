@@ -1,4 +1,5 @@
 """`sam-admin accounting --reconcile-quotas`: allocations against filesystem quota truth."""
+from cli.core.utils import EXIT_ERROR, EXIT_SUCCESS
 from sam.summaries.disk_summaries import BYTES_PER_TIB
 import getpass
 import os
@@ -63,7 +64,7 @@ class QuotaReconcileMixin:
                 "Error: --reconcile-quotas requires --resource",
                 style="bold red",
             )
-            return 2
+            return EXIT_ERROR
 
         resource = Resource.get_by_name(self.session, resource_name)
         if resource is None:
@@ -71,13 +72,13 @@ class QuotaReconcileMixin:
                 f"Error: resource {resource_name!r} not found in SAM",
                 style="bold red",
             )
-            return 2
+            return EXIT_ERROR
 
         try:
             reader = get_quota_reader(resource_name, quota_path)
         except NotImplementedError as exc:
             self.console.print(f"Error: {exc}", style="bold red")
-            return 2
+            return EXIT_ERROR
 
         try:
             quota_entries = reader.read()
@@ -86,7 +87,7 @@ class QuotaReconcileMixin:
                 f"Error reading quota file {quota_path!r}: {exc}",
                 style="bold red",
             )
-            return 2
+            return EXIT_ERROR
 
         # ---- 1b. Snapshot-age banner ------------------------------------------
         self._display_snapshot_banner(reader)
@@ -103,7 +104,7 @@ class QuotaReconcileMixin:
                 )
             except PathVerificationError as exc:
                 self.console.print(f"[bold red]{exc}[/bold red]")
-                return 2
+                return EXIT_ERROR
             self.console.print(
                 f"[dim]Path verification: {verify_mode_banner}[/dim]"
             )
@@ -264,7 +265,7 @@ class QuotaReconcileMixin:
                 path_exists = verifier.check(sorted(paths_to_check))
             except PathVerificationError as exc:
                 self.console.print(f"[bold red]{exc}[/bold red]")
-                return 2
+                return EXIT_ERROR
 
         # ---- 7. Report (always) -----------------------------------------------
         display_quota_reconcile_plan(
@@ -289,7 +290,7 @@ class QuotaReconcileMixin:
             )
             self._print_action_hints(mismatched, orphaned, applied_updates=False,
                                      applied_deactivations=False)
-            return 0
+            return EXIT_SUCCESS
 
         # If the admin's flags don't intersect with anything actionable
         # (e.g. --deactivate-orphaned but no orphans), short-circuit
@@ -312,12 +313,12 @@ class QuotaReconcileMixin:
             self._print_action_hints(mismatched, orphaned,
                                      applied_updates=update_accounting_system,
                                      applied_deactivations=deactivate_orphaned)
-            return 0
+            return EXIT_SUCCESS
 
         # Resolve the admin user for the audit trail
         admin_user_id = self._resolve_admin_user_id()
         if admin_user_id is None:
-            return 2
+            return EXIT_ERROR
 
         n_updated = 0
         n_deactivated = 0
@@ -403,7 +404,7 @@ class QuotaReconcileMixin:
             self.console.print(
                 f"[bold red]Transaction aborted: {exc}[/bold red]"
             )
-            return 2
+            return EXIT_ERROR
 
         display_quota_reconcile_summary(
             self.ctx,
@@ -418,7 +419,7 @@ class QuotaReconcileMixin:
         self._print_action_hints(mismatched, orphaned,
                                  applied_updates=update_accounting_system,
                                  applied_deactivations=deactivate_orphaned)
-        return 0 if n_errors == 0 else 2
+        return EXIT_SUCCESS if n_errors == 0 else EXIT_ERROR
 
     def _print_action_hints(
         self,

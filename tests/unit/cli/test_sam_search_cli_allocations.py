@@ -247,7 +247,7 @@ class TestAllocationQueries:
         ])
 
         # Should complete successfully (no results is not an error)
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         assert 'No allocations found' in result.output
 
     def test_allocations_grand_total_format(self, runner, mock_db_session):

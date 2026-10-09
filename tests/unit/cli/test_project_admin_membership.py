@@ -101,7 +101,7 @@ def _live_lead_rows(session, project):
 ])
 def test_flag_guards(runner, mock_db_session, args, message):
     result = runner.invoke(cli, ['project', *args])
-    assert result.exit_code == 1
+    assert result.exit_code == 2 and result.stdout == ""
     assert message in result.output
 
 

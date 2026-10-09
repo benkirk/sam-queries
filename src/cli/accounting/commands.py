@@ -6,6 +6,7 @@ quota_reconcile.py as mixins.
 AccountingSearchCommand / AccountingJobsCommand: `sam-search accounting [--jobs]`.
 """
 import os
+from cli.core.utils import EXIT_ERROR, EXIT_NOT_FOUND, EXIT_SUCCESS
 from datetime import date
 from typing import Optional
 
@@ -102,12 +103,12 @@ class AccountingAdminCommand(CompIngestMixin, DiskIngestMixin, QuotaReconcileMix
             )
         if archive:
             self.console.print("[yellow]--archive: not yet implemented[/yellow]")
-            return 0
+            return EXIT_SUCCESS
         self.console.print(
             "Error: specify --comp, --disk, --archive, or --reconcile-quotas",
             style="bold red",
         )
-        return 1
+        return EXIT_ERROR
 
 
 class AccountingSearchCommand(BaseCommand):
@@ -136,19 +137,6 @@ class AccountingSearchCommand(BaseCommand):
             per_day=self.ctx.verbose,
         )
 
-        if not rows:
-            if self.ctx.output_format == 'json':
-                output_json({
-                    'kind': 'comp_charge_summary',
-                    'start_date': start_date,
-                    'end_date': end_date,
-                    'count': 0,
-                    'rows': [],
-                })
-                return 1
-            self.console.print("[yellow]No charge records found for the given filters.[/yellow]")
-            return 1
-
         if self.ctx.output_format == 'json':
             output_json({
                 'kind': 'comp_charge_summary',
@@ -158,10 +146,11 @@ class AccountingSearchCommand(BaseCommand):
                 'count': len(rows),
                 'rows': rows,
             })
-            return 0
-
-        display_charge_summary_table(self.ctx, rows, start_date, end_date)
-        return 0
+        elif rows:
+            display_charge_summary_table(self.ctx, rows, start_date, end_date)
+        else:
+            self.console.print("[yellow]No charge records found for the given filters.[/yellow]")
+        return EXIT_SUCCESS if rows else EXIT_NOT_FOUND
 
 
 # Machines whose hpc-usage-queries databases the CLI may open. Keep in
@@ -234,20 +223,20 @@ class AccountingJobsCommand(BaseCommand):
                     "[bold red]--job-id cannot be combined with --recent or "
                     "--largest (job-id is itself the selector).[/bold red]"
                 )
-                return 2
+                return EXIT_ERROR
             mode, limit = 'job_id', None
         else:
             if recent is not None and largest is not None:
                 msg = "--recent and --largest are mutually exclusive."
                 self.console.print(f"[bold red]{msg}[/bold red]")
-                return 2
+                return EXIT_ERROR
             if largest is not None:
                 mode, limit = 'largest', largest
             else:
                 mode, limit = 'recent', (recent if recent is not None else DEFAULT_RECENT_JOBS)
             if limit < 1:
                 self.console.print("[bold red]Job count must be >= 1.[/bold red]")
-                return 2
+                return EXIT_ERROR
 
         # --- Resolve machines to query ---
         if machine:
@@ -257,7 +246,7 @@ class AccountingJobsCommand(BaseCommand):
                 self.console.print(
                     f"[bold red]Unknown machine {machine!r}. Valid: {valid}.[/bold red]"
                 )
-                return 2
+                return EXIT_ERROR
             machines = [m]
         else:
             machines = _configured_job_machines()
@@ -265,7 +254,7 @@ class AccountingJobsCommand(BaseCommand):
         # --- Load plugin ---
         mod = self.require_plugin(HPC_USAGE_QUERIES)
         if mod is None:
-            return 2
+            return EXIT_ERROR
         JobQueries = mod.JobQueries
         jh_get_session = mod.get_session
 
@@ -293,7 +282,7 @@ class AccountingJobsCommand(BaseCommand):
                 self.console.print(
                     f"[bold red]Error opening job_history session for {mach!r}: {exc}[/bold red]"
                 )
-                return 2
+                return EXIT_ERROR
             try:
                 jq = JobQueries(jh_session, machine=mach)
                 if mode == 'job_id':
@@ -322,7 +311,7 @@ class AccountingJobsCommand(BaseCommand):
                 self.console.print(
                     f"[bold red]Error fetching jobs for {mach!r}: {exc}[/bold red]"
                 )
-                return 2
+                return EXIT_ERROR
             finally:
                 jh_session.close()
 
@@ -374,9 +363,9 @@ class AccountingJobsCommand(BaseCommand):
                     'count': 0,
                     'rows': [],
                 })
-                return 1
+                return EXIT_NOT_FOUND
             self.console.print("[yellow]No jobs found for the given filters.[/yellow]")
-            return 1
+            return EXIT_NOT_FOUND
 
         if json_mode:
             output_json({
@@ -388,10 +377,10 @@ class AccountingJobsCommand(BaseCommand):
                 'count': len(rows),
                 'rows': rows,
             })
-            return 0
+            return EXIT_SUCCESS
 
         display_jobs_table(
             self.ctx, rows, start_date, end_date,
             mode=mode, multi_machine=len(machines) > 1,
         )
-        return 0
+        return EXIT_SUCCESS

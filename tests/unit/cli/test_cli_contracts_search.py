@@ -61,14 +61,14 @@ class TestGuards:
 
     def test_no_arguments_is_an_error_with_help(self, runner, mock_db_session):
         result = runner.invoke(cli, ['contracts'])
-        assert result.exit_code == 1
+        assert result.exit_code == 2 and result.stdout == ""
         assert 'Please provide exactly one of' in result.output
         assert 'Usage:' in result.output
 
     def test_number_and_search_together_are_rejected(self, runner,
                                                      mock_db_session):
         result = runner.invoke(cli, ['contracts', 'AGS-1', '--search', 'x'])
-        assert result.exit_code == 1
+        assert result.exit_code == 2 and result.stdout == ""
         assert 'Please provide exactly one of' in result.output
 
     def test_filters_alone_are_a_valid_query(self, runner, mock_db_session,

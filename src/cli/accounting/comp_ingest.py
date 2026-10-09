@@ -1,5 +1,6 @@
 """`sam-admin accounting --comp`: hpc-usage-queries daily rows into comp_charge_summary."""
 import re
+from cli.core.utils import EXIT_ERROR, EXIT_SUCCESS
 from datetime import date
 from typing import Optional
 
@@ -165,7 +166,7 @@ class CompIngestMixin:
                 "backfill.",
                 style="bold red",
             )
-            return 2
+            return EXIT_ERROR
 
         # NOTE: unlike _run_disk, this deliberately does NOT write to
         # `comp_charge_summary_status`. Legacy migration V13 reshaped that table
@@ -179,7 +180,7 @@ class CompIngestMixin:
         # --- 1. Load job_history plugin (graceful error if not installed) ---
         mod = self.require_plugin(HPC_USAGE_QUERIES)
         if mod is None:
-            return 2
+            return EXIT_ERROR
         jh_get_session = mod.get_session
         JobQueries = mod.JobQueries
 
@@ -188,14 +189,14 @@ class CompIngestMixin:
             jh_session = jh_get_session(machine)
         except Exception as exc:
             self.console.print(f"[bold red]Error opening job_history session for {machine!r}: {exc}[/bold red]")
-            return 2
+            return EXIT_ERROR
 
         # --- 3. Fetch daily summary rows ---
         try:
             rows = list(JobQueries(jh_session).daily_summary_report(start=start_date, end=end_date))
         except Exception as exc:
             self.console.print(f"[bold red]Error fetching daily summary: {exc}[/bold red]")
-            return 2
+            return EXIT_ERROR
         finally:
             jh_session.close()
 
@@ -204,7 +205,7 @@ class CompIngestMixin:
             self.console.print(
                 f"[yellow]No data found for {machine} between {start_date} and {end_date}[/yellow]"
             )
-            return 0
+            return EXIT_SUCCESS
 
         self.console.print(
             f"Found [bold]{len(rows)}[/bold] rows for [bold]{machine}[/bold] "
@@ -220,7 +221,7 @@ class CompIngestMixin:
 
         # --- 5b. Dry-run: skip insertion ---
         if kwargs.get("dry_run"):
-            return 0
+            return EXIT_SUCCESS
 
         # --- 6-7. Chunk and post rows ---
         n_created = 0
@@ -290,10 +291,10 @@ class CompIngestMixin:
                 except ValueError as exc:
                     # Chunk-level failure (skip_errors=False): re-raised from inner loop
                     self.console.print(f"[bold red]Chunk {chunk_idx} aborted: {exc}[/bold red]")
-                    return 2
+                    return EXIT_ERROR
 
         # --- 8. Summary ---
         display_import_summary(self.ctx, n_created, n_updated, n_errors, n_skipped)
 
         # --- 9. Exit code ---
-        return 0 if n_errors == 0 else 2
+        return EXIT_SUCCESS if n_errors == 0 else EXIT_ERROR

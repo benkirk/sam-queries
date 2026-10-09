@@ -1,4 +1,5 @@
 """`sam-admin accounting --disk`: a disk-usage snapshot into disk_charge_summary and disk_activity."""
+from cli.core.utils import EXIT_ERROR, EXIT_SUCCESS
 from sam.summaries.disk_summaries import BYTES_PER_TIB
 from collections import defaultdict
 from dataclasses import dataclass
@@ -250,18 +251,18 @@ class DiskIngestMixin:
             self.console.print(
                 "Error: --disk requires --resource", style="bold red"
             )
-            return 2
+            return EXIT_ERROR
         if not user_usage_path:
             self.console.print(
                 "Error: --disk requires --user-usage <path>", style="bold red"
             )
-            return 2
+            return EXIT_ERROR
         if reconcile_gap and not quotas_path:
             self.console.print(
                 "Error: --reconcile-quota-gap requires --quotas <path>",
                 style="bold red",
             )
-            return 2
+            return EXIT_ERROR
 
         resource = Resource.get_by_name(self.session, resource_name)
         if resource is None:
@@ -269,27 +270,27 @@ class DiskIngestMixin:
                 f"Error: resource {resource_name!r} not found in SAM",
                 style="bold red",
             )
-            return 2
+            return EXIT_ERROR
 
         # ---- 2. Parse the per-user file -------------------------------
         try:
             reader = get_disk_usage_reader(resource_name, user_usage_path)
         except NotImplementedError as exc:
             self.console.print(f"Error: {exc}", style="bold red")
-            return 2
+            return EXIT_ERROR
         try:
             entries = reader.read()
         except (OSError, ValueError) as exc:
             self.console.print(
                 f"Error reading {user_usage_path!r}: {exc}", style="bold red"
             )
-            return 2
+            return EXIT_ERROR
 
         if not entries:
             self.console.print(
                 f"[yellow]No usage rows in {user_usage_path}[/yellow]"
             )
-            return 0
+            return EXIT_SUCCESS
 
         snap_date = reader.snapshot_date
         if snap_date is None:
@@ -297,7 +298,7 @@ class DiskIngestMixin:
                 "Error: cannot determine snapshot date from "
                 f"{user_usage_path!r}", style="bold red",
             )
-            return 2
+            return EXIT_ERROR
 
         # ---- 3. Date assertion (--date safety check) -------------------
         # --date collapses to start_date == end_date, and the file's snapshot
@@ -317,7 +318,7 @@ class DiskIngestMixin:
                         f"requested window {start_date}..{end_date}",
                         style="bold red",
                     )
-                return 2
+                return EXIT_ERROR
 
         # ---- 4. Cutover-epoch enforcement ------------------------------
         # --epoch overrides the constant for known-safe backfills; the error
@@ -333,7 +334,7 @@ class DiskIngestMixin:
                 "backfill.",
                 style="bold red",
             )
-            return 2
+            return EXIT_ERROR
 
         # ---- 5. Optional gap reconciliation ----------------------------
         if reconcile_gap and quotas_path:
@@ -354,7 +355,7 @@ class DiskIngestMixin:
                     f"Error reading quotas {quotas_path!r}: {exc}",
                     style="bold red",
                 )
-                return 2
+                return EXIT_ERROR
             entries.extend(gap_rows)
 
         # ---- 6. Charging math ------------------------------------------
@@ -458,7 +459,7 @@ class DiskIngestMixin:
 
         if dry_run:
             self._emit_disk_report(report, envelope)
-            return 2 if unexpected else 0
+            return EXIT_ERROR if unexpected else EXIT_SUCCESS
         # Without --skip-errors an unexpected gap refuses the whole file, before
         # the first write, so a partial load never happens by accident.
         if unexpected and not skip_errors:
@@ -467,7 +468,7 @@ class DiskIngestMixin:
                 "[bold red]Unresolved rows; nothing written. Fix them or pass "
                 "--skip-errors to load the rest.[/bold red]"
             )
-            return 2
+            return EXIT_ERROR
 
         # ---- 6d. --reconcile-directories: fix the links the report found -----
         if reconcile_directories:
@@ -478,7 +479,7 @@ class DiskIngestMixin:
             except Exception as exc:  # noqa: BLE001
                 self.console.print(
                     f"[bold red]Directory reconcile failed: {exc}[/bold red]")
-                return 2
+                return EXIT_ERROR
 
         # ---- 7. Register the snapshot date BEFORE any tier-3 insert.
         # disk_charge_summary.activity_date FKs disk_charge_summary_status, and
@@ -494,7 +495,7 @@ class DiskIngestMixin:
             self.console.print(
                 f"[bold red]Failed to register snapshot {snap_date}: {exc}[/bold red]"
             )
-            return 2
+            return EXIT_ERROR
 
         # ---- 7a. Tier-1 / Tier-2: populate disk_activity + disk_charge.
         # Per-fileset granularity that disk_charge_summary can't carry.
@@ -513,7 +514,7 @@ class DiskIngestMixin:
             self.console.print(
                 f"[bold red]Tier-1/Tier-2 write aborted: {exc}[/bold red]"
             )
-            return 2
+            return EXIT_ERROR
         if self.ctx.verbose:
             self.console.print(
                 f"[dim]Wrote {n_act} disk_activity / {n_ch} disk_charge "
@@ -547,7 +548,7 @@ class DiskIngestMixin:
             self.console.print(
                 f"[bold red]Failed to clear existing rows for {snap_date}: {exc}[/bold red]"
             )
-            return 2
+            return EXIT_ERROR
         if n_deleted_legacy:
             self.console.print(
                 f"[dim]Cleared {n_deleted_legacy} pre-existing "
@@ -658,7 +659,7 @@ class DiskIngestMixin:
                     self.console.print(
                         f"[bold red]Chunk {chunk_idx} aborted: {exc}[/bold red]"
                     )
-                    return 2
+                    return EXIT_ERROR
 
         # ---- 9. Re-stamp: legacy SAM's disk_charge triggers set this date
         # current=FALSE on each insert/delete in 7a, and legacy's Quartz recompute
@@ -670,11 +671,11 @@ class DiskIngestMixin:
             self.console.print(
                 f"[bold red]Failed to re-stamp snapshot {snap_date}: {exc}[/bold red]"
             )
-            return 2
+            return EXIT_ERROR
 
         envelope.update(written=True, created=n_created, updated=n_updated, errors=n_errors)
         self._emit_disk_report(report, envelope)
-        return 2 if (unexpected or n_errors) else 0
+        return EXIT_ERROR if (unexpected or n_errors) else EXIT_SUCCESS
 
     def _reconcile_directories(self, items: list) -> dict:
         """Apply the report's reopen/rename/create actions; returns counts per action."""

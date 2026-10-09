@@ -273,12 +273,12 @@ class TestSamSearchCli:
 
     def test_missing_args_user(self, runner, mock_db_session):
         result = runner.invoke(cli, ['user'])
-        assert result.exit_code == 1
+        assert result.exit_code == 2 and result.stdout == ""
         assert "Error: Please provide exactly one of" in result.output
 
     def test_missing_args_project(self, runner, mock_db_session):
         result = runner.invoke(cli, ['project'])
-        assert result.exit_code == 1
+        assert result.exit_code == 2 and result.stdout == ""
         assert "Error: Please provide exactly one of" in result.output
 
 
