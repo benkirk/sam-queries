@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""Apply a slapd audit log to a slapcat dump; write the result as slapadd-ready LDIF.
+
+Usage: bin/ldif-fold DUMP AUDITLOG OUT. The result is the directory as of the last
+audit record, operational attributes (entryCSN, modifyTimestamp) included, parents
+before children. Feed both through bin/ldif-scrub first.
+"""
+import base64
+import sys
+from collections import Counter
+
+
+def norm(dn):
+    return ",".join(p.strip() for p in dn.lower().split(","))
+
+
+def records(path):
+    """Yield each record as its list of logical (unwrapped) lines, comments dropped."""
+    rec = []
+    with open(path, encoding="utf-8", errors="surrogateescape") as f:
+        for raw in f:
+            line = raw.rstrip("\n")
+            if line.startswith(" ") and rec:
+                rec[-1] += line[1:]
+            elif line == "":
+                if rec:
+                    yield rec
+                rec = []
+            elif not line.startswith("#"):
+                rec.append(line)
+    if rec:
+        yield rec
+
+
+def split(line):
+    """'attr: v' / 'attr:: b64' -> (attr, raw bytes)."""
+    attr, rest = line.split(":", 1)
+    if rest.startswith(":"):
+        return attr, base64.b64decode(rest[1:].strip())
+    return attr, rest.strip().encode("utf-8", "surrogateescape")
+
+
+def render(attr, value):
+    try:
+        text = value.decode("utf-8")
+        safe = text == text.strip() and not text.startswith((":", "<")) and \
+            all(32 <= ord(c) < 127 for c in text)
+    except UnicodeDecodeError:
+        safe = False
+    return f"{attr}: {text}" if safe else f"{attr}:: {base64.b64encode(value).decode()}"
+
+
+class Entry:
+    def __init__(self, dn):
+        self.dn, self.attrs = dn, {}          # lower attr -> [name, [values]]
+
+    def add(self, attr, value):
+        slot = self.attrs.setdefault(attr.lower(), [attr, []])
+        if value not in slot[1]:
+            slot[1].append(value)
+
+    def delete(self, attr, values=None):
+        slot = self.attrs.get(attr.lower())
+        if slot is None:
+            return
+        if values:
+            slot[1] = [v for v in slot[1] if v not in values]
+        if not values or not slot[1]:
+            del self.attrs[attr.lower()]
+
+    def lines(self):
+        out = [render("dn", self.dn.encode())]
+        for name, values in self.attrs.values():
+            out += [render(name, v) for v in values]
+        return out
+
+
+def load_dump(path):
+    entries = {}
+    for rec in records(path):
+        dn = split(rec[0])[1].decode("utf-8", "surrogateescape")
+        e = Entry(dn)
+        for line in rec[1:]:
+            e.add(*split(line))
+        entries[norm(dn)] = e
+    return entries
+
+
+def apply(entries, rec, stats):
+    dn = split(rec[0])[1].decode("utf-8", "surrogateescape")
+    key = norm(dn)
+    ctype = split(rec[1])[1].decode().lower() if len(rec) > 1 else "modify"
+    body = rec[2:]
+    if ctype == "add":
+        if key in entries:
+            stats["add over existing"] += 1
+        e = Entry(dn)
+        for line in body:
+            e.add(*split(line))
+        entries[key] = e
+    elif ctype == "delete":
+        if entries.pop(key, None) is None:
+            stats["delete of missing"] += 1
+    elif ctype in ("modrdn", "moddn"):
+        e = entries.pop(key, None)
+        if e is None:
+            stats["rename of missing"] += 1
+            return
+        opts = {k.lower(): v.decode() for k, v in map(split, body)}
+        parent = opts.get("newsuperior") or dn.split(",", 1)[1]
+        if opts.get("deleteoldrdn") == "1":
+            a, v = dn.split(",", 1)[0].split("=", 1)
+            e.delete(a, [v.encode()])
+        a, v = opts["newrdn"].split("=", 1)
+        e.add(a, v.encode())
+        e.dn = f"{opts['newrdn']},{parent}"
+        entries[norm(e.dn)] = e
+    else:
+        e = entries.get(key)
+        if e is None:
+            stats["modify of missing"] += 1
+            return
+        i = 0
+        while i < len(body):
+            op, attr = (s.strip() for s in body[i].split(":", 1))
+            values = []
+            i += 1
+            while i < len(body) and body[i] != "-":
+                values.append(split(body[i])[1])
+                i += 1
+            i += 1
+            if op == "add":
+                for v in values:
+                    e.add(attr, v)
+            elif op == "delete":
+                e.delete(attr, values)
+            elif op == "replace":
+                e.delete(attr)
+                for v in values:
+                    e.add(attr, v)
+    stats[ctype] += 1
+
+
+def main(dump, audit, out):
+    entries = load_dump(dump)
+    stats = Counter()
+    for rec in records(audit):
+        apply(entries, rec, stats)
+    ordered = sorted(entries.values(), key=lambda e: norm(e.dn).count(","))
+    with open(out, "w", encoding="utf-8", errors="surrogateescape") as o:
+        for e in ordered:
+            o.write("\n".join(e.lines()) + "\n\n")
+    print(f"{len(entries)} entries; applied {dict(stats)}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 4:
+        sys.exit(__doc__)
+    main(*sys.argv[1:])

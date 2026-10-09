@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Copy the stub logs, syncd logs and a spool listing out of the data volume into
+# out/<timestamp>/. --jsl adds the .jsl spool (large). out/ is git-ignored: it is PII.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+stamp=$(date +%Y%m%dT%H%M%S)
+jsl=0
+[[ ${1:-} == --jsl ]] && jsl=1
+mkdir -p "out/$stamp"
+docker compose --profile tools run --rm -T shell -c "
+    set -e
+    cd /var/data
+    o=/out/$stamp
+    ls -la . syncd auditlog.d >\$o/listing.txt 2>&1 || true
+    for f in log-syncd.o log-syncd.e syncd/*stub.log syncd/*dbg.log syncd/sam-data.*; do
+        [ -e \"\$f\" ] && cp -p \"\$f\" \$o/ || true
+    done
+    [ $jsl = 1 ] && cp -p syncd/*.jsl \$o/ 2>/dev/null || true
+    chmod -R a+rX \$o
+"
+echo "out/$stamp:"
+ls -la "out/$stamp"

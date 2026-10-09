@@ -404,6 +404,11 @@ on both group routes. Responses: permit `{<idField>, purgeable, message}`; purge
 - **Replay**: `scripts/ldapsync_replay.py` posts a captured `syncd/sam-log.jsl` (the
   exact PUT stream the daemon wrote; ask George for one day) at webdev, exercising
   every write path with production-shaped payloads.
+- **Local pipeline** (`containers/ldap-pipeline/`, 2026-10-08): the three sam-app
+  containers built from the deployed commits, replicating live from fdb with their own
+  RID (168), every write stubbed to a log until `SAM_URL` is our webapp. Against
+  test-sam its `sam-update-stub.log` is the PUT corpus the replay needs, without asking
+  George; against `host.docker.internal:5050` it is the real client hitting P1a–P1d.
 - **Postgres**: run every purge on the :5434 dual backend; FK cascade behavior differs
   from MySQL.
 
@@ -423,7 +428,8 @@ on both group routes. Responses: permit `{<idField>, purgeable, message}`; purge
 4. Replay one day of `sam-log.jsl`; compare row counts in `user_institution`,
    `user_organization`, `email_address`, `adhoc_group`, `adhoc_group_tag`,
    `adhoc_system_account_entry` before and after with legacy.
-5. Cutover rehearsal on samuel-dev: a test daemon instance with `SAM_URL` pointed at
+5. Local rehearsal first: `containers/ldap-pipeline/` with `SAM_URL` at the dev server
+   (see its README). Then the cutover rehearsal on samuel-dev: a test daemon instance with `SAM_URL` pointed at
    `https://samuel-dev.k8s.ucar.edu`, `--test-connections` first, then one add-file
    replay; watch with `scripts/cirrus_watch.sh --env dev`.
 6. Production cutover: flip `SAM_URL` in `prod/.env`, restart the syncd container

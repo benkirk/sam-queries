@@ -1,0 +1,9 @@
+# Commits deployed on sam-app.ucar.edu (~swes/<repo>), in sam-app/REPOS build order.
+# Checked 2026-10-08. Override one with REF_<REPO>=<ref>, e.g. REF_SAM_LDAP_SYNCD=376b1a6.
+sweet                 1b8c3b3
+sftp-server           e51b607
+sweet-pl5             5884e33
+ucarldap              59fd1a8
+sam-idms-ldap         ec86baf
+sam-ldap-transformer  51c06fd
+sam-ldap-syncd        6c0fd35

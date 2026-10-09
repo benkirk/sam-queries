@@ -1,0 +1,168 @@
+# Local copy of sam-app's sam-ldap-syncd/prod/docker-compose.yml: same three services,
+# commands and helper profiles. Differences: images built here (bin/build-images), a named
+# volume instead of /data/tomcat-sam/prod/sam-ldap-syncd, ./secrets instead of
+# /data/tomcat-sam/secrets, loopback-only LDAP ports, and the guard services.
+name: ldap-pipeline
+
+x-image: &image
+  platform: ${PIPELINE_PLATFORM:-linux/amd64}
+  pull_policy: never
+  env_file: .env
+
+x-mounts: &mounts
+  - ./secrets:/run/secrets:ro
+  - data:/var/data
+  - type: tmpfs
+    target: /tmp
+
+x-ldap-mounts: &ldap-mounts
+  - ./secrets:/run/secrets:ro
+  - data:/var/data
+  - {type: volume, source: data, target: /etc/ldap/slapd.d, volume: {subpath: slapd.d}}
+  - {type: volume, source: data, target: /var/lib/ldap, volume: {subpath: ldap}}
+  - type: tmpfs
+    target: /tmp
+
+x-syncd: &syncd
+  <<: *image
+  image: ghcr.io/ncar/sam-ldap-syncd:${PIPELINE_TAG:-pipeline-local}
+  volumes: *mounts
+  environment:
+    SERVICE: syncd
+    # Interpolated so compose itself refuses to run with staging writes unstubbed.
+    LDAPSTAGING_UPDATES_STUB: ${LDAPSTAGING_UPDATES_STUB:?must name a stub file; this testbed never writes to LDAP staging}
+  networks: [syncd]
+  extra_hosts:
+    - host.docker.internal:host-gateway
+
+x-guard: &guard
+  <<: *image
+  image: ghcr.io/ncar/sam-ldap-syncd:${PIPELINE_TAG:-pipeline-local}
+  user: root
+  entrypoint: ["/bin/sh", "/guard.sh"]
+  volumes:
+    - ./secrets:/run/secrets:ro
+    - ./bin/guard.sh:/guard.sh:ro
+  network_mode: none
+
+services:
+
+  ldap:
+    <<: *image
+    image: ghcr.io/ncar/sam-idms-ldap:${PIPELINE_TAG:-pipeline-local}
+    init: true
+    volumes: *ldap-mounts
+    environment:
+      SERVICE: ldap
+    networks: [ldap]
+    ports:
+      - 127.0.0.1:19389:389
+      - 127.0.0.1:19636:636
+    depends_on:
+      guard-ldap: {condition: service_completed_successfully}
+
+  transformer:
+    <<: *image
+    image: ghcr.io/ncar/sam-ldap-transformer:${PIPELINE_TAG:-pipeline-local}
+    command: ["-v"]
+    volumes: *mounts
+    environment:
+      SERVICE: transformer
+      LOG_LEVEL: 2
+    networks: [syncd]
+
+  syncd:
+    <<: *syncd
+    command: ["/usr/local/sam-ldap-syncd/bin/syncd", "-vvvvv", "--redirect"]
+    depends_on:
+      guard: {condition: service_completed_successfully}
+
+  guard:
+    <<: *guard
+    command: ["syncd"]
+
+  guard-ldap:
+    <<: *guard
+    command: ["ldap"]
+
+  # --- profile-only helpers, as on sam-app --------------------------------------
+
+  volume-init:
+    <<: *image
+    image: ghcr.io/ncar/sam-idms-ldap:${PIPELINE_TAG:-pipeline-local}
+    user: root
+    entrypoint: ["/bin/sh", "/volume-init.sh"]
+    environment:
+      RESET: ${RESET:-0}
+    volumes:
+      - data:/var/data
+      - ./bin/volume-init.sh:/volume-init.sh:ro
+    network_mode: none
+    profiles: [init]
+
+  syncdInit:
+    <<: *syncd
+    command: ["/usr/local/sam-ldap-syncd/bin/syncd", "-vvvvv", "--init-only", "-f"]
+    stdin_open: true
+    tty: true
+    depends_on:
+      guard: {condition: service_completed_successfully}
+    profiles: [init]
+
+  guard-test:
+    <<: *guard
+    command: ["test"]
+    profiles: [test]
+
+  syncdTest:
+    <<: *syncd
+    command: ["/usr/local/sam-ldap-syncd/bin/syncd", "--test-connections"]
+    stdin_open: true
+    tty: true
+    depends_on:
+      guard-test: {condition: service_completed_successfully}
+    profiles: [test]
+
+  syncdDump:
+    <<: *syncd
+    command: ["/usr/local/sam-ldap-syncd/bin/syncd", "-vv", "--display-dump"]
+    profiles: [dump]
+
+  syncdadmin:
+    <<: *syncd
+    command: ["/bin/bash"]
+    stdin_open: true
+    tty: true
+    profiles: [debug]
+
+  ldapDebug:
+    <<: *image
+    image: ghcr.io/ncar/sam-idms-ldap:${PIPELINE_TAG:-pipeline-local}
+    command: ["--debug"]
+    init: true
+    volumes: *ldap-mounts
+    stdin_open: true
+    tty: true
+    environment:
+      SERVICE: ldap
+    networks: [ldap]
+    profiles: [debug]
+
+  # Root shell on the data volume; bin/collect copies out of it.
+  shell:
+    <<: *image
+    image: ghcr.io/ncar/sam-ldap-syncd:${PIPELINE_TAG:-pipeline-local}
+    user: root
+    entrypoint: ["/bin/sh"]
+    volumes:
+      - data:/var/data
+      - ./out:/out
+    network_mode: none
+    profiles: [tools]
+
+volumes:
+  data:
+
+networks:
+  ldap:
+  syncd:
