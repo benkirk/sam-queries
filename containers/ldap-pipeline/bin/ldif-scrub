@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""Keep only the seven subtrees the transformer reads, minus every password attribute.
+
+Usage: bin/ldif-scrub IN OUT. Works on slapcat dumps and on slapd audit logs
+(records framed by '# modify ...' comments). Prod's replica copies the whole tree,
+password hashes included; nothing outside these subtrees is needed here.
+"""
+import re
+import sys
+
+KEEP = ("ou=allpeople", "ou=allorganizations", "ou=externalorgs", "ou=allgroups",
+        "ou=groups,ou=unix", "ou=serviceaccounts", "ou=gidallocations")
+BASE = "dc=ucar,dc=edu"
+ANCESTORS = {BASE, "ou=unix," + BASE}
+SECRET = re.compile(r"^(userpassword|authpassword|sambantpassword|sambalmpassword"
+                    r"|pwdhistory|krbprincipalkey)\b", re.I)
+
+
+def norm(dn):
+    return ",".join(p.strip() for p in dn.lower().split(","))
+
+
+def wanted(dn):
+    n = norm(dn)
+    return n in ANCESTORS or any(n == f"{k},{BASE}" or n.endswith(f",{k},{BASE}") for k in KEEP)
+
+
+def logical_lines(record):
+    """Join LDIF continuation lines, keeping comments as their own lines."""
+    out = []
+    for line in record:
+        if line.startswith(" ") and out:
+            out[-1] += line[1:]
+        else:
+            out.append(line)
+    return out
+
+
+def scrub(lines):
+    """Drop secret attributes; in change records drop their whole '-'-terminated op."""
+    out, skip = [], False
+    for line in lines:
+        if skip:
+            if line == "-":
+                skip = False
+            continue
+        op = re.match(r"^(add|replace|delete):\s*(\S+)", line, re.I)
+        if op and SECRET.match(op.group(2)):
+            skip = True
+            continue
+        if SECRET.match(line.split(":", 1)[0]):
+            continue
+        out.append(line)
+    return out
+
+
+def main(src, dst):
+    kept = dropped = 0
+    record = []
+    with open(src, encoding="utf-8", errors="surrogateescape") as f, \
+            open(dst, "w", encoding="utf-8", errors="surrogateescape") as o:
+        def flush():
+            nonlocal kept, dropped, record
+            lines = logical_lines(record)
+            dn = next((l[3:].strip() for l in lines if l.lower().startswith("dn: ")), None)
+            if dn is None:
+                b64 = next((l[4:].strip() for l in lines if l.lower().startswith("dn:: ")), None)
+                if b64:
+                    import base64
+                    dn = base64.b64decode(b64).decode("utf-8", "replace")
+            if dn is not None and wanted(dn):
+                o.write("\n".join(scrub(lines)) + "\n\n")
+                kept += 1
+            elif lines and any(not l.startswith("#") for l in lines):
+                dropped += 1
+            record = []
+        for raw in f:
+            line = raw.rstrip("\n")
+            if line == "":
+                if record:
+                    flush()
+                continue
+            record.append(line)
+        if record:
+            flush()
+    print(f"{src}: kept {kept} records, dropped {dropped}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        sys.exit(__doc__)
+    main(sys.argv[1], sys.argv[2])

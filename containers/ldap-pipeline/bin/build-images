@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# Build the seven sam-app images from pinned commits of the container zoo clones.
+# Never checks out anything in ZOO_DIR: each ref is `git archive`d into a scratch dir.
+set -euo pipefail
+
+HERE=$(cd "$(dirname "$0")/.." && pwd)
+# The tag/platform pair must match what compose.yaml runs, so default to .env's.
+dotenv() { [[ -f $HERE/.env ]] && sed -n "s/^$1=//p" "$HERE/.env" | tail -1; }
+ZOO_DIR=${ZOO_DIR:-$HERE/../../legacy_sam/container_zoo}
+TAG=${PIPELINE_TAG:-$(dotenv PIPELINE_TAG)}
+TAG=${TAG:-pipeline-local}
+PLATFORM=${PIPELINE_PLATFORM:-$(dotenv PIPELINE_PLATFORM)}
+PLATFORM=${PLATFORM:-linux/amd64}
+Q=":$TAG"
+
+usage() {
+    cat <<EOF
+Usage: bin/build-images [repo ...]
+
+Builds ghcr.io/ncar/<repo>:$TAG for $PLATFORM from the commits in pins, in
+dependency order (all seven when no repo is named). Each repo's base images
+must already exist under the same tag.
+
+  ZOO_DIR            clones of the NCAR repos (default: $ZOO_DIR)
+  REF_<REPO>         build another ref, e.g. REF_SAM_LDAP_SYNCD=376b1a6
+  PIPELINE_TAG       image tag (default: .env's, else pipeline-local)
+  PIPELINE_PLATFORM  default: .env's, else linux/amd64 as in prod; linux/arm64 is native.
+                     Give each platform its own tag; compose runs the pair in .env.
+EOF
+}
+case ${1:-} in -h|--help) usage; exit 0 ;; esac
+
+if [[ ! -d $ZOO_DIR ]]; then
+    echo "build-images: ZOO_DIR ($ZOO_DIR) not found; clone the NCAR repos there or set ZOO_DIR" >&2
+    exit 2
+fi
+ZOO_DIR=$(cd "$ZOO_DIR" && pwd)
+
+REPOS=() PINS=()
+while read -r repo sha _; do
+    [[ -z $repo || $repo == \#* ]] && continue
+    REPOS+=("$repo") PINS+=("$sha")
+done <"$HERE/pins"
+
+want=("$@")
+[[ ${#want[@]} -eq 0 ]] && want=("${REPOS[@]}")
+
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/ldap-pipeline-build.XXXXXX")
+trap 'rm -rf "$WORK"' EXIT
+
+# Bullseye's security pool moved to archive.debian.org when its LTS ended, so sweet's
+# apt-get 404s as written. sweet takes its base as debian${DEBIAN_QUALIFIER}; hand it this.
+DEBIAN_BASE=bullseye-slim-archive-${PLATFORM#linux/}
+if [[ " ${want[*]} " == *" sweet "* ]]; then
+    echo "==> debian:$DEBIAN_BASE (bullseye-slim, apt sources on archive.debian.org)"
+    docker build --platform "$PLATFORM" -t "debian:$DEBIAN_BASE" - <<'EOF'
+FROM debian:bullseye-slim
+RUN printf '%s\n' \
+      'deb http://archive.debian.org/debian bullseye main' \
+      'deb http://archive.debian.org/debian bullseye-updates main' \
+      'deb http://archive.debian.org/debian-security bullseye-security main' \
+      >/etc/apt/sources.list
+EOF
+fi
+
+for i in "${!REPOS[@]}"; do
+    repo=${REPOS[$i]}
+    [[ " ${want[*]} " == *" $repo "* ]] || continue
+    var=REF_$(echo "$repo" | tr 'a-z-' 'A-Z_')
+    ref=${!var:-${PINS[$i]}}
+    src=$ZOO_DIR/$repo
+    sha=$(git -C "$src" rev-parse --verify --short "$ref^{commit}") || {
+        echo "build-images: $repo: unknown ref '$ref' (git -C $src fetch?)" >&2; exit 2; }
+    ctx=$WORK/$repo
+    mkdir -p "$ctx"
+    git -C "$src" archive "$sha" | tar -x -C "$ctx"
+    if [[ $repo == sweet && $PLATFORM != linux/amd64 ]]; then
+        # sweet vendors the x86_64 AWS CLI (its install-aws-cli never uses the fresh
+        # download), which cannot run on arm64. Same signed zip, other arch; never invoked.
+        aws=https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip
+        curl -fsSL "$aws" -o "$ctx/awscli/awscliv2.zip"
+        curl -fsSL "$aws.sig" -o "$ctx/awscli/awscliv2.sig"
+    fi
+    note=""
+    [[ $sha == "${PINS[$i]}"* ]] || note="  (NOT the prod pin ${PINS[$i]})"
+    echo "==> $repo @ $sha$note"
+    docker build --platform "$PLATFORM" \
+        --build-arg DEBIAN_QUALIFIER=":$DEBIAN_BASE" \
+        --build-arg SWEET_QUALIFIER="$Q" \
+        --build-arg SFTP_SERVER_QUALIFIER="$Q" \
+        --build-arg SWEET_PL5_QUALIFIER="$Q" \
+        --build-arg UCAR_LDAP_QUALIFIER="$Q" \
+        --build-arg IMAGE_VERSION="0.0.1-pipeline.$sha" \
+        --build-arg BRANCH="$ref" \
+        --label org.opencontainers.image.revision="$sha" \
+        --label org.opencontainers.image.source="https://github.com/NCAR/$repo" \
+        -t "ghcr.io/ncar/$repo:$TAG" "$ctx"
+done
+
+# compose.hybrid.yaml runs this variant: synccons-off.sh baked over the bootstrap
+# 13synccons.sh (osixia chowns and the bootstrap deletes it, so no bind mount).
+if [[ " ${want[*]} " == *" sam-idms-ldap "* ]]; then
+    echo "==> sam-idms-ldap:$TAG-hybrid"
+    mkdir -p "$WORK/hybrid"
+    cp "$HERE/bin/synccons-off.sh" "$WORK/hybrid/13synccons.sh"
+    docker build --platform "$PLATFORM" -t "ghcr.io/ncar/sam-idms-ldap:$TAG-hybrid" -f - "$WORK/hybrid" <<EOF
+FROM ghcr.io/ncar/sam-idms-ldap:$TAG
+COPY --chmod=755 13synccons.sh /container/service/slapd/assets/config/bootstrap/ldif/custom/13synccons.sh
+EOF
+fi
+
+echo
+docker images --filter "reference=ghcr.io/ncar/*:$TAG*" \
+    --format '{{.Repository}}:{{.Tag}}  {{.ID}}  {{.CreatedSince}}'

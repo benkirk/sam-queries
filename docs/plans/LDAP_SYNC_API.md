@@ -404,6 +404,20 @@ on both group routes. Responses: permit `{<idField>, purgeable, message}`; purge
 - **Replay**: `scripts/ldapsync_replay.py` posts a captured `syncd/sam-log.jsl` (the
   exact PUT stream the daemon wrote; ask George for one day) at webdev, exercising
   every write path with production-shaped payloads.
+- **Local pipeline** (`containers/ldap-pipeline/`, 2026-10-09): the three sam-app
+  containers built from the deployed commits. The replica is seeded from prod's own dump
+  and kept current by anonymous polls of ldap.ucar.edu (fdb refuses citldapsam off
+  sam-app); syncd reads prod SAM; every write is stubbed to a log until `SAM_URL` is our
+  webapp. Against `host.docker.internal:5050` it is the real client hitting P1a–P1d.
+  Three files it produces, all PII: `sam-update-stub.log` is the PUT corpus the replay
+  needs without asking George (1,338 PUTs from the seed diff plus the live stream);
+  `sam-log.jsl`, the format above, holds the live stream since the last syncd start;
+  `sam-data.json` is the daemon's copy of SAM after the stubbed PUTs, and the README's
+  `syncdInit` recipe captures the copy before them.
+- **Wire facts from the testbed's first runs**: `upid` arrives as an int or a string
+  (`"upid":71592`, `"upid":"71215"`); email and phone rows never carry SAM ids; the
+  daemon defers a user whose `userName` equals the upid ("unclaimed account") rather
+  than PUT it; the whole seed diff (about 1,200 users) is re-sent on every reset.
 - **Postgres**: run every purge on the :5434 dual backend; FK cascade behavior differs
   from MySQL.
 
@@ -423,7 +437,8 @@ on both group routes. Responses: permit `{<idField>, purgeable, message}`; purge
 4. Replay one day of `sam-log.jsl`; compare row counts in `user_institution`,
    `user_organization`, `email_address`, `adhoc_group`, `adhoc_group_tag`,
    `adhoc_system_account_entry` before and after with legacy.
-5. Cutover rehearsal on samuel-dev: a test daemon instance with `SAM_URL` pointed at
+5. Local rehearsal first: `containers/ldap-pipeline/` with `SAM_URL` at the dev server
+   (see its README). Then the cutover rehearsal on samuel-dev: a test daemon instance with `SAM_URL` pointed at
    `https://samuel-dev.k8s.ucar.edu`, `--test-connections` first, then one add-file
    replay; watch with `scripts/cirrus_watch.sh --env dev`.
 6. Production cutover: flip `SAM_URL` in `prod/.env`, restart the syncd container

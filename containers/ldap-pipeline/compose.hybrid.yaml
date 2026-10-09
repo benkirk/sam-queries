@@ -1,0 +1,62 @@
+# Hybrid stage 1: the replica is seeded from prod's own dump plus audit log (bin/ldif-fold,
+# then ldap-seed), and bin/ldap-poll carries it forward from anonymous ldap.ucar.edu
+# snapshots. No syncrepl, no LDAP credential. Enable with
+# COMPOSE_FILE=compose.yaml:compose.hybrid.yaml in .env.
+x-hybrid-env: &hybrid-env
+  PIPELINE_MODE: hybrid
+  # Read only for the startup contextCSN lookup, which falls back to the public replica.
+  SYNCREPL_PROVIDER_URL: ldaps://ldap.ucar.edu
+  SYNCREPL_PROVIDER_AUTHCID: anonymous
+
+x-hybrid-image: &hybrid-image ghcr.io/ncar/sam-idms-ldap:${PIPELINE_TAG:-pipeline-local}-hybrid
+
+services:
+  ldap:
+    image: *hybrid-image
+    environment:
+      <<: *hybrid-env
+      SERVICE: ldap
+  ldapDebug:
+    image: *hybrid-image
+    environment:
+      <<: *hybrid-env
+      SERVICE: ldap
+  guard-ldap:
+    environment: *hybrid-env
+
+  # Offline load of seed/folded.ldif into the stopped replica; RESEED=1 replaces a seeded DB.
+  ldap-seed:
+    image: *hybrid-image
+    platform: ${PIPELINE_PLATFORM:-linux/amd64}
+    pull_policy: never
+    env_file: .env
+    user: root
+    entrypoint: ["/bin/sh", "/ldap-seed.sh"]
+    environment:
+      <<: *hybrid-env
+      SEED_FILE: ${SEED_FILE:-folded.ldif}
+    volumes:
+      - data:/var/data
+      - {type: volume, source: data, target: /etc/ldap/slapd.d, volume: {subpath: slapd.d}}
+      - {type: volume, source: data, target: /var/lib/ldap, volume: {subpath: ldap}}
+      - ./seed:/seed:ro
+      - ./bin/ldap-seed.sh:/ldap-seed.sh:ro
+    network_mode: none
+    profiles: [seed]
+
+  # Feeds the seeded replica from anonymous ldap.ucar.edu reads; writes go only to `ldap`.
+  ldap-poll:
+    image: *hybrid-image
+    platform: ${PIPELINE_PLATFORM:-linux/amd64}
+    pull_policy: never
+    entrypoint: ["python3", "/pipeline/bin/ldap-poll"]
+    environment:
+      POLL_INTERVAL_SECS: ${POLL_INTERVAL_SECS:-300}
+      POLL_SWEEP_SECS: ${POLL_SWEEP_SECS:-3600}
+    volumes:
+      - data:/var/data
+      - ./bin:/pipeline/bin:ro
+      - ./secrets/sam-idms-ldap/admin_password:/run/secrets/admin_password:ro
+    networks: [ldap]
+    depends_on: [ldap]
+    restart: unless-stopped

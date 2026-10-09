@@ -359,6 +359,10 @@ The subject of §3.
 - **Test** (`test/.env`): RID 166, `SAM_URL=https://test-sam.ucar.edu:443`, staging
   writes stubbed via `LDAPSTAGING_UPDATES_STUB=ldap-update-stub.log`; its unit uses
   `Restart=always` and `MONSCHED=01:00,06:00`.
+- **Local copy.** `containers/ldap-pipeline/` in this repo rebuilds the three images at
+  the commits above and runs them as this compose file does, with writes stubbed
+  (2026-10-08). Rebuilding needs the Debian archive: bullseye's security pool left
+  deb.debian.org when its LTS ended, so sweet's `apt-get` fails as written, on sam-app too.
 - A second compose file, `sam-idms-ldap/prod/docker-compose.yml`, defines standalone
   `ldap` and `ldapx` services on the same host ports and RID 167, on an external network
   `shared-ldap` that does not exist on the host; it is a parked experiment.
