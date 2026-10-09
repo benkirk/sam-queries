@@ -5,15 +5,18 @@
 The SAM CLI is a modular, class-based Click application providing two
 entry points (declared in `pyproject.toml [project.scripts]`):
 
-- **`sam-search`** — user-facing search and query tool
-- **`sam-admin`** — administrative superset (validation, reconciliation,
-  charge ingest, cache refresh); admin commands extend the search
-  command classes via inheritance
+- **`sam-search`** — user-facing search and query tool: `user`, `project`,
+  `allocations`, `accounting`, `contracts`, `awards`
+- **`sam-admin`** — administrative superset: `user`, `project`, `accounting`
+  (charge ingest, quota reconcile), `contracts`, `cache`, `xras`, `tasks`,
+  `last-seen`, `rbac`; admin commands extend the search command classes via
+  inheritance
 
 This architecture is deliberately mirrored by the `jobhist` CLI in the
 peer **hpc-usage-queries** repo (same `Context`/`BaseCommand` shape, exit
-codes, JSON envelope, and `ExporterRegistry` interface) — if you change
-any of those contracts here, update both repos in lockstep. See
+codes and JSON envelope) — if you change any of those contracts here, update
+both repos in lockstep. jobhist also has an `ExporterRegistry` for file
+exports; SAM has only `rich` and `json` on stdout (`core/output.py`). See
 `hpc-usage-queries/devel/job_history/README.md` § *CLI Architecture* for
 the canonical recipe.
 
@@ -22,10 +25,12 @@ the canonical recipe.
 ```
 cli/
 ├── core/                     # Shared infrastructure
-│   ├── context.py            # Context class (session, console, flags, output_format)
-│   ├── base.py               # Base command classes (+ optional-plugin gating)
+│   ├── context.py            # Context class (session, consoles, flags, output_format)
+│   ├── base.py               # BaseCommand: emit(), not_found(), require_plugin()
+│   ├── options.py            # verbose_option, provisioning_option, usage_error
+│   ├── display_utils.py      # Shared cell formatters, stamp, styled, progress, issues_table
 │   ├── output.py             # output_json() + _SAMEncoder
-│   └── utils.py              # Exit codes, utilities
+│   └── utils.py              # Exit codes, configure_logging, parse_duration_days
 ├── user/                     # User commands
 │   ├── builders.py           # ORM → dict extractors (no Rich)
 │   ├── commands.py           # UserSearchCommand, UserAdminCommand, ...
@@ -33,9 +38,17 @@ cli/
 ├── project/                  # Project commands (same builders/commands/display split)
 ├── allocations/              # Allocation commands
 ├── accounting/               # Charge rollups, per-job queries, summary ingest
+│   ├── commands.py           # AccountingAdminCommand dispatcher, Search, Jobs
+│   ├── comp_ingest.py        # --comp            (CompIngestMixin)
+│   ├── disk_ingest.py        # --disk            (DiskIngestMixin)
+│   ├── quota_reconcile.py    # --reconcile-quotas (QuotaReconcileMixin)
+│   └── dates.py, quota_readers/, disk_usage/, path_verifier.py
 ├── contracts/                # Contract search (sam-search) + data-hygiene audit (sam-admin)
 ├── awards/                   # Public award APIs (NSF, USAspending) — sam-search
-├── templates/                # Expiration email templates
+├── xras/                     # sam-admin xras: action log, reports, recheck
+├── tasks/                    # sam-admin tasks: the scheduled-task dispatcher
+├── security/                 # sam-admin rbac: the samuel_role_* catalog
+├── last_seen/                # sam-admin last-seen: the system_status sightings ledger
 └── cmds/                     # Entry points
     ├── search.py             # sam-search
     └── admin.py              # sam-admin
@@ -60,8 +73,13 @@ sam-search user benkirk                       # Rich panels + tables
 sam-search --format json user benkirk | jq    # Parseable JSON envelope
 ```
 
+A command writes through `BaseCommand.emit(payload, display_fn)`, which picks
+the format, and reports a missing entity through `not_found(kind, message, **ids)`.
+
 JSON payloads:
-- Indented, written to `sys.stdout` only (errors stay on stderr)
+- Indented, written to `sys.stdout` only: messages, usage errors, progress
+  and tracebacks go to stderr (`ctx.message_console` is stderr in JSON mode),
+  so stdout is always exactly one JSON document
 - Always "complete" — sub-builders fire regardless of `-v`/`-vv` so a
   consumer doesn't need to ask for verbosity
 - Top-level `kind` field names the envelope (e.g. `"user"`,
@@ -84,8 +102,8 @@ JSON payloads:
   on live and `--dry-run` runs alike. Rich output lists the informational
   categories (known unowned, unlinked directory) only under `--verbose`.
 
-Progress bars (`rich.progress.track`) are auto-disabled in JSON mode so
-stdout stays parseable.
+Progress bars (`display_utils.progress(ctx)`, `rich.progress.track`) are
+disabled in JSON mode so stdout stays parseable.
 
 ## Class Hierarchy
 
@@ -100,17 +118,20 @@ BaseCommand(ABC)
 # User commands (user/commands.py)
 BaseUserCommand
 ├── UserSearchCommand
+│   └── UserAdminCommand
 ├── UserPatternSearchCommand
 ├── UserAbandonedCommand
-├── UserWithProjectsCommand
-└── UserAdminCommand (extends UserSearchCommand)
+├── UserNotSeenCommand
+└── UserWithProjectsCommand
 
 # Project commands (project/commands.py)
 BaseProjectCommand
 ├── ProjectSearchCommand
+│   └── ProjectAdminCommand
 ├── ProjectPatternSearchCommand
 ├── ProjectExpirationCommand
-└── ProjectAdminCommand (extends ProjectSearchCommand)
+├── ProjectReconcileCommand
+└── ProjectTreeAuditCommand
 
 # Contract commands (contracts/commands.py, awards/commands.py)
 BaseContractCommand
@@ -118,12 +139,14 @@ BaseContractCommand
 ├── ContractPatternSearchCommand
 ├── AwardSearchCommand             # the funding agency's API
 └── AwardPatternSearchCommand
-# ContractsAuditCommand extends BaseCommand directly — it is scope-wide and
-# has no single contract to resolve.
 
-# Allocation commands follow the same pattern; the accounting commands
-# (AccountingSearchCommand, AccountingJobsCommand, AccountingAdminCommand)
-# extend BaseCommand directly.
+BaseAllocationCommand
+└── AllocationSearchCommand
+
+# Directly on BaseCommand: ContractsAuditCommand (scope-wide, no single contract),
+# AccountingSearchCommand, AccountingJobsCommand,
+# AccountingAdminCommand(CompIngestMixin, DiskIngestMixin, QuotaReconcileMixin),
+# XrasCommand, TasksCommand, RbacCommand, LastSeenCommand.
 ```
 
 Some accounting commands (per-job queries) require the optional
@@ -135,14 +158,17 @@ in `core/base.py`; daily-rollup queries work without it.
 `EXIT_SUCCESS=0` / `EXIT_NOT_FOUND=1` / `EXIT_ERROR=2` /
 `EXIT_KEYBOARD_INTERRUPT=130` — shared verbatim with the `jobhist` CLI.
 
-Two conventions coexist deliberately, and `cli/contracts/` holds one of each:
-
-- **Lookups** (every `sam-search` subcommand) use all three codes literally.
+- **Usage errors** (a bad flag combination, a missing argument) exit 2 with the
+  message on stderr, through `core/options.py`'s `usage_error`.
+- **Lookups** use the codes literally: 1 is not found, which includes a search
+  or summary with no rows (`allocations`, `accounting`), and 2 is an error.
   `sam-search awards` is the sharpest case: 1 means "the agency has no such
   award", 2 means "the agency could not be reached". Conflating them would
   report an outage as a missing record.
-- **Audits** (`sam-admin contracts --validate`, `ProjectTreeAuditCommand`)
-  overload `EXIT_ERROR` to mean "findings exist", so CI can gate on them.
+- **Audits** exit non-zero when findings exist, so CI can gate on them:
+  `sam-admin contracts --validate` and `project --audit-trees` use 2;
+  the `sam-admin xras --validate-mapping/-opportunities/-vocabulary` checks
+  use 1.
 
 ## Adding New Commands
 
@@ -164,12 +190,15 @@ Two conventions coexist deliberately, and `cli/contracts/` holds one of each:
        ...
    ```
 
-3. **Wire up in the entry point** (`cmds/search.py` or `cmds/admin.py`):
+3. **Wire up in the entry point** (`cmds/search.py` or `cmds/admin.py`);
+   reuse `verbose_option` / `provisioning_option`, and reject bad flag
+   combinations with `usage_error`:
    ```python
    @cli.command()
    @click.option('--flag', is_flag=True)
+   @verbose_option()
    @pass_context
-   def new_command(ctx: Context, flag):
+   def new_command(ctx: Context, flag, verbose):
        sys.exit(NewUserCommand(ctx).execute(flag=flag))
    ```
 

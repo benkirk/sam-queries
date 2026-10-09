@@ -30,27 +30,20 @@ class RbacCommand(BaseCommand):
             if seed_keys:
                 return self._seed_keys()
             if keys:
-                return self._emit(builders.build_keys(self.session), display.display_keys)
+                return self.emit(builders.build_keys(self.session), display.display_keys)
             if effective:
                 return self._effective(effective)
             if diff:
-                return self._emit(builders.build_diff(self.session), display.display_diff)
+                return self.emit(builders.build_diff(self.session), display.display_diff)
             if grant:
                 return self._grant(grant, role=role, permission=permission,
                                    facility=facility, note=note)
             if revoke is not None:
                 return self._revoke(revoke)
-            return self._emit(builders.build_listing(self.session, include_revoked=include_revoked),
+            return self.emit(builders.build_listing(self.session, include_revoked=include_revoked),
                               display.display_listing)
         except Exception as e:                       # noqa: BLE001
             return self.handle_exception(e)
-
-    def _emit(self, payload: dict, renderer) -> int:
-        if self.ctx.output_format == 'json':
-            output_json(payload)
-        else:
-            renderer(self.ctx, payload)
-        return EXIT_SUCCESS
 
     def _actor(self) -> str:
         import getpass
@@ -90,11 +83,12 @@ class RbacCommand(BaseCommand):
     def _effective(self, subject: str) -> int:
         payload = builders.build_effective(self.session, subject)
         if not payload['grants']:
-            self.console.print(f'{payload["subject_type"]}:{payload["subject_name"]} holds no grant.')
+            self.ctx.message_console.print(
+                f'{payload["subject_type"]}:{payload["subject_name"]} holds no grant.')
             if self.ctx.output_format == 'json':
                 output_json(payload)
             return EXIT_NOT_FOUND
-        return self._emit(payload, display.display_effective)
+        return self.emit(payload, display.display_effective)
 
     def _grant(self, subject: str, *, role, permission, facility, note) -> int:
         from sam.manage import management_transaction

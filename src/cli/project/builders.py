@@ -1,6 +1,7 @@
 """Data extraction for project CLI output. No Rich, no I/O."""
 
 from sam import Project
+from sam.queries.allocations import latest_allocation_end_by_project
 from sam.queries.rolling_usage import get_project_rolling_usage
 from sam.provisioning import check_project_provisioning
 
@@ -52,11 +53,8 @@ def build_project_core(project: Project) -> dict:
 
 def build_project_detail(project: Project) -> dict:
     """Verbose-only fields: IDs, timestamps, abstract, latest end date."""
-    latest_end = None
-    for account in project.accounts:
-        for alloc in account.allocations:
-            if alloc.end_date and (latest_end is None or alloc.end_date > latest_end):
-                latest_end = alloc.end_date
+    latest_end = latest_allocation_end_by_project(
+        project.session, [project.project_id]).get(project.project_id)
     pi_insts = []
     if project.lead:
         for ui in project.lead.institutions:

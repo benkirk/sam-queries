@@ -31,6 +31,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
+from sam.dates import end_of_day
 from sam.accounting.allocations import (
     Allocation,
     AllocationTransactionType,
@@ -195,7 +196,7 @@ def _collapse_superseded(alloc: Allocation) -> None:
     beside its replacement. An end before the start is not an option: legacy's
     ``DateRange.validateStartEnd`` throws. See docs/plans/HARD_DELETE_AUDIT.md §1.
     """
-    alloc.end_date = alloc.start_date.replace(hour=23, minute=59, second=59, microsecond=0)
+    alloc.end_date = end_of_day(alloc.start_date)
 
 
 def find_source_allocations_at(

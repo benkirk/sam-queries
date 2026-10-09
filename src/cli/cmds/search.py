@@ -10,6 +10,7 @@ import click
 
 from config import SAMConfig
 from cli.core.context import Context
+from cli.core.options import provisioning_option, usage_error, verbose_option
 from cli.core.utils import EXIT_ERROR, configure_logging, parse_duration_days
 from cli.user.commands import (
     UserSearchCommand,
@@ -53,7 +54,7 @@ def cli(ctx: Context, verbose: bool, inactive_projects: bool, inactive_users: bo
         SAMConfig.validate()
     except EnvironmentError as e:
         ctx.stderr_console.print(str(e), style="bold red")
-        sys.exit(2)
+        sys.exit(EXIT_ERROR)
 
     ctx.verbose = verbose
     configure_logging(verbose)
@@ -63,14 +64,6 @@ def cli(ctx: Context, verbose: bool, inactive_projects: bool, inactive_users: bo
 
     # NO database connection here — `Context.require_sam()` opens one on first
     # use. Kept in step with sam-admin; see SCHEDULED_TASKS.md § 3.2.
-
-
-@cli.result_callback()
-def process_result(result, **kwargs):
-    """Cleanup session after command execution"""
-    # This might not run if the command fails with an exception,
-    # but the OS will clean up the socket/connection anyway.
-    pass
 
 
 # ========================================================================
@@ -88,13 +81,12 @@ def process_result(result, **kwargs):
               help='With --not-seen-since, count only sightings from this source')
 @click.option('--list-projects', is_flag=True, help='List all projects for the user')
 @click.option('--limit', type=int, default=50, help='Maximum number of results for pattern search (default: 50)')
-@click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
+@verbose_option()
 @click.option('--very-verbose', '-vv', is_flag=True, help='Show full information (allocation end dates, timestamps)')
-@click.option('--provisioning/--no-provisioning', default=None,
-              help='Cross-check host provisioning (auto-on on a provisioned host)')
+@provisioning_option
 @pass_context
 def user(ctx: Context, username, search, abandoned, has_active_project, not_seen_since, source,
-         list_projects, limit, verbose, very_verbose, provisioning):
+         list_projects, limit, verbose, very_verbose):
     """
     Search for users.
 
@@ -104,21 +96,14 @@ def user(ctx: Context, username, search, abandoned, has_active_project, not_seen
     # Enforce mutual exclusivity; --abandoned and --not-seen-since are one mode together.
     inputs = [bool(username), bool(search), abandoned or bool(not_seen_since), has_active_project]
     if sum(inputs) != 1 or (source and not not_seen_since):
-        ctx.console.print("Error: Please provide exactly one of: username, --search, --abandoned "
-                          "and/or --not-seen-since, or --has-active-project "
-                          "(--source needs --not-seen-since)", style="bold red")
-        click.echo(click.get_current_context().get_help())
-        sys.exit(1)
+        usage_error(ctx, "Error: Please provide exactly one of: username, --search, --abandoned "
+                         "and/or --not-seen-since, or --has-active-project "
+                         "(--source needs --not-seen-since)", show_help=True)
     days = parse_duration_days(not_seen_since, '--not-seen-since') if not_seen_since else None
 
     if very_verbose:
-        ctx.very_verbose = True
-        ctx.verbose = True  # very_verbose implies verbose
-    elif verbose:
-        ctx.verbose = True
+        ctx.very_verbose = ctx.verbose = True
 
-    if provisioning is not None:
-        ctx.check_provisioning = provisioning
 
     if username:
         # Exact Search
@@ -163,12 +148,11 @@ def user(ctx: Context, username, search, abandoned, has_active_project, not_seen
 @click.option('--list-users', is_flag=True, help='List all users on the project')
 @click.option('--limit', type=int, default=50, help='Maximum number of results for pattern search (default: 50)')
 @click.option('--facilities', '-F', multiple=True, default=['UNIV', 'WNA'], help='Facilities to include (default: UNIV, WNA). Use * for all facilities.')
-@click.option('--verbose', '-v', is_flag=True, help='Show detailed information (truncated abstract, hierarchy)')
+@verbose_option('Show detailed information (truncated abstract, hierarchy)')
 @click.option('--very-verbose', '-vv', is_flag=True, help='Show full information (full abstract, timestamps, IDs, charge breakdown)')
-@click.option('--provisioning/--no-provisioning', default=None,
-              help='Cross-check host provisioning (auto-on on a provisioned host)')
+@provisioning_option
 @pass_context
-def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirations, since, list_users, limit, facilities, verbose, very_verbose, provisioning):
+def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirations, since, list_users, limit, facilities, verbose, very_verbose):
     """
     Search for projects.
 
@@ -176,18 +160,11 @@ def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirat
     """
     inputs = [bool(projcode), bool(search), upcoming_expirations, recent_expirations]
     if sum(inputs) != 1:
-        ctx.console.print("Error: Please provide exactly one of: projcode, --search, --upcoming-expirations, or --recent-expirations", style="bold red")
-        click.echo(click.get_current_context().get_help())
-        sys.exit(1)
+        usage_error(ctx, "Error: Please provide exactly one of: projcode, --search, --upcoming-expirations, or --recent-expirations", show_help=True)
 
     if very_verbose:
-        ctx.very_verbose = True
-        ctx.verbose = True  # very_verbose implies verbose
-    elif verbose:
-        ctx.verbose = True
+        ctx.very_verbose = ctx.verbose = True
 
-    if provisioning is not None:
-        ctx.check_provisioning = provisioning
 
     # Handle facility filtering - '*' means all facilities
     facility_filter = None if '*' in facilities else list(facilities)
@@ -235,7 +212,7 @@ def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirat
 @click.option('--show-usage', is_flag=True, help='Include usage information (total used, percent used)')
 @click.option('--exclude-adjustments', is_flag=True, default=False,
               help='Exclude manual charge adjustments from usage totals.')
-@click.option('--verbose', '-v', is_flag=True, help='Show detailed information including averages')
+@verbose_option('Show detailed information including averages')
 @pass_context
 def allocations(ctx: Context, resource, facility, allocation_type, project,
                 total_resources, total_facilities, total_types, total_projects,
@@ -266,8 +243,6 @@ def allocations(ctx: Context, resource, facility, allocation_type, project,
         # All allocations for a specific project
         sam-search allocations --project SCSG0001
     """
-    if verbose:
-        ctx.verbose = True
 
     command = AllocationSearchCommand(ctx)
     exit_code = command.execute(
@@ -307,7 +282,7 @@ def allocations(ctx: Context, resource, facility, allocation_type, project,
 @click.option('--last',  type=str, default=None, metavar='N[d]', help='Last N days including today (e.g. --last 14d)')
 @click.option('--start', type=str, default=None, metavar='YYYY-MM-DD', help='Start date')
 @click.option('--end',   type=str, default=None, metavar='YYYY-MM-DD', help='End date')
-@click.option('--verbose', '-v', is_flag=True, help='Summary: per-day breakdown. --jobs: extra detail columns')
+@verbose_option('Summary: per-day breakdown. --jobs: extra detail columns')
 @pass_context
 def accounting(ctx: Context, user, project, resource, queue, machine,
                jobs, recent, largest, job_id, qos,
@@ -344,8 +319,6 @@ def accounting(ctx: Context, user, project, resource, queue, machine,
     """
     validate_accounting_dates(date_str, start, end, today_flag, last)
     start_date, end_date = resolve_accounting_dates(date_str, start, end, today_flag, last)
-    if verbose:
-        ctx.verbose = True
 
     if jobs:
         if resource:
@@ -411,7 +384,7 @@ def accounting(ctx: Context, user, project, resource, queue, machine,
               help='List the projects linked to the contract')
 @click.option('--limit', type=int, default=50,
               help='Maximum number of results for pattern search (default: 50)')
-@click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
+@verbose_option()
 @pass_context
 def contracts(ctx: Context, contract_number, search, search_all, source, pi,
               monitor, program, list_projects, limit, verbose):
@@ -429,15 +402,9 @@ def contracts(ctx: Context, contract_number, search, search_all, source, pi,
     # Filters alone are a legitimate query ("every open NSF contract"), so
     # they stand in for --search rather than requiring an empty one.
     if sum(inputs) != 1 and not filters_only:
-        ctx.console.print(
-            "Error: Please provide exactly one of: contract number, --search, "
-            "or at least one filter (--source/--pi/--monitor/--program)",
-            style="bold red")
-        click.echo(click.get_current_context().get_help())
-        sys.exit(1)
+        usage_error(ctx, "Error: Please provide exactly one of: contract number, --search, "
+                         "or at least one filter (--source/--pi/--monitor/--program)", show_help=True)
 
-    if verbose:
-        ctx.verbose = True
 
     if contract_number:
         command = ContractSearchCommand(ctx)
@@ -470,7 +437,7 @@ def contracts(ctx: Context, contract_number, search, search_all, source, pi,
                    'USAspending.')
 @click.option('--limit', type=int, default=10,
               help='Maximum results per provider (default: 10)')
-@click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
+@verbose_option()
 @pass_context
 def awards(ctx: Context, contract_number, search, source, limit, verbose):
     """
@@ -486,14 +453,8 @@ def awards(ctx: Context, contract_number, search, source, limit, verbose):
     """
     inputs = [bool(contract_number), bool(search)]
     if sum(inputs) != 1:
-        ctx.console.print(
-            "Error: Please provide exactly one of: award number or --search",
-            style="bold red")
-        click.echo(click.get_current_context().get_help())
-        sys.exit(1)
+        usage_error(ctx, "Error: Please provide exactly one of: award number or --search", show_help=True)
 
-    if verbose:
-        ctx.verbose = True
 
     if contract_number:
         command = AwardSearchCommand(ctx)

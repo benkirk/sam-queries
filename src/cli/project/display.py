@@ -5,6 +5,8 @@ from collections import defaultdict
 from contextlib import contextmanager
 
 from cli.core.context import Context
+from cli.core.display_utils import issues_table, stamp
+from cli.core.display_utils import progress as progress_bar
 from cli.project.builders import (
     build_project_core,
     build_project_detail,
@@ -19,9 +21,6 @@ from rich.panel import Panel
 from rich.text import Text
 from rich import box
 from rich.tree import Tree
-from rich.progress import (
-    Progress, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn,
-)
 
 
 def display_project(ctx: Context, data: dict, extra_title_info: str = "",
@@ -101,17 +100,16 @@ def display_project(ctx: Context, data: dict, extra_title_info: str = "",
             grid.add_row("External Alias", detail['ext_alias'])
         if detail['creation_time']:
             grid.add_row("Created",
-                         fmt.date_str(detail['creation_time'], fmt="%Y-%m-%d %H:%M:%S"))
+                         stamp(detail['creation_time']))
         if detail['modified_time']:
             grid.add_row("Modified",
-                         fmt.date_str(detail['modified_time'], fmt="%Y-%m-%d %H:%M:%S"))
+                         stamp(detail['modified_time']))
         if detail['membership_change_time']:
             grid.add_row("Membership Changed",
-                         fmt.date_str(detail['membership_change_time'],
-                                      fmt="%Y-%m-%d %H:%M:%S"))
+                         stamp(detail['membership_change_time']))
         if detail['inactivate_time']:
             grid.add_row("Inactivated",
-                         fmt.date_str(detail['inactivate_time'], fmt="%Y-%m-%d %H:%M:%S"))
+                         stamp(detail['inactivate_time']))
         if detail['latest_allocation_end']:
             grid.add_row("Allocation End", fmt.date_str(detail['latest_allocation_end']))
 
@@ -311,13 +309,7 @@ def display_project_provisioning(ctx: Context, prov: dict, projcode: str):
         )
         return
 
-    ctx.console.print(f"\n[bold yellow]Host provisioning issues for {projcode}:[/]")
-    table = Table(box=box.SIMPLE, show_header=False)
-    table.add_column("Check", style="cyan")
-    table.add_column("Detail", style="yellow")
-    for label, detail in issues:
-        table.add_row(label, detail)
-    ctx.console.print(table)
+    issues_table(ctx, projcode, issues)
 
 
 def display_project_users(ctx: Context, users: list, projcode: str):
@@ -421,18 +413,8 @@ def _display_project_verbose(ctx: Context, project, extra_title: str, list_users
 
 
 def display_abandoned_users_from_expired_projects(ctx: Context, abandoned_users):
-    """Display users whose only active projects have expired.
-
-    Accepts either a set of ORM users (from the existing command path)
-    or a list of dicts with username/display_name/primary_email keys.
-    """
-    rows = []
-    for u in abandoned_users:
-        if isinstance(u, dict):
-            rows.append((u['username'], u['display_name'], u['primary_email']))
-        else:
-            rows.append((u.username, u.display_name, u.primary_email))
-    rows.sort(key=lambda r: r[0])
+    """Users whose only active projects have expired: dicts from `_abandoned_users`."""
+    rows = sorted((u['username'], u['display_name'], u['primary_email']) for u in abandoned_users)
 
     ctx.console.print(f"Found {len(rows)} expiring users:", style="bold red")
     table = Table(show_header=False, box=None)
@@ -564,22 +546,8 @@ def display_tree_audit(ctx: Context, violations: list, bad_dates: list):
 @contextmanager
 def notification_progress(ctx: Context, total: int,
                           description: str = "Sending expiration notices..."):
-    """Yield an ``on_result`` callback that advances a progress bar.
-
-    This is the seam that keeps the CLI's presentation out of ``sam.notify``.
-    The predecessor drove a ``rich.progress.Progress`` from *inside* the send
-    loop (the since-removed ``cli/notifications/email.py``), against a console it had
-    duck-typed off the CLI ``Context`` — which is a large part of why the
-    mailer could not be lifted as-is.
-    """
-    with Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        TimeElapsedColumn(),
-        console=ctx.console,
-        transient=False,
-    ) as progress:
+    """Yield an ``on_result`` callback that advances a progress bar; keeps Rich out of ``sam.notify``."""
+    with progress_bar(ctx) as progress:
         task = progress.add_task(description, total=total)
         yield lambda result: progress.advance(task)
 

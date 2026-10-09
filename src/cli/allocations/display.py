@@ -39,7 +39,6 @@ def display_allocation_summary(ctx: Context, results: List[Dict], show_usage: bo
     has_facility = 'facility' in sample
     has_type = 'allocation_type' in sample
     has_project = 'projcode' in sample
-    has_usage = 'total_used' in sample
 
     # Check if all rows have count=1 (useful for date column decision)
     all_single_allocations = all(row['count'] == 1 for row in results)

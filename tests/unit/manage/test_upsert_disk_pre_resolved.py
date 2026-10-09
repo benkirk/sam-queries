@@ -78,7 +78,7 @@ class TestPreResolvedOverride:
         assert record.account_id == account.account_id
 
     def test_pre_resolved_user_skips_resolver(self, session):
-        """If a user is supplied, _resolve_user is bypassed — the audit
+        """If a user is supplied, resolve_user is bypassed — the audit
         label can be ANY string (including one that doesn't exist in users)."""
         lead, project, resource = _build_disk_graph(session)
         from sam.accounting.accounts import Account

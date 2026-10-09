@@ -112,3 +112,12 @@ def test_the_last_holder_cannot_be_revoked(runner, mock_db_session):
     result = runner.invoke(cli, ['rbac', '--revoke', str(ids[1])])
     assert result.exit_code == 2
     assert 'nobody' in result.output
+
+
+def test_effective_without_grants_keeps_stdout_json(runner, mock_db_session):
+    from factories import make_user
+    user = make_user(mock_db_session)
+    result = runner.invoke(cli, ['--format', 'json', 'rbac', '--effective', user.username])
+    assert result.exit_code == 1, result.output
+    assert json.loads(result.stdout)['grants'] == []
+    assert 'holds no grant' in result.stderr

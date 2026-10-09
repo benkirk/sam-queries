@@ -2,6 +2,7 @@
 
 from rich.table import Table
 
+from cli.core.display_utils import stamp
 from sam import fmt
 
 
@@ -13,9 +14,9 @@ def display_last_seen(ctx, payload):
     for col in ('Source', 'System', 'First seen (UTC)', 'Last seen (UTC)'):
         table.add_column(col)
     for row in payload['sources']:
-        last = fmt.date_str(row['last_seen'], fmt='%Y-%m-%d %H:%M')
+        last = stamp(row['last_seen'], seconds=False)
         table.add_row(row['kind'], row['system'],
-                      fmt.date_str(row['first_seen'], fmt='%Y-%m-%d %H:%M'),
+                      stamp(row['first_seen'], seconds=False),
                       f"{last}  (now)" if row.get('current') else last)
     ctx.console.print(table)
 

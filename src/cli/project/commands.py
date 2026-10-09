@@ -52,12 +52,8 @@ class ProjectSearchCommand(BaseProjectCommand):
             project = self.get_project(projcode)
 
             if not project:
-                if self.ctx.output_format == 'json':
-                    output_json({'kind': 'project', 'error': 'not_found',
-                                 'projcode': projcode})
-                else:
-                    self.console.print(f"❌ Project not found: {projcode}", style="bold red")
-                return EXIT_NOT_FOUND
+                return self.not_found('project', f"❌ Project not found: {projcode}",
+                                      projcode=projcode)
 
             json_mode = self.ctx.output_format == 'json'
             verbose = self.ctx.verbose
@@ -75,11 +71,7 @@ class ProjectSearchCommand(BaseProjectCommand):
             if self.ctx.check_provisioning:
                 data['provisioning'] = build_project_provisioning(project)
 
-            if json_mode:
-                output_json(data)
-            else:
-                display_project(self.ctx, data, list_users=list_users)
-            return EXIT_SUCCESS
+            return self.emit(data, display_project, list_users=list_users)
 
         except Exception as e:
             return self.handle_exception(e)
@@ -110,11 +102,7 @@ class ProjectPatternSearchCommand(BaseProjectCommand):
             data = build_project_search_results(
                 projects, pattern, verbose=(json_mode or self.ctx.verbose)
             )
-            if json_mode:
-                output_json(data)
-            else:
-                display_project_search_results(self.ctx, data)
-            return EXIT_SUCCESS
+            return self.emit(data, display_project_search_results)
         except Exception as e:
             return self.handle_exception(e)
 
@@ -177,7 +165,7 @@ class ProjectExpirationCommand(BaseProjectCommand):
                 if since:
                     max_days = (datetime.now() - since).days
                     if max_days < 0:
-                        self.console.print(f"Error: --since date cannot be in the future", style="bold red")
+                        self.console.print("Error: --since date cannot be in the future", style="bold red")
                         return EXIT_ERROR
                 else:
                     max_days = 365
@@ -394,13 +382,13 @@ class ProjectAdminCommand(ProjectSearchCommand):
     def execute(self, projcode: str, validate: bool = False,
                 reconcile: bool = False, lead_admin_only: bool = False,
                 dry_run: bool = False, **kwargs) -> int:
-        # First run base search
-        exit_code = super().execute(projcode, **kwargs)
-        if exit_code != EXIT_SUCCESS:
-            return exit_code
+        # In JSON mode --reconcile's envelope is the whole stdout document.
+        if not (reconcile and self.ctx.output_format == 'json'):
+            exit_code = super().execute(projcode, **kwargs)
+            if exit_code != EXIT_SUCCESS:
+                return exit_code
 
-        # Add admin-specific logic
-        if validate:
+        if validate and self.get_project(projcode) is not None:
             exit_code = self._validate_project(projcode)
             if exit_code != EXIT_SUCCESS:
                 return exit_code
@@ -414,7 +402,7 @@ class ProjectAdminCommand(ProjectSearchCommand):
     def _validate_project(self, projcode: str) -> int:
         """Admin-only: validate project data integrity."""
         project = self.get_project(projcode)
-        self.console.print(f"[dim]Validating project {projcode}...[/dim]")
+        self.ctx.message_console.print(f"[dim]Validating project {projcode}...[/dim]")
 
         issues = []
         if not project.lead:
@@ -434,12 +422,12 @@ class ProjectAdminCommand(ProjectSearchCommand):
                               f"{', '.join(missing)} (fix with --reconcile)")
 
         if issues:
-            self.console.print(f"⚠️  Validation issues:", style="yellow")
+            self.ctx.message_console.print("⚠️  Validation issues:", style="yellow")
             for issue in issues:
-                self.console.print(f"  - {issue}", style="yellow")
+                self.ctx.message_console.print(f"  - {issue}", style="yellow")
             return EXIT_ERROR
 
-        self.console.print(f"✅ Project {projcode} validated", style="green")
+        self.ctx.message_console.print(f"✅ Project {projcode} validated", style="green")
         return EXIT_SUCCESS
 
 
@@ -451,7 +439,7 @@ class ProjectReconcileCommand(BaseProjectCommand):
         if projcode:
             project = self.get_project(projcode)
             if project is None:
-                self.console.print(f"Project {projcode} not found", style="bold red")
+                self.ctx.message_console.print(f"Project {projcode} not found", style="bold red")
                 return EXIT_NOT_FOUND
             projects = [project]
         else:
@@ -482,11 +470,7 @@ class ProjectReconcileCommand(BaseProjectCommand):
             'dry_run': dry_run,
             'added': rows,
         }
-        if json_mode:
-            output_json(result)
-        else:
-            display_reconcile_results(self.ctx, result)
-        return EXIT_SUCCESS
+        return self.emit(result, display_reconcile_results)
 
     def _active_projects(self) -> list:
         return (self.session.query(Project).filter(Project.is_active)

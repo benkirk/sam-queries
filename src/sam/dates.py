@@ -2,10 +2,15 @@
 
 Not in ``sam.fmt``: that module imports ``config``, which the webapp boot order cannot take here.
 """
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 YMD = '%Y-%m-%d'
+
+#: SAM's naive datetimes are Mountain; legacy's JVM ran in this zone, so its epoch
+#: milliseconds are Mountain wall time. A fixed offset would drift an hour across DST.
+SERVER_TZ = ZoneInfo('America/Denver')
 
 
 def parse_ymd(s: str) -> datetime:
@@ -13,15 +18,25 @@ def parse_ymd(s: str) -> datetime:
     return datetime.strptime(s, YMD)
 
 
+def end_of_day(value: Optional[datetime]) -> Optional[datetime]:
+    """The same day at 23:59:59; None stays None."""
+    return None if value is None else value.replace(hour=23, minute=59, second=59, microsecond=0)
+
+
 def parse_ymd_end_of_day(s: str) -> datetime:
     """``YYYY-MM-DD`` as 23:59:59, the stored end-date convention."""
-    return parse_ymd(s).replace(hour=23, minute=59, second=59)
+    return end_of_day(parse_ymd(s))
 
 
-def parse_ymd_or(s, default=None, end_of_day=False):
+def format_ymd(value) -> Optional[str]:
+    """``yyyy-MM-dd`` as the Java side renders a date on the wire; None stays None."""
+    return None if value is None else value.strftime(YMD)
+
+
+def parse_ymd_or(s, default=None, at_end_of_day=False):
     """``parse_ymd`` (or ``parse_ymd_end_of_day``), else ``default`` for a missing or malformed string."""
     try:
-        return (parse_ymd_end_of_day if end_of_day else parse_ymd)(s) if s else default
+        return (parse_ymd_end_of_day if at_end_of_day else parse_ymd)(s) if s else default
     except ValueError:
         return default
 
@@ -41,3 +56,18 @@ def parse_wire_date(value: Any) -> Optional[date]:
         return parse_ymd(str(value)[:10]).date() if value else None
     except ValueError:
         return None
+
+
+def to_epoch_millis(value) -> Optional[int]:
+    """A naive-Mountain ``datetime`` (a ``date`` at local midnight) as epoch milliseconds."""
+    if value is None:
+        return None
+    if not isinstance(value, datetime):
+        value = datetime(value.year, value.month, value.day)
+    return int(value.replace(tzinfo=SERVER_TZ).timestamp() * 1000)
+
+
+def from_epoch_millis(ms) -> datetime:
+    """Epoch milliseconds as a naive-Mountain ``datetime``, truncated to the second."""
+    utc = datetime.fromtimestamp(int(ms) // 1000, tz=timezone.utc)
+    return utc.astimezone(SERVER_TZ).replace(tzinfo=None)

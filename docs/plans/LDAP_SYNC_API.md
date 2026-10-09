@@ -1,9 +1,11 @@
 # LDAP Sync API — serving `sam-ldap-syncd` from the new SAM
 
-**Status:** scoping / handoff, 2026-09-25. No code yet. The client-side facts in §1–§2
-were checked against the production daemon on sam-app.ucar.edu (image 6c0fd35); the
-server-side facts (the §1 traffic table, §2.1, §2.5) against the legacy SAM host
-sam-tomcat.ucar.edu (SAM 2.0.4 on Tomcat 9.0.58) on 2026-09-26.
+**Status:** implemented 2026-10-09 on branch `ldapsync-api` (P1a–P2, one commit per
+phase); §10 is the as-built record and supersedes §3–§4 where they differ. Scoped
+2026-09-25; the client-side facts in §1–§2 were checked against the production daemon
+on sam-app.ucar.edu (image 6c0fd35), the server-side facts (the §1 traffic table, §2.1,
+§2.5) against the legacy SAM host sam-tomcat.ucar.edu (SAM 2.0.4 on Tomcat 9.0.58) on
+2026-09-26.
 **See also:** `SAM_LDAP_SYNCD_REFERENCE.md` for what the daemon is and how it works,
 and its bug list.
 **Goal:** everything the Flask webapp must implement so that flipping one variable
@@ -190,7 +192,7 @@ mid-transfer.
   `lifecycle.py` (`/userlifecycle/*`).
 - Register in `src/webapp/run.py` beside XRAS (`run.py:451` keeps the legacy servlet
   prefix `/api/xras/v1` for the same reason) at `url_prefix='/api/protected/admin'`.
-  A gate in `tests/unit/gates/` asserts the prefix is claimed by exactly one blueprint.
+  `tests/api/test_ldapsync_api.py` asserts the prefix is claimed by exactly one blueprint.
 - Rollback is flipping `SAM_URL` back; both servers speak one contract.
 - Rejected alternative: new `/api/v1/ldapsync/*` paths plus an edit to the image-baked
   `Constants.rc`. Two artifacts to revert instead of one variable. Can be added later
@@ -248,7 +250,7 @@ Lifecycle DTOs use `yyyy-MM-dd` strings. Booleans for `active`, `primary`,
 | Collection | Rule |
 |---|---|
 | institution, organization | all rows including `deleted`; organization adds `parentOrgAcronym`, `description`, `treeLeft`, `treeRight`, `idmsUniqueName`; institution keys are `institutionId name acronym nsfOrgCode address city zip country state institutionType deleted` |
-| user | every row incl. inactive/deleted; `active = users.active OR deactivate IS NOT NULL`; `institutionIds`/`orgIds` = open link rows only; `collaborations`/`positions` = **all** `user_institution`/`user_organization` rows incl. history; `typeOfLogin` from `login_type.type`; `academicStatus` code; emails `{emailAddressId,userId,email,primary}`; phones `{extPhoneId,extPhoneUserId,extPhoneType,phoneNumber}`. Exact key set of the deployed serializer: `academicStatus active chargingExempt collaborations contactPersonUpid emails firstname institutionIds lastname locked middlename nameSuffix nickname orgIds phones positions title tokenType typeOfLogin unixUid upid userId userName deleted preferredName`; position `{positionId,organizationId,upid,startDate,endDate,idmsUniqueName}`, collaboration `{collaborationId,institutionId,upid,startDate,endDate}`. 24.3 MB today; serve it streamed (§2.1 Timeout) |
+| user | every row incl. inactive/deleted; `active = users.active OR deactivate IS NOT NULL` (superseded by D25: `active` alone); `institutionIds`/`orgIds` = open link rows only; `collaborations`/`positions` = **all** `user_institution`/`user_organization` rows incl. history; `typeOfLogin` from `login_type.type`; `academicStatus` code; emails `{emailAddressId,userId,email,primary}`; phones `{extPhoneId,extPhoneUserId,extPhoneType,phoneNumber}`. Exact key set of the deployed serializer: `academicStatus active chargingExempt collaborations contactPersonUpid emails firstname institutionIds lastname locked middlename nameSuffix nickname orgIds phones positions title tokenType typeOfLogin unixUid upid userId userName deleted preferredName`; position `{positionId,organizationId,upid,startDate,endDate,idmsUniqueName}`, collaboration `{collaborationId,institutionId,upid,startDate,endDate}`. 24.3 MB today; serve it streamed (§2.1 Timeout) |
 | user/{unixUid} | same mapping; unknown → 200 empty |
 | group | every `adhoc_group`; `name = key = group_name`; `posixGid = unix_gid`; `usernames` = all `adhoc_system_account_entry.username`; `upids` = entry users with `contact_person_upid IS NULL`; `rolenames` = the rest; `tags` = distinct `access_branch_name` of the entries (**not** `adhoc_group_tag`); plus `description` and `org` (nullable strings the deployed DTO carries) |
 | gidAllocation | raw rows `{gidAllocationId,startGid,nextGid,endGid,creationTime,modifiedTime}` |
@@ -261,7 +263,7 @@ new §8 "LDAP Sync API" in `docs/apis/SYSTEMS_INTEGRATION_APIs.md`.
 
 ### P1b — institution / organization / gidAllocation PUTs + purge pairs
 
-- `Institution.update/create` (`sam/core/organizations.py`) extended with
+- `Institution.upsert_from_sync` (`sam/core/organizations.py`; this plan said `update/create`) carries
   `nsf_org_code, address, city, zip, deleted`; `institution_type_id` by
   `institution_type.type` (unknown → 400); `state_prov_id` by country code + state
   code, then by name, else NULL, and a `state` equal to the country code is simply
@@ -294,7 +296,7 @@ on both group routes. Responses: permit `{<idField>, purgeable, message}`; purge
 ### P1c — user PUT and group PUT (the hard track)
 
 - `User.create(session, *, username, unix_uid, upid, active, ...)` and
-  `User.update(...)` that never touches `username`, `unix_uid`, `upid`
+  `User.apply_sync(...)` that never touches `username`, `unix_uid`, `upid`
   (`sam/core/users.py`). `src/sam/manage/ldapsync.py::sync_user` owns the rules:
   - a user with this `upid` exists but none with this `userName` → 400
     "Upid {0} matches username {1} (username change in ID Service?)";
@@ -307,13 +309,13 @@ on both group routes. Responses: permit `{<idField>, purgeable, message}`; purge
     contact_person_upid, deleted`, `academic_status_id` by code, `login_type_id` by type.
 - Active transitions (update only): IDMS active and SAM not effectively active →
   `active=1, deactivate=NULL`; IDMS inactive and SAM `active=1` → `deactivate=now`
-  (stays `active=1`, now "pending"); `modified_time` only on a transition.
+  (stays `active=1`, now "pending"); `modified_time` only on a transition (superseded by D18).
   `User.is_active` stays `active AND NOT locked`.
-- `EmailAddress.sync(session, user, wanted)`: match by address case-insensitively;
+- Emails (`_sync_emails` in `sam/manage/ldapsync.py`; this plan said `EmailAddress.sync`): match by address case-insensitively;
   rows not in the payload are **hard-deleted**; matched rows get `is_primary` and
-  address case; new rows inserted. `Phone.sync(...)`: exact number match, orphan
+  address case; new rows inserted. Phones (`_sync_phones`): exact number match, orphan
   delete, `ext_phone_type_id` by `phone_type.phone_type`.
-- `src/sam/core/employment.py::sync_employments(user, collaborations, positions, now)`
+- `sam/manage/employment.py::match` (the ladder; this plan said `core/employment.py::sync_employments`)
   for `user_institution` / `user_organization`: an explicit `collaborationId` /
   `positionId` that does not belong to this user is legacy's most frequent rejection
   (73 × **500** since August, §2.5) and comes from the daemon's stale copy of SAM's ids,
@@ -321,7 +323,7 @@ on both group routes. Responses: permit `{<idField>, purgeable, message}`; purge
   (decision to confirm, §9). Match in order identical → same `idms_unique_name` →
   exact dates → overlapping day-bounded ranges;
   overwrite start/end/idms on match, insert on miss; **rows missing from the payload
-  are never ended or deleted**; `end_date` stored at 23:59:59 (`normalize_end_date`).
+  are never ended or deleted**; a position's `end_date` is stored at 23:59:59 (`end_of_day`), a collaboration's raw (§ 10.2).
 - Load shape: the daemon sends one PUT at a time and waits; a replay is 6,300 PUTs in
   27 minutes at 151 ms each on legacy. One user PUT must stay in that range, and the
   limiter must let it through (§3.2).
@@ -360,9 +362,10 @@ on both group routes. Responses: permit `{<idField>, purgeable, message}`; purge
   marked for deactivation."); end every current `account_user` row with the house
   soft-delete stamp (`remove_user_from_project` convention); reset `primary_gid` to
   1000 if it was one of those projects' gids; then `active=0, deactivate=NULL,
-  modified_time=now`.
+  modified_time=now` (superseded: D21 leaves `primary_gid`; D25 and § 10.4 keep the
+  closure instant in `deactivate`).
 - **Decision (Ben, 2026-09-25): fix NCAR/sam-ldap-syncd#3 on the SAM side.** Add
-  `restore_deactivated_memberships()` on reactivation (the `PUT ldapsync/user` active
+  `restore_user_deactivation()` on reactivation (the `PUT ldapsync/user` active
   transition), restoring rows whose `end_date` matches the user's last deactivation
   stamp. No schema change. Runbook: `scripts/repair/RUNBOOK-missing-projects.md`.
 - Routes: `GET pendingdeactivations/<int:h>` (usernames with `active=1 AND deactivate
@@ -404,6 +407,20 @@ on both group routes. Responses: permit `{<idField>, purgeable, message}`; purge
 - **Replay**: `scripts/ldapsync_replay.py` posts a captured `syncd/sam-log.jsl` (the
   exact PUT stream the daemon wrote; ask George for one day) at webdev, exercising
   every write path with production-shaped payloads.
+- **Local pipeline** (`containers/ldap-pipeline/`, 2026-10-09): the three sam-app
+  containers built from the deployed commits. The replica is seeded from prod's own dump
+  and kept current by anonymous polls of ldap.ucar.edu (fdb refuses citldapsam off
+  sam-app); syncd reads prod SAM; every write is stubbed to a log until `SAM_URL` is our
+  webapp. Against `host.docker.internal:5050` it is the real client hitting P1a–P1d.
+  Three files it produces, all PII: `sam-update-stub.log` is the PUT corpus the replay
+  needs without asking George (1,338 PUTs from the seed diff plus the live stream);
+  `sam-log.jsl`, the format above, holds the live stream since the last syncd start;
+  `sam-data.json` is the daemon's copy of SAM after the stubbed PUTs, and the README's
+  `syncdInit` recipe captures the copy before them.
+- **Wire facts from the testbed's first runs**: `upid` arrives as an int or a string
+  (`"upid":71592`, `"upid":"71215"`); email and phone rows never carry SAM ids; the
+  daemon defers a user whose `userName` equals the upid ("unclaimed account") rather
+  than PUT it; the whole seed diff (about 1,200 users) is re-sent on every reset.
 - **Postgres**: run every purge on the :5434 dual backend; FK cascade behavior differs
   from MySQL.
 
@@ -423,7 +440,8 @@ on both group routes. Responses: permit `{<idField>, purgeable, message}`; purge
 4. Replay one day of `sam-log.jsl`; compare row counts in `user_institution`,
    `user_organization`, `email_address`, `adhoc_group`, `adhoc_group_tag`,
    `adhoc_system_account_entry` before and after with legacy.
-5. Cutover rehearsal on samuel-dev: a test daemon instance with `SAM_URL` pointed at
+5. Local rehearsal first: `containers/ldap-pipeline/` with `SAM_URL` at the dev server
+   (see its README). Then the cutover rehearsal on samuel-dev: a test daemon instance with `SAM_URL` pointed at
    `https://samuel-dev.k8s.ucar.edu`, `--test-connections` first, then one add-file
    replay; watch with `scripts/cirrus_watch.sh --env dev`.
 6. Production cutover: flip `SAM_URL` in `prod/.env`, restart the syncd container
@@ -521,3 +539,151 @@ that the logs show hit (`transactions/{c}/{tx}/state/cleared` 15–24,
 at `service/idservice/api/SyncLdapController.java`; `dasg/diskquota` (7 hits) is
 absent from the usage tables; and `apis.md` §1 still describes the deleted PeopleDB
 controllers.
+
+
+---
+
+## 10. As built (2026-10-09)
+
+### 10.1 Decisions (Ben, 2026-10-09)
+
+1. A stale `positionId`/`collaborationId` is ignored and the record matched by data (§9 Q5).
+2. Scope includes P2, gated off, with an undo for accidental deactivations.
+3. projectGroup: branch tags no longer need a member; one bad row no longer fails the list.
+4. The undo is **recorded, no DDL**: the finish keeps its closure instant in
+   `users.deactivate` and the undo matches it exactly (review 2026-10-09; the earlier
+   fingerprint over timestamps could not tell a deactivation from a removal from the
+   user's only project). Deactivations from before the sync are not undone.
+5. §9 Q1: `code in ('C','N')`, identical on today's facility codes. Q2: full list
+   kept (named `since=` honored, bare form ignored as legacy does). Q3: phones mirrored.
+
+### 10.2 Corrections to §2–§4 from the legacy Java source
+
+- A 400 body is `{"errorMessage": "ValidationException:\n <msg>"}`, every message
+  ending in a period; the upid message names the **existing SAM holder's** username.
+- Malformed JSON and a non-numeric path id are 500s in legacy, not 400s.
+- `userPurgePermit?unixUid=` for an unknown uid is a 500 in legacy (null username).
+- `institutionIds`/`orgIds` are link rows with `end_date IS NULL`, not "open" rows.
+- `user_institution.end_date` is stored raw; only `user_organization` is end-of-day.
+- `user_organization.end_date` is also **read** as end-of-day (`EndDateTimeUserType`
+  `normalizeForJava`), whatever time is stored.
+- The exact-date and identical rungs of the employment ladder never fired
+  (`Timestamp.equals(Date)`), and every user PUT restamped every affiliation row.
+- projectGroup: an allocation with a NULL end was excluded; `lastModified` is the
+  project's modified time if set, else creation, raised by every `account_user` time.
+- `status` fails only when `information_schema.update_time` is NULL for `adhoc_group`.
+- collabexpiry: the 90-day grace applies to disk holdings and the no-association
+  fallback only; the project **admin** was never counted (the lead was indexed twice).
+- `PUT deactivate` always 500s: the user is loaded outside any transaction.
+
+### 10.3 Deliberate deviations
+
+| # | Legacy | Here |
+|---|---|---|
+| D1 | stale affiliation id → 500, whole user lost | id ignored, ladder runs, one log line |
+| D2 | id match skips the employer; a SAM row can match twice | id must name the same employer; a row matches once |
+| D3 | dead rungs, every PUT restamps `modified_time` | rungs work; an identical PUT writes nothing |
+| D4 | inverted range on the overlap rung → 500 | never overlaps → insert |
+| D5 | malformed JSON / non-numeric id → 500 (mailed) | 400 |
+| D6 | null `locked`/`chargingExempt`/`primary`/`active` → NPE 500 | 400 |
+| D7 | over-long field, unknown institution type → 500 | 400 before the database |
+| D8 | state equal to the country code → mailed ERROR | no state, no log |
+| D9 | organization `description` erased on every PUT | written only when sent |
+| D10 | GID overlap misses containment | containment rejected |
+| D11 | unknown user permit → 500 | purgeable, "does not exist" |
+| D12 | user purge ignores `role_user`, `user_alias`, raw charges | each blocks the permit |
+| D13 | group members mapped case-sensitively | case-insensitively |
+| D14 | projectGroup tags need a non-lead member; NULL-end allocation excluded; one bad row fails all | fixed (decision 3) |
+| D15 | `"CN".contains(code)` | `code in ('C','N')` |
+| D16 | collabexpiry admin dead, NPE on open ends, frozen `now` | fixed, per request |
+| D17 | `status` 500s | works |
+| D18 | `users.modified_time` only on an active transition | on any real change |
+| D19 | `PUT deactivate` always 500s | works, gated |
+| D20 | `pendingdeactivations` needs `/24` | `/?24` accepted too |
+| D21 | finish resets `primary_gid` to 1000 | left as is (the undo does not record it) |
+| D22 | unknown employer or phone type → 500, user lost | that row skipped and logged |
+| D23 | organization purge ignores children and responsible resources | each blocks the permit |
+| D24 | a naive time in the repeated DST fall-back hour reads as the later instant (MST) | the earlier (MDT); 1 position start on the clone, accepted |
+| D25 | the finish clears `deactivate`; a user reads `active = active OR deactivate IS NOT NULL` | the finish keeps the closure instant in `deactivate`; a user reads `active` alone (legacy never had `active=0` with a stamp, so the read differs on no legacy row) |
+
+### 10.4 The deactivation undo
+
+`finish_user_deactivation` closes every live membership at one instant (the house
+`membership_cutoff`, so a finish just after midnight lands on 23:59:59 like any other
+end) and keeps that instant in `users.deactivate` with `active=0`. The column is the
+ledger, so `users.deactivate` has three states: `active=1` + stamp is pending (IdM marked
+the user inactive; the daemon finishes it after the failsafe hours), `active=0` + stamp is
+finished, `active=0` + NULL predates the sync. The undo reopens the rows whose `end_date`
+equals the stamp, open-ended; a row whose account has an open row again is skipped
+(`skipped_already_member`), as is a deleted account. It never guesses: a removal from the
+user's only project is not a closure, and a legacy-era deactivation (no stamp) is left to
+`scripts/repair/RUNBOOK-missing-projects.md`. The IdM reactivation hook receives the stamp
+before the transition clears it, bounded by `LDAPSYNC_RESTORE_WINDOW_DAYS` (90) so a person
+returning after a real departure is not re-added. The operator command
+(`sam-admin user <u> --deactivation` / `--restore-deactivation`) uses the same match.
+
+Levers, all shipped off in `helm/values.yaml`: `LDAPSYNC_LIFECYCLE_ENABLED` gates the
+finish pair (`pendingdeactivations` answers `[]`, `deactivate` is refused),
+`LDAPSYNC_RESTORE_ON_REACTIVATE` the hook above, `LDAPSYNC_PURGE_ENABLED` every purge of
+an existing row (`docs/apis/SYSTEMS_INTEGRATION_APIs.md` § 8).
+
+### 10.5 Verification so far
+
+- Unit, query and HTTP tiers on MySQL and Postgres; gates and helm renders green.
+- The testbed's captured corpus (1,346 PUTs, `out/20261009T050041`) replayed through the
+  manage layer against the local clone, rolled back: 1,344 accepted, 2 rejected with
+  legacy-known 400s (an over-long acronym; a upid held by another username), ~8 ms per
+  PUT. 112 user PUTs carried an affiliation id the (older) clone no longer held; D1
+  matched each by data.
+- Reads on the local clone: `user` 28,616 rows assembled in 0.75 s; `projectGroup` 0.4 s;
+  `collabexpiryupdates` 0.33 s.
+- **Testbed reads (2026-10-09).** Clone refreshed 06:50-06:53 MDT; `syncdInit` against
+  legacy prod (06:54, 54 s) and against the branch on :5051 (06:56, 10 s), compared with
+  `bin/compare-dumps`. Every type loaded the same record count on both (1,410 institution,
+  402 organization, 28,673 user, 5,916 projectGroup, 5 groupTag, 310 group, 1 gidAllocation).
+
+  | Type | Differing | Class |
+  |---|---|---|
+  | institution, organization, group, groupTag, gidAllocation | 0 | |
+  | projectGroup `tags` | 31 | D14: tags only added; 30 projects with no live account member, 1 branch from a member-less account |
+  | projectGroup `lastModified` | 1 | the daemon's synthetic `all-hpc-users`, stamped at load time |
+  | user `collaborations` / `positions` | 3 / 2 | element order only |
+  | user `positions.endDate` | 10 | port defect, fixed (read as end-of-day, § 10.2); 0 on re-capture |
+  | user `positions.startDate` | 1 | D24 |
+
+  No data-age differences.
+- **Testbed writes (2026-10-09).** The daemon cannot carry its own stream: the first
+  institution 400 aborts the pass and bug 15 drops the rest (`SAM_LDAP_SYNCD_REFERENCE.md`),
+  against legacy too. So the stream was captured with SAMuel reads and the stub on (1,343
+  PUTs: 1,186 user, 112 group, 35 institution, 10 organization) and replayed over HTTP with
+  the daemon's credential: 1,341 x 200, 2 x 400 (the over-long acronym; a upid held by
+  another username), no 5xx, 18.9 s. A second stub-on reset then queued 923 PUTs, nearly
+  all byte-identical to the first. No residual field is SAMuel-only: each differs from
+  legacy's capture A as well, for these reasons (a user PUT can carry several):
+
+  | Residual | PUTs | Why it never converges, legacy included |
+  |---|---|---|
+  | position end at 00:00 (some 17:00/23:00) | 643 | stored and read as end-of-day |
+  | `active:false`, deactivation stamped | 187 | reads active until the lifecycle finish (bugs 3/2/8/N2) |
+  | group name, tags, upids | 112 | SAM keeps only `group_name` = key; tags come from member entries |
+  | institution state equal to country | 34 (+1 the acronym 400) | D8/B9; no country column |
+  | upid differs | 23 | an existing user's upid is never rewritten |
+  | collaboration history | 22 | rows are never ended or deleted |
+  | one number under two phone types | 20 | phones are keyed by number |
+  | organization with an inactive parent | 10 | the parent must be an active org |
+  | role login whose uid moved (`eipfdbreplsync` and one more) | 2 add + 2 tombstone | matched by username; `unix_uid` never rewritten |
+  | emails, names, `userName`, `tokenType` | a handful | not traced |
+
+  The replay wrote the local clone (`make clone` restores it).
+
+### 10.6 Still to do before cutover
+
+1. syncd patches we carry (`SAM_LDAP_SYNCD_REFERENCE.md` N5, bug 15, N23, N22): proven on
+   the testbed 2026-10-09 (PR #774; with them the daemon delivers its own full stream and the
+   acronym institution is accepted, leaving one legacy-known 400). File them upstream; until
+   then prod runs without them.
+2. Confirm the prod `admin` `api_credentials` row with `ROLE_API_ADMIN`.
+3. samuel-dev rehearsal, then flip `SAM_URL`; rollback is the same variable.
+4. For George: the cron configuration (bug 13) and, before `LDAPSYNC_LIFECYCLE_ENABLED`,
+   the `deactivation` key name and the `$samClient` bug (the `/?24` path is handled here).
+

@@ -9,7 +9,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.tree import Tree
 
-from cli.core.display_utils import BLANK, text, truncate
+from cli.core.display_utils import BLANK, stamp, styled, text, truncate
 
 #: Rich styles per action status. Deliberately the same semantics as the web
 #: badges (dashboards/fragments/badges.html) so an operator reading the terminal
@@ -35,14 +35,7 @@ def _sources(values) -> str:
 
 
 def _status(value) -> str:
-    style = _STATUS_STYLE.get(value, 'white')
-    return f'[{style}]{text(value)}[/{style}]'
-
-
-def _timestamp(value) -> str:
-    """Actions arrive in bursts, so the time of day is what separates rows."""
-    from sam import fmt
-    return BLANK if value is None else fmt.date_str(value, fmt='%Y-%m-%d %H:%M:%S')
+    return styled(value, _STATUS_STYLE)
 
 
 _READINESS_STYLE = {'failed': '[red]would fail[/red]',
@@ -220,7 +213,7 @@ def display_action_list(ctx, payload) -> None:
         recheck_marker = f" [dim]↩{a['source_action_id']}[/dim]" if a['source_action_id'] else ''
         table.add_row(
             str(a['action_log_id']) + recheck_marker,
-            _timestamp(a['received_time']),
+            stamp(a['received_time']),
             text(a['action_type']),
             text(a['request_number']),
             _status(a['status']),
@@ -241,9 +234,9 @@ def display_action_detail(ctx, payload) -> None:
     table.add_column('value')
 
     table.add_row('Action ID', str(a['action_log_id']))
-    table.add_row('Received', _timestamp(a['received_time']))
+    table.add_row('Received', stamp(a['received_time']))
     if a['processed_time']:
-        table.add_row('Processed', _timestamp(a['processed_time']))
+        table.add_row('Processed', stamp(a['processed_time']))
     table.add_row('Status', _status(a['status']))
     table.add_row('HTTP status', text(a['http_status']))
     table.add_row('Action type', text(a['action_type']))

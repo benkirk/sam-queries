@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+"""Compare two syncd snapshots (sam-data.json) type by type; prints counts and field names only.
+
+Usage: bin/compare-dumps [--ignore TYPE.field[,TYPE.field...]] A/sam-data.json B/sam-data.json
+Take A from a syncdInit against prod and B from one against SAMuel. The snapshot is
+[latestFile, {type: {key: record}}, idMaps]; values are never printed (they are PII).
+Lists compare order-insensitively. --ignore drops known-harmless fields (README, "The
+daily shadow check"), so a clean day prints differ=0 for every type and exits 0.
+"""
+import argparse
+import collections
+import json
+import sys
+
+
+def records(path):
+    with open(path) as fh:
+        return json.load(fh)[1]
+
+
+def canonical(value):
+    """A list in any order compares equal; nested lists and dicts are canonicalized too."""
+    if isinstance(value, list):
+        return sorted((canonical(v) for v in value), key=lambda v: json.dumps(v, sort_keys=True))
+    if isinstance(value, dict):
+        return {k: canonical(v) for k, v in value.items()}
+    return value
+
+
+def parse_ignore(specs):
+    ignore = collections.defaultdict(set)
+    for spec in specs:
+        for item in filter(None, spec.split(',')):
+            kind, _, field = item.partition('.')
+            if not field:
+                sys.exit(f'--ignore wants TYPE.field, not {item!r}')
+            ignore[kind].add(field)
+    return ignore
+
+
+def main(a_path, b_path, ignore):
+    a, b = records(a_path), records(b_path)
+    if ignore:
+        print('ignoring: ' + ' '.join(f'{k}.{f}' for k in sorted(ignore) for f in sorted(ignore[k])))
+    total = 0
+    for kind in sorted(set(a) | set(b)):
+        ra, rb = a.get(kind, {}), b.get(kind, {})
+        shared = set(ra) & set(rb)
+        skip = ignore.get(kind, set())
+        fields = collections.Counter()
+        differing = 0
+        for key in shared:
+            x, y = ra[key], rb[key]
+            names = [n for n in set(x) | set(y) if n not in skip
+                     and canonical(x.get(n)) != canonical(y.get(n))]
+            if names:
+                differing += 1
+                fields.update(names)
+        total += differing + len(set(ra) ^ set(rb))
+        print(f'{kind}: A={len(ra)} B={len(rb)} only-A={len(set(ra) - set(rb))} '
+              f'only-B={len(set(rb) - set(ra))} differ={differing}')
+        for name, n in fields.most_common():
+            print(f'    {name}: {n}')
+    return total
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument('--ignore', action='append', default=[], metavar='TYPE.field[,...]')
+    parser.add_argument('a')
+    parser.add_argument('b')
+    args = parser.parse_args()
+    sys.exit(1 if main(args.a, args.b, parse_ignore(args.ignore)) else 0)

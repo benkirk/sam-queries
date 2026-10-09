@@ -127,6 +127,19 @@ class SAMWebappConfig(SAMConfig):
     # payloads in the meantime. Flip OFF per handler as each one lands.
     XRAS_ACTIONS_CAPTURE_ONLY = os.getenv('XRAS_ACTIONS_CAPTURE_ONLY', '1').lower() in ('1', 'true', 'yes')
 
+    # sam-ldap-syncd levers (/api/protected/admin, docs/plans/LDAP_SYNC_API.md), all off.
+    # PURGE off: a purge permit for an existing row answers not purgeable, so the
+    # daemon PUTs a tombstone instead of DELETE (what legacy did on every permit).
+    LDAPSYNC_PURGE_ENABLED = os.getenv('LDAPSYNC_PURGE_ENABLED', '0').lower() in ('1', 'true', 'yes')
+    # LIFECYCLE off: pendingdeactivations answers [] and PUT deactivate is refused,
+    # so no stamped user is finished (no memberships are closed).
+    LDAPSYNC_LIFECYCLE_ENABLED = os.getenv('LDAPSYNC_LIFECYCLE_ENABLED', '0').lower() in ('1', 'true', 'yes')
+    # RESTORE_ON_REACTIVATE off: when on, a user PUT that brings back a user the sync
+    # finished deactivating reopens the memberships that finish closed (sam.manage.lifecycle).
+    LDAPSYNC_RESTORE_ON_REACTIVATE = os.getenv('LDAPSYNC_RESTORE_ON_REACTIVATE', '0').lower() in ('1', 'true', 'yes')
+    # Only a closure this recent is undone automatically; older is a real departure.
+    LDAPSYNC_RESTORE_WINDOW_DAYS = int(os.getenv('LDAPSYNC_RESTORE_WINDOW_DAYS', '90'))
+
     # Per-type triage lever for POST /api/xras/v1/actions: 'all' (the default),
     # 'none', or a comma-separated list of action types ('Extension,Supplement').
     # NOT a rollout mechanism — XRAS repoints its base URL once, so all six
@@ -531,6 +544,10 @@ class TestingConfig(SAMWebappConfig):
     # production XRAS. Pinned False so `write_configured` is False unless a test
     # says otherwise.
     XRAS_WRITE_ENABLED = False
+    # Pinned for the same reason: tests opt into a destructive lever explicitly.
+    LDAPSYNC_PURGE_ENABLED = False
+    LDAPSYNC_LIFECYCLE_ENABLED = False
+    LDAPSYNC_RESTORE_ON_REACTIVATE = False
 
 
 _configs = {

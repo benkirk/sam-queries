@@ -36,14 +36,8 @@ class Context:
         self.console = Console()
         self.stderr_console = Console(file=sys.stderr)
 
-        # NO mail configuration here, deliberately.
-        #
-        # This block used to re-read the same six MAIL_* vars off os.getenv
-        # with the same defaults as src/config.py:31-37 — a SECOND source of
-        # truth, which is why the CLI never honored a SAMConfig change (and
-        # why MAIL_USE_TLS could be flipped in one place and stay false in the
-        # other). sam.notify.NotifyConfig replaces both and reads Flask config
-        # or the environment, so the CLI and the webapp cannot disagree.
+        # NO mail configuration here: sam.notify.NotifyConfig is the one reader, so the
+        # CLI and the webapp cannot disagree about MAIL_* settings.
 
     # ------------------------------------------------------------ SAM MySQL
     @property
@@ -58,9 +52,7 @@ class Context:
 
     @session.setter
     def session(self, value: Optional[Session]) -> None:
-        # Tests inject a session bound to the test transaction, and the group
-        # callbacks used to assign here. Keeping the setter means neither has
-        # to know about the backing attribute.
+        # Tests inject a session bound to the test transaction.
         self._session = value
 
     def open_sam(self) -> Session:
@@ -84,6 +76,11 @@ class Context:
                 raise SamConnectionError(
                     f"Error connecting to database: {e}") from e
         return self._session
+
+    @property
+    def message_console(self) -> Console:
+        """Stdout for Rich output; stderr in JSON mode, so stdout stays one JSON document."""
+        return self.stderr_console if self.output_format == 'json' else self.console
 
     def require_sam(self) -> Session:
         """Return the SAM MySQL session, connecting on first use. **Exits on failure.**

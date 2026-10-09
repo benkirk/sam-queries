@@ -3,7 +3,7 @@
 from datetime import datetime
 from cli.core.base import BaseAllocationCommand
 from cli.core.output import output_json
-from cli.core.utils import EXIT_SUCCESS, EXIT_ERROR
+from cli.core.utils import EXIT_ERROR, EXIT_NOT_FOUND, EXIT_SUCCESS
 from cli.allocations.display import display_allocation_summary, parse_comma_list
 from sam.queries.allocations import get_allocation_summary, get_allocation_summary_with_usage
 
@@ -38,7 +38,8 @@ class AllocationSearchCommand(BaseAllocationCommand):
                 try:
                     active_at_date = datetime.strptime(active_at, "%Y-%m-%d")
                 except ValueError:
-                    self.console.print(f"❌ Invalid date format: {active_at}. Use YYYY-MM-DD", style="bold red")
+                    self.ctx.stderr_console.print(f"❌ Invalid date format: {active_at}. Use YYYY-MM-DD",
+                                                  style="bold red")
                     return EXIT_ERROR
 
             # Query allocations
@@ -64,26 +65,14 @@ class AllocationSearchCommand(BaseAllocationCommand):
                     active_at=active_at_date,
                 )
 
-            if not results:
-                if self.ctx.output_format == 'json':
-                    output_json({'kind': 'allocation_summary', 'count': 0,
-                                 'show_usage': show_usage, 'rows': []})
-                    return EXIT_SUCCESS
-                self.console.print("No allocations found matching criteria.", style="yellow")
-                return EXIT_SUCCESS
-
-            # Display results
             if self.ctx.output_format == 'json':
-                output_json({
-                    'kind': 'allocation_summary',
-                    'count': len(results),
-                    'show_usage': show_usage,
-                    'rows': results,
-                })
-                return EXIT_SUCCESS
-
-            display_allocation_summary(self.ctx, results, show_usage=show_usage)
-            return EXIT_SUCCESS
+                output_json({'kind': 'allocation_summary', 'count': len(results),
+                             'show_usage': show_usage, 'rows': results})
+            elif results:
+                display_allocation_summary(self.ctx, results, show_usage=show_usage)
+            else:
+                self.console.print("No allocations found matching criteria.", style="yellow")
+            return EXIT_SUCCESS if results else EXIT_NOT_FOUND
 
         except Exception as e:
             return self.handle_exception(e)

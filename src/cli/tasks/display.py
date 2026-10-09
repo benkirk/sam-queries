@@ -9,7 +9,7 @@ through ``sam.fmt`` / ``cli.core.display_utils``; no ``strftime``, no
 from rich.panel import Panel
 from rich.table import Table
 
-from cli.core.display_utils import BLANK, text
+from cli.core.display_utils import BLANK, stamp, styled, text
 
 #: Rich styles per run state. Same semantics an operator would read on a
 #: dashboard badge, so the terminal and the web teach one vocabulary.
@@ -30,8 +30,7 @@ _OUTCOME_STYLE = {
 
 
 def _state(value) -> str:
-    style = _STATE_STYLE.get(value, _OUTCOME_STYLE.get(value, 'white'))
-    return f'[{style}]{text(value)}[/{style}]'
+    return styled(value, {**_OUTCOME_STYLE, **_STATE_STYLE})
 
 
 def _dt(value):
@@ -40,12 +39,6 @@ def _dt(value):
     if not value:
         return None
     return value if isinstance(value, datetime) else datetime.fromisoformat(value)
-
-
-def _stamp(value) -> str:
-    """A run is identified by its time of day, not just its date."""
-    from sam import fmt
-    return fmt.date_str(_dt(value), fmt='%Y-%m-%d %H:%M:%S')
 
 
 def _age(value) -> str:
@@ -91,10 +84,10 @@ def display_task_list(ctx, payload) -> None:
         table.add_row(
             name,
             text(row['schedule']),
-            _stamp(last['claimed_at']) if last else BLANK,
+            stamp(last['claimed_at']) if last else BLANK,
             _state(last['state']) if last else BLANK,
             _age(last['finished_at'] or last['claimed_at']) if last else BLANK,
-            _stamp(row['next_occurrence']),
+            stamp(row['next_occurrence']),
         )
 
     ctx.console.print(table)
@@ -132,7 +125,7 @@ def display_task_history(ctx, payload) -> None:
             _state(run['state']),
             text(run['trigger']),
             str(run['attempt']),
-            _stamp(run['claimed_at']),
+            stamp(run['claimed_at']),
             _duration(run['duration_ms']),
             text(run['runner_id']),
         )
@@ -160,7 +153,7 @@ def display_task_dispatch(ctx, payload) -> None:
         note = row.get('error') or detail.get('message') or ''
         table.add_row(
             text(row['task']),
-            _stamp(row.get('occurrence')),
+            stamp(row.get('occurrence')),
             _state(row['outcome']),
             _duration(row.get('duration_ms')),
             text(note) if note else BLANK,

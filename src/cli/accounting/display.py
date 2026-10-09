@@ -1,5 +1,6 @@
 """Display functions for accounting commands."""
 
+from sam.summaries.disk_summaries import BYTES_PER_TIB
 from cli.core.context import Context
 from rich.table import Table
 from rich.tree import Tree
@@ -406,7 +407,7 @@ def display_jobs_table(ctx: Context, rows: list, start_date, end_date, *,
 
 
 def _expected_delta_pct(sam_tib: float, expected_bytes: int) -> float:
-    expected_tib = expected_bytes / (1024 ** 4)
+    expected_tib = expected_bytes / BYTES_PER_TIB
     if expected_tib == 0:
         return 0.0
     return (sam_tib - expected_tib) / expected_tib * 100.0
@@ -483,7 +484,7 @@ def _render_subtree_panel(ctx: Context, projcode: str, sam_tib: float,
     w_path = max(len(qe.path or "—") for _, qe in contributors)
 
     header = (
-        f"[bold]{projcode}[/bold] — SAM {fmt.size(sam_tib * (1024 ** 4))}, "
+        f"[bold]{projcode}[/bold] — SAM {fmt.size(sam_tib * BYTES_PER_TIB)}, "
         f"expected {fmt.size(expected_bytes)} "
         f"([dim]{len(contributors)} fileset"
         f"{'s' if len(contributors) != 1 else ''}[/dim])"
@@ -548,7 +549,7 @@ def display_quota_reconcile_plan(
             fileset, path, _ = _leaf_cells(contributors)
             t.add_row(
                 projcode,
-                fmt.size(sam_tib * (1024 ** 4)),
+                fmt.size(sam_tib * BYTES_PER_TIB),
                 fmt.size(expected_bytes),
                 fmt.pct(_expected_delta_pct(sam_tib, expected_bytes), decimals=1),
                 fileset, path,
@@ -591,7 +592,7 @@ def display_quota_reconcile_plan(
                 "[bold yellow]paths still live — requires --force[/bold yellow]"
                 if all_live else "deactivate (set end_date)"
             )
-            row = [projcode, fmt.size(sam_tib * (1024 ** 4)), dir_cell]
+            row = [projcode, fmt.size(sam_tib * BYTES_PER_TIB), dir_cell]
             if show_fs:
                 row.append(markers)
             row.append(action_cell)
@@ -652,7 +653,7 @@ def display_quota_reconcile_plan(
             fileset, path, _ = _leaf_cells(contributors)
             t.add_row(
                 projcode,
-                fmt.size(sam_tib * (1024 ** 4)),
+                fmt.size(sam_tib * BYTES_PER_TIB),
                 fmt.size(expected_bytes),
                 fmt.pct(_expected_delta_pct(sam_tib, expected_bytes), decimals=2),
                 fileset, path,

@@ -1,12 +1,18 @@
 """Display functions for user commands. Operate on plain dicts produced
 by `cli.user.builders`; never touch ORM objects directly."""
 
+
 from cli.core.context import Context
+from cli.core.display_utils import date_cell, issues_table, stamp
 from sam import fmt
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 from rich import box
+
+
+def _user_line(u: dict) -> str:
+    return f"{u['username']:12} {u['display_name']:30} <{u['primary_email']}>"
 
 
 def display_user(ctx: Context, data: dict, list_projects: bool = False):
@@ -100,7 +106,7 @@ def _last_seen_summary(sources):
     from system_status.timeutil import utcnow_naive
     newest = sources[0]
     when = 'now' if newest.get('current') else f"{fmt.ago(utcnow_naive() - newest['last_seen'])} ago"
-    return (f"{fmt.date_str(newest['last_seen'], fmt='%Y-%m-%d %H:%M')} UTC  "
+    return (f"{stamp(newest['last_seen'], seconds=False)} UTC  "
             f"{_via(newest['kind'], newest['system'])}  ({when})")
 
 
@@ -139,13 +145,7 @@ def display_user_provisioning(ctx: Context, prov: dict, username: str):
         )
         return
 
-    ctx.console.print(f"\n[bold yellow]Host provisioning issues for {username}:[/]")
-    table = Table(box=box.SIMPLE, show_header=False)
-    table.add_column("Check", style="cyan")
-    table.add_column("Detail", style="yellow")
-    for label, detail in issues:
-        table.add_row(label, detail)
-    ctx.console.print(table)
+    issues_table(ctx, username, issues)
 
 
 def display_user_projects(ctx: Context, projects: list, username: str):
@@ -233,7 +233,7 @@ def display_abandoned_users(ctx: Context, data: dict):
         table = Table(show_header=False, box=None)
         table.add_column("User")
         for u in data['users']:
-            table.add_row(f"{u['username']:12} {u['display_name']:30} <{u['primary_email']}>")
+            table.add_row(_user_line(u))
         ctx.console.print(table)
 
 
@@ -245,19 +245,10 @@ def display_users_with_projects(ctx: Context, data: dict, list_projects: bool = 
         style="green"
     )
 
-    if ctx.verbose:
-        # Verbose mode renders each user as a full panel.  For that we
-        # need core+detail dicts, which build_users_with_projects does
-        # not produce — it has only the brief summary.  Fall back to
-        # the same flat table layout as non-verbose for now; if a user
-        # wants per-user verbose detail, they can run `sam-search user
-        # <name> --verbose` directly.
-        pass
-
     table = Table(show_header=False, box=None)
     table.add_column("User")
     for u in data['users']:
-        table.add_row(f"{u['username']:12} {u['display_name']:30} <{u['primary_email']}>")
+        table.add_row(_user_line(u))
         if list_projects and 'projects' in u:
             for p in u['projects']:
                 table.add_row(f"    - {p['projcode']:12} {p['title']}")
@@ -295,4 +286,24 @@ def display_not_seen_users(ctx: Context, data: dict):
         if ctx.verbose:
             row.append(u['primary_email'] or '—')
         table.add_row(*row)
+    ctx.console.print(table)
+
+
+def display_deactivation_restore(ctx: Context, data: dict):
+    """The memberships a deactivation closed, and what a restore does to each."""
+    if data['closed_at'] is None:
+        ctx.console.print(f"No deactivation closure found for {data['username']}.",
+                          style='yellow')
+        return
+    verb = 'would restore' if data['dry_run'] else 'restored'
+    closed_at = stamp(data['closed_at'])
+    table = Table(title=f"{data['username']}: memberships closed at {closed_at}", box=box.SIMPLE)
+    for col in ('Project', 'Resource', 'Started', 'Outcome'):
+        table.add_column(col)
+    for row in data['rows']:
+        outcome = row['outcome']
+        style = 'green' if outcome == 'restored' else 'yellow'
+        shown = verb if outcome == 'restored' else outcome
+        table.add_row(row['projcode'], row['resource'], date_cell(row['start_date']),
+                      Text(shown, style=style))
     ctx.console.print(table)

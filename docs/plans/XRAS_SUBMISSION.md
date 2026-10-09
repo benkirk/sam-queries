@@ -471,7 +471,7 @@ What landed:
 | [`REQUEST_EDITOR.md`](../xras/outgoing/REQUEST_EDITOR.md) | the write client, tiers, levers and stage model the flow layer extends |
 | [`XRAS_WRITE_PROBES.md`](../xras/outgoing/XRAS_WRITE_PROBES.md) | probe methodology, the one authorization rule, the privilege register |
 | [`XRAS_OUTGOING_QUERIES.md`](../xras/outgoing/XRAS_OUTGOING_QUERIES.md) | the readable surface and the request payload shape |
-| [`PROJECT_AND_ACCOUNT_LIFECYCLE.md`](../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md) | where a project comes from; SAM never creates users |
+| [`PROJECT_AND_ACCOUNT_LIFECYCLE.md`](../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md) | where a project comes from; SAM never originates users |
 | [`XRAS_TRIAGE_PLAYBOOK.md`](../xras/incoming/XRAS_TRIAGE_PLAYBOOK.md) | the 422 catalog § 1 answers |
 | [`XRAS_PUSH_READINESS.md`](implemented/XRAS_PUSH_READINESS.md) | the preflight engine reused as the pre-submit check |
 | [`XRAS_INGEST_IMPROVEMENTS.md`](XRAS_INGEST_IMPROVEMENTS.md) | where the idempotency guard and the `select_service` fallback of § 4.6 land |

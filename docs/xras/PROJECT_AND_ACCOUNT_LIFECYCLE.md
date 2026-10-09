@@ -48,36 +48,35 @@ path server-side. Recorded, not yet fixed.
 
 ---
 
-## 2 · ⚠️ SAM never creates users
+## 2 · ⚠️ SAM never originates users
 
-**This is the fact that explains the whole account worklist, and it is not visible
-anywhere in the code — only in its absence.**
+**This is the fact that explains the whole account worklist.**
 
-`users` is **mirrored into SAM from an organizational LDAP** by a process that lives
-outside this repository. Enrollment — including 2FA — is an enterprise function performed
-by another team. SAM is a **reader** of identity, not a source of it.
+`users` is **mirrored into SAM from the organizational LDAP**. Enrollment, including
+2FA, is an enterprise function performed by another team. SAM does not decide who has
+an identity; it receives them. The mirror is `sam-ldap-syncd` on sam-app, which reads a
+replica of the central directory and pushes every change to SAM's LDAP sync API
+(`/api/protected/admin/ldapsync/*`, `docs/apis/SYSTEMS_INTEGRATION_APIs.md` § 8).
+Before that API existed here, the daemon wrote to legacy Java SAM.
 
 What that looks like in the tree, all of it checkable:
 
 | | |
 |---|---|
-| INSERT into `users` anywhere in `src/` | **none** |
-| `User.create()` | **does not exist** — alone among ~21 models that have one |
-| `User.update()` | **does not exist** either |
-| Anything writing `users.active` or `users.locked` | **nothing**, in the entire repo |
-| The only column SAM ever writes | `primary_gid`, via `User.set_primary_gid()` |
+| `User.create()` / `User.apply_sync()` | exist for the sync alone; the callers are `sam.manage.ldapsync`, `sam.manage.lifecycle` and their tests |
+| Anything else writing `users.active` / `users.locked` | the deactivation finish (`sam.manage.lifecycle`), driven by the same daemon |
+| What SAM writes on its own initiative | `primary_gid`, via `User.set_primary_gid()` |
 
-The strongest in-tree evidence is an outage. `src/sam/core/users.py:50-56` records that
-the **2026-08-10 identity-sync cutover** dropped `pdb_modified_time` and
-`idms_sync_token` from production `users` in a DDL SAM neither wrote nor knew about;
-every page 500'd for ~20 minutes, and the incident is now pinned as a contract in
-`tests/api/test_health_endpoints.py`. `PDB` and `IDMS` are the upstream's names, surviving
-as column prefixes. SAM was a passive victim of a table it does not own.
+The strongest evidence that SAM does not own the table is an outage: the **2026-08-10
+identity-sync cutover** dropped `pdb_modified_time` and `idms_sync_token` from production
+`users` in a DDL SAM neither wrote nor knew about; every page 500'd for ~20 minutes, and
+the incident is pinned as a contract in `tests/api/test_health_endpoints.py`. `PDB` and
+`IDMS` are the upstream's names, surviving as column prefixes.
 
-**LDAP appears in this repo only as a *downstream*** — `sam/queries/directory_access.py`
-feeds a "downstream LDAP provisioner", and `sam/provisioning.py` compares what SAM
-believes against what the host actually provisions. The reverse direction, LDAP → `users`,
-has no code here at all. That asymmetry is easy to misread as "SAM owns identity".
+**LDAP is also a *downstream*.** `sam/queries/directory_access.py` feeds a downstream LDAP
+provisioner, `sam/provisioning.py` compares what SAM believes against what a host
+provisions, and the daemon reads project groups and collaborator expiry back out of SAM
+into LDAP staging. Neither direction makes SAM the owner of identity.
 
 ### The consequence, and why the worklist exists
 

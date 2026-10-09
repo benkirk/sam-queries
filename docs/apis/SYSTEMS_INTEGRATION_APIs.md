@@ -1,10 +1,11 @@
 # Systems Integration APIs
 
-Five read-only API endpoints that serve LDAP provisioning tools, PBS batch
-schedulers, and other HPC systems integration workflows.  All reproduce output
-from the legacy SAM Java system (`sam.ucar.edu/api/protected/admin/`) and share
-a common design: bulk raw-SQL or ORM queries, 5-minute response caching, and the
-same authentication/authorization model as all other v1 APIs.
+APIs that serve LDAP provisioning tools, PBS batch schedulers, and other HPC
+systems integration workflows. All reproduce the legacy SAM Java system
+(`sam.ucar.edu/api/protected/admin/`). Sections 1–7 are read-only, share a common
+design (bulk raw-SQL or ORM queries, 5-minute response caching, the v1 auth model)
+and live under `/api/v1/`. Section 8, the LDAP sync API, writes, is uncached, and
+keeps legacy's own paths and auth.
 
 ---
 
@@ -844,6 +845,34 @@ directory name (`disk_resource_root_directory`).
 > `Resource.is_active` hybrid (CLAUDE.md § 5), which treats a NULL
 > `commission_date` as commissioned; legacy required `commission_date <= NOW()`.
 > Immaterial for real disk resources, which always carry a commission date.
+
+---
+
+## 8. LDAP Sync API
+
+**Base URL**: `/api/protected/admin/` (legacy's prefix: `sam-ldap-syncd` repoints by
+`SAM_URL` alone)  
+**Auth**: HTTP Basic, a DB `api_credentials` key holding `ROLE_API_ADMIN`; the 401
+challenge is literally `Basic realm="Realm"`  
+**Source**: `src/webapp/api/ldapsync/`, `src/sam/{queries,manage}/` (`ldapsync`,
+`user_lifecycle`, `purge`, `lifecycle`, `employment`), `src/sam/schemas/ldapsync.py`
+
+The identity mirror: the daemon pushes institutions, organizations, users, unix groups
+and GID blocks from the UCAR directory, and reads project groups and collaborator
+expiry back. Contract rules, levers and every deviation from legacy:
+[`docs/plans/LDAP_SYNC_API.md`](../plans/LDAP_SYNC_API.md) § 10.
+
+| Method | Path | Answer |
+|---|---|---|
+| GET | `ldapsync/{institution,organization,user,group,gidAllocation,projectGroup,groupTag,status}`, `ldapsync/user/<uid>` | collections; an unknown user is 200 empty, never 404 |
+| PUT | `ldapsync/{institution,organization,user,group,gidAllocation}` | upsert; the key as a bare JSON integer |
+| GET / DELETE | `{user,group,institution,organization}PurgePermit` / `...Purge` | permit `{<key>, purgeable, message}`; purge 200 empty |
+| GET | `userlifecycle/collabexpiryupdates`, `userlifecycle/pendingdeactivations/<h>` | collaborator keep-alive; pending usernames |
+| PUT | `userlifecycle/deactivate/<username>` | finish one deactivation |
+
+Levers `LDAPSYNC_PURGE_ENABLED`, `LDAPSYNC_LIFECYCLE_ENABLED` and
+`LDAPSYNC_RESTORE_ON_REACTIVATE` ship off in `helm/values.yaml`. Operator undo:
+`sam-admin user <u> --deactivation`.
 
 ---
 

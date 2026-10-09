@@ -347,6 +347,14 @@ webapp:
     # e.g. "Extension,Supplement". Narrow this to park a misbehaving payload class as
     # manual without a revert; an unknown token leaves that type disabled.
     XRAS_ACTIONS_ENABLED: "all"
+    # sam-ldap-syncd at /api/protected/admin (docs/plans/LDAP_SYNC_API.md). All off at
+    # cutover. PURGE "1": hard-delete on the daemon's request. LIFECYCLE "1": finish
+    # stamped deactivations (closes memberships). RESTORE_ON_REACTIVATE "1": an IdM
+    # reactivation reopens what the last deactivation closed, within WINDOW_DAYS.
+    LDAPSYNC_PURGE_ENABLED: "0"
+    LDAPSYNC_LIFECYCLE_ENABLED: "0"
+    LDAPSYNC_RESTORE_ON_REACTIVATE: "0"
+    LDAPSYNC_RESTORE_WINDOW_DAYS: "90"
     # XRAS Allocations API: SAM calling OUT to XRAS (docs/xras/outgoing/)
     # The opposite direction from the two levers above. Read-only and GET-only:
     # the client has no verb method but an internal _get, because the SAME key

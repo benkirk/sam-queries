@@ -8,7 +8,7 @@ The port builds a self-contained graph per test via factories:
   -> fresh_account -> fresh_machine -> fresh_queue
 
 This isolates each test from the snapshot — the resolver helpers
-(`_resolve_user`, `_resolve_project`, etc.) just query the session so
+(`resolve_user`, `_resolve_project`, etc.) just query the session so
 they see the factory-flushed rows the same as snapshot rows.
 
 Tests that depended on snapshot-specific structure (e.g. "find a
@@ -29,7 +29,7 @@ from sam.manage.summaries import (
     _resolve_or_create_queue,
     _resolve_project,
     _resolve_resource,
-    _resolve_user,
+    resolve_user,
     upsert_archive_charge_summary,
     upsert_comp_charge_summary,
     upsert_disk_charge_summary,
@@ -144,21 +144,21 @@ class TestResolverHelpers:
 
     def test_resolve_user_by_username(self, session):
         user = make_user(session)
-        resolved = _resolve_user(session, user.username, user.unix_uid)
+        resolved = resolve_user(session, user.username, user.unix_uid)
         assert resolved.user_id == user.user_id
 
     def test_resolve_user_by_uid_fallback(self, session):
         user = make_user(session)
-        resolved = _resolve_user(session, "definitely_nonexistent_xyz", user.unix_uid)
+        resolved = resolve_user(session, "definitely_nonexistent_xyz", user.unix_uid)
         assert resolved.user_id == user.user_id
 
     def test_resolve_user_not_found(self, session):
         with pytest.raises(ValueError, match="User"):
-            _resolve_user(session, "definitely_nonexistent_xyz", 999_999_999)
+            resolve_user(session, "definitely_nonexistent_xyz", 999_999_999)
 
     def test_resolve_user_none_uid(self, session):
         with pytest.raises(ValueError, match="no uid"):
-            _resolve_user(session, "definitely_nonexistent_xyz", None)
+            resolve_user(session, "definitely_nonexistent_xyz", None)
 
     def test_resolve_project_not_found(self, session):
         with pytest.raises(ValueError, match="ZZZZ9999"):

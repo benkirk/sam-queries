@@ -11,6 +11,16 @@ Background, blast radius, and the July 2026 bulk repair:
 
 ---
 
+## First try the command
+
+`sam-admin user <username> --deactivation` shows what a restore would reopen when the
+deactivation was finished by SAMuel's identity sync (it keeps the closure instant in
+`users.deactivate`); `--restore-deactivation` applies it (`--dry-run` to report only).
+A deactivation from before the sync carries no stamp, so the command reports no closure
+and the SQL below is the way.
+
+---
+
 ## The failure, in one paragraph
 
 Closing a user account end-dates **every** one of that user's `account_user`

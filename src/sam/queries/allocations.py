@@ -24,6 +24,7 @@ from typing import Any, List, Optional, Dict, Tuple, Union
 from sqlalchemy import or_, func
 from sqlalchemy.orm import Session, noload
 
+from sam.dates import end_of_day
 from sam.accounting.calculator import (anchor_sums, anchored_charges, get_charge_models_for_activity,
                                        usage_anchor)
 
@@ -104,6 +105,17 @@ def get_latest_allocation_for_project(session: Session, project_id: int) -> Opti
         )\
         .order_by(Allocation.allocation_id.desc())\
         .first()
+
+
+def latest_allocation_end_by_project(session: Session, project_ids) -> Dict[int, datetime]:
+    """The latest allocation ``end_date`` on each project's accounts, in one statement."""
+    if not project_ids:
+        return {}
+    rows = session.query(Account.project_id, func.max(Allocation.end_date))\
+        .join(Allocation, Allocation.account_id == Account.account_id)\
+        .filter(Account.project_id.in_(list(project_ids)))\
+        .group_by(Account.project_id)
+    return {pid: end for pid, end in rows if end is not None}
 
 
 def get_allocation_history(
@@ -831,7 +843,7 @@ def get_allocation_usage_rows(
     after it reads 0. ``total_used`` is lifetime usage. Disk occupancy is not substituted: callers
     wanting the disk capacity figure use get_allocation_summary_with_usage().
     """
-    as_of_end = as_of.replace(hour=23, minute=59, second=59, microsecond=0)
+    as_of_end = end_of_day(as_of)
     rows = _fetch_all_allocations(
         session, resource_name, None, None, None,
         active_only=False, check_date=as_of_end, root_only=True,
@@ -882,7 +894,7 @@ def get_allocation_burn(
     """``{allocation_id: {yyyymm: charges}}`` over get_allocation_usage_rows()'s allocations, each
     within its own dates, the window and the end of the ``as_of`` day; empty months are absent.
     Per-anchor dates ride in the anchors table: per path, one query per charge model + adjustments."""
-    as_of_end = as_of.replace(hour=23, minute=59, second=59, microsecond=0)
+    as_of_end = end_of_day(as_of)
     rows = _fetch_all_allocations(
         session, resource_name, None, None, None,
         active_only=False, check_date=as_of_end, root_only=True,
@@ -1111,7 +1123,7 @@ def get_allocation_summary_with_usage(
 
     check_date = active_at if active_at is not None else datetime.now()
     # Usage is as of check_date: charges after that day never count, as in get_allocation_usage_rows.
-    as_of_end = check_date.replace(hour=23, minute=59, second=59, microsecond=0)
+    as_of_end = end_of_day(check_date)
 
     # Fetch ALL matching allocations in a single query, then group in Python.
     # This replaces the previous per-summary-row query loop (N+1 problem).

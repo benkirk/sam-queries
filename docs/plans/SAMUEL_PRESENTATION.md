@@ -172,7 +172,7 @@ from it onto slides.
   - who uses it: users, PIs, CISL staff, systems integrations;
   - that it replaces the Java/Tomcat legacy SAM on the same MySQL database.
   - Sources: `README.md`, `docs/xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md` (ARC → XRAS → SAM; "SAM
-    never creates users", since users are mirrored from LDAP).
+    never originates users", since users are mirrored from LDAP).
 - **The surfaces:**
   - web dashboards (user / admin / allocations / status / gallery);
   - REST API:

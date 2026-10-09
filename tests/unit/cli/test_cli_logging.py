@@ -125,3 +125,37 @@ class TestEntryPoints:
         # --help exits before the group body runs; the wiring is a source check.
         source = Path(importlib.import_module(module).__file__).read_text()
         assert 'configure_logging(verbose)' in source
+
+
+class TestSubcommandOptions:
+    """`cli.core.options`: a subcommand's -v matches the group's, and --provisioning reaches ctx."""
+
+    def _probe(self):
+        import click
+        from cli.core.context import Context
+        from cli.core.options import provisioning_option, verbose_option
+        seen = {}
+
+        @click.command()
+        @verbose_option()
+        @provisioning_option
+        @click.pass_obj
+        def probe(ctx, verbose):
+            seen.update(verbose=ctx.verbose, provisioning=ctx.check_provisioning,
+                        level=logging.getLogger().level)
+        return probe, Context, seen
+
+    def test_verbose_sets_the_context_and_info_logging(self, clean_root, monkeypatch):
+        from click.testing import CliRunner
+        probe, Context, seen = self._probe()
+        clean_root.setLevel(logging.WARNING)
+        CliRunner().invoke(probe, ['-v', '--no-provisioning'], obj=Context(), catch_exceptions=False)
+        assert seen == {'verbose': True, 'provisioning': False, 'level': logging.INFO}
+
+    def test_absent_flags_leave_the_context_alone(self, clean_root):
+        from click.testing import CliRunner
+        probe, Context, seen = self._probe()
+        ctx = Context()
+        default = ctx.check_provisioning
+        CliRunner().invoke(probe, [], obj=ctx, catch_exceptions=False)
+        assert seen['verbose'] is False and seen['provisioning'] is default
