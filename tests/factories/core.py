@@ -5,7 +5,12 @@ import string
 from datetime import datetime, timedelta
 from typing import Optional
 
-from sam.core.groups import AdhocGroup, GidAllocation
+from sam.core.groups import (
+    AdhocGroup,
+    AdhocGroupTag,
+    AdhocSystemAccountEntry,
+    GidAllocation,
+)
 from sam.core.organizations import (
     Institution,
     MnemonicCode,
@@ -13,7 +18,7 @@ from sam.core.organizations import (
     UserInstitution,
     UserOrganization,
 )
-from sam.core.users import EmailAddress, User
+from sam.core.users import EmailAddress, Phone, PhoneType, User
 
 from ._seq import next_int, next_seq
 
@@ -27,6 +32,8 @@ _ORG_ID_BASE = 10_000_000
 _ORG_ID_PER_WORKER = 100_000
 _WORKER_NUM = int(os.environ.get("PYTEST_XDIST_WORKER", "gw0").removeprefix("gw") or "0")
 _ORG_ID_WORKER_BASE = _ORG_ID_BASE + _WORKER_NUM * _ORG_ID_PER_WORKER
+# users.upid is UNIQUE; the same worker-namespaced carve-out, far above real upids.
+_UPID_WORKER_BASE = 80_000_000 + _WORKER_NUM * 100_000
 
 
 def make_organization(
@@ -129,6 +136,7 @@ def make_user_organization(
     organization=None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
+    idms_unique_name: Optional[str] = None,
 ) -> UserOrganization:
     """Link a user to an organization over a date window (see
     `make_user_institution` for the date conventions)."""
@@ -142,6 +150,7 @@ def make_user_organization(
         organization_id=organization.organization_id,
         start_date=start_date,
         end_date=end_date,
+        idms_unique_name=idms_unique_name,
     )
     session.add(uo)
     session.flush()
@@ -156,12 +165,16 @@ def make_user(
     first_name: Optional[str] = None,
     last_name: Optional[str] = None,
     active: bool = True,
+    **extra,
 ) -> User:
     """Build and flush a fresh User row.
 
     Only `username` (unique, ≤35 chars) and `unix_uid` are NOT NULL without
-    defaults — everything else has a sane default or is nullable.
+    defaults — everything else has a sane default or is nullable. ``upid=True``
+    draws a worker-namespaced unique upid; other ``extra`` keys are User columns.
     """
+    if extra.get('upid') is True:
+        extra['upid'] = _UPID_WORKER_BASE + next_int('upid')
     if username is None:
         username = next_seq("usr")
     if unix_uid is None:
@@ -174,6 +187,7 @@ def make_user(
         first_name=first_name or "Test",
         last_name=last_name or "User",
         active=active,
+        **extra,
     )
     session.add(user)
     session.flush()
@@ -311,6 +325,37 @@ def make_email_address(
         is_primary=is_primary,
         active=active,
     )
+    session.add(row)
+    session.flush()
+    return row
+
+
+def make_phone(session, user: User, *, number: Optional[str] = None,
+               phone_type: str = 'Ucar Office') -> Phone:
+    """Attach a phone to *user*, creating the PhoneType row if the snapshot lacks it."""
+    ptype = session.query(PhoneType).filter_by(phone_type=phone_type).first()
+    if ptype is None:
+        ptype = PhoneType(phone_type=phone_type)
+        session.add(ptype)
+        session.flush()
+    row = Phone(user_id=user.user_id, ext_phone_type_id=ptype.ext_phone_type_id,
+                phone_number=number or f'303-555-{next_int("phone") % 10000:04d}')
+    session.add(row)
+    session.flush()
+    return row
+
+
+def make_adhoc_group_tag(session, group: AdhocGroup, tag: str) -> AdhocGroupTag:
+    row = AdhocGroupTag(group_id=group.group_id, tag=tag)
+    session.add(row)
+    session.flush()
+    return row
+
+
+def make_adhoc_system_account_entry(session, group: AdhocGroup, username: str,
+                                    branch: str = 'hpc') -> AdhocSystemAccountEntry:
+    row = AdhocSystemAccountEntry(group_id=group.group_id, username=username,
+                                  access_branch_name=branch)
     session.add(row)
     session.flush()
     return row

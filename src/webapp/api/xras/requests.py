@@ -15,13 +15,12 @@ SAM has no request entity; legacy derives one per (projcode, allocation end
 date) group, which is what `xras_access.get_request_rows` reproduces.
 """
 
-from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
-from zoneinfo import ZoneInfo
 
 from flask import abort
 from webapp.extensions import db
 
+from sam.dates import to_epoch_millis
 from sam.queries import xras_access
 
 from . import bp, xras_api_required
@@ -36,12 +35,6 @@ ROLE_SEGMENTS = {
     'allocation_manager': 'AllocationManager',
 }
 
-#: `dates/requests` serializes `java.util.Date` with no date module configured,
-#: so Jackson emits epoch millis. The values are DATE columns read by a JVM in
-#: the server's zone, i.e. **local midnight** — verified on four samples, all of
-#: which land exactly on 00:00 America/Denver. A fixed -6 offset would drift by
-#: an hour for winter dates, so this must be a real zone.
-_SERVER_TZ = ZoneInfo('America/Denver')
 
 _QUANT = Decimal('0.1')
 
@@ -69,16 +62,12 @@ def _date_string(value):
 
 
 def _epoch_millis(value):
-    """A date as epoch milliseconds at server-local midnight.
+    """A date as epoch milliseconds at server-local midnight (Jackson's `java.util.Date`).
 
-    The driver hands back a `date` for a DATE column, which has no `tzinfo`, so
-    it is widened to midnight before the zone is attached.
+    The values are DATE columns read by a JVM in America/Denver, verified on four
+    samples landing exactly on local midnight, so this must be a real zone.
     """
-    if value is None:
-        return None
-    if not isinstance(value, datetime):
-        value = datetime(value.year, value.month, value.day)
-    return int(value.replace(tzinfo=_SERVER_TZ).timestamp() * 1000)
+    return to_epoch_millis(value)
 
 
 def _build_action(row, order_applied):

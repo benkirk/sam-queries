@@ -14,6 +14,9 @@ from .account_requests import (
 )
 from .core import (
     make_adhoc_group,
+    make_adhoc_group_tag,
+    make_adhoc_system_account_entry,
+    make_phone,
     make_gid_allocation,
     make_institution,
     make_mnemonic_code,
@@ -66,6 +69,9 @@ __all__ = [
     "next_seq",
     "reset_seq",
     "make_adhoc_group",
+    "make_adhoc_group_tag",
+    "make_adhoc_system_account_entry",
+    "make_phone",
     "make_notification_log",
     "make_template_override",
     "make_external_ticket",
