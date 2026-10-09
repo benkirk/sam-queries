@@ -128,7 +128,8 @@ def _restore_hook():
     if not current_app.config.get('LDAPSYNC_RESTORE_ON_REACTIVATE'):
         return None
     window = current_app.config.get('LDAPSYNC_RESTORE_WINDOW_DAYS', 90)
-    return lambda user: restore_user_deactivation(db.session, user, within_days=window)
+    return lambda user, closed_at: restore_user_deactivation(
+        db.session, user, closed_at=closed_at, within_days=window)
 
 
 @_put('user')

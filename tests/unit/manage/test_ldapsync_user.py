@@ -154,10 +154,20 @@ class TestActiveTransitions:
         assert (user.active, user.deactivate, calls) == (True, None, [])
 
     def test_idm_active_brings_back_a_finished_user_and_fires_the_hook(self, session):
+        stamp = NOW - timedelta(days=3)
+        user = make_user(session, upid=True, active=False, deactivate=stamp)
+        calls = []
+        _sync(session, _payload_for(user, active=True),
+              on_reactivate=lambda u, closed_at: calls.append((u, closed_at)))
+        assert (user.active, user.deactivate, calls) == (True, None, [(user, stamp)])
+
+    def test_a_legacy_inactive_user_comes_back_without_the_hook(self, session):
+        """No stamp means no closure of ours to undo."""
         user = make_user(session, upid=True, active=False)
         calls = []
-        _sync(session, _payload_for(user, active=True), on_reactivate=calls.append)
-        assert user.active is True and calls == [user]
+        _sync(session, _payload_for(user, active=True),
+              on_reactivate=lambda u, closed_at: calls.append(u))
+        assert user.active is True and calls == []
 
     def test_inactive_on_inactive_is_a_noop(self, session):
         user = make_user(session, upid=True, active=False)

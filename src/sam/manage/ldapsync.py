@@ -185,19 +185,19 @@ def user_by_username(session, username: str) -> Optional[User]:
     return user
 
 
-def _apply_active_transition(user: User, idm_active: bool, now: datetime) -> bool:
-    """Legacy's rule; True when a finished-inactive user comes back (the undo trigger)."""
+def _apply_active_transition(user: User, idm_active: bool, now: datetime) -> Optional[datetime]:
+    """Legacy's rule; returns the closure stamp when a finished user comes back (the undo trigger)."""
     sam_active = bool(user.active) and user.deactivate is None
     if idm_active == sam_active:
-        return False
+        return None
     if idm_active:
-        returning = not user.active
+        closed_at = user.deactivate if not user.active else None
         user.deactivate = None
         user.active = True
-        return returning
+        return closed_at
     if user.active:
         user.deactivate = now        # pending: finish_user_deactivation completes it
-    return False
+    return None
 
 
 def _role_login_names(session, data: dict, login_type_before) -> dict:
@@ -319,10 +319,10 @@ def _sync_affiliations(session, user: User, incoming: list, *, positions: bool) 
 
 def sync_user(session, data: dict, *, now: Optional[datetime] = None,
               on_reactivate=None) -> int:
-    """Upsert one user by username; returns the payload's unixUid.
+    """Upsert one user by username; returns the user's unixUid.
 
-    ``on_reactivate(user)`` runs when IdM brings back a user SAM had finished
-    deactivating (the restore hook; ``sam.manage.lifecycle``).
+    ``on_reactivate(user, closed_at)`` runs when IdM brings back a user SAM had
+    finished deactivating at ``closed_at`` (the restore hook; ``sam.manage.lifecycle``).
     """
     now = (now or datetime.now()).replace(microsecond=0)
     _require(data, ('user_name', 'User userName must be specified.'))
@@ -335,14 +335,14 @@ def sync_user(session, data: dict, *, now: Optional[datetime] = None,
             raise SyncValidationError(
                 f'Upid {upid} matches username {holder.username} (username change in ID Service?).')
 
-    returning = False
+    closed_at = None
     if user is None:
         if data['unix_uid'] is None:
             raise SyncValidationError('User unixUid must be specified.')
         user = User.create(session, username=data['user_name'], unix_uid=data['unix_uid'],
                            upid=upid, active=data['active'])
     else:
-        returning = _apply_active_transition(user, data['active'], now)
+        closed_at = _apply_active_transition(user, data['active'], now)
 
     fields = {name: data[name] for name in _BASIC_USER_FIELDS}
     fields.update(_role_login_names(session, data, user.login_type_id))
@@ -359,8 +359,8 @@ def sync_user(session, data: dict, *, now: Optional[datetime] = None,
     _sync_affiliations(session, user, data['positions'], positions=True)
     session.flush()
 
-    if returning and on_reactivate is not None:
-        on_reactivate(user)
+    if closed_at is not None and on_reactivate is not None:
+        on_reactivate(user, closed_at)
     return data['unix_uid'] if data['unix_uid'] is not None else user.unix_uid
 
 

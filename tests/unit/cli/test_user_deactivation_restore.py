@@ -11,7 +11,7 @@ CLOSED = datetime.now().replace(microsecond=0) - timedelta(days=3)
 
 
 def _deactivated_user(session):
-    user = make_user(session, active=False)
+    user = make_user(session, active=False, deactivate=CLOSED)
     rows = []
     for _ in range(2):
         account = make_account(session, project=make_project(session),
@@ -41,3 +41,15 @@ def test_restore_reopens_then_finds_nothing(runner, mock_db_session):
     again = runner.invoke(cli, ['user', user.username, '--restore-deactivation'])
     assert again.exit_code == 1
     assert 'No deactivation closure found' in again.output
+
+
+def test_a_legacy_deactivation_has_no_closure(runner, mock_db_session):
+    """Closed before the sync kept a stamp: the runbook's SQL, not this command."""
+    user = make_user(mock_db_session, active=False)
+    account = make_account(mock_db_session, project=make_project(mock_db_session),
+                           resource=make_resource(mock_db_session))
+    mock_db_session.add(AccountUser(account_id=account.account_id, user_id=user.user_id,
+                                    start_date=CLOSED - timedelta(days=300), end_date=CLOSED))
+    mock_db_session.flush()
+    result = runner.invoke(cli, ['user', user.username, '--deactivation'])
+    assert result.exit_code == 1 and 'No deactivation closure found' in result.output

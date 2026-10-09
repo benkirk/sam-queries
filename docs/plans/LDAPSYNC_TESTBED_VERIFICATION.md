@@ -3,7 +3,7 @@
 **Status:** done 2026-10-09; results in `LDAP_SYNC_API.md` § 10.5. Phase B ran as a
 stub-on capture replayed over HTTP, because the daemon aborts its own stream at the first 400.
 **Branch:** `ldapsync-api` (the implementation; this doc ships in its PR).
-**Read first:** `docs/plans/LDAP_SYNC_API.md` § 10 (as built, deviations D1–D23),
+**Read first:** `docs/plans/LDAP_SYNC_API.md` § 10 (as built, deviations D1–D25),
 `containers/ldap-pipeline/README.md` (the testbed, especially *Operating* and
 *Choosing the SAM*), `containers/ldap-pipeline/out/HANDOFF.md` (untracked; the
 testbed's running state).

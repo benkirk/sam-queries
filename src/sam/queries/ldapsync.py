@@ -91,7 +91,7 @@ def group_tags(session: Session) -> list:
 # ---------------------------------------------------------------------------
 
 _USER_COLUMNS = """
-    SELECT u.user_id, u.username, u.unix_uid, u.upid, u.active, u.deactivate,
+    SELECT u.user_id, u.username, u.unix_uid, u.upid, u.active,
            u.locked, u.charging_exempt, u.title, u.first_name, u.middle_name,
            u.last_name, u.nickname, u.name_suffix, u.contact_person_upid,
            u.token_type, u.deleted, lt.type AS login_type,
@@ -138,8 +138,9 @@ def _assemble_users(session: Session, user_rows, user_ids: Optional[list]) -> li
         ucollabs, upositions = collabs.get(uid, []), positions.get(uid, [])
         out.append({
             'academic_status': u['academic_status_code'],
-            # A user stamped for deactivation is still active until the finish step runs.
-            'active': bool(u['active']) or u['deactivate'] is not None,
+            # Pending users keep active=1; a finished user keeps the stamp as the
+            # closure record, so legacy's `OR deactivate IS NOT NULL` is not applied (D25).
+            'active': bool(u['active']),
             'charging_exempt': u['charging_exempt'],
             'collaborations': [{
                 'collaboration_id': c['user_institution_id'],

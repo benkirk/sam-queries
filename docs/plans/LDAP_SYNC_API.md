@@ -549,7 +549,10 @@ controllers.
 1. A stale `positionId`/`collaborationId` is ignored and the record matched by data (§9 Q5).
 2. Scope includes P2, gated off, with an undo for accidental deactivations.
 3. projectGroup: branch tags no longer need a member; one bad row no longer fails the list.
-4. The undo is a **fingerprint, no DDL**; a ledger table only if it proves necessary.
+4. The undo is **recorded, no DDL**: the finish keeps its closure instant in
+   `users.deactivate` and the undo matches it exactly (review 2026-10-09; the earlier
+   fingerprint over timestamps could not tell a deactivation from a removal from the
+   user's only project). Deactivations from before the sync are not undone.
 5. §9 Q1: `code in ('C','N')`, identical on today's facility codes. Q2: full list
    kept (named `since=` honored, bare form ignored as legacy does). Q3: phones mirrored.
 
@@ -596,22 +599,27 @@ controllers.
 | D18 | `users.modified_time` only on an active transition | on any real change |
 | D19 | `PUT deactivate` always 500s | works, gated |
 | D20 | `pendingdeactivations` needs `/24` | `/?24` accepted too |
-| D21 | finish resets `primary_gid` to 1000 | left as is (the fingerprint cannot restore it) |
+| D21 | finish resets `primary_gid` to 1000 | left as is (the undo does not record it) |
 | D22 | unknown employer or phone type → 500, user lost | that row skipped and logged |
 | D23 | organization purge ignores children and responsible resources | each blocks the permit |
 | D24 | a naive time in the repeated DST fall-back hour reads as the later instant (MST) | the earlier (MDT); 1 position start on the clone, accepted |
+| D25 | the finish clears `deactivate`; a user reads `active = active OR deactivate IS NOT NULL` | the finish keeps the closure instant in `deactivate`; a user reads `active` alone (legacy never had `active=0` with a stamp, so the read differs on no legacy row) |
 
 ### 10.4 The deactivation undo
 
-`finish_user_deactivation` closes every live membership at one instant. The undo finds
-the newest past instant that closed every membership live before it, excluding
-23:59:59 (scheduled) ends and any instant older than a membership opened since, and
-reopens those rows open-ended. Legacy closures share the signature, so the operator
-command also repairs the cohort `scripts/repair/RUNBOOK-missing-projects.md` left alone.
-On the local clone 10,888 of 21,987 inactive users carry a closure, most from 2024, which
-is why the automatic path is bounded by `LDAPSYNC_RESTORE_WINDOW_DAYS` (90). Residual
-risk: removing a user from their only project looks the same. If automatic restore is
-ever enabled without review, a ledger table behind `restore_user_deactivation` removes it.
+`finish_user_deactivation` closes every live membership at one instant (the house
+`membership_cutoff`, so a finish just after midnight lands on 23:59:59 like any other
+end) and keeps that instant in `users.deactivate` with `active=0`. The column is the
+ledger, so `users.deactivate` has three states: `active=1` + stamp is pending (IdM marked
+the user inactive; the daemon finishes it after the failsafe hours), `active=0` + stamp is
+finished, `active=0` + NULL predates the sync. The undo reopens the rows whose `end_date`
+equals the stamp, open-ended; a row whose account has an open row again is skipped
+(`skipped_already_member`), as is a deleted account. It never guesses: a removal from the
+user's only project is not a closure, and a legacy-era deactivation (no stamp) is left to
+`scripts/repair/RUNBOOK-missing-projects.md`. The IdM reactivation hook receives the stamp
+before the transition clears it, bounded by `LDAPSYNC_RESTORE_WINDOW_DAYS` (90) so a person
+returning after a real departure is not re-added. The operator command
+(`sam-admin user <u> --deactivation` / `--restore-deactivation`) uses the same match.
 
 ### 10.5 Verification so far
 

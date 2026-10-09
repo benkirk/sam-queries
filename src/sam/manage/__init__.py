@@ -135,12 +135,8 @@ def _unended(now: datetime):
     return or_(AccountUser.end_date.is_(None), AccountUser.end_date >= now)
 
 
-def _end_membership(session: Session, row: AccountUser, now: datetime) -> None:
-    """End an AccountUser row as of *now*; a row that has not started yet is deleted instead."""
-    if row.start_date > now:
-        # Never effective, so there is no history to keep, and end < start is nonsense.
-        session.delete(row)
-        return
+def membership_cutoff(now: datetime) -> datetime:
+    """The end_date a membership ended at *now* receives (the one rule, also the lifecycle stamp)."""
     # Floor to the second: MySQL DATETIME rounds half-up, so a microsecond "now"
     # can land in the next second and leave the row live for a moment.
     # Minus 1 s: the same-request re-render tests end_date >= now, inclusive.
@@ -149,7 +145,16 @@ def _end_membership(session: Session, row: AccountUser, now: datetime) -> None:
     # sam/base.py), which would keep the member live all day. Step back once more.
     if cutoff.time() == time(0, 0, 0):
         cutoff -= timedelta(seconds=1)
-    row.end_date = cutoff
+    return cutoff
+
+
+def _end_membership(session: Session, row: AccountUser, now: datetime) -> None:
+    """End an AccountUser row as of *now*; a row that has not started yet is deleted instead."""
+    if row.start_date > now:
+        # Never effective, so there is no history to keep, and end < start is nonsense.
+        session.delete(row)
+        return
+    row.end_date = membership_cutoff(now)
 
 
 def remove_user_from_project(session: Session, project_id: int, user_id: int) -> None:

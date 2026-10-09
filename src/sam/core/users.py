@@ -49,9 +49,10 @@ class User(Base, TimestampMixin, SessionMixin):
     charging_exempt = Column(Boolean, nullable=False, default=False)
     deleted = Column(Boolean)
 
-    # When the identity sync saw IdM mark this user inactive. The user stays
-    # active (pending) until finish_user_deactivation (sam.manage.lifecycle)
-    # sets active=0 and clears it; an IdM reactivation clears it first.
+    # The identity sync's ledger (sam.manage.lifecycle): active=1 + stamp is a
+    # pending deactivation (when IdM marked the user inactive); active=0 + stamp is
+    # a finished one, the stamp being the end_date its memberships received, which
+    # the undo matches exactly; active=0 + NULL predates the sync and is not undone.
     # Deliberately not part of User.is_active (`active AND NOT locked`).
     deactivate = Column(TIMESTAMP)
 

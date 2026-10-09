@@ -44,11 +44,13 @@ def _one_user(session, user):
 
 class TestUser:
 
-    def test_stamped_for_deactivation_still_reads_active(self, session):
-        """Legacy: ``active = users.active OR deactivate IS NOT NULL`` (pending, not finished)."""
-        pending = make_user(session, active=False, deactivate=datetime.now())
+    def test_active_follows_the_flag_whatever_the_stamp(self, session):
+        """D25: a pending user is active=1; a finished one keeps its stamp and reads inactive."""
+        pending = make_user(session, active=True, deactivate=datetime.now())
+        finished = make_user(session, active=False, deactivate=datetime.now())
         gone = make_user(session, active=False)
         assert _one_user(session, pending)['active'] is True
+        assert _one_user(session, finished)['active'] is False
         assert _one_user(session, gone)['active'] is False
 
     def test_affiliations_carry_history_but_ids_only_open_rows(self, session):

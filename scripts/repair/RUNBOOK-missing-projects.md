@@ -13,10 +13,11 @@ Background, blast radius, and the July 2026 bulk repair:
 
 ## First try the command
 
-`sam-admin user <username> --deactivation` finds the closure this runbook's Step 1
-looks for and shows what a restore would reopen; `--restore-deactivation` applies it
-(`--dry-run` to report only). Fall back to the SQL below when it reports no closure,
-for example when the user has since been added to a project.
+`sam-admin user <username> --deactivation` shows what a restore would reopen when the
+deactivation was finished by SAMuel's identity sync (it keeps the closure instant in
+`users.deactivate`); `--restore-deactivation` applies it (`--dry-run` to report only).
+A deactivation from before the sync carries no stamp, so the command reports no closure
+and the SQL below is the way.
 
 ---
 
