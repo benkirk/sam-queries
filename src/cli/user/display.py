@@ -1,9 +1,9 @@
 """Display functions for user commands. Operate on plain dicts produced
 by `cli.user.builders`; never touch ORM objects directly."""
 
-from datetime import datetime
 
 from cli.core.context import Context
+from cli.core.display_utils import date_cell
 from sam import fmt
 from rich.table import Table
 from rich.panel import Panel
@@ -307,15 +307,14 @@ def display_deactivation_restore(ctx: Context, data: dict):
                           style='yellow')
         return
     verb = 'would restore' if data['dry_run'] else 'restored'
-    table = Table(title=f"{data['username']}: memberships closed at {data['closed_at']}",
-                  box=box.SIMPLE)
+    closed_at = fmt.date_str(data['closed_at'], fmt='%Y-%m-%d %H:%M:%S')
+    table = Table(title=f"{data['username']}: memberships closed at {closed_at}", box=box.SIMPLE)
     for col in ('Project', 'Resource', 'Started', 'Outcome'):
         table.add_column(col)
     for row in data['rows']:
         outcome = row['outcome']
         style = 'green' if outcome == 'restored' else 'yellow'
         shown = verb if outcome == 'restored' else outcome
-        table.add_row(row['projcode'], row['resource'],
-                      fmt.date_str(datetime.fromisoformat(row['start_date'])),
+        table.add_row(row['projcode'], row['resource'], date_cell(row['start_date']),
                       Text(shown, style=style))
     ctx.console.print(table)

@@ -43,6 +43,17 @@ def test_restore_reopens_then_finds_nothing(runner, mock_db_session):
     assert 'No deactivation closure found' in again.output
 
 
+def test_json_refuses_the_write_and_reports_not_found(runner, mock_db_session):
+    user, _ = _deactivated_user(mock_db_session)
+    result = runner.invoke(cli, ['--format', 'json', 'user', user.username, '--restore-deactivation'])
+    assert result.exit_code == 2
+    assert json.loads(result.output)['error'] == 'json_unsupported_for_writes'
+    result = runner.invoke(cli, ['--format', 'json', 'user', 'nosuchuser-ever', '--deactivation'])
+    assert result.exit_code == 1
+    assert json.loads(result.output) == {'kind': 'deactivation_restore', 'error': 'not_found',
+                                         'username': 'nosuchuser-ever'}
+
+
 def test_a_legacy_deactivation_has_no_closure(runner, mock_db_session):
     """Closed before the sync kept a stamp: the runbook's SQL, not this command."""
     user = make_user(mock_db_session, active=False)

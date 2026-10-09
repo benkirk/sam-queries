@@ -189,14 +189,14 @@ def build_deactivation_restore(report, dry_run: bool) -> dict:
     return {
         'kind': 'deactivation_restore',
         'username': report.username,
-        'closed_at': report.instant.isoformat() if report.instant else None,
+        'closed_at': report.instant,
         'dry_run': dry_run,
         'restored': 0 if dry_run else report.restored,
         'rows': [{
             'account_user_id': row.account_user_id,
             'projcode': row.account.project.projcode,
             'resource': row.account.resource.resource_name,
-            'start_date': row.start_date.isoformat(),
+            'start_date': row.start_date,
             'outcome': outcome,
         } for row, outcome in report.outcomes],
     }

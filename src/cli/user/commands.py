@@ -243,9 +243,19 @@ class UserAdminCommand(UserSearchCommand):
         """Show, or undo, the membership closure of the user's last deactivation."""
         from sam.manage import management_transaction
         from sam.manage.lifecycle import restore_user_deactivation
+        json_mode = self.ctx.output_format == 'json'
+        if json_mode and not dry_run:
+            output_json({'kind': 'deactivation_restore', 'error': 'json_unsupported_for_writes',
+                         'message': '--format json cannot be combined with --restore-deactivation'
+                                    ' (add --dry-run)'})
+            return EXIT_ERROR
         user = self.get_user(username)
         if user is None:
-            self.console.print(f"User not found: {username}", style="bold red")
+            if json_mode:
+                output_json({'kind': 'deactivation_restore', 'error': 'not_found',
+                             'username': username})
+            else:
+                self.console.print(f"User not found: {username}", style="bold red")
             return EXIT_NOT_FOUND
         if dry_run:
             report = restore_user_deactivation(self.session, user, dry_run=True)
@@ -253,7 +263,7 @@ class UserAdminCommand(UserSearchCommand):
             with management_transaction(self.session):
                 report = restore_user_deactivation(self.session, user)
         data = build_deactivation_restore(report, dry_run)
-        if self.ctx.output_format == 'json':
+        if json_mode:
             output_json(data)
         else:
             display_deactivation_restore(self.ctx, data)
