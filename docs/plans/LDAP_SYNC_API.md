@@ -664,8 +664,8 @@ ever enabled without review, a ledger table behind `restore_user_deactivation` r
 
 ### 10.6 Still to do before cutover
 
-1. syncd patches we carry: bug 15 (restore the record on a failed PUT) and a rebuild that
-   clears the in-memory IMDB; prove each on the testbed (`REF_SAM_LDAP_SYNCD=`).
+1. syncd patches we carry (`SAM_LDAP_SYNCD_REFERENCE.md` N5, bug 15, N23), each proven on
+   the testbed before it is filed upstream.
 2. Confirm the prod `admin` `api_credentials` row with `ROLE_API_ADMIN`.
 3. samuel-dev rehearsal, then flip `SAM_URL`; rollback is the same variable.
 4. For George: the cron configuration (bug 13) and, before `LDAPSYNC_LIFECYCLE_ENABLED`,
