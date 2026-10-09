@@ -2,12 +2,19 @@
 
 from flask import request
 
+from sam.manage import ldapsync as sync
 from sam.manage.ldapsync import SyncValidationError
+from sam.manage.transaction import management_transaction
 from sam.queries import ldapsync as q
 from sam.schemas import ldapsync as s
-from webapp.extensions import db
+from sam.schemas.forms.ldapsync import (
+    GidAllocationSyncInput,
+    InstitutionSyncInput,
+    OrganizationSyncInput,
+)
+from webapp.extensions import csrf, db
 
-from . import bp, empty_response, json_response, ldapsync_api_required
+from . import bp, empty_response, json_response, ldapsync_api_required, read_json_body
 
 
 def _get(rule):
@@ -77,3 +84,37 @@ def get_project_groups():
 @ldapsync_api_required()
 def get_group_tags():
     return json_response(s.GroupTagSyncSchema(many=True).dump(q.group_tags(db.session)))
+
+
+# --- upserts: each echoes the record's key as a bare JSON integer ----------
+
+def _put(rule):
+    return bp.route(f'/ldapsync/{rule}', methods=['PUT'], strict_slashes=False)
+
+
+def _apply(schema_cls, sync_fn):
+    data = schema_cls().load(read_json_body())
+    with management_transaction(db.session):
+        key = sync_fn(db.session, data)
+    return json_response(key)
+
+
+@_put('institution')
+@csrf.exempt
+@ldapsync_api_required()
+def put_institution():
+    return _apply(InstitutionSyncInput, sync.sync_institution)
+
+
+@_put('organization')
+@csrf.exempt
+@ldapsync_api_required()
+def put_organization():
+    return _apply(OrganizationSyncInput, sync.sync_organization)
+
+
+@_put('gidAllocation')
+@csrf.exempt
+@ldapsync_api_required()
+def put_gid_allocation():
+    return _apply(GidAllocationSyncInput, sync.sync_gid_allocation)

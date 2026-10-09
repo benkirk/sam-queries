@@ -29,7 +29,7 @@ def _get(client, rule, user='admin', **kw):
 
 class TestAuth:
 
-    @pytest.mark.parametrize('rule', ['ldapsync/status', 'ldapsync/user/'])
+    @pytest.mark.parametrize('rule', ['ldapsync/status', 'ldapsync/user/', 'userPurgePermit'])
     def test_unauthenticated_is_a_realm_challenge(self, ldapsync_client, rule):
         """LWP sends the password only after a 401 naming exactly this realm."""
         resp = ldapsync_client.get(f'{PREFIX}/{rule}')
@@ -120,6 +120,75 @@ class TestCollections:
                                    headers=admin_auth()).get_json()
         assert named == []
         assert len(bare) == len(everything)
+
+
+# --- writes: validation only (route-level writes would commit) -------------
+
+def _put(client, rule, body):
+    data = body if isinstance(body, (str, bytes)) else json.dumps(body)
+    return client.put(f'{PREFIX}/ldapsync/{rule}', data=data, headers=admin_auth(),
+                      content_type='application/json')
+
+
+@pytest.fixture
+def csrf_enabled(app):
+    app.config['WTF_CSRF_ENABLED'] = True
+    try:
+        yield
+    finally:
+        app.config['WTF_CSRF_ENABLED'] = False
+
+
+class TestWriteValidation:
+
+    def test_malformed_json_is_400_not_500(self, ldapsync_client):
+        resp = _put(ldapsync_client, 'institution', '{not json')
+        assert resp.status_code == 400
+        assert resp.get_json()['errorMessage'].startswith('ValidationException:\n ')
+
+    def test_missing_id_uses_legacy_text(self, ldapsync_client):
+        resp = _put(ldapsync_client, 'institution', {'acronym': 'X'})
+        assert resp.status_code == 400
+        assert resp.get_json()['errorMessage'] == (
+            'ValidationException:\n Institution id must be specified.')
+
+    def test_wrong_type_is_400(self, ldapsync_client):
+        resp = _put(ldapsync_client, 'organization', {'organizationId': 'abc'})
+        assert resp.status_code == 400
+        assert 'organizationId' in resp.get_json()['errorMessage']
+
+    def test_writes_are_csrf_exempt(self, ldapsync_client, csrf_enabled):
+        """The view runs (its own 400), rather than flask-wtf refusing the request."""
+        resp = _put(ldapsync_client, 'gidAllocation', {'startGid': 5})
+        assert resp.status_code == 400
+        assert 'startGid and endGid' in resp.get_json()['errorMessage']
+
+
+class TestPurgeRoutes:
+
+    def test_unknown_user_permit_is_purgeable(self, ldapsync_client):
+        resp = _get(ldapsync_client, 'userPurgePermit?unixUid=987654321')
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert list(body) == ['username', 'purgeable', 'message']
+        assert body['purgeable'] is True
+
+    def test_group_permit_takes_either_gid_name(self, ldapsync_client):
+        for name in ('unixGid', 'posixGid'):
+            body = _get(ldapsync_client, f'groupPurgePermit?{name}=987654321').get_json()
+            assert body['unixGid'] == 987654321
+
+    def test_missing_parameter_is_400(self, ldapsync_client):
+        assert _get(ldapsync_client, 'institutionPurgePermit').status_code == 400
+
+    def test_purge_of_nothing_is_an_empty_200(self, ldapsync_client):
+        resp = ldapsync_client.delete(f'{PREFIX}/organizationPurge?organizationId=987654321',
+                                      headers=admin_auth())
+        assert resp.status_code == 200 and resp.data == b''
+
+    def test_purge_needs_an_identifier(self, ldapsync_client):
+        resp = ldapsync_client.delete(f'{PREFIX}/userPurge', headers=admin_auth())
+        assert resp.status_code == 400
 
 
 # --- limiter ---------------------------------------------------------------

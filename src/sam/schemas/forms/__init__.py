@@ -297,6 +297,12 @@ from .xras import (
     XrasActionGrantSchema,
 )
 
+from .ldapsync import (
+    GidAllocationSyncInput,
+    InstitutionSyncInput,
+    OrganizationSyncInput,
+)
+
 __all__ = [
     'HtmxFormSchema',
     # Facilities
@@ -403,4 +409,7 @@ __all__ = [
     'XrasActionFosSchema',
     'XrasActionPanelSchema',
     'XrasActionGrantSchema',
+    'GidAllocationSyncInput',
+    'InstitutionSyncInput',
+    'OrganizationSyncInput',
 ]

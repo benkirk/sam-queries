@@ -108,5 +108,6 @@ def read_json_body():
 
 # Route modules attach to `bp` on import, so they come last.
 from . import sync as _sync  # noqa: E402,F401
+from . import purge as _purge  # noqa: E402,F401
 
 __all__ = ['bp', 'ldapsync_api_required', 'LDAPSYNC_ROLE', 'AUTH_REALM']

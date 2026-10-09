@@ -165,3 +165,27 @@ class SyncStatusSchema(Schema):
     group_update_time = EpochMillis(data_key='groupUpdateTime', allow_none=True)
     gid_allocation_update_time = EpochMillis(data_key='gidAllocationUpdateTime', allow_none=True)
     access_branches = fields.List(fields.String(), data_key='accessBranches')
+
+
+class UserPurgePermitSchema(Schema):
+    username = _Str()
+    purgeable = fields.Boolean()
+    message = _Str()
+
+
+class GroupPurgePermitSchema(Schema):
+    unix_gid = _Int(data_key='unixGid')
+    purgeable = fields.Boolean()
+    message = _Str()
+
+
+class InstitutionPurgePermitSchema(Schema):
+    institution_id = _Int(data_key='institutionId')
+    purgeable = fields.Boolean()
+    message = _Str()
+
+
+class OrganizationPurgePermitSchema(Schema):
+    organization_id = _Int(data_key='organizationId')
+    purgeable = fields.Boolean()
+    message = _Str()
