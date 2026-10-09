@@ -176,6 +176,26 @@ class Organization(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSe
         session.flush()
         return obj
 
+    #: Columns the identity sync owns; it writes every one as given (None clears).
+    SYNC_FIELDS = frozenset({'name', 'acronym', 'description', 'active', 'tree_left',
+                             'tree_right', 'level', 'level_code', 'idms_unique_name',
+                             'deleted', 'parent_org_id'})
+
+    @classmethod
+    def upsert_from_sync(cls, session, *, organization_id: int, **fields) -> 'Organization':
+        """Insert or overwrite the row with this IdM-assigned id (no max+1 allocation)."""
+        unknown = set(fields) - cls.SYNC_FIELDS
+        if unknown:
+            raise TypeError(f'not sync fields: {sorted(unknown)}')
+        obj = session.get(cls, organization_id)
+        if obj is None:
+            obj = cls(organization_id=organization_id)
+            session.add(obj)
+        for name, value in fields.items():
+            setattr(obj, name, value)
+        session.flush()
+        return obj
+
     @classmethod
     def search_by_pattern(cls, session, q: str, limit: int = 15) -> list['Organization']:
         """Active organizations whose name or acronym contains ``q``, by name."""
@@ -360,6 +380,25 @@ class Institution(Base, TimestampMixin, SessionMixin):
             institution_type_id=institution_type_id,
         )
         session.add(obj)
+        session.flush()
+        return obj
+
+    #: Columns the identity sync owns; it writes every one as given (None clears).
+    SYNC_FIELDS = frozenset({'name', 'acronym', 'nsf_org_code', 'address', 'city', 'zip',
+                             'deleted', 'institution_type_id', 'state_prov_id'})
+
+    @classmethod
+    def upsert_from_sync(cls, session, *, institution_id: int, **fields) -> 'Institution':
+        """Insert or overwrite the row with this IdM-assigned id (no max+1 allocation)."""
+        unknown = set(fields) - cls.SYNC_FIELDS
+        if unknown:
+            raise TypeError(f'not sync fields: {sorted(unknown)}')
+        obj = session.get(cls, institution_id)
+        if obj is None:
+            obj = cls(institution_id=institution_id)
+            session.add(obj)
+        for name, value in fields.items():
+            setattr(obj, name, value)
         session.flush()
         return obj
 

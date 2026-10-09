@@ -58,6 +58,7 @@ from webapp.api.v1.disk_quota import bp as api_disk_quota_bp
 from webapp.api.v1.wallclock_exemption import bp as api_wallclock_exemption_bp
 from webapp.api.v1.admin import bp as api_admin_bp
 from webapp.api.xras import bp as api_xras_bp
+from webapp.api.ldapsync import bp as api_ldapsync_bp
 from webapp.config import get_webapp_config
 from webapp.logging_config import configure_logging
 
@@ -448,9 +449,13 @@ def create_app(*, config_overrides: dict | None = None):
     app.register_blueprint(api_disk_quota_bp, url_prefix='/api/v1/disk_quota')
     app.register_blueprint(api_wallclock_exemption_bp, url_prefix='/api/v1/wallclock_exemption')
     app.register_blueprint(api_admin_bp, url_prefix='/api/v1/admin')
-    # XRAS is the one API surface not under /api/v1 — the prefix is legacy's,
-    # mapped by web.xml to a dedicated DispatcherServlet at /api/xras/*.
+    # XRAS's prefix is legacy's, mapped by web.xml to a dedicated DispatcherServlet
+    # at /api/xras/*; the identity sync below is the other surface outside /api/v1.
     app.register_blueprint(api_xras_bp, url_prefix='/api/xras/v1')
+    # sam-ldap-syncd's legacy prefix. One trusted sequential caller whose replays
+    # peak at ~350 PUTs/min, so the blueprint is exempt from the global limit.
+    limiter.limiter.exempt(api_ldapsync_bp)
+    app.register_blueprint(api_ldapsync_bp, url_prefix='/api/protected/admin')
 
     # Register centralized formatting filters (fmt_number, fmt_pct, fmt_date, fmt_size)
     import sam.fmt as fmt

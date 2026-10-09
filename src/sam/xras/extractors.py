@@ -344,7 +344,7 @@ def select_allocation_type_mapped(session, action) -> Optional[SelectionParms]:
     """
     opportunity_id = get_field(action, 'opportunityId')
     if opportunity_id is not None:
-        # `opportunityId` is `_opt_int()`, so it arrives as an int or None —
+        # `opportunityId` is `opt_int()`, so it arrives as an int or None —
         # deliberately not run through `_clean`, which is str-only.
         row = (session.query(XrasOpportunityAllocationType)
                .filter(XrasOpportunityAllocationType.opportunity_id == opportunity_id)

@@ -74,8 +74,8 @@ ticket land in Jira by hand; `sam-admin cache --refresh` after deploy.
 ## 1. Why
 
 Every HPC account is created upstream by NUSD, in UCAR institutional IT. SAM mirrors
-that identity system and never writes `users` — no `User.create()`, no INSERT
-anywhere in `src/` (`../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md` § 2). That is the right
+that identity system and never originates a user: `users` rows arrive only through
+the identity sync (`../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md` § 2). That is the right
 division of labor, and it leaves SAM with no intake at all: the only place a "this
 person needs an account" fact exists in SAM today is the XRAS **Pending Users** card,
 a read-only classifier over handoff rosters with no button, no mail and no export
@@ -380,7 +380,8 @@ that needs verification, abuse limits and a hardening review before it exists.
 
 ## 6. Out of scope, and open
 
-- SAM still never writes `users`, `active` or `locked`. Reactivation of a locked
+- SAM still never originates a user or decides `active`/`locked`; the identity sync
+  does. Reactivation of a locked
   account is a NUSD action, and a request for one is a row here with a purpose
   worth adding (`reactivation`) when the queue exists.
 - Identity proofing and 2FA are upstream.
@@ -583,7 +584,7 @@ any host, localhost included: site `1x00000000000000000000AA` with secret
 
 | | |
 |---|---|
-| [`../../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md`](../../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md) | § 2: SAM never creates users; the upstream owner |
+| [`../../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md`](../../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md) | § 2: SAM never originates users; the upstream owner |
 | [`../XRAS_ACCOUNT_QUEUE.md`](../XRAS_ACCOUNT_QUEUE.md) | the Pending Users queue this generalizes; the designed `xras_account_event` |
 | [`../../xras/outgoing/XRAS_OUTGOING_QUERIES.md`](../../xras/outgoing/XRAS_OUTGOING_QUERIES.md) | the account worklist and its two feeds |
 | [`../XRAS_SUBMISSION.md`](../XRAS_SUBMISSION.md) | phase 3, the consumer of § 4 |

@@ -834,7 +834,7 @@ file-scoped. Misspelled or undeclared variables silently become package globals 
 
 | id | Title | Sev | Prod | Where | Effect | Fix |
 |---|---|---|---|---|---|---|
-| N5 | main loop keeps a stale IMDB object after a rebuild | loss | latent (last invalidation 2026-08-17) | `lib/Synchronizer.pm:202` vs `:400-407` | after the corrupt-picture path, `_checkForReset` builds a new IMDB into `$self->{imdb}` but the loop keeps the old one; the next dump diffs against frozen data; the snapshot write persists the invalidated state | re-read `$self->{imdb}` each iteration |
+| N5 | main loop keeps a stale IMDB object after a rebuild | loss | latent (last invalidation 2026-08-17); observed on the testbed | `lib/Synchronizer.pm:202` vs `:400-407` | after the corrupt-picture path, `_checkForReset` builds a new IMDB into `$self->{imdb}` but the loop and `ProjectGroupUpdater` keep the old one; the next dump diffs against frozen data; the snapshot write persists the invalidated state (testbed 2026-10-09) | attach fresh data to the existing IMDB object |
 | N17 | deleting a position or collaboration entry in LDAP can purge the user | loss | latent | `lib/IDMSUserEmployment.pm:254-269,307-308`; `lib/SamDataManager.pm:702-712` | the delete is logged "rejected" but still returned as a delete of the **whole user**; the propagator asks SAM for a purge permit and purges if allowed, else PUTs the unchanged user; the journal records a user delete, so a replay removes the user from the IMDB. `LoggedInconsistencies.md` recommends exactly this LDAP deletion | return a no-op for employment deletes |
 | N14 | `all-hpc-users` erodes on every restart | wrong | invisible (needs a restart to measure; 4,886 upids in the current snapshot) | `lib/SamProjectGroupData.pm:94,171-179`; `lib/HpcMembers.pm:192-205,265-266` | the pseudo-group is looked up by name in a map keyed by gid, so every snapshot load re-adds an empty default and decrements every member's refcount; users in exactly one group drop out, and that is pushed to staging | look up by `$ALL_HPC_USERS_GID` |
 | N6 | Fischer (hex-id) organizations are re-allocated on every full dump | wrong | latent (no such organization exists yet; `idmsOrgNameToId` holds only `NEXT_ID`) | `lib/IDMSOrganization.pm:77-83` | `idmsUniqueName` is set only on the non-allocating branch, so the map never learns an allocated org; each dump allocates a new `organizationId` and tombstones the old; positions cannot resolve the org; a later modify raises the corrupt-picture exception. Regression from 5cc97ae (2026-06-26) | also set `idmsUniqueName` in the allocation branch |
@@ -848,6 +848,7 @@ file-scoped. Misspelled or undeclared variables silently become package globals 
 | N10 | group normalize drops unknown usernames | wrong (transient) | observed at every init ("no user for username X") | `lib/SamGroupData.pm:338-345`; `lib/SamUserData.pm:195-197` | members not yet in the IMDB (ordering, rename, case) are dropped until the next full dump; lookup is exact-case | keep unresolved names; compare case-insensitively |
 | N21 | stale SAM position ids are sent until the next full reload | loss | observed (server): 73 × `PUT user` → 500 "Synchronization UserOrganization object for user upid N had unknown id: M" since 2026-08-01 (62 on Aug 10; one each on Sep 2, 18, 26) | `lib/SamUserEmploymentData.pm` (`positionIdmsUniqueNameToPositionId`), `lib/SamUpdatePropagator.pm` | the IMDB learns SAM-assigned `positionId`s only at a full load; when SAM replaces a `user_organization` row afterwards the daemon keeps PUTting the dead id, legacy 500s, and the whole user update is dropped (bug 15) | send `idmsUniqueName` and let SAM match, or drop the `positionId`s and retry once on that 500; server side, match tolerantly (`LDAP_SYNC_API.md` P1c) |
 | N22 | live institution records are not length-checked | wrong | observed (server): 4 × `PUT institution` → 500 "Data too long for column 'acronym'" (Aug 18, 20, 27 ×2) | `lib/SamInstitutionData.pm` (`:105-138` truncates only the tombstone) | an acronym longer than 40 characters is sent as-is; the database rejects it and the record is dropped until the next rebuild, then rejected again | truncate to the column widths (40 acronym, 128 name) on the live path too; server side, answer 400 |
+| N23 | a modify for an unknown key rebuilds from SAM every 300 s | wrong (load) | latent; observed on the testbed | `lib/IDMSUpdateManager.pm:369-375` | a modify whose person is in neither SAM nor the add file throws `IMDBStateException`; the rebuild cannot supply the record, so it re-downloads every collection every 300 s until an add file includes it | log and skip the modify |
 | 1 + 7 | `getSAMObject` defined twice (second drops `$id`); `user->` bareword makes `willSamModify` always false | cosmetic, **fix together** | latent | `lib/SamClient.pm:236,260`; `lib/SamUserData.pm:289,295` | the read-back after PUT never runs, so SAM-assigned position ids are never learned; fixing 7 alone turns every user PUT with a new affiliation into a BUG abort via 1 (`SamUpdatePropagator.pm:143-147`) | delete the second definition; use `$user` |
 | 4 + 5 | `since` sent without a name; reads `lastModifiedDate` but SAM sends `lastModified` | cosmetic (perf) | invisible | `lib/SamClient.pm:215-221`; `lib/ProjectGroupUpdater.pm:179-181` | the watermark stays undef, so `since` is never sent and every project-group fetch is full. **Do not "fix"**: SAM's `lastModified` is the project's modified time, which membership changes do not bump, so a working watermark would miss them | delete the incremental logic |
 | N9 | `$ex->isa` on plain-string exceptions | cosmetic (latent) | latent | `lib/Synchronizer.pm:247`; `lib/Misc.pm:182-197` | a `die` with a string starting with a non-identifier character kills the catch block itself | `blessed($ex) && $ex->isa(...)` |
@@ -1018,6 +1019,9 @@ a no-op. The next snapshot write persists the unsent record and truncates the jo
 later full dump diffs against the already-updated IMDB and does not resend. Production
 drops a handful of records a month this way. Fix: on propagate failure restore the
 previous record (or raise `IMDBStateException`) before re-throwing.
+At full-dump scale it stops the whole pass: types propagate institution first, and legacy
+rejects one institution (N22) on every reset, so a reset never reaches users or groups
+(testbed, 2026-10-09).
 
 **N14 — `all-hpc-users` loses members on every snapshot load**
 `lib/SamProjectGroupData.pm:171-179` checks `$projectGroups->{'all-hpc-users'}` but the
@@ -1054,7 +1058,9 @@ Result: users SAM has stamped `users.deactivate` are never closed (140 pending o
 **N5 — main loop keeps a stale IMDB after an in-loop rebuild**
 `lib/Synchronizer.pm:202` captures `$imdb` once; `_checkForReset` (`:400-407`) builds a
 new one into `$self->{imdb}`. Subsequent dumps diff against the frozen object and the
-snapshot write persists the invalidated state. Fix: re-read `$self->{imdb}` each pass.
+snapshot write persists the invalidated state. `ProjectGroupUpdater` holds the old object
+too. Seen on the testbed (2026-10-09): after a rebuild that loaded 310 groups the pass
+counted 12,176 and sent nothing. Fix: attach fresh data to the existing object instead.
 
 **N17 — deleting an LDAP position/collaboration entry can purge the SAM user**
 `lib/IDMSUserEmployment.pm:254-269` logs the delete as rejected but `:307-308` returns
@@ -1134,6 +1140,13 @@ that 500 clear the position ids and retry once.
 goes out unchanged and the database rejects anything longer ("Data too long for column
 'acronym'", four 500s on 2026-08-18, 08-20 and twice on 08-27, once after each rebuild
 from SAM). Fix: apply the column widths (40 acronym, 128 name) on the live path.
+
+**N23 — a modify for an unknown key rebuilds from SAM every 300 s**
+`IDMSUpdateManager::_applyAddOrModify` (`lib/IDMSUpdateManager.pm:369-375`) throws
+`IMDBStateException` when a modify names a key the IMDB lacks. The rebuild cannot help
+when the person is in neither SAM nor the add file (an LDAP account created after the
+dump), so the same file fails again and every collection is downloaded every 300 s.
+Seen twice on the testbed (2026-10-09). Fix: log and skip the modify.
 
 **N16 / N11 / N12 / N13 / N18 / N19 — minor**
 `SAM_USER` default lost (`bin/syncd:494-507`); torn last journal line blocks startup

@@ -67,7 +67,8 @@ class TestSchemaDriftDetection:
         """A DB column with no ORM mapping breaks nothing — must stay healthy.
 
         SQLAlchemy names its columns explicitly, so an unmapped column never
-        reaches a query. This is the ``users.deactivate`` case.
+        reaches a query. (``users.deactivate`` was the live example until the
+        identity sync mapped it.)
         """
         import webapp.utils.config_inspect as ci
 

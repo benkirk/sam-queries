@@ -49,12 +49,11 @@ class User(Base, TimestampMixin, SessionMixin):
     charging_exempt = Column(Boolean, nullable=False, default=False)
     deleted = Column(Boolean)
 
-    # Added to prod by the 2026-08-10 identity-sync cutover, in the same DDL
-    # that dropped pdb_modified_time / idms_sync_token. Mapped for read
-    # fidelity only: it is NULL across all 28,373 production rows, so there is
-    # no populated data to infer semantics from. Deliberately NOT wired into
-    # User.is_active (still `active AND NOT locked`) — do that only once the
-    # column has a documented meaning and a producer writing to it.
+    # The identity sync's ledger (sam.manage.lifecycle): active=1 + stamp is a
+    # pending deactivation (when IdM marked the user inactive); active=0 + stamp is
+    # a finished one, the stamp being the end_date its memberships received, which
+    # the undo matches exactly; active=0 + NULL predates the sync and is not undone.
+    # Deliberately not part of User.is_active (`active AND NOT locked`).
     deactivate = Column(TIMESTAMP)
 
     academic_status_id = Column(Integer, ForeignKey('academic_status.academic_status_id'))
@@ -510,20 +509,6 @@ class User(Base, TimestampMixin, SessionMixin):
         """Lapsed organization affiliations, most recently ended first."""
         return self._split_affiliations(self.organizations, 'organization_id', as_of)[1]
 
-    def active_account_users(self, as_of: Optional[datetime] = None) -> List['AccountUser']:
-        """Get currently active account users."""
-        check_date = as_of or datetime.now()
-        return [
-            au for account in self.accounts
-            for au in account.users
-            if au.end_date is None or au.end_date >= check_date
-        ]
-
-    @property
-    def users(self) -> List['User']:
-        """Return deduplicated list of active users."""
-        return list({au.user for au in self.active_account_users() if au.user})
-
     @property
     def full_name(self) -> str:
         """Return the user's full name."""
@@ -681,6 +666,38 @@ class User(Base, TimestampMixin, SessionMixin):
 
     def __str__(self):
         return f"{self.username} ({self.display_name})"
+
+    # ============================================================================
+    # Writes (the identity sync is the only producer; SAM never originates users)
+    # ============================================================================
+
+    #: Columns ``apply_sync`` may write. Identity columns (username, unix_uid, upid)
+    #: are set once, at create, and never changed by a sync.
+    SYNC_FIELDS = frozenset({
+        'active', 'deactivate', 'locked', 'title', 'first_name', 'middle_name',
+        'last_name', 'nickname', 'name_suffix', 'charging_exempt', 'token_type',
+        'contact_person_upid', 'deleted', 'academic_status_id', 'login_type_id',
+    })
+
+    @classmethod
+    def create(cls, session, *, username: str, unix_uid: int, upid: Optional[int] = None,
+               active: bool = True) -> 'User':
+        """Insert a user mirrored from the identity service; ``apply_sync`` fills the rest."""
+        user = cls(username=username, unix_uid=unix_uid, upid=upid, active=active,
+                   locked=False, charging_exempt=False)
+        session.add(user)
+        session.flush()
+        return user
+
+    def apply_sync(self, **fields) -> 'User':
+        """Write each column as the sync sent it, None included (unlike ``update()`` elsewhere, which skips None)."""
+        unknown = set(fields) - self.SYNC_FIELDS
+        if unknown:
+            raise TypeError(f'not sync fields: {sorted(unknown)}')
+        for name, value in fields.items():
+            setattr(self, name, value)
+        self.session.flush()
+        return self
 
     def __repr__(self):
         return f"<User(id={self.user_id}, username='{self.username}', name='{self.full_name}')>"

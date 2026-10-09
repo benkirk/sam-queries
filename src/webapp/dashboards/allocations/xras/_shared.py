@@ -262,7 +262,7 @@ def _parse_activity_window(args) -> dict:
     end_raw = (args.get('end_date') or '').strip()
 
     since = parse_ymd_or(start_raw)
-    until = parse_ymd_or(end_raw, end_of_day=True)
+    until = parse_ymd_or(end_raw, at_end_of_day=True)
     if since is not None or until is not None:
         return {'days': None, 'since': since, 'until': until,
                 'start_date': start_raw, 'end_date': end_raw, 'custom': True}

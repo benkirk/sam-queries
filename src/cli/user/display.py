@@ -1,7 +1,9 @@
 """Display functions for user commands. Operate on plain dicts produced
 by `cli.user.builders`; never touch ORM objects directly."""
 
+
 from cli.core.context import Context
+from cli.core.display_utils import date_cell
 from sam import fmt
 from rich.table import Table
 from rich.panel import Panel
@@ -295,4 +297,24 @@ def display_not_seen_users(ctx: Context, data: dict):
         if ctx.verbose:
             row.append(u['primary_email'] or '—')
         table.add_row(*row)
+    ctx.console.print(table)
+
+
+def display_deactivation_restore(ctx: Context, data: dict):
+    """The memberships a deactivation closed, and what a restore does to each."""
+    if data['closed_at'] is None:
+        ctx.console.print(f"No deactivation closure found for {data['username']}.",
+                          style='yellow')
+        return
+    verb = 'would restore' if data['dry_run'] else 'restored'
+    closed_at = fmt.date_str(data['closed_at'], fmt='%Y-%m-%d %H:%M:%S')
+    table = Table(title=f"{data['username']}: memberships closed at {closed_at}", box=box.SIMPLE)
+    for col in ('Project', 'Resource', 'Started', 'Outcome'):
+        table.add_column(col)
+    for row in data['rows']:
+        outcome = row['outcome']
+        style = 'green' if outcome == 'restored' else 'yellow'
+        shown = verb if outcome == 'restored' else outcome
+        table.add_row(row['projcode'], row['resource'], date_cell(row['start_date']),
+                      Text(shown, style=style))
     ctx.console.print(table)

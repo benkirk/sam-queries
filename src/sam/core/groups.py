@@ -284,6 +284,21 @@ class GidAllocation(Base):
             q = q.with_for_update()
         return q.first()
 
+    @classmethod
+    def create_block(cls, session, start_gid: int, end_gid: int) -> 'GidAllocation':
+        """Register ``[start_gid, end_gid]``; the identical block is a no-op, any overlap a ValueError."""
+        if start_gid > end_gid:
+            raise ValueError(f'Gid range {start_gid}:{end_gid} is inverted.')
+        for block in cls.list_blocks(session):
+            if (block.start_gid, block.end_gid) == (start_gid, end_gid):
+                return block
+            if start_gid <= block.end_gid and end_gid >= block.start_gid:
+                raise ValueError(f'Gid range {start_gid}:{end_gid} overlaps existing allocation.')
+        block = cls(start_gid=start_gid, end_gid=end_gid, next_gid=start_gid)
+        session.add(block)
+        session.flush()
+        return block
+
     # --- allocation ---------------------------------------------------------
     @classmethod
     def allocate_next_gid(cls, session) -> int:

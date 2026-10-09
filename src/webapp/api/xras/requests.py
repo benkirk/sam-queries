@@ -15,13 +15,12 @@ SAM has no request entity; legacy derives one per (projcode, allocation end
 date) group, which is what `xras_access.get_request_rows` reproduces.
 """
 
-from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
-from zoneinfo import ZoneInfo
 
 from flask import abort
 from webapp.extensions import db
 
+from sam.dates import format_ymd, to_epoch_millis
 from sam.queries import xras_access
 
 from . import bp, xras_api_required
@@ -36,12 +35,6 @@ ROLE_SEGMENTS = {
     'allocation_manager': 'AllocationManager',
 }
 
-#: `dates/requests` serializes `java.util.Date` with no date module configured,
-#: so Jackson emits epoch millis. The values are DATE columns read by a JVM in
-#: the server's zone, i.e. **local midnight** — verified on four samples, all of
-#: which land exactly on 00:00 America/Denver. A fixed -6 offset would drift by
-#: an hour for winter dates, so this must be a real zone.
-_SERVER_TZ = ZoneInfo('America/Denver')
 
 _QUANT = Decimal('0.1')
 
@@ -59,26 +52,13 @@ def _amount_string(value):
     return str(Decimal(float(value)).quantize(_QUANT, rounding=ROUND_HALF_UP))
 
 
-def _date_string(value):
-    """`DateUtil.getDateAsString` — Joda `yyyy-MM-dd`.
-
-    Several sources are `datetime` columns, and legacy truncates the time of
-    day exactly like this.
-    """
-    return None if value is None else value.strftime('%Y-%m-%d')
-
-
 def _epoch_millis(value):
-    """A date as epoch milliseconds at server-local midnight.
+    """A date as epoch milliseconds at server-local midnight (Jackson's `java.util.Date`).
 
-    The driver hands back a `date` for a DATE column, which has no `tzinfo`, so
-    it is widened to midnight before the zone is attached.
+    The values are DATE columns read by a JVM in America/Denver, verified on four
+    samples landing exactly on local midnight, so this must be a real zone.
     """
-    if value is None:
-        return None
-    if not isinstance(value, datetime):
-        value = datetime(value.year, value.month, value.day)
-    return int(value.replace(tzinfo=_SERVER_TZ).timestamp() * 1000)
+    return to_epoch_millis(value)
 
 
 def _build_action(row, order_applied):
@@ -92,8 +72,8 @@ def _build_action(row, order_applied):
         'orderApplied': order_applied,
         'actionType': row.actionType,
         'amount': _amount_string(row.amount),
-        'endDate': _date_string(row.endDate),
-        'dateApplied': _date_string(row.dateApplied),
+        'endDate': format_ymd(row.endDate),
+        'dateApplied': format_ymd(row.dateApplied),
     })
 
 
@@ -109,8 +89,8 @@ def _build_allocation(row, action_rows):
     the latter is the unmapped-resource gap surfacing on the wire.
     """
     return omit_none({
-        'allocationBeginDate': _date_string(row.allocationBeginDate),
-        'allocationEndDate': _date_string(row.allocationEndDate),
+        'allocationBeginDate': format_ymd(row.allocationBeginDate),
+        'allocationEndDate': format_ymd(row.allocationEndDate),
         'allocatedAmount': _amount_string(row.allocatedAmount),
         'remainingAmount': _amount_string(row.remainingAmount),
         'resourceRepositoryKey': row.resourceRepositoryKey,
@@ -128,8 +108,8 @@ def _build_request(row, request_type, allocations):
     """
     return omit_none({
         'requestType': request_type,
-        'requestBeginDate': _date_string(row.requestBeginDate),
-        'requestEndDate': _date_string(row.requestEndDate),
+        'requestBeginDate': format_ymd(row.requestBeginDate),
+        'requestEndDate': format_ymd(row.requestEndDate),
         'allocationType': row.allocationType,
         'projectTitle': row.projectTitle,
         'projectId': row.projectId,

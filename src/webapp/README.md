@@ -79,6 +79,8 @@ src/webapp/
 ├── auth/                       # Authentication (AuthProvider ABC: stub, LDAP, OIDC)
 ├── api/                        # REST API v1 + access-control decorators
 │   ├── access_control.py       # @require_project_access etc.
+│   ├── xras/                   # XRAS incoming actions (legacy /api/xras/v1)
+│   ├── ldapsync/               # sam-ldap-syncd's /api/protected/admin (legacy-compat)
 │   └── v1/                     # users, projects, charges, allocations, status,
 │                               #   health, admin + legacy-compat endpoints
 ├── audit/                      # Implicit model-audit logging (SQLAlchemy events)

@@ -15,6 +15,7 @@ from cli.user.builders import (
     build_abandoned_users,
     build_users_with_projects,
     build_not_seen_users,
+    build_deactivation_restore,
 )
 from cli.user.display import (
     display_user,
@@ -22,6 +23,7 @@ from cli.user.display import (
     display_abandoned_users,
     display_users_with_projects,
     display_not_seen_users,
+    display_deactivation_restore,
 )
 from sam import User
 from rich.progress import track
@@ -221,7 +223,11 @@ class UserNotSeenCommand(BaseUserCommand):
 class UserAdminCommand(UserSearchCommand):
     """Admin command for users - extends search with validation."""
 
-    def execute(self, username: str, validate: bool = False, **kwargs) -> int:
+    def execute(self, username: str, validate: bool = False, deactivation: bool = False,
+                restore_deactivation: bool = False, dry_run: bool = False, **kwargs) -> int:
+        if deactivation or restore_deactivation:
+            return self._restore_deactivation(
+                username, dry_run=dry_run or not restore_deactivation)
         # First run base search
         exit_code = super().execute(username, **kwargs)
         if exit_code != EXIT_SUCCESS:
@@ -232,6 +238,36 @@ class UserAdminCommand(UserSearchCommand):
             return self._validate_user(username)
 
         return EXIT_SUCCESS
+
+    def _restore_deactivation(self, username: str, dry_run: bool) -> int:
+        """Show, or undo, the membership closure of the user's last deactivation."""
+        from sam.manage import management_transaction
+        from sam.manage.lifecycle import restore_user_deactivation
+        json_mode = self.ctx.output_format == 'json'
+        if json_mode and not dry_run:
+            output_json({'kind': 'deactivation_restore', 'error': 'json_unsupported_for_writes',
+                         'message': '--format json cannot be combined with --restore-deactivation'
+                                    ' (add --dry-run)'})
+            return EXIT_ERROR
+        user = self.get_user(username)
+        if user is None:
+            if json_mode:
+                output_json({'kind': 'deactivation_restore', 'error': 'not_found',
+                             'username': username})
+            else:
+                self.console.print(f"User not found: {username}", style="bold red")
+            return EXIT_NOT_FOUND
+        if dry_run:
+            report = restore_user_deactivation(self.session, user, dry_run=True)
+        else:
+            with management_transaction(self.session):
+                report = restore_user_deactivation(self.session, user)
+        data = build_deactivation_restore(report, dry_run)
+        if json_mode:
+            output_json(data)
+        else:
+            display_deactivation_restore(self.ctx, data)
+        return EXIT_SUCCESS if report.instant is not None else EXIT_NOT_FOUND
 
     def _validate_user(self, username: str) -> int:
         """Admin-only: validate user data integrity."""

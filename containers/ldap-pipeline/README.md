@@ -138,12 +138,17 @@ compose --profile init run --rm syncdInit` (downloads and writes the dump, appli
 nothing), `bin/collect`, then `docker compose up -d syncd`. The diff of each PUT body
 against that dump is the field-level change the port has to make.
 
+`bin/compare-dumps A/sam-data.json B/sam-data.json` compares two such captures type by
+type and prints counts and field names, never values. Capture one `syncdInit` against
+prod and one against SAMuel to see how SAMuel's reads differ from legacy's; the expected
+differences are `docs/plans/LDAP_SYNC_API.md` § 10.3.
+
 ### Choosing the SAM
 
 | `SAM_URL` | Use |
 |---|---|
 | `https://sam.ucar.edu:443` + `SAM_READ_PROD=1` | legacy reads, writes stubbed. The guard refuses until the flag is set |
-| `http://host.docker.internal:5050` | SAMuel (`docker compose up samuel-dev`); the only target that may take writes |
+| `http://host.docker.internal:5050` | SAMuel (`docker compose up samuel-dev`), which serves the LDAP sync API; the only target that may take writes |
 | `https://test-sam.ucar.edu:443` | unusable: 404 on every path (2026-10-08), and the daemon retries a 404 forever, silently |
 
 Reading from prod has a cost: a syncd start that finds no `/var/data/syncd/sam-data.json`
