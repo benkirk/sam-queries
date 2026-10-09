@@ -15,7 +15,7 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
 from sam.core.groups import GidAllocation
-from sam.dates import from_epoch_millis
+from sam.dates import end_of_day, from_epoch_millis
 from sam.queries.directory_access import ACCESS_GRACE_PERIOD, grace_cutoff
 
 logger = logging.getLogger(__name__)
@@ -166,7 +166,8 @@ def _assemble_users(session: Session, user_rows, user_ids: Optional[list]) -> li
             'positions': [{
                 'position_id': p['user_organization_id'],
                 'organization_id': p['organization_id'], 'upid': u['upid'],
-                'start_date': p['start_date'], 'end_date': p['end_date'],
+                # Legacy's EndDateTimeUserType reads a position end as 23:59:59 that day.
+                'start_date': p['start_date'], 'end_date': end_of_day(p['end_date']),
                 'idms_unique_name': p['idms_unique_name'],
             } for p in upositions],
             'title': u['title'],

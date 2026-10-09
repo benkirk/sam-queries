@@ -17,6 +17,7 @@ from factories import (
     make_resource,
     make_user,
     make_user_institution,
+    make_user_organization,
     next_int,
 )
 from sam.core.users import LoginType
@@ -65,6 +66,14 @@ class TestUser:
         blank = make_user(session, first_name='Jane', nickname='  ')
         assert _one_user(session, nick)['preferred_name'] == 'JJ'
         assert _one_user(session, blank)['preferred_name'] == 'Jane'
+
+    def test_position_end_reads_as_end_of_day(self, session):
+        """Legacy's ``EndDateTimeUserType`` serves a stored mid-day position end at 23:59:59."""
+        user = make_user(session, upid=True)
+        make_user_organization(session, user=user, end_date=datetime(2024, 8, 2, 11, 6, 10))
+        make_user_organization(session, user=user)
+        ends = {p['end_date'] for p in _one_user(session, user)['positions']}
+        assert ends == {datetime(2024, 8, 2, 23, 59, 59), None}
 
     def test_dates_serialize_as_epoch_millis(self, session):
         user = make_user(session, upid=True)

@@ -23,6 +23,11 @@ def parse_ymd_end_of_day(s: str) -> datetime:
     return parse_ymd(s).replace(hour=23, minute=59, second=59)
 
 
+def end_of_day(value: Optional[datetime]) -> Optional[datetime]:
+    """The same day at 23:59:59; None stays None."""
+    return None if value is None else value.replace(hour=23, minute=59, second=59, microsecond=0)
+
+
 def parse_ymd_or(s, default=None, end_of_day=False):
     """``parse_ymd`` (or ``parse_ymd_end_of_day``), else ``default`` for a missing or malformed string."""
     try:

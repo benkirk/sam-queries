@@ -19,6 +19,7 @@ from sam.core.organizations import (
     UserOrganization,
 )
 from sam.core.users import AcademicStatus, EmailAddress, LoginType, Phone, PhoneType, User
+from sam.dates import end_of_day
 from sam.geography import Country, StateProv
 from sam.manage.employment import Affiliation, match
 from sam.projects.projects import Project
@@ -267,10 +268,6 @@ def _sync_phones(session, user: User, wanted: list) -> None:
             row.ext_phone_type_id = type_id
 
 
-def _end_of_day(value: Optional[datetime]) -> Optional[datetime]:
-    return None if value is None else value.replace(hour=23, minute=59, second=59, microsecond=0)
-
-
 def _sync_affiliations(session, user: User, incoming: list, *, positions: bool) -> None:
     """Upsert ``user_organization`` (positions) or ``user_institution`` rows; never end or delete."""
     if positions:
@@ -296,7 +293,7 @@ def _sync_affiliations(session, user: User, incoming: list, *, positions: bool) 
             continue
         records.append(Affiliation(
             r['employment_id'], r['employer_id'], r['start_date'],
-            _end_of_day(r['end_date']) if positions else r['end_date'],
+            end_of_day(r['end_date']) if positions else r['end_date'],
             r.get('idms_unique_name') if positions else None))
 
     by_id = {getattr(row, id_attr): row for row in rows}
