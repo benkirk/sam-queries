@@ -157,6 +157,16 @@ class TestWriteValidation:
         assert resp.status_code == 400
         assert 'organizationId' in resp.get_json()['errorMessage']
 
+    def test_null_locked_is_a_400_not_an_npe(self, ldapsync_client):
+        resp = _put(ldapsync_client, 'user', {'userName': 'x', 'unixUid': 1, 'active': True,
+                                             'locked': None, 'chargingExempt': False})
+        assert resp.status_code == 400
+        assert 'locked' in resp.get_json()['errorMessage']
+
+    def test_group_without_key_is_a_400(self, ldapsync_client):
+        resp = _put(ldapsync_client, 'group', {'posixGid': 5})
+        assert resp.status_code == 400
+
     def test_writes_are_csrf_exempt(self, ldapsync_client, csrf_enabled):
         """The view runs (its own 400), rather than flask-wtf refusing the request."""
         resp = _put(ldapsync_client, 'gidAllocation', {'startGid': 5})

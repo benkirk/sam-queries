@@ -9,8 +9,10 @@ from sam.queries import ldapsync as q
 from sam.schemas import ldapsync as s
 from sam.schemas.forms.ldapsync import (
     GidAllocationSyncInput,
+    GroupSyncInput,
     InstitutionSyncInput,
     OrganizationSyncInput,
+    UserSyncInput,
 )
 from webapp.extensions import csrf, db
 
@@ -118,3 +120,17 @@ def put_organization():
 @ldapsync_api_required()
 def put_gid_allocation():
     return _apply(GidAllocationSyncInput, sync.sync_gid_allocation)
+
+
+@_put('user')
+@csrf.exempt
+@ldapsync_api_required()
+def put_user():
+    return _apply(UserSyncInput, sync.sync_user)
+
+
+@_put('group')
+@csrf.exempt
+@ldapsync_api_required()
+def put_group():
+    return _apply(GroupSyncInput, sync.sync_group)

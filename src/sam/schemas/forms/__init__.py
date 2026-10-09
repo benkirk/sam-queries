@@ -299,8 +299,10 @@ from .xras import (
 
 from .ldapsync import (
     GidAllocationSyncInput,
+    GroupSyncInput,
     InstitutionSyncInput,
     OrganizationSyncInput,
+    UserSyncInput,
 )
 
 __all__ = [
@@ -410,6 +412,8 @@ __all__ = [
     'XrasActionPanelSchema',
     'XrasActionGrantSchema',
     'GidAllocationSyncInput',
+    'GroupSyncInput',
     'InstitutionSyncInput',
     'OrganizationSyncInput',
+    'UserSyncInput',
 ]
