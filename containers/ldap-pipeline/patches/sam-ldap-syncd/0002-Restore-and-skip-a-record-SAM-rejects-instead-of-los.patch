@@ -1,7 +1,7 @@
 From 427f9d4c3f81c8f412f38d69db0217a63cd7c1a9 Mon Sep 17 00:00:00 2001
 From: Benjamin Kirk <benkirk@ucar.edu>
 Date: Fri, 9 Oct 2026 09:00:07 -0600
-Subject: [PATCH 2/3] Restore and skip a record SAM rejects instead of losing
+Subject: [PATCH 2/4] Restore and skip a record SAM rejects instead of losing
  the pass
 
 The IMDB is updated before the PUT, so a rejected update was dropped and,

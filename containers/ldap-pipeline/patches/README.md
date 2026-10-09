@@ -11,6 +11,7 @@ Run that image with `SYNCD_TAG=<tag>-patched` in `.env`.
 | `0001-Reuse-the-IMDB-object…` | N5: an in-loop rebuild from SAM leaves the loop on stale data |
 | `0002-Restore-and-skip-a-record…` | 15: one rejected PUT loses that record and, in a full dump, the rest of the pass |
 | `0003-Skip-a-modify-for-an-unknown-key…` | a modify for an unknown key re-downloads SAM every 300 s |
+| `0004-Truncate-an-institution-acronym…` | N22: an acronym longer than SAM's 40 characters is rejected on every pass |
 
 To change one: clone the zoo repo elsewhere (the zoo stays read-only), check out the pin,
 `git am` these, edit, run `runtests` in the syncd image, and `git format-patch <pin>` back
