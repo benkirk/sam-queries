@@ -21,7 +21,7 @@ Until `SAM_URL` points at our own webapp, every write is a line in a log file.
 |---|---|
 | LDAP staging (prod: fdbstage.ucar.edu, reachable from a laptop) | `LDAPSTAGING_URL` names a `.invalid` host **and** `LDAPSTAGING_UPDATES_STUB` is set. Compose refuses to parse without the stub. |
 | SAM | `SAM_UPDATES_STUB` is set, or `SAM_URL` is `host.docker.internal` / `localhost`. |
-| Prod SAM (sam.ucar.edu) | reads only, and only with `SAM_READ_PROD=1`; never `syncdTest` (see below). |
+| Prod SAM (sam.ucar.edu) | reads only, and only with `SAM_READ_PROD=1`; never `syncdTest` (see below). With the patched daemon, keep `SAM_URL` and the credential right: patch 0002 answers a 401 or 403 by rebuilding the IMDB, which re-downloads all seven collections every 300 s for as long as auth stays wrong. |
 | fdb.ucar.edu (the syncrepl provider) | the citldapsam password file exists and does not end in a newline (`ldapsearch -y` sends the whole file), so a bad copy never becomes a failed bind. |
 
 Stubbed writes land in the spool directory as `sam-update-stub.log` and
