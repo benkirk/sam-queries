@@ -252,6 +252,14 @@ class TestLifecycleRoutes:
             assert callable(_restore_hook())
 
 
+def test_nested_validation_error_names_its_path(ldapsync_client):
+    resp = _put(ldapsync_client, 'user', {'userName': 'x', 'active': True, 'locked': False,
+                                           'chargingExempt': False,
+                                           'emails': [{'email': 'a@b', 'primary': 'maybe'}]})
+    assert resp.status_code == 400
+    assert 'emails.0.primary:' in resp.get_json()['errorMessage']
+
+
 # --- 500 envelope ------------------------------------------------------------
 
 def test_unexpected_error_keeps_the_envelope_without_driver_text(ldapsync_client, monkeypatch):

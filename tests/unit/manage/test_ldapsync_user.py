@@ -21,7 +21,7 @@ from factories import (
     next_int,
 )
 from sam.core.groups import AdhocGroup
-from sam.core.users import LoginType, User
+from sam.core.users import AcademicStatus, LoginType, User
 from sam.manage.ldapsync import SyncValidationError, sync_group, sync_user
 from sam.schemas.forms.ldapsync import GroupSyncInput, UserSyncInput
 
@@ -220,6 +220,32 @@ class TestChildRows:
         _sync(session, _payload_for(user, collaborations=[
             {'institutionId': 987654321, 'startDate': _ms(NOW)}]))
         assert user.institutions == []
+
+
+class TestSilentPaths:
+    """Each warns and continues; the record is otherwise written."""
+
+    def test_unknown_academic_status_is_written_as_null(self, session):
+        status = session.query(AcademicStatus).first()
+        user = make_user(session, upid=True, academic_status_id=status.academic_status_id)
+        _sync(session, _payload_for(user, academicStatus='nosuchstatus'))
+        assert user.academic_status_id is None
+
+    def test_affiliation_without_a_start_is_skipped(self, session):
+        user = make_user(session, upid=True)
+        inst = make_institution(session)
+        _sync(session, _payload_for(user, collaborations=[
+            {'institutionId': inst.institution_id, 'startDate': None}]))
+        assert user.institutions == []
+
+    def test_null_group_lists_are_empty(self, session):
+        gid, _ = _group(session, tags=None, usernames=None)
+        assert AdhocGroup.get_by_unix_gid(session, gid) is None
+
+    def test_long_member_name_is_skipped(self, session):
+        gid, _ = _group(session, usernames=['a' * 13, 'bob'])
+        group = AdhocGroup.get_by_unix_gid(session, gid)
+        assert [e.username for e in group.system_accounts] == ['bob']
 
 
 class TestRoleLogin:

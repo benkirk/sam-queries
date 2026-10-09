@@ -305,9 +305,9 @@ def read_since(value) -> Optional[datetime]:
     """Legacy ``DateUtil``: a value above 2^31-1 is epoch ms, else epoch seconds; junk is None."""
     try:
         n = int(value)
-    except (TypeError, ValueError):
+        return from_epoch_millis(n if n > 2147483647 else n * 1000)
+    except (TypeError, ValueError, OverflowError, OSError):
         return None
-    return from_epoch_millis(n if n > 2147483647 else n * 1000)
 
 
 def _member_key(login_type, upid, username):

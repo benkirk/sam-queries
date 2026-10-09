@@ -168,7 +168,7 @@ class TestReadSince:
     @pytest.mark.parametrize('raw, expected', [
         ('1700000000', datetime(2023, 11, 14, 15, 13, 20)),
         ('1700000000000', datetime(2023, 11, 14, 15, 13, 20)),
-        ('junk', None), (None, None),
+        ('junk', None), (None, None), ('99999999999999999999', None),
     ])
     def test_seconds_or_millis(self, raw, expected):
         assert q.read_since(raw) == expected

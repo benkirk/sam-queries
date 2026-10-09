@@ -85,6 +85,14 @@ def _organization(**overrides):
     return OrganizationSyncInput().load(payload)
 
 
+class TestInstitutionState:
+
+    def test_unknown_state_writes_no_state(self, session):
+        data = _institution(country='US', state='ZZ')
+        sync_institution(session, data)
+        assert session.get(Institution, data['institution_id']).state_prov_id is None
+
+
 class TestOrganization:
 
     def test_insert_and_parent_by_active_acronym(self, session):
@@ -94,6 +102,14 @@ class TestOrganization:
         org = session.get(Organization, data['organization_id'])
         assert org.parent_org_id == parent.organization_id
         assert (org.level, org.level_code) == ('Lab', 'L')
+
+    def test_inactive_parent_is_no_parent(self, session):
+        parent = make_organization(session)
+        parent.active = False
+        session.flush()
+        data = _organization(parentOrgAcronym=parent.acronym)
+        sync_organization(session, data)
+        assert session.get(Organization, data['organization_id']).parent_org_id is None
 
     def test_unknown_parent_is_no_parent(self, session):
         data = _organization(parentOrgAcronym='NOSUCHORG')
