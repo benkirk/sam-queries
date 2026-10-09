@@ -1,44 +1,28 @@
 """Input schemas for the LDAP sync API's PUTs (JSON from ``sam-ldap-syncd``).
 
-Plain ``Schema`` with ``unknown=EXCLUDE``: the daemon sends every key SAM's GET
-returned plus a few of its own. Types are checked here; required-ness and legacy's
-message wording live in ``sam.manage.ldapsync``. ``upid`` arrives as an int or a
-numeric string, so integers load leniently.
+Required-ness and legacy's message wording live in ``sam.manage.ldapsync``; the
+field kit is ``sam.schemas.wire``. ``upid`` arrives as an int or a numeric string,
+so integers load leniently.
 """
 
 import marshmallow.fields as f
-from marshmallow import EXCLUDE, Schema
 
-from sam.schemas.ldapsync import EpochMillis
-
-
-class Text(f.String):
-    """A string that also accepts a bare number (the daemon's Perl does not keep types)."""
-
-    def _deserialize(self, value, attr, data, **kwargs):
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            value = str(value)
-        return super()._deserialize(value, attr, data, **kwargs)
+from sam.schemas.wire import CoercedStr, EpochMillis, WireInput, opt_bool, opt_coerced_str, opt_int
 
 
 def _str(key=None):
-    return Text(data_key=key, allow_none=True, load_default=None)
+    return opt_coerced_str(data_key=key)
 
 
 def _int(key=None):
-    return f.Integer(data_key=key, allow_none=True, load_default=None, strict=False)
+    return opt_int(data_key=key)
 
 
 def _bool(key=None):
-    return f.Boolean(data_key=key, allow_none=True, load_default=None)
+    return opt_bool(data_key=key)
 
 
-class _SyncInput(Schema):
-    class Meta:
-        unknown = EXCLUDE
-
-
-class InstitutionSyncInput(_SyncInput):
+class InstitutionSyncInput(WireInput):
     institution_id = _int('institutionId')
     name = _str()
     acronym = _str()
@@ -52,12 +36,12 @@ class InstitutionSyncInput(_SyncInput):
     deleted = _bool()
 
 
-class OrganizationSyncInput(_SyncInput):
+class OrganizationSyncInput(WireInput):
     organization_id = _int('organizationId')
     name = _str()
     acronym = _str()
     # No load_default: an absent description must not clear SAM's (legacy erased it).
-    description = Text(allow_none=True)
+    description = CoercedStr(allow_none=True)
     active = _bool()
     tree_left = _int('treeLeft')
     tree_right = _int('treeRight')
@@ -68,7 +52,7 @@ class OrganizationSyncInput(_SyncInput):
     parent_org_acronym = _str('parentOrgAcronym')
 
 
-class GidAllocationSyncInput(_SyncInput):
+class GidAllocationSyncInput(WireInput):
     start_gid = _int('startGid')
     end_gid = _int('endGid')
 
@@ -82,24 +66,24 @@ def _required_bool(key=None):
     return f.Boolean(data_key=key, required=True, allow_none=False)
 
 
-class EmailInput(_SyncInput):
-    email = Text(required=True, allow_none=False)
+class EmailInput(WireInput):
+    email = CoercedStr(required=True, allow_none=False)
     primary = _required_bool()
 
 
-class PhoneInput(_SyncInput):
-    phone_number = Text(data_key='phoneNumber', required=True, allow_none=False)
+class PhoneInput(WireInput):
+    phone_number = CoercedStr(data_key='phoneNumber', required=True, allow_none=False)
     ext_phone_type = _str('extPhoneType')
 
 
-class CollaborationInput(_SyncInput):
+class CollaborationInput(WireInput):
     employment_id = _int('collaborationId')
     employer_id = _int('institutionId')
     start_date = _date('startDate')
     end_date = _date('endDate')
 
 
-class PositionInput(_SyncInput):
+class PositionInput(WireInput):
     employment_id = _int('positionId')
     employer_id = _int('organizationId')
     start_date = _date('startDate')
@@ -112,7 +96,7 @@ def _rows(nested):
     return f.List(f.Nested(nested), load_default=list, allow_none=False)
 
 
-class UserSyncInput(_SyncInput):
+class UserSyncInput(WireInput):
     user_name = _str('userName')
     unix_uid = _int('unixUid')
     upid = _int()
@@ -136,9 +120,9 @@ class UserSyncInput(_SyncInput):
     positions = _rows(PositionInput)
 
 
-class GroupSyncInput(_SyncInput):
+class GroupSyncInput(WireInput):
     key = _str()
     posix_gid = _int('posixGid')
     active = _bool()
-    tags = f.List(Text(), load_default=list, allow_none=True)
-    usernames = f.List(Text(), load_default=list, allow_none=True)
+    tags = f.List(CoercedStr(), load_default=list, allow_none=True)
+    usernames = f.List(CoercedStr(), load_default=list, allow_none=True)

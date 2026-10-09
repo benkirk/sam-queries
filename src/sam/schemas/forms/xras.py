@@ -58,6 +58,7 @@ handler that trusted it would be wrong.
 """
 
 from marshmallow import EXCLUDE, Schema, ValidationError, fields, validate
+from sam.schemas.wire import CoercedStr, WireInput, opt_bool, opt_coerced_str, opt_int, opt_str
 
 __all__ = [
     'XrasActionSchema',
@@ -72,23 +73,6 @@ __all__ = [
 #: Truthy/falsey spellings legacy's one forgiving boolean accepts.
 _TRUE_STRINGS = frozenset({'t', 'true', 'y', 'yes'})
 _FALSE_STRINGS = frozenset({'f', 'false', 'n', 'no', ''})
-
-
-class _CoercedStr(fields.String):
-    """A String field that also accepts the ints and floats Jackson would coerce.
-
-    ``fosTypeId`` (``500006``) and ``awardPeriod`` (``12``) arrive as JSON numbers in
-    fields Java declares as ``String``. Jackson coerces silently; marshmallow raises
-    "Not a valid string" without this.
-    """
-
-    def _deserialize(self, value, attr, data, **kwargs):
-        if isinstance(value, bool):
-            # bool is an int subclass — reject it rather than yielding 'True'.
-            raise self.make_error('invalid')
-        if isinstance(value, (int, float)):
-            value = repr(value) if isinstance(value, float) else str(value)
-        return super()._deserialize(value, attr, data, **kwargs)
 
 
 class _ForgivingBool(fields.Field):
@@ -124,37 +108,7 @@ class _ForgivingBool(fields.Field):
         raise ValidationError('Not a valid boolean.')
 
 
-class _XrasBase(Schema):
-    """Shared Meta for every XRAS action schema.
-
-    ``unknown = EXCLUDE`` mirrors ``@JsonIgnoreProperties(ignoreUnknown = true)`` on
-    every legacy POJO, and is not optional: three fields on the real wire are declared
-    by no POJO at all (tolerance 4 above).
-    """
-
-    class Meta:
-        unknown = EXCLUDE
-
-
-def _opt_str(**kw):
-    """An optional, nullable string — the shape almost every field in this payload has."""
-    return fields.Str(load_default=None, allow_none=True, **kw)
-
-
-def _opt_coerced_str(**kw):
-    """As :func:`_opt_str`, but tolerant of JSON numbers (tolerance 2)."""
-    return _CoercedStr(load_default=None, allow_none=True, **kw)
-
-
-def _opt_int(**kw):
-    return fields.Int(load_default=None, allow_none=True, **kw)
-
-
-def _opt_bool(**kw):
-    return fields.Bool(load_default=None, allow_none=True, **kw)
-
-
-class XrasActionFosSchema(_XrasBase):
+class XrasActionFosSchema(WireInput):
     """A field-of-science entry.
 
     Used in two places with different shapes, which is why every field is optional:
@@ -167,14 +121,14 @@ class XrasActionFosSchema(_XrasBase):
     ``Integer.decode`` first, falling back to a string lookup.
     """
 
-    fosTypeId = _opt_coerced_str()
-    fosNum = _opt_coerced_str()
-    fosName = _opt_str()
-    fosAbbr = _opt_str()
-    isPrimary = _opt_bool()
+    fosTypeId = opt_coerced_str()
+    fosNum = opt_coerced_str()
+    fosName = opt_str()
+    fosAbbr = opt_str()
+    isPrimary = opt_bool()
 
 
-class XrasActionPersonSchema(_XrasBase):
+class XrasActionPersonSchema(WireInput):
     """``roles[].person`` — the requester's identity as XRAS knows it.
 
     ``organization`` is **free text** and may be ``null``. Observed values span
@@ -186,18 +140,18 @@ class XrasActionPersonSchema(_XrasBase):
     both ways, one of each, in the sampled payloads).
     """
 
-    firstName = _opt_str()
-    middleName = _opt_str()
-    lastName = _opt_str()
-    email = _opt_str()
-    phone = _opt_str()
-    organization = _opt_str()
-    academicStatus = _opt_str()
+    firstName = opt_str()
+    middleName = opt_str()
+    lastName = opt_str()
+    email = opt_str()
+    phone = opt_str()
+    organization = opt_str()
+    academicStatus = opt_str()
     #: Inert in legacy, and ``true`` even for identities SAM cannot find. See module docstring.
-    isReconciled = _opt_bool()
+    isReconciled = opt_bool()
 
 
-class XrasActionRoleSchema(_XrasBase):
+class XrasActionRoleSchema(WireInput):
     """One ``roles[]`` entry.
 
     ``roleType`` observed values are ``'PI'``, ``'Allocation Manager'`` and ``'User'``
@@ -240,17 +194,17 @@ class XrasActionRoleSchema(_XrasBase):
     ``docs/xras/incoming/XRAS_REIMPLEMENTATION.md`` § 9).
     """
 
-    requestPeopleRoleId = _opt_int()
-    roleType = _opt_str()
-    username = _opt_str()
-    beginDate = _opt_str()
-    endDate = _opt_str()
+    requestPeopleRoleId = opt_int()
+    roleType = opt_str()
+    username = opt_str()
+    beginDate = opt_str()
+    endDate = opt_str()
     #: The one forgiving boolean (tolerance 5). Inert in legacy.
     isAccountToBeCreated = _ForgivingBool(load_default=False, allow_none=True)
     person = fields.Nested(XrasActionPersonSchema, load_default=None, allow_none=True)
 
 
-class XrasActionResourceSchema(_XrasBase):
+class XrasActionResourceSchema(WireInput):
     """One ``resources[]`` entry.
 
     ``resourceRepositoryKey`` joins ``xras_resource_repository_key_resource``.
@@ -277,22 +231,22 @@ class XrasActionResourceSchema(_XrasBase):
     amount belongs in the accumulated 422 list.
     """
 
-    actionResourceId = _opt_int()
-    resourceRepositoryKey = _opt_int()
-    awardedAmount = _opt_coerced_str()
-    comments = _opt_str()
+    actionResourceId = opt_int()
+    resourceRepositoryKey = opt_int()
+    awardedAmount = opt_coerced_str()
+    comments = opt_str()
 
 
-class XrasActionPanelSchema(_XrasBase):
+class XrasActionPanelSchema(WireInput):
     """One ``panels[]`` entry. ``isPrimary`` is not necessarily index 0."""
 
-    type = _opt_str()
-    name = _opt_str()
-    abbr = _opt_str()
-    isPrimary = _opt_bool()
+    type = opt_str()
+    name = opt_str()
+    abbr = opt_str()
+    isPrimary = opt_bool()
 
 
-class XrasActionGrantSchema(_XrasBase):
+class XrasActionGrantSchema(WireInput):
     """One ``grants[]`` entry — the funding award behind the request.
 
     ``grantNumber`` is an NSF-style award number (``'EAR-2425607'``,
@@ -305,23 +259,23 @@ class XrasActionGrantSchema(_XrasBase):
     empty for Educational/Classroom allocations, which must not be an error.
     """
 
-    fundingAgency = _opt_str()
-    grantNumber = _opt_str()
-    programOfficerName = _opt_str()
-    programOfficerEmail = _opt_str()
-    piName = _opt_str()
-    title = _opt_str()
-    beginDate = _opt_str()
-    endDate = _opt_str()
-    awardedAmount = _opt_coerced_str()
-    awardedUnits = _opt_str()
-    percentageAward = _opt_coerced_str()
-    subAwardNumber = _opt_str()
+    fundingAgency = opt_str()
+    grantNumber = opt_str()
+    programOfficerName = opt_str()
+    programOfficerEmail = opt_str()
+    piName = opt_str()
+    title = opt_str()
+    beginDate = opt_str()
+    endDate = opt_str()
+    awardedAmount = opt_coerced_str()
+    awardedUnits = opt_str()
+    percentageAward = opt_coerced_str()
+    subAwardNumber = opt_str()
     primaryFos = fields.Nested(XrasActionFosSchema, load_default=None, allow_none=True)
-    isPending = _opt_bool()
+    isPending = opt_bool()
 
 
-class XrasActionSchema(_XrasBase):
+class XrasActionSchema(WireInput):
     """The ``POST /api/xras/v1/actions`` body.
 
     ``requestNumber`` is the **projcode** for an action against an existing project
@@ -380,25 +334,25 @@ class XrasActionSchema(_XrasBase):
     than as a schema-level rejection of the whole body.
     """
 
-    actionId = _opt_int()
-    actionType = _opt_str()
-    actionBeginDate = _opt_str()
-    actionEndDate = _opt_str()
+    actionId = opt_int()
+    actionType = opt_str()
+    actionBeginDate = opt_str()
+    actionEndDate = opt_str()
 
-    requestId = _opt_int()
-    requestNumber = _opt_str(validate=validate.Length(max=30))
-    requestType = _opt_str()
-    requestAbstract = _opt_str()
-    requestTitle = _opt_str()
-    requestShortTitle = _opt_str()
+    requestId = opt_int()
+    requestNumber = opt_str(validate=validate.Length(max=30))
+    requestType = opt_str()
+    requestAbstract = opt_str()
+    requestTitle = opt_str()
+    requestShortTitle = opt_str()
 
-    opportunityId = _opt_int()
-    opportunityType = _opt_str()
-    opportunityName = _opt_str()
+    opportunityId = opt_int()
+    opportunityType = opt_str()
+    opportunityName = opt_str()
 
-    allocationType = _opt_str()
-    awardDate = _opt_str()
-    awardPeriod = _opt_coerced_str()
+    allocationType = opt_str()
+    awardDate = opt_str()
+    awardPeriod = opt_coerced_str()
 
     resources = fields.List(fields.Nested(XrasActionResourceSchema), load_default=list)
     roles = fields.List(fields.Nested(XrasActionRoleSchema), load_default=list)

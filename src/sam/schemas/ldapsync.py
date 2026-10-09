@@ -7,24 +7,7 @@ emitted, as legacy's DTOs carry no ``@JsonInclude``. See ``docs/plans/LDAP_SYNC_
 
 from marshmallow import Schema, fields
 
-from sam.dates import from_epoch_millis, to_epoch_millis
-
-
-class EpochMillis(fields.Field):
-    """A naive-Mountain datetime as epoch milliseconds (Jackson's ``java.util.Date``)."""
-
-    def _serialize(self, value, attr, obj, **kwargs):
-        return to_epoch_millis(value)
-
-    def _deserialize(self, value, attr, data, **kwargs):
-        if isinstance(value, bool):
-            raise self.make_error('invalid')
-        try:
-            return from_epoch_millis(value)
-        except (TypeError, ValueError, OverflowError, OSError) as exc:
-            raise self.make_error('invalid') from exc
-
-    default_error_messages = {'invalid': 'Not a valid epoch-millisecond timestamp.'}
+from sam.schemas.wire import EpochMillis
 
 
 _Str = lambda **kw: fields.String(allow_none=True, **kw)        # noqa: E731
