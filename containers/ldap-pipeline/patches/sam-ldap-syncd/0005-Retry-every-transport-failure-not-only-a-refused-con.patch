@@ -1,0 +1,86 @@
+From 0390bea2cdcc2981261be64082c8d10a124eb772 Mon Sep 17 00:00:00 2001
+From: Benjamin Kirk <benkirk@ucar.edu>
+Date: Fri, 9 Oct 2026 11:52:16 -0600
+Subject: [PATCH 5/6] Retry every transport failure, not only a refused
+ connection
+
+LWP reports a timeout, a DNS or a TLS failure as its own 500 with
+"Client-Warning: Internal response". _handleResult retried only three
+message patterns and threw the rest, so with the restore-and-skip change
+a slow SAM made a whole file of records look rejected. No answer from SAM
+is retryable, whatever the message.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01EgPyNLobhxFie7ZK1MJxqX
+---
+ lib/SamClient.pm |  5 +++++
+ lib/SamClient.t  | 41 +++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 46 insertions(+)
+ create mode 100644 lib/SamClient.t
+
+diff --git a/lib/SamClient.pm b/lib/SamClient.pm
+index e29aa95..1d004bb 100644
+--- a/lib/SamClient.pm
++++ b/lib/SamClient.pm
+@@ -526,6 +526,11 @@ sub _handleResult {
+     }
+     if (($code >= 200) && ($code < 300)) {
+         return $res;
++    } elsif (($code >= 500) &&
++             (($res->header("Client-Warning") || '') eq 'Internal response')) {
++        # LWP's own 500: a timeout, DNS or TLS failure, no answer from SAM at all
++        vprintf(INFO,"%s(%s,%s) failed (retryable, no response from SAM): %s\n",
++                $op,$path,$user,$res->message);
+     } elsif ($code < 200) {
+         vprintf(DEBUG,"%s(%s,%s) returned 1xx: %s\n",
+                 $op,$path,$user,$res->message);
+diff --git a/lib/SamClient.t b/lib/SamClient.t
+new file mode 100644
+index 0000000..828900f
+--- /dev/null
++++ b/lib/SamClient.t
+@@ -0,0 +1,41 @@
++#!/usr/bin/env perl
++use Try::Tiny;
++use HTTP::Response;
++use Vprint;
++
++use Test::Most tests => 9;
++
++
++require_ok('SamClient');
++
++my $client = bless { retry_wait_dflt => 0, retry_wait_max => 0 }, 'SamClient';
++
++sub response {
++    my ($code, $message, %headers) = @_;
++    my $res = HTTP::Response->new($code, $message);
++    $res->header($_ => $headers{$_}) for keys(%headers);
++    return $res;
++}
++
++#
++# LWP answers a transport failure with its own 500 and
++# "Client-Warning: Internal response"; no record was rejected, so retry
++#
++for my $message ('read timeout',
++                 "Can't connect to sam.ucar.edu:443 (Name or service not known)",
++                 'SSL peer certificate or SSH remote key was not OK') {
++    my $r = 'unset';
++    lives_ok { $r = $client->_handleResult(
++                   response(500, $message, 'Client-Warning' => 'Internal response'),
++                   'put', '/x', 'u') }
++       "an internal '$message' response is retried, not thrown";
++    ok(!defined($r), '... and _handleResult() returns undef so the caller retries');
++}
++
++#
++# A 500 or 400 from SAM itself is a rejected record and is thrown
++#
++dies_ok { $client->_handleResult(response(500, 'Internal Server Error'), 'put', '/x', 'u') }
++   "SAM's own 500 is thrown";
++dies_ok { $client->_handleResult(response(400, 'Bad Request'), 'put', '/x', 'u') }
++   "SAM's 400 is thrown";
+-- 
+2.55.0
+
