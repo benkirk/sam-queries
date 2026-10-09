@@ -418,12 +418,21 @@ identities' display names is **untested** — a nice-to-know, not load-bearing
 family lives one segment deeper, § 3.2. Several of these have proper
 equivalents there: `/v1/reports/allocations`, `/v1/types/fos`, etc.)
 
-### 4.6 `/v1/projects` is another service entirely
+### 4.6 `/v1/projects` is a proxy to the accounting service — to us
 
-Returns a **Tomcat** 404 (everything else here is Rails) under both contexts
-and with a valid `XA-USER`. It is documented in the generic apidoc (an
-ACCESS-style per-user project/resource state view) but is not routed for our
-process. Confirmed dead for NCAR; do not re-probe.
+XRAS does not serve it. It forwards the call to the process's accounting service
+as `GET /v1/users/projects/<XA-USER>` with **its own** credential, and returns
+whatever comes back: for NCAR that is SAM's envelope 404 (the Tomcat body seen
+on 2026-08-20 was legacy's; after the cutover it is ours), recorded as
+`xras_action_log` #182, `status='unmapped'`, `remote_actor='XRAS'`
+(`XRAS_SUBMISSION_PROBES.md` R1b). Neither legacy nor SAMuel has served it, and in
+six weeks of production traffic (2026-08-24 to 2026-10-08) that probe is the only
+request for it. ACCESS's accounting service does serve it — the response shape is
+documented at `allocations-api.access-ci.org/xacct/apidoc/1.0/users/get_user_projects.en.html`
+(projects, each with `users[]` carrying per-resource `userAccountState` /
+`resourceProviderState`, and `requests[]` carrying `amountAllocated` / `amountUsed` /
+`amountRemaining`). Build it only if ARC or `xras_submit` turns out to call it for
+NCAR; do not re-probe.
 
 ### 4.7 The write surface — why GET-only must be structural
 

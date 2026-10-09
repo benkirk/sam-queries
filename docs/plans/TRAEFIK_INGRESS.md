@@ -1,7 +1,8 @@
 # Traefik ingress: move SAMuel off `nginx-external`
 
-Status: PR 1 (dev on `traefik-external`) is the PR that carries this file. Prod waits
-on the dev soak and the probe comparison below.
+Status: PR 1 (#761, dev) merged 2026-10-08; PR 2 (prod) is the PR that carries this
+update, after a 24 h soak. The nginx path stays in the chart as legacy (rollback is
+the one `className` line) with a cutover bridge; PR 3 retires both.
 
 ## Why
 
@@ -123,14 +124,29 @@ Argo syncs `sam-query-dev`, in order:
   change), 48 h or more beside the nginx run. That A/B, the SYN-loss and TLS-stall
   rate per controller, is the evidence CIRRUS asked for and the go/no-go for prod.
 
-**PR 2 (prod):** flip the default to `traefik-external`, drop the dev override, flip
-the test assertions. If the VIP differs, do not flip and hope: add a transitional
-`templates/ingress-legacy.yaml` (gated by `webapp.ingress.legacyClassName`, same
-hosts, same `secretName`, name `samuel-legacy`) so nginx keeps serving the old VIP
-while Traefik serves the new one; then CIRRUS moves `samuel.k8s.ucar.edu` (300 s TTL;
-`sam.hpc.ucar.edu` follows), a day of `watch-prod`, then **PR 3** removes the legacy
-Ingress, the `rateLimit` values and the nginx annotation branch. Same VIP: PR 2 is a
-one-line flip and PR 3 is cleanup. Ben owns deploy timing; no image rebuild anywhere.
+**PR 2 (prod):** the default `className` becomes `traefik-external` and the dev
+override goes. The VIPs differ (.125 Traefik, .126 nginx), so the chart also renders
+a cutover bridge, `templates/ingress-legacy.yaml` (`webapp.ingress.legacyBridge`,
+`<name>-legacy`, same hosts and `secretName`, no cert-manager annotation), so the
+old VIP keeps answering while CIRRUS's DNS sync moves `samuel.k8s.ucar.edu` to
+.125 (`sam.hpc.ucar.edu` is a CNAME and follows). The nginx branch of the template
+and the `rateLimit` values stay as a labeled legacy path: rollback is the one line.
+After the promotion: `kubectl -n sam-queries get ingress` shows `samuel` on
+`traefik-external` with ADDRESS .125 and `samuel-legacy` on `nginx-external`;
+`dig samuel.k8s.ucar.edu` moves within minutes (dev took ~8); https by name 200,
+http 404, cert unchanged, XRAS rows keep processing 200, the probes' nginx-side
+loss disappears from `sam.hpc`. Then **PR 3**: `legacyBridge.enabled: false`, and
+once CIRRUS retires the nginx controller, delete the bridge template, the nginx
+branch and `rateLimit`. Ben owns deploy timing; no image rebuild anywhere.
+
+What the 24 h soak said (2026-10-08, two vantages, both shared-path outages
+excluded): from NWSC (`cron.hpc`, 1 ms RTT) nginx made 279 of 14,620 connections
+wait >= 0.9 s and dropped 52; Traefik made 1 wait and dropped 0. From the Boulder
+campus nginx 201 waits / 59 drops vs Traefik 3 / 56, where the Traefik drops are
+TLS stalls that both controllers show at the same rate from campus and neither
+shows from NWSC: a campus-to-NWSC path matter. Two outages (14:57-15:05Z and
+20:09-20:12Z) hit both VIPs at once with the CNPG LoadBalancer addresses, nodes and
+pods clean: the `llb-128.117.41.x` path in front of both controllers, CIRRUS's.
 
 ### Tests and scripts
 

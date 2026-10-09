@@ -33,6 +33,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-06 | `b682c918` + round B (shared-usage grammar) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,750 / 50 / 8 | 183 (74) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-06 | `b682c918` + round C (jobs, disk scans, drill macros) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,763 / 50 / 8 | 163 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-06 | `5f27d3b7` + round E (mid-word breaks) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,810 / 51 / 8 | 163 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
+| 2026-10-08 | `0bf88a49` + sweep 18 (XRAS incoming vs ACCESS) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,810 / 51 / 8 | 163 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -1265,6 +1266,57 @@ whose every `dd` split counted once; the promoted detector adds the word.
 - [ ] `/admin/configuration`'s Postgres URLs still split at 360px: a URL has no break point, and
   `word-break` is what holds it on a phone. `path_breaks` at the slashes is the candidate.
 - [ ] The census is phone-only; no tablet (768px) pass was run.
+
+## 18. 2026-10-08: area sweep, the XRAS incoming surface against a peer
+
+**Mode:** area, `src/webapp/api/xras/` + `src/sam/xras/` read against ACCESS's accounting
+service (`allocations-api.access-ci.org/xacct/`, 37 endpoints) and `api.xras.org/apidoc/1.0/`.
+Branch `xras-sweep-peer` off `origin/staging` (`0bf88a49`, #764).
+
+**Why:** the peer is the first other implementation of the contract we serve (it is what
+XRAS posts into for ACCESS sites). The question was which of its endpoints we lack, whether
+its choices close an open question in `docs/xras/`, and whether a different approach is
+suggested. Ben's underlying goal is a closed author → approve → receive loop.
+
+**The measurement that ranked everything** (prod `xras_action_log`, six weeks since the
+cutover): 285 rows — processed 237, failed 42, rechecked 3, manual 2, **unmapped 1** (#182,
+`GET /v1/users/projects/<u>`, `remote_actor='XRAS'`: XRAS proxying our own `/v1/projects`
+probe); 0 `POST /roles`; action types New 124, Extension 115, Supplement 45 and nothing else.
+Every endpoint the peer serves and we do not (the `/v1/users/…` membership family,
+`/users/projects`, `/projects_managed`, `/usage/by_month`, `DELETE /roles`, `/test_auth`) has
+never been requested of NCAR. The design difference behind the gap: XRAS is ACCESS's system
+of record for allocation membership (their service holds `spState: active / pending-active`
+per user and resource and XRAS reads it back); NCAR's is SAM.
+
+**Done, in this sweep's PR**, one commit each:
+
+- [x] `sam-admin xras --status unmapped`: the `click.Choice` is `XRAS_ACTION_STATUSES`
+  (it restated five of the six) and `unmapped` has a style in `cli/xras/display.py`. The
+  catch-all is now readable as the "what does XRAS want that we don't serve" report.
+- [x] `XRAS_OUTGOING_QUERIES.md` § 4.6 said `/v1/projects` was "another service entirely,
+  do not re-probe"; `XRAS_SUBMISSION_PROBES.md` R1b and row #182 prove it proxies to us.
+  Rewritten to the later fact, with the peer's response schema cited; `XRAS_SUBMISSION.md`
+  § 5's `/v1/projects` row answered by the measurement, and a row recording that the API has
+  no approve / recommend / finalize / post verb (the peer approves in `xras_admin` too).
+- [x] `XRAS_REIMPLEMENTATION.md`: divergence row 5 described pre-catch-all behavior; the
+  out-of-scope endpoint list carries the measurement. `XRAS_TRIAGE_PLAYBOOK.md`: the CLI
+  caveat, its § 6 sketch row and the § 7 `unmapped` bullet updated; the Date Adjustment
+  question closed by data (none posted, the peer has no such type).
+
+**Leave (read, not changed):** the second `POST /actions/<id>/<rid>/<type>` form (0 of 237
+posts, in the spec legacy served); ~30 schema fields no handler reads (they document the
+wire, `unknown=EXCLUDE` would drop them silently otherwise, `test_xras_wire_vocabulary`
+pins read ⊆ declared); the XRAS census deferred in entry 12, still until
+`XRAS_SUBMISSION.md` lands. No wire byte changed.
+
+**Open from this sweep:**
+
+- [ ] A **Peer** heuristic for § 4 of the sweep skill: when a peer implementation of a
+  contract we serve is published, diff its endpoint list against ours *and* against the
+  unmapped log; a gap the log has never recorded is a note, not a build.
+- [ ] Asks for Steve, recorded in `XRAS_SUBMISSION.md` § 5: an `admin`-context approve verb
+  or an auto-approve rule on the demo instance; whether ARC calls `/v1/projects` for NCAR;
+  whether `xras_admin` would render `/v1/usage/by_month` if we served it.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

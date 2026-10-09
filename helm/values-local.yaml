@@ -16,6 +16,8 @@ webapp:
     secretName: samuel-tls-local
   ingress:
     className: nginx                    # local ingress-nginx
+    legacyBridge:
+      enabled: false                    # no cutover locally
   container:
     requests:
       memory: 512M

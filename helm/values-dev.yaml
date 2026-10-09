@@ -23,7 +23,8 @@ webapp:
     extraHosts: []
     secretName: incommon-cert-samuel-dev
   ingress:
-    className: traefik-external           # dev is the Traefik canary; prod stays on nginx-external until PR 2
+    legacyBridge:
+      enabled: false                      # dev's DNS already points at Traefik (2026-10-08)
   container:
     requests:
       memory: 1024M
