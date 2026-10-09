@@ -509,20 +509,6 @@ class User(Base, TimestampMixin, SessionMixin):
         """Lapsed organization affiliations, most recently ended first."""
         return self._split_affiliations(self.organizations, 'organization_id', as_of)[1]
 
-    def active_account_users(self, as_of: Optional[datetime] = None) -> List['AccountUser']:
-        """Get currently active account users."""
-        check_date = as_of or datetime.now()
-        return [
-            au for account in self.accounts
-            for au in account.users
-            if au.end_date is None or au.end_date >= check_date
-        ]
-
-    @property
-    def users(self) -> List['User']:
-        """Return deduplicated list of active users."""
-        return list({au.user for au in self.active_account_users() if au.user})
-
     @property
     def full_name(self) -> str:
         """Return the user's full name."""
