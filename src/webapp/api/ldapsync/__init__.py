@@ -8,7 +8,6 @@ cannot survive breaking: the 401 realm is literally ``Realm``; a mapped path nev
 rejected record is lost until its next full reload, so reject only what is wrong.
 """
 
-import json
 from functools import partial
 
 from flask import Blueprint, current_app, request
@@ -17,6 +16,7 @@ from sqlalchemy.exc import DBAPIError
 from werkzeug.exceptions import HTTPException
 
 from sam.manage.ldapsync import SyncValidationError
+from webapp.api.helpers import compact_json, flatten_errors
 from webapp.utils.api_auth import login_or_token_required
 
 bp = Blueprint('api_ldapsync', __name__)
@@ -30,7 +30,7 @@ AUTH_REALM = 'Realm'
 
 def json_response(payload, status: int = 200):
     """Compact JSON, never ``jsonify`` (which sorts keys and would lose legacy order)."""
-    body = json.dumps(payload, separators=(',', ':'), ensure_ascii=False, default=str)
+    body = compact_json(payload, default=str)
     return current_app.response_class(body, status=status, mimetype='application/json')
 
 
@@ -60,18 +60,6 @@ ldapsync_api_required = partial(
 )
 
 
-def _flatten(messages, path=()):
-    """marshmallow's nested error dict as ``field.sub: message`` lines."""
-    if isinstance(messages, dict):
-        for key, value in messages.items():
-            yield from _flatten(value, path if key == '_schema' else path + (str(key),))
-    elif isinstance(messages, list):
-        for value in messages:
-            yield from _flatten(value, path)
-    else:
-        yield f"{'.'.join(path)}: {messages}" if path else str(messages)
-
-
 @bp.errorhandler(SyncValidationError)
 def _sync_invalid(error):
     current_app.logger.warning('ldapsync rejected %s %s: %s',
@@ -81,7 +69,7 @@ def _sync_invalid(error):
 
 @bp.errorhandler(ValidationError)
 def _schema_invalid(error):
-    messages = list(_flatten(error.messages))
+    messages = flatten_errors(error.messages, keep_schema_key=False)
     current_app.logger.warning('ldapsync rejected %s %s: %s',
                                request.method, request.path, messages)
     return error_response(400, validation_message(messages))

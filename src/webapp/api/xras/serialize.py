@@ -45,10 +45,11 @@ carries the annotation, and not otherwise. Note the empty string is *emitted* â€
 ``"" is not null`` (one roster email proves it).
 """
 
-import json
 from typing import Any, Mapping, Optional
 
 from flask import Response
+
+from webapp.api.helpers import compact_json
 
 #: Legacy content type for every 2xx/4xx JSON body on this surface. Note the
 #: absence of a charset: Jackson's ``MappingJackson2HttpMessageConverter``
@@ -87,9 +88,7 @@ def compact(payload: Any) -> str:
     builders set to match Java field-declaration order; ``ensure_ascii=False``
     keeps UTF-8 raw; the separators drop every space.
     """
-    return json.dumps(
-        payload, separators=(',', ':'), ensure_ascii=False, sort_keys=False,
-    )
+    return compact_json(payload)
 
 
 def xras_response(

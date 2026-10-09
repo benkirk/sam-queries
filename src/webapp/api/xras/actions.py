@@ -61,6 +61,7 @@ from sam.xras.errors import XrasActionRejected
 # takes the manual-fallback arm — which fails quietly, as a plausible-looking
 # 'manual' row rather than an error.
 import sam.xras.handlers  # noqa: F401
+from webapp.api.helpers import flatten_errors
 from webapp.extensions import csrf, db
 from webapp.utils.api_auth import get_auth_actor
 
@@ -322,26 +323,6 @@ def _finish(log_id, *, status, projcode_result=None, error_messages=None,
         session.commit()
 
 
-def _flatten(messages, path=()):
-    """Flatten marshmallow's nested error dict into ordered ``field: message`` lines.
-
-    Errors **accumulate** on this surface rather than short-circuiting — legacy gathers
-    every problem into an ordered ``LinkedHashSet`` and raises once with the full list,
-    which is what lets an operator fix a request in one pass instead of five. This
-    preserves that for the schema layer; the handler layer accumulates its own.
-    """
-    lines = []
-    if isinstance(messages, dict):
-        for key, value in messages.items():
-            lines.extend(_flatten(value, path + (str(key),)))
-    elif isinstance(messages, list):
-        for item in messages:
-            lines.extend(_flatten(item, path))
-    else:
-        label = '.'.join(path) if path else '_schema'
-        lines.append(f'{label}: {messages}')
-    return lines
-
 
 def _errors(error_messages, status):
     """The 422 body: an ordered list an XRAS admin can act on, in the envelope."""
@@ -396,7 +377,7 @@ def _parse_action(raw_payload):
         action = XrasActionSchema().load(parsed)
     except ValidationError as exc:
         return None, {'status': 'failed', 'http_status': 422,
-                      'error_messages': _flatten(exc.messages),
+                      'error_messages': flatten_errors(exc.messages),
                       'action_type': parsed.get('actionType'),
                       'request_number': parsed.get('requestNumber'),
                       'action_id': parsed.get('actionId'),

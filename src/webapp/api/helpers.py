@@ -8,11 +8,39 @@ This module provides reusable helpers for:
 - Project serialization by role
 """
 
+import json
 from datetime import datetime, timedelta
 from flask import jsonify, request
 from typing import Optional, Tuple, Any, Dict
 
 from sam.dates import parse_ymd as parse_input_start_date, parse_ymd_end_of_day as parse_input_end_date  # noqa: F401
+
+
+def compact_json(payload, default=None) -> str:
+    """JSON with no spaces, insertion order kept, UTF-8 raw: how a Jackson mapper renders."""
+    return json.dumps(payload, separators=(',', ':'), ensure_ascii=False, sort_keys=False,
+                      default=default)
+
+
+def flatten_errors(messages, path=(), *, keep_schema_key=True) -> list:
+    """marshmallow's nested error dict as ordered ``field.sub: message`` lines.
+
+    ``keep_schema_key=False`` drops ``_schema`` from the path, so a schema-level
+    error reads as its bare message.
+    """
+    lines = []
+    if isinstance(messages, dict):
+        for key, value in messages.items():
+            step = () if key == '_schema' and not keep_schema_key else (str(key),)
+            lines.extend(flatten_errors(value, path + step, keep_schema_key=keep_schema_key))
+    elif isinstance(messages, list):
+        for item in messages:
+            lines.extend(flatten_errors(item, path, keep_schema_key=keep_schema_key))
+    elif path:
+        lines.append(f"{'.'.join(path)}: {messages}")
+    else:
+        lines.append(f'_schema: {messages}' if keep_schema_key else str(messages))
+    return lines
 
 
 def register_error_handlers(blueprint):
