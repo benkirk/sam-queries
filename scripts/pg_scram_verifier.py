@@ -3,6 +3,7 @@
 
     scripts/pg_scram_verifier.py              # prompts twice; prints the verifier only
     scripts/pg_scram_verifier.py --generate   # 64-hex password to stderr, verifier to stdout
+    scripts/pg_scram_verifier.py --generate --password-file F   # password to F (0600), not stderr
 
 Stdlib only. Same construction as libpq's PQencryptPasswordConn (RFC 7677, 4096 iterations).
 """
@@ -12,6 +13,7 @@ import base64
 import getpass
 import hashlib
 import hmac
+import os
 import secrets
 import sys
 
@@ -33,10 +35,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--generate', action='store_true',
                         help='generate a 64-hex password and print it to stderr')
+    parser.add_argument('--password-file', metavar='F',
+                        help='with --generate: write the password to F (mode 0600) instead of stderr')
     args = parser.parse_args()
     if args.generate:
         password = secrets.token_hex(32)
-        print(f'password (store it in OpenBao now): {password}', file=sys.stderr)
+        if args.password_file:
+            fd = os.open(args.password_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, 'w') as fh:
+                fh.write(password + '\n')
+        else:
+            print(f'password (store it in OpenBao now): {password}', file=sys.stderr)
     else:
         password = getpass.getpass('password: ')
         if password != getpass.getpass('again: '):
