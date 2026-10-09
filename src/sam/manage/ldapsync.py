@@ -177,12 +177,8 @@ _BASIC_USER_FIELDS = ('locked', 'title', 'first_name', 'middle_name', 'last_name
 
 
 def user_by_username(session, username: str) -> Optional[User]:
-    """Exact match first (indexed, and already case-insensitive on MySQL), then case-folded."""
-    user = session.query(User).filter(User.username == username).first()
-    if user is None:
-        user = (session.query(User)
-                .filter(func.lower(User.username) == username.lower()).first())
-    return user
+    """``users.username`` collates case-insensitively on both backends, so the exact match is the lookup."""
+    return User.get_by_username(session, username)
 
 
 def _apply_active_transition(user: User, idm_active: bool, now: datetime) -> Optional[datetime]:
@@ -205,7 +201,7 @@ def _role_login_names(session, data: dict, login_type_before) -> dict:
     upid = data['contact_person_upid']
     if upid is None:
         return {}
-    contact = session.query(User).filter(User.upid == upid).first()
+    contact = User.get_by_upid(session, upid)
     if contact is not None:
         return {'first_name': contact.first_name, 'middle_name': contact.middle_name,
                 'last_name': contact.last_name, 'nickname': contact.nickname}
@@ -330,7 +326,7 @@ def sync_user(session, data: dict, *, now: Optional[datetime] = None,
     upid = data['upid']
     user = user_by_username(session, data['user_name'])
     if user is None and upid is not None:
-        holder = session.query(User).filter(User.upid == upid).first()
+        holder = User.get_by_upid(session, upid)
         if holder is not None:
             raise SyncValidationError(
                 f'Upid {upid} matches username {holder.username} (username change in ID Service?).')

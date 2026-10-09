@@ -98,10 +98,9 @@ def find_user(session, *, unix_uid=None, upid=None, username=None,
             return (session.query(User).filter(User.unix_uid == unix_uid)
                     .order_by(User.user_id).first())
         if key == 'username' and username:
-            return (session.query(User)
-                    .filter(func.lower(User.username) == username.lower()).first())
+            return User.get_by_username(session, username)
         if key == 'upid' and upid is not None:
-            return session.query(User).filter(User.upid == upid).first()
+            return User.get_by_upid(session, upid)
     return None
 
 
