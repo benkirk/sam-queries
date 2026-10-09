@@ -1,6 +1,6 @@
 # HPC lanes for every user: layered, permission-scoped env
 
-**Status:** in rollout, 2026-10-09. Steps 0 (privilege census) and 1 (`hpc_reader`) done.
+**Status:** in rollout, 2026-10-09. Steps 0 (census), 1 (`hpc_reader`) and 3 (prod lane files) done; step 2 next.
 **Goal:** a regular Casper/Derecho user runs `sam-search` (last-seen and `accounting --jobs`
 included) from the ncar-hpc-deploy SIF lanes with read-only database access; `sam-admin` stays
 gated to named groups. Replaces the conda install's world-readable `.env`.
@@ -138,7 +138,7 @@ containers/ncar-hpc-deploy/env        0644  non-secrets shared by lanes: TZ, JOB
 | 0 | Claude | privilege census | done (§ 1) |
 | 1 | Ben (as postgres) + Claude | `pg_scram_verifier.py --generate` → OpenBao `csg/hpc-reader-pg`; run `create_hpc_reader_pg.sql` | **done 2026-10-09.** 64/64 checks from casper and derecho, on `csg-postgres-ro` (standby) and the primary, in `system_status` and `casper_jobs`: SELECT works; writes refused (read-only), and still refused after `SET default_transaction_read_only = off` (standby on the replica, privilege on the primary); CREATE refused; runaway query cancelled |
 | 2 | Claude | § 5 app PR | unit tests per backend; parity capture unchanged |
-| 3 | Ben + Claude | write the layered files on GLADE: the § 6a tarball (works with today's loader) | cron `tick` unchanged; `smoke --lane prod` passes |
+| 3 | Ben + Claude | write the layered files on GLADE: the § 6a tarball (works with today's loader) | **done 2026-10-09** (r2). `smoke --lane prod` PASS on casper, every step. The installed files match the MANIFEST checksums and modes. r1 broke `hpc-reader`: apptainer's `--env-file` expands `$NAME` even inside single quotes, and that password has a `$`. r2 writes `$` as `\$`, which apptainer turns back into a literal `$`. Last-seen reads `null` until step 2 (the role's read-only default fails libpq's `target_session_attrs=read-write`) |
 | 4 | Claude | § 4 wrapper PR + `smoke.sh` cases (plain user, admin ACL, csgteam) | `--help` and a query as each identity; `sam-admin` refused for a plain user; `NHD_DEBUG=1` layer list |
 | 5 | Ben | point the module's `sam-search` at the lane `bin/` (rollback: repoint at the conda wrapper) | conda and lane outputs and timings compared side by side first; re-time (ledger 20) with the SIF `.pyc` follow-on |
 | 6 | Ben | remove the install-root `.env` once nothing reads it; rotate `pguser` | no reader of the root `.env` left |
