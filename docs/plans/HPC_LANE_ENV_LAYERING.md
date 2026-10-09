@@ -72,6 +72,23 @@ Proven on postgres-test (18.6), 2026-10-09:
   `campaign`/`destor` (filesystem scans: paths and owners). This is the same question as the
   MySQL one above, for Postgres.
 
+### 3a. Transport (measured 2026-10-09 from casper)
+
+- **Postgres:**
+  - Both endpoints already negotiate TLS 1.3, because libpq defaults to `prefer`. But
+    `sslmode=disable` also connects, so nothing *required* TLS.
+  - The bundle sets `*_REQUIRE_SSL=true` (`sslmode=require`) and `PGCHANNELBINDING=require`.
+    libpq reads the latter from the environment, so no code change is needed.
+  - SCRAM channel binding ties the login to the TLS session, which defeats a man-in-the-middle
+    without distributing a CA. Tested for `hpc_reader` (both endpoints) and `jobhist_writer`
+    (both jobs DBs). libpq is 17.0 in both the conda env and the SIF.
+  - Any SCRAM-less (md5) role would fail under it.
+- **`verify-full` is not used:** the CNPG server certificate's SANs list
+  `csg-postgres.k8s.ucar.edu` but not `csg-postgres-ro.k8s.ucar.edu`, and the CNPG CA rotates.
+  Add the `-ro` name to `serverAltDNSNames` first if it is ever wanted.
+- **MySQL:** sam-sql already negotiates TLS 1.3 with `SAM_DB_REQUIRE_SSL=true`. There is no
+  certificate verification; that would need sam-sql's CA published on GLADE (optional).
+
 ## 4. Layered env in the wrapper (`libexec/lane.sh`)
 
 The loader walks from the **deploy root** (`NCAR_HPC_DEPLOY_ROOT`, i.e.
