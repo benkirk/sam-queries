@@ -11,6 +11,15 @@ Background, blast radius, and the July 2026 bulk repair:
 
 ---
 
+## First try the command
+
+`sam-admin user <username> --deactivation` finds the closure this runbook's Step 1
+looks for and shows what a restore would reopen; `--restore-deactivation` applies it
+(`--dry-run` to report only). Fall back to the SQL below when it reports no closure,
+for example when the user has since been added to a project.
+
+---
+
 ## The failure, in one paragraph
 
 Closing a user account end-dates **every** one of that user's `account_user`

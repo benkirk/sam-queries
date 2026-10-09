@@ -157,8 +157,8 @@ sam-queries/
 
 ### Account requests (`sam/core/account_requests.py`)
 - **AccountRequest** / **AccountRequestEvent**: a person who needs an HPC
-  account, and the cohort (workshop) they register under. SAM never creates
-  users; the row holds what SAM cannot re-derive. `state` is
+  account, and the cohort (workshop) they register under. SAM never originates
+  users (they arrive by the LDAP sync API); the row holds what SAM cannot re-derive. `state` is
   submitted/claimed/rejected/dismissed — fulfilled is derived from `users` by
   email (`sam_merge_targets`) and stamped only by
   `sam.manage.account_requests.reconcile_account_requests()`; a render never

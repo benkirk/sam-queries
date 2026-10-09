@@ -1,9 +1,11 @@
 # LDAP Sync API — serving `sam-ldap-syncd` from the new SAM
 
-**Status:** scoping / handoff, 2026-09-25. No code yet. The client-side facts in §1–§2
-were checked against the production daemon on sam-app.ucar.edu (image 6c0fd35); the
-server-side facts (the §1 traffic table, §2.1, §2.5) against the legacy SAM host
-sam-tomcat.ucar.edu (SAM 2.0.4 on Tomcat 9.0.58) on 2026-09-26.
+**Status:** implemented 2026-10-09 on branch `ldapsync-api` (P1a–P2, one commit per
+phase); §10 is the as-built record and supersedes §3–§4 where they differ. Scoped
+2026-09-25; the client-side facts in §1–§2 were checked against the production daemon
+on sam-app.ucar.edu (image 6c0fd35), the server-side facts (the §1 traffic table, §2.1,
+§2.5) against the legacy SAM host sam-tomcat.ucar.edu (SAM 2.0.4 on Tomcat 9.0.58) on
+2026-09-26.
 **See also:** `SAM_LDAP_SYNCD_REFERENCE.md` for what the daemon is and how it works,
 and its bug list.
 **Goal:** everything the Flask webapp must implement so that flipping one variable
@@ -536,3 +538,97 @@ that the logs show hit (`transactions/{c}/{tx}/state/cleared` 15–24,
 at `service/idservice/api/SyncLdapController.java`; `dasg/diskquota` (7 hits) is
 absent from the usage tables; and `apis.md` §1 still describes the deleted PeopleDB
 controllers.
+
+
+---
+
+## 10. As built (2026-10-09)
+
+### 10.1 Decisions (Ben, 2026-10-09)
+
+1. A stale `positionId`/`collaborationId` is ignored and the record matched by data (§9 Q5).
+2. Scope includes P2, gated off, with an undo for accidental deactivations.
+3. projectGroup: branch tags no longer need a member; one bad row no longer fails the list.
+4. The undo is a **fingerprint, no DDL**; a ledger table only if it proves necessary.
+5. §9 Q1: `code in ('C','N')`, identical on today's facility codes. Q2: full list
+   kept (named `since=` honored, bare form ignored as legacy does). Q3: phones mirrored.
+
+### 10.2 Corrections to §2–§4 from the legacy Java source
+
+- A 400 body is `{"errorMessage": "ValidationException:\n <msg>"}`, every message
+  ending in a period; the upid message names the **existing SAM holder's** username.
+- Malformed JSON and a non-numeric path id are 500s in legacy, not 400s.
+- `userPurgePermit?unixUid=` for an unknown uid is a 500 in legacy (null username).
+- `institutionIds`/`orgIds` are link rows with `end_date IS NULL`, not "open" rows.
+- `user_institution.end_date` is stored raw; only `user_organization` is end-of-day.
+- The exact-date and identical rungs of the employment ladder never fired
+  (`Timestamp.equals(Date)`), and every user PUT restamped every affiliation row.
+- projectGroup: an allocation with a NULL end was excluded; `lastModified` is the
+  project's modified time if set, else creation, raised by every `account_user` time.
+- `status` fails only when `information_schema.update_time` is NULL for `adhoc_group`.
+- collabexpiry: the 90-day grace applies to disk holdings and the no-association
+  fallback only; the project **admin** was never counted (the lead was indexed twice).
+- `PUT deactivate` always 500s: the user is loaded outside any transaction.
+
+### 10.3 Deliberate deviations
+
+| # | Legacy | Here |
+|---|---|---|
+| D1 | stale affiliation id → 500, whole user lost | id ignored, ladder runs, one log line |
+| D2 | id match skips the employer; a SAM row can match twice | id must name the same employer; a row matches once |
+| D3 | dead rungs, every PUT restamps `modified_time` | rungs work; an identical PUT writes nothing |
+| D4 | inverted range on the overlap rung → 500 | never overlaps → insert |
+| D5 | malformed JSON / non-numeric id → 500 (mailed) | 400 |
+| D6 | null `locked`/`chargingExempt`/`primary`/`active` → NPE 500 | 400 |
+| D7 | over-long field, unknown institution type → 500 | 400 before the database |
+| D8 | state equal to the country code → mailed ERROR | no state, no log |
+| D9 | organization `description` erased on every PUT | written only when sent |
+| D10 | GID overlap misses containment | containment rejected |
+| D11 | unknown user permit → 500 | purgeable, "does not exist" |
+| D12 | user purge ignores `role_user`, `user_alias`, raw charges | each blocks the permit |
+| D13 | group members mapped case-sensitively | case-insensitively |
+| D14 | projectGroup tags need a non-lead member; NULL-end allocation excluded; one bad row fails all | fixed (decision 3) |
+| D15 | `"CN".contains(code)` | `code in ('C','N')` |
+| D16 | collabexpiry admin dead, NPE on open ends, frozen `now` | fixed, per request |
+| D17 | `status` 500s | works |
+| D18 | `users.modified_time` only on an active transition | on any real change |
+| D19 | `PUT deactivate` always 500s | works, gated |
+| D20 | `pendingdeactivations` needs `/24` | `/?24` accepted too |
+| D21 | finish resets `primary_gid` to 1000 | left as is (the fingerprint cannot restore it) |
+| D22 | unknown employer or phone type → 500, user lost | that row skipped and logged |
+| D23 | organization purge ignores children and responsible resources | each blocks the permit |
+
+### 10.4 The deactivation undo
+
+`finish_user_deactivation` closes every live membership at one instant. The undo finds
+the newest past instant that closed every membership live before it, excluding
+23:59:59 (scheduled) ends and any instant older than a membership opened since, and
+reopens those rows open-ended. Legacy closures share the signature, so the operator
+command also repairs the cohort `scripts/repair/RUNBOOK-missing-projects.md` left alone.
+On the local clone 10,888 of 21,987 inactive users carry a closure, most from 2024, which
+is why the automatic path is bounded by `LDAPSYNC_RESTORE_WINDOW_DAYS` (90). Residual
+risk: removing a user from their only project looks the same. If automatic restore is
+ever enabled without review, a ledger table behind `restore_user_deactivation` removes it.
+
+### 10.5 Verification so far
+
+- Unit, query and HTTP tiers on MySQL and Postgres; gates and helm renders green.
+- The testbed's captured corpus (1,346 PUTs, `out/20261009T050041`) replayed through the
+  manage layer against the local clone, rolled back: 1,344 accepted, 2 rejected with
+  legacy-known 400s (an over-long acronym; a upid held by another username), ~8 ms per
+  PUT. 112 user PUTs carried an affiliation id the (older) clone no longer held; D1
+  matched each by data.
+- Reads on the local clone: `user` 28,616 rows assembled in 0.75 s; `projectGroup` 0.4 s;
+  `collabexpiryupdates` 0.33 s.
+
+### 10.6 Still to do before cutover
+
+1. Testbed reads: `syncdInit` against `http://host.docker.internal:5050` and against prod,
+   then `bin/compare-dumps`; differences should be the D-rows only.
+2. Testbed writes (stub off, local DB): a reset's full PUT stream, then a second reset,
+   which should find almost nothing to send.
+3. Confirm the prod `admin` `api_credentials` row with `ROLE_API_ADMIN`.
+4. samuel-dev rehearsal, then flip `SAM_URL`; rollback is the same variable.
+5. For George: the cron configuration (bug 13) and, before `LDAPSYNC_LIFECYCLE_ENABLED`,
+   the `deactivation` key name and the `$samClient` bug (the `/?24` path is handled here).
+
