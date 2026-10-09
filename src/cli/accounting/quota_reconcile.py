@@ -1,4 +1,5 @@
 """`sam-admin accounting --reconcile-quotas`: allocations against filesystem quota truth."""
+from sam.summaries.disk_summaries import BYTES_PER_TIB
 import getpass
 import os
 from datetime import date, datetime, timedelta
@@ -242,7 +243,7 @@ class QuotaReconcileMixin:
                     (projcode, sam_tib, dirs_by_projcode.get(projcode, []))
                 )
                 continue
-            sam_bytes = sam_tib * (1024 ** 4)
+            sam_bytes = sam_tib * BYTES_PER_TIB
             delta_frac = abs(sam_bytes - expected_bytes) / expected_bytes
             record = (projcode, sam_tib, expected_bytes, contributors)
             if delta_frac > QUOTA_TOLERANCE:
@@ -339,7 +340,7 @@ class QuotaReconcileMixin:
                 if update_accounting_system:
                     for projcode, sam_tib, expected_bytes, contributors in mismatched:
                         _, alloc = by_projcode[projcode]
-                        new_tib = expected_bytes / (1024 ** 4)
+                        new_tib = expected_bytes / BYTES_PER_TIB
                         n_contrib = len(contributors)
                         try:
                             update_allocation(

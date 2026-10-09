@@ -13,6 +13,7 @@ All date formatting still goes through `sam.fmt` rather than a local
 
 from datetime import date, datetime
 
+from rich import box
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 
 from sam import fmt
@@ -63,3 +64,28 @@ def progress(ctx) -> Progress:
     return Progress(TextColumn("[progress.description]{task.description}"), BarColumn(),
                     MofNCompleteColumn(), TimeElapsedColumn(), console=ctx.console,
                     disable=ctx.output_format == 'json')
+
+
+def styled(value, styles: dict, default: str = 'white') -> str:
+    """``value`` as Rich markup in its style from ``styles``."""
+    style = styles.get(value, default)
+    return f'[{style}]{text(value)}[/{style}]'
+
+
+def stamp(value, seconds: bool = True) -> str:
+    """A datetime, or the ISO text a builder emitted, to the second or the minute."""
+    if isinstance(value, str) and value:
+        value = datetime.fromisoformat(value)
+    return fmt.date_str(value or None, fmt='%Y-%m-%d %H:%M:%S' if seconds else '%Y-%m-%d %H:%M')
+
+
+def issues_table(ctx, subject: str, issues: list) -> None:
+    """The host-provisioning findings for ``subject``: (check, detail) rows under a heading."""
+    from rich.table import Table
+    ctx.console.print(f"\n[bold yellow]Host provisioning issues for {subject}:[/]")
+    table = Table(box=box.SIMPLE, show_header=False)
+    table.add_column("Check", style="cyan")
+    table.add_column("Detail", style="yellow")
+    for label, detail in issues:
+        table.add_row(label, detail)
+    ctx.console.print(table)

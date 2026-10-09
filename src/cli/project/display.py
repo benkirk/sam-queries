@@ -5,6 +5,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 
 from cli.core.context import Context
+from cli.core.display_utils import issues_table, stamp
 from cli.core.display_utils import progress as progress_bar
 from cli.project.builders import (
     build_project_core,
@@ -99,17 +100,16 @@ def display_project(ctx: Context, data: dict, extra_title_info: str = "",
             grid.add_row("External Alias", detail['ext_alias'])
         if detail['creation_time']:
             grid.add_row("Created",
-                         fmt.date_str(detail['creation_time'], fmt="%Y-%m-%d %H:%M:%S"))
+                         stamp(detail['creation_time']))
         if detail['modified_time']:
             grid.add_row("Modified",
-                         fmt.date_str(detail['modified_time'], fmt="%Y-%m-%d %H:%M:%S"))
+                         stamp(detail['modified_time']))
         if detail['membership_change_time']:
             grid.add_row("Membership Changed",
-                         fmt.date_str(detail['membership_change_time'],
-                                      fmt="%Y-%m-%d %H:%M:%S"))
+                         stamp(detail['membership_change_time']))
         if detail['inactivate_time']:
             grid.add_row("Inactivated",
-                         fmt.date_str(detail['inactivate_time'], fmt="%Y-%m-%d %H:%M:%S"))
+                         stamp(detail['inactivate_time']))
         if detail['latest_allocation_end']:
             grid.add_row("Allocation End", fmt.date_str(detail['latest_allocation_end']))
 
@@ -309,13 +309,7 @@ def display_project_provisioning(ctx: Context, prov: dict, projcode: str):
         )
         return
 
-    ctx.console.print(f"\n[bold yellow]Host provisioning issues for {projcode}:[/]")
-    table = Table(box=box.SIMPLE, show_header=False)
-    table.add_column("Check", style="cyan")
-    table.add_column("Detail", style="yellow")
-    for label, detail in issues:
-        table.add_row(label, detail)
-    ctx.console.print(table)
+    issues_table(ctx, projcode, issues)
 
 
 def display_project_users(ctx: Context, users: list, projcode: str):

@@ -1,4 +1,5 @@
 """`sam-admin accounting --disk`: a disk-usage snapshot into disk_charge_summary and disk_activity."""
+from sam.summaries.disk_summaries import BYTES_PER_TIB
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -1016,7 +1017,7 @@ class DiskIngestMixin:
             total_gap_bytes = sum(r.bytes for r in gap_rows)
             self.console.print(
                 f"[cyan]Gap reconciliation: {len(gap_rows)} project(s) "
-                f"with unattributed bytes; total {total_gap_bytes / (1024**4):.2f} TiB "
+                f"with unattributed bytes; total {total_gap_bytes / BYTES_PER_TIB:.2f} TiB "
                 "attributed to project leads with audit label "
                 f"{unidentified_label!r}.[/cyan]"
             )

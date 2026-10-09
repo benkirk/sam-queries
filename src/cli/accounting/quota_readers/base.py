@@ -1,5 +1,6 @@
 """Base types for quota file readers."""
 
+from sam.summaries.disk_summaries import BYTES_PER_TIB
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,11 +18,11 @@ class QuotaEntry:
 
     @property
     def limit_tib(self) -> float:
-        return self.limit_bytes / (1024 ** 4)
+        return self.limit_bytes / BYTES_PER_TIB
 
     @property
     def usage_tib(self) -> float:
-        return self.usage_bytes / (1024 ** 4)
+        return self.usage_bytes / BYTES_PER_TIB
 
     @property
     def utilization(self) -> float:
