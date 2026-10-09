@@ -32,7 +32,7 @@ needs.
 **1. Clones.** The seven NCAR repos (sweet, sftp-server, sweet-pl5, ucarldap,
 sam-idms-ldap, sam-ldap-transformer, sam-ldap-syncd) are private; this public repo holds
 none of their code. `bin/build-images` reads them from `$ZOO_DIR`, by default
-`legacy_sam/container_zoo` beside this checkout. It never checks anything out there: each
+`legacy_sam/container_zoo` at the repo root (git-ignored). It never checks anything out there: each
 ref is `git archive`d into a scratch directory, so the clones can sit on any branch.
 
 **2. Images.**
@@ -123,13 +123,13 @@ docker compose --profile tools run --rm -T shell -c \
 `docker compose stop` pauses everything; the `data` volume keeps the replica, the poller
 watermark (`ldap-poll.json`), the spool and syncd's state, and `docker compose up -d ldap
 transformer syncd ldap-poll` resumes. A restarted syncd reloads `sam-data.json`, folds
-`sam-log.jsl` into it and truncates the log, so run `bin/collect` first. A **reset**,
-prod's `reset.sh -s` (stop syncd, empty `/var/data/syncd/`, `touch /var/data/.reset` owned by
-tomcat-sam, start), makes the transformer rebuild `add.jsl` from the latest dump and
-syncd download SAM afresh and diff the two: one prod read and the whole seed-diff PUT
-stream again. `bin/collect` copies into `out/<ts>/` the stub logs, syncd's logs,
-`sam-data.json` and `sam-log.jsl` (the daemon's own per-change log; it holds the live
-stream only, while the stub log also holds the seed diff).
+`sam-log.jsl` into it and truncates the log, so run `bin/collect` first. A **reset**
+(stop syncd, empty `/var/data/syncd/`, `touch /var/data/.reset` owned by tomcat-sam,
+start) makes the transformer rebuild `add.jsl` from the latest dump and syncd download
+SAM afresh and diff the two: one prod read and the whole seed-diff PUT stream again.
+`bin/collect` copies into `out/<ts>/` the stub logs, syncd's logs, `sam-data.json` and
+`sam-log.jsl` (the daemon's own per-change log; it holds the live stream only, while the
+stub log also holds the seed diff).
 
 `sam-data.json` is the daemon's in-memory copy of SAM, rewritten after every applied file,
 so it already reflects the PUTs the stub swallowed. To capture SAM *before* a PUT stream,
@@ -146,12 +146,11 @@ against that dump is the field-level change the port has to make.
 | `http://host.docker.internal:5050` | SAMuel (`docker compose up samuel-dev`); the only target that may take writes |
 | `https://test-sam.ucar.edu:443` | unusable: 404 on every path (2026-10-08), and the daemon retries a 404 forever, silently |
 
-Reading from prod has a cost. A syncd start that finds no `/var/data/syncd/sam-data.json` and
-`sam-log.jsl` downloads all seven collections (`user` is 24 MB and ~30 s of Tomcat time);
-a restart that finds them reloads the dump instead. So a reset is deliberate, never in a
-loop (see "Operating"). Never run
-`syncdTest` there: `ldapsync/status` answers 500 on prod, and legacy mails every 500 to
-SWEG. The guard enforces both.
+Reading from prod has a cost: a syncd start that finds no `/var/data/syncd/sam-data.json`
+and `sam-log.jsl` downloads all seven collections (`user` is 24 MB and ~30 s of Tomcat
+time), so a reset is deliberate, never in a loop. `syncdTest` must never run against
+prod: `ldapsync/status` answers 500 there, and legacy mails every 500 to SWEG. The guard
+refuses prod without `SAM_READ_PROD=1` and refuses `syncdTest` against it outright.
 
 SAMuel's local MySQL (port 3306, loaded by `make clone` in `containers/sam-sql-dev/`) is
 not obfuscated, and the identity tables are copied whole, so the LDAP diff against it is
@@ -160,9 +159,11 @@ Division B`. Everything under `out/` and the data volume is PII: never commit it
 
 ### Choosing the LDAP source
 
-**citldapsam from fdb** (`compose.yaml` alone) is prod's path, but fdb answers it from a
-laptop with `invalid credentials` (rc 49, 2026-10-08, byte-identical secret), presumably
-a host restriction. Stop `ldap` at the first rc 49: it retries every 60 s.
+**citldapsam from fdb** (`compose.yaml` alone, without the `COMPOSE_FILE` line) is prod's
+path: `docker compose up -d ldap` starts a full refresh from fdb and `docker compose logs
+-f ldap` shows INITIALIZING clearing. From a laptop fdb answers the bind with `invalid
+credentials` (rc 49, 2026-10-08, byte-identical secret), presumably a host restriction.
+Stop `ldap` at the first rc 49: it retries every 60 s.
 
 **Anonymous syncrepl is not available:** ldap.ucar.edu rejects the sync control as
 critical for anonymous clients (`ldapsearch -E sync=ro` hides this, since it sends the
@@ -170,8 +171,6 @@ control as non-critical).
 
 **Hybrid** (`COMPOSE_FILE=compose.yaml:compose.hybrid.yaml` in `.env`) runs the replica
 with no syncrepl and seeds it from prod's own stage-1 data, the recipe under "Running it".
-Without that line `compose.yaml` alone is prod's path: `docker compose up -d ldap` starts a
-full refresh from fdb, `docker compose logs -f ldap` shows INITIALIZING clearing.
 
 `ldap-poll` carries the seed forward: every `POLL_INTERVAL_SECS` (300) it reads the
 entries ldap.ucar.edu modified since its watermark and writes the differences into the
@@ -182,8 +181,9 @@ deletes and renames. It never removes an attribute anonymous readers cannot see,
 seeded `x-ucar-contactPerson` stays put; a service account added after the seed arrives
 without one. The subtree roots carry each replica's own `entryUUID`, so entries are
 matched by UUID, then by DN. A sweep whose upstream listing is empty for any subtree is
-abandoned (slapd answers a missing root the way it answers an empty one), and one that
-would delete more than `POLL_MAX_DELETES` (200) applies none of its deletes. State:
+abandoned (a root the reader cannot see lists nothing, which would otherwise mean "all
+deleted"), and one that would delete more than `POLL_MAX_DELETES` (200) applies none of
+its deletes. State:
 `/var/data/ldap-poll.json`; log: `docker compose logs ldap-poll`. `entryCSN` cannot be
 set, even under relax, so local CSNs are local.
 
