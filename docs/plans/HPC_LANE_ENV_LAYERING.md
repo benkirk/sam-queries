@@ -1,6 +1,6 @@
 # HPC lanes for every user: layered, permission-scoped env
 
-**Status:** plan, 2026-10-09. Step 0 (privilege census) done; nothing else applied.
+**Status:** in rollout, 2026-10-09. Steps 0 (privilege census) and 1 (`hpc_reader`) done.
 **Goal:** a regular Casper/Derecho user runs `sam-search` (last-seen and `accounting --jobs`
 included) from the ncar-hpc-deploy SIF lanes with read-only database access; `sam-admin` stays
 gated to named groups. Replaces the conda install's world-readable `.env`.
@@ -119,7 +119,7 @@ containers/ncar-hpc-deploy/env        0644  non-secrets shared by lanes: TZ, JOB
 | # | who | step | verify |
 |---|---|---|---|
 | 0 | Claude | privilege census | done (§ 1) |
-| 1 | Ben (as postgres) + Claude | `pg_scram_verifier.py --generate` → OpenBao `csg/hpc-reader-pg`; run `create_hpc_reader_pg.sql` | § 4 checks of the SQL as `hpc_reader` on `csg-postgres-ro`; Casper/Derecho reach `csg-postgres-ro:5432` |
+| 1 | Ben (as postgres) + Claude | `pg_scram_verifier.py --generate` → OpenBao `csg/hpc-reader-pg`; run `create_hpc_reader_pg.sql` | **done 2026-10-09.** 64/64 checks from casper and derecho, on `csg-postgres-ro` (standby) and the primary, in `system_status` and `casper_jobs`: SELECT works; writes refused (read-only), and still refused after `SET default_transaction_read_only = off` (standby on the replica, privilege on the primary); CREATE refused; runaway query cancelled |
 | 2 | Claude | § 5 app PR | unit tests per backend; parity capture unchanged |
 | 3 | Ben + Claude | write the layered files on GLADE: the § 6a tarball (works with today's loader) | cron `tick` unchanged; `smoke --lane prod` passes |
 | 4 | Claude | § 4 wrapper PR + `smoke.sh` cases (plain user, admin ACL, csgteam) | `--help` and a query as each identity; `sam-admin` refused for a plain user; `NHD_DEBUG=1` layer list |
