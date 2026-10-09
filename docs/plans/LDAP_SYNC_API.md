@@ -561,6 +561,8 @@ controllers.
 - `userPurgePermit?unixUid=` for an unknown uid is a 500 in legacy (null username).
 - `institutionIds`/`orgIds` are link rows with `end_date IS NULL`, not "open" rows.
 - `user_institution.end_date` is stored raw; only `user_organization` is end-of-day.
+- `user_organization.end_date` is also **read** as end-of-day (`EndDateTimeUserType`
+  `normalizeForJava`), whatever time is stored.
 - The exact-date and identical rungs of the employment ladder never fired
   (`Timestamp.equals(Date)`), and every user PUT restamped every affiliation row.
 - projectGroup: an allocation with a NULL end was excluded; `lastModified` is the
@@ -597,6 +599,7 @@ controllers.
 | D21 | finish resets `primary_gid` to 1000 | left as is (the fingerprint cannot restore it) |
 | D22 | unknown employer or phone type → 500, user lost | that row skipped and logged |
 | D23 | organization purge ignores children and responsible resources | each blocks the permit |
+| D24 | a naive time in the repeated DST fall-back hour reads as the later instant (MST) | the earlier (MDT); 1 position start on the clone, accepted |
 
 ### 10.4 The deactivation undo
 
@@ -620,15 +623,28 @@ ever enabled without review, a ledger table behind `restore_user_deactivation` r
   matched each by data.
 - Reads on the local clone: `user` 28,616 rows assembled in 0.75 s; `projectGroup` 0.4 s;
   `collabexpiryupdates` 0.33 s.
+- **Testbed reads (2026-10-09).** Clone refreshed 06:50-06:53 MDT; `syncdInit` against
+  legacy prod (06:54, 54 s) and against the branch on :5051 (06:56, 10 s), compared with
+  `bin/compare-dumps`. Every type loaded the same record count on both (1,410 institution,
+  402 organization, 28,673 user, 5,916 projectGroup, 5 groupTag, 310 group, 1 gidAllocation).
+
+  | Type | Differing | Class |
+  |---|---|---|
+  | institution, organization, group, groupTag, gidAllocation | 0 | |
+  | projectGroup `tags` | 31 | D14: tags only added; 30 projects with no live account member, 1 branch from a member-less account |
+  | projectGroup `lastModified` | 1 | the daemon's synthetic `all-hpc-users`, stamped at load time |
+  | user `collaborations` / `positions` | 3 / 2 | element order only |
+  | user `positions.endDate` | 10 | port defect, fixed (read as end-of-day, § 10.2); 0 on re-capture |
+  | user `positions.startDate` | 1 | D24 |
+
+  No data-age differences.
 
 ### 10.6 Still to do before cutover
 
-1. Testbed reads: `syncdInit` against `http://host.docker.internal:5050` and against prod,
-   then `bin/compare-dumps`; differences should be the D-rows only.
-2. Testbed writes (stub off, local DB): a reset's full PUT stream, then a second reset,
+1. Testbed writes (stub off, local DB): a reset's full PUT stream, then a second reset,
    which should find almost nothing to send.
-3. Confirm the prod `admin` `api_credentials` row with `ROLE_API_ADMIN`.
-4. samuel-dev rehearsal, then flip `SAM_URL`; rollback is the same variable.
-5. For George: the cron configuration (bug 13) and, before `LDAPSYNC_LIFECYCLE_ENABLED`,
+2. Confirm the prod `admin` `api_credentials` row with `ROLE_API_ADMIN`.
+3. samuel-dev rehearsal, then flip `SAM_URL`; rollback is the same variable.
+4. For George: the cron configuration (bug 13) and, before `LDAPSYNC_LIFECYCLE_ENABLED`,
    the `deactivation` key name and the `$samClient` bug (the `/?24` path is handled here).
 
