@@ -1,7 +1,7 @@
-From 60c555a751e60ef282ada7faacaf93a2bace9740 Mon Sep 17 00:00:00 2001
+From 267d2e1b386812aae3396631bf5eea70cef823a1 Mon Sep 17 00:00:00 2001
 From: Benjamin Kirk <benkirk@ucar.edu>
 Date: Fri, 9 Oct 2026 09:01:51 -0600
-Subject: [PATCH 3/4] Skip a modify for an unknown key instead of rebuilding
+Subject: [PATCH 3/6] Skip a modify for an unknown key instead of rebuilding
  from SAM
 
 A modify whose record is in neither SAM nor the add file threw
@@ -13,8 +13,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01EgPyNLobhxFie7ZK1MJxqX
 ---
  lib/IDMSPerson.t         | 8 +++++++-
- lib/IDMSUpdateManager.pm | 4 ++--
- 2 files changed, 9 insertions(+), 3 deletions(-)
+ lib/IDMSUpdateManager.pm | 7 +++----
+ 2 files changed, 10 insertions(+), 5 deletions(-)
 
 diff --git a/lib/IDMSPerson.t b/lib/IDMSPerson.t
 index 4df0439..78f74a3 100755
@@ -40,18 +40,19 @@ index 4df0439..78f74a3 100755
 +   'modify for an unknown person does not throw';
 +ok(!defined($newRec), 'modify for an unknown person is skipped');
 diff --git a/lib/IDMSUpdateManager.pm b/lib/IDMSUpdateManager.pm
-index 6324bae..32d0f3b 100644
+index 6324bae..fde71e6 100644
 --- a/lib/IDMSUpdateManager.pm
 +++ b/lib/IDMSUpdateManager.pm
-@@ -368,10 +368,10 @@ sub _applyAddOrModify {
+@@ -368,10 +368,9 @@ sub _applyAddOrModify {
  
      } elsif ($updType eq "modify") {
          if (! defined($samRec)) {
 -            my $msg = sprintf("Update to unknown SAM object: idmsUpdate=%s\n",
-+            my $msg = sprintf("Update to unknown SAM object, skipped: idmsUpdate=%s\n",
-                     Dumper($idmsUpdate));
-             vprintf(ERROR,$msg);
+-                    Dumper($idmsUpdate));
+-            vprintf(ERROR,$msg);
 -            throwIMDBStateException($msg);
++            vprintf(ERROR,"Update to unknown SAM object, skipped: %s\n",
++                    join('/',@{$idmsUpdate->idArr()}));
 +            return ($updType,undef);
          }
          ($updType,$newSamRec) = $self->modifySamData($idmsUpdate, $samRec);

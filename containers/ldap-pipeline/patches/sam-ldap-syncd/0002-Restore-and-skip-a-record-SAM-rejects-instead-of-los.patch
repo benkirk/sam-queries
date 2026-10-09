@@ -1,7 +1,7 @@
-From 427f9d4c3f81c8f412f38d69db0217a63cd7c1a9 Mon Sep 17 00:00:00 2001
+From 7b707abfd26b12373a7267c992063a28a0549260 Mon Sep 17 00:00:00 2001
 From: Benjamin Kirk <benkirk@ucar.edu>
 Date: Fri, 9 Oct 2026 09:00:07 -0600
-Subject: [PATCH 2/4] Restore and skip a record SAM rejects instead of losing
+Subject: [PATCH 2/6] Restore and skip a record SAM rejects instead of losing
  the pass
 
 The IMDB is updated before the PUT, so a rejected update was dropped and,
@@ -12,11 +12,11 @@ continues; 3xx, 401 and 403 invalidate the IMDB instead.
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01EgPyNLobhxFie7ZK1MJxqX
 ---
- lib/IDMSDumpSynchronizer.pm | 10 +++++----
- lib/SamUpdatePropagator.pm  | 41 +++++++++++++++++++++++++++++++++++++
- lib/SamUpdatePropagator.t   | 29 +++++++++++++++++++++++++-
+ lib/IDMSDumpSynchronizer.pm | 10 +++---
+ lib/SamUpdatePropagator.pm  | 41 +++++++++++++++++++++++++
+ lib/SamUpdatePropagator.t   | 61 ++++++++++++++++++++++++++++++++++++-
  lib/Synchronizer.pm         |  2 +-
- 4 files changed, 76 insertions(+), 6 deletions(-)
+ 4 files changed, 108 insertions(+), 6 deletions(-)
 
 diff --git a/lib/IDMSDumpSynchronizer.pm b/lib/IDMSDumpSynchronizer.pm
 index 7018f24..3ff6b1b 100644
@@ -117,7 +117,7 @@ index f60ea58..e59dbe6 100644
      my $self = shift;
      my $samUpdate = shift;
 diff --git a/lib/SamUpdatePropagator.t b/lib/SamUpdatePropagator.t
-index c6d32d7..962ac31 100755
+index c6d32d7..9a00e07 100755
 --- a/lib/SamUpdatePropagator.t
 +++ b/lib/SamUpdatePropagator.t
 @@ -14,7 +14,7 @@ use SamFileManager;
@@ -125,11 +125,11 @@ index c6d32d7..962ac31 100755
  
  use TestData;
 -use Test::Most tests => 22;
-+use Test::Most tests => 25;
++use Test::Most tests => 30;
  
  
  require_ok('SamUpdatePropagator');
-@@ -170,3 +170,30 @@ ok(scalar(@{$updBuffer->{'group'}}) == 2,
+@@ -170,3 +170,62 @@ ok(scalar(@{$updBuffer->{'group'}}) == 2,
     'completed group IS transmitted to SAM');
  ok(samLogLines() == 8,
     'completed group is appended to the SAM log');
@@ -160,6 +160,38 @@ index c6d32d7..962ac31 100755
 +throws_ok { $propagator->propagateOrRestore($samUpdate,$rejOld) }
 +   qr/IMDB should be re-initialized/,
 +   'propagateOrRestore() raises IMDBStateException on a 401';
++
++#
++# A rejected new record has nothing to restore: it leaves the IMDB
++#
++$rejStatus = 400;
++my $newRec = dclone($rejOld);
++$newRec->{'userName'} = 'rejectednew';
++my $newKey = $userMgr->getKey($newRec);
++$userMgr->addOrUpdate($newRec);
++$samUpdate = SamUpdate::create('addOrUpdate','user',$newKey,$newRec);
++lives_ok { $propagator->propagateOrRestore($samUpdate,undef) }
++   'propagateOrRestore() continues after a rejected new record';
++ok(!exists($userMgr->samData()->{$newKey}),
++   'a rejected new record is removed from the IMDB');
++
++#
++# A rejected delete (sent as a tombstone, purgePermit=0) is restored
++#
++$userMgr->delete($rejKey);
++$samUpdate = SamUpdate::create('delete','user',$rejKey,$rejOld);
++lives_ok { $propagator->propagateOrRestore($samUpdate,$rejOld) }
++   'propagateOrRestore() continues after a rejected delete';
++is_deeply($userMgr->samData()->{$rejKey}, $rejOld,
++   'a rejected delete is restored in the IMDB');
++
++#
++# SAM's own 500 is a rejected record too, not a reset
++#
++$rejStatus = 500;
++$samUpdate = SamUpdate::create('addOrUpdate','user',$rejKey,$rejNew);
++lives_ok { $propagator->propagateOrRestore($samUpdate,$rejOld) }
++   'propagateOrRestore() continues after a 500';
 diff --git a/lib/Synchronizer.pm b/lib/Synchronizer.pm
 index b8748c5..248bf25 100644
 --- a/lib/Synchronizer.pm

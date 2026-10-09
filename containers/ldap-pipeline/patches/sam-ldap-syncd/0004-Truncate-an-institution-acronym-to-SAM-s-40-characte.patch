@@ -1,7 +1,7 @@
-From a42630aa4c7324c5b1bc88b8b84d7be2347acd7f Mon Sep 17 00:00:00 2001
+From 13e772ffe8590d7dd7b223a3585c7b6a81b87e73 Mon Sep 17 00:00:00 2001
 From: Benjamin Kirk <benkirk@ucar.edu>
 Date: Fri, 9 Oct 2026 09:56:31 -0600
-Subject: [PATCH 4/4] Truncate an institution acronym to SAM's 40 characters
+Subject: [PATCH 4/6] Truncate an institution acronym to SAM's 40 characters
 
 SAM's institution.acronym is varchar(40). A longer acronym was sent as is,
 so SAM rejected the institution on every pass. Truncate it in normalize(),
