@@ -21,12 +21,21 @@ def sam_dialect(driver: str) -> str:
     return 'postgresql+psycopg2' if driver.lower() in POSTGRES_DRIVERS else 'mysql+pymysql'
 
 
-def connect_args(driver: str, require_ssl: bool, application_name: str = None) -> dict:
+def read_only_flag(var: str) -> bool:
+    """Whether env ``var`` (SAM_DB_READ_ONLY, STATUS_DB_READ_ONLY) asks for read-only sessions."""
+    return os.getenv(var, 'false').strip().lower() in ('true', '1', 'yes', 'on')
+
+
+def connect_args(driver: str, require_ssl: bool, application_name: str = None,
+                 read_only: bool = False) -> dict:
     """The DBAPI connect_args for one bind: a bounded connect, SSL in each driver's
     dialect, and on Postgres the application_name pg_stat_activity shows plus the
     libpq settings that make a dead or demoted primary fail fast (SAM_DB_CONNECT_TIMEOUT
     seconds, default 10). WARNING: with no bound, a readiness probe hung in connect()
-    for the OS SYN timeout while csg-postgres rolled, one gthread per probe."""
+    for the OS SYN timeout while csg-postgres rolled, one gthread per probe.
+
+    ``read_only`` opens every session read-only and, on Postgres, accepts any server: a writer's
+    ``target_session_attrs=read-write`` refuses a standby and a read-only role default alike."""
     timeout = int(os.getenv('SAM_DB_CONNECT_TIMEOUT', '10'))
     if driver.lower() in POSTGRES_DRIVERS:
         args = {
@@ -35,8 +44,10 @@ def connect_args(driver: str, require_ssl: bool, application_name: str = None) -
             'keepalives_idle': 30,
             'keepalives_interval': 10,
             'keepalives_count': 3,
-            'target_session_attrs': 'read-write',
+            'target_session_attrs': 'any' if read_only else 'read-write',
         }
+        if read_only:
+            args['options'] = '-c default_transaction_read_only=on'
         if application_name:
             args['application_name'] = application_name
         if require_ssl:
@@ -45,6 +56,8 @@ def connect_args(driver: str, require_ssl: bool, application_name: str = None) -
     args = {'connect_timeout': timeout}
     if require_ssl:
         args['ssl'] = {'ssl_disabled': False}
+    if read_only:
+        args['init_command'] = 'SET SESSION TRANSACTION READ ONLY'
     return args
 
 
@@ -133,7 +146,8 @@ def create_sam_engine(input_connection_string: str = None):
         echo=False,  # Set to True for SQL debugging
         pool_pre_ping=True,
         pool_recycle=3600,
-        connect_args=connect_args(os.getenv('SAM_DB_DRIVER', 'mysql'), require_ssl)
+        connect_args=connect_args(os.getenv('SAM_DB_DRIVER', 'mysql'), require_ssl,
+                                  read_only=read_only_flag('SAM_DB_READ_ONLY'))
     )
     SessionLocal = sessionmaker(bind=engine)
     return engine, SessionLocal

@@ -123,7 +123,8 @@ def create_app(*, config_overrides: dict | None = None):
     # never inherits them.
     pod_id = os.environ.get('HOSTNAME') or socket.gethostname()
     engine_options['connect_args'] = sam.session.connect_args(
-        cfg.SAM_DB_DRIVER, cfg.SAM_DB_REQUIRE_SSL, application_name=f'sam-webapp:{pod_id}:sam')
+        cfg.SAM_DB_DRIVER, cfg.SAM_DB_REQUIRE_SSL, application_name=f'sam-webapp:{pod_id}:sam',
+        read_only=sam.session.read_only_flag('SAM_DB_READ_ONLY'))
 
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options
 
@@ -144,7 +145,8 @@ def create_app(*, config_overrides: dict | None = None):
     status_require_ssl = os.getenv('STATUS_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')
     status_pool['connect_args'] = sam.session.connect_args(
         os.getenv('STATUS_DB_DRIVER', 'mysql'), status_require_ssl,
-        application_name=f'sam-webapp:{pod_id}:system_status')
+        application_name=f'sam-webapp:{pod_id}:system_status',
+        read_only=sam.session.read_only_flag('STATUS_DB_READ_ONLY'))
 
     app.config['SQLALCHEMY_BINDS'] = {
         # Dict form lets us override engine options per bind (Flask-SQLAlchemy

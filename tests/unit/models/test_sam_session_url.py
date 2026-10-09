@@ -64,10 +64,29 @@ def test_status_engine_shares_the_hardened_connect_args(monkeypatch):
     from system_status import session as status_session
     monkeypatch.setenv('STATUS_DB_DRIVER', 'postgresql')
     monkeypatch.setenv('STATUS_DB_REQUIRE_SSL', 'true')
-    with patch('sam.session.connect_args', wraps=sam_session.connect_args) as spy:
-        engine, _ = status_session.create_status_engine('postgresql+psycopg2://u:p@db.local/system_status')
-    engine.dispose()
-    spy.assert_called_once_with('postgresql', True)
+    for flag, read_only in (('', False), ('1', True)):
+        monkeypatch.setenv('STATUS_DB_READ_ONLY', flag)
+        with patch('sam.session.connect_args', wraps=sam_session.connect_args) as spy:
+            engine, _ = status_session.create_status_engine('postgresql+psycopg2://u:p@db.local/system_status')
+        engine.dispose()
+        spy.assert_called_once_with('postgresql', True, read_only=read_only)
+
+
+def test_status_url_honors_the_port(monkeypatch):
+    from system_status import session as status_session
+    saved = status_session.connection_string
+    for k, v in {'STATUS_DB_USERNAME': 'u', 'STATUS_DB_PASSWORD': 'test-placeholder-pass',
+                 'STATUS_DB_SERVER': 'db.local', 'STATUS_DB_DRIVER': 'postgresql'}.items():
+        monkeypatch.setenv(k, v)
+    try:
+        monkeypatch.setenv('STATUS_DB_PORT', '5434')
+        status_session.init_status_db_defaults()
+        assert status_session.connection_string.port == 5434
+        monkeypatch.delenv('STATUS_DB_PORT')
+        status_session.init_status_db_defaults()
+        assert status_session.connection_string.port is None
+    finally:
+        status_session.connection_string = saved
 
 
 def test_config_reload_reads_the_driver(monkeypatch):
@@ -79,3 +98,23 @@ def test_config_reload_reads_the_driver(monkeypatch):
     finally:
         monkeypatch.delenv('SAM_DB_DRIVER')
         SAMConfig.reload()
+
+
+def test_read_only_connect_args(monkeypatch):
+    """A read-only bind accepts any Postgres server and opens every session read-only."""
+    monkeypatch.delenv('SAM_DB_CONNECT_TIMEOUT', raising=False)
+    assert sam_session.connect_args('postgres', True, read_only=True) == {
+        **_PG_HARDENING, 'target_session_attrs': 'any', 'sslmode': 'require',
+        'options': '-c default_transaction_read_only=on'}
+    assert sam_session.connect_args('mysql', False, read_only=True) == {
+        'connect_timeout': 10, 'init_command': 'SET SESSION TRANSACTION READ ONLY'}
+
+
+@pytest.mark.parametrize('value, expected', [('1', True), ('true', True), (' On ', True),
+                                             ('0', False), ('', False), (None, False)])
+def test_read_only_flag(monkeypatch, value, expected):
+    if value is None:
+        monkeypatch.delenv('SAM_DB_READ_ONLY', raising=False)
+    else:
+        monkeypatch.setenv('SAM_DB_READ_ONLY', value)
+    assert sam_session.read_only_flag('SAM_DB_READ_ONLY') is expected
