@@ -19,7 +19,7 @@ from sqlalchemy import select
 
 from sam.accounting.accounts import Account, AccountUser
 from sam.core.users import User
-from sam.manage import _end_membership, membership_cutoff
+from sam.manage import end_membership, membership_cutoff, unended
 from sam.manage.ldapsync import SyncValidationError, user_by_username
 
 logger = logging.getLogger(__name__)
@@ -45,11 +45,9 @@ def finish_user_deactivation(session, username: str, now: Optional[datetime] = N
     if user is None or user.deactivate is None or not user.active:
         raise SyncValidationError(f'User {username} is not active and marked for deactivation.')
     live = (session.query(AccountUser)
-            .filter(AccountUser.user_id == user.user_id, AccountUser.start_date <= now,
-                    (AccountUser.end_date.is_(None)) | (AccountUser.end_date >= now))
-            .all())
+            .filter(AccountUser.user_id == user.user_id, unended(now)).all())
     for row in live:
-        _end_membership(session, row, now)      # one `now`, so one stamp for every row
+        end_membership(session, row, now)      # one stamp for every row; a future start is deleted
     user.update(active=False, deactivate=membership_cutoff(now))
     logger.info('ldapsync: finished deactivation of %s, %d memberships closed',
                 user.username, len(live))
@@ -107,9 +105,7 @@ def restore_user_deactivation(session, user: User, now: Optional[datetime] = Non
     if closure is None:
         return report
     open_accounts = set(session.scalars(
-        select(AccountUser.account_id)
-        .where(AccountUser.user_id == user.user_id, AccountUser.start_date <= now,
-               (AccountUser.end_date.is_(None)) | (AccountUser.end_date >= now))))
+        select(AccountUser.account_id).where(AccountUser.user_id == user.user_id, unended(now))))
     for row in closure.rows:
         account = session.get(Account, row.account_id)
         if account is None or account.deleted:

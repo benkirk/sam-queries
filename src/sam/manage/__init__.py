@@ -130,7 +130,7 @@ def add_user_to_project(
     session.flush()
 
 
-def _unended(now: datetime):
+def unended(now: datetime):
     """Rows still open at *now*: no end, or an end at/after it (same test as add_user_to_project)."""
     return or_(AccountUser.end_date.is_(None), AccountUser.end_date >= now)
 
@@ -148,7 +148,7 @@ def membership_cutoff(now: datetime) -> datetime:
     return cutoff
 
 
-def _end_membership(session: Session, row: AccountUser, now: datetime) -> None:
+def end_membership(session: Session, row: AccountUser, now: datetime) -> None:
     """End an AccountUser row as of *now*; a row that has not started yet is deleted instead."""
     if row.start_date > now:
         # Never effective, so there is no history to keep, and end < start is nonsense.
@@ -197,11 +197,11 @@ def remove_user_from_project(session: Session, project_id: int, user_id: int) ->
     account_users = session.query(AccountUser).filter(
         AccountUser.account_id.in_(select(account_ids)),
         AccountUser.user_id == user_id,
-        _unended(now),
+        unended(now),
     ).all()
 
     for account_user in account_users:
-        _end_membership(session, account_user, now)
+        end_membership(session, account_user, now)
 
     # Clear admin role if they had it
     if project.project_admin_user_id == user_id:
@@ -245,7 +245,7 @@ def change_project_admin(
         member = session.query(AccountUser).join(Account).filter(
             Account.project_id == project_id,
             AccountUser.user_id == new_admin_user_id,
-            _unended(datetime.now()),
+            unended(datetime.now()),
         ).first()
 
         # Also allow if they are the lead
@@ -358,11 +358,11 @@ def revoke_user_resource_access(
     account_users = session.query(AccountUser).filter(
         AccountUser.account_id == account.account_id,
         AccountUser.user_id == user_id,
-        _unended(now),
+        unended(now),
     ).all()
 
     for account_user in account_users:
-        _end_membership(session, account_user, now)
+        end_membership(session, account_user, now)
 
     session.flush()
 

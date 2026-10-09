@@ -53,13 +53,16 @@ class TestPendingAndFinish:
     def test_finish_closes_every_live_row_at_one_instant_and_keeps_it(self, session):
         user, rows = _pending_user(session)
         future = _member(session, user, start=NOW + timedelta(days=5))
+        future_id = future.account_user_id
         history = _member(session, user, end=NOW - timedelta(days=100))
         user.primary_gid = 12345
         session.flush()
-        assert finish_user_deactivation(session, user.username, now=NOW) == 2
+        assert finish_user_deactivation(session, user.username, now=NOW) == 3
         assert {r.end_date for r in rows} == {membership_cutoff(NOW)}
         assert rows[0].end_date < NOW
-        assert future.end_date is None and history.end_date == NOW - timedelta(days=100)
+        # A membership that had not started is deleted, as by any removal (end_membership).
+        assert session.get(AccountUser, future_id) is None
+        assert history.end_date == NOW - timedelta(days=100)
         assert (user.active, user.deactivate, user.primary_gid) == (False, rows[0].end_date, 12345)
 
     def test_finish_with_no_memberships_still_records_the_instant(self, session):
@@ -126,11 +129,12 @@ class TestUndo:
         report = restore_user_deactivation(session, user, now=NOW + timedelta(days=2))
         assert report.restored == 2
 
-    def test_open_row_on_the_same_account_is_skipped(self, session):
-        """Re-added to the same account since: reopening would duplicate the membership."""
+    @pytest.mark.parametrize('readd_start', [NOW + timedelta(days=1), NOW + timedelta(days=30)])
+    def test_open_row_on_the_same_account_is_skipped(self, session, readd_start):
+        """Re-added to the same account since, even for a future start: reopening would duplicate it."""
         user, rows = _pending_user(session, n_memberships=2)
         finish_user_deactivation(session, user.username, now=NOW)
-        _member(session, user, start=NOW + timedelta(days=1), account=rows[0].account)
+        _member(session, user, start=readd_start, account=rows[0].account)
         report = restore_user_deactivation(session, user, now=NOW + timedelta(days=2))
         assert dict((r.account_user_id, o) for r, o in report.outcomes) == {
             rows[0].account_user_id: SKIPPED_ALREADY_MEMBER, rows[1].account_user_id: RESTORED}
