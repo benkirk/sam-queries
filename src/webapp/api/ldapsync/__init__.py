@@ -89,6 +89,14 @@ def _unexpected(error):
     return error_response(500, f'{type(error).__name__}: {detail}')
 
 
+def parse_int(raw, message: str) -> int:
+    """An id from the path or query as an int; anything else is a 400 with *message*."""
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        raise SyncValidationError(message)
+
+
 def read_json_body():
     """The request's JSON body; a missing or malformed body raises 400."""
     data = request.get_json(force=True, silent=True)
@@ -102,4 +110,4 @@ from . import sync as _sync  # noqa: E402,F401
 from . import purge as _purge  # noqa: E402,F401
 from . import lifecycle as _lifecycle  # noqa: E402,F401
 
-__all__ = ['bp', 'ldapsync_api_required', 'LDAPSYNC_ROLE', 'AUTH_REALM']
+__all__ = ['bp', 'ldapsync_api_required', 'LDAPSYNC_ROLE', 'AUTH_REALM', 'parse_int']

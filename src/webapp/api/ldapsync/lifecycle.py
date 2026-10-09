@@ -13,7 +13,7 @@ from sam.queries.user_lifecycle import collab_expiry_updates
 from sam.schemas.ldapsync import ActiveUserStatusSchema
 from webapp.extensions import csrf, db
 
-from . import bp, json_response, ldapsync_api_required
+from . import bp, json_response, ldapsync_api_required, parse_int
 
 LIFECYCLE_DISABLED = 'Lifecycle updates are disabled in SAM.'
 
@@ -36,10 +36,7 @@ def get_collab_expiry_updates():
 def get_pending_deactivations(hours=None):
     """Usernames stamped more than *hours* ago. The client sends ``/?24``; both forms work."""
     raw = hours if hours is not None else request.query_string.decode()
-    try:
-        failsafe_hours = int(raw)
-    except ValueError:
-        raise SyncValidationError(f'Invalid failsafe hours {raw}.')
+    failsafe_hours = parse_int(raw, f'Invalid failsafe hours {raw}.')
     if not _enabled():
         return json_response([])
     return json_response(pending_deactivations(db.session, failsafe_hours))

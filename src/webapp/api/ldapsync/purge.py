@@ -13,7 +13,7 @@ from sam.manage.transaction import management_transaction
 from sam.schemas import ldapsync as s
 from webapp.extensions import csrf, db
 
-from . import bp, empty_response, json_response, ldapsync_api_required
+from . import bp, empty_response, json_response, ldapsync_api_required, parse_int
 
 
 def _enabled() -> bool:
@@ -25,10 +25,7 @@ def _int_arg(*names):
     for name in names:
         raw = request.args.get(name)
         if raw not in (None, ''):
-            try:
-                return int(raw)
-            except ValueError:
-                raise SyncValidationError(f'Invalid value for parameter {name}: {raw}.')
+            return parse_int(raw, f'Invalid value for parameter {name}: {raw}.')
     return None
 
 

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from sam.core.groups import GidAllocation
 from sam.dates import end_of_day, from_epoch_millis
 from sam.queries.directory_access import ACCESS_GRACE_PERIOD, grace_cutoff
+from sam.text import ci_unique
 
 logger = logging.getLogger(__name__)
 
@@ -26,15 +27,6 @@ EXCLUDE_FROM_GOOGLE_TAG = 'exclude-from-google'
 AUTO_RENEWED_PROJECT_TAG = 'auto-renewed-project'
 #: Legacy tests `"CN".contains(code)`; facility.code is one character, so this is the same set.
 AUTO_RENEW_FACILITY_CODES = frozenset({'C', 'N'})
-
-
-def _ci_sorted(names) -> list:
-    """Case-insensitive dedupe and sort, first spelling wins (Java's CASE_INSENSITIVE_ORDER TreeSet)."""
-    seen = {}
-    for name in names:
-        if name is not None:
-            seen.setdefault(name.lower(), name)
-    return [seen[k] for k in sorted(seen)]
 
 
 # ---------------------------------------------------------------------------
@@ -227,7 +219,7 @@ def groups(session: Session) -> list:
     for g in group_rows:
         names = [e.username for e in entries.get(g.group_id, [])]
         upids, rolenames = set(), []
-        for name in _ci_sorted(names):
+        for name in ci_unique(names, sort=True):
             found = ident.get(name.lower())
             if found is None:
                 continue
@@ -240,10 +232,10 @@ def groups(session: Session) -> list:
             'name': g.group_name, 'key': g.group_name,
             'description': None, 'org': None,
             'active': bool(g.active), 'posix_gid': g.unix_gid,
-            'usernames': _ci_sorted(names),
+            'usernames': ci_unique(names, sort=True),
             'upids': sorted(upids),
             'rolenames': rolenames,
-            'tags': _ci_sorted(e.access_branch_name for e in entries.get(g.group_id, [])),
+            'tags': ci_unique((e.access_branch_name for e in entries.get(g.group_id, [])), sort=True),
         })
     return out
 
@@ -379,7 +371,7 @@ def project_groups(session: Session, since: Optional[datetime] = None) -> list:
             'name': p.projcode, 'key': p.projcode.lower(),
             'active': bool(p.active), 'posix_gid': p.unix_gid,
             'upids': sorted(v for k, v in keys if k == 'upid'),
-            'rolenames': _ci_sorted(v for k, v in keys if k == 'role'),
+            'rolenames': ci_unique((v for k, v in keys if k == 'role'), sort=True),
             'tags': tags,
             'last_modified': last_modified,
         })

@@ -3,7 +3,6 @@
 from flask import current_app, request
 
 from sam.manage import ldapsync as sync
-from sam.manage.ldapsync import SyncValidationError
 from sam.manage.lifecycle import restore_user_deactivation
 from sam.manage.transaction import management_transaction
 from sam.queries import ldapsync as q
@@ -17,7 +16,7 @@ from sam.schemas.forms.ldapsync import (
 )
 from webapp.extensions import csrf, db
 
-from . import bp, empty_response, json_response, ldapsync_api_required, read_json_body
+from . import bp, empty_response, json_response, ldapsync_api_required, parse_int, read_json_body
 
 
 def _get(rule):
@@ -53,10 +52,7 @@ def get_users():
 @ldapsync_api_required()
 def get_user(unix_uid):
     """One user by unix uid; an unknown uid is 200 with an empty body, never 404."""
-    try:
-        uid = int(unix_uid)
-    except ValueError:
-        raise SyncValidationError(f'Invalid unixUid {unix_uid}.')
+    uid = parse_int(unix_uid, f'Invalid unixUid {unix_uid}.')
     user = q.user_by_unix_uid(db.session, uid)
     return empty_response() if user is None else json_response(s.UserSyncSchema().dump(user))
 

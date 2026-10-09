@@ -24,6 +24,7 @@ from sam.geography import Country, StateProv
 from sam.manage.employment import Affiliation, match
 from sam.projects.projects import Project
 from sam.security.access import AccessBranch
+from sam.text import ci_unique, strip_or_none
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ class SyncValidationError(ValueError):
 # ---------------------------------------------------------------------------
 
 def _blank(value) -> bool:
-    return value is None or not str(value).strip()
+    return strip_or_none(value) is None
 
 
 def _check_widths(kind: str, data: dict, widths: dict) -> None:
@@ -368,14 +369,6 @@ NCAR_GROUP = 'ncar'
 ENTRY_USERNAME_WIDTH = 12     # adhoc_system_account_entry.username
 
 
-def _ci_unique(values) -> list:
-    seen = {}
-    for v in values or ():
-        if v is not None and v.strip():
-            seen.setdefault(v.lower(), v)
-    return list(seen.values())
-
-
 def sync_group(session, data: dict) -> int:
     """Upsert one unix group; returns posixGid.
 
@@ -388,8 +381,8 @@ def sync_group(session, data: dict) -> int:
         raise SyncValidationError('Either posixGid or groupname of group must be specified.')
     if len(key) > 30:
         raise SyncValidationError('Group key is longer than 30 characters.')
-    tags = _ci_unique(data.get('tags'))
-    usernames = _ci_unique(data.get('usernames'))
+    tags = ci_unique(data.get('tags'))
+    usernames = ci_unique(data.get('usernames'))
 
     branches = {name.lower(): name for (name,) in session.query(AccessBranch.name)}
     matching = list(dict.fromkeys(branches[t.lower()] for t in tags if t.lower() in branches))

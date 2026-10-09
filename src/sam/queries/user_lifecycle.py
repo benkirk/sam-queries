@@ -18,6 +18,7 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
 from sam.dates import end_of_day, format_ymd
+from sam.queries.ldapsync import USER_LOGIN
 
 #: Legacy ``userlifecycle.{disk,deactivation}.gracePeriod.days`` defaults.
 DISK_GRACE_DAYS = 90
@@ -130,8 +131,8 @@ class _Snapshot:
         self.project_directories = {r.directory_name: r.project_id for r in ex(text(
             'SELECT directory_name, project_id FROM project_directory'))}
 
-        user_login = ex(text("SELECT login_type_id FROM login_type WHERE type = 'user_login'")
-                        ).scalar()
+        user_login = ex(text("SELECT login_type_id FROM login_type WHERE type = :t"),
+                        {'t': USER_LOGIN}).scalar()
         candidate_ids = (set(self.user_contracts) | set(self.user_projects)
                          | set(self.collab_end) | set(self.position_end)
                          | set(self.account_users))
