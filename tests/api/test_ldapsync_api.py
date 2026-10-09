@@ -252,6 +252,21 @@ class TestLifecycleRoutes:
             assert callable(_restore_hook())
 
 
+# --- 500 envelope ------------------------------------------------------------
+
+def test_unexpected_error_keeps_the_envelope_without_driver_text(ldapsync_client, monkeypatch):
+    from sqlalchemy.exc import IntegrityError
+    import webapp.api.ldapsync.sync as route
+
+    def boom(session):
+        raise IntegrityError('INSERT INTO x', {}, Exception("Duplicate entry 'jane@x.edu'"))
+    monkeypatch.setattr(route.q, 'sync_status', boom)
+    resp = _get(ldapsync_client, 'ldapsync/status')
+    assert resp.status_code == 500
+    message = resp.get_json()['errorMessage']
+    assert message.startswith('IntegrityError:') and 'jane@x.edu' not in message
+
+
 # --- limiter ---------------------------------------------------------------
 
 @pytest.fixture

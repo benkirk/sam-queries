@@ -13,6 +13,7 @@ from functools import partial
 
 from flask import Blueprint, current_app, request
 from marshmallow import ValidationError
+from sqlalchemy.exc import DBAPIError
 from werkzeug.exceptions import HTTPException
 
 from sam.manage.ldapsync import SyncValidationError
@@ -94,8 +95,10 @@ def _http_error(error):
 
 @bp.errorhandler(Exception)
 def _unexpected(error):
+    """The type and message, except a driver's text, which carries row values; the log has it all."""
     current_app.logger.exception('ldapsync %s %s failed', request.method, request.path)
-    return error_response(500, f'{type(error).__name__}: {error}')
+    detail = 'database error' if isinstance(error, DBAPIError) else str(error)
+    return error_response(500, f'{type(error).__name__}: {detail}')
 
 
 def read_json_body():
