@@ -108,7 +108,8 @@ and `userlifecycle/pendingdeactivations/24` answers `[]`.
    (`.env.prod-read.bak` stays as the restore point).
 4. Reset the spool by renaming it aside (never `rm` in the data volume), `touch
    /var/data/.reset` owned 303:303, `docker compose up -d ldap transformer syncd ldap-poll`.
-   Pass 1 should be small: dev is prod at T0 and the replica tracks prod. The 24 MB `user`
+   Pass 1 is the whole seed diff again (about 1,350 PUTs, the § 10.5 residuals never
+   converge), the same count as the local soak's pass 1; that equality is its proof. The 24 MB `user`
    GET now crosses the dev ingress; note its time from the daemon log. The first tick
    after pass 1 settles, then the soak cadence: every 4-6 h, a daily summary, quiet unless
    a signal moves (5xx, a pause, `IMDBStateException`, the 0002 skip count, poller errors).
