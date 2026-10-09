@@ -8,23 +8,14 @@ metadata:
   annotations:
     cert-manager.io/cluster-issuer: "incommon"
 {{- $class := required "webapp.ingress.className is required" .Values.webapp.ingress.className }}
-{{- /* LEGACY branch: ingress-nginx annotations, unused on a traefik class. */}}
-{{- if hasPrefix "nginx" $class }}
-    {{- with .Values.webapp.ingress.rateLimit }}
-    {{- if gt (int .rps) 0 }}
-    nginx.ingress.kubernetes.io/limit-rps: {{ .rps | quote }}
-    nginx.ingress.kubernetes.io/limit-connections: {{ .connections | quote }}
-    nginx.ingress.kubernetes.io/limit-burst-multiplier: {{ .burstMultiplier | quote }}
-    {{- end }}
-    {{- end }}
-{{- else if .Values.webapp.ingress.traefik.entrypoints }}
-    traefik.ingress.kubernetes.io/router.entrypoints: {{ .Values.webapp.ingress.traefik.entrypoints | quote }}
+{{- with .Values.webapp.ingress.traefik.entrypoints }}
+    traefik.ingress.kubernetes.io/router.entrypoints: {{ . | quote }}
 {{- end }}
 {{- /*
   Every host this ingress answers for: the platform-primary `fqdn` (which
   becomes the cert CN) followed by any advertised aliases. Listing them all in
   a single `tls:` entry makes cert-manager issue ONE multi-SAN certificate
-  covering the lot — the same shape gdex.ucar.edu uses on this controller.
+  covering the lot.
   `default (list)` keeps values-local.yaml (no extraHosts) rendering a single
   localhost rule.
 */}}

@@ -22,9 +22,6 @@ webapp:
     fqdn: samuel-dev.k8s.ucar.edu
     extraHosts: []
     secretName: incommon-cert-samuel-dev
-  ingress:
-    legacyBridge:
-      enabled: false                      # dev's DNS already points at Traefik (2026-10-08)
   container:
     requests:
       memory: 1024M

@@ -19,7 +19,7 @@ The production chart depends on three things that don't exist locally:
 | Dependency | Production | Local |
 |---|---|---|
 | **Secrets** | External Secrets Operator pulls creds from OpenBao | `helm/local-secrets.sh` creates k8s Secrets from `../.env` |
-| **Ingress** | `traefik-external` (`webapp.ingress.className`; both envs since 2026-10, `docs/plans/TRAEFIK_INGRESS.md`) + InCommon TLS via cert-manager | Skipped — use `kubectl port-forward` instead |
+| **Ingress** | `traefik-external` (`webapp.ingress.className`; both envs since 2026-10, `docs/plans/implemented/TRAEFIK_INGRESS.md`) + InCommon TLS via cert-manager | Skipped — use `kubectl port-forward` instead |
 | **Databases** | `sam-sql.ucar.edu`, `csg-postgres.k8s.ucar.edu` | Local MySQL via `host.docker.internal` |
 
 `helm/values-local.yaml` sets `useExternalSecret: false` on all three credential blocks,
