@@ -1,14 +1,7 @@
-"""Cell formatters shared by the contract and award display modules.
+"""Rich display helpers shared across the CLI's display modules.
 
-Both packages render the same payloads — `ContractSummarySchema` output and
-`compare_contract` results — so they need the same three coercions. They grew
-a private copy each (#403 then #404) and the copies drifted: one `_date` was
-missing the `date`/`datetime` guard, and an empty string rendered as `—` in
-award output but as `''` in contract output. These are the more-correct
-versions of each.
-
-All date formatting still goes through `sam.fmt` rather than a local
-`strftime` or a string slice, per the house rule.
+Cell coercions (`text`, `truncate`, `date_cell`, `stamp`, `styled`), the JSON-aware
+progress bar and the provisioning issues table. Dates go through `sam.fmt`.
 """
 
 from datetime import date, datetime

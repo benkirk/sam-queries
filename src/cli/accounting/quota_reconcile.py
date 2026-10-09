@@ -37,21 +37,10 @@ class QuotaReconcileMixin:
         verify_paths: bool = False,
         verify_host: Optional[str] = None,
     ) -> int:
-        """Reconcile SAM allocations for ``resource_name`` against a
-        storage-system-specific quota file.
+        """Reconcile ``resource_name``'s allocations against its quota file; read-only by default.
 
-        Always reports the full plan (matched / mismatched / orphaned /
-        unmapped tables, snapshot banner, narrative captions). Writes
-        are gated behind explicit opt-in flags:
-
-          * ``update_accounting_system``  -> apply mismatched-amount updates
-          * ``deactivate_orphaned``       -> also deactivate orphan allocations
-            (requires ``update_accounting_system``)
-          * ``force``                     -> override the live-path safety
-            gate (requires ``deactivate_orphaned``)
-
-        Without any of these the tool is read-only — same code path,
-        no DB mutations.
+        ``update_accounting_system`` applies mismatched amounts and ``deactivate_orphaned``
+        deactivates orphans, independently; ``force`` overrides the live-path gate for the latter.
         """
         from sam.resources.resources import Resource
         from sam.accounting.accounts import Account

@@ -546,14 +546,7 @@ def display_tree_audit(ctx: Context, violations: list, bad_dates: list):
 @contextmanager
 def notification_progress(ctx: Context, total: int,
                           description: str = "Sending expiration notices..."):
-    """Yield an ``on_result`` callback that advances a progress bar.
-
-    This is the seam that keeps the CLI's presentation out of ``sam.notify``.
-    The predecessor drove a ``rich.progress.Progress`` from *inside* the send
-    loop (the since-removed ``cli/notifications/email.py``), against a console it had
-    duck-typed off the CLI ``Context`` — which is a large part of why the
-    mailer could not be lifted as-is.
-    """
+    """Yield an ``on_result`` callback that advances a progress bar; keeps Rich out of ``sam.notify``."""
     with progress_bar(ctx) as progress:
         task = progress.add_task(description, total=total)
         yield lambda result: progress.advance(task)

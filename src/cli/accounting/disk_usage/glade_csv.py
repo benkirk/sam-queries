@@ -1,22 +1,12 @@
 """Reader for the ``acct.<host>.YYYY-MM-DD`` disk usage CSV format.
 
-A per-(user, project) disk usage snapshot. Three feeds share it:
-``acct.glade.*`` (Campaign Store, per-user rows), ``acct.quasar.*`` and
-``acct.desc1.*`` (per-project rollups, username='total').
+Feeds: ``acct.glade.*`` (per-user rows), ``acct.quasar.*``, ``acct.desc1.*`` (per-project,
+username='total'). No header: activity_date, directory_path, projcode (lowercase),
+username (numeric-only rows rejected), number_of_files, file_size_total, then optional
+reporting_int and cos_id (default 7 and 0; both vestigial).
 
-Columns, no header: activity_date, directory_path, projcode (lowercase in
-source, SAM stores upper), username (numeric-only "uid" rows are rejected),
-number_of_files, file_size_total, then two OPTIONAL columns -- reporting_int
-and cos_id.
-
-WARNING: column 6 is **KiB**, not bytes; bytes = col6 * 1024. Verified
-2026-04-27 against a disk_charge_summary row, where DB.bytes / col6 is exactly
-1024. It is on-disk physical occupancy, matching GPFS ``mmlsquota``.
-
-The GPFS feeds emit all 8 columns (always "7","0"); the Lustre/Destor feed
-ships only the first 6, and the missing two default to 7 and 0. Both are
-vestigial: charging derives the interval from snapshot tick spacing, and
-``disk_cos_id`` is hardcoded 0.
+WARNING: column 6 is **KiB**, not bytes (bytes = col6 * 1024; verified 2026-04-27
+against disk_charge_summary). It is physical occupancy, matching GPFS ``mmlsquota``.
 """
 
 import csv

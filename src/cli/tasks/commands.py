@@ -1,13 +1,10 @@
 """``sam-admin tasks`` — list, dispatch, and read the history of scheduled tasks.
 
-One class with a mode method each, following ``cli/xras/commands.py``. Heavy
-imports are deferred into the mode that needs them, so ``--list`` never pays
-for the task registry's import graph.
+Heavy imports are deferred into the mode that needs them.
 
-**This command must not require SAM MySQL.** Its ledger is in `system_status`,
-and the whole point of the framework is that a SAM outage cannot stop status
-retention. It therefore never touches ``self.session`` — which, since the
-lazy-connect refactor, means no SAM connection is ever opened.
+**This command must not require SAM MySQL.** Its ledger is in `system_status`, so a SAM
+outage cannot stop status retention; it never touches ``self.session``, which therefore
+never connects.
 """
 
 from __future__ import annotations

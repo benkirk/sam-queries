@@ -1,15 +1,9 @@
 """Contract command classes.
 
-Two exit-code conventions live in this module, and the difference is
-deliberate rather than an oversight:
-
-* ``ContractsAuditCommand`` (``sam-admin``) returns ``EXIT_ERROR`` to mean
-  **findings exist**, matching ``ProjectTreeAuditCommand``. It is a linter.
-* The two search commands (``sam-search``) return ``EXIT_ERROR`` only for a
-  genuine error, ``EXIT_NOT_FOUND`` for "no such contract", matching every
-  other ``sam-search`` subcommand. They are lookups.
-
-Do not unify them; each matches the command family a user invokes it from.
+Two exit-code conventions, deliberately (src/cli/README.md § Exit Codes): the
+``sam-admin`` audit returns ``EXIT_ERROR`` for "findings exist", like
+``ProjectTreeAuditCommand``; the ``sam-search`` lookups return ``EXIT_NOT_FOUND`` for
+"no such contract" and ``EXIT_ERROR`` only for a genuine error. Do not unify them.
 """
 
 import time

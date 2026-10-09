@@ -1,20 +1,10 @@
 """Award command classes — the provider side of contracts.
 
-Where ``cli.contracts`` asks SAM, this asks the funding agencies. The two are
-separate subcommands rather than modes of one because they have different data
-sources, different envelope shapes and independent exit-code semantics.
+Where ``cli.contracts`` asks SAM, this asks the funding agencies.
 
-**Exit codes, three outcomes never conflated** — exactly the model
-``htmx_contract_award_lookup`` uses for its three render paths:
-
-===================================  ================
-found                                ``EXIT_SUCCESS``
-no such award / no matching results  ``EXIT_NOT_FOUND``
-source unreachable                   ``EXIT_ERROR``
-===================================  ================
-
-"NSF has no award 1234567" and "NSF is down" are different answers and the
-caller must be able to tell them apart.
+Three outcomes, never conflated (as in ``htmx_contract_award_lookup``): found is
+``EXIT_SUCCESS``, no such award ``EXIT_NOT_FOUND``, source unreachable ``EXIT_ERROR``.
+"NSF has no award 1234567" and "NSF is down" are different answers.
 """
 
 from cli.awards.builders import build_award, build_award_search, build_in_sam
