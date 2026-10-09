@@ -35,6 +35,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-06 | `5f27d3b7` + round E (mid-word breaks) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,810 / 51 / 8 | 163 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-08 | `0bf88a49` + sweep 18 (XRAS incoming vs ACCESS) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,810 / 51 / 8 | 163 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-09 | `afafd5b9` + sweep 19 (#773 from the air) | 50 / 59 / 24 | 1 (2) | 15 / 49 | 20 (20), 2 kept | 4,822 / 51 / 7 | 165 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
+| 2026-10-09 | `2af64319` + sweep 20 (`src/cli`) | 49 / 58 / 24 | 1 (2) | 14 / 46 | 20 (20), 2 kept | 4,822 / 51 / 7 | 165 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -915,9 +916,8 @@ adjustment/supplement handler clone was read: leave.
   `_RESOURCES_TABS` / `_ORGANIZATIONS_TABS` -> move the page routes into their modules.
 - [ ] The six linked-element routes (`projects_routes.py:2833–3006`) check a global
   `require_permission` where their GET is project-scoped. A policy decision, not a tidy-up.
-- [ ] CLI: shared option bundles for `cmds/search.py` / `cmds/admin.py` (about -45; `--help`
-  text moves); the provisioning-issues table, status-style and timestamp helpers duplicated across
-  `cli/*/display.py` (about -30); the mnemonic handlers onto `HtmxFormHandler` (about -40);
+- [ ] CLI: ~~shared option bundles~~ and ~~the provisioning-issues table, status-style and
+  timestamp helpers~~ (sweep 20); the mnemonic handlers onto `HtmxFormHandler` (about -40);
   `legacy_dedup_key` once a notification cycle has passed.
 - [ ] `READ_MODEL.md:141` now matches the code: resource details' summary card is served by the
   read model through `get_detailed_allocation_usage`.
@@ -1388,6 +1388,95 @@ under `is_active`; noted in CLAUDE.md § 5).
   `User` twin is gone, this one is still called.
 
 **Growth rule:** a **Default route** heuristic in § 4 of the skill, from the deferred finding.
+
+## 20. 2026-10-09: area sweep, `src/cli` (and the CLI's start time on HPC)
+
+**Mode:** area, `src/cli` (11.5k lines) plus the model calls it makes. **End commit:**
+`2af64319` (`origin/staging`). Ben also asked whether the CLI should try the REST API first and
+fall back to the ORM, because each run "is a database handshake" on Casper and Derecho. The
+sweep measured that first.
+
+**Measured on Casper** (crlogin3, the conda-env build of 2026-09-28, prod `sam-sql`):
+
+| | wall | what it is |
+|---|---|---|
+| connect to sam-sql | 0.085 s | the handshake |
+| one statement round trip | ~4.5 ms | times the statement count |
+| `sam-search project SCSG0001` | ~1.9 s | 158 statements, 0.90 s in the DB |
+| `sam-search user benkirk` | ~1.0 s | 9 statements |
+| `--help`, conda env | 0.57 s warm, 2.8 s cold | imports only |
+| `--help`, the apptainer SIF | 1.3 s (1.0 s with a writable pycache) | apptainer 0.15 s; the image ships no `.pyc` for `src/` |
+
+**API-first verdict: not now.** It would save the 85 ms handshake, and an HTTPS request costs about
+the same. The cost is round trips times N+1 statement counts, and imports. The project, allocation
+and charges endpoints take no API key, and the CLI and API JSON shapes were built independently.
+Interactive HPC users run the conda env (`/glade/u/apps/opt/sam-queries/conda-env`); the SIF lanes
+are cron-only while their per-lane `env` files are csgteam-only.
+
+**Parity:** `utils/profiling/cli_sweep/` (untracked): `capture.py` runs 112 commands (Rich and
+JSON; user, project, allocations, accounting, contracts, admin validate/reconcile/rbac,
+not-found and usage-error paths) on mysql-test and postgres-test, recording rc, stdout and
+stderr. Two runs of unchanged code agree exactly. `count.py` / `attribute.py` count statements
+per command and attribute them to source lines; the same scripts ran on Casper.
+
+**Done, in this sweep's PR**, one commit each:
+
+- [x] `Project.get_user_count()` in one statement: SCSG0001 141 → 32 statements, the perf tier's
+  largest project 60 → 1. Equal to `len(project.users)` on 400 projects.
+- [x] `latest_allocation_end_by_project`, one grouped `MAX` for both builders; Lead/Admin by
+  foreign key. `user --list-projects` 261 → 10 (55 projects), 110 → 10 (benkirk). Perf tier:
+  `cli_build_project_core` 136 → 18 (baseline 27), `cli_build_user_projects` 187 → 10 (15).
+- [x] `--format json` keeps stdout one document: `rbac --effective` without grants,
+  `--validate` / `--reconcile`, the `-v` traceback, `require_plugin`, progress bars.
+  `Context.message_console`; `display_utils.progress(ctx)`.
+- [x] `BaseCommand.emit()` / `not_found()`: 33 + 7 sites (-138 lines). Rich not-found messages
+  move to stderr.
+- [x] `accounting/commands.py` (2,193 lines) splits into `comp_ingest.py`, `disk_ingest.py`
+  and `quota_reconcile.py` mixins; a pure move, checked line by line.
+- [x] `core/options.py`: `verbose_option` (subcommand `-v` now also sets INFO logging),
+  `provisioning_option`; admin `project` regains `-f` / `-p`.
+- [x] Display lifts: `issues_table`, `styled`, `stamp` (11 sites), `BYTES_PER_TIB` (10).
+- [x] Exit codes follow jobhist's table. Usage errors exit 2 on stderr via `usage_error` (49
+  sites exited 1 on stdout). Empty `allocations` exits 1 like `accounting`. Accounting's literal
+  ints are now the named constants.
+- [x] Dead: `--archive`, `process_result`, `usage_tib`, an ORM branch, `if verbose: pass`, the
+  CLI `_iso`, `Project`'s commented-out relationship; `resolve_user` public. `ruff --select F
+  src/cli` is clean.
+- [x] Docs: the CLI README matches the tree. The `ExporterRegistry` claim is corrected here and
+  in CLAUDE.md. The quota-reconcile docstring was wrong about its flags. Six module docstrings
+  are now within budget.
+
+**Tried and dropped:**
+- Folding the comp and disk epoch checks, and the two plugin+session opens. They differ in
+  constants, messages and loop shape, so a shared helper saves ~10 lines and changes error
+  wording.
+- `user_line` as a shared helper: the project listing's row has a different shape, so it stays
+  local to `user/display.py`.
+
+**Follow-ons (held; Ben, 2026-10-09):**
+
+- [ ] Lazy subcommands (a Click `LazyGroup`, and no `system_status`/numpy import for
+  `SOURCE_KINDS`): `import cli.cmds.search` 0.47 s → ~0.31 s warm, more on a cold GLADE cache.
+  Decide after re-timing the conda env on Casper and Derecho with this PR deployed.
+- [ ] The SIF lanes: `RUN python -m compileall -q src` after the editable install (about −0.3 s per
+  run). Evaluate together with the lane `env` permissions, once the SIF is the users' path.
+
+**Open:**
+
+- [ ] `sam.fmt` bypasses in `accounting/display.py` (`:.1f`, `:.4f`, `_fmt_factor`, `str(date)`),
+  hand-built plurals, and `'N/A'` ×14 vs `—`. These change Rich output; Ben chose ledger only.
+- [ ] Date parsing seven ways and duration parsing three ways; `--last 7d` means today−6…today in
+  accounting and now−7d in xras. Ledger only, for the same reason.
+- [ ] `xras/commands.py`'s recheck imports `webapp` (waits with the XRAS work).
+- [ ] `rbac --grant/--revoke/--seed` and `accounting --comp` / `--reconcile-quotas` have no
+  `json_unsupported_for_writes` guard; the last two print Rich text to stdout under `--format json`.
+- [ ] `get_user_count` keeps `active_account_users`' rule, which has no `start_date` guard
+  (sweep 19's open item); fix both together.
+- [ ] `tests/unit/queries/test_contract_audit.py::TestUrlMissing` errors under xdist (a
+  whitespace-only parametrize id) and passes serially.
+
+**Growth rule:** a **Round trips** heuristic in § 4 of the skill: on a surface that runs far
+from its database, count statements per command before reading code.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

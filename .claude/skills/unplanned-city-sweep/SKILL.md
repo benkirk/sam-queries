@@ -120,6 +120,11 @@ Run each pass and collect findings. The examples are real.
   the *default* configuration's path through it: a lever that ships off must not clear the
   record on its way past. Example: #773's reactivation hook cleared `users.deactivate`, the
   undo's key, whether or not `LDAPSYNC_RESTORE_ON_REACTIVATE` had restored anything (sweep 19).
+- **Round trips.** On a surface that runs far from its database (the CLI on Casper: ~4.5 ms per
+  statement), count statements per command with a `before_cursor_execute` counter and attribute
+  them to source lines before reading code. A property that loads ORM objects to answer a count
+  multiplies by every `lazy='selectin'` on the loaded class. Example: sweep 20's 141 statements
+  for `sam-search project`, 110 of them from `get_user_count`.
 - **Ratchet.** Where a fix is cheap to pin, add an equality ratchet so the city does not regrow.
   Models: `tests/unit/gates/test_css_tokens.py` (raw colors) and
   `tests/unit/gates/test_no_fstring_sql.py`. Only ratchet a count that is going down.
