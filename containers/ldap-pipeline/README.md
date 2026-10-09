@@ -20,7 +20,7 @@ Until `SAM_URL` points at our own webapp, every write is a line in a log file.
 | Target | Requirement |
 |---|---|
 | LDAP staging (prod: fdbstage.ucar.edu, reachable from a laptop) | `LDAPSTAGING_URL` names a `.invalid` host **and** `LDAPSTAGING_UPDATES_STUB` is set. Compose refuses to parse without the stub. |
-| SAM | `SAM_UPDATES_STUB` is set, or `SAM_URL` is `host.docker.internal` / `localhost`. |
+| SAM | `SAM_UPDATES_STUB` is set, or `SAM_URL` is `host.docker.internal` / `localhost` / `samuel-dev.k8s.ucar.edu` (our webapp, by exact name). |
 | Prod SAM (sam.ucar.edu) | reads only, and only with `SAM_READ_PROD=1`; never `syncdTest` (see below). With the patched daemon, keep `SAM_URL` and the credential right: patch 0002 answers a 401 or 403 by rebuilding the IMDB, which re-downloads all seven collections every 300 s for as long as auth stays wrong. |
 | fdb.ucar.edu (the syncrepl provider) | the citldapsam password file exists and does not end in a newline (`ldapsearch -y` sends the whole file), so a bad copy never becomes a failed bind. |
 
@@ -150,7 +150,8 @@ differences are `docs/plans/LDAP_SYNC_API.md` § 10.3.
 | `SAM_URL` | Use |
 |---|---|
 | `https://sam.ucar.edu:443` + `SAM_READ_PROD=1` | legacy reads, writes stubbed. The guard refuses until the flag is set |
-| `http://host.docker.internal:5050` | SAMuel (`docker compose up samuel-dev`), which serves the LDAP sync API; the only target that may take writes |
+| `http://host.docker.internal:5050` | SAMuel (`docker compose up samuel-dev`), which serves the LDAP sync API; may take writes |
+| `https://samuel-dev.k8s.ucar.edu` | SAMuel on k8s (prod's data, reloaded by `make refresh-dev`); may take writes. The dev shadow: `docs/plans/LDAPSYNC_DEV_SHADOW.md`. `HTTPS_CA_DIR` must exist, or the Perl client silently stops verifying certificates |
 | `https://test-sam.ucar.edu:443` | unusable: 404 on every path (2026-10-08), and the daemon retries a 404 forever, silently |
 
 Reading from prod has a cost: a syncd start that finds no `/var/data/syncd/sam-data.json`
