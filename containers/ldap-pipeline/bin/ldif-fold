@@ -5,84 +5,24 @@ Usage: bin/ldif-fold DUMP AUDITLOG OUT. The result is the directory as of the la
 audit record, operational attributes (entryCSN, modifyTimestamp) included, parents
 before children. Feed both through bin/ldif-scrub first.
 """
-import base64
+import os
 import sys
 from collections import Counter
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from ldiflib import Entry, norm, records, split  # noqa: E402
 
-def norm(dn):
-    return ",".join(p.strip() for p in dn.lower().split(","))
 
-
-def records(path):
-    """Yield each record as its list of logical (unwrapped) lines, comments dropped."""
-    rec = []
+def read(path):
     with open(path, encoding="utf-8", errors="surrogateescape") as f:
-        for raw in f:
-            line = raw.rstrip("\n")
-            if line.startswith(" ") and rec:
-                rec[-1] += line[1:]
-            elif line == "":
-                if rec:
-                    yield rec
-                rec = []
-            elif not line.startswith("#"):
-                rec.append(line)
-    if rec:
-        yield rec
-
-
-def split(line):
-    """'attr: v' / 'attr:: b64' -> (attr, raw bytes)."""
-    attr, rest = line.split(":", 1)
-    if rest.startswith(":"):
-        return attr, base64.b64decode(rest[1:].strip())
-    return attr, rest.strip().encode("utf-8", "surrogateescape")
-
-
-def render(attr, value):
-    try:
-        text = value.decode("utf-8")
-        safe = text == text.strip() and not text.startswith((":", "<")) and \
-            all(32 <= ord(c) < 127 for c in text)
-    except UnicodeDecodeError:
-        safe = False
-    return f"{attr}: {text}" if safe else f"{attr}:: {base64.b64encode(value).decode()}"
-
-
-class Entry:
-    def __init__(self, dn):
-        self.dn, self.attrs = dn, {}          # lower attr -> [name, [values]]
-
-    def add(self, attr, value):
-        slot = self.attrs.setdefault(attr.lower(), [attr, []])
-        if value not in slot[1]:
-            slot[1].append(value)
-
-    def delete(self, attr, values=None):
-        slot = self.attrs.get(attr.lower())
-        if slot is None:
-            return
-        if values:
-            slot[1] = [v for v in slot[1] if v not in values]
-        if not values or not slot[1]:
-            del self.attrs[attr.lower()]
-
-    def lines(self):
-        out = [render("dn", self.dn.encode())]
-        for name, values in self.attrs.values():
-            out += [render(name, v) for v in values]
-        return out
+        yield from records(f)
 
 
 def load_dump(path):
     entries = {}
-    for rec in records(path):
-        dn = split(rec[0])[1].decode("utf-8", "surrogateescape")
-        e = Entry(dn)
-        for line in rec[1:]:
-            e.add(*split(line))
-        entries[norm(dn)] = e
+    for rec in read(path):
+        e = Entry.parse(rec)
+        entries[norm(e.dn)] = e
     return entries
 
 
@@ -144,7 +84,7 @@ def apply(entries, rec, stats):
 def main(dump, audit, out):
     entries = load_dump(dump)
     stats = Counter()
-    for rec in records(audit):
+    for rec in read(audit):
         apply(entries, rec, stats)
     ordered = sorted(entries.values(), key=lambda e: norm(e.dn).count(","))
     with open(out, "w", encoding="utf-8", errors="surrogateescape") as o:

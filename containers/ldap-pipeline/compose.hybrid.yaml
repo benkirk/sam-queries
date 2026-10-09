@@ -43,3 +43,20 @@ services:
       - ./bin/ldap-seed.sh:/ldap-seed.sh:ro
     network_mode: none
     profiles: [seed]
+
+  # Feeds the seeded replica from anonymous ldap.ucar.edu reads; writes go only to `ldap`.
+  ldap-poll:
+    image: *hybrid-image
+    platform: ${PIPELINE_PLATFORM:-linux/amd64}
+    pull_policy: never
+    entrypoint: ["python3", "/pipeline/bin/ldap-poll"]
+    environment:
+      POLL_INTERVAL_SECS: ${POLL_INTERVAL_SECS:-300}
+      POLL_SWEEP_SECS: ${POLL_SWEEP_SECS:-3600}
+    volumes:
+      - data:/var/data
+      - ./bin:/pipeline/bin:ro
+      - ./secrets/sam-idms-ldap/admin_password:/run/secrets/admin_password:ro
+    networks: [ldap]
+    depends_on: [ldap]
+    restart: unless-stopped

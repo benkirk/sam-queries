@@ -12,11 +12,12 @@ docker compose --profile tools run --rm -T shell -c "
     cd /var/data
     o=/out/$stamp
     ls -la . syncd auditlog.d >\$o/listing.txt 2>&1 || true
-    for f in log-syncd.o log-syncd.e syncd/*stub.log syncd/*dbg.log syncd/sam-data.*; do
+    for f in log-syncd.o log-syncd.e ldap-poll.json syncd/*stub.log syncd/*dbg.log syncd/sam-data.*; do
         [ -e \"\$f\" ] && cp -p \"\$f\" \$o/ || true
     done
     [ $jsl = 1 ] && cp -p syncd/*.jsl \$o/ 2>/dev/null || true
     chmod -R a+rX \$o
 "
+docker compose logs --no-color ldap-poll >"out/$stamp/ldap-poll.log" 2>/dev/null || true
 echo "out/$stamp:"
 ls -la "out/$stamp"

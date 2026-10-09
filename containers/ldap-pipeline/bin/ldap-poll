@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""Carry the seeded replica forward from anonymous ldap.ucar.edu reads (hybrid stage 1).
+
+Each poll fetches entries upstream modified since a watermark and writes the differences
+into the local replica as cn=admin, under the relax control so upstream's modifyTimestamp
+and modifiersName survive; slapd's audit log records them and the transformer takes it
+from there, as it does syncrepl's writes in prod. Every POLL_SWEEP_SECS a DN/entryUUID
+listing catches deletes and renames. Attributes anonymous readers cannot see (HIDDEN) are
+never removed. Runs as the ldap-poll service; Python 3.7.
+"""
+import datetime
+import json
+import os
+import subprocess
+import sys
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from ldiflib import BASE, HIDDEN, SUBTREES, Entry, norm, records, render  # noqa: E402
+
+UPSTREAM = os.environ.get("POLL_UPSTREAM", "ldap://ldap.ucar.edu")
+LOCAL = os.environ.get("POLL_LOCAL", "ldap://ldap:389")
+ADMIN = "cn=admin," + BASE
+PASSWORD = os.environ.get("POLL_PASSWORD_FILE", "/run/secrets/admin_password")
+STATE = os.environ.get("POLL_STATE", "/var/data/ldap-poll.json")
+INTERVAL = int(os.environ.get("POLL_INTERVAL_SECS", "300"))
+SWEEP = int(os.environ.get("POLL_SWEEP_SECS", "3600"))
+MARGIN = datetime.timedelta(seconds=int(os.environ.get("POLL_MARGIN_SECS", "120")))
+TS = "%Y%m%d%H%M%SZ"
+# Never written: slapd owns them, or (entryCSN) refuses them even under relax.
+SLAPD_OWNED = {"entrycsn", "structuralobjectclass", "hassubordinates", "entrydn",
+               "subschemasubentry", "contextcsn", "numsubordinates"}
+# Written only as upstream's stamp on an entry that changed, never compared.
+STAMPS = {"createtimestamp", "creatorsname", "modifytimestamp", "modifiersname", "entryuuid"}
+BATCH = 50
+
+
+def log(msg):
+    print("%s ldap-poll: %s" % (datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), msg),
+          flush=True)
+
+
+def password_file():
+    path = "/tmp/ldap-poll.pw"
+    with open(PASSWORD) as f, open(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as o:
+        o.write(f.read().rstrip("\n"))
+    return path
+
+
+def search(url, base, filt, attrs, bind=None, scope="sub"):
+    cmd = ["ldapsearch", "-x", "-LLL", "-o", "ldif-wrap=no", "-H", url, "-s", scope, "-b", base]
+    if bind:
+        cmd += ["-D", ADMIN, "-y", bind]
+    out = subprocess.run(cmd + [filt] + attrs, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if out.returncode not in (0, 32):           # 32: no such object
+        raise RuntimeError("%s %s: rc %d %s" % (url, base, out.returncode,
+                                               out.stderr.decode().strip()[:200]))
+    text = out.stdout.decode("utf-8", "surrogateescape").splitlines()
+    return [Entry.parse(r) for r in records(text) if r[0].lower().startswith("dn")]
+
+
+def everywhere(url, filt, attrs, bind=None):
+    found = []
+    for st in SUBTREES:
+        found += search(url, "%s,%s" % (st, BASE), filt, attrs, bind)
+    return found
+
+
+def by_uuid(url, uuids, bind=None):
+    found, uuids = {}, sorted(uuids)
+    for i in range(0, len(uuids), BATCH):
+        filt = "(|%s)" % "".join("(entryUUID=%s)" % u for u in uuids[i:i + BATCH])
+        for e in search(url, BASE, filt, ["*", "+"], bind):
+            found[e.first("entryUUID")] = e
+    return found
+
+
+def ldif_add(u):
+    return "\n".join(u.lines(skip=SLAPD_OWNED)[:1] + ["changetype: add"] +
+                     u.lines(skip=SLAPD_OWNED)[1:])
+
+
+def ldif_rename(old_dn, u):
+    rdn, parent = u.dn.split(",", 1)
+    return "\n".join([render("dn", old_dn.encode()), "changetype: modrdn",
+                      render("newrdn", rdn.encode()), "deleteoldrdn: 1",
+                      render("newsuperior", parent.encode())])
+
+
+def ldif_modify(l, u):
+    """Replace what differs; drop what upstream dropped, unless anonymous cannot see it."""
+    ops = []
+    skip = SLAPD_OWNED | STAMPS
+    for key, (name, values) in u.attrs.items():
+        if key not in skip and sorted(values) != sorted(l.get(key)):
+            ops.append(["replace: " + name] + [render(name, v) for v in values])
+    for key, (name, _) in l.attrs.items():
+        if key not in skip and key not in u.attrs and key not in HIDDEN:
+            ops.append(["delete: " + name])
+    if not ops:
+        return None
+    for stamp in ("modifyTimestamp", "modifiersName"):
+        if u.get(stamp):
+            ops.append(["replace: " + stamp] + [render(stamp, v) for v in u.get(stamp)])
+    body = "\n-\n".join("\n".join(op) for op in ops)
+    return "\n".join([render("dn", u.dn.encode()), "changetype: modify", body, "-"])
+
+
+def apply(changes, bind):
+    if not changes:
+        return 0
+    out = subprocess.run(["ldapmodify", "-x", "-c", "-H", LOCAL, "-D", ADMIN, "-y", bind,
+                          "-e", "relax"], input=("\n\n".join(changes) + "\n").encode(),
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    errors = [l for l in out.stderr.decode().splitlines()
+              if l.startswith("ldap_") or "additional info" in l]
+    for line in errors[:10]:
+        log("ldapmodify: " + line.strip())
+    return len([l for l in errors if l.startswith("ldap_")])
+
+
+def cycle(state, bind, sweep):
+    since = datetime.datetime.strptime(state["watermark"], TS) - MARGIN
+    upstream = {e.first("entryUUID"): e for e in
+                everywhere(UPSTREAM, "(modifyTimestamp>=%s)" % since.strftime(TS), ["*", "+"])}
+    deletes = []
+    if sweep:
+        up = {e.first("entryUUID"): e.dn for e in everywhere(UPSTREAM, "(objectClass=*)", ["entryUUID"])}
+        here = {e.first("entryUUID"): e.dn for e in everywhere(LOCAL, "(objectClass=*)", ["entryUUID"], bind)}
+        # The subtree roots and a few replica-local entries carry each replica's own
+        # entryUUID; a DN present on both sides is the same entry whatever its UUID.
+        up_dns, here_dns = {norm(d) for d in up.values()}, {norm(d) for d in here.values()}
+        missing = {u for u in set(up) - set(here) if norm(up[u]) not in here_dns}
+        upstream.update(by_uuid(UPSTREAM, missing - set(upstream)))
+        deletes = sorted((here[u] for u in set(here) - set(up) if norm(here[u]) not in up_dns),
+                         key=lambda d: -d.count(","))
+    local = by_uuid(LOCAL, upstream.keys(), bind)
+    adds, renames, mods = [], [], []
+    for uuid, u in upstream.items():
+        l = local.get(uuid) or next(iter(search(LOCAL, u.dn, "(objectClass=*)", ["*", "+"],
+                                                bind, scope="base")), None)
+        if l is None:
+            adds.append(u)
+            continue
+        if norm(l.dn) != norm(u.dn):
+            renames.append(ldif_rename(l.dn, u))
+        m = ldif_modify(l, u)
+        if m:
+            mods.append(m)
+    adds.sort(key=lambda e: e.dn.count(","))
+    changes = (["\n".join([render("dn", d.encode()), "changetype: delete"]) for d in deletes]
+               + renames + [ldif_add(u) for u in adds] + mods)
+    errors = apply(changes, bind)
+    stamps = [u.first("modifyTimestamp") for u in upstream.values() if u.first("modifyTimestamp")]
+    if not errors and stamps:
+        state["watermark"] = max([state["watermark"]] + stamps)
+    log("upstream-changed=%d add=%d modify=%d rename=%d delete=%d unchanged=%d errors=%d%s"
+        " watermark=%s" % (len(upstream), len(adds), len(mods), len(renames), len(deletes),
+                           len(upstream) - len(adds) - len(mods), errors,
+                           " sweep" if sweep else "", state["watermark"]))
+
+
+def main():
+    bind = password_file()
+    state = {}
+    if os.path.exists(STATE):
+        with open(STATE) as f:
+            state = json.load(f)
+    if "watermark" not in state:
+        stamps = [e.first("modifyTimestamp") for e in
+                  everywhere(LOCAL, "(objectClass=*)", ["modifyTimestamp"], bind)]
+        state["watermark"] = max(s for s in stamps if s)
+        log("watermark from the seeded replica: " + state["watermark"])
+    last_sweep = state.get("last_sweep", 0)
+    while True:
+        sweep = time.time() - last_sweep >= SWEEP
+        try:
+            cycle(state, bind, sweep)
+            if sweep:
+                last_sweep = state["last_sweep"] = time.time()
+            with open(STATE + ".tmp", "w") as f:
+                json.dump(state, f)
+            os.replace(STATE + ".tmp", STATE)
+        except Exception as exc:                  # a failed poll is retried next interval
+            log("poll failed: %s" % exc)
+        if "--once" in sys.argv:
+            return
+        time.sleep(INTERVAL)
+
+
+if __name__ == "__main__":
+    main()

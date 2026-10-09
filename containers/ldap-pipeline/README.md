@@ -100,7 +100,8 @@ bin/collect                                            # stub logs + syncd logs 
 
 `syncd` runs `-vvvvv --redirect` as in prod, so its output goes to `log-syncd.{o,e}` in
 the data volume, not `docker compose logs`. Like prod, nothing restarts a container that
-exits.
+exits, except `ldap-poll` (`unless-stopped`). Docker Desktop pauses with the Mac, so an
+overnight run needs the machine awake.
 
 ### Choosing the SAM
 
@@ -142,8 +143,19 @@ bin/ldif-fold seed/dump.ldif seed/audit.ldif seed/folded.ldif   # the directory 
 RESET=1 docker compose --profile init run --rm volume-init
 docker compose up -d ldap; docker compose stop ldap  # bootstraps slapd.d, then idles in INITIALIZING
 docker compose --profile seed run --rm ldap-seed    # slapadd, offline; RESEED=1 to replace
-docker compose up -d ldap transformer syncd
+docker compose up -d ldap transformer syncd ldap-poll
 ```
+
+`ldap-poll` carries the seed forward: every `POLL_INTERVAL_SECS` (300) it reads the
+entries ldap.ucar.edu modified since its watermark and writes the differences into the
+replica as cn=admin under the relax control, so upstream's `modifyTimestamp` and
+`modifiersName` survive and slapd's audit log records them as it records syncrepl's writes
+in prod. Every `POLL_SWEEP_SECS` (3600) a DN/`entryUUID` listing (about 7 MB) catches
+deletes and renames. It never removes an attribute anonymous readers cannot see, so a
+seeded `x-ucar-contactPerson` stays put; a service account added after the seed arrives
+without one. The subtree roots carry each replica's own `entryUUID`, so entries are
+matched by UUID, then by DN. State: `/var/data/ldap-poll.json`; log: `docker compose
+logs ldap-poll`. `entryCSN` cannot be set, even under relax, so local CSNs are local.
 
 Never copy the `-0-slapcat` dump: it is prod's cn=config, citldapsam password included.
 Prod's replica copies the whole tree, password hashes too, so scrub before anything else.
@@ -176,6 +188,7 @@ and `telephoneNumber`, of which the transformer maps only the service-account
 | `bin/volume-init.sh` | sam-app's `reset.sh`: directory layout and ownership |
 | `compose.hybrid.yaml`, `bin/synccons-off.sh`, `bin/ldap-seed.sh` | hybrid stage 1: a no-syncrepl image variant and the offline seed |
 | `bin/ldif-scrub`, `bin/ldif-fold` | cut prod's dump and audit log to the seven subtrees; fold one into the other |
+| `bin/ldap-poll`, `bin/ldiflib.py` | the hybrid poller and the LDIF code it shares with `ldif-fold` (Python 3.7, the ldap image's) |
 | `bin/init-secrets`, `bin/collect` | setup and collection |
 
 ## Toward upstream fixes
