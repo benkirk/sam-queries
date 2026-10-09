@@ -444,8 +444,14 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         return list(s)
 
     def get_user_count(self) -> int:
-        """Return the number of users on this project, lead and admin included."""
-        return len(self.users)
+        """``len(self.users)`` in one statement; loading the users costs ~5 per member."""
+        ids = set(self.session.scalars(
+            select(AccountUser.user_id).join(Account).where(
+                Account.project_id == self.project_id,
+                or_(AccountUser.end_date.is_(None), AccountUser.end_date >= datetime.now()))
+        ))
+        ids.update(i for i in (self.project_lead_user_id, self.project_admin_user_id) if i is not None)
+        return len(ids)
 
     def has_user(self, user: 'User') -> bool:
         """True when *user* holds an unended row on this project (being lead or admin is not enough)."""

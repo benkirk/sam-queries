@@ -376,3 +376,24 @@ def test_get_allocation_summary_with_usage_all_resources_read_model(
         data = get_allocation_summary_with_usage(session, resource_name=names)
     assert isinstance(data, list)
     _assert_within("get_allocation_summary_with_usage_all_resources_read_model", stats)
+
+
+# ---------------------------------------------------------------------------
+# CLI builders (sam-search project / user --list-projects)
+# ---------------------------------------------------------------------------
+
+def test_project_get_user_count_is_one_statement(session, count_queries):
+    """Flat in members: it was ~5 statements per member, 110 for SCSG0001."""
+    from sqlalchemy import func
+    from sam import Project
+    from sam.accounting.accounts import Account, AccountUser
+    project_id = (session.query(Account.project_id)
+                  .join(AccountUser, AccountUser.account_id == Account.account_id)
+                  .filter(AccountUser.end_date.is_(None))
+                  .group_by(Account.project_id)
+                  .order_by(func.count(AccountUser.user_id).desc()).limit(1).scalar())
+    project = session.get(Project, project_id)
+    with count_queries() as stats:
+        assert project.get_user_count() > 1
+    assert stats.count == 1, f"get_user_count: {stats.summary()}"
+
