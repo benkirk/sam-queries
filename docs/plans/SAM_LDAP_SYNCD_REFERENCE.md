@@ -1018,6 +1018,13 @@ a no-op. The next snapshot write persists the unsent record and truncates the jo
 later full dump diffs against the already-updated IMDB and does not resend. Production
 drops a handful of records a month this way. Fix: on propagate failure restore the
 previous record (or raise `IMDBStateException`) before re-throwing.
+At full-dump scale it stops the whole pass: types propagate institution first, and legacy
+rejects one institution (an acronym over 40 characters) on every reset, so a reset never
+reaches users or groups. The `IMDBStateException` rebuild does not clear the in-memory
+picture either: on the testbed (2026-10-09) it reloaded 310 groups from SAM, then counted
+12,176 and diffed to nothing. A modify for a person whose add was deferred raises that
+exception, so the rebuild repeats every 300 s (observed twice; against prod each repeat is
+a full download).
 
 **N14 — `all-hpc-users` loses members on every snapshot load**
 `lib/SamProjectGroupData.pm:171-179` checks `$projectGroups->{'all-hpc-users'}` but the

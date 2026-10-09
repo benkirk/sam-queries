@@ -1,6 +1,7 @@
 # LDAP sync API: testbed read comparison and write round trip (handoff)
 
-**Status:** not started, 2026-10-09. Written for a fresh session.
+**Status:** done 2026-10-09; results in `LDAP_SYNC_API.md` § 10.5. Phase B ran as a
+stub-on capture replayed over HTTP, because the daemon aborts its own stream at the first 400.
 **Branch:** `ldapsync-api` (the implementation; this doc ships in its PR).
 **Read first:** `docs/plans/LDAP_SYNC_API.md` § 10 (as built, deviations D1–D23),
 `containers/ldap-pipeline/README.md` (the testbed, especially *Operating* and

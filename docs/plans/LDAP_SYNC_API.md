@@ -638,11 +638,34 @@ ever enabled without review, a ledger table behind `restore_user_deactivation` r
   | user `positions.startDate` | 1 | D24 |
 
   No data-age differences.
+- **Testbed writes (2026-10-09).** The daemon cannot carry its own stream: the first
+  institution 400 aborts the pass and bug 15 drops the rest (`SAM_LDAP_SYNCD_REFERENCE.md`),
+  against legacy too. So the stream was captured with SAMuel reads and the stub on (1,343
+  PUTs: 1,186 user, 112 group, 35 institution, 10 organization) and replayed over HTTP with
+  the daemon's credential: 1,341 x 200, 2 x 400 (the over-long acronym; a upid held by
+  another username), no 5xx, 18.9 s. A second stub-on reset then queued 923 PUTs, nearly
+  all byte-identical to the first. No residual field is SAMuel-only: each differs from
+  legacy's capture A as well, for these reasons (a user PUT can carry several):
+
+  | Residual | PUTs | Why it never converges, legacy included |
+  |---|---|---|
+  | position end at 00:00 (some 17:00/23:00) | 643 | stored and read as end-of-day |
+  | `active:false`, deactivation stamped | 187 | reads active until the lifecycle finish (bugs 3/2/8/N2) |
+  | group name, tags, upids | 112 | SAM keeps only `group_name` = key; tags come from member entries |
+  | institution state equal to country | 34 (+1 the acronym 400) | D8/B9; no country column |
+  | upid differs | 23 | an existing user's upid is never rewritten |
+  | collaboration history | 22 | rows are never ended or deleted |
+  | one number under two phone types | 20 | phones are keyed by number |
+  | organization with an inactive parent | 10 | the parent must be an active org |
+  | role login whose uid moved (`eipfdbreplsync` and one more) | 2 add + 2 tombstone | matched by username; `unix_uid` never rewritten |
+  | emails, names, `userName`, `tokenType` | a handful | not traced |
+
+  The replay wrote the local clone (`make clone` restores it).
 
 ### 10.6 Still to do before cutover
 
-1. Testbed writes (stub off, local DB): a reset's full PUT stream, then a second reset,
-   which should find almost nothing to send.
+1. syncd patches we carry: bug 15 (restore the record on a failed PUT) and a rebuild that
+   clears the in-memory IMDB; prove each on the testbed (`REF_SAM_LDAP_SYNCD=`).
 2. Confirm the prod `admin` `api_credentials` row with `ROLE_API_ADMIN`.
 3. samuel-dev rehearsal, then flip `SAM_URL`; rollback is the same variable.
 4. For George: the cron configuration (bug 13) and, before `LDAPSYNC_LIFECYCLE_ENABLED`,
