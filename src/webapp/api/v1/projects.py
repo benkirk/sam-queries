@@ -14,9 +14,9 @@ from flask import Blueprint, jsonify, request
 from flask_login import login_required, current_user
 from flask import abort
 from webapp.utils.rbac import (
-    require_permission, require_permission_any_facility,
-    Permission, user_facility_scope,
+    has_permission_any_facility, Permission, user_facility_scope,
 )
+from webapp.utils.api_auth import api_key_allowed, login_or_token_required, token_ident
 from webapp.extensions import db
 from sam.schemas import (
     ProjectSchema, ProjectListSchema, ProjectSummarySchema,
@@ -106,8 +106,7 @@ def _format_project_allocation_tuple(project, alloc, res_name, days_value, days_
 # ============================================================================
 
 @bp.route('/', methods=['GET'])
-@login_required
-@require_permission_any_facility(Permission.VIEW_PROJECTS)
+@login_or_token_required()
 def list_projects():
     """
     GET /api/v1/projects - List projects with pagination and filtering.
@@ -133,14 +132,18 @@ def list_projects():
     from sam.accounting.allocations import AllocationType
     from sam.resources.facilities import Facility, Panel
 
-    # Facility-scope the caller. None -> no restriction (system holder).
-    # Empty set -> scoped user with no VIEW_PROJECTS anywhere -> 0 rows.
-    # Populated set -> restrict to those facilities; reject an explicit
-    # ?facility=<other> request outright so the caller sees a 403
-    # instead of a silent empty result.
-    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
-    if allowed == set():
-        return jsonify({'projects': [], 'page': page, 'per_page': per_page, 'total': 0})
+    # Facility-scope the caller. None -> no restriction (system holder, or an
+    # API key: key grants are never facility-scoped). A set -> restrict to those
+    # facilities, and 403 an explicit ?facility=<other> rather than return nothing.
+    ident = token_ident()
+    if ident is not None:
+        if not api_key_allowed(ident, Permission.VIEW_PROJECTS):
+            abort(403)
+        allowed = None
+    else:
+        if not has_permission_any_facility(current_user, Permission.VIEW_PROJECTS):
+            abort(403)
+        allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
     if allowed is not None and facility and facility not in allowed:
         abort(403)
     facility_filter = None if allowed is None else sorted(allowed)
@@ -225,7 +228,7 @@ def _warm_contract_graph(project):
 
 
 @bp.route('/<projcode>', methods=['GET'])
-@login_required
+@login_or_token_required()
 @require_project_access
 def get_project(project):
     """
@@ -261,7 +264,7 @@ def get_project(project):
 
 
 @bp.route('/<projcode>/members', methods=['GET'])
-@login_required
+@login_or_token_required()
 @require_project_member_access(Permission.VIEW_PROJECT_MEMBERS)
 def get_project_members(project):
     """
@@ -296,7 +299,7 @@ def get_project_members(project):
 
 
 @bp.route('/<projcode>/allocations', methods=['GET'])
-@login_required
+@login_or_token_required()
 @require_project_member_access(Permission.VIEW_ALLOCATIONS)
 def get_project_allocations(project):
     """
@@ -357,8 +360,7 @@ def get_project_allocations(project):
 
 
 @bp.route('/expiring', methods=['GET'])
-@login_required
-@require_permission(Permission.VIEW_ALLOCATIONS)
+@login_or_token_required(Permission.VIEW_ALLOCATIONS)
 def get_expiring_projects():
     """
     GET /api/v1/projects/expiring - Get projects with expiring allocations.
@@ -402,8 +404,7 @@ def get_expiring_projects():
 
 
 @bp.route('/recently_expired', methods=['GET'])
-@login_required
-@require_permission(Permission.VIEW_ALLOCATIONS)
+@login_or_token_required(Permission.VIEW_ALLOCATIONS)
 def get_recently_expired_projects():
     """
     GET /api/v1/projects/recently_expired - Get projects with recently expired allocations.
@@ -604,7 +605,7 @@ def update_admin(project):
 
 
 @bp.route('/<projcode>/jobs', methods=['GET'])
-@login_required
+@login_or_token_required()
 @require_project_member_access(Permission.VIEW_ALLOCATIONS)
 def get_project_jobs(project):
     """

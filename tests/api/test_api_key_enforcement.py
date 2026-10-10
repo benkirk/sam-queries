@@ -39,9 +39,9 @@ def keys(app, monkeypatch):
 
 def _catalog():
     return build_catalog(
-        [RoleDef('api_legacy', frozenset({P.VIEW_PROJECTS, P.VIEW_USERS})),
+        [RoleDef('api_systems_integration', frozenset({P.VIEW_PROJECTS, P.VIEW_USERS})),
          RoleDef('api_admin', frozenset({P.SYSTEM_ADMIN}))],
-        [GrantDef('apikey', 'viewer-key', role='api_legacy'),
+        [GrantDef('apikey', 'viewer-key', role='api_systems_integration'),
          GrantDef('apikey', 'admin-key', role='api_admin')], source='db')
 
 

@@ -343,9 +343,11 @@ class DevelopmentConfig(SAMWebappConfig):
     DEV_AUTO_LOGIN_ALLOWED = True   # DISABLE_AUTH=1 auto-login permitted in dev only
 
     # Development API keys — rotate with: python scripts/gen_api_key.py
-    # Actual key goes in collectors/.env as STATUS_API_KEY
+    # Actual key goes in collectors/.env as STATUS_API_KEY. API_KEYS_<USER> env
+    # vars layer on top, as in every other config.
     API_KEYS = {
         'collector': '$2b$12$X8NQvOUvyrj80Ud3N6Y.0uZs70ZC6lJYy/zfka/v7uQQFKJhds0b2',
+        **SAMWebappConfig.API_KEYS,
     }
 
     # "Quick Login" buttons on the dev login page, as 'username[:LABEL]'. The

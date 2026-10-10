@@ -1,4 +1,4 @@
-"""CliRunner tests for `sam-admin rbac`: seed, seed-keys, keys, effective, diff, grant, revoke."""
+"""CliRunner tests for `sam-admin rbac`: seed, keys, effective, diff, grant, revoke."""
 
 import json
 
@@ -62,7 +62,7 @@ def test_listing_and_effective(runner, mock_db_session):
     assert result.exit_code == 1
 
 
-def test_keys_and_seed_keys(runner, mock_db_session, monkeypatch):
+def test_keys_lists_ungranted(runner, mock_db_session, monkeypatch):
     runner.invoke(cli, ['rbac', '--seed'])
     cred = make_api_credentials(mock_db_session, username='k-test')
     monkeypatch.setenv('API_KEYS_COLLECTOR', '$2b$04$x')
@@ -74,13 +74,11 @@ def test_keys_and_seed_keys(runner, mock_db_session, monkeypatch):
     assert by_name[cred.username]['grants'] == 0
     assert keys['ungranted'] == [cred.username]
 
+
+def test_no_blanket_key_grant(runner):
+    """No command hands every key a default grant: a key is granted by name or not at all."""
     result = runner.invoke(cli, ['rbac', '--seed-keys'])
-    assert result.exit_code == 0, result.output
-    assert 'granted api_legacy' in result.output
-    assert json.loads(runner.invoke(cli, ['--format', 'json', 'rbac', '--keys']).output)['ungranted'] == []
-    # A second pass touches nothing.
-    result = runner.invoke(cli, ['rbac', '--seed-keys'])
-    assert 'kept as is' in result.output and 'granted api_legacy' not in result.output
+    assert result.exit_code != 0 and 'No such option' in result.output
 
 
 def test_grant_and_revoke(runner, mock_db_session):

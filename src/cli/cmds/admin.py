@@ -30,8 +30,7 @@ from cli.tasks.commands import TasksCommand
 from cli.xras.commands import XrasCommand
 from sam.queries.xras_actions import XRAS_ACTION_STATUSES
 
-# Default base URL for the running webapp (matches the systems-integration
-# shell client, scripts/apis/systems_integration_apis.sh).
+# Default base URL for the running webapp.
 _DEFAULT_API_BASE = 'https://samuel.k8s.ucar.edu'
 
 
@@ -848,10 +847,8 @@ def last_seen(ctx: Context, username, backfill, dry_run):
 @cli.command()
 @click.option('--seed', is_flag=True,
               help='Write the factory-default roles and grants into EMPTY samuel_role_* tables')
-@click.option('--seed-keys', 'seed_keys', is_flag=True,
-              help='Grant api_legacy to every enabled API key that holds no grant yet')
 @click.option('--keys', is_flag=True,
-              help='Every enabled API key with its active grant count (the pre-flip checklist)')
+              help='Every enabled API key with its active grant count; a key with none is denied everywhere')
 @click.option('--effective', metavar='SUBJECT',
               help='Resolved permissions with provenance: user:NAME (or a bare username), '
                    'group:NAME, apikey:NAME')
@@ -867,21 +864,21 @@ def last_seen(ctx: Context, username, backfill, dry_run):
               help='[list] Show revoked grants too')
 @verbose_option()
 @pass_context
-def rbac(ctx: Context, seed, seed_keys, keys, effective, diff, grant, role, permission,
+def rbac(ctx: Context, seed, keys, effective, diff, grant, role, permission,
          facility, note, revoke, include_revoked, verbose):
     """The role catalog (samuel_role_*): list, seed, check a subject, grant, revoke.
 
     Always reads the tables, whatever RBAC_SOURCE the webapp runs with.
     """
-    modes = [bool(seed), bool(seed_keys), bool(keys), bool(effective), bool(diff),
+    modes = [bool(seed), bool(keys), bool(effective), bool(diff),
              bool(grant), revoke is not None]
     if sum(modes) > 1:
-        usage_error(ctx, 'Error: --seed, --seed-keys, --keys, --effective, --diff, --grant '
+        usage_error(ctx, 'Error: --seed, --keys, --effective, --diff, --grant '
                          'and --revoke are mutually exclusive')
     if (role or permission or facility or note) and not grant:
         usage_error(ctx, 'Error: --role, --permission, --facility and --note require --grant')
     sys.exit(RbacCommand(ctx).execute(
-        seed=seed, seed_keys=seed_keys, keys=keys, effective=effective, diff=diff,
+        seed=seed, keys=keys, effective=effective, diff=diff,
         grant=grant, revoke=revoke, role=role, permission=permission,
         facility=facility, note=note, include_revoked=include_revoked,
     ))

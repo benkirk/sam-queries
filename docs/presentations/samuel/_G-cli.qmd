@@ -103,7 +103,7 @@ src/cli/cmds/admin.py: project (:85), contracts (:224), accounting (:290), cache
 tasks (:881), last-seen (:961), rbac (:978). Reconcile --dry-run uses a savepoint
 (src/cli/project/commands.py:465-467); accounting --dry-run (:304); tasks --dry-run writes no ledger
 rows (:892); --occurrence needs --force and takes a manual run key (:894-934). rbac writes (--seed,
---seed-keys, --grant, --revoke, the last a stamp, not a delete) have no dry-run. The xras reports read
+--grant, --revoke, the last a stamp, not a delete) have no dry-run. The xras reports read
 the sweep's published snapshot (src/cli/xras/commands.py:247-286), so a laptop without one shows
 nothing. cache --refresh POSTs to /api/v1/admin/cache/refresh and needs SAM_API_USER and SAM_API_PASS
 (admin.py:639-694). Network: sam-search awards (NSF, USAspending) and contracts --check-sources.

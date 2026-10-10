@@ -33,9 +33,10 @@ Every endpoint requires authentication and accepts **either** of two paths
 `src/webapp/utils/api_auth.py`):
 
 - **HTTP Basic Auth (API key)** — the path used by scheduler / LDAP / systems
-  tooling. Credentials are validated against bcrypt-hashed `API_KEYS`; any valid
-  key grants access (no per-endpoint RBAC check). This is the recommended path
-  for scripts and cron jobs.
+  tooling, and the recommended path for scripts and cron jobs. Keys are checked
+  against `API_KEYS` and `api_credentials`; in production (`RBAC_SOURCE=db`) a key
+  also needs an explicit grant: role `api_systems_integration` covers every API
+  here but the cache refresh (`sam-admin rbac --grant apikey:NAME --role ...`).
 - **Flask-Login session (browser cookie)** — for interactive use in the web UI.
   Session callers additionally need the endpoint's `Permission` (listed per API
   below).
@@ -63,12 +64,10 @@ curl -X POST -u "$SAM_API_USER:$SAM_API_PASS" "$SAM_API_BASE/api/v1/queue/refres
 Generate a key with `python scripts/gen_api_key.py` and add its bcrypt hash to
 the deployment's `API_KEYS` config.
 
-> **Runnable companion:** `scripts/apis/systems_integration_apis.sh` is a
-> copy-paste-ready worked example — it exercises all five endpoints below with
-> the full **download → refresh → re-download** workflow using the same
-> `SAM_API_USER` / `SAM_API_PASS` / `SAM_API_BASE` env vars, and doubles as a
-> post-deploy smoke test. Run `scripts/apis/systems_integration_apis.sh -h` for
-> options.
+> **Runnable companion:** `api-demo/systems-integration/` holds a bash and a
+> Python worked example per API below (read, then `POST .../refresh`) using the
+> same `SAM_API_USER` / `SAM_API_PASS` / `SAM_API_BASE` env vars;
+> `api-demo/run_all.sh` doubles as a post-deploy smoke test.
 
 ### Caching
 
@@ -772,13 +771,13 @@ Clears caches and returns the number of entries cleared per category.
 
 | Param      | Values                          | Effect                        |
 |------------|---------------------------------|-------------------------------|
-| `category` | `flask` \| `chart` \| `usage` \| `scans` \| `jobs` | Clear only that category |
+| `category` | `flask` \| `chart` \| `usage` \| `scans` \| `jobs` \| `awards` \| `xras_api` | Clear only that category |
 | *(omitted)*| —                               | Clear **all** categories      |
 
 **Response**:
 
 ```json
-{"status": "ok", "cleared": {"flask": 12, "chart": 3, "usage": 0, "scans": 1, "jobs": 4}}
+{"status": "ok", "cleared": {"awards": 0, "chart": 3, "flask": 12, "jobs": 4, "scans": 1, "usage": 0, "xras_api": 0}}
 ```
 
 With `?category=chart`, only the `chart` key is present. An unrecognized

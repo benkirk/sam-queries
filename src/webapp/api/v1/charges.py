@@ -12,6 +12,7 @@ Example usage:
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
 from webapp.utils.rbac import require_permission, Permission
+from webapp.utils.api_auth import login_or_token_required
 from webapp.extensions import db
 from sam.schemas import (
     AllocationWithUsageSchema,
@@ -41,7 +42,7 @@ register_error_handlers(bp)
 
 
 @bp.route('/projects/<projcode>/charges', methods=['GET'])
-@login_required
+@login_or_token_required()
 @require_project_member_access(Permission.VIEW_ALLOCATIONS)
 def get_project_charges(project):
     """
@@ -155,7 +156,7 @@ def get_project_charges(project):
 
 
 @bp.route('/projects/<projcode>/charges/summary', methods=['GET'])
-@login_required
+@login_or_token_required()
 @require_project_member_access(Permission.VIEW_ALLOCATIONS)
 def get_project_charges_summary(project):
     """

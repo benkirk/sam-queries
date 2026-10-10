@@ -21,7 +21,7 @@ from flask import Blueprint, current_app, jsonify, request
 from marshmallow import ValidationError
 from flask_login import login_required
 from webapp.utils.rbac import require_permission, Permission
-from webapp.utils.api_auth import api_key_required
+from webapp.utils.api_auth import api_key_required, login_or_token_required
 from webapp.api.helpers import register_error_handlers
 from webapp.extensions import db, csrf
 from datetime import datetime
@@ -459,7 +459,7 @@ def report_outage():
 # ============================================================================
 
 @bp.route('/derecho/latest', methods=['GET'])
-@login_required
+@login_or_token_required()
 def get_derecho_latest():
     """
     GET /api/v1/status/derecho/latest - Get latest Derecho status.
@@ -485,7 +485,7 @@ def get_derecho_latest():
 
 
 @bp.route('/casper/latest', methods=['GET'])
-@login_required
+@login_or_token_required()
 def get_casper_latest():
     """
     GET /api/v1/status/casper/latest - Get latest Casper status.
@@ -511,7 +511,7 @@ def get_casper_latest():
 
 
 @bp.route('/jupyterhub/latest', methods=['GET'])
-@login_required
+@login_or_token_required()
 def get_jupyterhub_latest():
     """
     GET /api/v1/status/jupyterhub/latest - Get latest JupyterHub status.
@@ -533,7 +533,7 @@ def get_jupyterhub_latest():
 
 
 @bp.route('/outages', methods=['GET'])
-@login_required
+@login_or_token_required()
 def get_outages():
     """
     GET /api/v1/status/outages - Get active system outages.
@@ -643,7 +643,7 @@ def delete_outage(outage_id):
 
 
 @bp.route('/reservations', methods=['GET'])
-@login_required
+@login_or_token_required()
 def get_reservations():
     """
     GET /api/v1/status/reservations - Get upcoming resource reservations.
