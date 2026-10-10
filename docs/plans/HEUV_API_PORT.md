@@ -305,7 +305,7 @@ must come from the subtree's inactive descendants (NCIS0002, NIOW0001/0002, P868
 snapshots are stale. Not confirmable on dev (its clone keeps 400 days of disk summaries) and the prod
 read was refused; to confirm, read-only on prod: the latest `disk_charge_summary` row per Campaign_Store
 account of those five projects. The fallback also feeds SAMuel's dashboards, so a stale-row inflation
-there is a SAMuel bug in its own right, not only a HEUV divergence. Ben decides.
+there is a SAMuel bug in its own right, not only a HEUV divergence. **Confirmed and fixed 2026-10-10 (Ben: this PR).** `df` on casper: the subtree holds 1,406 TB (`cisl` 153.5 incl. `iowa`, aiml 619.3, dares 409.2, asap 166.1, vast 58.3); the inactive children's directories are gone. `_load_disk_snapshot_by_account` now falls back to the account's **resource's** latest scan date, not the account's own latest row. Local DB: 180 of 1,779 project/disk figures drop to 0, all Campaign_Store; 178 inactive projects (the 8 largest checked: directories absent) and 2 active (UCIR0064, WYOM0243: directories exist, 0.00 TB on disk now).
 
 ## 8. Implementation notes per step
 

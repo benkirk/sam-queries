@@ -57,10 +57,11 @@ def _load_disk_snapshot_by_account(
          ``current=True`` row.
       2. ONE bulk aggregate over ``DiskChargeSummary`` at that date,
          keyed by ``account_id`` (sums bytes, terabyte_years, files).
-      3. ONE ``max(activity_date)`` per account that lacked a row at
-         the candidate date.
-      4. ONE bulk aggregate for those (account_id, max_date) fallback
-         pairs.
+      3. ONE ``max(activity_date)`` per **resource** of the accounts that
+         lacked a row at the candidate date (a resource scanned on another day).
+      4. ONE bulk aggregate for those accounts at their resource's date. An
+         account with no row there is gone: legacy's rule (one snapshot date
+         per resource), so a deleted directory's last scan never counts forever.
 
     Returns ``{account_id: CurrentDiskUsage}``. Accounts with no rows
     at all are absent from the dict — matches the single-account
@@ -100,24 +101,26 @@ def _load_disk_snapshot_by_account(
                 number_of_files=int(r.files or 0),
             )
 
-    # 3) Per-account max() fallback for accounts without a row on the
-    #    current snapshot date. One query covers them all.
+    # 3) Per-resource latest date for accounts without a row on the current date.
+    #    NOT the account's own latest row: that kept dead accounts' last scan forever
+    #    (NCIS0001 Campaign_Store read 2,527 TB vs 1,406 TB on disk, 2026-10-10).
     missing = aids - out.keys()
     if missing:
-        max_dates = dict(session.query(
-            DiskChargeSummary.account_id,
-            func.max(DiskChargeSummary.activity_date),
-        ).filter(
-            DiskChargeSummary.account_id.in_(missing),
-        ).group_by(DiskChargeSummary.account_id).all())
-        if max_dates:
-            # 4) ONE aggregate query for all (account_id, max_date) pairs.
+        resource_of = dict(session.query(Account.account_id, Account.resource_id)
+                           .filter(Account.account_id.in_(missing)).all())
+        latest = dict(session.query(Account.resource_id, func.max(DiskChargeSummary.activity_date))
+                      .join(Account, Account.account_id == DiskChargeSummary.account_id)
+                      .filter(Account.resource_id.in_(set(resource_of.values())))
+                      .group_by(Account.resource_id).all())
+        pairs = [(aid, latest[rid]) for aid, rid in resource_of.items() if latest.get(rid)]
+        if pairs:
+            # 4) ONE aggregate query for all (account_id, resource date) pairs.
             ors = [
                 and_(
                     DiskChargeSummary.account_id == aid,
                     DiskChargeSummary.activity_date == d,
                 )
-                for aid, d in max_dates.items()
+                for aid, d in pairs
             ]
             rows = session.query(
                 DiskChargeSummary.account_id,
