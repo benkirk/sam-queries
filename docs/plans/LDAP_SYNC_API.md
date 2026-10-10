@@ -719,6 +719,7 @@ reached dev over verified TLS and read `ldapsync/status` (its LDAP-staging half 
 |---|---|
 | First reset (14:50) | the `user` GET took 155 s against a server time of 5 s, and the body arrived cut short of its `Content-Length`; LWP still said 200, the JSON decode failed, and the daemon exited before writing anything. The same request from the image's own LWP took 7.2 s with the full body. Likeliest cause: the transformer rebuilding its 31 MB dump in the same emulated amd64 VM while the ingress cut a stalled reader. Fail-closed, but a truncated read is not retried (patch 0005 covers LWP's own 500s only); watch for a repeat |
 | Pass 1 (restart 14:56) | all seven collections loaded (`user` in about 2 s); 1,349 PUTs: 1,348 × 200 and the one legacy-known 400 (a upid held by another username) skipped by patch 0002; 0 × 5xx, 0 tracebacks; purge permits only, no purge. The same count as the local pass 1 |
+| First new user (Sat 05:54) | one PUT created the user, 2 emails and 1 affiliation, 26 s after legacy created the same person in production. A read-only field comparison with production matched username, uid, upid, active, locked, names, emails and institution, and found one **port defect**: legacy stores `primary_gid` 1000 for every new user (its getter defaults NULL to `DEFAULT_HPC_GID` and Hibernate persists through it), SAMuel stored NULL. Fixed in PR #785 |
 
 Daily checks (`LDAPSYNC_DEV_SHADOW.md` § 5), one row per weekday:
 
