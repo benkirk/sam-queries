@@ -320,9 +320,9 @@ session.query(Machine).filter(Machine.decommission_date == None).all()
 | Custom hybrids (Resource, Machine, Queue, PanelSession, …) | commissioned / within date range |
 | `User.is_active` | `active == True AND locked == False` |
 
-**Exceptions**: `sam/queries/statistics.py` keeps `User.active == True` so `active_users`
-and `locked_users` stay separate counters; the identity sync (`sam/manage/{ldapsync,lifecycle,purge}.py`,
-`sam/queries/ldapsync.py`) reads `active` raw because legacy's rules do, and `is_active` would fold in `locked`.
+**Exceptions**: `sam/queries/statistics.py` keeps `User.active == True` so `active_users` and `locked_users`
+stay separate counters; the identity sync (`sam/manage/{ldapsync,lifecycle,purge}.py`, `sam/queries/ldapsync.py`)
+and HEUV's `role_logins` read `active` raw because legacy's rules do, and `is_active` would fold in `locked`.
 
 ### 6. Views
 Mark with `__table_args__ = {'info': {'is_view': True}}`. Never INSERT/UPDATE/DELETE.

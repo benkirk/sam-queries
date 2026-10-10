@@ -107,21 +107,7 @@ class User(Base, TimestampMixin, SessionMixin):
 
     @classmethod
     def get_by_username(cls, session, username: str) -> Optional['User']:
-        """
-        Get a user by exact username match.
-
-        Args:
-            session: SQLAlchemy session
-            username: Exact username to search for
-
-        Returns:
-            User object if found, None otherwise
-
-        Example:
-            >>> user = User.get_by_username(session, 'jsmith')
-            >>> if user:
-            ...     print(f"Found: {user.full_name}")
-        """
+        """The user named ``username``, case-insensitively (``sam/sqlcompat.py`` collation contract), or None."""
         return session.query(cls).filter(cls.username == username).first()
 
     @classmethod

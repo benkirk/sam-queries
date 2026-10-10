@@ -201,7 +201,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
                 .join(Account, Account.account_id == AccountUser.account_id)
                 .join(User, User.user_id == AccountUser.user_id)
                 .filter(Account.project_id == cls.project_id, AccountUser.is_active,
-                        func.lower(User.username) == member_username.lower())
+                        User.username == member_username)
                 .exists())
 
         # Order by projcode and apply limit

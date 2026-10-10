@@ -33,7 +33,6 @@ BYTES_PER_TB = 1e12
 # ---------------------------------------------------------------------------
 
 def find_user(session: Session, username: str) -> Optional[User]:
-    """``users.username`` collates case-insensitively on both backends; ``lower()`` would skip its index."""
     return User.get_by_username(session, username)
 
 
@@ -42,7 +41,7 @@ def find_project(session: Session, projcode: str) -> Optional[Project]:
 
 
 def find_resource(session: Session, name: str) -> Optional[Resource]:
-    return session.query(Resource).filter(func.lower(Resource.resource_name) == name.lower()).first()
+    return session.query(Resource).filter(Resource.resource_name == name).first()
 
 
 def _today(now: datetime) -> date:
@@ -308,7 +307,7 @@ def accessible_resources(session: Session, name: Optional[str] = None) -> List[D
     branches = {n.lower() for (n,) in session.query(AccessBranch.name)}
     q = session.query(Resource).filter(Resource.configurable == True)  # noqa: E712
     if name is not None:
-        q = q.filter(func.lower(Resource.resource_name) == name.lower())
+        q = q.filter(Resource.resource_name == name)
     out = []
     for res in sorted(q.all(), key=lambda r: r.resource_name):
         if res.resource_name.lower() not in branches:
@@ -447,6 +446,11 @@ def _thresholds(account: Account):
     return (account.first_threshold, account.second_threshold)
 
 
+def _divisor(alloc) -> Optional[int]:
+    """Legacy's threshold day count over the raw end date; None when open-ended or zero."""
+    return (st.legacy_divisor(alloc.start_date, alloc.end_date) if alloc.end_date else None) or None
+
+
 def _charging_status(nodes: List[Dict], i: int) -> str:
     """Legacy ``defineStatusFromCharging``, walked pre-order down the chain."""
     n = nodes[i]
@@ -461,10 +465,7 @@ def _charging_status(nodes: List[Dict], i: int) -> str:
         parent = _charging_status(nodes, i - 1)
         if parent != st.NORMAL:
             return parent
-    divisor = st.legacy_divisor(alloc.start_date, alloc.end_date) if alloc.end_date else None
-    if divisor == 0:
-        divisor = None
-    return st.charge_status(n['debit'], float(alloc.amount), _thresholds(account), n['windows'], divisor)
+    return st.charge_status(n['debit'], float(alloc.amount), _thresholds(account), n['windows'], _divisor(alloc))
 
 
 def _overall_status(nodes: List[Dict]) -> str:
@@ -483,7 +484,7 @@ def _overall_status(nodes: List[Dict]) -> str:
 def _threshold_reports(n: Dict) -> List[Dict]:
     alloc, account = n['alloc'], n['account']
     amount = float(alloc.amount)
-    divisor = st.legacy_divisor(alloc.start_date, alloc.end_date) if alloc.end_date else 0
+    divisor = _divisor(alloc)
     both = account.first_threshold is not None and account.second_threshold is not None
     out = []
     for period, pct, charges in zip(st.THRESHOLD_PERIODS, _thresholds(account), n['windows']):

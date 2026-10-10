@@ -509,7 +509,7 @@ def test_heuv_report_usage(app, client, monkeypatch, route_count_queries):
 
 
 def test_heuv_group(app, client, monkeypatch, route_count_queries, multi_project_user):
-    """``group`` reads the population-wide group directory; flat in the user's projects."""
+    """``group`` reads the group directory filtered to one user; flat in the user's projects."""
     baseline = get_baseline("heuv_group")
 
     with route_count_queries() as stats:
