@@ -13,7 +13,7 @@ first (legacy-API rules, "Output shaping", §7-§9, Comment Budget, Testing).
 ## Progress
 
 - [x] 0. Re-verify: `git fetch && git switch heuv-api && git rebase origin/staging` (the branch exists from the docs-only PR); rerun the probe (§3.3) into a fresh scratch dir to refresh the golden shapes; rerun the log tally (§3.2); diff against Appendix A and this doc's traffic tables; set **Status** to `in progress` with the date. *(2026-10-10: probe matches Appendix A; tally identical to window C, no rotation since 10-09. Note: the probe's file names collide on a case-insensitive filesystem, so `scsg0001`/`HPC` variants need distinct names.)*
-- [ ] 1. Lift the `/api/protected` wire kit out of `src/webapp/api/ldapsync/__init__.py` into `src/webapp/api/protected.py`; ldapsync imports it. Proof: `pytest tests/api/test_ldapsync_api.py` unchanged and green.
+- [x] 1. Lift the `/api/protected` wire kit out of `src/webapp/api/ldapsync/__init__.py` into `src/webapp/api/protected.py`; ldapsync imports it. Proof: `pytest tests/api/test_ldapsync_api.py` unchanged and green.
 - [ ] 2. Lift the legacy account-status/threshold calculator out of `src/sam/queries/fstree_access.py` into `src/sam/queries/account_status.py`; fstree imports it; add Waiting / No Allocation / Disabled. Proof: fstree tests green, `utils/parity/check_legacy_apis.py --api fstree` result identical to before the commit.
 - [ ] 3. Lift the API-key test fixtures (`xras_keys`, `ldapsync_keys`) into one `role_keys(monkeypatch, {user: [roles]})` helper in `tests/xras_helpers.py`; both adopt it. Proof: xras + ldapsync tests green.
 - [ ] 4. Schemas `src/sam/schemas/heuv.py` (+ `UtcDateTime` in `src/sam/schemas/wire.py`), exported from `schemas/__init__.py`.
