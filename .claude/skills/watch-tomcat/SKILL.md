@@ -36,7 +36,7 @@ a `ControlPath` built on `%h` expands to the HostName, so the alias shares the
 existing master socket. ssh runs with `BatchMode`, so an expired master reads as
 `OFFLINE:` (exit 0) and names the fix: `ssh <host> true` once, with Duo.
 
-One ssh call per tick sends `scripts/lib/tomcat_log_summary.sh` to the host,
+One ssh call per host per tick sends `scripts/lib/tomcat_log_summary.sh` to sam-tomcat,
 which aggregates there and returns tab-separated records;
 `scripts/lib/tomcat_report.py` turns them into lines. Exit 0 quiet / 1 warn / 2 fail.
 
@@ -54,6 +54,9 @@ they line up with `cirrus_watch.sh` and the ingress probe reports.
 | `slow:` | up to 3 API calls over 4 s, with UTC time and label | info |
 | `errors:` | `sam.log` ERROR and `catalina.out` SEVERE in the window, top classes with first/last time | WARN > 5 in the window; WARN a class not seen before |
 | `probe:` | the per-minute `GET /` health check (user agent `libwww-perl`; someone else's) | WARN silent > 5 min |
+| `app:` | sam-app: uptime, the zoo's slapd / syncd / ldif processor and their start, `/data` use | WARN one missing; WARN `zoo restarted` (a start moved > 5 min); `/data` ≥ 85 % |
+| `zoo:` | printed only when a zoo repo's deployed HEAD moved: repo, old → new, commit time, subject | WARN (a deploy by George, now on our timeline) |
+| `syncd:` | the daemon's own log in the window: files applied, calls by status, deferrals, error lines, last activity; `≈` the tomcat side's count for `ldapsync/sam-app` | FAIL any non-200 PUT; WARN another non-2xx call or an error line |
 | `cutover` | on the first tick of a Mountain day: yesterday per status group and the top families, against the same weekday a week earlier | info: the trend is the point |
 
 `callers:` flags: **NEW** for an unmapped client that got past authentication
@@ -90,7 +93,22 @@ cutover totals. A missing map is not an error: every authenticated client prints
 as NEW, which is how the map is seeded. Label service hosts only; a residential
 address is a person, not a caller.
 
-## 4. Correlating with our own timelines
+## 4. sam-app, the syncd client
+
+`ldapsync/sam-app` is `sam-ldap-syncd` in George's rootless container zoo on
+`sam-app.ucar.edu` (`--app-host` / `SAMAPP_HOST`; `--no-app` skips it). A second
+ssh call runs `scripts/lib/samapp_summary.sh` as Ben's own login (group `swes`):
+`ps`, `df`, `git log -1` of each zoo repo in `~swes`, and the syncd's dated log
+under `/data/tomcat-sam/prod/sam-ldap-syncd/`. An unreachable host is one
+`app: OFFLINE` line, never an exit. Container and unit state, the swes crontab
+and slapd's own log need the `swes` account (2FA): never in the tick, and the
+reader never touches a container or service manager. **Never open a `.env` or
+anything under the secrets directory**, even where the mode allows it; a test
+gates the reader's text. amie-sam-mediator and acct-sam-etl are not running by
+design and are never flagged. Quiet weekends are normal, so `last` is info.
+When the syncd repoints to SAMuel, this section moves beside `watch-prod`.
+
+## 5. Correlating with our own timelines
 
 - `--at <UTC> --span 10m` reads any window in the last 30 days, centered on the
   time given, without writing state. Use it for an incident logged in
@@ -102,7 +120,7 @@ address is a person, not a caller.
 - `cutover` and `--trend` are what to quote when a caller repoints: the family's
   row should fall to the `self` noise floor within a day.
 
-## 5. Traps
+## 6. Traps
 
 - **Never open the two files under the system Tomcat log directory**
   (`tomcat-sam_access.log`, `tomcat-sam_catalina.log`): they are named pipes into
@@ -118,7 +136,7 @@ address is a person, not a caller.
 - A request is logged about 10 s late (syslog), so the tick's own `http:` hit
   appears in the next tick's window.
 
-## 6. Timer
+## 7. Timer
 
 No second timer. Per `watch-prod` §7, the prod timer's prompt gains one line,
 `scripts/tomcat_watch.sh`, after the dev tick, reported as one line when quiet.

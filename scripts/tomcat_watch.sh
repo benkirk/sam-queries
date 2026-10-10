@@ -10,6 +10,9 @@
 #
 # Options:
 #       --host HOST    ssh target (default: $TOMCAT_HOST or sam-tomcat.ucar.edu)
+#       --app-host H   the sam-app host, for the syncd client (default: $SAMAPP_HOST or
+#                      sam-app.ucar.edu)
+#       --no-app       skip the sam-app read
 #       --span DUR     window length, e.g. 35m, 2h            (default: 35m)
 #       --at   UTC     a window centered on a past time instead of the tick, e.g.
 #                      2026-10-10T03:26Z (any of the last 30 days; no state written)
@@ -23,7 +26,8 @@
 # state (never committed) under ${XDG_STATE_HOME:-~/.local/state}/sam-watch/: state-tomcat,
 # known-open-tomcat (printed back), tomcat-callers (the caller map), tomcat-daily.tsv.
 # SAM_LEGACY_PROBE_USER/PASS (env or the repo .env) enable the authenticated http probe.
-# TOMCAT_HOST=local runs the reader here against TOMCAT_LOGS (tests).
+# TOMCAT_HOST=local / SAMAPP_HOST=local run the readers here against TOMCAT_LOGS and
+# SAMAPP_DATA (tests).
 # Exit: 0 quiet / 1 warn / 2 fail.
 set -uo pipefail
 _LIBDIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib"
@@ -32,12 +36,15 @@ source "${_LIBDIR}/common.sh"
 repo_paths
 
 HOST="${TOMCAT_HOST:-sam-tomcat.ucar.edu}"
+APP_HOST="${SAMAPP_HOST:-sam-app.ucar.edu}"; NO_APP=0
 SPAN=35m; AT=""; DAILY=""; BACKFILL=0; TREND=""
 PROBE_URL="${SAM_LEGACY_URL:-https://sam.ucar.edu}"
 PROBE_PATH=/api/protected/admin/ldapsync/groupTag
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --host) HOST="$2"; shift 2 ;;
+        --app-host) APP_HOST="$2"; shift 2 ;;
+        --no-app) NO_APP=1; shift ;;
         --span) SPAN="$2"; shift 2 ;;
         --at) AT="$2"; shift 2 ;;
         --daily) DAILY="$2"; shift 2 ;;
@@ -57,14 +64,16 @@ REPORT=(python3 "${_LIBDIR}/tomcat_report.py")
 
 if [[ -n "$TREND" ]]; then "${REPORT[@]}" trend --tsv "$TSV" --days "$TREND"; exit 0; fi
 
-# The reader always runs remotely through one ssh call, or locally for tests.
-reader() {
-    if [[ "$HOST" == local ]]; then bash "${_LIBDIR}/tomcat_log_summary.sh" "$@"
+# Each reader runs remotely through one ssh call, or locally for tests.
+remote() {
+    local host=$1 script="${_LIBDIR}/$2"; shift 2
+    if [[ "$host" == local ]]; then bash "$script" "$@"
     else
         ssh -o BatchMode=yes -o ConnectTimeout=8 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 \
-            -o LogLevel=error "$HOST" bash -s -- "$@" < "${_LIBDIR}/tomcat_log_summary.sh"
+            -o LogLevel=error "$host" bash -s -- "$@" < "$script"
     fi
 }
+reader() { remote "$HOST" tomcat_log_summary.sh "$@"; }
 
 if [[ "$HOST" != local ]] && ! ssh -o BatchMode=yes -o ConnectTimeout=8 -o LogLevel=error "$HOST" true 2>/dev/null; then
     echo "OFFLINE: ssh $HOST failed (VPN down, or no ssh master: run 'ssh $HOST true' once with Duo) — skipping this tick."
@@ -115,13 +124,21 @@ if [[ "$MODE" == tick && "$HOST" != local ]]; then
     fi
 fi
 
+# sam-app, the syncd client: unreachable is one line, never an exit or a WARN.
+APP_REC=""; APP_NOTE=""
+if [[ "$NO_APP" -eq 0 ]]; then
+    APP_REC=$(remote "$APP_HOST" samapp_summary.sh window "$FROM" "$TO" 2>/dev/null)
+    [[ "$APP_REC" == app* ]] || { APP_REC=""; APP_NOTE="app: OFFLINE (ssh $APP_HOST failed; run 'ssh $APP_HOST true' once)"; }
+fi
+
 DAYS=""; [[ "$MODE" == tick ]] && DAYS=$("${REPORT[@]}" days --tsv "$TSV" ${NOW_ARG[@]+"${NOW_ARG[@]}"})
-OUT=$(reader window "$FROM" "$TO" "$BFROM" "$BTO" ${DAYS:+days $DAYS} \
+OUT=$({ reader window "$FROM" "$TO" "$BFROM" "$BTO" ${DAYS:+days $DAYS}; [[ -n "$APP_REC" ]] && echo "$APP_REC"; } \
       | "${REPORT[@]}" report --map "$MAP" --state "$STATE" --tsv "$TSV" --mode "$MODE" --to "$TO")
 if [[ -z "$OUT" || "$OUT" != *__verdict* ]]; then
     fail "the log reader returned nothing from $HOST"
 else
     grep -v '^__verdict' <<<"$OUT"
+    [[ -n "$APP_NOTE" ]] && echo "$APP_NOTE"
     read -r _ W F < <(grep '^__verdict' <<<"$OUT")
     WARN_COUNT=$((WARN_COUNT + W)); FAIL_COUNT=$((FAIL_COUNT + F))
 fi

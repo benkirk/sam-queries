@@ -260,6 +260,58 @@ def report_probe(r, recs, tick, to):
             r.flag('WARN', f'the GET / health check is silent ({when})')
 
 
+ZOO = ('slapd', 'syncd', 'ldif')
+
+
+def report_app(r, recs, state, tick, app_label):
+    """sam-app: the zoo's processes and repo heads, and the syncd client's side of the PUTs."""
+    a = dict(kv.split('=', 1) for kv in recs['app'][0])
+    procs = {name: int(start) for name, _pid, start in recs['aproc']}
+    starts = sorted({utc_day(s) for s in procs.values()})
+    r.say(f"app: sam-app up {int(a['up_s']) / 86400:.1f}d · zoo {'/'.join(n for n in ZOO if n in procs) or 'none'}"
+          f" since {', '.join(starts) or '-'} · /data {a['data_pct']}%")
+    first = not any(k.startswith('APP_') for k in state)
+    for name in ZOO:
+        if name not in procs:
+            r.flag('WARN', f'sam-app: {name} is not running')
+            continue
+        old = state.get(f'APP_{name}')
+        if tick and not first and old and abs(procs[name] - int(old)) > 300:
+            r.flag('WARN', f'sam-app zoo restarted: {name} since {utc_day(procs[name])}')
+        if tick:
+            state[f'APP_{name}'] = str(procs[name])
+    if int(a['data_pct'] or 0) >= DISK_WARN:
+        r.flag('WARN', f"sam-app /data at {a['data_pct']}%")
+    heads = {name: (sha, int(ct), subj) for name, sha, ct, subj in recs['arepo']}
+    old_heads = dict(kv.split(':', 1) for kv in filter(None, state.get('ZOOHEADS', '').split(',')))
+    for name, (sha, ct, subj) in heads.items():
+        if tick and not first and old_heads.get(name) not in (None, sha):
+            r.flag('WARN', f'zoo: {name} {old_heads[name]} -> {sha} ({utc_day(ct)}) "{subj}"')
+    if tick:
+        state['ZOOHEADS'] = ','.join(f'{n}:{v[0]}' for n, v in sorted(heads.items()))
+    sync = dict(kv.split('=', 1) for kv in recs['async'][0]) if recs['async'] else {}
+    puts = {(m, st): int(n) for m, st, n in recs['aput']}
+    calls = sum(puts.values())
+    seen = sum(int(rec[4]) for rec in recs['api'] if label_for(r.rules, *rec[:3]) == app_label)
+    last = int(sync.get('last', 0))
+    mix = ' '.join(f'{m} {st}x{n}' for (m, st), n in sorted(puts.items())) or 'no calls'
+    r.say(f"syncd: files {sync.get('applied', 0)} applied · {mix} · deferred {sync.get('defer', 0)}"
+          f" · errors {sync.get('errors', 0)} · last {utc_day(last) if last else '-'}"
+          f" (≈ tomcat saw {seen} from {app_label})")
+    for (m, st), n in puts.items():
+        if st != '200' and m == 'PUT':
+            r.flag('FAIL', f'syncd PUT answered {st} x{n}')
+        elif not st.startswith('2'):
+            r.flag('WARN', f'syncd {m} answered {st} x{n}')
+    for n, f, l, text in recs['aerr']:
+        r.flag('WARN', f'syncd logged x{n} {utc(f)}-{utc(l)}: {text}')
+    return calls
+
+
+def utc_day(epoch):
+    return datetime.fromtimestamp(int(epoch), timezone.utc).strftime('%Y-%m-%d %H:%MZ')
+
+
 def append_days(recs, rules, tsv):
     """Appends one row per (date, family, label) to the history; returns the dates written."""
     rows = defaultdict(lambda: [0, 0, 0])
@@ -323,13 +375,15 @@ def cmd_report(a):
         report_traffic(r, recs, tick, a.to)
         report_errors(r, recs, state, baseline or not tick)
         report_probe(r, recs, tick, a.to)
+    if recs['app']:
+        report_app(r, recs, state, tick, a.app_label)
     if recs['day'] or recs['dayweb'] or recs['dayprobe']:
         written = append_days(recs, rules, a.tsv)
         if a.mode == 'backfill':
             r.say(f'history: {len(written)} day(s) appended to {a.tsv}')
         elif written or a.day:
             cutover_line(r, a.tsv, a.day or written[-1])
-    if tick and recs['host']:
+    if tick and (recs['host'] or recs['app']):
         if baseline:
             r.say('  (baseline seeded; restart and new-error checks start next tick)')
         with open(a.state, 'w') as fh:
@@ -373,6 +427,7 @@ def main():
     rp.add_argument('--mode', choices=('tick', 'at', 'daily', 'backfill'), default='tick')
     rp.add_argument('--to', type=int, default=0)
     rp.add_argument('--day')
+    rp.add_argument('--app-label', default='ldapsync/sam-app')
     tr = sub.add_parser('trend')
     tr.add_argument('--tsv', required=True)
     tr.add_argument('--days', type=int, default=14)

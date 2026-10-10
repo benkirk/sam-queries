@@ -204,12 +204,108 @@ class TestReport:
         assert not any('amie' in r for r in rows)
 
 
-def test_tick_runs_locally_against_the_fixture(logs, tmp_path):
-    (tmp_path / 'xdg' / 'sam-watch').mkdir(parents=True)
+def tick(logs, tmp_path, *args, **extra):
+    (tmp_path / 'xdg' / 'sam-watch').mkdir(parents=True, exist_ok=True)
     (tmp_path / 'xdg' / 'sam-watch' / 'tomcat-callers').write_text(CMAP)
     env = {**os.environ, 'TOMCAT_HOST': 'local', 'TOMCAT_LOGS': str(logs), 'TOMCAT_NOW': str(NOW),
-           'TOMCAT_JVM_START': str(JVM), 'XDG_STATE_HOME': str(tmp_path / 'xdg')}
-    out = subprocess.run(['bash', str(TICK), '--no-color'], env=env, capture_output=True, text=True)
+           'TOMCAT_JVM_START': str(JVM), 'XDG_STATE_HOME': str(tmp_path / 'xdg'), **extra}
+    return subprocess.run(['bash', str(TICK), '--no-color', *args], env=env, capture_output=True, text=True)
+
+
+def test_tick_runs_locally_against_the_fixture(logs, tmp_path):
+    out = tick(logs, tmp_path, '--no-app')
     assert out.returncode == 2, out.stdout + out.stderr  # the fixture's XRAS hit
     assert '[tomcat: local]' in out.stdout and 'callers: heuv/portal 3' in out.stdout
-    assert 'cutover 20261009' in out.stdout
+    assert 'cutover 20261009' in out.stdout and 'app:' not in out.stdout
+
+
+def test_tick_reads_sam_app_locally(logs, samapp, tmp_path):
+    out = tick(logs, tmp_path, SAMAPP_HOST='local', **samapp)
+    assert 'app: sam-app' in out.stdout and 'syncd: files' in out.stdout, out.stdout + out.stderr
+
+
+SAMAPP = REPO / 'scripts' / 'lib' / 'samapp_summary.sh'
+MIDNIGHT = int(datetime(2026, 10, 10, 6, 0, tzinfo=timezone.utc).timestamp())  # 00:00 MDT
+
+
+def _git(repo, subject, when):
+    repo.mkdir(parents=True)
+    env = {**os.environ, 'GIT_AUTHOR_DATE': f'@{when} +0000', 'GIT_COMMITTER_DATE': f'@{when} +0000'}
+    run = ['git', '-c', 'user.name=t', '-c', 'user.email=t@x', '-C', str(repo)]
+    subprocess.run([*run, 'init', '-q'], check=True)
+    subprocess.run([*run, 'commit', '-q', '--allow-empty', '-m', subject], check=True, env=env)
+
+
+@pytest.fixture
+def samapp(tmp_path):
+    """sam-app as benkirk sees it: two dated syncd logs across midnight, two repos, two of the
+    three zoo processes (the ldif processor is missing)."""
+    d = tmp_path / 'data' / 'sam-ldap-syncd'
+    (d / 'auditlog.d').mkdir(parents=True)
+    (d / 'syncd').mkdir()
+    (d / 'auditlog.d' / 'a.ldif').write_text('x')
+    (d / 'syncd' / 'sam-log.jsl').write_text('x')
+    (d / 'log-2026-10-09-syncd.e').write_text(
+        '2026-10-09T23:40:00-06  1 update files found...\n'
+        '2026-10-09T23:55:00-06  1 update files found...\n'
+        '2026-10-09T23:55:01-06  Applying file 20261010T055500Z-mod.jsl...\n'
+        '2026-10-09T23:55:02-06  HttpClient PUT: URL=https://sam.ucar.edu:443/api/protected/admin/ldapsync/user\n'
+        '2026-10-09T23:55:03-06  PUT status: 200 OK\n'
+        '2026-10-09T23:55:04-06  File 20261010T055500Z-mod.jsl processed\n')
+    (d / 'log-2026-10-10-syncd.e').write_text(
+        '2026-10-10T00:05:00-06  PUT status: 500 Internal Server Error\n'
+        "2026-10-10T00:05:01-06  HttpClient error: user jdoe => 'x' failed (key=12345)\n"
+        '2026-10-10T00:06:00-06  Deferring propagation of user addOrUpdate (key=42): unclaimed account\n'
+        '      upid => 12,\n'
+        '2026-10-10T00:30:00-06  PUT status: 200 OK\n')
+    _git(tmp_path / 'home' / 'sam-app', 'add sshconfig', MIDNIGHT - 7200)
+    _git(tmp_path / 'home' / 'sam-ldap-syncd', 'cron config', MIDNIGHT - 9000)
+    ps = tmp_path / 'ps.txt'
+    ps.write_text(' 101 3600 /usr/sbin/slapd -h ldap://x:389 -d 256\n'
+                  ' 102 3600 /usr/bin/perl /usr/local/sam-ldap-syncd/bin/syncd -vvvvv --redirect\n'
+                  ' 103 3600 awk /ldif_log_processor/\n')
+    return {'SAMAPP_DATA': str(tmp_path / 'data'), 'SAMAPP_HOME': str(tmp_path / 'home'),
+            'SAMAPP_NOW': str(MIDNIGHT + 1800), 'SAMAPP_PS': f'cat {ps}'}
+
+
+def read_app(env, frm=MIDNIGHT - 600, to=MIDNIGHT + 1200):
+    out = subprocess.run(['bash', str(SAMAPP), 'window', str(frm), str(to)], env={**os.environ, **env},
+                         capture_output=True, text=True, check=True).stdout
+    return [ln.split('\t') for ln in out.splitlines()]
+
+
+class TestSamApp:
+    def test_syncd_window_across_midnight(self, samapp):
+        records = read_app(samapp)
+        sync = dict(kv.split('=') for kv in rec(records, 'async')[0])
+        assert sync == {'files': '1', 'applied': '1', 'defer': '1', 'errors': '1', 'last': str(MIDNIGHT + 360)}
+        assert sorted(rec(records, 'aput')) == [['PUT', '200', '1'], ['PUT', '500', '1']]
+
+    def test_error_text_is_masked(self, samapp):
+        (text,) = [r[3] for r in rec(read_app(samapp), 'aerr')]
+        assert 'jdoe' not in text and '12345' not in text and text.startswith('HttpClient error: ID')
+
+    def test_processes_repos_and_state(self, samapp):
+        records = read_app(samapp)
+        assert rec(records, 'aproc') == [['slapd', '101', str(MIDNIGHT - 1800)],
+                                         ['syncd', '102', str(MIDNIGHT - 1800)]]
+        assert [r[0] for r in rec(records, 'arepo')] == ['sam-app', 'sam-ldap-syncd']
+        assert rec(records, 'arepo')[0][2:] == [str(MIDNIGHT - 7200), 'add sshconfig']
+        assert {r[0] for r in rec(records, 'astate')} == {'auditlog.d', 'syncd'}
+
+    def test_never_reads_credentials_or_needs_the_service_account(self):
+        text = SAMAPP.read_text()
+        for word in ('.env', 'secrets', 'podman', 'systemctl', 'sudo'):
+            assert word not in text
+
+    def test_report_baseline_then_restart_head_change_and_bad_put(self, samapp, tmp_path):
+        records = read_app(samapp)
+        text, warn, fail = report(records, tmp_path, CMAP)
+        assert 'app: sam-app' in text and 'zoo slapd/syncd since' in text
+        assert 'restarted' not in text and 'zoo:' not in text
+        assert 'ldif is not running' in text and 'amie' not in text
+        assert 'PUT answered 500 x1' in text and fail == 1
+        state = (tmp_path / 'state').read_text()
+        moved = state.replace(f'APP_syncd={MIDNIGHT - 1800}', 'APP_syncd=1').replace('sam-app:', 'sam-app:0000000')
+        text, _, _ = report(records, tmp_path, CMAP, state=moved)
+        assert 'zoo restarted: syncd' in text and 'zoo: sam-app 0000000' in text

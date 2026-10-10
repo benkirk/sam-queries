@@ -73,9 +73,9 @@ secret), `--no-color`, `-n/--namespace`, `-r/--release`, `--context`,
   scripts/cirrus_watch.sh --env dev             # the dev release; no XRAS/db-load reads
   ```
 
-- **`tomcat_watch.sh`** — the same kind of tick for legacy SAM on `sam-tomcat`: one ssh
-  call reads the Tomcat logs; health, who still calls its API, and the per-family daily
-  trend as callers move to SAMuel (`--trend`, `--at` for a past window). `watch-tomcat` skill.
+- **`tomcat_watch.sh`** — the same kind of tick for legacy SAM on `sam-tomcat` (plus its syncd
+  client on sam-app): health, who still calls its API, and the per-family daily trend as
+  callers move to SAMuel (`--trend`, `--at` for a past window). `watch-tomcat` skill.
 
 - **`dev_capture_session.py` + `dev_session_load.py`** — capture one OIDC session (headed Playwright; log in once), then replay the cookie at concurrency (`--list` for targets; refuses a non-`samuel-dev` base, no cookie in the repo). The `profile-dev` skill carries the process; numbers in `../docs/plans/implemented/DEV_LOAD_CAMPAIGN.md`.
 
