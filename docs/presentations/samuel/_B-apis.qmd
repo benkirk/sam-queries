@@ -6,12 +6,13 @@ The APIs: what callers can count on, and how we add to them.
 
 - **111 routes in six families:** core, legacy shapes, fairshare, XRAS, identity sync and
   HEUV. Part 4 has the table.
-- **Two ways in:** a browser session, or an API key over HTTP Basic.
+- **Two ways in:** a browser session, or an API key over HTTP Basic. Every read takes either.
 - **Each key holds only the permissions it was granted,** route by route, and most are limited
   to 120 requests a minute.
 - **Errors look alike:** `{"error": "…"}` with the usual status codes, or legacy's
   `{"errorMessage": "…"}` on legacy's own paths.
-- **Docs:** `docs/apis/` in the repo, with a runnable script for the systems endpoints.
+- **Docs:** `docs/apis/`, and `api-demo/`: a runnable example for every family (two slides
+  on).
 
 ::: {.notes}
 Route counts are decorator counts on origin/staging, 2026-10-10 (src/webapp/run.py:441-463):
@@ -21,7 +22,9 @@ role names (ROLE_API_ADMIN, ROLE_API_HEUV) rather than a Permission; ldapsync is
 limiter (one sequential caller, replays peak ~350 PUTs/min), HEUV rides the 200/min authed tier.
 login_or_token_required (src/webapp/utils/api_auth.py): keys are bcrypt-hashed, and a good check
 is cached because bcrypt costs ~260 ms. Under RBAC_SOURCE=db (prod) a key needs a
-samuel_role_grant for the route's Permission. RATELIMIT_M2M is 120 per minute, counted in Redis.
+samuel_role_grant for the route's Permission; there is no blanket grant (api_legacy retired
+2026-10-10, #790), so the PBS key holds api_systems_integration and little else. Every v1 GET
+takes a key since #791. RATELIMIT_M2M is 120 per minute, counted in Redis.
 docs/apis/: SYSTEMS_INTEGRATION_APIs.md, HPC_DATA_COLLECTORS_GUIDE.md, CHARGING_INTEGRATION.md;
 api-demo/ (bash and Python per endpoint, smoked in CI).
 :::
@@ -225,9 +228,9 @@ health 4, allocations 2, admin 1 (src/webapp/run.py:437-453). Also: projects/exp
 recently_expired, PUT `projects/<code>/admin`, status reservations and outage DELETE,
 health/db-pool. Charge summaries: comp, disk, archive. Callers: the dashboards and CLIs, the
 status collectors (by API key, MANAGE_SYSTEM_STATUS), HSG (fairshare), Kubernetes probes
-(health). Projects, allocations and charges take a session login only; users take a session or
-a key. Health, the cache refresh and fairshare are small hand-built replies; the rest dump
-schemas.
+(health). Every GET takes a session or a key (#791): a key by the route's Permission alone,
+never by project membership; the writes take a session only. Health, the cache refresh and
+fairshare are small hand-built replies; the rest dump schemas.
 :::
 
 ## Writes follow the web app's rules {.vcenter scale="1.15"}
@@ -265,13 +268,86 @@ cache.*
 CACHE_DEFAULT_TIMEOUT=300; Redis in production (CACHE_REDIS_URL), shared across workers and
 pods; @cache.cached(query_string=True). Refresh routes: directory_access, project_access,
 fstree_access, queue, wallclock_exemption, plus disk_quota and the status family. The admin route
-is POST /api/v1/admin/cache/refresh?category=flask|chart|usage|scans|jobs (SYSTEM_ADMIN).
+is POST /api/v1/admin/cache/refresh?category=flask|chart|usage|scans|jobs|awards|xras_api
+(SYSTEM_ADMIN).
 invalidate_queue_cache() is called by the admin queue edits. hpc-scheduling-tools'
 fsparsetree_mr posts v1/fstree_access/refresh before it reads. Fairshare takes ?clear_cache=1.
 api-demo/systems-integration/ reads each API, then posts its refresh.
 ldapsync and HEUV are not cached.
 The 2.8 s is docs/apis/SYSTEMS_INTEGRATION_APIs.md:572 (one resource ~0.7 s); Appendix C has
 the prod cold-miss and read-model numbers.
+:::
+
+## api-demo: every call, written out {.vcenter scale="1.15"}
+
+- **A directory you can hand over:** `api-demo/` at the repo root. Tar it, share it; it needs
+  bash, curl, jq and python3.
+- **Every example twice:** a full `curl … | jq`, and a standard-library Python twin, one
+  comment per call.
+- **Laid out like this appendix:** `rest/`, `systems-integration/`, `ldapsync/`, `xras/`.
+- **Run on every PR:** CI starts the stack, mints a key and runs all 32. `./run_all.sh` is the
+  same smoke test, against any host.
+- **Reads, plus cache refreshes.** `SAM_API_BASE` has no default, so a shared copy never clears
+  production's caches by accident.
+
+*† In production a key reaches only what it was granted: the CI key gets everything, the PBS
+key gets the systems feeds.*
+
+::: {.notes}
+PRs #790 (retire the api_legacy blanket), #791 (every v1 GET takes a key), #792 (api-demo/ and
+its CI leg). api-demo/README.md has the layout, the auth model and what is left out. The CI job
+is "API demo smoke" in .github/workflows/sam-ci-docker.yaml: it mints one key with ROLE_API_ADMIN
+and ROLE_XRAS via scripts/gen_api_key.py --sql-only (legacy roles live on the api_credentials
+row, so a config key cannot reach ldapsync or xras), then runs api-demo/run_all.sh from the
+runner. 32/32 against samuel-dev with real keys, 2026-10-10; the PBS key passes every
+systems-integration example there. scripts/apis/ is retired in its favor.
+:::
+
+## The fairshare tree, by curl {.fill scale="0.85"}
+
+:::: {.columns}
+::: {.column width="55%"}
+```bash
+curl -sS --fail-with-body \
+  -u "$SAM_API_USER:$SAM_API_PASS" \
+  "$SAM_API_BASE/api/v1/fairshare/Derecho\
+?rollup=facility&equalize=leaf" \
+| jq '{rollup, equalize,
+       first_lines: .lines[:3],
+       warnings: .warnings[:1]}'
+```
+
+- **The Python twin is one line:** `get('/api/v1/fairshare/Derecho', rollup='facility',
+  equalize='leaf')`.
+:::
+::: {.column width="45%"}
+```json
+{"rollup": "facility",
+ "equalize": ["leaf"],
+ "first_lines": [
+   "derecho 2 root 100",
+   "ASD 3 derecho 13",
+   "CISL 5 derecho 80"],
+ "warnings": [
+   "rollup: overriding
+    top-down share of
+    U_CHAP 70.00% -> 17.46%"]}
+```
+
+- **No plugin, no tree:** a 503; the script says so and passes.
+
+*† `equalize=facility` with `rollup=facility` is a 400 that says why.*
+:::
+::::
+
+::: {.notes}
+api-demo/systems-integration/fairshare.sh (and .py): Derecho at the defaults and at this
+rollup/equalize, Casper as format=text with equalize=facility and at rollup=group, then the 400.
+Output from samuel-dev, 2026-10-10, trimmed (the plugin pads the warning columns). Arguments:
+rollup none|group|facility|all; equalize none|leaf|facility, comma-combinable; format json|text;
+clear_cache=1 recomputes (the tree is memoized per argument set). Needs VIEW_ALL_JOB_DATA, which
+api_systems_integration carries. Without the hpc-scheduling-tools plugin the route answers 503,
+plain JSON since #794. The next slide's "we can do the computing" is this tree.
 :::
 
 ## Need more? Ask. {.vcenter scale="1.15"}
@@ -282,12 +358,13 @@ the prod cold-miss and read-model numbers.
 - **We can do the computing:** the fairshare tree comes ready-made, so nobody runs the
   builder on a scheduler host.
 - **Next on our side:** repointing the ldapsync and HEUV callers, a shared paging helper, and
-  published API docs.
+  an OpenAPI spec.
 
 ::: {.notes}
 Aimed at HSG and groups like them: teams tied to old endpoints, or who would want more but have
 not asked. Honest state of the new dialect: paging is hand-rolled per route (only projects and
-users page), and there is no OpenAPI yet; both are on the fix-later list in the plan
+users page), and there is no OpenAPI yet (api-demo/ is the worked examples, not a spec); both
+are on the fix-later list in the plan
 (SAMUEL_PRESENTATION.md §14). Cutovers: docs/plans/LDAPSYNC_DEV_SHADOW.md (the exit criteria)
 and docs/plans/HEUV_API_PORT.md § 12.
 :::
@@ -301,4 +378,5 @@ and docs/plans/HEUV_API_PORT.md § 12.
   today use schemas too.
 - **Writes reuse the web app's rules,** so new ones are cheap.
 - **Cached for five minutes,** with a **refresh** for when that's too long.
+- **Every call has a worked example** (`api-demo/`), run on every PR.
 - **The API is where SAMuel grows:** if you need more, **ask**.

@@ -349,7 +349,8 @@ way the data moves. Part 5 covers where it runs and how a commit gets there.
 - **API:** decorator counts (2026-10-10) give core 39 routes (7 modules), legacy shapes 21 (6),
   fairshare 1, XRAS 11 (5), identity sync 26 (3) and HEUV 13 (4): 111 in six families.
   `/api/protected` carries ldapsync (admin) and HEUV at legacy's own paths; neither caller has
-  repointed, so no traffic figures yet.
+  repointed, so no traffic figures yet. Since #791 every v1 GET takes a key (by permission, never
+  membership); since #790 no key holds a blanket grant. Worked examples: `api-demo/` (#792).
 - **Collector key:** the `api_collector` role holds `MANAGE_SYSTEM_STATUS` and
   `MANAGE_CHARGE_SUMMARIES` (`src/sam/security/rbac_defaults.py`).
 - **Lanes:** prod's daily step is `jobhist-sync daily`. `accounting-disk` runs on casper only.
@@ -1175,6 +1176,10 @@ Each phase closes with render → visual review → commit in this repo
   cut over", and "Four API families" became six. Traffic figures wait for the callers to repoint.
   Still stale, not touched: Appendix D's rate-limit row ("API keys 120/min, every key-only
   route"; ldapsync is exempt, HEUV is on the authed tier) and its CSRF-exempt count.
+  Same branch, rebased onto staging after #790-#794: the key-read and api-demo corrections
+  (every read takes a session or a key, all seven cache categories, `api-demo/` in place of
+  `scripts/apis/`, OpenAPI as the docs gap) and two new slides before "Need more? Ask.":
+  "api-demo: every call, written out" and "The fairshare tree, by curl" (real samuel-dev output).
 
 ## 11. Voice, tone and the fun
 
