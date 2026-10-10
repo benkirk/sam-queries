@@ -682,8 +682,46 @@ an existing row (`docs/apis/SYSTEMS_INTEGRATION_APIs.md` § 8).
    the testbed 2026-10-09 (PR #774; with them the daemon delivers its own full stream and the
    acronym institution is accepted, leaving one legacy-known 400). File them upstream; until
    then prod runs without them.
-2. Confirm the prod `admin` `api_credentials` row with `ROLE_API_ADMIN`.
+2. ~~Confirm the prod `admin` `api_credentials` row with `ROLE_API_ADMIN`.~~ Confirmed
+   2026-10-09: samuel-dev holds prod's rows raw from `make refresh-dev`, and `admin` with
+   prod's secret answers 200 there through the legacy role link alone (§ 10.7).
 3. samuel-dev rehearsal, then flip `SAM_URL`; rollback is the same variable.
 4. For George: the cron configuration (bug 13) and, before `LDAPSYNC_LIFECYCLE_ENABLED`,
    the `deactivation` key name and the `$samClient` bug (the `/?24` path is handled here).
 
+### 10.7 Soaks
+
+**Local soak, 2026-10-09 12:06-14:41 MDT.** The #774 daemon (all six patches) against the
+branch served on :5051 with all four levers on, the hybrid replica fed by `ldap-poll`, the
+laptop clone refreshed from prod at 12:00. Counts from the server log; the testbed's `out/`
+holds the rest (PII).
+
+| | Result |
+|---|---|
+| Pass 1 (reset 12:06) | 1,348 PUTs, one legacy-known 400 restored and skipped by patch 0002; 0 × 5xx |
+| Pass 2 (reset 12:14) | 920 PUTs + the same 400; no row changed (the § 10.5 residual classes) |
+| Server totals | user 1,956 × 200 + 2 × 400, group 224, institution 70, organization 20, all 200; 0 × 5xx |
+| Live stream | quiet: `ldap-poll` errors 0, a handful of user PUTs |
+| New users | **two people created by SAMuel**, the same two legacy created in production that day (matched by username, compared without printing it): one in pass 1, 2 min 19 s after legacy, and one from the live stream, 2 min 18 s after legacy. The lag is the testbed's poll interval behind prod's syncrepl. 181 positions, 11 affiliations, 6 emails and 1 institution were inserted along with them (the server's model audit) |
+| Daemon | 0 pauses after an exception, 0 `IMDBStateException`, 0 unknown-key skips |
+| Lifecycle | the daemon's cron child dies at its first slot (the `$samClient` bug, § 10.6 item 4), so the finish and the undo were driven by hand: 175 pending in prod data; one finish closed 55 memberships at one stamp and the reactivation PUT reopened all 55 |
+| Server restarts | two, both self-inflicted: the dev server's reloader read a source file mid-edit (13:18) and mid-rebase (before 14:29). From 14:29 the daemon retried its one pending user PUT (patch 0005) until the teardown; nothing was lost, the reset below resends it |
+
+It ended when `make refresh-dev` reloaded the laptop clone (14:41).
+
+**Dev shadow, from T0 = 2026-10-09 14:41 MDT** (`make refresh-dev`: `sam_dev` = prod at T0;
+`docs/plans/LDAPSYNC_DEV_SHADOW.md`). samuel-dev runs `sha-2af6431` with purge and restore
+on, lifecycle off. Before the repoint: 401 with `Basic realm="Realm"` anonymously, 200 as
+`admin`, the purge permit no longer "disabled", `pendingdeactivations/24` = `[]`; `syncdTest`
+reached dev over verified TLS and read `ldapsync/status` (its LDAP-staging half fails on the
+`.invalid` host by design). 
+| | Result |
+|---|---|
+| First reset (14:50) | the `user` GET took 155 s against a server time of 5 s, and the body arrived cut short of its `Content-Length`; LWP still said 200, the JSON decode failed, and the daemon exited before writing anything. The same request from the image's own LWP took 7.2 s with the full body. Likeliest cause: the transformer rebuilding its 31 MB dump in the same emulated amd64 VM while the ingress cut a stalled reader. Fail-closed, but a truncated read is not retried (patch 0005 covers LWP's own 500s only); watch for a repeat |
+| Pass 1 (restart 14:56) | all seven collections loaded (`user` in about 2 s); 1,349 PUTs: 1,348 × 200 and the one legacy-known 400 (a upid held by another username) skipped by patch 0002; 0 × 5xx, 0 tracebacks; purge permits only, no purge. The same count as the local pass 1 |
+| First new user (Sat 05:54) | one PUT created the user, 2 emails and 1 affiliation, 26 s after legacy created the same person in production. A read-only field comparison with production matched username, uid, upid, active, locked, names, emails and institution, and found one **port defect**: legacy stores `primary_gid` 1000 for every new user (its getter defaults NULL to `DEFAULT_HPC_GID` and Hibernate persists through it), SAMuel stored NULL. Fixed in PR #785 |
+
+Daily checks (`LDAPSYNC_DEV_SHADOW.md` § 5), one row per weekday:
+
+| Date | Base | `compare-dumps --ignore` (differing records by type) | Daemon PUTs (200 / 400 / 5xx) | Verdict |
+|---|---|---|---|---|
