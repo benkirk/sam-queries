@@ -34,7 +34,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from sam.queries.account_status import (
-    CHARGE_STATUSES, NORMAL, charge_status, fstree_divisor, threshold_allocation,
+    CHARGE_STATUSES, NORMAL, charge_status, prorate_divisor, threshold_allocation,
 )
 from sam.queries.rolling_usage import trailing_window_charges
 
@@ -314,7 +314,7 @@ def _compute_threshold_data(
     if first_threshold is None and second_threshold is None:
         return None
 
-    duration_days = fstree_divisor(alloc_start, alloc_end, now)
+    duration_days = prorate_divisor(alloc_start, alloc_end, now)
 
     result: Dict = {}
     for period_days, threshold_pct, window_charges, key in (
@@ -626,7 +626,7 @@ def get_fstree_data(
         account_status = charge_status(
             adjusted_usage, allocation_amount,
             (th[0], th[1]) if th else (None, None), (w30, w90),
-            fstree_divisor(row.start_date, row.end_date, now) if row.start_date else None,
+            prorate_divisor(row.start_date, row.end_date, now) if row.start_date else None,
         )
 
         # Threshold breakdown (only for the ~12 accounts with configured thresholds)

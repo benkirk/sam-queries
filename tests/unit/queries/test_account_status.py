@@ -14,9 +14,10 @@ def test_java_round_is_half_up(value, expected):
     assert st.java_round(value) == expected
 
 
-def test_divisors_differ_by_one_day():
+def test_prorate_divisor_is_legacys_day_count():
     assert st.legacy_divisor(START, END) == 364
-    assert st.fstree_divisor(START, END, now=START) == 363
+    assert st.prorate_divisor(START, END, now=START) == 364
+    assert st.prorate_divisor(START, START, now=START) == 1
     assert st.java_round(st.threshold_allocation(30, 25_000_000, st.legacy_divisor(START, END))) == 2_060_440
 
 

@@ -39,9 +39,9 @@ def legacy_divisor(start: datetime, end: datetime) -> int:
     return (end.date() - start.date()).days
 
 
-def fstree_divisor(start: datetime, end: Optional[datetime], now: datetime) -> int:
-    """fstree's divisor: one day shorter than :func:`legacy_divisor` (plan HEUV_API_PORT.md §7 g)."""
-    return max(((end or now) - start).days - 1, 1)
+def prorate_divisor(start: datetime, end: Optional[datetime], now: datetime) -> int:
+    """:func:`legacy_divisor` for fstree and the rolling windows: an open end is *now*, never below 1."""
+    return max(legacy_divisor(start, end or now), 1)
 
 
 def threshold_allocation(period_days: int, amount: float, divisor: float) -> float:
