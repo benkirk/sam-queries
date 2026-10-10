@@ -71,6 +71,10 @@ def register_error_handlers(blueprint):
     def not_found(e):
         return jsonify({'error': 'Resource not found'}), 404
 
+    @blueprint.errorhandler(503)
+    def unavailable(e):
+        return jsonify({'error': getattr(e, 'description', None) or 'Service unavailable'}), 503
+
 
 def parse_date_range(
     days_back: int = 90,
