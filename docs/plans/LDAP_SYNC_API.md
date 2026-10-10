@@ -702,6 +702,7 @@ holds the rest (PII).
 | Pass 2 (reset 12:14) | 920 PUTs + the same 400; no row changed (the § 10.5 residual classes) |
 | Server totals | user 1,956 × 200 + 2 × 400, group 224, institution 70, organization 20, all 200; 0 × 5xx |
 | Live stream | quiet: `ldap-poll` errors 0, a handful of user PUTs |
+| New users | **two people created by SAMuel**, the same two legacy created in production that day (matched by username, compared without printing it): one in pass 1, 2 min 19 s after legacy, and one from the live stream, 2 min 18 s after legacy. The lag is the testbed's poll interval behind prod's syncrepl. 181 positions, 11 affiliations, 6 emails and 1 institution were inserted along with them (the server's model audit) |
 | Daemon | 0 pauses after an exception, 0 `IMDBStateException`, 0 unknown-key skips |
 | Lifecycle | the daemon's cron child dies at its first slot (the `$samClient` bug, § 10.6 item 4), so the finish and the undo were driven by hand: 175 pending in prod data; one finish closed 55 memberships at one stamp and the reactivation PUT reopened all 55 |
 | Server restarts | two, both self-inflicted: the dev server's reloader read a source file mid-edit (13:18) and mid-rebase (before 14:29). From 14:29 the daemon retried its one pending user PUT (patch 0005) until the teardown; nothing was lost, the reset below resends it |
