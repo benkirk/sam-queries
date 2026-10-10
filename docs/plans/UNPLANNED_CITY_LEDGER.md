@@ -1508,9 +1508,21 @@ ran with provisioning off, so it never exercised this path.
 - [ ] **Tabled (Ben, 2026-10-09):** lazy subcommands (a Click `LazyGroup`) and no numpy for
   `SOURCE_KINDS`, worth an estimated 0.3-0.45 s per run on every path, including conda. Revisit if
   users report start time once the module points at the lanes (plan step 5).
-- **Comparing for step 5:** the conda env measured 2.02 s (Casper) and 2.46 s (Derecho) with 143
-  statements, before #779 reached it. The side-by-side for the module repoint needs the conda env
-  re-timed after the promotion, because the SIF adds ~0.2 s of container start.
+- **Side-by-side for step 5** (2026-10-09 20:40, both on `main` @ `c020b188`, as benkirk, medians of 5):
+
+  | | conda, as found | conda + `.pyc` | lane (SIF) |
+  |---|---|---|---|
+  | Casper `--help` / import / `project SCSG0001` | 0.68 / 0.68 / 1.56 s | **0.57 / 0.55 / 1.33 s** | 1.43 / 1.38 / 2.32 s |
+  | Derecho, same | 0.98 / 0.96 / 2.00 s | **0.80 / 0.80 / 1.72 s** | 1.77 / 1.69 / 2.73 s |
+
+  - "As found": the conda env runs Python 3.15, but the checkout's `__pycache__` held only 3.13 and
+    3.14 bytecode. Only csgteam can write there, and csgteam's cron moved to the lanes, so every
+    user compiled all 157 `src` modules on every run. `compileall` as csgteam fixed it. It goes
+    stale again for each module a `git pull` changes, until csgteam recompiles.
+  - The lane is ~1 s slower. The container start is ~0.2 s; the rest is imports, ~2.2x slower
+    from the SIF for the same modules (`sqlalchemy.orm` 273 vs 118 ms, numpy 166 vs 27 ms).
+    That points at reading files from the image (apptainer 1.4, unprivileged), not at our code.
+    Not chased.
 
 **Open:**
 
