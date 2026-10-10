@@ -279,6 +279,7 @@ transaction_amount 0) legacy still reports `allocationEndDate` 2027-10-30 and th
 amounts 884 / 2,653. Legacy's own `report/project` says 2026-10-31. New: the allocation row
 (2026-10-31; thresholds 6,250 / 18,750). Difference: 1 of 663 sampled rows; any allocation
 whose dates SAMuel edited. Candidate for the follow-on list (legacy bug), not reproduced.
+**Decided 2026-10-10 (Ben): accepted, new behavior kept.** Cause: legacy's replay (`AllocationTransactionType.java:41-53`) applies a date only on EXTENSION; ADJUSTMENT adds the amount and ignores dates, and SAMuel's allocation editor records end-date edits as ADJUSTMENT with amount 0. Until cutover, legacy HEUV shows the original end date for every allocation SAMuel re-dated (follow-on item: write EXTENSION for end-date edits?).
 
 Not measurable on dev: §7 c on allocations older than the clone cutoff needs prod data
 (a read-only `hpc-reader` run of this branch's query layer was refused by the session's
