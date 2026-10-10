@@ -35,8 +35,9 @@ def _plugin_or_503():
         abort(503, 'fairshare tree feature is disabled (HPC_SCHEDULING_TOOLS_ENABLED)')
     try:
         return HPC_SCHEDULING_TOOLS.load()
-    except PluginUnavailableError as exc:
-        abort(503, str(exc))
+    except PluginUnavailableError:
+        # The exception text carries rich markup and an install hint meant for a terminal.
+        abort(503, f'fairshare tree feature is unavailable ({HPC_SCHEDULING_TOOLS.name} not installed)')
 
 
 def _resolve_machine_or_400(mod, machine):

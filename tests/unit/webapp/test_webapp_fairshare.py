@@ -108,7 +108,21 @@ def test_token_path_bypasses_permission(app, client, enabled, fake_plugin):
 
 def test_disabled_returns_503(auth_client, fake_plugin):
     # TestingConfig pins HPC_SCHEDULING_TOOLS_ENABLED=False (no `enabled` fixture).
-    assert auth_client.get('/api/v1/fairshare/casper').status_code == 503
+    resp = auth_client.get('/api/v1/fairshare/casper')
+    assert resp.status_code == 503
+    assert 'HPC_SCHEDULING_TOOLS_ENABLED' in resp.get_json()['error']
+
+
+def test_plugin_not_installed_is_a_plain_json_503(auth_client, enabled, monkeypatch):
+    from sam.plugins import PluginUnavailableError
+
+    def _missing():
+        raise PluginUnavailableError("[bold red]Plugin 'X' is not installed.[/bold red]")
+    monkeypatch.setattr('sam.plugins.HPC_SCHEDULING_TOOLS.load', _missing)
+    resp = auth_client.get('/api/v1/fairshare/casper')
+    assert resp.status_code == 503
+    error = resp.get_json()['error']
+    assert 'not installed' in error and '[bold' not in error
 
 
 # ---------------------------------------------------------------------------
