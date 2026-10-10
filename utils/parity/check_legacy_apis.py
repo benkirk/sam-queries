@@ -14,6 +14,8 @@ Usage:
     python utils/parity/check_legacy_apis.py --api fstree --resource Derecho
     python utils/parity/check_legacy_apis.py --api queue
     python utils/parity/check_legacy_apis.py --api wallclock
+    SAM_HEUV_USER=admin SAM_HEUV_PASS=... python utils/parity/check_legacy_apis.py --api heuv \
+        --new-base-url https://samuel-dev.k8s.ucar.edu
     python utils/parity/check_legacy_apis.py --format json | jq .
 
 Exit codes:
@@ -42,7 +44,8 @@ sys.path.insert(0, os.path.join(_HERE, '..', '..'))
 
 import requests  # noqa: E402
 
-from utils.parity.clients import LegacyClient, NewClient, XrasClient  # noqa: E402
+from utils.parity.clients import HeuvClient, LegacyClient, NewClient, XrasClient  # noqa: E402
+from utils.parity.heuv import compare_heuv, sample_and_fetch  # noqa: E402
 from utils.parity.comparators import (  # noqa: E402
     CheckResult,
     collect_resource_names,
@@ -113,6 +116,13 @@ def _resolve_xras_credentials() -> tuple[str, str] | None:
     """
     user = os.environ.get('SAM_XRAS_USER', '')
     password = os.environ.get('SAM_XRAS_PASS', '')
+    return (user, password) if user and password else None
+
+
+def _resolve_heuv_credentials() -> tuple[str, str] | None:
+    """The ``ROLE_API_HEUV`` credential (``SAM_HEUV_USER``/``SAM_HEUV_PASS``), or None; one serves both stacks."""
+    user = os.environ.get('SAM_HEUV_USER', '')
+    password = os.environ.get('SAM_HEUV_PASS', '')
     return (user, password) if user and password else None
 
 
@@ -302,7 +312,7 @@ def _render_text_section(
         n_mis = len(r.mismatches)
         suffix = '' if r.passed else f' — {n_mis} mismatches'
         lines.append(f'  {marker} {r.name}: {r.summary}{suffix}')
-        if not r.passed:
+        if not r.passed or r.name.endswith('(informational)'):
             for m in r.mismatches[:max_mismatches]:
                 lines.append(f'      {m}')
             if n_mis > max_mismatches:
@@ -325,7 +335,7 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         '--api', choices=('directory', 'project', 'fstree', 'queue', 'wallclock',
-                          'diskquota', 'xras', 'all'),
+                          'diskquota', 'xras', 'heuv', 'all'),
         default='all', help='Which API to compare (default: all)',
     )
     p.add_argument(
@@ -333,6 +343,12 @@ def _parse_args() -> argparse.Namespace:
         help='Username to sample for the xras requests/* probes. Default: '
              'search the roster newest-first for one that has projects.',
     )
+    p.add_argument('--sample-size', type=int, default=40,
+                   help='heuv: active projects to sample, plus SCSG0001 and NCIS0001 (default: 40)')
+    p.add_argument('--heuv-projects', default='',
+                   help='heuv: comma-separated projcodes always sampled')
+    p.add_argument('--workers', type=int, default=4,
+                   help='heuv: concurrent requests per stack (default: 4)')
     p.add_argument(
         '--branch', default=None,
         help='Comma-separated branch list for project/directory '
@@ -393,7 +409,7 @@ def main() -> int:
     )
 
     selected = (
-        ('directory', 'project', 'fstree', 'queue', 'wallclock', 'diskquota', 'xras')
+        ('directory', 'project', 'fstree', 'queue', 'wallclock', 'diskquota', 'xras', 'heuv')
         if args.api == 'all' else (args.api,)
     )
 
@@ -438,6 +454,18 @@ def main() -> int:
                     XrasClient(args.new_base_url, xras_auth, timeout=args.timeout),
                     args.verbose, args.xras_user)
                 results = compare_xras(ld, nd)
+            elif api == 'heuv':
+                heuv_auth = _resolve_heuv_credentials()
+                if heuv_auth is None:
+                    print('SKIP heuv: SAM_HEUV_USER / SAM_HEUV_PASS not set', file=sys.stderr)
+                    continue
+                pairs = sample_and_fetch(
+                    HeuvClient(args.legacy_base_url, heuv_auth, timeout=args.timeout),
+                    HeuvClient(args.new_base_url, heuv_auth, timeout=args.timeout),
+                    sample_size=args.sample_size, workers=args.workers, verbose=args.verbose,
+                    extra_projects=[p.strip() for p in args.heuv_projects.split(',') if p.strip()],
+                    log=lambda m: print(m, file=sys.stderr))
+                results = compare_heuv(pairs)
             else:  # pragma: no cover — argparse choices guarantee membership
                 raise AssertionError(api)
             sections.append((api, results, time.monotonic() - t0))
