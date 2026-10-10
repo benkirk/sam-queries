@@ -98,9 +98,9 @@ class ApiCredentials(Base):
         username and password hash are included.
 
         ``roles`` is the list of role names granted via ``role_api_credentials``.
-        It is resolved here — cheaply, the enabled set is tiny — so a future
-        permission gate can scope each key; it is not yet enforced on the token
-        auth path (which grants any valid key full access, as it always has).
+        It is resolved here — cheaply, the enabled set is tiny. A route that
+        passes ``roles=`` to ``login_or_token_required`` (XRAS, ldapsync, HEUV)
+        requires one of them; other token routes check a Permission.
         """
         result: dict = {}
         for cred in session.query(cls).filter(cls.enabled).all():

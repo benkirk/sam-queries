@@ -179,7 +179,7 @@ same readiness reasoning as Part 3's CNPG PSA: degrade, don't vanish.
 |------------------------------|--------------------------|----------------------|
 | `sam-ldap-syncd` | legacy `…/ldapsync` | **live**, every identity change |
 | `amie-sam-mediator` (ACCESS AMIE) | legacy `…/amie` | idle, not ported |
-| HEUV portal | legacy `…/heuv` | not ported |
+| HEUV portal | legacy `…/heuv` | ported, cutover pending |
 | XRAS | SAMuel `/api/xras/v1` | moved 2026-08-24 |
 | PBS, provisioning, disk quotas | SAMuel `/api/v1` | ported; both serve them |
 | UCAR directory | project groups, fed by legacy SAM | **live**, not ported |
@@ -701,7 +701,7 @@ power sam-search awards. No test may open an SMTP socket or make an outbound req
 ## The overlap, mapped {.vcenter scale="1.15"}
 
 - **Next:** the `ldapsync` endpoints move to SAMuel. Identity's grey box shrinks to the daemon.
-- **By decision:** AMIE (idle) and HEUV (not ported): port, replace, or retire.
+- **By decision:** AMIE (idle): port, replace, or retire. HEUV is ported; the portal repoints by host.
 - **Last:** the schema. Once nothing grey writes `sam-sql`, it comes under migrations, and
   Postgres in production becomes possible.
 

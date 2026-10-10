@@ -1,6 +1,6 @@
 # HEUV API port: `/api/protected/heuv/v1` on SAMuel
 
-**Status:** in progress 2026-10-10 (planned 2026-10-10, Ben).
+**Status:** implemented 2026-10-10 on PR #786 and deployed to prod (`sha-d5ec2e3`); the cutover (§12) is Ben's.
 **Branch:** `heuv-api` from `origin/staging`; one PR to `staging`, one commit per Progress step, every commit green.
 
 On approval of this plan (planning session, 2026-10-10) this file is committed verbatim as
@@ -20,8 +20,8 @@ first (legacy-API rules, "Output shaping", §7-§9, Comment Budget, Testing).
 - [x] 5. Queries `src/sam/queries/heuv.py` + `User.legacy_full_name`. *(As built: `Project.search_by_pattern` gains `limit=None`, `escape=`, `member_username=`; factories `make_account_user`, `make_default_project`, `make_access_branch`. Local DB vs the 2026-10-10 legacy probe: 10 of 14 bodies byte-identical; the rest differ only by F3 order or snapshot data. `group` measured 248 ms locally (legacy 161); samuel-dev p50 371 ms (legacy 241). **Done 2026-10-10 (Ben):** `group_populator(username=)` binds the member queries and a semi-join on project groups; ~245 -> ~19 ms locally, the full directory (3,621 groups) and 192 users' `group` answers byte-identical before/after.)*
 - [x] 6. Blueprint `src/webapp/api/heuv/` registered in `src/webapp/run.py`, limiter-exempt. *(The HTTP half of the step-7 tests lands here: `tests/api/test_heuv_api.py`, 27 tests, MySQL and Postgres.)*
 - [x] 7. Tests `tests/api/test_heuv_api.py` + perf baseline `heuv_report_usage` in `tests/perf/baselines.json`.
-- [ ] 8. Parity `utils/parity --api heuv` (both directions, named normalizations); run against samuel-dev; write the ruleset-divergence statements for Ben (§7) and STOP for his decision before changing rules. *(2026-10-10: tool built — `utils/parity/heuv.py`, credential `SAM_HEUV_USER`/`SAM_HEUV_PASS` because `SAM_LEGACY_USER=ssg` gets 403 on HEUV. Dry run, legacy prod vs a local server of this branch on the local snapshot, 42 projects / 60 users: 12 of 14 route groups pass; the 2 failures and the only nonzero §7 counter are charge totals and project count, all explained by the older local data. samuel-dev run 2026-10-10 on `sha-7470cc8`: §7.1. Prod run on `sha-81564d8`: §7.2, one statement open.)*
-- [ ] 9. Docs (§11), ledger entry, deck lines, CLAUDE.md net-zero edit.
+- [x] 8. Parity `utils/parity --api heuv` (both directions, named normalizations); run against samuel-dev; write the ruleset-divergence statements for Ben (§7) and STOP for his decision before changing rules. *(2026-10-10: tool built — `utils/parity/heuv.py`, credential `SAM_HEUV_USER`/`SAM_HEUV_PASS` because `SAM_LEGACY_USER=ssg` gets 403 on HEUV. Dry run, legacy prod vs a local server of this branch on the local snapshot, 42 projects / 60 users: 12 of 14 route groups pass; the 2 failures and the only nonzero §7 counter are charge totals and project count, all explained by the older local data. samuel-dev run 2026-10-10 on `sha-7470cc8`: §7.1. Prod run on `sha-81564d8`: §7.2, one statement open.)*
+- [x] 9. Docs (§11), ledger entry, deck lines, CLAUDE.md net-zero edit. *(2026-10-10: `docs/apis/HEUV_API.md`; pointer in `SYSTEMS_INTEGRATION_APIs.md`; CLAUDE.md net zero; ledger #21; deck says "ported, cutover pending" and the diagram's grey HEUV caller box stays until the cutover.)*
 
 ---
 

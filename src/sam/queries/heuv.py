@@ -33,7 +33,8 @@ BYTES_PER_TB = 1e12
 # ---------------------------------------------------------------------------
 
 def find_user(session: Session, username: str) -> Optional[User]:
-    return session.query(User).filter(func.lower(User.username) == username.lower()).first()
+    """``users.username`` collates case-insensitively on both backends; ``lower()`` would skip its index."""
+    return User.get_by_username(session, username)
 
 
 def find_project(session: Session, projcode: str) -> Optional[Project]:
@@ -466,7 +467,7 @@ def _charging_status(nodes: List[Dict], i: int) -> str:
     return st.charge_status(n['debit'], float(alloc.amount), _thresholds(account), n['windows'], divisor)
 
 
-def _status(nodes: List[Dict]) -> str:
+def _overall_status(nodes: List[Dict]) -> str:
     """Legacy ``defineOverallStatus`` for the requested (last) node."""
     n = nodes[-1]
     lifecycle = st.lifecycle_status(has_account=n['account'] is not None, has_active=n['alloc'] is not None,
@@ -499,7 +500,7 @@ def _threshold_reports(n: Dict) -> List[Dict]:
 def _report_row(resource_name: str, nodes: List[Dict], now: datetime) -> Dict:
     n = nodes[-1]
     account, alloc = n['account'], n['alloc']
-    status = _status(nodes)
+    status = _overall_status(nodes)
     usernames = _usernames(n['project'], resource_name, now)
     amount = float(alloc.amount) if alloc is not None else None
     row = dict(

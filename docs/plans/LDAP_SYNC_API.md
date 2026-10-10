@@ -529,7 +529,7 @@ Caller identities are the Tomcat client-IP column of the audited logs.
 | AMIE `/api/protected/amie/v1/*` | 9,249,045 (99.6%); **7** on legacy 2026-08-28 to 09-26, the last on 09-04 | `128.117.177.140` (amie-sam-mediator on sam-app; its container and systemd unit were not running there on 2026-09-25) | none | **not ported, consumer currently idle** |
 | LDAP sync, purge, userlifecycle | ≤ 3 each (pre-dates the consumer); **1,140** 2026-08-28 to 09-26, 14,233 since 07-31 (§1) | `128.117.177.140` = sam-app.ucar.edu, `libwww-perl/6.52` | none | **not ported, live consumer — this document** |
 | PeopleDB `peoplesearch/sync/*` | 5,195 | `128.117.224.29` (Apache-HttpClient) | none | superseded; controllers deleted from legacy 2026-07-04 |
-| HEUV `/api/protected/heuv/v1/*` | ~2,700 | `54.85.201.121` (Ruby, AWS-hosted portal) | none | not ported, consumer known only by IP |
+| HEUV `/api/protected/heuv/v1/*` | ~2,700 | `54.85.201.121` (Ruby, AWS-hosted portal) | `/api/protected/heuv/v1` (PR #786) | ported 2026-10-10; callers not yet repointed (`docs/apis/HEUV_API.md`) |
 | Ingest/repair PUTs, refresher, `log/{level}`, `usernameChange`, admin reports, `error/*` | 0 | — | own `POST /api/v1/charge-summaries/*` (different shape) | stale |
 
 Errata in the audit docs worth knowing: `stale_apis.md` marks three AMIE PUTs stale

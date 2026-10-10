@@ -344,10 +344,10 @@ way the data moves. Part 5 covers where it runs and how a commit gets there.
   - The incident is pinned in `tests/api/test_health_endpoints.py` (`TestSchemaDriftContract`).
 - **Identity:** the source map is `docs/plans/SAM_LDAP_SYNCD_REFERENCE.md` §1.2 and §2.4–2.5,
   plus `docs/plans/LDAP_SYNC_API.md`. The Appendix B census gives the legacy callers:
-  ldapsync is live, AMIE is idle, HEUV is not ported, and XRAS has made 0 legacy calls since
+  ldapsync is live, AMIE is idle, HEUV is ported (PR #786, cutover pending), and XRAS has made 0 legacy calls since
   08-28.
 - **API:** decorator counts give core 39 routes (7 modules), legacy shapes 21 (6), fairshare 1,
-  and XRAS 11 (5). Nothing is mounted at `/api/protected`.
+  and XRAS 11 (5). `/api/protected` carries ldapsync (admin) and HEUV.
 - **Collector key:** the `api_collector` role holds `MANAGE_SYSTEM_STATUS` and
   `MANAGE_CHARGE_SUMMARIES` (`src/sam/security/rbac_defaults.py`).
 - **Lanes:** prod's daily step is `jobhist-sync daily`. `accounting-disk` runs on casper only.

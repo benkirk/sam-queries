@@ -9,7 +9,7 @@ from webapp.extensions import db
 from . import bp, dump, found_or_400, heuv_api_required, json_response, parse_flag
 
 
-def _user(username: str, method: str):
+def _user_or_400(username: str, method: str):
     return found_or_400(q.find_user(db.session, username), f'{method}.username',
                         f'Username {username} does not exist.')
 
@@ -17,28 +17,28 @@ def _user(username: str, method: str):
 @bp.route('/user/<username>/defaultproject', methods=['GET'], strict_slashes=False)
 @heuv_api_required()
 def get_user_default_projects(username):
-    user = _user(username, 'getUserDefaultProjects')
+    user = _user_or_400(username, 'getUserDefaultProjects')
     return dump(h.DefaultProjectSchema(many=True), q.default_projects(user))
 
 
 @bp.route('/user/<username>/group', methods=['GET'], strict_slashes=False)
 @heuv_api_required()
 def get_user_groups(username):
-    user = _user(username, 'getUserGroups')
+    user = _user_or_400(username, 'getUserGroups')
     return dump(h.UserGroupSchema(many=True), q.user_groups(db.session, user))
 
 
 @bp.route('/user/<username>/access', methods=['GET'], strict_slashes=False)
 @heuv_api_required()
 def get_user_accessible_resources(username):
-    user = _user(username, 'getUserAccessibleResources')
+    user = _user_or_400(username, 'getUserAccessibleResources')
     return dump(h.UserAccessSchema(many=True), q.user_access(db.session, user))
 
 
 @bp.route('/user/<username>/assignedproject', methods=['GET'], strict_slashes=False)
 @heuv_api_required()
 def get_user_assignment_by_project(username):
-    user = _user(username, 'getUserAssignmentByProject')
+    user = _user_or_400(username, 'getUserAssignmentByProject')
     name = (request.args.get('resourcename') or '').strip()
     resource = None
     if name:
@@ -51,7 +51,7 @@ def get_user_assignment_by_project(username):
 @bp.route('/user/<username>/assignedresource', methods=['GET'], strict_slashes=False)
 @heuv_api_required()
 def get_user_assignment_by_resource(username):
-    user = _user(username, 'getUserAssignmentByResource')
+    user = _user_or_400(username, 'getUserAssignmentByResource')
     rows = q.assigned_resources(db.session, user, parse_flag(request.args.get('thresholdlimited')))
     return dump(h.AssignedResourceSchema(many=True), rows)
 
@@ -59,14 +59,14 @@ def get_user_assignment_by_resource(username):
 @bp.route('/user/<username>/userrolelogin', methods=['GET'], strict_slashes=False)
 @heuv_api_required()
 def get_user_role_logins(username):
-    user = _user(username, 'getUserRoleLogins')
+    user = _user_or_400(username, 'getUserRoleLogins')
     return json_response(q.role_logins(db.session, user))
 
 
 @bp.route('/user/<username>/wallclockexemption', methods=['GET'], strict_slashes=False)
 @heuv_api_required()
 def get_user_wallclock_exemptions(username):
-    user = _user(username, 'getUserWallclockExemptions')
+    user = _user_or_400(username, 'getUserWallclockExemptions')
     active = request.args.get('active')
     flag = parse_flag(active) if active is not None else None
     return dump(h.WallclockExemptionsSchema(), q.wallclock_exemptions(user, username, flag))

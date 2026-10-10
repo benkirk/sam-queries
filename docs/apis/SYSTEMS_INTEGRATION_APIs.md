@@ -874,6 +874,8 @@ Levers `LDAPSYNC_PURGE_ENABLED`, `LDAPSYNC_LIFECYCLE_ENABLED` and
 `LDAPSYNC_RESTORE_ON_REACTIVATE` ship off in `helm/values.yaml`. Operator undo:
 `sam-admin user <u> --deactivation`.
 
+The researcher portal's feed, `/api/protected/heuv/v1`, has its own page: [`HEUV_API.md`](HEUV_API.md).
+
 ---
 
 ## Common Design Notes
