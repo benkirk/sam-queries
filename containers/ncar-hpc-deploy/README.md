@@ -22,8 +22,11 @@ this directory; `lanes/` is git-ignored):
 
 ```
 lanes/<lane>/
-  env                 0600, apptainer --env-file (template: etc/env.example)
-  env.<job>           optional overlay for one job (etc/env.jobhist-sync.example)
+  env                 0644, read-only roles for every user and job (etc/env.example)
+  env.sam-admin       0640 csgteam (+ setfacl per group): the SAM writer (etc/env.sam-admin.example)
+  env.accounting-*    symlinks to env.sam-admin
+  env.collectors      0600: status API key, JupyterHub token (etc/env.collectors.example)
+  env.jobhist-sync    0600: the job_history writer (etc/env.jobhist-sync.example)
   images/*.sif        pulled by digest; 3 kept (NCAR_HPC_DEPLOY_KEEP), always current + previous
   current previous    symlinks into images/; swapped by rename, so a running job is never left without one
   state/              locks, last-run.<job>.<host>, last-tick.<cadence>.<host>, last-digest,
@@ -35,10 +38,15 @@ lanes/<lane>/
                                      pruned after NCAR_HPC_DEPLOY_LOG_DAYS (90)
 ```
 
-Overlays exist because SAM accounting and `jobhist-sync` read the same
-variable names (`CIRRUS_PG_USER`, ...) under different roles. Only the job
-that writes job_history gets the DML writer role, `jobhist_writer` (OpenBao
-`csg/jobhist-writer`; grants in `docs/plans/JOBHIST_WRITER_ROLE.md`).
+A tool or job gets `env`, then `env.<tool>` when the user running it can read
+that file; the overlay wins on a duplicate key (`libexec/lane.sh::nhd_exec`). The
+database grant is the boundary, and the file mode decides who reads which grant,
+so any HPC user can run `bin/sam-search` read-only. `sam-admin` and
+`jobhist-sync` (`NHD_GATED_TOOLS` in `lane.sh`) refuse to start when their overlay exists but
+is unreadable, naming its group. Without an overlay the lane is single-audience
+(dev: one 0600 `env`). `NHD_DEBUG=1` prints the layers loaded, never values.
+The merged copy goes to a 0600 temp file under `$TMPDIR`, removed when the run
+ends. Grants and rollout: `docs/plans/HPC_LANE_ENV_LAYERING.md`.
 
 ## Commands
 
@@ -149,8 +157,8 @@ is csgteam's cron mail: stale locks, lock timeouts on `cron`, and every non-zero
 ## Install
 
 1. As csgteam, update the checkout at `/glade/u/apps/opt/sam-queries` (the
-   `NHD=` path in both crontabs) and write `lanes/<lane>/env` (plus
-   `env.jobhist-sync` for prod), all 0600. Do not set `NCAR_HPC_DEPLOY_SRC`.
+   `NHD=` path in both crontabs) and write the lane's env layers
+   (§ Lanes, modes as listed). Do not set `NCAR_HPC_DEPLOY_SRC`.
 2. `bin/ncar-hpc-deploy update --lane <lane> --smoke-hosts derecho.hpc.ucar.edu`
 3. Merge `etc/crontab.<lane>` into csgteam's crontab on `cron`. For prod, remove
    each host-checkout entry it replaces in the same edit; dev replaces none.
@@ -164,6 +172,9 @@ Gotchas:
 - `--cleanenv` means only the lane env and what `nhd_exec` names reach the
   job: `NCAR_HOST`, `TZ` (default `America/Denver`), the `NHD_*` paths and
   `MPLCONFIGDIR`. The image's own clock is UTC.
+- `--env-file` expands `$NAME` even inside single quotes, so a password with a
+  `$` is written `\$`. Each layer sets final names: a `${VAR}` alias resolves when
+  its own line is read, before a later layer can change `VAR`.
 - `jobhist-sync` only checks the schema; a sync or `--dry-run` against a
   schema that is behind exits 2 with "run `jobhist-sync --init-db`". Run that
   once per schema change as the DB owner (`postgres`), outside the lanes.
