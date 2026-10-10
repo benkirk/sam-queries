@@ -110,6 +110,10 @@ ENV HPC_SCHED_CAPACITIES=/etc/sam/capacities.json
 WORKDIR /code
 COPY . .
 RUN pip install --no-cache-dir --no-deps --no-build-isolation -e .
+# Every target gets src bytecode baked in: no runtime could write it (the SIF is read-only;
+# production runs as UID 1000 over root-owned src), so each start recompiled (~1 s on HPC).
+# Timestamp mode, not unchecked-hash: samuel-dev's watch sync must still recompile edits.
+RUN python -m compileall -q src
 
 # Optional build provenance - set by CI via --build-arg; empty locally.
 # Placed AFTER pip install so a changing SHA does not invalidate the install layer.

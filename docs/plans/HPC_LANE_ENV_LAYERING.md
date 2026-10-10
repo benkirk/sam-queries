@@ -1,6 +1,6 @@
 # HPC lanes for every user: layered, permission-scoped env
 
-**Status:** in rollout, 2026-10-09. Steps 0 (census), 1 (`hpc_reader`) and 3 (prod lane files) done; step 2 next.
+**Status:** in rollout, 2026-10-09. Steps 0–3 done (step 2 = #780, in staging); step 4 (the `lane.sh` loader) next.
 **Goal:** a regular Casper/Derecho user runs `sam-search` (last-seen and `accounting --jobs`
 included) from the ncar-hpc-deploy SIF lanes with read-only database access; `sam-admin` stays
 gated to named groups. Replaces the conda install's world-readable `.env`.
@@ -91,30 +91,31 @@ Proven on postgres-test (18.6), 2026-10-09:
 
 ## 4. Layered env in the wrapper (`libexec/lane.sh`)
 
-The loader walks from the **deploy root** (`NCAR_HPC_DEPLOY_ROOT`, i.e.
-`sam-queries/containers/ncar-hpc-deploy/`) down to the lane. It does not start at the install
-root, so the conda `.env` and the lane files never see each other. At each level it reads `env`,
-then `env.<tool>`, skipping any file it cannot read; a deeper level overrides a shallower one.
+As built (step 4). Layers are `lanes/<lane>/env`, then `env.<tool>` when the user can read it;
+a deeper layer overrides. There is no deploy-root layer: nothing needed one (`TZ` arrives by
+`--env`), and the conda `.env` at the install root is never read.
 
 ```
-containers/ncar-hpc-deploy/env        0644  non-secrets shared by lanes: TZ, JOB_HISTORY_MACHINES (optional)
-  lanes/<lane>/
-    env                               0644  hpc-reader / hpc_reader, SAM_DB_READ_ONLY=1, STATUS_DB_READ_ONLY=1
-    env.sam-admin                     0640  csgteam + setfacl g:<admins>:r   hpc-writer, XRAS, MAIL, NOTIFY; READ_ONLY=0
-    env.jobhist-sync                  0600  csgteam   jobhist_writer
-    env.<cron job>                    0600  csgteam   per-job writers (accounting-comp, accounting-disk, collectors)
+lanes/<lane>/
+  env                  0644      hpc-reader / hpc_reader, SAM_DB_READ_ONLY=1, STATUS_DB_READ_ONLY=1
+  env.sam-admin        0640      csgteam (+ setfacl g:<admins>:r)   hpc-writer, SAM_DB_READ_ONLY=0
+  env.accounting-*     symlink   -> env.sam-admin
+  env.collectors       0600      csgteam   STATUS_API_*, JUPYTERHUB_*
+  env.jobhist-sync     0600      csgteam   jobhist_writer
 ```
 
-- **Merge:** concatenate the readable layers, in order, into `mktemp` under `$TMPDIR` (umask 077,
-  trap rm), then `--env-file`. Each layer sets final names. No cross-layer `${VAR}` aliases (the
-  `JOB_HISTORY_PG_USER=${CIRRUS_PG_USER}` ambiguity the census found).
-- **Gate:** `sam-admin` (and any tool listed in `NHD_GATED_TOOLS`) dies with "needs read access to
-  `env.<tool>` (group X)" when its overlay is unreadable. It never falls back to the public
-  read-only credentials.
-- **Regular users:** no `mkdir` when `state/` is not writable. `MPLCONFIGDIR` goes to
-  `$TMPDIR`. `NHD_DEBUG=1` prints the layer *names* loaded, never values.
-- **Unchanged:** `--cleanenv` stays, and the image ships no `.env`. Cron jobs read the same
-  chain, and their overlays win.
+- **Merge:** the readable layers, `awk 1` (a missing final newline cannot fuse two lines), into a
+  0600 `mktemp` under `$TMPDIR`, then `--env-file`. It is removed after the run, on `nhd_die`, and
+  on HUP/INT/TERM (each trapped into an exit); only SIGKILL leaves it, owner-only. Each layer sets
+  final names; no cross-layer `${VAR}` aliases.
+- **Gate:** `sam-admin` and `jobhist-sync` (`NHD_GATED_TOOLS`) die with "needs read access to
+  `env.<tool>` (group X)" when the overlay *exists* but is unreadable. They never fall back to the
+  public layer. An absent overlay is a single-audience lane (dev: one 0600 `env`).
+- **Regular users:** nothing is written to `state/`; `MPLCONFIGDIR` goes to `$TMPDIR` when
+  `state/` is not writable (`mkdir -p` on the existing lane dirs already succeeds). `NHD_DEBUG=1`
+  prints the layer *names* loaded, never values.
+- **Also:** an empty image is refused (§ 6b's 0-byte SIF). `--cleanenv` stays, and the image
+  ships no `.env`. Cron jobs read the same chain, and their overlays win.
 
 ## 5. App changes (one PR, sam-queries)
 
@@ -137,9 +138,9 @@ containers/ncar-hpc-deploy/env        0644  non-secrets shared by lanes: TZ, JOB
 |---|---|---|---|
 | 0 | Claude | privilege census | done (§ 1) |
 | 1 | Ben (as postgres) + Claude | `pg_scram_verifier.py --generate` → OpenBao `csg/hpc-reader-pg`; run `create_hpc_reader_pg.sql` | **done 2026-10-09.** 64/64 checks from casper and derecho, on `csg-postgres-ro` (standby) and the primary, in `system_status` and `casper_jobs`: SELECT works; writes refused (read-only), and still refused after `SET default_transaction_read_only = off` (standby on the replica, privilege on the primary); CREATE refused; runaway query cancelled |
-| 2 | Claude | § 5 app PR: `read_only` on `connect_args` (`SAM_DB_READ_ONLY` / `STATUS_DB_READ_ONLY`), `STATUS_DB_PORT` | **in review 2026-10-09.** Tests on both backends: a read-only bind refuses DML, a writer bind is unchanged, and `read-write` refuses a read-only session (the HPC failure). On casper with this code as `hpc_reader`, last-seen returns 6 sources from the primary and from `csg-postgres-ro`. After it reaches the lanes, set `STATUS_DB_SERVER=csg-postgres-ro.k8s.ucar.edu` in `lanes/prod/env`. The `SAMConfig.validate` tweak was dropped: nobody has hit it |
+| 2 | Claude | § 5 app PR: `read_only` on `connect_args` (`SAM_DB_READ_ONLY` / `STATUS_DB_READ_ONLY`), `STATUS_DB_PORT` | **done (#780, in staging 2026-10-09).** On the dev-lane image with the prod public layer, last-seen returns 6 sources via the primary and via `csg-postgres-ro`. Flip `STATUS_DB_SERVER` to `csg-postgres-ro.k8s.ucar.edu` in `lanes/prod/env` once #780 is on the prod lane (prod is on `main` @ `581c42f0`, which predates it). The `SAMConfig.validate` tweak was dropped: nobody has hit it |
 | 3 | Ben + Claude | write the layered files on GLADE: the § 6a tarball (works with today's loader) | **done 2026-10-09** (r2). `smoke --lane prod` PASS on casper, every step. The installed files match the MANIFEST checksums and modes. r1 broke `hpc-reader`: apptainer's `--env-file` expands `$NAME` even inside single quotes, and that password has a `$`. r2 writes `$` as `\$`, which apptainer turns back into a literal `$`. Last-seen reads `null` until step 2 (the role's read-only default fails libpq's `target_session_attrs=read-write`) |
-| 4 | Claude | § 4 wrapper PR + `smoke.sh` cases (plain user, admin ACL, csgteam) | `--help` and a query as each identity; `sam-admin` refused for a plain user; `NHD_DEBUG=1` layer list |
+| 4 | Claude | § 4 wrapper PR, `tests/unit/gates/test_nhd_env_layers.py`, and the SIF `.pyc` (`compileall` in the Dockerfile) | **in review.** Branch wrapper against the live prod lane as benkirk: `sam-search` layers `env`, `sam-admin` `env` + `env.sam-admin`; old vs new wrapper on derecho within noise (3.8 s on prod's pre-#779 image). Plain-user simulation on casper (`env.sam-admin` chmod 000, `state/` 0555): `sam-admin` refused naming the group, `sam-search` works, nothing written, no temp file left. `.pyc`, local read-only container: `import cli.cmds.search` 1.60 s -> 0.51 s. **Real non-csgteam user** (`cmipap`, casper, 2026-10-09, the branch wrapper against the live prod lane): all three secret layers unreadable; `sam-search --help` 1.70 s and `project SCSG0001` 3.03 s rc=0 on `env` alone; `sam-admin` and `jobhist-sync` refused rc=2 naming group csgteam; nothing written under `lanes/prod`, no temp file left; `last_seen` null until #780 is on prod and `STATUS_DB_SERVER` flips. Owed: dev-lane re-time after merge |
 | 5 | Ben | point the module's `sam-search` at the lane `bin/` (rollback: repoint at the conda wrapper) | conda and lane outputs and timings compared side by side first; re-time (ledger 20) with the SIF `.pyc` follow-on |
 | 6 | Ben | remove the install-root `.env` once nothing reads it; rotate `pguser` | no reader of the root `.env` left |
 
@@ -200,6 +201,25 @@ The dev lane stays csgteam-only (all 0600) until a dev reader exists on `sam_dev
   (copy to a temp file beside the target, then `mv`);
 - prints the final `ls -l` / `getfacl` table and the `NHD_DEBUG=1` layer list as csgteam;
 - `--rollback` restores the newest `.bak-*` of each file.
+
+### 6b. Incident, 2026-10-09 17:06–18:06 (prod lane down)
+
+- **What broke:** at 17:06 two csgteam-owned files were truncated to 0 bytes:
+  - `containers/ncar-hpc-deploy/libexec/ncar-hpc-deploy`;
+  - the prod lane's current image `lanes/prod/images/samuel-main-c7a66c68ca35.sif`.
+- **Effect:** every tick was a silent no-op (exit 0, no log) until the script was restored at
+  17:59. The 18:00 and 18:05 ticks then failed with `image format not recognized`.
+- **Missed work:** collectors (a status gap of about an hour), `jobhist-sync` rapid (it catches up
+  incrementally) and the 17:18 hourly `accounting-comp`.
+- **Cause:** not chased (Ben). It coincided with a `git pull` and `source etc/config_env.sh` in
+  the install root.
+- **Recovery:**
+  - `git checkout -- containers/ncar-hpc-deploy/libexec/ncar-hpc-deploy` as csgteam;
+  - `ncar-hpc-deploy update --lane prod`, which blessed `samuel-main-2a370bd0d5e3` (`main` @ `581c42f0`).
+- **Trap:** run `ncar-hpc-deploy` as `sudo -u csgteam bash -lc '...'`. A bare `sudo -u csgteam`
+  has no `/opt/pbs/bin` on `PATH`, so the collectors smoke fails with exit 127.
+- **Gap:** `status` does not flag a 0-byte script or image. A tick that does nothing looks healthy
+  until `tick.rapid` goes stale.
 
 ## 7. Decisions open
 
