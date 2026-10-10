@@ -57,10 +57,11 @@ _FACILITY_MANAGER = frozenset({
     P.VIEW_FACILITIES, P.VIEW_USERS, P.VIEW_GROUPS,
 })
 
-# What any API key can reach today: the union the token-accepting
-# legacy-compat blueprints declare (api/v1 fstree_access, project_access,
-# directory_access, disk_quota, queue, wallclock_exemption, users, fairshare).
-_API_LEGACY = frozenset({
+# What the Systems-Integration consumers (ssg's PBS integration, heuv) read: the
+# union the token-accepting legacy-compat blueprints declare (api/v1 fstree_access,
+# project_access, directory_access, disk_quota, queue, wallclock_exemption, users,
+# fairshare). A key holds it only by an explicit grant.
+_API_SYSTEMS_INTEGRATION = frozenset({
     P.VIEW_USERS, P.VIEW_PROJECTS, P.VIEW_RESOURCES, P.VIEW_ALL_JOB_DATA,
 })
 
@@ -82,8 +83,8 @@ DEFAULT_ROLES = (
             description='Read-only access to the admin dashboards.'),
     RoleDef('facility_manager', _FACILITY_MANAGER,
             description='Provision and manage projects and allocations; grant per facility.'),
-    RoleDef('api_legacy', _API_LEGACY,
-            description='What the legacy integration endpoints declare; every key held this before enforcement.'),
+    RoleDef('api_systems_integration', _API_SYSTEMS_INTEGRATION,
+            description='The Systems-Integration read APIs (queue, fstree, directory/project access, ...).'),
     RoleDef('api_collector', frozenset({P.MANAGE_SYSTEM_STATUS, P.MANAGE_CHARGE_SUMMARIES}),
             description='Status and charge-summary ingest.'),
     RoleDef('api_admin', frozenset({P.SYSTEM_ADMIN}),
@@ -99,6 +100,8 @@ DEFAULT_GRANTS = (
     GrantDef('user', 'mcjones', role='viewer'),
     GrantDef('user', 'sureshm', role='facility_manager', facility='WNA'),
     GrantDef('apikey', 'collector', role='api_collector'),
+    GrantDef('apikey', 'ssg', role='api_systems_integration'),
+    GrantDef('apikey', 'heuv', role='api_systems_integration'),
 )
 
 #: Permissions no default role grants. A new Permission goes into a role above

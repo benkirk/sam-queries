@@ -167,9 +167,9 @@ def _set_api_identity(ident: dict) -> None:
 
 def api_key_allowed(ident: dict, permission: Optional[Permission]) -> bool:
     """The token-path permission check. Only ``RBAC_SOURCE=db`` enforces it:
-    a key then needs ``permission`` through a ``samuel_role_grant`` row
-    (``sam-admin rbac --seed-keys`` gives every key ``api_legacy``). In
-    ``defaults`` mode any valid key passes, as it always has."""
+    a key then needs ``permission`` through an explicit ``samuel_role_grant``
+    row (``sam-admin rbac --grant apikey:NAME``). In ``defaults`` mode any
+    valid key passes."""
     if permission is None or current_app.config.get('RBAC_SOURCE') != 'db':
         return True
     from webapp.utils.rbac import active_catalog
