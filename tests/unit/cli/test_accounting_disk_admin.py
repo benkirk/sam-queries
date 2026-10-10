@@ -606,6 +606,39 @@ class TestDiskAdminCli:
         session.expire_all()
         assert session.get(DiskChargeSummaryStatus, snap).current is True
 
+    def test_snapshot_is_not_current_while_its_rows_are_written(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        """Readers must keep the previous scan mid-import: the date turns current only at the end."""
+        from cli.accounting.commands import AccountingAdminCommand
+
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        snap = DISK_CHARGING_TIB_EPOCH
+        existing = session.get(DiskChargeSummaryStatus, snap)
+        if existing is not None:
+            existing.current = True   # a re-run of a posted date
+            session.flush()
+        f = _write_acct(tmp_path, snap, project.projcode, lead.username, kib=1024 * 1024)
+
+        real_write = AccountingAdminCommand._write_disk_activity_and_charge
+        seen = []
+
+        def record_flag(self, *args, **kwargs):
+            seen.append(self.session.get(DiskChargeSummaryStatus, kwargs['snap_date']).current)
+            return real_write(self, *args, **kwargs)
+
+        monkeypatch.setattr(AccountingAdminCommand, '_write_disk_activity_and_charge', record_flag)
+        result = runner.invoke(cli, [
+            'accounting', '--disk',
+            '--resource', resource.resource_name,
+            '--user-usage', str(f),
+            '--date', snap.isoformat(),
+        ])
+        assert result.exit_code == 0, result.output
+        assert seen == [False]
+        session.expire_all()
+        assert session.get(DiskChargeSummaryStatus, snap).current is True
+
 
 
 def _write_acct_rows(tmp_path: Path, snap: date,

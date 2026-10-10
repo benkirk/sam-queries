@@ -112,24 +112,17 @@ class DiskChargeSummaryStatus(Base):
 # Snapshot status helpers
 # ============================================================================
 
-def mark_disk_snapshot_current(session, activity_date) -> None:
-    """Mark ``activity_date`` as a valid disk snapshot (``current=TRUE``).
+def mark_disk_snapshot_current(session, activity_date, current: bool = True) -> None:
+    """Upsert ``activity_date``'s status row; other dates' flags are untouched (they are per-date).
 
-    Upserts only the given date. Does NOT touch any other row's
-    ``current`` flag — that flag is per-date in the legacy schema, not
-    a single-row pointer. Flipping prior rows to ``current=FALSE``
-    would tell legacy reports that every historical date needs
-    recalculation
-    (cf. ``findInvalidDiskChargeSummaryDates``); see
-    ``DiskChargeSummaryStatus`` docstring for the full semantics.
-
-    Does NOT commit — caller wraps in ``management_transaction``.
+    ``current=False`` registers a date whose rows are still being written, so readers keep the
+    previous scan. Does NOT commit: the caller wraps it in ``management_transaction``.
     """
     existing = session.get(DiskChargeSummaryStatus, activity_date)
     if existing is None:
-        session.add(DiskChargeSummaryStatus(activity_date=activity_date, current=True))
+        session.add(DiskChargeSummaryStatus(activity_date=activity_date, current=current))
     else:
-        existing.current = True
+        existing.current = current
     session.flush()
 
 

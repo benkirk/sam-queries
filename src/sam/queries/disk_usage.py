@@ -22,7 +22,7 @@ from __future__ import annotations
 from datetime import date as _stdlib_date
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session
 
 from sam.accounting.accounts import Account, CurrentDiskUsage
@@ -57,8 +57,10 @@ def _load_disk_snapshot_by_account(
          ``current=True`` row.
       2. ONE bulk aggregate over ``DiskChargeSummary`` at that date,
          keyed by ``account_id`` (sums bytes, terabyte_years, files).
-      3. ONE ``max(activity_date)`` per **resource** of the accounts that
-         lacked a row at the candidate date (a resource scanned on another day).
+      3. ONE latest date per **resource** of the accounts that lacked a row at
+         the candidate date (a resource scanned on another day): its latest
+         ``current=True`` date, so a scan still being written is not read, else
+         its latest date.
       4. ONE bulk aggregate for those accounts at their resource's date. An
          account with no row there is gone: legacy's rule (one snapshot date
          per resource), so a deleted directory's last scan never counts forever.
@@ -108,8 +110,11 @@ def _load_disk_snapshot_by_account(
     if missing:
         resource_of = dict(session.query(Account.account_id, Account.resource_id)
                            .filter(Account.account_id.in_(missing)).all())
-        latest = dict(session.query(Account.resource_id, func.max(DiskChargeSummary.activity_date))
+        day = DiskChargeSummary.activity_date
+        latest_current = func.max(case((DiskChargeSummaryStatus.current == True, day)))  # noqa: E712
+        latest = dict(session.query(Account.resource_id, func.coalesce(latest_current, func.max(day)))
                       .join(Account, Account.account_id == DiskChargeSummary.account_id)
+                      .join(DiskChargeSummaryStatus, DiskChargeSummaryStatus.activity_date == day)
                       .filter(Account.resource_id.in_(set(resource_of.values())))
                       .group_by(Account.resource_id).all())
         pairs = [(aid, latest[rid]) for aid, rid in resource_of.items() if latest.get(rid)]
