@@ -683,8 +683,10 @@ class User(Base, TimestampMixin, SessionMixin):
     def create(cls, session, *, username: str, unix_uid: int, upid: Optional[int] = None,
                active: bool = True) -> 'User':
         """Insert a user mirrored from the identity service; ``apply_sync`` fills the rest."""
+        # Legacy stores the common group for every new user (its getter defaults NULL to 1000).
+        from .groups import DEFAULT_COMMON_GROUP_GID
         user = cls(username=username, unix_uid=unix_uid, upid=upid, active=active,
-                   locked=False, charging_exempt=False)
+                   locked=False, charging_exempt=False, primary_gid=DEFAULT_COMMON_GROUP_GID)
         session.add(user)
         session.flush()
         return user
