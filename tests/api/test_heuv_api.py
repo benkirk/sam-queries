@@ -147,16 +147,19 @@ def test_search_never_400s(heuv_client):
     assert _get(heuv_client, 'search/projcode?fragment=a&username=nosuchuserxx').data == b'[]'
 
 
-def test_blueprint_is_exempt_from_the_rate_limit(heuv_client, app):
+def test_blueprint_is_rate_limited(heuv_client, app):
+    """Unlike ldapsync, HEUV rides the authed limit. Legacy never sent a 429, so the app-wide body stands."""
     with app.app_context():
         facade.limiter.enabled = True
         app.config['RATELIMIT_ENABLED'] = True
         old = app.config['RATELIMIT_AUTHED']
         app.config['RATELIMIT_AUTHED'] = '2 per minute'
         try:
-            for _ in range(4):
-                assert _get(heuv_client, 'search/projcode?fragment=zzzz').status_code == 200
+            codes = [_get(heuv_client, 'search/projcode?fragment=zzzz').status_code for _ in range(4)]
+            limited = _get(heuv_client, 'search/projcode?fragment=zzzz')
         finally:
             facade.limiter.enabled = False
             app.config['RATELIMIT_ENABLED'] = False
             app.config['RATELIMIT_AUTHED'] = old
+    assert codes[:2] == [200, 200] and 429 in codes
+    assert limited.status_code == 429 and limited.get_json()['error'] == 'rate_limit_exceeded'

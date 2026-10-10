@@ -459,8 +459,7 @@ def create_app(*, config_overrides: dict | None = None):
     # peak at ~350 PUTs/min, so the blueprint is exempt from the global limit.
     limiter.limiter.exempt(api_ldapsync_bp)
     app.register_blueprint(api_ldapsync_bp, url_prefix='/api/protected/admin')
-    # The researcher portal's legacy HEUV prefix: two trusted callers, ~125 GETs a day.
-    limiter.limiter.exempt(api_heuv_bp)
+    # The researcher portal's legacy HEUV prefix: ~125 GETs a day, under the authed limit.
     app.register_blueprint(api_heuv_bp, url_prefix='/api/protected/heuv/v1')
 
     # Register centralized formatting filters (fmt_number, fmt_pct, fmt_date, fmt_size)
