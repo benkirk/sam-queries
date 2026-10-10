@@ -1480,13 +1480,37 @@ ran with provisioning off, so it never exercised this path.
     - Inside the SIF, wall time is import-bound: `import cli` takes 1.0 s on Casper and 1.3 s on
       Derecho, because the image ships no `.pyc` (the held SIF follow-on).
 
-**Follow-ons (held; Ben, 2026-10-09):**
+**Follow-ons:**
 
-- [ ] Lazy subcommands (a Click `LazyGroup`, and no `system_status`/numpy import for
-  `SOURCE_KINDS`): `import cli.cmds.search` 0.47 s → ~0.31 s warm, more on a cold GLADE cache.
-  Decide after re-timing the conda env on Casper and Derecho with this PR deployed.
-- [ ] The SIF lanes: `RUN python -m compileall -q src` after the editable install (about −0.3 s per
-  run). Evaluate together with the lane `env` permissions, once the SIF is the users' path.
+- [x] The SIF bytecode (`compileall` in the `base` stage, every image), in #782 with the layered
+  lane env. It is real but small: the SIF loads 157 `src` modules from `.pyc` and compiles none,
+  and that saves 0.1-0.2 s. #782's local A/B (1.60 → 0.51 s) was wrong: `-X pycache_prefix`
+  hid the libraries' bytecode as well as `src`'s.
+- **The SIF path, start to now** (`project SCSG0001`, same wrapper, prod public layer, provisioning
+  on, 2026-10-09):
+
+  | image | Casper | Derecho |
+  |---|---|---|
+  | prod lane, `main` @ `581c42f0` (143 stmts, no `.pyc`) | 3.0 s | 3.8 s |
+  | dev lane, #779 + #780 (`bdfa0c41`, 43 stmts) | 2.40 s | 2.89 s |
+  | dev lane, + #782 bytecode (`ca101e8a`) | **2.33 s** | **2.70 s** |
+
+  Medians of 5 (the 3.0 / 3.8 s row: 1–3 runs). That is −22% on Casper and −29% on Derecho, nearly
+  all from #779's statement count. `--help` is 1.38 / 1.68 s. The k8s `import cli.cmds.admin` went
+  1.00 → 0.95 s.
+- **Where Casper's 2.33 s goes:** apptainer start ~0.2 s, imports ~0.8 s, the rest is the query.
+  Import costs (cumulative, overlapping):
+  - `cli.core.context` 281 ms, mostly `sqlalchemy.orm`, which any query needs;
+  - numpy 176 ms, loaded only because `system_status/__init__` imports its queries eagerly
+    (`SOURCE_KINDS`);
+  - `cli.user.commands` 170 ms;
+  - `cli.contracts.commands` 111 ms (`requests`).
+- [ ] **Tabled (Ben, 2026-10-09):** lazy subcommands (a Click `LazyGroup`) and no numpy for
+  `SOURCE_KINDS`, worth an estimated 0.3-0.45 s per run on every path, including conda. Revisit if
+  users report start time once the module points at the lanes (plan step 5).
+- **Comparing for step 5:** the conda env measured 2.02 s (Casper) and 2.46 s (Derecho) with 143
+  statements, before #779 reached it. The side-by-side for the module repoint needs the conda env
+  re-timed after the promotion, because the SIF adds ~0.2 s of container start.
 
 **Open:**
 
