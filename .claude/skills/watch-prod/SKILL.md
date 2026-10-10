@@ -219,7 +219,8 @@ NOT a cluster CronJob — the remote cron is hands-off (step 5). Cadence ~30 min
 When samuel-dev is watched too, the **same** timer runs both ticks
 (`scripts/cirrus_watch.sh --context nwc1` then `--env dev`) and reports one line
 each; a second timer for dev is a duplicate, not a pair. The known-open list
-belongs in the state-directory file (step 3), not in the prompt.
+belongs in the state-directory file (step 3), not in the prompt. Legacy SAM rides the
+same timer too: `scripts/tomcat_watch.sh` after the dev tick (`watch-tomcat` skill).
 
 A dropped VPN makes a tick a clean no-op (step 1), so the timer survives an
 overnight VPN outage without alarms.
