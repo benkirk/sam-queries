@@ -333,6 +333,14 @@ DELETE rac FROM role_api_credentials rac JOIN role r USING (role_id)
 
 Then `sam-admin cache --refresh` is **not** needed (API-key map has its own TTL), but confirm `admin` gets 403 on a HEUV route afterwards.
 
+**samuel-dev** got the same grant on 2026-10-10 by a direct row on CNPG `sam_dev` (Ben chose it over `make refresh-dev`, which would reset the LDAP sync soak). A refresh from a pre-grant clone drops it again. Revoke there (Postgres):
+
+```sql
+DELETE FROM role_api_credentials rac USING role r, api_credentials a
+  WHERE rac.role_id = r.role_id AND rac.api_credentials_id = a.api_credentials_id
+    AND r.name = 'ROLE_API_HEUV' AND a.username = 'admin';
+```
+
 ## 13. Open questions for Ben
 
 1. §7 g: the fstree/rolling-usage threshold divisor is one day shorter than legacy's. Fix fstree too (changes its live output) or keep two divisors?
