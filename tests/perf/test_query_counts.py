@@ -398,6 +398,24 @@ def test_project_get_user_count_is_one_statement(session, count_queries):
     assert stats.count == 1, f"get_user_count: {stats.summary()}"
 
 
+
+def test_project_users_is_flat_in_members(session, count_queries):
+    """One membership query plus one batched User load; it was ~5 statements per member."""
+    from sqlalchemy import func
+    from sam import Project
+    from sam.accounting.accounts import Account, AccountUser
+    project_id = (session.query(Account.project_id)
+                  .join(AccountUser, AccountUser.account_id == Account.account_id)
+                  .filter(AccountUser.end_date.is_(None))
+                  .group_by(Account.project_id)
+                  .order_by(func.count(AccountUser.user_id).desc()).limit(1).scalar())
+    project = session.get(Project, project_id)
+    session.expire_all()
+    with count_queries() as stats:
+        members = project.users
+    assert len(members) > 20
+    _assert_within("project_users", stats)
+
 def test_cli_build_project_core(session, count_queries, perf_active_project):
     from cli.project.builders import build_project_core, build_project_detail
     projcode = perf_active_project.projcode

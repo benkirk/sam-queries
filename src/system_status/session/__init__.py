@@ -59,6 +59,7 @@ def init_status_db_defaults():
         username=username,
         password=password,
         host=server,
+        port=int(os.environ['STATUS_DB_PORT']) if os.environ.get('STATUS_DB_PORT') else None,
         database=database,
     )
 
@@ -97,7 +98,7 @@ def create_status_engine(input_connection_string: str = None):
     # Same connect_args as every other SAM engine (SSL per driver, bounded
     # connect, libpq keepalives), so the CLI and the CronJob cannot hang on a
     # dead status DB any more than the webapp can.
-    from sam.session import connect_args as _connect_args
+    from sam.session import connect_args as _connect_args, read_only_flag
     require_ssl = os.getenv('STATUS_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')
     driver = os.getenv('STATUS_DB_DRIVER', 'mysql').lower()
 
@@ -106,7 +107,7 @@ def create_status_engine(input_connection_string: str = None):
         echo=False,  # Set to True for SQL debugging
         pool_pre_ping=True,
         pool_recycle=3600,
-        connect_args=_connect_args(driver, require_ssl)
+        connect_args=_connect_args(driver, require_ssl, read_only=read_only_flag('STATUS_DB_READ_ONLY'))
     )
     SessionLocal = sessionmaker(bind=engine)
     return engine, SessionLocal

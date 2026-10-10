@@ -412,31 +412,39 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
             if au.end_date is None or au.end_date >= check_date
         ]
 
-    @property
-    def account_linked_users(self) -> List['User']:
-        """Deduplicated users holding an unended ``account_user`` row; excludes a rowless lead or admin."""
-        return list({au.user for au in self.active_account_users() if au.user})
-
-    @property
-    def users(self) -> List['User']:
-        """Everyone who belongs to the project: the lead, the admin, and every account-linked user."""
-        s = set(self.account_linked_users)
-        s.update(u for u in (self.lead, self.admin) if u is not None)
-        return list(s)
-
-    def get_user_count(self) -> int:
-        """``len(self.users)`` in one statement; loading the users costs ~5 per member."""
+    def _member_ids(self, *, rows_only: bool = False) -> set:
+        """User ids with an unended ``account_user`` row here, plus the lead and admin unless ``rows_only``."""
         ids = set(self.session.scalars(
             select(AccountUser.user_id).join(Account).where(
                 Account.project_id == self.project_id,
                 or_(AccountUser.end_date.is_(None), AccountUser.end_date >= datetime.now()))
         ))
-        ids.update(i for i in (self.project_lead_user_id, self.project_admin_user_id) if i is not None)
-        return len(ids)
+        if not rows_only:
+            ids.update(i for i in (self.project_lead_user_id, self.project_admin_user_id) if i is not None)
+        return ids
+
+    def _users_with_ids(self, ids: set) -> List['User']:
+        # One IN query: walking account.users -> au.user loaded each member alone, ~5 statements apiece.
+        from ..core.users import User
+        return self.session.query(User).filter(User.user_id.in_(ids)).all() if ids else []
+
+    @property
+    def account_linked_users(self) -> List['User']:
+        """Deduplicated users holding an unended ``account_user`` row; excludes a rowless lead or admin."""
+        return self._users_with_ids(self._member_ids(rows_only=True))
+
+    @property
+    def users(self) -> List['User']:
+        """Everyone who belongs to the project: the lead, the admin, and every account-linked user."""
+        return self._users_with_ids(self._member_ids())
+
+    def get_user_count(self) -> int:
+        """``len(self.users)`` without loading anyone."""
+        return len(self._member_ids())
 
     def has_user(self, user: 'User') -> bool:
         """True when *user* holds an unended row on this project (being lead or admin is not enough)."""
-        return user in self.account_linked_users
+        return user.user_id in self._member_ids(rows_only=True)
 
     @property
     def facility_name(self) -> Optional[str]:

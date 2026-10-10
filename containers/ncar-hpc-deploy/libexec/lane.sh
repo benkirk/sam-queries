@@ -53,20 +53,34 @@ nhd_load_apptainer() {
     module load apptainer >/dev/null 2>&1 || nhd_die "module load apptainer failed"
 }
 
-# apptainer exec in IMAGE with the lane env; caller supplies the command.
+# Tools refused, rather than run on the public layer, when env.<tool> exists but is unreadable.
+NHD_GATED_TOOLS="sam-admin jobhist-sync"
+
+# apptainer exec in IMAGE with the lane's env layers; caller supplies the command.
+# Layers: lanes/<lane>/env (readers, any user), then env.<job> when this user can read it.
 nhd_exec() {
     local image="$1"; shift
-    [[ -e "${image}" ]] || nhd_die "no image at ${image} (run: ncar-hpc-deploy update --lane ${NHD_LANE})"
+    [[ -s "${image}" ]] || nhd_die "no image, or an empty one, at ${image} (run: ncar-hpc-deploy update --lane ${NHD_LANE})"
     [[ -r "${NHD_ENV_FILE}" ]] || nhd_die "missing lane env ${NHD_ENV_FILE}"
+    local layers=("${NHD_ENV_FILE}") overlay="${NHD_ENV_FILE}.${NHD_JOB}"
+    if [[ -n "${NHD_JOB}" && -r "${overlay}" ]]; then
+        layers+=("${overlay}")
+    elif [[ -n "${NHD_JOB}" && -e "${overlay}" && " ${NHD_GATED_TOOLS} " == *" ${NHD_JOB} "* ]]; then
+        nhd_die "${NHD_JOB} needs read access to ${overlay} (group $(ls -lLd "${overlay}" | awk '{print $4}'))"
+    fi
     nhd_load_apptainer
 
-    # env.<job> overlays the lane env for one job, e.g. a DB writer role only jobhist-sync needs.
-    local env_file="${NHD_ENV_FILE}"
-    if [[ -n "${NHD_JOB}" && -r "${NHD_ENV_FILE}.${NHD_JOB}" ]]; then
-        env_file=$(umask 077; mktemp "${NHD_STATE}/.env.${NHD_JOB}.XXXXXX") || nhd_die "mktemp failed"
-        cat "${NHD_ENV_FILE}" "${NHD_ENV_FILE}.${NHD_JOB}" > "${env_file}"
-        trap 'rm -f "'"${env_file}"'"' EXIT
-    fi
+    # Merged privately (a plain user cannot write state/). Signals become exits so the EXIT
+    # trap removes the secrets; never exec apptainer here, which would skip the traps.
+    local env_file rc
+    env_file=$(umask 077; mktemp "${TMPDIR:-/tmp}/nhd-env.XXXXXX") || nhd_die "mktemp failed"
+    trap 'rm -f "'"${env_file}"'"' EXIT
+    trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
+    # awk 1, not cat: a layer without a final newline would fuse with the next one's first line.
+    awk 1 "${layers[@]}" > "${env_file}" || nhd_die "cannot merge ${layers[*]}"
+    [[ -n "${NHD_DEBUG}" ]] && echo "ncar-hpc-deploy: env layers: ${layers[*]#"${NHD_ROOT}/"}" >&2
+    local mpl="${NHD_STATE}/mpl"
+    [[ -w "${NHD_STATE}" ]] || mpl="${TMPDIR:-/tmp}/mpl-$(id -un)"
 
     local binds=(-B /glade)
     local d
@@ -85,8 +99,11 @@ nhd_exec() {
     apptainer --quiet exec --cleanenv \
         "${binds[@]}" \
         --env-file "${env_file}" \
-        --env "NCAR_HOST=$(nhd_host),TZ=${NCAR_HPC_DEPLOY_TZ:-America/Denver},NHD_LANE=${NHD_LANE},NHD_STATE=${NHD_STATE},NHD_LOGS=${NHD_LOGS},MPLCONFIGDIR=${NHD_STATE}/mpl" \
+        --env "NCAR_HOST=$(nhd_host),TZ=${NCAR_HPC_DEPLOY_TZ:-America/Denver},NHD_LANE=${NHD_LANE},NHD_STATE=${NHD_STATE},NHD_LOGS=${NHD_LOGS},MPLCONFIGDIR=${mpl}" \
         --env "NHD_COLLECTORS=$(nhd_collectors),NHD_SPOOL=${NHD_STATE}/spool/$(nhd_host)" \
         --pwd "${NHD_PWD:-${PWD}}" \
         "${image}" "$@"
+    rc=$?
+    rm -f "${env_file}"
+    return ${rc}
 }

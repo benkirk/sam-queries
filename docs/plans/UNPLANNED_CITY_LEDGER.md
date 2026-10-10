@@ -1453,6 +1453,33 @@ per command and attribute them to source lines; the same scripts ran on Casper.
 - `user_line` as a shared helper: the project listing's row has a different shape, so it stays
   local to `user/display.py`.
 
+**Re-timed after deploy** (conda env, prod `sam-sql`, best of 3, warm, 2026-10-09; Derecho cold import 3.8 s):
+
+| | before | Casper | Derecho |
+|---|---|---|---|
+| `user benkirk --list-projects` | 110 stmts (test DB) | 1.08 s, 10 stmts | 1.47 s, 10 |
+| `project SCSG0001` | 1.9 s, 158 stmts | 2.02 s, **143** | 2.46 s, 143 |
+| `--help` | 0.57 s | 0.66 s | 0.94 s |
+
+`project <code>` did not move. On HPC hosts, `NCAR_HOST` turns the provisioning check on, and
+`check_project_provisioning` reads `project.users`, the same per-member walk. The parity capture
+ran with provisioning off, so it never exercised this path.
+
+- [x] Follow-up PR: `Project.users` / `account_linked_users` load their `User`s in one `IN` query
+  behind `_member_ids()` (the one membership rule). `get_user_count` / `has_user` become id-set
+  checks.
+  - Equal to the old walk on 600 projects, on both backends.
+  - Parity capture, provisioning on and off, both backends: 0 differences.
+  - `project.users` on the 187-member project goes 62 → 15 statements (perf baseline
+    `project_users`). `project SCSG0001` with provisioning on goes 142 → 42.
+  - **Dev lane, 2026-10-09** (#779 + #780 image `samuel-staging-7b8d9070b57e`, prod public read-only
+    layer, provisioning on, best of 3):
+    - `project SCSG0001` went from 143 statements / 0.86 s DB to **43 / 0.31 s** (Casper 1.69 s,
+      Derecho 2.11 s).
+    - `user --list-projects` went from 10 to 11.
+    - Inside the SIF, wall time is import-bound: `import cli` takes 1.0 s on Casper and 1.3 s on
+      Derecho, because the image ships no `.pyc` (the held SIF follow-on).
+
 **Follow-ons (held; Ben, 2026-10-09):**
 
 - [ ] Lazy subcommands (a Click `LazyGroup`, and no `system_status`/numpy import for
