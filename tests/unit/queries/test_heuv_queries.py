@@ -284,3 +284,12 @@ def test_usernames_are_day_granular(session, when):
                       end_date=when.replace(hour=0, minute=0, second=1))      # ended this morning: still listed
     names = q.project_usage_report(session, project, now=when)['account_reports'][0]['usernames']
     assert early.username in names
+
+
+@pytest.mark.parametrize('first, second, limits', [(50, 80, [50, 80]), (50, None, [None, None])])
+def test_percent_limit_needs_both_thresholds(session, first, second, limits):
+    project = make_project(session)
+    account = _charged(session, project, _resource(session))
+    account.first_threshold, account.second_threshold = first, second
+    reports = q.project_usage_report(session, project, now=NOW)['account_reports'][0]['threshold_reports']
+    assert [r['percent_limit'] for r in reports] == limits

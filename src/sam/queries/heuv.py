@@ -11,7 +11,7 @@ from datetime import date, datetime
 from typing import Dict, List, Optional
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from sam.accounting.accounts import Account, AccountUser
 from sam.accounting.calculator import anchored_charges, usage_anchor
@@ -21,7 +21,7 @@ from sam.projects.projects import Project
 from sam.queries import account_status as st
 from sam.queries.rolling_usage import trailing_window_charges
 from sam.resources.resources import Resource
-from sam.security.access import AccessBranch
+from sam.security.access import AccessBranch, AccessBranchResource
 
 DATA_HOLDINGS = 'DataHoldings'
 ACCRUED_CHARGES = 'AccruedCharges'
@@ -112,9 +112,10 @@ def user_groups(session: Session, user: User) -> List[Dict]:
 def user_access(session: Session, user: User, now: Optional[datetime] = None) -> List[Dict]:
     """Login resources: access branches of the user's configurable resources that are themselves resources."""
     now = now or datetime.now()
-    resources = {au.account.resource for au in _memberships(session, user)
-                 if au.account.resource is not None and au.account.resource.configurable}
-    branch_names = {abr.access_branch.name for r in resources for abr in r.access_branch_resources}
+    resource_ids = {au.account.resource_id for au in _memberships(session, user)
+                    if au.account.resource is not None and au.account.resource.configurable}
+    branch_names = {name for (name,) in session.query(AccessBranch.name).join(AccessBranchResource)
+                    .filter(AccessBranchResource.resource_id.in_(resource_ids))} if resource_ids else set()
     homes = {h.resource_id: h.home_directory for h in user.resource_homes}
     shells = {s.resource_shell.resource_id: s.resource_shell.shell_name for s in user.resource_shells}
     out = {}
@@ -215,6 +216,23 @@ def wallclock_exemptions(user: User, username_as_sent: str, active: Optional[boo
 # search/projcode, project/{p}/hierarchy, report/project/{p}
 # ---------------------------------------------------------------------------
 
+def _preload_accounts(session: Session, projects: List[Project], members_of: Optional[Project] = None) -> List:
+    """Accounts with resource and allocations (and *members_of*'s members) in fixed queries.
+
+    The caller keeps the returned list: the identity map is weak, so dropping it re-lazy-loads.
+    """
+    loaded = (session.query(Project)
+              .options(selectinload(Project.accounts).joinedload(Account.resource).joinedload(Resource.resource_type),
+                       selectinload(Project.accounts).selectinload(Account.allocations))
+              .filter(Project.project_id.in_([p.project_id for p in projects])).all())
+    if members_of is not None:
+        loaded += (session.query(Project)
+                   .options(selectinload(Project.accounts).selectinload(Account.users)
+                            .joinedload(AccountUser.user).lazyload('*'))
+                   .filter(Project.project_id == members_of.project_id).all())
+    return loaded
+
+
 def _escape_like(text: str) -> str:
     return text.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
 
@@ -250,6 +268,7 @@ def report_project(project: Project, now: Optional[datetime] = None) -> Dict:
     """Every account (deleted included) with its non-future allocations (deleted included)."""
     now = now or datetime.now()
     start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    _keep = _preload_accounts(project.session, [project])  # noqa: F841
     accounts = []
     for account in project.accounts:
         if account.resource is None:
@@ -357,6 +376,8 @@ def _nodes(resource_name: str, chain: List[Project], now: datetime):
     return nodes
 
 
+
+
 def project_usage_report(session: Session, project: Project, now: Optional[datetime] = None) -> Dict:
     now = now or datetime.now()
     chain = []
@@ -364,6 +385,7 @@ def project_usage_report(session: Session, project: Project, now: Optional[datet
     while p is not None and p not in chain:
         chain.insert(0, p)
         p = p.parent
+    _keep = _preload_accounts(session, chain, members_of=project)  # noqa: F841
     resource_names = []
     for account in sorted(project.accounts, key=lambda a: a.account_id):
         res = account.resource
