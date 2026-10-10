@@ -346,8 +346,10 @@ way the data moves. Part 5 covers where it runs and how a commit gets there.
   plus `docs/plans/LDAP_SYNC_API.md`. The Appendix B census gives the legacy callers:
   ldapsync is live, AMIE is idle, HEUV is ported (PR #786, cutover pending), and XRAS has made 0 legacy calls since
   08-28.
-- **API:** decorator counts give core 39 routes (7 modules), legacy shapes 21 (6), fairshare 1,
-  and XRAS 11 (5). `/api/protected` carries ldapsync (admin) and HEUV.
+- **API:** decorator counts (2026-10-10) give core 39 routes (7 modules), legacy shapes 21 (6),
+  fairshare 1, XRAS 11 (5), identity sync 26 (3) and HEUV 13 (4): 111 in six families.
+  `/api/protected` carries ldapsync (admin) and HEUV at legacy's own paths; neither caller has
+  repointed, so no traffic figures yet.
 - **Collector key:** the `api_collector` role holds `MANAGE_SYSTEM_STATUS` and
   `MANAGE_CHARGE_SUMMARIES` (`src/sam/security/rbac_defaults.py`).
 - **Lanes:** prod's daily step is `jobhist-sync daily`. `accounting-disk` runs on casper only.
@@ -1164,6 +1166,15 @@ Each phase closes with render → visual review → commit in this repo
     with no selector has no username check. The first jobs shot leaked legend usernames, passed
     `--verify`, and was deleted from the scratchpad at once (§14).
   - `make qa` passes on all 12 decks; the combined deck is 224 slides.
+
+- **2026-10-10, the ldapsync and HEUV ports in Appendix B** (branch
+  `deck-appendix-b-ldapsync-heuv`). Both are legacy-exact, at legacy's own path, built on
+  schemas, and not yet called in production. Appendix B: six families and 111 routes, two table
+  rows, the new slide "Two more, same path" (parity, and the disk bug HEUV parity caught), and the
+  refresh, next-steps and TL;DR wording. Part 4 (minimal): the ldapsync slide is "Built, not yet
+  cut over", and "Four API families" became six. Traffic figures wait for the callers to repoint.
+  Still stale, not touched: Appendix D's rate-limit row ("API keys 120/min, every key-only
+  route"; ldapsync is exempt, HEUV is on the authed tier) and its CSRF-exempt count.
 
 ## 11. Voice, tone and the fun
 
