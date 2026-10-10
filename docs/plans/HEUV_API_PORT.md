@@ -18,7 +18,7 @@ first (legacy-API rules, "Output shaping", §7-§9, Comment Budget, Testing).
 - [x] 3. Lift the API-key test fixtures (`xras_keys`, `ldapsync_keys`) into one `role_keys(monkeypatch, {user: [roles]})` helper in `tests/xras_helpers.py`; both adopt it. Proof: xras + ldapsync tests green.
 - [x] 4. Schemas `src/sam/schemas/heuv.py` (+ `UtcDateTime` in `src/sam/schemas/wire.py`), exported from `schemas/__init__.py`.
 - [x] 5. Queries `src/sam/queries/heuv.py` + `User.legacy_full_name`. *(As built: `Project.search_by_pattern` gains `limit=None`, `escape=`, `member_username=`; factories `make_account_user`, `make_default_project`, `make_access_branch`. Local DB vs the 2026-10-10 legacy probe: 10 of 14 bodies byte-identical; the rest differ only by F3 order or snapshot data. `group` measured 248 ms locally (legacy 161): the `username=` bind pick stands.)*
-- [ ] 6. Blueprint `src/webapp/api/heuv/` registered in `src/webapp/run.py`, limiter-exempt.
+- [x] 6. Blueprint `src/webapp/api/heuv/` registered in `src/webapp/run.py`, limiter-exempt. *(The HTTP half of the step-7 tests lands here: `tests/api/test_heuv_api.py`, 27 tests, MySQL and Postgres.)*
 - [ ] 7. Tests `tests/api/test_heuv_api.py` + perf baseline `heuv_report_usage` in `tests/perf/baselines.json`.
 - [ ] 8. Parity `utils/parity --api heuv` (both directions, named normalizations); run against samuel-dev; write the ruleset-divergence statements for Ben (§7) and STOP for his decision before changing rules.
 - [ ] 9. Docs (§11), ledger entry, deck lines, CLAUDE.md net-zero edit.
