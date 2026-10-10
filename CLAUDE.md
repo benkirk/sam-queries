@@ -185,7 +185,7 @@ sam-queries/
   `register/handoff_mail.py`, ACCOUNT_REGISTRATION.md D22); the digest stays off.
 
 ### Security / Integration
-- **Role**, **ApiCredentials**, **RoleApiCredentials** — legacy; only the API-key role names (`ROLE_XRAS`, `ROLE_API_ADMIN`) are read
+- **Role**, **ApiCredentials**, **RoleApiCredentials** — legacy; only the API-key role names (`ROLE_XRAS`, `ROLE_API_ADMIN`, `ROLE_API_HEUV`) are read
 - **SamuelRole** / **SamuelRolePermission** / **SamuelRoleGrant** (`sam/security/samuel_roles.py`,
   DDL `scripts/sql/create_samuel_roles.sql`): the RBAC catalog — roles extend one parent,
   SYSTEM_ADMIN implies everything, a grant names a `user` / `group` / `apikey` (optionally one
@@ -233,7 +233,7 @@ Form-validation schemas are a separate concern — see §9 below; they live in
 ## API Endpoints (webapp `api/v1/`)
 
 Registered blueprints: `projects`, `users`, `charges`, `allocations`, `status`,
-`health`, `admin`, plus the **legacy-compat** set below and `api/ldapsync/` at `/api/protected/admin` (`sam-ldap-syncd`'s contract; `docs/apis/SYSTEMS_INTEGRATION_APIs.md` § 8).
+`health`, `admin`, plus the **legacy-compat** set below, `api/ldapsync/` at `/api/protected/admin` (`sam-ldap-syncd`'s contract; `docs/apis/SYSTEMS_INTEGRATION_APIs.md` § 8) and `api/heuv/` at `/api/protected/heuv/v1` (`docs/apis/HEUV_API.md`).
 
 Key endpoints (all JSON):
 - `GET /api/v1/users/`, `/users/<username>`, `/users/<username>/projects` — accept an
@@ -320,9 +320,9 @@ session.query(Machine).filter(Machine.decommission_date == None).all()
 | Custom hybrids (Resource, Machine, Queue, PanelSession, …) | commissioned / within date range |
 | `User.is_active` | `active == True AND locked == False` |
 
-**Exceptions**: `sam/queries/statistics.py` keeps `User.active == True` so `active_users`
-and `locked_users` stay separate counters; the identity sync (`sam/manage/{ldapsync,lifecycle,purge}.py`,
-`sam/queries/ldapsync.py`) reads `active` raw because legacy's rules do, and `is_active` would fold in `locked`.
+**Exceptions**: `sam/queries/statistics.py` keeps `User.active == True` so `active_users` and `locked_users`
+stay separate counters; the identity sync (`sam/manage/{ldapsync,lifecycle,purge}.py`, `sam/queries/ldapsync.py`)
+and HEUV's `role_logins` read `active` raw because legacy's rules do, and `is_active` would fold in `locked`.
 
 ### 6. Views
 Mark with `__table_args__ = {'info': {'is_view': True}}`. Never INSERT/UPDATE/DELETE.

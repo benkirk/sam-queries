@@ -13,7 +13,7 @@ The APIs: what callers can count on, and how we add to them.
 
 ::: {.notes}
 Route counts are decorator counts (src/webapp/run.py:437-453): core 39, legacy shapes 21,
-fairshare 1, XRAS 11. Nothing is mounted at /api/protected and there is no /api/v2.
+fairshare 1, XRAS 11. /api/protected carries ldapsync (admin) and HEUV; there is no /api/v2.
 login_or_token_required (src/webapp/utils/api_auth.py): keys are bcrypt-hashed, and a good check
 is cached because bcrypt costs ~260 ms. Under RBAC_SOURCE=db (prod) a key needs a
 samuel_role_grant for the route's Permission. RATELIMIT_M2M is 120 per minute, counted in Redis.

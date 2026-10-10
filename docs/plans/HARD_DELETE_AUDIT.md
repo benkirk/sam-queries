@@ -209,7 +209,7 @@ No SAMuel code removes a child from any of the 17, deletes a cascading parent, o
 | `allocation` | sysacct access + fairShareTree; `deleted` is ignored | End-date (end ≥ start); delete only inside legacy's guard |
 | `facility_resource` | Facility-on-resource membership | NULL the percentage (#698) |
 | `adhoc_group_tag`, `adhoc_system_account_entry` | Group/member on a branch; LDAP sync re-creates | Leave to LDAP |
-| `default_project` | heuv `/user/{u}/defaultproject` entry, no fallback | Uncertain — consumer unknown |
+| `default_project` | heuv `/user/{u}/defaultproject` entry, no fallback | Consumer known: the researcher portal (~500 calls/month); ported as HEUV `defaultproject`, PR #786 |
 | `user_resource_shell` / `_home`, `email_address`, `phone`, `responsible_party`, `product` | Override / contact / display; legacy deletes these itself | Delete is legacy-native |
 
 ## Open items (not part of the fix)

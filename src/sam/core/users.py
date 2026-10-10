@@ -107,21 +107,7 @@ class User(Base, TimestampMixin, SessionMixin):
 
     @classmethod
     def get_by_username(cls, session, username: str) -> Optional['User']:
-        """
-        Get a user by exact username match.
-
-        Args:
-            session: SQLAlchemy session
-            username: Exact username to search for
-
-        Returns:
-            User object if found, None otherwise
-
-        Example:
-            >>> user = User.get_by_username(session, 'jsmith')
-            >>> if user:
-            ...     print(f"Found: {user.full_name}")
-        """
+        """The user named ``username``, case-insensitively (``sam/sqlcompat.py`` collation contract), or None."""
         return session.query(cls).filter(cls.username == username).first()
 
     @classmethod
@@ -514,6 +500,12 @@ class User(Base, TimestampMixin, SessionMixin):
         """Return the user's full name."""
         parts = [self.first_name, self.middle_name, self.last_name]
         return ' '.join(p for p in parts if p)
+
+    @property
+    def legacy_full_name(self) -> str:
+        """Legacy Java ``User.getFullName``: nickname (else first name), middle, last; blank parts skipped."""
+        first = self.nickname if (self.nickname or '').strip() else self.first_name
+        return ' '.join(p for p in (first, self.middle_name, self.last_name) if p and p.strip())
 
     @property
     def display_name(self) -> str:

@@ -7,6 +7,9 @@ statements: the VALUES row-constructor spelling, the information_schema scope
 predicate, the string-aggregate (and the month key, the same on both). Expression
 constructors, for Core: the statement clock, and a LIKE that Postgres accepts under the nondeterministic
 `sam_ci` collation (ILIKE is rejected there).
+
+Collation contract: every MySQL `_ci` column is `sam_ci` on Postgres, so `==` on one is already
+case-insensitive on both backends and keeps its index; `func.lower()` is for `_bin` columns only.
 """
 from sqlalchemy import DateTime, func
 from sqlalchemy.ext.compiler import compiles

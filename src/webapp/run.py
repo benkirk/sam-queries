@@ -59,6 +59,7 @@ from webapp.api.v1.wallclock_exemption import bp as api_wallclock_exemption_bp
 from webapp.api.v1.admin import bp as api_admin_bp
 from webapp.api.xras import bp as api_xras_bp
 from webapp.api.ldapsync import bp as api_ldapsync_bp
+from webapp.api.heuv import bp as api_heuv_bp
 from webapp.config import get_webapp_config
 from webapp.logging_config import configure_logging
 
@@ -458,6 +459,8 @@ def create_app(*, config_overrides: dict | None = None):
     # peak at ~350 PUTs/min, so the blueprint is exempt from the global limit.
     limiter.limiter.exempt(api_ldapsync_bp)
     app.register_blueprint(api_ldapsync_bp, url_prefix='/api/protected/admin')
+    # The researcher portal's legacy HEUV prefix: ~125 GETs a day, under the authed limit.
+    app.register_blueprint(api_heuv_bp, url_prefix='/api/protected/heuv/v1')
 
     # Register centralized formatting filters (fmt_number, fmt_pct, fmt_date, fmt_size)
     import sam.fmt as fmt

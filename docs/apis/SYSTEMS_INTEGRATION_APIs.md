@@ -518,13 +518,16 @@ includes charges from all descendant sub-projects.  This matches the legacy Java
 
 **N-day threshold logic** (from `NDayUsagePeriod.java`):
 ```
-threshold_alloc = P × allocationAmount / (allocation_duration_days − 1)
+threshold_alloc = P × allocationAmount / (end_date − start_date, in calendar days)
 use_limit       = threshold_alloc × (account.first_threshold or second_threshold) / 100
 exceeded        = window_charges_in_P_days > use_limit
 ```
 where P ∈ {30, 90} days.  Threshold percentages come from `account.first_threshold`
 (30-day) and `account.second_threshold` (90-day).  Both are `NULL` for ~99.7% of
 accounts, so the threshold check is skipped for almost all accounts.
+The divisor is legacy's day count (364 for a year-long allocation), shared with the rolling
+windows and HEUV since 2026-10 (#786); `useLimitCharges`/`pctUsed` from earlier runs used 363,
+about 0.3% apart.
 
 **Parent → child propagation**: If a parent project's `accountStatus` is non-Normal,
 that status cascades to all child projects on the same resource (pre-order walk,
@@ -873,6 +876,8 @@ expiry back. Contract rules, levers and every deviation from legacy:
 Levers `LDAPSYNC_PURGE_ENABLED`, `LDAPSYNC_LIFECYCLE_ENABLED` and
 `LDAPSYNC_RESTORE_ON_REACTIVATE` ship off in `helm/values.yaml`. Operator undo:
 `sam-admin user <u> --deactivation`.
+
+The researcher portal's feed, `/api/protected/heuv/v1`, has its own page: [`HEUV_API.md`](HEUV_API.md).
 
 ---
 

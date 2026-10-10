@@ -14,7 +14,7 @@ project lead onto the new account as an AccountUser. So a freshly built
 from datetime import datetime, timedelta
 from typing import Optional
 
-from sam.accounting.accounts import Account
+from sam.accounting.accounts import Account, AccountUser
 from sam.accounting.adjustments import ChargeAdjustment, ChargeAdjustmentType
 from sam.accounting.allocations import (
     Allocation, AllocationTransaction, AllocationType,
@@ -25,7 +25,7 @@ from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
 from sam.projects.contracts import (
     Contract, ContractSource, NSFProgram, ProjectContract,
 )
-from sam.projects.projects import Project
+from sam.projects.projects import DefaultProject, Project
 from sam.resources.facilities import Facility, Panel
 from sam.resources.resources import Resource
 
@@ -356,6 +356,24 @@ def make_account(
         project_id=project.project_id,
         resource_id=resource.resource_id,
     )
+
+
+def make_account_user(session, account: Account, user: User, *,
+                      start_date: Optional[datetime] = None,
+                      end_date: Optional[datetime] = None) -> AccountUser:
+    """A membership row with explicit dates (start defaults to yesterday, end open)."""
+    au = AccountUser(account_id=account.account_id, user_id=user.user_id,
+                     start_date=start_date or datetime.now() - timedelta(days=1), end_date=end_date)
+    session.add(au)
+    session.flush()
+    return au
+
+
+def make_default_project(session, user: User, project: Project, resource: Resource) -> DefaultProject:
+    dp = DefaultProject(user_id=user.user_id, project_id=project.project_id, resource_id=resource.resource_id)
+    session.add(dp)
+    session.flush()
+    return dp
 
 
 def make_allocation(

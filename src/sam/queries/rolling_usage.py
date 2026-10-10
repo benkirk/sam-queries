@@ -7,8 +7,8 @@ computing trailing-N-day charge totals against prorated allocation amounts.
 trailing_window_charges() sums a trailing window per anchor through the shared
 batch_charges builder; fstree_access.py imports it for its threshold accounts.
 
-Formula (NDayUsagePeriod.java):
-    duration_days   = max((alloc_end - alloc_start).days - 1, 1)
+Formula (NDayUsagePeriod.java, legacy's day count: inclusive days - 1):
+    duration_days   = prorate_divisor(alloc_start, alloc_end, now)
     prorated_alloc  = window_days × allocated / duration_days
     pct_of_prorated = window_charges / prorated_alloc × 100
 """
@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from sam.accounting.calculator import batch_charges, usage_anchor
+from sam.queries.account_status import prorate_divisor
 from sam.enums import ResourceTypeName
 from sam.projects.projects import Project
 from sam.accounting.accounts import Account
@@ -238,7 +239,7 @@ def get_project_rolling_usage(
 
             if alloc_start is not None and allocated > 0:
                 alloc_end_dt  = alloc_end or now
-                duration_days = max((alloc_end_dt - alloc_start).days - 1, 1)
+                duration_days = prorate_divisor(alloc_start, alloc_end_dt, now)
                 prorated      = w * allocated / duration_days
                 pct           = round(charges / prorated * 100.0, 1) if prorated > 0 else 0.0
             else:
