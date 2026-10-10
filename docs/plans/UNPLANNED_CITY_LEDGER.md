@@ -1472,7 +1472,13 @@ ran with provisioning off, so it never exercised this path.
   - Parity capture, provisioning on and off, both backends: 0 differences.
   - `project.users` on the 187-member project goes 62 → 15 statements (perf baseline
     `project_users`). `project SCSG0001` with provisioning on goes 142 → 42.
-  - Re-time on the dev lane after the staging merge.
+  - **Dev lane, 2026-10-09** (#779 + #780 image `samuel-staging-7b8d9070b57e`, prod public read-only
+    layer, provisioning on, best of 3):
+    - `project SCSG0001` went from 143 statements / 0.86 s DB to **43 / 0.31 s** (Casper 1.69 s,
+      Derecho 2.11 s).
+    - `user --list-projects` went from 10 to 11.
+    - Inside the SIF, wall time is import-bound: `import cli` takes 1.0 s on Casper and 1.3 s on
+      Derecho, because the image ships no `.pyc` (the held SIF follow-on).
 
 **Follow-ons (held; Ben, 2026-10-09):**
 
