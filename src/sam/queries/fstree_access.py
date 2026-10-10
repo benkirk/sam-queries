@@ -33,6 +33,9 @@ from typing import Any, Dict, List, Optional, Set
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from sam.queries.account_status import (
+    CHARGE_STATUSES, NORMAL, charge_status, fstree_divisor, threshold_allocation,
+)
 from sam.queries.rolling_usage import trailing_window_charges
 
 
@@ -291,73 +294,6 @@ def _alloc_type_name(facility_code: str, allocation_type: str) -> str:
     return f'{facility_code}_{cleaned}'
 
 
-def _compute_status(
-    adjusted_usage: float,
-    allocation_amount: Optional[float],
-    first_threshold: Optional[int],
-    second_threshold: Optional[int],
-    alloc_start: Optional[datetime],
-    alloc_end: Optional[datetime],
-    window_charges_30: float,
-    window_charges_90: float,
-) -> str:
-    """
-    Compute accountStatus for rows with an active allocation.
-
-    Priority (matching DefaultAccountStatusCalculator.java):
-      1. "Overspent"             — total adjustedUsage > allocationAmount
-      2. "Exceed Two Thresholds" — both N-day windows exceed per-account thresholds
-      3. "Exceed One Threshold"  — exactly one N-day window exceeds its threshold
-      4. "Normal"                — default
-
-    N-day threshold formula (NDayUsagePeriod.java):
-      threshold_alloc = P × allocationAmount / (duration_days − 1)
-      use_limit       = threshold_alloc × (threshold_pct / 100)
-      exceeded        = window_charges > use_limit
-
-    Args:
-        adjusted_usage:    Total charges + adjustments (subtree rollup).
-        allocation_amount: Current active allocation amount.
-        first_threshold:   30-day threshold % from account.first_threshold (None -> skip).
-        second_threshold:  90-day threshold % from account.second_threshold (None -> skip).
-        alloc_start:       Allocation start_date.
-        alloc_end:         Allocation end_date (None for open-ended).
-        window_charges_30: Charges in last 30 days (0.0 when no threshold).
-        window_charges_90: Charges in last 90 days (0.0 when no threshold).
-    """
-    if allocation_amount is None:
-        return 'Normal'
-
-    # Priority 1: Overspent (includes alloc=0 with any usage, matching legacy behavior)
-    if adjusted_usage > allocation_amount:
-        return 'Overspent'
-
-    # Priority 2 & 3: N-day threshold checks (only when thresholds are set)
-    n_exceeded = 0
-    if (first_threshold is not None or second_threshold is not None) and alloc_start is not None:
-        now = datetime.now()
-        alloc_end_dt = alloc_end or now
-        duration_days = max((alloc_end_dt - alloc_start).days - 1, 1)
-
-        for period_days, threshold_pct, window_charges in (
-            (30,  first_threshold,  window_charges_30),
-            (90,  second_threshold, window_charges_90),
-        ):
-            if threshold_pct is None:
-                continue
-            threshold_alloc = period_days * allocation_amount / duration_days
-            use_limit = threshold_alloc * (threshold_pct / 100.0)
-            if window_charges > use_limit:
-                n_exceeded += 1
-
-    if n_exceeded == 1:
-        return 'Exceed One Threshold'
-    if n_exceeded >= 2:
-        return 'Exceed Two Thresholds'
-
-    return 'Normal'
-
-
 def _compute_threshold_data(
     allocation_amount: float,
     first_threshold: Optional[int],
@@ -368,31 +304,17 @@ def _compute_threshold_data(
     window_charges_90: float,
     now: datetime,
 ) -> Optional[Dict]:
-    """
-    Build the per-period threshold breakdown for inclusion in the resource dict.
+    """Per-period breakdown (``period30``/``period90``) for accounts with a threshold set, else None.
 
-    Called only for the small number of accounts (~12) with first_threshold or
-    second_threshold configured.  Shares the same NDayUsagePeriod.java formula
-    as _compute_status() but returns the full intermediate values.
-
-    Returns:
-        Dict with 'period30' and/or 'period90' sub-dicts, or None if no thresholds
-        are configured / allocation_amount is None.
-
-    Each period dict contains:
-        days           — window length (30 or 90)
-        thresholdPct   — configured threshold percentage (account.first/second_threshold)
-        windowCharges  — actual charges in the clamped window (int AU)
-        useLimitCharges— the maximum allowed charges for the period (int AU)
-        pctUsed        — windowCharges / useLimitCharges × 100, 1 decimal
+    Each period: ``days``, ``thresholdPct``, ``windowCharges`` and ``useLimitCharges`` (int AU),
+    ``pctUsed`` (window charges over the steady-burn share, 1 decimal).
     """
     if allocation_amount is None:
         return None
     if first_threshold is None and second_threshold is None:
         return None
 
-    alloc_end_dt = alloc_end or now
-    duration_days = max((alloc_end_dt - alloc_start).days - 1, 1)
+    duration_days = fstree_divisor(alloc_start, alloc_end, now)
 
     result: Dict = {}
     for period_days, threshold_pct, window_charges, key in (
@@ -401,7 +323,7 @@ def _compute_threshold_data(
     ):
         if threshold_pct is None:
             continue
-        steady_usage = period_days * allocation_amount / duration_days
+        steady_usage = threshold_allocation(period_days, allocation_amount, duration_days)
         use_limit = steady_usage * (threshold_pct / 100.0)
         pct_used = round(window_charges / steady_usage * 100.0, 1) if steady_usage > 0 else 0.0
         result[key] = {
@@ -701,11 +623,10 @@ def get_fstree_data(
         w90 = window_90.get(account_id, 0.0)
         th  = threshold_accounts.get(account_id)
 
-        account_status = _compute_status(
+        account_status = charge_status(
             adjusted_usage, allocation_amount,
-            th[0] if th else None, th[1] if th else None,
-            row.start_date, row.end_date,
-            w30, w90,
+            (th[0], th[1]) if th else (None, None), (w30, w90),
+            fstree_divisor(row.start_date, row.end_date, now) if row.start_date else None,
         )
 
         # Threshold breakdown (only for the ~12 accounts with configured thresholds)
@@ -765,7 +686,7 @@ def get_fstree_data(
     # ------------------------------------------------------------------
     # Parent -> child status propagation (pre-order per resource)
     # ------------------------------------------------------------------
-    _NON_NORMAL = {'Overspent', 'Exceed Two Thresholds', 'Exceed One Threshold'}
+    _NON_NORMAL = CHARGE_STATUSES - {NORMAL}
 
     for fac_data in facilities_dict.values():
         for at_data in fac_data['alloc_types'].values():
