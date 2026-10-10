@@ -1565,6 +1565,12 @@ angle, and parity against prod turned up a SAMuel bug.
   scan date (prod NCIS0001 2,527 -> 1,397 TB, legacy's and `df`'s figure).
 - [x] `utils/parity/clients.py`: three tolerance idioms -> one `allow=` tuple; `--api heuv` with a
   pacer for the shared limiter bucket.
+- [x] Pre-merge review (`bf7dcdc3`, `e53b2bb7`, `cfa6af4e`): the ingest registers a scan date
+  not current until its rows are written, and the loader's fallback skips such a date (accounts
+  read 0 mid-ingest); four parent-cascade tests (a parent account with no allocations is No
+  Account, legacy-exact); one `==` idiom on `_ci` columns, the contract in `sam/sqlcompat.py`.
+- [x] fstree's threshold divisor moved 363 -> 364 days with Q1; noted for its consumers in
+  `docs/apis/SYSTEMS_INTEGRATION_APIs.md` next to the formula.
 
 **Open:**
 
@@ -1582,6 +1588,8 @@ angle, and parity against prod turned up a SAMuel bug.
   dates only on EXTENSION (shows on legacy surfaces until each cutover).
 - [ ] Legacy rules HEUV reproduces, for Ben's follow-on plan: the parent cascade (a child reports
   No Account), deleted allocations in the usage tree, the 364-day divisor and 31-day window.
+- [ ] A disk file mixing dates keeps each row's own date; an account dated before its resource's
+  newest scan reads as gone. Not seen (Campaign_Store scans are weekly, single-date).
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
