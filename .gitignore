@@ -51,3 +51,6 @@ data/
 # after scripts/xras/scrub_payload.py. These patterns are the belt to that braces.
 xras_payloads_raw/
 *_payloads_raw/
+
+# api-demo connection settings hold an API key secret
+api-demo/sam.env

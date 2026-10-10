@@ -1,0 +1,2 @@
+# The examples source lib/connect.sh by a path relative to themselves.
+disable=SC1091
