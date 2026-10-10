@@ -20,7 +20,7 @@ first (legacy-API rules, "Output shaping", §7-§9, Comment Budget, Testing).
 - [x] 5. Queries `src/sam/queries/heuv.py` + `User.legacy_full_name`. *(As built: `Project.search_by_pattern` gains `limit=None`, `escape=`, `member_username=`; factories `make_account_user`, `make_default_project`, `make_access_branch`. Local DB vs the 2026-10-10 legacy probe: 10 of 14 bodies byte-identical; the rest differ only by F3 order or snapshot data. `group` measured 248 ms locally (legacy 161): the `username=` bind pick stands.)*
 - [x] 6. Blueprint `src/webapp/api/heuv/` registered in `src/webapp/run.py`, limiter-exempt. *(The HTTP half of the step-7 tests lands here: `tests/api/test_heuv_api.py`, 27 tests, MySQL and Postgres.)*
 - [x] 7. Tests `tests/api/test_heuv_api.py` + perf baseline `heuv_report_usage` in `tests/perf/baselines.json`.
-- [ ] 8. Parity `utils/parity --api heuv` (both directions, named normalizations); run against samuel-dev; write the ruleset-divergence statements for Ben (§7) and STOP for his decision before changing rules. *(2026-10-10: tool built — `utils/parity/heuv.py`, credential `SAM_HEUV_USER`/`SAM_HEUV_PASS` because `SAM_LEGACY_USER=ssg` gets 403 on HEUV. Dry run, legacy prod vs a local server of this branch on the local snapshot, 42 projects / 60 users: 12 of 14 route groups pass; the 2 failures and the only nonzero §7 counter are charge totals and project count, all explained by the older local data. Waiting on a samuel-dev deploy for the real run.)*
+- [ ] 8. Parity `utils/parity --api heuv` (both directions, named normalizations); run against samuel-dev; write the ruleset-divergence statements for Ben (§7) and STOP for his decision before changing rules. *(2026-10-10: tool built — `utils/parity/heuv.py`, credential `SAM_HEUV_USER`/`SAM_HEUV_PASS` because `SAM_LEGACY_USER=ssg` gets 403 on HEUV. Dry run, legacy prod vs a local server of this branch on the local snapshot, 42 projects / 60 users: 12 of 14 route groups pass; the 2 failures and the only nonzero §7 counter are charge totals and project count, all explained by the older local data. samuel-dev run 2026-10-10 on `sha-7470cc8`: results and statements in §7.1; waiting on Ben's decisions.)*
 - [ ] 9. Docs (§11), ledger entry, deck lines, CLAUDE.md net-zero edit.
 
 ---
@@ -237,7 +237,7 @@ Same rows as 5.4 pivoted: `[{"resourceName","projectAssignments":[{"projcode","p
 
 ## 7. Ruleset-divergence watchlist (P3: statement + counts for Ben, then stop)
 
-Ben, 2026-10-10: legacy bugs this port reproduces may get their own follow-on plan after the PR. Candidates so far: k (parent cascade hands a child No Account / No Allocation), j (deleted allocations count in legacy's usage tree), the one-day-shorter fstree divisor (g, §13 Q1).
+Ben, 2026-10-10: legacy bugs this port reproduces may get their own follow-on plan after the PR. Candidates so far: k (parent cascade hands a child No Account / No Allocation), j (deleted allocations count in legacy's usage tree), the one-day-shorter fstree divisor (g, §13 Q1), legacy's usage replay ignoring date-only ADJUSTMENT rows (§7.1, not reproduced).
 
 | | Where SAMuel may diverge | How to measure at step 8 |
 |---|---|---|
@@ -252,6 +252,38 @@ Ben, 2026-10-10: legacy bugs this port reproduces may get their own follow-on pl
 | j | **deleted allocations**: legacy's usage tree classifies every allocation row, deleted included (no Hibernate `where`), so a renew-with-replace leftover can be the "active" one; `queries/heuv.py` uses `Account.live_allocations`. `report/project` keeps deleted rows (visible contract, §5.9). | count usage rows whose active allocation differs. |
 | k | **parent cascade**: legacy hands a child the parent's non-Normal *charging* status, including No Account / No Allocation (live 2026-10-10: NCIS0014 and NCGD0071 `Data_Access` report `No Account` with their own active allocation, because the parent has no account there). Implemented as legacy; a candidate fix for Ben. | count rows whose status comes from an ancestor. |
 | i | status precedence: `DefaultAccountStatusCalculator.java` vs the lifted `_compute_status` (`fstree_access.py:294-358`: Overspent > Exceed Two > Exceed One > Normal; None amount -> Normal) + lifecycle statuses from SQL (`:115-229`: Waiting/Expired/No Account). Disabled and No Allocation have no SAMuel source yet. | count status mismatches by (legacy, new) pair. |
+
+### 7.1 samuel-dev parity results (2026-10-10, `sha-7470cc8`; P3 statements, Ben decides)
+
+`--api heuv` (42 projects, 60 users): 12 of 14 route groups pass. Every `user/*` route,
+`report/project`, `project/hierarchy`, `access` and `access/resource` is byte-identical
+after the named fixes (F2, F3, F7 fired). Counters a, d, e, f, g, h, i are **0**. p50 ms
+legacy / dev: `report/usage` 321 / 48, `report/project` 194 / 48, `group` 241 / **371** (the
+`username=` bind pick). A 200-project `report/usage` sweep (663 rows) explains every other
+difference as data, not rules:
+
+| | Rows | Cause |
+|---|---:|---|
+| identical or within named fixes | 583 | |
+| totalCharges short on dev, allocation older than the clone cutoff | 68 | `containers/sam-sql-dev/config.yaml` keeps 730 d of `comp_charge_summary`, 400 d of the rest; this also explains the 4 Overspent -> Normal flips (all 2022-2023 starts) |
+| totalCharges and window charges both differ, dev a few hours ahead | 11 | dev lane posts its own charges hourly |
+| legacy 500, port 200 with null threshold amounts | 2 | F1 (UPSU0047 is the 500 in the logs) |
+| `search/projcode` all: legacy 1,506, dev 1,500 | 6 | activated or created on prod after dev's snapshot |
+| totalCharges 162 vs 163, windows equal | 1 | rounding at .5 of a float sum; F4-like |
+| **active allocation end date differs** | **1** | **statement below** |
+
+**Statement (SVST0002 Casper).** Old: `report/usage` takes the allocation's dates and amount
+by replaying `allocation_transaction` and ignores date-only ADJUSTMENT rows, so after
+SAMuel's editor moved the end from 2027-10-30 to 2026-10-31 (two ADJUSTMENT rows,
+transaction_amount 0) legacy still reports `allocationEndDate` 2027-10-30 and threshold
+amounts 884 / 2,653. Legacy's own `report/project` says 2026-10-31. New: the allocation row
+(2026-10-31; thresholds 6,250 / 18,750). Difference: 1 of 663 sampled rows; any allocation
+whose dates SAMuel edited. Candidate for the follow-on list (legacy bug), not reproduced.
+
+Not measurable on dev: §7 c on allocations older than the clone cutoff needs prod data
+(a read-only `hpc-reader` run of this branch's query layer was refused by the session's
+permission policy; Ben's call). §7 j (deleted allocations) and k (parent cascade) show no
+sampled row; k is implemented as legacy.
 
 ## 8. Implementation notes per step
 
