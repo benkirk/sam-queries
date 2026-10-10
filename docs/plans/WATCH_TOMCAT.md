@@ -81,10 +81,6 @@ amie-sam-mediator and acct-sam-etl are not running by design. `scripts/lib/samap
 the first set; the tick prints `app:`, `zoo:` (on a HEAD change) and `syncd:`. Verified live: the
 reader's PUT count for 10-10 (33) matches `grep -c 'status:'` on that day's log.
 
-**A note for George (no contents read):** several `.env` files under `~swes/*/prod/` are group- or
-world-readable (644/664), readable by any login on the host; the secrets proper under
-`/data/tomcat-sam/secrets/` are 600. The watch never opens either; the modes are worth tightening.
-
 ## Open items
 
 - `SAM_LEGACY_PROBE_USER/PASS` (the admin key) is set in Ben's `.env` (the tick also reads the parent
