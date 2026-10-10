@@ -38,6 +38,7 @@ from .xras import (
 )
 from .projects import (
     make_account,
+    make_account_user,
     make_allocation,
     make_allocation_transaction,
     make_allocation_type,
@@ -46,6 +47,7 @@ from .projects import (
     make_charge_adjustment,
     make_contract,
     make_contract_source,
+    make_default_project,
     make_nsf_program,
     make_facility,
     make_panel,
@@ -60,7 +62,7 @@ from .resources import (
     make_resource,
     make_resource_type,
 )
-from .security import make_api_credentials, make_role, make_samuel_grant, make_samuel_role
+from .security import make_access_branch, make_api_credentials, make_role, make_samuel_grant, make_samuel_role
 from .summaries import make_comp_charge_summary
 
 __all__ = [
@@ -109,6 +111,9 @@ __all__ = [
     "make_project_contract",
     "make_project_organization",
     "make_account",
+    "make_account_user",
+    "make_default_project",
+    "make_access_branch",
     "make_allocation",
     "make_allocation_transaction",
     "make_allocation_type",

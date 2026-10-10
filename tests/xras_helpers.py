@@ -164,19 +164,19 @@ def reset_db_key_cache():
     api_auth._DB_KEY_CACHE.update(at=None, map={})
 
 
+def role_keys(monkeypatch, mapping: dict, plaintext=None) -> None:
+    """Install a DB-key map of ``{username: [roles]}``, every key sharing *plaintext* (default XRAS_PW)."""
+    from webapp.utils import api_auth
+
+    hashed = bcrypt.hashpw((plaintext or XRAS_PW).encode(), bcrypt.gensalt(rounds=4)).decode()
+    keys = {user: {'hash': hashed, 'roles': list(roles)} for user, roles in mapping.items()}
+    monkeypatch.setattr(api_auth, '_get_db_api_keys', lambda: keys)
+
+
 @pytest.fixture
 def xras_keys(monkeypatch):
     """Two DB-sourced keys: one holding ``ROLE_XRAS``, one holding something else."""
-    from webapp.utils import api_auth
-
-    hashed = bcrypt.hashpw(XRAS_PW.encode(), bcrypt.gensalt(rounds=4)).decode()
-    monkeypatch.setattr(
-        api_auth, '_get_db_api_keys',
-        lambda: {
-            'samuel': {'hash': hashed, 'roles': ['ROLE_XRAS']},
-            'nobody': {'hash': hashed, 'roles': ['ROLE_SOMETHING']},
-        },
-    )
+    role_keys(monkeypatch, {'samuel': ['ROLE_XRAS'], 'nobody': ['ROLE_SOMETHING']})
 
 
 @pytest.fixture

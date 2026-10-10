@@ -240,5 +240,13 @@
     "project_users": {
         "queries": 22,
         "notes": "measured 15 (2026-10-09) on the most-member project (187), cold; flat in members. Was 62: account.users -> au.user loaded each member alone, and every User load runs its four selectin relationships"
+    },
+    "heuv_report_usage": {
+        "queries": 42,
+        "notes": "measured 28 (2026-10-10) on the active child project with the most accounts (P86850054), flat in accounts. Was 79: account.resource, account.allocations and members loaded per account until _preload_accounts"
+    },
+    "heuv_group": {
+        "queries": 23,
+        "notes": "measured 15 (2026-10-10); flat in the user. group_populator(username=) binds every membership query to the one user (~245 ms -> ~19 ms locally)"
     }
 }

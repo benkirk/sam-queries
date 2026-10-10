@@ -5,9 +5,11 @@ ignored (``@JsonIgnoreProperties(ignoreUnknown = true)``), and Jackson coerced n
 into ``String`` fields silently.
 """
 
+from datetime import timezone
+
 from marshmallow import EXCLUDE, Schema, fields
 
-from sam.dates import from_epoch_millis, to_epoch_millis
+from sam.dates import SERVER_TZ, format_ymd, from_epoch_millis, to_epoch_millis
 
 
 class CoercedStr(fields.String):
@@ -38,6 +40,22 @@ class EpochMillis(fields.Field):
             raise self.make_error('invalid') from exc
 
 
+class Ymd(fields.Field):
+    """A date or datetime as ``yyyy-MM-dd`` (Joda in the JVM's Mountain zone: the stored wall date)."""
+
+    def _serialize(self, value, attr, obj, **kwargs):
+        return format_ymd(value)
+
+
+class UtcDateTime(fields.Field):
+    """A naive-Mountain datetime as UTC ``yyyy-MM-dd HH:mm:ss`` (Jackson ``@JsonFormat`` with no zone)."""
+
+    def _serialize(self, value, attr, obj, **kwargs):
+        if value is None:
+            return None
+        return value.replace(tzinfo=SERVER_TZ).astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+
+
 class WireInput(Schema):
     """Base for a wire-format input schema: unknown keys are dropped, never an error."""
 
@@ -63,5 +81,5 @@ def opt_bool(**kw):
     return fields.Bool(load_default=None, allow_none=True, **kw)
 
 
-__all__ = ['CoercedStr', 'EpochMillis', 'WireInput', 'opt_str', 'opt_coerced_str',
+__all__ = ['CoercedStr', 'EpochMillis', 'UtcDateTime', 'Ymd', 'WireInput', 'opt_str', 'opt_coerced_str',
            'opt_int', 'opt_bool']

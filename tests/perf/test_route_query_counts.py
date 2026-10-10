@@ -474,3 +474,47 @@ def test_allocations_project_table_route(auth_client, route_count_queries):
     _route_within("allocations_project_table_route", auth_client, route_count_queries,
                   '/allocations/htmx/project_table?resource=Derecho&facility=UNIV'
                   '&allocation_type=Small&active_at=2026-10-03&force_refresh=true')
+
+
+# ---------------------------------------------------------------------------
+# HEUV API — GET /api/protected/heuv/v1/report/usage/project/<p> and user/<u>/group
+# ---------------------------------------------------------------------------
+
+def _heuv_get(client, monkeypatch, rule):
+    from xras_helpers import basic_auth, role_keys
+    role_keys(monkeypatch, {'heuv': ['ROLE_API_HEUV']}, 'pw')
+    return client.get(f'/api/protected/heuv/v1/{rule}', headers={'Authorization': basic_auth('heuv', 'pw')})
+
+
+def test_heuv_report_usage(app, client, monkeypatch, route_count_queries):
+    """The portal's busiest route, on the active project with the most accounts: flat in accounts."""
+    from sqlalchemy import func
+
+    from sam.accounting.accounts import Account
+    from sam.projects.projects import Project
+    from webapp.extensions import db
+
+    baseline = get_baseline("heuv_report_usage")
+    with app.app_context():
+        projcode = (db.session.query(Project.projcode).join(Account, Account.project_id == Project.project_id)
+                    .filter(Project.is_active, Project.parent_id.isnot(None))
+                    .group_by(Project.projcode).order_by(func.count().desc(), Project.projcode).first())[0]
+
+    with route_count_queries() as stats:
+        response = _heuv_get(client, monkeypatch, f'report/usage/project/{projcode}')
+
+    assert response.status_code == 200, response.data
+    assert stats.count <= baseline, (
+        f"HEUV report/usage {projcode}: {stats.count} queries > {baseline} baseline. {stats.summary()}")
+
+
+def test_heuv_group(app, client, monkeypatch, route_count_queries, multi_project_user):
+    """``group`` reads the population-wide group directory; flat in the user's projects."""
+    baseline = get_baseline("heuv_group")
+
+    with route_count_queries() as stats:
+        response = _heuv_get(client, monkeypatch, f'user/{multi_project_user.username}/group')
+
+    assert response.status_code == 200, response.data
+    assert stats.count <= baseline, (
+        f"HEUV group: {stats.count} queries > {baseline} baseline. {stats.summary()}")

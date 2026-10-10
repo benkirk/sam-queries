@@ -81,6 +81,8 @@ src/webapp/
 │   ├── access_control.py       # @require_project_access etc.
 │   ├── xras/                   # XRAS incoming actions (legacy /api/xras/v1)
 │   ├── ldapsync/               # sam-ldap-syncd's /api/protected/admin (legacy-compat)
+│   ├── heuv/                   # researcher portal's /api/protected/heuv/v1 (legacy-compat)
+│   ├── protected.py            # /api/protected wire kit: envelope, Realm 401, handlers
 │   └── v1/                     # users, projects, charges, allocations, status,
 │                               #   health, admin + legacy-compat endpoints
 ├── audit/                      # Implicit model-audit logging (SQLAlchemy events)

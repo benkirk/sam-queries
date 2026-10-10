@@ -146,7 +146,9 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
     def search_by_pattern(cls, session, pattern: str,
                          search_title: bool = True,
                          active_only: bool = True,
-                         limit: int = 50) -> List['Project']:
+                         limit: Optional[int] = 50,
+                         escape: Optional[str] = None,
+                         member_username: Optional[str] = None) -> List['Project']:
         """
         Search for projects by pattern matching project code or title.
 
@@ -155,7 +157,9 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
             pattern: Search pattern (supports SQL LIKE wildcards % and _)
             search_title: If True, also search in project titles
             active_only: If True, only return active projects
-            limit: Maximum number of results to return
+            limit: Maximum number of results to return (None: all)
+            escape: LIKE escape character, when the caller escaped *pattern*
+            member_username: Only projects where this user (any case) holds a current membership
 
         Returns:
             List of matching Project objects
@@ -179,10 +183,10 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         query = session.query(cls)
 
         # Build search conditions
-        conditions = [ci_like(cls.projcode, pattern)]
+        conditions = [ci_like(cls.projcode, pattern, escape=escape)]
 
         if search_title:
-            conditions.append(ci_like(cls.title, pattern))
+            conditions.append(ci_like(cls.title, pattern, escape=escape))
 
         query = query.filter(or_(*conditions))
 
@@ -190,8 +194,19 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         if active_only:
             query = query.filter(cls.active == True)
 
+        if member_username is not None:
+            from sam.core.users import User
+            query = query.filter(
+                session.query(AccountUser.account_user_id)
+                .join(Account, Account.account_id == AccountUser.account_id)
+                .join(User, User.user_id == AccountUser.user_id)
+                .filter(Account.project_id == cls.project_id, AccountUser.is_active,
+                        func.lower(User.username) == member_username.lower())
+                .exists())
+
         # Order by projcode and apply limit
-        return query.order_by(cls.projcode).limit(limit).all()
+        query = query.order_by(cls.projcode)
+        return (query.limit(limit) if limit is not None else query).all()
 
     @classmethod
     def create(cls, session, *, projcode: str, title: str, project_lead_user_id: int,

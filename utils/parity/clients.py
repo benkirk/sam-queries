@@ -22,12 +22,11 @@ class _BaseClient:
         self._session.auth = auth
         self._session.headers['Accept'] = 'application/json'
 
-    def _get(self, path: str, *, allow_404: bool = False, allow_500: bool = False):
+    def _get(self, path: str, *, allow: tuple[int, ...] = (200,)):
+        """Parsed JSON on 200; None on another status in *allow*; raise otherwise."""
         url = f'{self.base_url}{path}'
         resp = self._session.get(url, timeout=self.timeout)
-        if resp.status_code == 404 and allow_404:
-            return None
-        if resp.status_code == 500 and allow_500:
+        if resp.status_code != 200 and resp.status_code in allow:
             return None
         if resp.status_code != 200:
             raise RuntimeError(
@@ -52,8 +51,7 @@ class LegacyClient(_BaseClient):
         encoded = quote(resource, safe='')
         return self._get(
             f'/api/protected/admin/ssg/fairShareTree/v3/{encoded}',
-            allow_404=True,
-            allow_500=True,
+            allow=(200, 404, 500),
         )
 
     def queue(self, resource: str | None = None) -> dict | None:
@@ -64,8 +62,7 @@ class LegacyClient(_BaseClient):
         encoded = quote(resource, safe='')
         return self._get(
             f'/api/protected/admin/ssg/queue/{encoded}',
-            allow_404=True,
-            allow_500=True,
+            allow=(200, 404, 500),
         )
 
     def wallclock_exemption(self) -> dict:
@@ -74,14 +71,8 @@ class LegacyClient(_BaseClient):
     def disk_quota(self, *, allow_403: bool = False) -> list | None:
         # Requires ROLE_API_DASG, which the SAM_LEGACY_* account may not hold.
         # 403 -> return None so the caller can SKIP rather than fail.
-        resp = self._session.get(
-            f'{self.base_url}/api/protected/admin/dasg/diskquota', timeout=self.timeout)
-        if resp.status_code == 403 and allow_403:
-            return None
-        if resp.status_code != 200:
-            raise RuntimeError(
-                f'GET diskquota returned HTTP {resp.status_code}: {resp.text[:200]}')
-        return resp.json()
+        return self._get('/api/protected/admin/dasg/diskquota',
+                         allow=(200, 403) if allow_403 else (200,))
 
 
 class NewClient(_BaseClient):
@@ -96,13 +87,13 @@ class NewClient(_BaseClient):
     def fstree_access(self, resource: str | None = None) -> dict | None:
         if resource is None:
             return self._get('/api/v1/fstree_access/')
-        return self._get(f'/api/v1/fstree_access/{quote(resource, safe="")}', allow_404=True)
+        return self._get(f'/api/v1/fstree_access/{quote(resource, safe="")}', allow=(200, 404))
 
     def queue(self, resource: str | None = None) -> dict:
         if resource is None:
             return self._get('/api/v1/queue/')
         encoded = quote(resource, safe='')
-        return self._get(f'/api/v1/queue/{encoded}', allow_404=True)
+        return self._get(f'/api/v1/queue/{encoded}', allow=(200, 404))
 
     def wallclock_exemption(self) -> dict:
         return self._get('/api/v1/wallclock_exemption/')
@@ -165,3 +156,19 @@ class XrasClient(_BaseClient):
     def request_dates(self, request_numbers: str) -> tuple[int, bytes]:
         return self._get_raw(
             f'/api/xras/v1/dates/requests/{quote(request_numbers, safe=",")}')
+
+
+class HeuvClient(_BaseClient):
+    """The ``/api/protected/heuv/v1`` surface on either stack, as raw ``(status, bytes, content-type)``.
+
+    Needs a ``ROLE_API_HEUV`` credential (``SAM_HEUV_USER``/``SAM_HEUV_PASS``); one
+    credential serves both stacks, which read the same ``api_credentials`` table.
+    """
+
+    PREFIX = '/api/protected/heuv/v1'
+
+    def get(self, rule: str) -> tuple[int, bytes, str]:
+        resp = self._session.get(f'{self.base_url}{self.PREFIX}/{rule}', timeout=self.timeout)
+        if resp.status_code in (401, 403):
+            raise RuntimeError(f'GET {rule} returned HTTP {resp.status_code}: the credential lacks ROLE_API_HEUV')
+        return resp.status_code, resp.content, resp.headers.get('Content-Type', '')

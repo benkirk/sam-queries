@@ -516,6 +516,12 @@ class User(Base, TimestampMixin, SessionMixin):
         return ' '.join(p for p in parts if p)
 
     @property
+    def legacy_full_name(self) -> str:
+        """Legacy Java ``User.getFullName``: nickname (else first name), middle, last; blank parts skipped."""
+        first = self.nickname if (self.nickname or '').strip() else self.first_name
+        return ' '.join(p for p in (first, self.middle_name, self.last_name) if p and p.strip())
+
+    @property
     def display_name(self) -> str:
         """Return the user's display name (nickname or full name)."""
         parts = [self.nickname or self.first_name, self.last_name]
