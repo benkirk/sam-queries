@@ -228,12 +228,13 @@ SAMAPP = REPO / 'scripts' / 'lib' / 'samapp_summary.sh'
 MIDNIGHT = int(datetime(2026, 10, 10, 6, 0, tzinfo=timezone.utc).timestamp())  # 00:00 MDT
 
 
+# A stand-in for `git -c ... -C DIR log -1 --format=...`: CI's test image has no git.
+FAKE_GIT = 'while [ "$1" != -C ]; do shift; done; cat "$2/.git/head"\n'
+
+
 def _git(repo, subject, when):
-    repo.mkdir(parents=True)
-    env = {**os.environ, 'GIT_AUTHOR_DATE': f'@{when} +0000', 'GIT_COMMITTER_DATE': f'@{when} +0000'}
-    run = ['git', '-c', 'user.name=t', '-c', 'user.email=t@x', '-C', str(repo)]
-    subprocess.run([*run, 'init', '-q'], check=True)
-    subprocess.run([*run, 'commit', '-q', '--allow-empty', '-m', subject], check=True, env=env)
+    (repo / '.git').mkdir(parents=True)
+    (repo / '.git' / 'head').write_text(f'abc1234\t{when}\t{subject}\n')
 
 
 @pytest.fixture
@@ -264,8 +265,10 @@ def samapp(tmp_path):
     ps.write_text(' 101 3600 /usr/sbin/slapd -h ldap://x:389 -d 256\n'
                   ' 102 3600 /usr/bin/perl /usr/local/sam-ldap-syncd/bin/syncd -vvvvv --redirect\n'
                   ' 103 3600 awk /ldif_log_processor/\n')
+    git = tmp_path / 'git.sh'
+    git.write_text(FAKE_GIT)
     return {'SAMAPP_DATA': str(tmp_path / 'data'), 'SAMAPP_HOME': str(tmp_path / 'home'),
-            'SAMAPP_NOW': str(MIDNIGHT + 1800), 'SAMAPP_PS': f'cat {ps}'}
+            'SAMAPP_NOW': str(MIDNIGHT + 1800), 'SAMAPP_PS': f'cat {ps}', 'SAMAPP_GIT': f'bash {git}'}
 
 
 def read_app(env, frm=MIDNIGHT - 600, to=MIDNIGHT + 1200):

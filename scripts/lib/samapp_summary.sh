@@ -3,7 +3,7 @@
 # sam-ldap-syncd client of legacy SAM), read as a plain login: ps, df, git heads and the
 # dated syncd logs. Read-only. Never reads a credential file, and needs no container or
 # service manager access. scripts/tomcat_watch.sh sends it over ssh like
-# tomcat_log_summary.sh; SAMAPP_DATA / SAMAPP_HOME / SAMAPP_NOW point it at a fixture.
+# tomcat_log_summary.sh; SAMAPP_DATA / HOME / NOW / PS / GIT point it at a fixture.
 #   args: window FROM TO   (UTC epochs)
 #   app now= up_s= data_pct=    aproc NAME PID START    arepo NAME SHA COMMIT_EPOCH SUBJECT
 #   astate NAME NEWEST_MTIME    async files= applied= defer= errors= last=
@@ -34,7 +34,8 @@ app() {
     local r out
     for r in $REPOS; do
         [[ -d "$home/$r/.git" ]] || continue
-        out=$($T git -c safe.directory='*' -C "$home/$r" log -1 --format='%h%x09%ct%x09%s' 2>/dev/null) || continue
+        # shellcheck disable=SC2086  # SAMAPP_GIT is a command line, split on purpose
+        out=$($T ${SAMAPP_GIT:-git} -c safe.directory='*' -C "$home/$r" log -1 --format='%h%x09%ct%x09%s' 2>/dev/null) || continue
         printf 'arepo\t%s\t%s\n' "$r" "$(cut -c1-90 <<<"$out")"
     done
     local d newest f
