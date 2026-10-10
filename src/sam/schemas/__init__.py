@@ -62,6 +62,19 @@ from .charges import (
 )
 from .jobs import CompJobSchema
 from .disk_quota import DiskQuotaSchema
+from .heuv import (
+    AccessibleResourceSchema,
+    AssignedProjectSchema,
+    AssignedResourceSchema,
+    DefaultProjectSchema,
+    ProjcodeSearchSchema,
+    ProjectHierarchySchema,
+    ProjectUsageReportSchema,
+    ReportProjectSchema,
+    UserAccessSchema,
+    UserGroupSchema,
+    WallclockExemptionsSchema,
+)
 from .charge_details import (
     HPCChargeDetailSchema,
     DavChargeDetailSchema,
@@ -99,6 +112,18 @@ __all__ = [
     'CompJobSchema',
     # Disk-quota schema (legacy shape via data_key)
     'DiskQuotaSchema',
+    # HEUV API schemas (legacy shape via data_key)
+    'AccessibleResourceSchema',
+    'AssignedProjectSchema',
+    'AssignedResourceSchema',
+    'DefaultProjectSchema',
+    'ProjcodeSearchSchema',
+    'ProjectHierarchySchema',
+    'ProjectUsageReportSchema',
+    'ReportProjectSchema',
+    'UserAccessSchema',
+    'UserGroupSchema',
+    'WallclockExemptionsSchema',
     # Charge detail schemas
     'HPCChargeDetailSchema',
     'DavChargeDetailSchema',

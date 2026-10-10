@@ -16,7 +16,7 @@ first (legacy-API rules, "Output shaping", §7-§9, Comment Budget, Testing).
 - [x] 1. Lift the `/api/protected` wire kit out of `src/webapp/api/ldapsync/__init__.py` into `src/webapp/api/protected.py`; ldapsync imports it. Proof: `pytest tests/api/test_ldapsync_api.py` unchanged and green.
 - [x] 2. Lift the legacy account-status/threshold calculator out of `src/sam/queries/fstree_access.py` into `src/sam/queries/account_status.py`; fstree imports it; add Waiting / No Allocation / Disabled. Proof: fstree tests green, and `get_fstree_data` for all 23 configurable resources (plus `None`) byte-identical on the local DB before/after (the parity tool compares legacy with a *deployed* SAMuel, so it cannot see an uncommitted lift).
 - [x] 3. Lift the API-key test fixtures (`xras_keys`, `ldapsync_keys`) into one `role_keys(monkeypatch, {user: [roles]})` helper in `tests/xras_helpers.py`; both adopt it. Proof: xras + ldapsync tests green.
-- [ ] 4. Schemas `src/sam/schemas/heuv.py` (+ `UtcDateTime` in `src/sam/schemas/wire.py`), exported from `schemas/__init__.py`.
+- [x] 4. Schemas `src/sam/schemas/heuv.py` (+ `UtcDateTime` in `src/sam/schemas/wire.py`), exported from `schemas/__init__.py`.
 - [ ] 5. Queries `src/sam/queries/heuv.py` + `User.legacy_full_name`.
 - [ ] 6. Blueprint `src/webapp/api/heuv/` registered in `src/webapp/run.py`, limiter-exempt.
 - [ ] 7. Tests `tests/api/test_heuv_api.py` + perf baseline `heuv_report_usage` in `tests/perf/baselines.json`.
