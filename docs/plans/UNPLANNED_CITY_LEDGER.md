@@ -36,6 +36,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-08 | `0bf88a49` + sweep 18 (XRAS incoming vs ACCESS) | 50 / 59 / 24 | 2 (3) | 14 / 46 | 20 (20), 2 kept | 4,810 / 51 / 8 | 163 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-09 | `afafd5b9` + sweep 19 (#773 from the air) | 50 / 59 / 24 | 1 (2) | 15 / 49 | 20 (20), 2 kept | 4,822 / 51 / 7 | 165 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-09 | `2af64319` + sweep 20 (`src/cli`) | 49 / 58 / 24 | 1 (2) | 14 / 46 | 20 (20), 2 kept | 4,822 / 51 / 7 | 165 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
+| 2026-10-10 | `bd428a14` + sweep 21 (HEUV port, #786) | 49 / 58 / 24 | 1 (2) | 14 / 46 | 20 (20), 2 kept | 4,822 / 51 / 7 | 165 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -1540,6 +1541,55 @@ ran with provisioning off, so it never exercised this path.
 
 **Growth rule:** a **Round trips** heuristic in § 4 of the skill: on a surface that runs far
 from its database, count statements per command before reading code.
+
+## 21. 2026-10-10: area sweep, the HEUV port (#786) and what it touched
+
+**Mode:** area, the `heuv-api` branch against the whole tree, base `origin/staging` (`bd428a14`).
+Picks landed as commits on #786 itself, each with its own proof.
+
+**Why:** a fourth `/api/protected` surface and a second legacy status calculator were about to
+be written; the port also read the kernel, the disk loader and the group directory from a new
+angle, and parity against prod turned up a SAMuel bug.
+
+**Done, on #786:**
+
+- [x] `webapp/api/protected.py`: the `/api/protected` envelope, Realm 401 and handlers, lifted
+  out of ldapsync (its 44 API tests unchanged); HEUV uses it.
+- [x] `sam/queries/account_status.py`: legacy's status precedence and threshold math, lifted out
+  of fstree (`get_fstree_data` byte-identical for every resource); one `prorate_divisor` (legacy's
+  day count) for fstree, the rolling windows and HEUV (Ben, Q1).
+- [x] `role_keys(monkeypatch, {user: [roles]})`: one helper behind `xras_keys` and `ldapsync_keys`.
+- [x] `group_populator(username=)`: one user's groups without building the directory
+  (~245 -> ~19 ms; the directory and 192 users' answers byte-identical).
+- [x] `_load_disk_snapshot_by_account`: the stale-row fallback now uses the resource's latest
+  scan date (prod NCIS0001 2,527 -> 1,397 TB, legacy's and `df`'s figure).
+- [x] `utils/parity/clients.py`: three tolerance idioms -> one `allow=` tuple; `--api heuv` with a
+  pacer for the shared limiter bucket.
+- [x] Pre-merge review (`bf7dcdc3`, `e53b2bb7`, `cfa6af4e`): the ingest registers a scan date
+  not current until its rows are written, and the loader's fallback skips such a date (accounts
+  read 0 mid-ingest); four parent-cascade tests (a parent account with no allocations is No
+  Account, legacy-exact); one `==` idiom on `_ci` columns, the contract in `sam/sqlcompat.py`.
+- [x] fstree's threshold divisor moved 363 -> 364 days with Q1; noted for its consumers in
+  `docs/apis/SYSTEMS_INTEGRATION_APIs.md` next to the formula.
+
+**Open:**
+
+- [ ] Two membership-window spellings: inclusive `>=` (`DateRangeMixin`, `unended`, fstree SQL)
+  vs exclusive `>` (`directory_access.py`, `queries/ldapsync.py`, `accounting/accounts.py`).
+- [ ] `has_active_allocations` vs `Allocation.is_active` re-spell one rule; zero-caller helpers in
+  `queries/allocations.py` (`get_active_allocation`, `get_latest_allocation_for_project`),
+  `queries/projects.py` and `queries/users.py`; `search_projects_by_code_or_title` has no ORDER BY.
+- [ ] Wallclock admin edits never invalidate `api/v1/wallclock_exemption.py`'s caches.
+- [ ] `register_error_handlers` discards a 404's text.
+- [ ] Parity: `comparators.py` passes `pct=0.05` to `within_tolerance`, which means 0.05%.
+- [ ] The API-key limiter keys on the ingress pod address (client IPs lost at the ingress), so
+  every key caller shares one bucket per pod.
+- [ ] SAMuel's allocation editor records end-date edits as ADJUSTMENT; legacy's replay applies
+  dates only on EXTENSION (shows on legacy surfaces until each cutover).
+- [ ] Legacy rules HEUV reproduces, for Ben's follow-on plan: the parent cascade (a child reports
+  No Account), deleted allocations in the usage tree, the 364-day divisor and 31-day window.
+- [ ] A disk file mixing dates keeps each row's own date; an account dated before its resource's
+  newest scan reads as gone. Not seen (Campaign_Store scans are weekly, single-date).
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

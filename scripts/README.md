@@ -9,6 +9,7 @@ scripts/
 ├── README.md                    # This file
 ├── cirrus_healthcheck.sh        # CIRRUS/k8s health probe (samuel release)
 ├── cirrus_watch.sh              # CIRRUS/k8s recurring delta watch tick (report-only)
+├── tomcat_watch.sh              # legacy SAM on sam-tomcat: health, API callers, cutover trend
 ├── cirrus_weblog_audit.sh       # CIRRUS/k8s traffic + rate-limit + abuse audit
 ├── seed_status_dev.sh           # Reseed system_status_dev from prod (make refresh-dev)
 ├── dev_session_load.py          # Load driver for samuel-dev's authed surface (+ dev_capture_session.py)
@@ -59,13 +60,11 @@ secret), `--no-color`, `-n/--namespace`, `-r/--release`, `--context`,
   `task_run` records *occurrences*, not wake-ups, so a healthy hourly dispatcher writes one
   row a day and the row count cannot distinguish that from a dead one.
 
-- **`cirrus_watch.sh`** — "what changed since I last looked?" A recurring,
-  read-only *delta* tick meant to run every ~30 min from a scheduler: new XRAS
-  `xras_action_log` rows, web status mix + latency percentiles + slow (>5s)
-  requests, pod image-sha/restart changes, the Redis evicted-keys delta, and the
-  `samuel-tasks` CronJob's liveness — each diffed against a small state file so a
-  quiet tick is one line and only real changes surface. It **reports** CronJob
-  problems (and prints the manual remedy) but never touches the remote CronJob.
+- **`cirrus_watch.sh`** — "what changed since I last looked?" A read-only *delta* tick
+  for a ~30 min scheduler: new XRAS `xras_action_log` rows, web status mix, latency and
+  slow (>5s) requests, pod image/restart changes, the Redis evicted-keys delta and the
+  `samuel-tasks` CronJob's liveness, each diffed against a state file so a quiet tick is
+  one line. It **reports** CronJob problems (with the manual remedy), never touches them.
   The `watch-prod` skill carries the classification scheme and flag thresholds.
 
   ```bash
@@ -74,22 +73,23 @@ secret), `--no-color`, `-n/--namespace`, `-r/--release`, `--context`,
   scripts/cirrus_watch.sh --env dev             # the dev release; no XRAS/db-load reads
   ```
 
+- **`tomcat_watch.sh`** — the same kind of tick for legacy SAM on `sam-tomcat` (plus its syncd
+  client on sam-app): health, who still calls its API, and the per-family daily trend as
+  callers move to SAMuel (`--trend`, `--at` for a past window). `watch-tomcat` skill.
+
 - **`dev_capture_session.py` + `dev_session_load.py`** — capture one OIDC session (headed Playwright; log in once), then replay the cookie at concurrency (`--list` for targets; refuses a non-`samuel-dev` base, no cookie in the repo). The `profile-dev` skill carries the process; numbers in `../docs/plans/implemented/DEV_LOAD_CAMPAIGN.md`.
 
-- **`cirrus_weblog_audit.sh`** — "who's hitting the public site, and is anything
-  abusive getting through?" Harvests the webapp's stdout (and the Redis
-  `ratelimit:events` set) and reports traffic volume + status mix, top talkers,
-  vulnerability-probe path signatures, rate-limit (429) offenders, and
-  auth/CSRF failures. Built for the public-exposure cutover.
+- **`cirrus_weblog_audit.sh`** — "who's hitting the public site, and is anything abusive
+  getting through?" From the webapp's stdout and the Redis `ratelimit:events` set: volume,
+  status mix, top talkers, probe-path signatures, 429 offenders, auth/CSRF failures.
 
   ```bash
   scripts/cirrus_weblog_audit.sh --since 6h          # last 6 hours
   scripts/cirrus_weblog_audit.sh --since 24h --top 25 -v
   ```
 
-  Its `--help` also lists hardening recommendations (R1–R5: edge rate limiting,
-  ProxyFix/X-Forwarded-For, scheduling, CSP reporting, durable log shipping)
-  that the audit surfaces but does not enforce.
+  Its `--help` also lists hardening recommendations (R1–R5: edge rate limiting, ProxyFix,
+  scheduling, CSP reporting, durable log shipping) that it surfaces but does not enforce.
 
 - **`zap_probe_docker.sh`** — Dockerized OWASP ZAP passive/active scan of the
   webapp (local throwaway target by default). See its `--help`.

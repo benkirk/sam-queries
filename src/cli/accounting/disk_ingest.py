@@ -480,16 +480,12 @@ class DiskIngestMixin:
                     f"[bold red]Directory reconcile failed: {exc}[/bold red]")
                 return EXIT_ERROR
 
-        # ---- 7. Register the snapshot date BEFORE any tier-3 insert.
-        # disk_charge_summary.activity_date FKs disk_charge_summary_status, and
-        # InnoDB checks FKs at statement time, so the parent status row must
-        # exist first. Marking it after the inserts instead would rely on a
-        # prior same-date import having seeded the row -- true for the co-dated
-        # GPFS feeds, but not for an off-cadence date from another feed (Destor's
-        # Monday tick against a Saturday-cadence status table).
+        # ---- 7. Register the date before any tier-3 insert: summary rows FK it (InnoDB checks at statement
+        # time) and an off-cadence date (Destor's Monday vs the Saturday GPFS cadence) has no row yet.
+        # Registered not current, so readers keep the previous scan until step 9 flips it.
         try:
             with management_transaction(self.session):
-                mark_disk_snapshot_current(self.session, snap_date)
+                mark_disk_snapshot_current(self.session, snap_date, current=False)
         except Exception as exc:  # noqa: BLE001
             self.console.print(
                 f"[bold red]Failed to register snapshot {snap_date}: {exc}[/bold red]"
@@ -660,9 +656,9 @@ class DiskIngestMixin:
                     )
                     return EXIT_ERROR
 
-        # ---- 9. Re-stamp: legacy SAM's disk_charge triggers set this date
-        # current=FALSE on each insert/delete in 7a, and legacy's Quartz recompute
-        # then rewrites the whole day in its own shape (HARD_DELETE_AUDIT.md §3).
+        # ---- 9. Mark the date current: the rows are complete. Legacy's disk_charge
+        # triggers also set it FALSE in 7a, and legacy's Quartz recompute rewrites a
+        # FALSE day in its own shape (HARD_DELETE_AUDIT.md §3).
         try:
             with management_transaction(self.session):
                 mark_disk_snapshot_current(self.session, snap_date)

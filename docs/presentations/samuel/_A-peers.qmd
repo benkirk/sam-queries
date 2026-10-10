@@ -192,7 +192,7 @@ the rest are private. Full survey: sam-queries docs/plans/LDAP_SYNC_API.md, Appe
 - Legacy SAM's UI and APIs
 - The ldapsync endpoints, to SAMuel
 - AMIE: port, replace, or retire
-- HEUV: not ported
+- HEUV: ported, cutover pending
 :::
 ::::
 

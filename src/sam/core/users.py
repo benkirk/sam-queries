@@ -107,21 +107,7 @@ class User(Base, TimestampMixin, SessionMixin):
 
     @classmethod
     def get_by_username(cls, session, username: str) -> Optional['User']:
-        """
-        Get a user by exact username match.
-
-        Args:
-            session: SQLAlchemy session
-            username: Exact username to search for
-
-        Returns:
-            User object if found, None otherwise
-
-        Example:
-            >>> user = User.get_by_username(session, 'jsmith')
-            >>> if user:
-            ...     print(f"Found: {user.full_name}")
-        """
+        """The user named ``username``, case-insensitively (``sam/sqlcompat.py`` collation contract), or None."""
         return session.query(cls).filter(cls.username == username).first()
 
     @classmethod
@@ -516,6 +502,12 @@ class User(Base, TimestampMixin, SessionMixin):
         return ' '.join(p for p in parts if p)
 
     @property
+    def legacy_full_name(self) -> str:
+        """Legacy Java ``User.getFullName``: nickname (else first name), middle, last; blank parts skipped."""
+        first = self.nickname if (self.nickname or '').strip() else self.first_name
+        return ' '.join(p for p in (first, self.middle_name, self.last_name) if p and p.strip())
+
+    @property
     def display_name(self) -> str:
         """Return the user's display name (nickname or full name)."""
         parts = [self.nickname or self.first_name, self.last_name]
@@ -683,8 +675,10 @@ class User(Base, TimestampMixin, SessionMixin):
     def create(cls, session, *, username: str, unix_uid: int, upid: Optional[int] = None,
                active: bool = True) -> 'User':
         """Insert a user mirrored from the identity service; ``apply_sync`` fills the rest."""
+        # Legacy stores the common group for every new user (its getter defaults NULL to 1000).
+        from .groups import DEFAULT_COMMON_GROUP_GID
         user = cls(username=username, unix_uid=unix_uid, upid=upid, active=active,
-                   locked=False, charging_exempt=False)
+                   locked=False, charging_exempt=False, primary_gid=DEFAULT_COMMON_GROUP_GID)
         session.add(user)
         session.flush()
         return user

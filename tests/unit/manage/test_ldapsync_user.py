@@ -85,6 +85,7 @@ class TestCreate:
         assert _sync(session, body) == body['unixUid']
         user = User.get_by_username(session, body['userName'])
         assert (user.upid, user.unix_uid, user.active) == (body['upid'], body['unixUid'], True)
+        assert user.primary_gid == 1000   # legacy's common group, never NULL
         assert user.login_type.type == 'user_login'
         assert [e.email_address for e in user.email_addresses] == ['Jane@Example.edu']
         assert user.organizations[0].end_date == datetime(2027, 1, 1, 23, 59, 59)

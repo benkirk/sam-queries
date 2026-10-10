@@ -1,6 +1,6 @@
 # Legacy API Parity Check
 
-Standalone utility for comparing the five Systems Integration APIs on the
+Standalone utility for comparing the Systems Integration APIs, XRAS and HEUV on the
 deployed Python stack (samuel.k8s.ucar.edu) against their legacy Java
 counterparts (sam.ucar.edu).
 
@@ -16,11 +16,13 @@ production hosts and therefore requires the UCAR VPN.
 | `/api/v1/fstree_access/`             | `/api/protected/admin/ssg/fairShareTree/v3/{resource}`|
 | `/api/v1/queue/`                     | `/api/protected/admin/ssg/queue`                      |
 | `/api/v1/wallclock_exemption/`       | `/api/protected/admin/ssg/wallClockExemption`         |
+| `/api/v1/disk_quota/`                | `/api/protected/admin/dasg/diskquota`                 |
 | `/api/xras/v1/*` (6 GETs)            | `/api/xras/v1/*` — **same paths on both stacks**      |
+| `/api/protected/heuv/v1/*` (13 GETs) | `/api/protected/heuv/v1/*` — **same paths on both stacks** |
 
 The response schemas are specified in
 [`docs/apis/SYSTEMS_INTEGRATION_APIs.md`](../../docs/apis/SYSTEMS_INTEGRATION_APIs.md).
-~40 comparison rules run across the six APIs, each returning a
+~40 comparison rules run across the APIs, each returning a
 pass/fail `CheckResult` with sample mismatch lines.
 
 ### XRAS is the exception — byte-exact, not tolerant
@@ -51,6 +53,18 @@ a user who actually has projects; `--xras-user` overrides it. Budget ~2 minutes
 for a run — legacy spends 6-7 s on every `requests/*` call, and the roster is
 3.8 MB fetched twice.
 
+### HEUV is byte-exact too, with named fixes
+
+`--api heuv` samples over HTTP only: legacy's active-project list (40 random plus
+SCSG0001 and NCIS0001; `--sample-size`, `--heuv-projects`), the usernames on their
+usage reports (cap 60), and the inactive projects those users are assigned to. Every
+ported route is fetched from both stacks (`--workers` concurrent requests, default 4,
+~2 minutes) and compared as raw bytes after **only** the named fixes F1-F9 of
+`docs/plans/HEUV_API_PORT.md` §6 are applied to legacy. Any other difference fails.
+Row sets are compared in both directions, and an informational check prints the §7
+ruleset counters (group surplus, status pairs, charge deltas by hierarchy, threshold
+amounts, holdings). Each route also reports p50 latency on both stacks.
+
 Most other rules are one-directional (*legacy ⊆ new*) to absorb DB-mirror lag.
 `directory_access` additionally carries three checks in the reverse
 direction — surplus group members, surplus account usernames, and a
@@ -66,10 +80,12 @@ SAM_NEW_API_USER    # HTTP Basic Auth username for samuel.k8s (falls back to SAM
 SAM_NEW_API_PASS    # HTTP Basic Auth password for samuel.k8s (falls back to SAM_LEGACY_PASS)
 SAM_XRAS_USER       # ROLE_XRAS credential, valid on BOTH stacks (--api xras only)
 SAM_XRAS_PASS       #   no fallback: the SAM_LEGACY_* account cannot reach /api/xras/*
+SAM_HEUV_USER       # ROLE_API_HEUV credential, valid on BOTH stacks (--api heuv only)
+SAM_HEUV_PASS       #   no fallback: the SAM_LEGACY_* account gets 403 on /api/protected/heuv
 ```
 
-`SAM_XRAS_*` is optional. Without it `--api all` still compares the other five
-APIs and skips `xras` with a message on stderr.
+`SAM_XRAS_*` and `SAM_HEUV_*` are optional. Without one, `--api all` compares the
+other APIs and skips that one with a message on stderr.
 
 > ⚠️ The XRAS credential carries `ROLE_XRAS`, and that security chain makes no
 > method distinction — the same secret authorizes `POST /api/xras/v1/actions`
@@ -84,7 +100,7 @@ source etc/config_env.sh
 ## Usage
 
 ```bash
-# Full comparison across all five APIs
+# Full comparison across every API
 python utils/parity/check_legacy_apis.py
 
 # One API at a time
@@ -95,6 +111,7 @@ python utils/parity/check_legacy_apis.py --api queue
 python utils/parity/check_legacy_apis.py --api wallclock
 python utils/parity/check_legacy_apis.py --api xras
 python utils/parity/check_legacy_apis.py --api xras --xras-user benkirk -v
+python utils/parity/check_legacy_apis.py --api heuv --new-base-url https://samuel-dev.k8s.ucar.edu -v
 
 # JSON output for downstream tooling
 python utils/parity/check_legacy_apis.py --format json | jq .
@@ -142,3 +159,5 @@ Comparison tolerances (lifted from the retired
   (±0.01). That self-check needs no legacy fetch, and it is the one that
   catches a bogus override both stacks serve.
 - **None at all** for `--api xras` — see above.
+- **±1** on `allocationAmount` and `balance` for `--api heuv` (rule F4: legacy sums
+  allocation amounts in float32); every other HEUV difference is a named fix or a failure.

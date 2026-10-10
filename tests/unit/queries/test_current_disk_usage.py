@@ -218,9 +218,8 @@ class TestBulkCurrentDiskUsage:
         assert out[acct_b.account_id].number_of_files == 30
 
     def test_mixed_current_and_fallback_accounts(self, session):
-        """Some accounts have rows on the current snapshot date; others
-        only have older rows. The bulk helper must apply the per-account
-        max() fallback for the latter, in the same call."""
+        """Accounts on a resource scanned on another day than the current
+        snapshot fall back to their resource's latest date, in the same call."""
         user_curr, _, acct_curr = _disk_account(session)
         user_old, _, acct_old = _disk_account(session)
         d_current = next_date("disk_snap")
@@ -238,9 +237,47 @@ class TestBulkCurrentDiskUsage:
         )
         assert out[acct_curr.account_id].activity_date == d_current
         assert out[acct_curr.account_id].bytes == 2 * 1024 ** 4
-        # Fallback path picked up the older row.
+        # acct_old's resource was last scanned on d_old.
         assert out[acct_old.account_id].activity_date == d_old
         assert out[acct_old.account_id].bytes == 5 * 1024 ** 4
+
+    def test_account_missing_from_its_resources_latest_scan_is_gone(self, session):
+        """Legacy's rule: one snapshot date per resource. An account whose last row
+        predates its resource's latest scan has no data now (its directory is gone);
+        its stale row must not count forever (NCIS0001: 2,527 TB vs 1,406 TB on disk)."""
+        user_live, _, acct_live = _disk_account(session)
+        user_dead, project_dead, _ = _disk_account(session)
+        acct_dead = make_account(session, project=project_dead, resource=acct_live.resource)
+        d_latest = next_date("disk_snap")
+        d_current = d_latest - timedelta(days=7)
+        _seed_summary(session, acct_live, user_live, activity_date=d_latest, bytes_=2 * 1024 ** 4)
+        _seed_summary(session, acct_dead, user_dead, activity_date=d_latest - timedelta(days=60),
+                      bytes_=900 * 1024 ** 4)
+        _mark_current(session, d_current)
+
+        out = bulk_current_disk_usage(session, [acct_live.account_id, acct_dead.account_id])
+        assert out[acct_live.account_id].activity_date == d_latest
+        assert acct_dead.account_id not in out
+
+    def test_scan_still_being_written_is_not_read(self, session):
+        """A resource's newer date that is not current yet (an ingest in flight) is skipped:
+        accounts it has not reached keep the previous scan instead of reading 0."""
+        user_a, _, acct_a = _disk_account(session)
+        user_b, project_b, _ = _disk_account(session)
+        acct_b = make_account(session, project=project_b, resource=acct_a.resource)
+        d_prev = next_date("disk_snap")
+        d_new = d_prev + timedelta(days=7)
+        _seed_summary(session, acct_a, user_a, activity_date=d_prev, bytes_=1 * 1024 ** 4)
+        _seed_summary(session, acct_b, user_b, activity_date=d_prev, bytes_=2 * 1024 ** 4)
+        _mark_current(session, d_prev)
+        _seed_summary(session, acct_a, user_a, activity_date=d_new, bytes_=9 * 1024 ** 4)
+        mark_disk_snapshot_current(session, d_new, current=False)
+        _mark_current(session, d_new + timedelta(days=7))   # another resource's newer scan
+
+        out = bulk_current_disk_usage(session, [acct_a.account_id, acct_b.account_id])
+        assert out[acct_a.account_id].activity_date == d_prev
+        assert out[acct_a.account_id].bytes == 1 * 1024 ** 4
+        assert out[acct_b.account_id].bytes == 2 * 1024 ** 4
 
     def test_account_with_no_rows_is_absent(self, session):
         """An account with no disk_charge_summary rows is omitted from

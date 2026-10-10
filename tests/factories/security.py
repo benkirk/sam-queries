@@ -8,6 +8,7 @@ from typing import Optional, Sequence
 
 import bcrypt
 
+from sam.security.access import AccessBranch, AccessBranchResource
 from sam.security.permissions import Permission
 from sam.security.roles import ApiCredentials, Role, RoleApiCredentials
 from sam.security.samuel_roles import SamuelRole, SamuelRoleGrant
@@ -94,3 +95,14 @@ def make_samuel_grant(session, *, subject_type: str = 'user',
                                   subject_name=subject_name, by=by, role=role,
                                   permission=permission, facility_name=facility_name,
                                   note=note)
+
+
+def make_access_branch(session, name: Optional[str] = None, resources: Sequence = ()) -> AccessBranch:
+    """An access branch linked to *resources*."""
+    branch = AccessBranch(name=name or next_seq('branch'))
+    session.add(branch)
+    session.flush()
+    for r in resources:
+        session.add(AccessBranchResource(access_branch_id=branch.access_branch_id, resource_id=r.resource_id))
+    session.flush()
+    return branch
