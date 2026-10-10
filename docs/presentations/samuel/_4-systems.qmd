@@ -283,7 +283,8 @@ SAMuel writes is primary_gid via User.set_primary_gid().
 
 ## Next: SAMuel takes the ldapsync endpoints {.vcenter scale="1.15"}
 
-- **Planned, not started:** scoped 2026-09-25, phases P1a to P2.
+- **Built, not yet cut over:** on `staging` since 2026-10-09 and shadowing on samuel-dev;
+  production's daemon still calls legacy.
 - Mounted at legacy's own prefix, so the cutover is **one URL** in the daemon's config.
 - Legacy stays the rollback: point it back.
 - After that, identity's only grey box is the daemon itself.
@@ -294,7 +295,9 @@ implementation, not a violation.*
 ::: {.notes}
 sam-queries docs/plans/LDAP_SYNC_API.md: the daemon keeps its SAM_URL; the new side answers
 /api/protected/admin/{ldapsync,*Purge*,userlifecycle} with the same realm and shapes. The
-reference doc carries a ~30-item census of client-side quirks to preserve or fix.
+reference doc carries a ~30-item census of client-side quirks to preserve or fix. As built:
+LDAP_SYNC_API.md § 10 (PR #773); the dev shadow and its exit criteria:
+docs/plans/LDAPSYNC_DEV_SHADOW.md.
 :::
 
 ## Signing in {.vcenter scale="1.15"}
@@ -511,21 +514,25 @@ sam_dev and does no job-history ingest. Part 5 covers deployment.
 
 The API, and who calls it.
 
-## Four API families {.smaller .center .fill scale="1.25"}
+## Six API families {.smaller .center .fill scale="1.05"}
 
 | Family | Prefix | Routes | Who calls |
-|----------------|--------------------|--------:|----------------------------------------|
+|--------------|------------------------------|-------:|--------------------------------------|
 | **Core** | `/api/v1` | 39 | dashboards, CLIs, collectors |
 | **Legacy shapes** | `/api/v1` | 21 | PBS, HPC LDAP provisioning, disk quotas |
 | **Fairshare** | `/api/v1/fairshare` | 1 | HSG's cron |
 | **XRAS** | `/api/xras/v1` | 11 | the XRAS broker |
+| **Identity sync** | `/api/protected/admin` | 26 | `sam-ldap-syncd`, not yet |
+| **HEUV** | `/api/protected/heuv/v1` | 13 | the researcher portal, not yet |
 
 ::: {.notes}
-Route counts are decorator counts on origin/staging, 2026-09-30, over 7 core modules, 6
-legacy-shaped, 1 fairshare and 5 XRAS. Core: projects 10, users 6,
+Route counts are decorator counts on origin/staging, 2026-10-10, over 7 core modules, 6
+legacy-shaped, 1 fairshare, 5 XRAS, 3 identity sync and 4 HEUV. Core: projects 10, users 6,
 allocations 2, charges 5, status 11, health 4, admin 1. Legacy shapes: fstree_access 7,
-directory_access 3, project_access 3, queue 3, wallclock_exemption 3, disk_quota 2. Nothing is
-mounted at /api/protected: those paths still belong to legacy SAM.
+directory_access 3, project_access 3, queue 3, wallclock_exemption 3, disk_quota 2. Identity
+sync: ldapsync 14, purge 8, userlifecycle 4. HEUV: user 7, project 2, report 2, access 2. Both
+/api/protected families answer at legacy's own paths (PRs #773, #786); the rest of
+/api/protected still belongs to legacy SAM. Neither caller has repointed yet.
 :::
 
 ## Same bytes, new address {.smaller .center .fill}
@@ -542,6 +549,7 @@ mounted at /api/protected: those paths still belong to legacy SAM.
 ::: {.notes}
 The first five answer byte-for-byte like legacy, from hand-built dicts. That code is frozen on
 purpose; everything new declares its output with a schema.
+ldapsync and HEUV are not in this table: they keep legacy's path as well (Appendix B).
 Legacy paths are under /api/protected/admin. CLAUDE.md, "Legacy-compat blueprints — DO NOT
 REFACTOR": additive changes only, response bytes must not change. disk_quota is the newer one,
 legacy-shaped but built on a Marshmallow schema; it is the reference for any future
