@@ -62,6 +62,7 @@ def _kind(rule: str) -> str:
 
 
 def _timed_get(client, rule):
+    getattr(client, 'pace', lambda: None)()
     t0 = time.monotonic()
     out = client.get(rule)
     return out, (time.monotonic() - t0) * 1000

@@ -20,7 +20,7 @@ first (legacy-API rules, "Output shaping", §7-§9, Comment Budget, Testing).
 - [x] 5. Queries `src/sam/queries/heuv.py` + `User.legacy_full_name`. *(As built: `Project.search_by_pattern` gains `limit=None`, `escape=`, `member_username=`; factories `make_account_user`, `make_default_project`, `make_access_branch`. Local DB vs the 2026-10-10 legacy probe: 10 of 14 bodies byte-identical; the rest differ only by F3 order or snapshot data. `group` measured 248 ms locally (legacy 161); samuel-dev p50 371 ms (legacy 241). **Done 2026-10-10 (Ben):** `group_populator(username=)` binds the member queries and a semi-join on project groups; ~245 -> ~19 ms locally, the full directory (3,621 groups) and 192 users' `group` answers byte-identical before/after.)*
 - [x] 6. Blueprint `src/webapp/api/heuv/` registered in `src/webapp/run.py`, limiter-exempt. *(The HTTP half of the step-7 tests lands here: `tests/api/test_heuv_api.py`, 27 tests, MySQL and Postgres.)*
 - [x] 7. Tests `tests/api/test_heuv_api.py` + perf baseline `heuv_report_usage` in `tests/perf/baselines.json`.
-- [ ] 8. Parity `utils/parity --api heuv` (both directions, named normalizations); run against samuel-dev; write the ruleset-divergence statements for Ben (§7) and STOP for his decision before changing rules. *(2026-10-10: tool built — `utils/parity/heuv.py`, credential `SAM_HEUV_USER`/`SAM_HEUV_PASS` because `SAM_LEGACY_USER=ssg` gets 403 on HEUV. Dry run, legacy prod vs a local server of this branch on the local snapshot, 42 projects / 60 users: 12 of 14 route groups pass; the 2 failures and the only nonzero §7 counter are charge totals and project count, all explained by the older local data. samuel-dev run 2026-10-10 on `sha-7470cc8`: results and statements in §7.1; waiting on Ben's decisions.)*
+- [ ] 8. Parity `utils/parity --api heuv` (both directions, named normalizations); run against samuel-dev; write the ruleset-divergence statements for Ben (§7) and STOP for his decision before changing rules. *(2026-10-10: tool built — `utils/parity/heuv.py`, credential `SAM_HEUV_USER`/`SAM_HEUV_PASS` because `SAM_LEGACY_USER=ssg` gets 403 on HEUV. Dry run, legacy prod vs a local server of this branch on the local snapshot, 42 projects / 60 users: 12 of 14 route groups pass; the 2 failures and the only nonzero §7 counter are charge totals and project count, all explained by the older local data. samuel-dev run 2026-10-10 on `sha-7470cc8`: §7.1. Prod run on `sha-81564d8`: §7.2, one statement open.)*
 - [ ] 9. Docs (§11), ledger entry, deck lines, CLAUDE.md net-zero edit.
 
 ---
@@ -285,6 +285,27 @@ Not measurable on dev: §7 c on allocations older than the clone cutoff needs pr
 (a read-only `hpc-reader` run of this branch's query layer was refused by the session's
 permission policy; Ben's call). §7 j (deleted allocations) and k (parent cascade) show no
 sampled row; k is implemented as legacy.
+
+### 7.2 Prod parity (2026-10-10, `sha-81564d8` deployed to prod from `heuv-api`; Ben approved)
+
+`--api heuv --new-max-rpm 60` against `samuel.k8s.ucar.edu` (42 projects, 60 users): **13 of 14 route
+groups pass**; every `user/*` route, `report/project`, `hierarchy`, `search` and `access` byte-identical
+after F3/F7. Counters a, d, e, g, h, i are 0. Of 139 usage rows, 2 differ: UCUB0188 Derecho
+`totalCharges` +5 of 2,154,256 (prod fetched ~12 min after legacy under pacing: charges posted
+between), and the statement below. The pacer exists because prod's limiter keys on the ingress
+pod address (client IPs are lost at the ingress), so every caller shares one 200/min bucket per pod.
+
+**Statement (NCIS0001 Campaign_Store DataHoldings, 1 of 139 rows).** Old: `totalHoldings` = bytes at
+**one resource-wide snapshot date** (the latest `<= reportDate`), summed over the subtree: 1,397 TB,
+61.5 M files, which is the active children (1,251 TB) plus NCIS0001's own (146 TB). New:
+`bulk_get_subtree_disk_capacity` takes each account's **current** snapshot and, for an account with no
+row on that date, falls back to **its own latest row, however old** (`_load_disk_snapshot_by_account`
+step 3-4): 2,527 TB, 80.3 M files. Every child matches exactly; the extra ~1,130 TB / 18.8 M files
+must come from the subtree's inactive descendants (NCIS0002, NIOW0001/0002, P86850050/57) whose last
+snapshots are stale. Not confirmable on dev (its clone keeps 400 days of disk summaries) and the prod
+read was refused; to confirm, read-only on prod: the latest `disk_charge_summary` row per Campaign_Store
+account of those five projects. The fallback also feeds SAMuel's dashboards, so a stale-row inflation
+there is a SAMuel bug in its own right, not only a HEUV divergence. Ben decides.
 
 ## 8. Implementation notes per step
 

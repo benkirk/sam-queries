@@ -349,6 +349,9 @@ def _parse_args() -> argparse.Namespace:
                    help='heuv: comma-separated projcodes always sampled')
     p.add_argument('--workers', type=int, default=4,
                    help='heuv: concurrent requests per stack (default: 4)')
+    p.add_argument('--new-max-rpm', type=int, default=None,
+                   help='heuv: cap requests/minute to the new stack (use ~60 on prod: '
+                        'its limiter bucket is shared by every caller; default: no cap)')
     p.add_argument(
         '--branch', default=None,
         help='Comma-separated branch list for project/directory '
@@ -461,7 +464,8 @@ def main() -> int:
                     continue
                 pairs = sample_and_fetch(
                     HeuvClient(args.legacy_base_url, heuv_auth, timeout=args.timeout),
-                    HeuvClient(args.new_base_url, heuv_auth, timeout=args.timeout),
+                    HeuvClient(args.new_base_url, heuv_auth, timeout=args.timeout,
+                               max_rpm=args.new_max_rpm),
                     sample_size=args.sample_size, workers=args.workers, verbose=args.verbose,
                     extra_projects=[p.strip() for p in args.heuv_projects.split(',') if p.strip()],
                     log=lambda m: print(m, file=sys.stderr))

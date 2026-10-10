@@ -167,6 +167,22 @@ class HeuvClient(_BaseClient):
 
     PREFIX = '/api/protected/heuv/v1'
 
+    def __init__(self, base_url: str, auth: tuple[str, str], timeout: int = 120, max_rpm: int | None = None):
+        super().__init__(base_url, auth, timeout)
+        import threading
+        self._gap = 60.0 / max_rpm if max_rpm else 0.0
+        self._lock, self._next = threading.Lock(), 0.0
+
+    def pace(self):
+        """Wait out *max_rpm*'s spacing (SAMuel's limiter bucket is shared by every caller); callers time after it."""
+        if not self._gap:
+            return
+        import time
+        with self._lock:
+            now = time.monotonic()
+            wait, self._next = max(0.0, self._next - now), max(now, self._next) + self._gap
+        time.sleep(wait)
+
     def get(self, rule: str) -> tuple[int, bytes, str]:
         resp = self._session.get(f'{self.base_url}{self.PREFIX}/{rule}', timeout=self.timeout)
         if resp.status_code in (401, 403):
