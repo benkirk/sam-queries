@@ -256,6 +256,38 @@ def test_child_inherits_no_account_from_parent(session):
     assert q.project_usage_report(session, child, now=NOW)['account_reports'][0]['status'] == 'No Account'
 
 
+
+def _chain_status(session, *specs):
+    """Root-to-leaf chain on one resource. A spec is ``(amount, charges)``, ``'expired'``, or None (no allocations)."""
+    res, project = _resource(session), None
+    for spec in specs:
+        project = make_project(session, parent=project)
+        if spec is None:
+            make_account(session, project=project, resource=res).creation_time = NOW - timedelta(days=500)
+        elif spec == 'expired':
+            _charged(session, project, res, start=NOW - timedelta(days=400), end=NOW - timedelta(days=40))
+        else:
+            _charged(session, project, res, amount=spec[0], charges=spec[1])
+    return q.project_usage_report(session, project, now=NOW)['account_reports'][0]['status']
+
+
+def test_child_inherits_parents_overspent(session):
+    assert _chain_status(session, (100.0, 150.0), (365_000.0, 0.0)) == 'Overspent'
+
+
+def test_child_inherits_parents_no_allocation(session):
+    assert _chain_status(session, 'expired', (365_000.0, 0.0)) == 'No Allocation'
+
+
+def test_parent_account_without_allocations_counts_as_no_account(session):
+    """Legacy ``DefaultProjectAccountDetailRepository`` drops an account that has no allocations."""
+    assert _chain_status(session, None, (365_000.0, 0.0)) == 'No Account'
+
+
+def test_grandparents_status_passes_through_a_normal_parent(session):
+    assert _chain_status(session, (100.0, 150.0), (365_000.0, 0.0), (365_000.0, 0.0)) == 'Overspent'
+
+
 def test_one_day_allocation_emits_null_threshold(session):
     project = make_project(session)
     day = NOW.replace(hour=0, minute=0, second=0)
