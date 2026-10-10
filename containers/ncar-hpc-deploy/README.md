@@ -159,6 +159,11 @@ is csgteam's cron mail: stale locks, lock timeouts on `cron`, and every non-zero
 1. As csgteam, update the checkout at `/glade/u/apps/opt/sam-queries` (the
    `NHD=` path in both crontabs) and write the lane's env layers
    (§ Lanes, modes as listed). Do not set `NCAR_HPC_DEPLOY_SRC`.
+   **After every pull, also run `make bytecode` there as csgteam.** The same checkout is the
+   users' conda install, and they cannot write `src/__pycache__`. Until csgteam recompiles,
+   every module a pull changed is compiled again on every user run. Its install-root `.env`
+   (0644) holds the readers from `lanes/prod/env` in python-dotenv syntax, so change the two
+   together (`docs/plans/HPC_LANE_ENV_LAYERING.md` § 6).
 2. `bin/ncar-hpc-deploy update --lane <lane> --smoke-hosts derecho.hpc.ucar.edu`
 3. Merge `etc/crontab.<lane>` into csgteam's crontab on `cron`. For prod, remove
    each host-checkout entry it replaces in the same edit; dev replaces none.

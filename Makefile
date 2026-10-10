@@ -11,7 +11,7 @@ config_env := module load conda >/dev/null 2>&1 || true && . $(CONDA_ROOT)/etc/p
 
 .PHONY: help clean clobber distclean fixperms check check-all perf helm-test refresh-dev sync-dev e2e check-db-vs-orms validate_user_proj_usage docker-build docker-up docker-down docker-restart docker-watch docker-pytest \
         pytest-pg docker-pytest-pg \
-        conda-env prune-old-envs print-env-hash migrate-legacy-env \
+        conda-env prune-old-envs print-env-hash migrate-legacy-env bytecode \
         migrate-status-current migrate-status-up migrate-status-down migrate-status-history migrate-status-revision migrate-status-stamp-head
 
 # -------------------------------------------------------------------
@@ -135,6 +135,10 @@ prune-old-envs: ## Keep current + most-recent-previous conda-env-*; remove older
 	    | grep -v "^$$current$$" \
 	    | tail -n +2 \
 	    | xargs -r rm -rf
+
+# A shared install's users cannot write src/__pycache__: run as the owner after every git pull.
+bytecode: ## Precompile src for ./conda-env's Python (shared installs, after each pull)
+	./conda-env/bin/python -m compileall -q src
 
 print-env-hash: ## Print the computed ENV_HASH / ENV_PREFIX (debug)
 	@echo "HPC_USAGE_QUERIES_REF=$(HPC_USAGE_QUERIES_REF)"
