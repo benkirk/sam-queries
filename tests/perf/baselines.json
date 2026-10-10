@@ -247,6 +247,6 @@
     },
     "heuv_group": {
         "queries": 23,
-        "notes": "measured 15 (2026-10-10); group_populator is population-wide, so the count is flat in the user"
+        "notes": "measured 15 (2026-10-10); flat in the user. group_populator(username=) binds every membership query to the one user (~245 ms -> ~19 ms locally)"
     }
 }

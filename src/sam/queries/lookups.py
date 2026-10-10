@@ -192,7 +192,7 @@ def get_user_group_access(
         # present from the adhoc query above.
         from sam.queries.directory_access import group_populator
 
-        branches = group_populator(session, access_branch=access_branch)
+        branches = group_populator(session, access_branch=access_branch, username=username)
         for branch_name, branch_data in branches.items():
             for uname, entries in branch_data.get('user_groups', {}).items():
                 if username is not None and uname != username:

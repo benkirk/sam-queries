@@ -66,6 +66,10 @@ _SQL_PROJECT_GROUPS = text("""
       JOIN allocation AS al ON (a.account_id = al.account_id
            AND al.end_date > :grace_cutoff)
      WHERE (:branch IS NULL OR ab.name = :branch)
+       AND (:username IS NULL OR a.account_id IN (
+           SELECT au.account_id FROM account_user AS au JOIN users AS u ON au.user_id = u.user_id
+            WHERE u.username = :username
+              AND au.start_date <= NOW() AND (au.end_date IS NULL OR au.end_date > NOW())))
      GROUP BY ab.name, p.projcode, p.unix_gid
 """)
 
@@ -86,6 +90,7 @@ _SQL_PROJECT_MEMBERS = text("""
            AND (au.end_date IS NULL OR au.end_date > NOW()))
       JOIN users AS u ON (au.user_id = u.user_id AND u.active IS TRUE)
      WHERE (:branch IS NULL OR ab.name = :branch)
+       AND (:username IS NULL OR u.username = :username)
      GROUP BY ab.name, p.projcode, u.username
 """)
 
@@ -110,6 +115,7 @@ _SQL_ADHOC_MEMBERS = text("""
       FROM adhoc_system_account_entry AS ase
       JOIN adhoc_group AS ag ON ase.group_id = ag.group_id AND ag.active IS TRUE
      WHERE (:branch IS NULL OR ase.access_branch_name = :branch)
+       AND (:username IS NULL OR ase.username = :username)
 """)
 
 # Account membership + user identity. Split-and-assemble (see module docstring /
@@ -222,6 +228,7 @@ def group_populator(
     session: Session,
     access_branch: Optional[str] = None,
     grace_period_days: int = ACCESS_GRACE_PERIOD,
+    username: Optional[str] = None,
 ) -> Dict[str, Dict]:
     """
     Build the per-access-branch group directory.
@@ -253,8 +260,11 @@ def group_populator(
         session: SQLAlchemy session
         access_branch: Optional branch name filter. None = all branches.
         grace_period_days: Days beyond allocation end_date to remain active.
+        username: Only this user's memberships (exact ``user_groups`` for them;
+            ``groups`` then lists only their groups). The directory API never passes it.
     """
-    params = {'branch': access_branch, 'grace_cutoff': grace_cutoff(grace_period_days)}
+    params = {'branch': access_branch, 'grace_cutoff': grace_cutoff(grace_period_days),
+              'username': username}
 
     # --- 1. Implicit project groups ---
     branches: Dict[str, Dict] = {}
