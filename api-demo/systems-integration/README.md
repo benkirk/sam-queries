@@ -9,12 +9,15 @@ consumers switched hosts without code changes.
 | `directory_access` | `directory_access/[<branch>]` | unix accounts and groups per access branch |
 | `project_access` | `project_access/[<branch>]` | project groups, status and expiry per branch |
 | `fstree_access` | `fstree_access/[<resource>]`, `.../projects/<projcode>`, `.../users/<username>` | the fair-share tree with allocation, usage and balance |
+| `fairshare` | `fairshare/<machine>?rollup=&equalize=&format=` | the PBS `resource_group` file built from that tree |
 | `queue` | `queue/[<resource>]` | batch queues and their wallclock limits |
 | `wallclock_exemption` | `wallclock_exemption/[<resource>]` | users exempt from a queue's limit |
 | `disk_quota` | `disk_quota` (one list, every resource) | project storage quotas and paths |
 
-Every one caches its response for 5 minutes and has a `POST .../refresh` that
-drops the cache; each script ends with it. Resource names with a space are
+Every one but `fairshare` caches its response for 5 minutes and has a `POST
+.../refresh` that drops the cache; each script ends with it. `fairshare` caches
+per argument set and recomputes on `clear_cache=1`; it needs the
+hpc-scheduling-tools plugin, and on a server without one (CI) it skips. Resource names with a space are
 URL-encoded (`Derecho%20GPU`). A production key needs the
 `api_systems_integration` role. The full field reference is SAM's
 `docs/apis/SYSTEMS_INTEGRATION_APIs.md`.

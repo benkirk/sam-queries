@@ -31,7 +31,7 @@ The directories follow how SAM's own docs group the endpoints.
 | Directory | Endpoints | Key needs |
 |---|---|---|
 | `rest/` | `/api/v1`: health, users, projects, allocations, charges, status, admin cache refresh | a grant per endpoint (below) |
-| `systems-integration/` | `/api/v1`: directory_access, project_access, fstree_access, queue, wallclock_exemption, disk_quota | the `api_systems_integration` role |
+| `systems-integration/` | `/api/v1`: directory_access, project_access, fstree_access, fairshare, queue, wallclock_exemption, disk_quota | the `api_systems_integration` role |
 | `ldapsync/` | `/api/protected/admin/ldapsync`: the identity-sync feed | legacy role `ROLE_API_ADMIN` |
 | `xras/` | `/api/xras/v1`: the endpoints NSF's XRAS calls | legacy role `ROLE_XRAS` |
 
@@ -71,8 +71,9 @@ cache by accident.
 
 ## Not covered
 
-- `/api/v1/fairshare/<machine>` and `/api/v1/projects/<projcode>/jobs`: they need
-  the hpc-usage-queries plugin, which not every deployment loads.
+- `/api/v1/projects/<projcode>/jobs`: it needs the hpc-usage-queries plugin,
+  which not every deployment loads. (`systems-integration/fairshare.*` needs the
+  hpc-scheduling-tools plugin; on a server without it, it says so and passes.)
 - Writes beyond cache refresh: project-member changes, allocation edits,
   status ingest, charge-summary ingest, and the XRAS and LDAP sync writes.
 - `/api/v1/users/me`: a key is not a person, so it has no "me".

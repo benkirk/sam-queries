@@ -52,18 +52,18 @@ class ApiError(Exception):
         self.code, self.body = code, body
 
 
-def request(method, path, params=None, *, auth=None, missing_ok=False):
-    """Call SAM and return the decoded JSON; ``missing_ok`` turns a 404 into ``None``."""
+def request(method, path, params=None, *, auth=None, missing_ok=False, as_text=False):
+    """Call SAM and return the decoded JSON (or the text body with ``as_text``);
+    ``missing_ok`` turns a 404 into ``None``."""
     url = BASE + path
     if params:
         url += '?' + urllib.parse.urlencode(params)
     user, password = auth or (USER, PASS)
     token = base64.b64encode(f'{user}:{password}'.encode()).decode()
-    req = urllib.request.Request(url, method=method, headers={
-        'Authorization': f'Basic {token}', 'Accept': 'application/json'})
+    req = urllib.request.Request(url, method=method, headers={'Authorization': f'Basic {token}'})
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
-            return json.load(resp)
+            return resp.read().decode() if as_text else json.load(resp)
     except urllib.error.HTTPError as err:
         if missing_ok and err.code == 404:
             return None
@@ -72,6 +72,11 @@ def request(method, path, params=None, *, auth=None, missing_ok=False):
 
 def get(path, *, auth=None, missing_ok=False, **params):
     return request('GET', path, params, auth=auth, missing_ok=missing_ok)
+
+
+def get_text(path, *, auth=None, **params):
+    """A GET whose body is plain text, not JSON (e.g. ``format=text``)."""
+    return request('GET', path, params, auth=auth, as_text=True)
 
 
 def post(path, *, auth=None, **params):
