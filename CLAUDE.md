@@ -236,12 +236,12 @@ Registered blueprints: `projects`, `users`, `charges`, `allocations`, `status`,
 `health`, `admin`, plus the **legacy-compat** set below, `api/ldapsync/` at `/api/protected/admin` (`sam-ldap-syncd`'s contract; `docs/apis/SYSTEMS_INTEGRATION_APIs.md` § 8) and `api/heuv/` at `/api/protected/heuv/v1` (`docs/apis/HEUV_API.md`).
 
 Key endpoints (all JSON):
-- `GET /api/v1/users/`, `/users/<username>`, `/users/<username>/projects` — accept an
-  API key (any valid key; sessions need `VIEW_USERS`/`VIEW_PROJECTS`); `/users/me` is session-only
+- `GET /api/v1/users/`, `/users/<username>`, `/users/<username>/projects`. Every GET here takes a
+  key or a session (a key: the Permission by grant, never membership); writes, `/users/me`: session
 - `GET /api/v1/projects/`, `/projects/<projcode>`, `/projects/<projcode>/members`
 - `GET /api/v1/projects/<projcode>/allocations` → `AllocationWithUsageSchema(many=True)` ⭐
 - `GET /api/v1/projects/<projcode>/charges` (+ `/summary`) — detailed / aggregated charge rollups ⭐
-- `GET /api/v1/projects/expiring`, `/projects/recently_expired`
+- `GET /api/v1/projects/expiring`, `/projects/recently_expired`; `GET /api/v1/status/*`
 - `GET /api/v1/allocations/<allocation_id>` (+ `PUT` for updates)
 - Project-member mutations: `POST/DELETE /api/v1/projects/<projcode>/members[...]`,
   `PUT .../admin`
@@ -385,14 +385,14 @@ resolve the URL parameter to the ORM object, 403/404 on failure, and pass the
 
 ```python
 @bp.route('/<projcode>/allocations', methods=['GET'])
-@login_required
+@login_or_token_required()          # GET: key or session; a write keeps @login_required
 @require_project_member_access(Permission.VIEW_ALLOCATIONS)
 def get_project_allocations(project):   # ← project object, not projcode
     ...
 ```
 
-Note: the Basic-Auth path of `login_or_token_required` checks the Permission only
-under `RBAC_SOURCE=db` (`api_key_allowed`); in `defaults` mode it gates sessions only.
+Note: the Basic-Auth path checks the Permission only under `RBAC_SOURCE=db` (`api_key_allowed`);
+key grants are never facility-scoped, and the project decorators admit a key by permission alone.
 
 ### 9. Form Validation & HTMX Handlers
 

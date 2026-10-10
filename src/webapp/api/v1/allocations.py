@@ -11,6 +11,7 @@ Example usage:
 from flask import Blueprint, jsonify, request
 from flask_login import login_required, current_user
 from webapp.utils.rbac import require_permission, Permission
+from webapp.utils.api_auth import login_or_token_required
 from webapp.extensions import db
 from sam.schemas import AllocationWithUsageSchema
 from sam import Allocation
@@ -30,7 +31,7 @@ register_error_handlers(bp)
 # ============================================================================
 
 @bp.route('/<int:allocation_id>', methods=['GET'])
-@login_required
+@login_or_token_required()
 @require_allocation_permission(Permission.VIEW_ALLOCATIONS)
 def get_allocation(allocation):
     """

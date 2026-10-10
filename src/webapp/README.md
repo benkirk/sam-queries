@@ -259,11 +259,14 @@ the card and the preview say so loudly.
 
 ## REST API
 
-All API endpoints require authentication (session cookie) and appropriate RBAC permissions. Responses are in JSON format serialized using [Marshmallow schemas](#api-serialization-with-marshmallow).
+All API endpoints require authentication and appropriate RBAC permissions. Responses are in JSON format serialized using [Marshmallow schemas](#api-serialization-with-marshmallow).
 
 ### Authentication
 
-Login to obtain a session cookie:
+Every `GET` below also accepts an API key over HTTP Basic auth
+(`curl -u "$SAM_API_USER:$SAM_API_PASS" ...`); in production (`RBAC_SOURCE=db`)
+the key needs the route's permission by an explicit grant. Writes and `/users/me`
+take a session only. For a browser-style session, log in to obtain a cookie:
 
 ```bash
 curl -c cookies.txt -X POST http://localhost:5050/auth/login \
