@@ -31,6 +31,17 @@ from webapp.utils.project_permissions import (
     can_manage_project_members,
 )
 from webapp.api.helpers import get_project_or_404
+from webapp.utils.api_auth import api_key_allowed, token_ident
+
+
+def _token_gate(permission: Permission):
+    """``None`` for a session caller; else whether the verified key holds ``permission``.
+
+    Only ``login_or_token_required`` sets the identity, so a route still behind
+    ``@login_required`` (every write) never takes the token branch.
+    """
+    ident = token_ident()
+    return None if ident is None else api_key_allowed(ident, permission)
 
 
 def _get_sam_user():
@@ -143,6 +154,10 @@ def require_project_access(f: Callable = None, *, include_ancestors: bool = Fals
         if error:
             return error
 
+        token = _token_gate(Permission.VIEW_PROJECTS)
+        if token is not None:
+            return f(project, *args, **kwargs) if token else abort(403)
+
         if has_permission_for_facility(
             current_user, Permission.VIEW_PROJECTS, project.facility_name
         ):
@@ -182,6 +197,10 @@ def require_project_member_access(
             project, error = get_project_or_404(db.session, projcode)
             if error:
                 return error
+
+            token = _token_gate(permission)
+            if token is not None:
+                return f(project, *args, **kwargs) if token else abort(403)
 
             # Check access: specific permission (incl. facility scope) OR
             # user is project member.
@@ -352,6 +371,10 @@ def require_allocation_permission(permission: Permission) -> Callable:
             if project is None:
                 # Orphaned allocation — no project to authorize against.
                 abort(403)
+
+            token = _token_gate(permission)
+            if token is not None:
+                return f(allocation, *args, **kwargs) if token else abort(403)
 
             if not is_project_steward(
                 current_user, project, permission, include_ancestors=True

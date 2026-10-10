@@ -163,13 +163,19 @@ def _set_api_identity(ident: dict) -> None:
     g.api_key_user = ident['username']
     g.api_key_source = ident['source']
     g.api_key_roles = ident['roles']
+    g.api_key_ident = ident
+
+
+def token_ident() -> Optional[dict]:
+    """The verified API-key identity of this request, or ``None`` for a session caller."""
+    return g.get('api_key_ident')
 
 
 def api_key_allowed(ident: dict, permission: Optional[Permission]) -> bool:
     """The token-path permission check. Only ``RBAC_SOURCE=db`` enforces it:
     a key then needs ``permission`` through an explicit ``samuel_role_grant``
-    row (``sam-admin rbac --grant apikey:NAME``). In ``defaults`` mode any
-    valid key passes."""
+    row (``sam-admin rbac --grant apikey:NAME``), never facility-scoped. In
+    ``defaults`` mode any valid key passes."""
     if permission is None or current_app.config.get('RBAC_SOURCE') != 'db':
         return True
     from webapp.utils.rbac import active_catalog
@@ -296,8 +302,10 @@ def login_or_token_required(
         def xras_only():
             ...
 
-    Note: Do NOT combine with ``@require_project_access`` / ``@require_project_member_access``
-    — those decorators assume a session ``current_user`` and are incompatible with token callers.
+    Note: ``@require_project_access`` / ``@require_project_member_access`` /
+    ``@require_allocation_permission`` stack under the bare form
+    (``@login_or_token_required()``) and admit a token caller by permission alone,
+    never by membership.
     """
     required_roles = frozenset(roles) if roles else None
 
