@@ -18,7 +18,7 @@ from sam.security import rbac_reports as builders
 class RbacCommand(BaseCommand):
     """One class, one method per mode."""
 
-    def execute(self, *, seed: bool = False, seed_keys: bool = False, keys: bool = False,
+    def execute(self, *, seed: bool = False, keys: bool = False,
                 effective: Optional[str] = None, diff: bool = False,
                 grant: Optional[str] = None, revoke: Optional[int] = None,
                 role: Optional[str] = None, permission: Optional[str] = None,
@@ -27,8 +27,6 @@ class RbacCommand(BaseCommand):
         try:
             if seed:
                 return self._seed()
-            if seed_keys:
-                return self._seed_keys()
             if keys:
                 return self.emit(builders.build_keys(self.session), display.display_keys)
             if effective:
@@ -59,25 +57,6 @@ class RbacCommand(BaseCommand):
             self.console.print(f'Already seeded: {have} role(s) present; nothing written.')
         else:
             self.console.print(f'Seeded {n} role(s) and the default grants.')
-        return EXIT_SUCCESS
-
-    def _seed_keys(self) -> int:
-        """Grant ``api_legacy`` to every enabled key that holds no grant yet."""
-        from sam.manage import management_transaction
-        from sam.security.samuel_roles import SamuelRole, SamuelRoleGrant
-        legacy = SamuelRole.get_by_name(self.session, 'api_legacy')
-        if legacy is None:
-            self.console.print('No api_legacy role: run --seed first.', style='bold red')
-            return EXIT_ERROR
-        payload = builders.build_keys(self.session)
-        with management_transaction(self.session):
-            for name in payload['ungranted']:
-                SamuelRoleGrant.create(self.session, subject_type='apikey', subject_name=name,
-                                       by=self._actor(), role=legacy,
-                                       note='seed-keys: what every key could reach before enforcement')
-        for k in payload['keys']:
-            state = 'granted api_legacy' if k['name'] in payload['ungranted'] else 'kept as is'
-            self.console.print(f'{k["name"]:<20} {k["source"]:<7} {state}')
         return EXIT_SUCCESS
 
     def _effective(self, subject: str) -> int:

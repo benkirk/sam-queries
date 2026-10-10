@@ -4,7 +4,7 @@
 --
 --   Apply with:  mysql -u <hpc-writer> -h <host> -p sam \
 --                      < scripts/sql/create_samuel_roles.sql
---   Then seed:   sam-admin rbac --seed && sam-admin rbac --seed-keys
+--   Then seed:   sam-admin rbac --seed, then --grant apikey:NAME per key
 --
 -- A role is a named permission bundle that may extend one parent. A grant
 -- hands a role or one permission to a user, a POSIX group or an API key,

@@ -696,7 +696,7 @@ sam-admin project SCSG0001 --validate ; sam-admin project SCSG0001 --reconcile  
 sam-admin project --reconcile-lead-admin --all --dry-run   # bulk, active resources only; drop --dry-run to write
 sam-admin accounting --disk --dry-run                   # summary rebuild/reconcile ops
 sam-admin xras --readiness | --mnemonic-report | --contract-report | --identity-report   # XRAS boards (docs/xras/)
-sam-admin rbac [--seed | --seed-keys | --keys | --effective USER | --diff | --grant SUBJECT --role R | --revoke ID]   # the samuel_role_* catalog
+sam-admin rbac [--seed | --keys | --effective USER | --diff | --grant SUBJECT --role R | --revoke ID]   # the samuel_role_* catalog
 sam-admin tasks [--list | --history | --run NAME | --run-due] ; sam-admin last-seen USER | --backfill   # task dispatcher; sightings ledger
 # Cache refresh: POSTs /api/v1/admin/cache/refresh (webapp + Redis, NOT the DB); needs SAM_API_USER/PASS.
 sam-admin cache --refresh [--category flask|chart|usage|scans|jobs|awards|xras_api]

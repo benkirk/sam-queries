@@ -259,7 +259,8 @@ There is no dependency on the SAM `role_user`/`role` tables and no dev-only
 bypass. To exercise a specific permission set locally:
 
 1. Apply `scripts/sql/create_samuel_roles.sql` to the local MySQL once, then
-   `sam-admin rbac --seed` and `--seed-keys`; set `RBAC_SOURCE=db` for
+   `sam-admin rbac --seed` (grant any extra API key by name with `--grant
+   apikey:NAME`); set `RBAC_SOURCE=db` for
    samuel-dev.
 2. `docker compose up samuel-dev --watch`, Quick-Login as `benkirk`, and grant
    your test user the role or permissions on Admin -> Roles & access (the

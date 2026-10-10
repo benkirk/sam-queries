@@ -270,3 +270,24 @@ Local webdev: `.env` `RBAC_SOURCE=db` + `sam-admin rbac --seed` to exercise the 
   Left: repoint the laptop `.env` and the post-deploy step at `cacheref`.
 - `--seed-keys` granted `api_legacy` to the XRAS key. Inert: `xras_api_required` passes no
   `Permission`, so `api_key_allowed` never runs there. Harmless; leave it.
+
+## 14. Retiring the `api_legacy` blanket (2026-10)
+
+`--seed-keys` gave every enabled `api_credentials` key `api_legacy` (VIEW_USERS,
+VIEW_PROJECTS, VIEW_RESOURCES, VIEW_ALL_JOB_DATA) so the `db` flip broke nobody. Only
+`ssg` (Jenett's PBS integration) reads those routes; XRAS, ldapsync and HEUV gate on
+their legacy `roles=` and never consult it. The Java key tables are untouched: every
+client keeps its credentials and its legacy role.
+
+Code: `api_legacy` becomes `api_systems_integration` (same four permissions), granted by
+name in `DEFAULT_GRANTS` to `ssg` and `heuv`; `--seed-keys` is gone, since it would
+re-grant any key left with no active grant. `--keys` still lists ungranted keys.
+
+Ops, per environment, dev first, after the image ships (populated tables are never
+re-seeded):
+1. Admin -> Roles & access -> new role `api_systems_integration` with the four
+   permissions.
+2. `sam-admin rbac --grant apikey:ssg --role api_systems_integration`, same for `heuv`.
+3. `sam-admin rbac` lists active grants; `--revoke <id>` each `api_legacy` grant.
+4. Deactivate `api_legacy` on the Roles page; `sam-admin rbac --diff` then names neither role.
+5. Watch a day of `API auth denied` lines (`cirrus_watch.sh`). Rollback is a re-grant.

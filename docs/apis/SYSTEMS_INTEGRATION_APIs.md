@@ -33,9 +33,10 @@ Every endpoint requires authentication and accepts **either** of two paths
 `src/webapp/utils/api_auth.py`):
 
 - **HTTP Basic Auth (API key)** — the path used by scheduler / LDAP / systems
-  tooling. Credentials are validated against bcrypt-hashed `API_KEYS`; any valid
-  key grants access (no per-endpoint RBAC check). This is the recommended path
-  for scripts and cron jobs.
+  tooling, and the recommended path for scripts and cron jobs. Keys are checked
+  against `API_KEYS` and `api_credentials`; in production (`RBAC_SOURCE=db`) a key
+  also needs an explicit grant: role `api_systems_integration` covers every API
+  here but the cache refresh (`sam-admin rbac --grant apikey:NAME --role ...`).
 - **Flask-Login session (browser cookie)** — for interactive use in the web UI.
   Session callers additionally need the endpoint's `Permission` (listed per API
   below).
