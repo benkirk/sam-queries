@@ -196,7 +196,7 @@ each host).
 
 Only once Unit 2 and Step 4 are both green: communicate `sam.hpc.ucar.edu` as
 SAM's user-facing hostname. `samuel.k8s.ucar.edu` stays as the platform /
-automation / healthcheck alias — parity tooling, `scripts/apis/*`, and
+automation / healthcheck alias — parity tooling, `api-demo/`, and
 `src/cli/cmds/admin.py` remain on it deliberately, with no 301 redirect.
 
 ---

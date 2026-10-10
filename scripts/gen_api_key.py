@@ -11,6 +11,8 @@ Usage:
     python scripts/gen_api_key.py --username myservice --rounds 14
     python scripts/gen_api_key.py --key <existing-secret>  # hash a specific key
     python scripts/gen_api_key.py --username samuel --prefix 2a --sql
+    python scripts/gen_api_key.py --username apidemo --key "$KEY" --prefix 2a \
+        --role ROLE_API_ADMIN --role ROLE_XRAS --sql-only | mysql sam
 
 Output:
     API Key  -> set as STATUS_API_KEY in the collector's .env
@@ -18,6 +20,7 @@ Output:
                (compose.yaml, Helm values.yaml, or SSM Parameter Store)
     --sql    -> also emit the api_credentials / role_api_credentials INSERTs,
                for credentials stored in the database rather than the env
+    --sql-only -> only those INSERTs, committed, ready to pipe into mysql
 
 Env-var credentials (API_KEYS_<USERNAME>) take precedence over database rows;
 see src/webapp/utils/api_auth.py. Legacy Java SAM only reads the database.
@@ -62,8 +65,12 @@ def main():
         help='also emit the api_credentials / role_api_credentials INSERTs',
     )
     parser.add_argument(
-        '--role', default='ROLE_XRAS',
-        help='role name granted by the --sql INSERT (default: ROLE_XRAS)',
+        '--sql-only', action='store_true',
+        help='print only the INSERTs, committed (for a pipe into mysql)',
+    )
+    parser.add_argument(
+        '--role', action='append',
+        help='role granted by the --sql INSERT; repeatable (default: ROLE_XRAS)',
     )
     args = parser.parse_args()
 
@@ -79,6 +86,18 @@ def main():
     hashed = bcrypt.hashpw(key.encode(), salt).decode()
 
     env_var = f"API_KEYS_{args.username.upper()}"
+    roles = args.role or ['ROLE_XRAS']
+    role_list = ', '.join(f"'{r}'" for r in roles)
+
+    if args.sql_only:
+        print("START TRANSACTION;")
+        print("INSERT INTO api_credentials (username, password, enabled)")
+        print(f"VALUES ('{args.username}', '{hashed}', 1);")
+        print("INSERT INTO role_api_credentials (role_id, api_credentials_id)")
+        print("  SELECT r.role_id, ac.api_credentials_id FROM role r, api_credentials ac")
+        print(f"   WHERE r.name IN ({role_list}) AND ac.username = '{args.username}';")
+        print("COMMIT;")
+        return
 
     verb = "Using supplied" if args.key is not None else "Generated"
     print(f"\n{verb} API key for '{args.username}':")
@@ -96,7 +115,7 @@ def main():
         print("    INSERT INTO role_api_credentials (role_id, api_credentials_id)")
         print("      SELECT r.role_id, ac.api_credentials_id")
         print("        FROM role r, api_credentials ac")
-        print(f"       WHERE r.name = '{args.role}' AND ac.username = '{args.username}';")
+        print(f"       WHERE r.name IN ({role_list}) AND ac.username = '{args.username}';")
         print("    -- verify one row, correct role, enabled — then COMMIT (else ROLLBACK)")
         print("    SELECT ac.api_credentials_id, ac.username, ac.enabled, r.name")
         print("      FROM api_credentials ac")

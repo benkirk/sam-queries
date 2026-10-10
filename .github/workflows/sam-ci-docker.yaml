@@ -14,7 +14,7 @@ concurrency:
   group: ${{ github.ref }}-${{ github.workflow }}
   cancel-in-progress: true
 
-# Three independent jobs on three runners, so a red check names what failed.
+# Four independent jobs on four runners, so a red check names what failed.
 # Each pays its own stack setup (.github/actions/test-stack). pytest runs inside
 # the samuel container and reaches the test DBs by compose hostname; the suite's
 # safety allowlist approves mysql-test:3306 and postgres-test:5432.
@@ -135,3 +135,52 @@ jobs:
       - name: Show container logs
         if: failure()
         run: docker compose logs --tail=200
+
+  # api-demo/ run end to end against the live stack, from the runner (curl, jq and
+  # python3 are on ubuntu-latest; the samuel image has neither curl nor jq). The
+  # snapshot carries no API keys, so one is minted with both legacy roles the
+  # ldapsync/ and xras/ families need.
+  api-demo:
+    name: API demo smoke
+    if: >-
+      !contains(github.event.head_commit.message, '[skip ci]')
+      && !contains(github.event.head_commit.message, '[ci skip]')
+      && !contains(github.event.head_commit.message, '[no ci]')
+      && !contains(github.event.pull_request.title, '[skip ci]')
+      && !contains(github.event.pull_request.title, '[ci skip]')
+      && !contains(github.event.pull_request.title, '[no ci]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      # One actor makes every call; keep the per-user limit out of the way.
+      - name: Prepare .env
+        run: echo "RATELIMIT_AUTHED=10000 per minute" > .env
+
+      - name: Start the stack
+        uses: ./.github/actions/test-stack
+        with:
+          services: samuel
+
+      - name: Mint an API key
+        run: |
+          KEY=$(openssl rand -hex 24)
+          echo "::add-mask::$KEY"
+          echo "SAM_API_PASS=$KEY" >> "$GITHUB_ENV"
+          docker compose exec -T samuel python scripts/gen_api_key.py \
+              --username apidemo --key "$KEY" --rounds 4 --prefix 2a \
+              --role ROLE_API_ADMIN --role ROLE_XRAS --sql-only \
+            | docker compose exec -T mysql mysql -uroot -proot sam
+
+      - name: Run every example (bash, then Python)
+        env:
+          SAM_API_BASE: http://localhost:7050
+          SAM_API_USER: apidemo
+        run: api-demo/run_all.sh
+
+      - name: Show container logs
+        if: failure()
+        run: docker compose logs --tail=200 samuel

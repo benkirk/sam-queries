@@ -30,8 +30,7 @@ from cli.tasks.commands import TasksCommand
 from cli.xras.commands import XrasCommand
 from sam.queries.xras_actions import XRAS_ACTION_STATUSES
 
-# Default base URL for the running webapp (matches the systems-integration
-# shell client, scripts/apis/systems_integration_apis.sh).
+# Default base URL for the running webapp.
 _DEFAULT_API_BASE = 'https://samuel.k8s.ucar.edu'
 
 
