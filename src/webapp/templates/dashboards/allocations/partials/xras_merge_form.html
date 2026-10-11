@@ -1,6 +1,6 @@
 {#
   Resolve identity — the assisted merge decision, rendered into
-  #auditDetailsModalBody and re-rendered in place on a validation error.
+  #xrasModalBody and re-rendered in place on a validation error.
 
   Context: username, person, candidates[], write_enabled, post_url
 
@@ -31,7 +31,7 @@
 {% from 'dashboards/fragments/form_fields.html' import text_field, textarea_field, form_errors_panel with context %}
 {% from 'dashboards/fragments/table_bits.html' import state_tag %}
 
-<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+<h5 id="xrasModalLabel" class="modal-title" hx-swap-oob="true">
     Resolve identity — {{ username }}
 </h5>
 
@@ -68,7 +68,7 @@
 {% endif %}
 
 <form hx-post="{{ post_url }}"
-      hx-target="#auditDetailsModalBody"
+      hx-target="#xrasModalBody"
       hx-swap="innerHTML">
 
     {% if candidates | length == 1 and candidates[0].rank == 0 %}

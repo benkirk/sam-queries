@@ -90,7 +90,7 @@ class TestInteraction:
         """WARNING: The per-request row expansion is GONE — PR #464 folded the roster
         and actions into the read-only detail modal, and the Request number is
         now the single entry point. So the roster/actions live in
-        `#auditDetailsModal`, reached by clicking the request link, not by
+        `#xrasModal`, reached by clicking the request link, not by
         expanding the row."""
         card = _load(page)
         rows = _rows(card)
@@ -100,11 +100,11 @@ class TestInteraction:
         link = card.locator('[hx-get*="xras_request_detail"]').first
         assert link.count() == 1, 'the request has no detail-modal link'
         link.click()
-        page.wait_for_selector('#auditDetailsModal.show', timeout=15_000)
+        page.wait_for_selector('#xrasModal.show', timeout=15_000)
         # The detail read is live; on any stack that swept, outgoing is
         # configured, so the modal carries the shared roster/actions strip.
         page.wait_for_timeout(800)
-        text = page.locator('#auditDetailsModalBody').inner_text().casefold()
+        text = page.locator('#xrasModalBody').inner_text().casefold()
         assert 'roster' in text and 'actions' in text
 
     def test_the_group_header_chevron_rotates_when_the_group_toggles(self, page):
@@ -258,7 +258,7 @@ class TestIdentityStrip:
         buttons = strip.locator('button[hx-get*="/allocations/xras_merge_form/"]')
         if buttons.count() == 0:
             pytest.skip('nothing ready to merge on this stack')
-        assert buttons.first.get_attribute('data-bs-target') == '#auditDetailsModal'
+        assert buttons.first.get_attribute('data-bs-target') == '#xrasModal'
 
 
 class TestPendingWorkToggle:

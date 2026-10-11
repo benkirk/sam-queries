@@ -1,6 +1,6 @@
 {#
   Request-attributes editor (title / short title / abstract), rendered into
-  #auditDetailsModalBody. Prefilled with the current values; a save writes all
+  #xrasModalBody. Prefilled with the current values; a save writes all
   three (the untouched ones to what they already were). On success the handler
   re-renders the whole detail modal in place.
 
@@ -11,7 +11,7 @@
 #}
 {% from 'dashboards/fragments/form_fields.html' import text_field, textarea_field, form_errors_panel with context %}
 
-<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+<h5 id="xrasModalLabel" class="modal-title" hx-swap-oob="true">
     Edit attributes — {{ request_number }}
 </h5>
 
@@ -28,7 +28,7 @@
 </div>
 {% endif %}
 
-<form hx-post="{{ post_url }}" hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+<form hx-post="{{ post_url }}" hx-target="#xrasModalBody" hx-swap="innerHTML">
     <fieldset {% if not write_enabled %}disabled{% endif %}>
         {{ text_field('title', 'Title', required=True, maxlength=500,
                       default=title or '') }}
@@ -41,7 +41,7 @@
     {{ form_errors_panel() }}
     <div class="d-flex justify-content-between mt-3">
         <button type="button" class="btn btn-outline-secondary"
-                hx-get="{{ back_url }}" hx-target="#auditDetailsModalBody"
+                hx-get="{{ back_url }}" hx-target="#xrasModalBody"
                 hx-swap="innerHTML">Back</button>
         <button type="submit" class="btn btn-primary"
                 {% if not write_enabled %}disabled{% endif %}>Save</button>

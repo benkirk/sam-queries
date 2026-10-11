@@ -1,5 +1,5 @@
 {#
-  Allocation-date editor for one action, rendered into #auditDetailsModalBody.
+  Allocation-date editor for one action, rendered into #xrasModalBody.
   Creates a range (POST) when `allocation_date_id` is absent, updates one in
   place (PUT) when present. On save the handler re-renders the detail modal.
 
@@ -10,7 +10,7 @@
 #}
 {% from 'dashboards/fragments/form_fields.html' import date_field, textarea_field, form_errors_panel with context %}
 
-<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+<h5 id="xrasModalLabel" class="modal-title" hx-swap-oob="true">
     {{ 'Edit' if allocation_date_id else 'Set' }} allocation dates — {{ request_number }}
 </h5>
 
@@ -26,7 +26,7 @@
 </div>
 {% endif %}
 
-<form hx-post="{{ post_url }}" hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+<form hx-post="{{ post_url }}" hx-target="#xrasModalBody" hx-swap="innerHTML">
     {% if allocation_date_id %}
     <input type="hidden" name="allocation_date_id" value="{{ allocation_date_id }}">
     {% endif %}
@@ -39,7 +39,7 @@
     {{ form_errors_panel() }}
     <div class="d-flex justify-content-between mt-3">
         <button type="button" class="btn btn-outline-secondary"
-                hx-get="{{ back_url }}" hx-target="#auditDetailsModalBody"
+                hx-get="{{ back_url }}" hx-target="#xrasModalBody"
                 hx-swap="innerHTML">Back</button>
         <button type="submit" class="btn btn-primary"
                 {% if not write_enabled %}disabled{% endif %}>Save</button>

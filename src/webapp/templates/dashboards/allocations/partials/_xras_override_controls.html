@@ -34,7 +34,7 @@
         {% if can_edit_overrides %}
         <form class="d-inline"
               hx-post="{{ url_for('allocations_dashboard.xras_clear_override', kind='mnemonic') }}"
-              hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+              hx-target="#xrasModalBody" hx-swap="innerHTML">
             <input type="hidden" name="request_number" value="{{ request_number }}">
             <input type="hidden" name="return_to" value="{{ _rt }}">
             <button type="submit" class="btn btn-sm btn-outline-secondary ms-1">Clear</button>
@@ -44,7 +44,7 @@
     {% elif can_edit_overrides %}
     <form class="mb-3"
           hx-post="{{ url_for('allocations_dashboard.xras_set_override') }}"
-          hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+          hx-target="#xrasModalBody" hx-swap="innerHTML">
         <input type="hidden" name="kind" value="mnemonic">
         <input type="hidden" name="request_number" value="{{ request_number }}">
         <input type="hidden" name="request_id" value="{{ request_id or '' }}">
@@ -73,7 +73,7 @@
         {% if can_edit_overrides %}
         <form class="d-inline"
               hx-post="{{ url_for('allocations_dashboard.xras_clear_override', kind='ignore_contract') }}"
-              hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+              hx-target="#xrasModalBody" hx-swap="innerHTML">
             <input type="hidden" name="request_number" value="{{ request_number }}">
             <input type="hidden" name="return_to" value="{{ _rt }}">
             <button type="submit" class="btn btn-sm btn-outline-secondary ms-1">Clear</button>
@@ -82,7 +82,7 @@
     </div>
     {% elif can_edit_overrides and 'contract' in blockers %}
     <form hx-post="{{ url_for('allocations_dashboard.xras_set_override') }}"
-          hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+          hx-target="#xrasModalBody" hx-swap="innerHTML">
         <input type="hidden" name="kind" value="ignore_contract">
         <input type="hidden" name="request_number" value="{{ request_number }}">
         <input type="hidden" name="request_id" value="{{ request_id or '' }}">

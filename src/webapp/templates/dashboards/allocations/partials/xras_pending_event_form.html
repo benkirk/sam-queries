@@ -1,5 +1,5 @@
 {#
-  Dismiss form — rendered into #auditDetailsModalBody, re-rendered in place on
+  Dismiss form — rendered into #xrasModalBody, re-rendered in place on
   validation error by handle_htmx_form_post.
 
   Context:
@@ -17,7 +17,7 @@
    input, i.e. a silent rejection. Every other call site does the same. #}
 {% from 'dashboards/fragments/form_fields.html' import textarea_field, form_errors_panel with context %}
 
-<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+<h5 id="xrasModalLabel" class="modal-title" hx-swap-oob="true">
     Dismiss {{ project.projcode }}
 </h5>
 
@@ -34,7 +34,7 @@
 </p>
 
 <form hx-post="{{ post_url }}"
-      hx-target="#auditDetailsModalBody"
+      hx-target="#xrasModalBody"
       hx-swap="innerHTML">
     {{ textarea_field('comment', 'Reason', required=False, rows=3,
                       maxlength=4000,

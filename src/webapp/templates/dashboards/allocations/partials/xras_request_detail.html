@@ -1,5 +1,5 @@
 {#
-  Read-only detail of one XRAS request, rendered into #auditDetailsModalBody.
+  Read-only detail of one XRAS request, rendered into #xrasModalBody.
 
   Context: request_number, payload (a reports/request_numbers dict), row (a
            request_index_entry dict for the shared include), detail_actions
@@ -46,7 +46,7 @@
         <a href="#" class="text-decoration-none" title="View this opportunity"
            hx-get="{{ url_for('allocations_dashboard.xras_opportunity_detail',
                               opportunity_id=payload.opportunityId) }}?request_number={{ request_number }}"
-           hx-target="#auditDetailsModalBody" hx-swap="innerHTML">{{ payload.opportunity_name }}</a>
+           hx-target="#xrasModalBody" hx-swap="innerHTML">{{ payload.opportunity_name }}</a>
         {% else %}
         {{ payload.opportunity_name }}
         {%- if payload.opportunityId %} <span class="text-muted">#{{ payload.opportunityId }}</span>{% endif %}
@@ -102,7 +102,7 @@
             aria-label="Edit the title, short title and abstract"
             hx-get="{{ url_for('allocations_dashboard.xras_attributes_form',
                                request_number=request_number) }}"
-            hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+            hx-target="#xrasModalBody" hx-swap="innerHTML">
         <i class="fa-solid fa-pencil"></i></button>
 </div>
 {% if payload.abstract %}
@@ -155,14 +155,14 @@
                 hx-get="{{ url_for('allocations_dashboard.xras_withdraw_form',
                                    request_number=request_number,
                                    action_id=action.action_id) }}"
-                hx-target="#auditDetailsModalBody" hx-swap="innerHTML">Withdraw…</button>
+                hx-target="#xrasModalBody" hx-swap="innerHTML">Withdraw…</button>
         {% elif action.can_resubmit %}
         <button type="button" class="btn btn-sm btn-outline-primary flex-shrink-0" {{ write_disabled }}
                 {% if not write_enabled %}title="{{ why_off }}"{% endif %}
                 hx-get="{{ url_for('allocations_dashboard.xras_resubmit_form',
                                    request_number=request_number,
                                    action_id=action.action_id) }}"
-                hx-target="#auditDetailsModalBody" hx-swap="innerHTML">Re-submit…</button>
+                hx-target="#xrasModalBody" hx-swap="innerHTML">Re-submit…</button>
         {% endif %}
     </div>
     <div class="collapse{% if action.is_latest %} show{% endif %}" id="xras-action-{{ action.action_id }}">
@@ -209,7 +209,7 @@
                                                        request_number=request_number,
                                                        action_id=action.action_id,
                                                        resource_id=r.resource_id) }}?stage=Requested"
-                                    hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+                                    hx-target="#xrasModalBody" hx-swap="innerHTML">
                                 <i class="fa-solid fa-pencil"></i></button>
                             <button type="button" class="btn btn-row btn-row-danger" {{ write_disabled }}
                                     title="{% if not write_enabled %}{{ why_off }}{% else %}Remove the requested line{% endif %}" aria-label="{% if not write_enabled %}{{ why_off }}{% else %}Remove the requested line{% endif %}"
@@ -217,7 +217,7 @@
                                                         request_number=request_number,
                                                         action_id=action.action_id,
                                                         resource_id=r.resource_id) }}"
-                                    hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                                    hx-target="#xrasModalBody" hx-swap="innerHTML"
                                     hx-confirm="Remove the requested line for {{ r.name }} from {{ request_number }} in XRAS?"
                                     data-confirm-title="Remove requested resource"
                                     data-confirm-ok="Remove" data-confirm-variant="danger">
@@ -231,7 +231,7 @@
                                                        request_number=request_number,
                                                        action_id=action.action_id,
                                                        resource_id=r.resource_id) }}?stage=Approved"
-                                    hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+                                    hx-target="#xrasModalBody" hx-swap="innerHTML">
                                 <i class="fa-solid fa-pencil"></i></button>
                             {% else %}
                             <button type="button" class="btn btn-row" disabled
@@ -270,7 +270,7 @@
                 hx-get="{{ url_for('allocations_dashboard.xras_dates_form',
                                    request_number=request_number,
                                    action_id=action.action_id) }}"
-                hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+                hx-target="#xrasModalBody" hx-swap="innerHTML">
             <i class="fa-solid fa-calendar-plus"></i></button>
         {% endif %}
         {% if action.dates %}
@@ -291,7 +291,7 @@
                                 hx-get="{{ url_for('allocations_dashboard.xras_dates_form',
                                                    request_number=request_number,
                                                    action_id=action.action_id) }}?allocation_date_id={{ d.allocation_date_id }}"
-                                hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+                                hx-target="#xrasModalBody" hx-swap="innerHTML">
                             <i class="fa-solid fa-pencil"></i></button>
                         <button type="button" class="btn btn-row btn-row-danger" {{ write_disabled }}
                                 title="{% if not write_enabled %}{{ why_off }}{% else %}Remove this date range{% endif %}"
@@ -300,7 +300,7 @@
                                                     request_number=request_number,
                                                     action_id=action.action_id,
                                                     allocation_date_id=d.allocation_date_id) }}"
-                                hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                                hx-target="#xrasModalBody" hx-swap="innerHTML"
                                 hx-confirm="Remove this allocation-date range from {{ request_number }} in XRAS?"
                                 data-confirm-title="Remove allocation dates"
                                 data-confirm-ok="Remove" data-confirm-variant="danger">
@@ -342,7 +342,7 @@
                 hx-get="{{ url_for('allocations_dashboard.xras_action_fields_form',
                                    request_number=request_number,
                                    action_id=action.action_id) }}"
-                hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+                hx-target="#xrasModalBody" hx-swap="innerHTML">
             <i class="fa-solid fa-pencil"></i></button>
         {% endif %}
     </div>
@@ -428,13 +428,13 @@
                 {% if not write_enabled %}title="{{ why_off }}"{% endif %}
                 hx-get="{{ url_for('allocations_dashboard.xras_add_action_form',
                                    request_number=request_number) }}"
-                hx-target="#auditDetailsModalBody" hx-swap="innerHTML">Add action…</button>
+                hx-target="#xrasModalBody" hx-swap="innerHTML">Add action…</button>
 
         <button type="button" class="btn btn-sm btn-outline-warning" {{ write_disabled }}
                 {% if not write_enabled %}title="{{ why_off }}"{% endif %}
                 hx-post="{{ url_for('allocations_dashboard.xras_request_renew',
                                     request_number=request_number) }}"
-                hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                hx-target="#xrasModalBody" hx-swap="innerHTML"
                 hx-confirm="Spawn a renewal of {{ request_number }} in XRAS?"
                 data-confirm-title="Renew request in XRAS"
                 data-confirm-ok="Renew" data-confirm-variant="warning">Renew…</button>
@@ -445,7 +445,7 @@
                 {% if not write_enabled %}title="{{ why_off }}"{% endif %}
                 hx-post="{{ url_for('allocations_dashboard.xras_request_delete',
                                     request_number=request_number) }}"
-                hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                hx-target="#xrasModalBody" hx-swap="innerHTML"
                 hx-confirm="DELETE the ENTIRE project {{ request_number }} from XRAS: {{ family.requests | length }} request{{ '' if family.requests | length == 1 else 's' }} and {{ family.timeline | length }} action{{ '' if family.timeline | length == 1 else 's' }}. This is IRREVERSIBLE — the whole allocation history is removed."
                 data-confirm-title="Delete the whole project in XRAS"
                 data-confirm-ok="Delete permanently" data-confirm-variant="danger">Delete project…</button>

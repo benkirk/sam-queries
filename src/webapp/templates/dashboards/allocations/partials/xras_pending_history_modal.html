@@ -1,5 +1,5 @@
 {#
-  Activation timeline for one project — rendered into #auditDetailsModalBody.
+  Activation timeline for one project — rendered into #xrasModalBody.
 
   Context:
     project   the Project
@@ -31,7 +31,7 @@
     'restored':  'Restored',
 } %}
 
-<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+<h5 id="xrasModalLabel" class="modal-title" hx-swap-oob="true">
     Activation history — {{ project.projcode }}
 </h5>
 
@@ -68,7 +68,7 @@
 {% endif %}
 
 <form hx-post="{{ post_url }}"
-      hx-target="#auditDetailsModalBody"
+      hx-target="#xrasModalBody"
       hx-swap="innerHTML">
     {{ textarea_field('comment', 'Add a comment', required=True, rows=2,
                       maxlength=4000,

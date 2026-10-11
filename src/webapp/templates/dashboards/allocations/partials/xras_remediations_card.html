@@ -153,8 +153,8 @@
                     {% if not write_enabled %}disabled title="XRAS writes are switched off for this deployment (XRAS_WRITE_ENABLED)."{% else %}
                     title="merges into {{ t.target_username }} · would unblock {{ t.unblock_count }}: {{ t.sample | join(', ') }}"{% endif %}
                     hx-get="{{ t.merge_url }}"
-                    hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
-                    data-bs-toggle="modal" data-bs-target="#auditDetailsModal"><span class="font-monospace">{{ t.username }}</span></button>
+                    hx-target="#xrasModalBody" hx-swap="innerHTML"
+                    data-bs-toggle="modal" data-bs-target="#xrasModal"><span class="font-monospace">{{ t.username }}</span></button>
             &rarr; <span class="font-monospace">{{ t.target_username }}</span>&nbsp;({{ t.unblock_count }}){% if not loop.last %} ·{% endif %}
             {% endfor %}
             {% if _itargets | length > 6 %}
@@ -272,10 +272,10 @@
                         {% if configured and group.opportunity_id %}
                         {# The name opens the opportunity; only the chevron toggles. #}
                         <a href="#" class="text-decoration-none" title="View this opportunity"
-                           data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                           data-bs-toggle="modal" data-bs-target="#xrasModal"
                            hx-get="{{ url_for('allocations_dashboard.xras_opportunity_detail',
                                               opportunity_id=group.opportunity_id) }}"
-                           hx-target="#auditDetailsModalBody" hx-swap="innerHTML">{{ group.name }}</a>
+                           hx-target="#xrasModalBody" hx-swap="innerHTML">{{ group.name }}</a>
                         {%- else %}{{ group.name }}{% endif %}
                         {{ group_count(group.rows | length) }}
                     </td>
@@ -332,10 +332,10 @@
                         {{ verdict('incomplete', icon_only=True, title="Incomplete: SAM can't preflight this action type yet, so its readiness is unknown. Open the request for the gap.") }}
                         {% elif row.preflight_rollup %}
                         <a href="#" class="text-decoration-none"
-                           data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                           data-bs-toggle="modal" data-bs-target="#xrasModal"
                            hx-get="{{ url_for('allocations_dashboard.xras_readiness_detail',
                                               request_number=row.request_number) }}"
-                           hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                           hx-target="#xrasModalBody" hx-swap="innerHTML"
                            aria-label="readiness verdict: open the reasons">{{ verdict(row.preflight_rollup, icon_only=True) }}</a>
                         {% else %}
                         {# hx-swap="none": the route fires refreshXrasTab and a toast. #}

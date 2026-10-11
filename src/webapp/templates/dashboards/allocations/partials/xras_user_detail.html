@@ -1,5 +1,5 @@
 {#
-  Read-only detail of one XRAS person, rendered into #auditDetailsModalBody —
+  Read-only detail of one XRAS person, rendered into #xrasModalBody —
   the analogue of xras_request_detail.html for the *user* side of the roster.
 
   Context: username, person (a /v1/people dict), role_groups (grouped
@@ -8,7 +8,7 @@
            back_request_number, write_enabled, configured.
 
   WARNING: No `data-bs-toggle="modal"` on any control here. This body is always
-  swapped INTO the already-open #auditDetailsModal, so every link just
+  swapped INTO the already-open #xrasModal, so every link just
   hx-gets a new body — a toggle would fire on the open modal and HIDE it (the
   PR #464 self-closing-modal bug). The Request links below reuse that idiom to
   swap the request detail in place, and the merge button reuses the merge form.
@@ -85,7 +85,7 @@
             {% if not write_enabled %}disabled
             title="XRAS writes are switched off for this deployment (XRAS_WRITE_ENABLED)."{% endif %}
             hx-get="{{ merge_url }}"
-            hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+            hx-target="#xrasModalBody" hx-swap="innerHTML">
         Resolve identity (merge)…
     </button>
 </div>
@@ -115,7 +115,7 @@
                 <a href="#" class="text-decoration-none"
                    hx-get="{{ url_for('allocations_dashboard.xras_request_detail',
                                       request_number=proj.request_number) }}"
-                   hx-target="#auditDetailsModalBody" hx-swap="innerHTML">{{ proj.request_number }}</a>
+                   hx-target="#xrasModalBody" hx-swap="innerHTML">{{ proj.request_number }}</a>
                 {% else %}{{ proj.request_number }}{% endif %}
             </span>
             <span class="fw-semibold">{{ proj.title or '—' }}</span>

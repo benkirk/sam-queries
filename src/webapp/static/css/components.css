@@ -898,3 +898,8 @@ tr.collapsing {
     border-radius: 0.125rem;
     overflow: hidden;
 }
+
+/* A footer slot no fragment has filled (modal_scaffold footer_id=). */
+.modal-footer:empty {
+    display: none;
+}

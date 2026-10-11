@@ -2,6 +2,7 @@
 {% from 'dashboards/fragments/xras_filters.html' import xras_filters %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_form %}
+{% from 'dashboards/fragments/modals.html' import modal_scaffold %}
 
 {% block title %}XRAS Action Log - SAM{% endblock %}
 
@@ -136,6 +137,10 @@
 </div>{# #xras-section-logs #}
 </section>
 
+{# XRAS's own dialog: a body that scrolls, a footer slot its fragments fill. #}
+{{ modal_scaffold('xrasModal', 'XRAS', 'plug', 'xrasModalBody', size='lg',
+                  scrollable=True, footer_id='xrasModalFooter') }}
+{# The Accounts-queue reason forms (admin fragments) still open in this one. #}
 {% include 'dashboards/allocations/partials/audit_details_modal.html' %}
 
 {% endblock %}

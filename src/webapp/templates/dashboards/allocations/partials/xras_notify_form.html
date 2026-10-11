@@ -1,5 +1,5 @@
 {#
-  Preview modal for the Notify button, rendered into #auditDetailsModalBody
+  Preview modal for the Notify button, rendered into #xrasModalBody
   by GET xras_notify_form. A preview rather than an hx-confirm: it answers the
   operator's real question, "and what does it say".
 
@@ -12,7 +12,7 @@
     project_inactive  the project is not active yet
     post_url          where Send posts
 #}
-<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+<h5 id="xrasModalLabel" class="modal-title" hx-swap-oob="true">
     Notify — {{ project.projcode }}
 </h5>
 
@@ -108,7 +108,7 @@
     <button type="button" class="btn btn-primary"
             hx-post="{{ post_url }}"
             {% if already_notified %}hx-include="#xrasNotifyForce"{% endif %}
-            hx-target="#auditDetailsModalBody"
+            hx-target="#xrasModalBody"
             hx-swap="innerHTML"
             {% if not people %}disabled{% endif %}>
         <i class="fa-solid fa-paper-plane"></i>

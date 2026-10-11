@@ -1,5 +1,5 @@
 {#
-  Focused push-readiness modal, rendered into #auditDetailsModalBody. Reached
+  Focused push-readiness modal, rendered into #xrasModalBody. Reached
   from a verdict badge on the Remediations card — the badge's evidence view,
   without the full request modal around it. Read-only; the verdicts come straight
   from the sweep snapshot (no live XRAS read), so it renders even during an outage.
@@ -40,7 +40,7 @@
 <a href="#" class="small d-inline-block mt-2"
    hx-get="{{ url_for('allocations_dashboard.xras_request_detail',
                       request_number=request_number) }}"
-   hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+   hx-target="#xrasModalBody" hx-swap="innerHTML">
     Open the full request <i class="fa-solid fa-arrow-right"></i>
 </a>
 

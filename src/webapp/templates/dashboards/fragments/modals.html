@@ -26,6 +26,9 @@
     icon         - Font Awesome icon name without 'fa-' prefix (required)
     container_id - DOM id of the inner div that HTMX will swap form HTML into (required)
     size         - 'lg' / 'xl' to apply modal-lg / modal-xl to modal-dialog
+    footer_id    - a footer slot: container_id is then the .modal-body itself, and
+                   a fragment fills #footer_id out of band (modals.js clears it on
+                   every body swap); scrollable keeps the footer pinned
 #}
 
 {#
@@ -65,10 +68,11 @@
 </div>
 {% endmacro %}
 
-{% macro modal_scaffold(modal_id, title, icon, container_id, size=None) %}
+{% macro modal_scaffold(modal_id, title, icon, container_id, size=None, scrollable=False, footer_id=None) %}
 {#- Sized (lg/xl) modals go fullscreen on phones — a modal-lg squeezed into a
     390px viewport is unusable. Default-size modals already fit. -#}
-{%- set _dialog_class = 'modal-dialog' + (' modal-' ~ size ~ ' modal-fullscreen-sm-down' if size else '') -%}
+{%- set _dialog_class = 'modal-dialog' + (' modal-' ~ size ~ ' modal-fullscreen-sm-down' if size else '')
+                        + (' modal-dialog-scrollable' if scrollable else '') -%}
 <div class="modal fade" id="{{ modal_id }}" tabindex="-1"
      aria-labelledby="{{ modal_id }}Label" aria-hidden="true">
     <div class="{{ _dialog_class }}">
@@ -80,12 +84,22 @@
                 <button type="button" class="btn-close"
                         data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
+            {% if footer_id %}
+            <div class="modal-body" id="{{ container_id }}" data-footer-id="{{ footer_id }}">
+                <div class="text-center text-muted py-4" role="status">
+                    <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+                    <p class="mt-2 mb-0">Loading…</p>
+                </div>
+            </div>
+            <div class="modal-footer" id="{{ footer_id }}"></div>
+            {% else %}
             <div id="{{ container_id }}">
                 <div class="modal-body text-center text-muted py-4" role="status">
                     <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
                     <p class="mt-2 mb-0">Loading…</p>
                 </div>
             </div>
+            {% endif %}
         </div>
     </div>
 </div>

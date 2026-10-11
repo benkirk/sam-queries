@@ -59,9 +59,9 @@
 {%- elif configured -%}
 <button type="button" class="btn btn-link btn-entity p-0{{ ' text-warning-emphasis' if suspect }}"
         title="{{ warn if suspect else 'Full request detail (read-only)' }}"
-        data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+        data-bs-toggle="modal" data-bs-target="#xrasModal"
         hx-get="{{ url_for('allocations_dashboard.xras_request_detail', request_number=number) }}"
-        hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+        hx-target="#xrasModalBody" hx-swap="innerHTML">
 {%- if suspect %}<i class="fa-solid fa-triangle-exclamation small me-1" aria-hidden="true"></i>{% endif -%}
 <span class="font-monospace">{{ number }}</span></button>
 {%- elif is_project -%}{{ project_link(number, can_view_projects, compact=True, stop_propagation=True) }}

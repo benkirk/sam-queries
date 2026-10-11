@@ -451,7 +451,7 @@ def _user_context(username, *, back_request_number=None):
         'role_groups': role_groups,
         # SAM cross-reference, informational only: the SAM user modal lives
         # inside its own #userDetailsModal, and opening it from within this
-        # already-open #auditDetailsModal would stack two Bootstrap modals — an
+        # already-open #xrasModal would stack two Bootstrap modals — an
         # idiom this page does not use. The Accounts-Needed card keeps the SAM
         # user opener in its non-modal home.
         'in_sam': sam_user is not None,

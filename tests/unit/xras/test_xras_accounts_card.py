@@ -345,7 +345,7 @@ class TestTheXrasIdentityLinksToTheUserModal:
                             lambda username: None)
         body = auth_client.get(URL).get_data(as_text=True)
         assert '/allocations/xras_user_detail/placeholder38-user-00038' in body
-        assert 'data-bs-target="#auditDetailsModal"' in body
+        assert 'data-bs-target="#xrasModal"' in body
 
     def test_it_degrades_without_the_outbound_api(
             self, auth_client, committed_worklist_action, monkeypatch):

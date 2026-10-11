@@ -109,9 +109,9 @@
                     <span class="row-actions">
                     <button class="btn btn-row" type="button"
                             title="View action details" aria-label="View action details"
-                            data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                            data-bs-toggle="modal" data-bs-target="#xrasModal"
                             hx-get="{{ url_for('allocations_dashboard.xras_action_details', action_id=r.action_log_id) }}"
-                            hx-target="#auditDetailsModalBody"
+                            hx-target="#xrasModalBody"
                             hx-swap="innerHTML">
                         <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
                     </button>

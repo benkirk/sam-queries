@@ -141,8 +141,8 @@
                         <button type="button" class="btn btn-row{{ '' if r.notified else ' btn-row-primary' }}"
                                 title="{{ notify_title }}" aria-label="{{ notify_title }}"
                                 hx-get="{{ url_for('allocations_dashboard.xras_notify_form', project_id=r.project_id, action_id=r.action_log_id) }}"
-                                hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
-                                data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
+                                hx-target="#xrasModalBody" hx-swap="innerHTML"
+                                data-bs-toggle="modal" data-bs-target="#xrasModal">
                             <i class="fa-solid fa-envelope" aria-hidden="true"></i>
                         </button>
                         {% endif %}
@@ -169,16 +169,16 @@
                         <button type="button" class="btn btn-row btn-row-attention"
                                 title="Dismiss: take this row out of the attention queue" aria-label="Dismiss: take this row out of the attention queue"
                                 hx-get="{{ url_for('allocations_dashboard.xras_dismiss_form', project_id=r.project_id) }}"
-                                hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
-                                data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
+                                hx-target="#xrasModalBody" hx-swap="innerHTML"
+                                data-bs-toggle="modal" data-bs-target="#xrasModal">
                             <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
                         </button>
                         {% endif %}
                         <button type="button" class="btn btn-row"
                                 title="Activation history and comments" aria-label="Activation history and comments"
                                 hx-get="{{ url_for('allocations_dashboard.xras_history', project_id=r.project_id) }}"
-                                hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
-                                data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
+                                hx-target="#xrasModalBody" hx-swap="innerHTML"
+                                data-bs-toggle="modal" data-bs-target="#xrasModal">
                             <i class="fa-solid fa-comment" aria-hidden="true"></i>
                             {%- if r.comment_count %}<span class="btn-row-count">{{ r.comment_count | fmt_number }}</span>{% endif %}
                         </button>

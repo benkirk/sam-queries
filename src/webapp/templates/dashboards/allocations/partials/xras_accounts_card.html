@@ -200,10 +200,10 @@
                     <td class="text-nowrap">
                         {% if configured %}
                         <a href="#" class="text-decoration-none" title="View this XRAS user"
-                           data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                           data-bs-toggle="modal" data-bs-target="#xrasModal"
                            hx-get="{{ url_for('allocations_dashboard.xras_user_detail',
                                               username=row.username) }}"
-                           hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+                           hx-target="#xrasModalBody" hx-swap="innerHTML">
                         {% endif %}
                         {% if row.remedy == 'merge' %}
                         {{ tag('mergeable', title="SAM already holds this person's email on an active account: ready to merge") }}
@@ -267,8 +267,8 @@
                             <button type="button" class="btn btn-sm btn-outline-danger text-nowrap"
                                     hx-get="{{ url_for('allocations_dashboard.xras_merge_form',
                                                        username=row.username) }}"
-                                    hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
-                                    data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
+                                    hx-target="#xrasModalBody" hx-swap="innerHTML"
+                                    data-bs-toggle="modal" data-bs-target="#xrasModal">
                                 Resolve identity (merge in XRAS)…
                             </button>
                         </div>

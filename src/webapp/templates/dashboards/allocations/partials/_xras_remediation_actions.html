@@ -8,7 +8,7 @@
   view to bounce through.
 
   WARNING: **No `data-bs-toggle="modal"` on any control here.** Every button lives
-  INSIDE the already-open `#auditDetailsModal` and swaps `#auditDetailsModalBody`
+  INSIDE the already-open `#xrasModal` and swaps `#xrasModalBody`
   in place. A `data-bs-toggle="modal"` would fire Bootstrap's toggle on the open
   modal and HIDE it — which read as "the button does nothing" while the content
   loaded behind the closed modal.
@@ -76,7 +76,7 @@
                    title="View this XRAS user"
                    hx-get="{{ url_for('allocations_dashboard.xras_user_detail',
                                       username=member.username) }}?request_number={{ row.request_number }}"
-                   hx-target="#auditDetailsModalBody" hx-swap="innerHTML">{{ member.username }}</a>
+                   hx-target="#xrasModalBody" hx-swap="innerHTML">{{ member.username }}</a>
             </td>
             <td>{{ member.name or '—' }}</td>
             <td>{{ member.role_type or '—' }}
@@ -97,7 +97,7 @@
                         {% if not write_enabled %}title="{{ why_disabled }}"{% endif %}
                         hx-get="{{ url_for('allocations_dashboard.xras_merge_form',
                                            username=member.username) }}"
-                        hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+                        hx-target="#xrasModalBody" hx-swap="innerHTML">
                     Resolve identity (merge)…
                 </button>
                 {% elif member.placeholder
@@ -117,7 +117,7 @@
                         hx-post="{{ url_for('allocations_dashboard.xras_role_remove',
                                             request_number=row.request_number,
                                             role_id=member.role_id) }}"
-                        hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                        hx-target="#xrasModalBody" hx-swap="innerHTML"
                         hx-confirm="Remove {{ member.username }} as {{ member.role_type }} on {{ row.request_number }} in XRAS?"
                         data-confirm-title="Remove role in XRAS"
                         data-confirm-ok="Remove" data-confirm-variant="danger">
@@ -138,7 +138,7 @@
    SAM's identity service), so a SAM username is always a safe entry. Errors
    surface as a flash at the top of the modal (no per-field macros here). #}
 <form hx-post="{{ role_add_url }}"
-      hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+      hx-target="#xrasModalBody" hx-swap="innerHTML"
       class="row g-2 align-items-end mb-3">
     <div class="col-sm-6">
         <label class="form-label small mb-1" for="xras-add-role-username">Add username (SAM or XRAS)</label>

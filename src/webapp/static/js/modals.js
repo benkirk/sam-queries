@@ -6,6 +6,17 @@
 (function () {
     'use strict';
 
+    /* A scaffold with a footer slot (modal_scaffold footer_id=): a body swap
+     * clears the footer the previous body sent; the new body re-sends its own
+     * out of band. Only on a swap that happens, or an error keeps a stale body. */
+    document.body.addEventListener('htmx:beforeSwap', function (e) {
+        var target = e.detail.target;
+        var footerId = target && target.dataset ? target.dataset.footerId : null;
+        if (!footerId || !e.detail.shouldSwap) { return; }
+        var footer = document.getElementById(footerId);
+        if (footer) { footer.replaceChildren(); }
+    });
+
     /* Outage modals
      * Time-zone strategy: datetime-local inputs are TZ-blind. The browser
      * TZ is captured into a hidden `tz` field at modal-show time so the

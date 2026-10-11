@@ -963,7 +963,7 @@ class TestTheSamBadgeLinksWhenTheProjectExists:
         _publish(_payload('EXAM0001'), pending=False)
         body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert '/allocations/xras_request_detail/EXAM0001' in body
-        assert 'data-bs-target="#auditDetailsModal"' in body
+        assert 'data-bs-target="#xrasModal"' in body
         # The SAM cell still links the found project — Request vs Result.
         assert '/user/project-details-modal/EXAM0001' in body
 
@@ -1296,7 +1296,7 @@ class TestRequestDetailModal:
         _reader(monkeypatch, payload=_detail_payload())
         body = auth_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
-        assert 'id="auditDetailsModalTitle"' in body
+        assert 'id="xrasModalLabel"' in body
         assert 'hx-swap-oob="true"' in body
 
     def test_it_carries_the_shared_write_buttons(self, auth_client, armed,
@@ -1403,7 +1403,7 @@ class TestUserDetailModal:
         _reader(monkeypatch, person=_person())
         body = auth_client.get(
             '/allocations/xras_user_detail/janebaldwin').get_data(as_text=True)
-        assert 'id="auditDetailsModalTitle"' in body
+        assert 'id="xrasModalLabel"' in body
         assert 'hx-swap-oob="true"' in body
 
     def test_it_lists_cross_request_roles_linked_to_the_request_modal(
@@ -1502,7 +1502,7 @@ class TestOpportunityModal:
         _reader(monkeypatch, opportunity=_OPPORTUNITY)
         body = auth_client.get(
             '/allocations/xras_opportunity_detail/532220').get_data(as_text=True)
-        assert 'id="auditDetailsModalTitle"' in body
+        assert 'id="xrasModalLabel"' in body
         assert 'hx-swap-oob="true"' in body
 
     def test_an_unknown_opportunity_degrades_with_a_200(self, auth_client, armed,
@@ -2267,7 +2267,7 @@ class TestIdentityUnblockStrip:
         strip = body.split('id="xras-identity-strip"')[1][:4000]
         assert 'ready to merge' in strip
         assert '/allocations/xras_merge_form/ghost-user-abcde' in strip
-        assert 'data-bs-target="#auditDetailsModal"' in strip
+        assert 'data-bs-target="#xrasModal"' in strip
         assert 'ghost' in strip
         assert self.EMAIL not in strip, 'the strip names accounts, never emails'
 

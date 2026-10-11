@@ -1,13 +1,13 @@
 {#
   Read-only detail of one XRAS opportunity (an allocation "call"), rendered into
-  #auditDetailsModalBody. The analogue of xras_request_detail / xras_user_detail
+  #xrasModalBody. The analogue of xras_request_detail / xras_user_detail
   for the opportunity a request was submitted against.
 
   Context: opportunity_id, opportunity (a /v1/opportunities/:id dict),
            back_url / back_request_number, configured.
 
   WARNING: No `data-bs-toggle="modal"` on any control — this body is swapped into the
-  already-open #auditDetailsModal, and a toggle would hide it (#464 rule).
+  already-open #xrasModal, and a toggle would hide it (#464 rule).
 
   Read-only: an opportunity is an allocation call SAM never writes, so there is
   nothing to edit here.

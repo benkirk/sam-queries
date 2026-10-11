@@ -1,4 +1,4 @@
-{# XRAS action details — HTMX fragment rendered into #auditDetailsModalBody.
+{# XRAS action details — HTMX fragment rendered into #xrasModalBody.
 
    Context:
      r               a single row dict from get_recent_xras_actions
@@ -14,7 +14,7 @@
 
 {# Retitle the shared audit modal out-of-band — the same shell serves Transactions,
    Adjustments and this. #}
-<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+<h5 id="xrasModalLabel" class="modal-title" hx-swap-oob="true">
     XRAS Action Details
 </h5>
 
@@ -110,7 +110,7 @@
                body for the parent's. #}
             <button class="btn btn-link p-0"
                     hx-get="{{ url_for('allocations_dashboard.xras_action_details', action_id=r.source_action_id) }}"
-                    hx-target="#auditDetailsModalBody"
+                    hx-target="#xrasModalBody"
                     hx-swap="innerHTML">
                 <code>#{{ r.source_action_id }}</code>
             </button>
