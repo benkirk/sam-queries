@@ -129,3 +129,17 @@ Rules are tracked `.md`, so spelling, changelog-phrasing, cited-paths and the
 - Spot-check accuracy: diff the union of root + rules against the old file
   (`scripts` one-off: every non-blank old line present somewhere, or listed as
   deliberately dropped) so nothing is lost in the move.
+
+## As built (2026-10-11)
+
+- **Sizes.**
+  - The root is 439 lines and 23 KB, about 5.7k tokens per session, down from 65 KB. It is over the ~350-line target because the move was verbatim; the byte target was met.
+  - The rules total 807 lines across nine files. `webapp-ui.md` is the largest at 179.
+- **Nothing lost.** A script checked that every non-blank line of the old file appears in the root or in a rule. The only lines missing are deliberate edits (cross-reference retargets, heading renames, one duplicate pitfall).
+- **Loading, observed live.**
+  - Rules created mid-session load on the first Read of a matching file. Reading `src/sam/notify/kinds.py` loaded both `notify-and-tasks.md` and `orm.md`, so overlapping scopes both load and the `**/*` glob form works.
+  - A general-purpose subagent also loaded `webapp-ui.md` lazily on its first matching Read.
+  - Subagents get the root CLAUDE.md as it was when the session launched, so a split takes effect from the next session.
+- **Deferred.**
+  - De-duplicating `wire-dashboard-feature/SKILL.md` against `webapp-ui.md`. The skill loads on demand, so the duplication costs nothing per session.
+  - The `/context` before/after measurement in a fresh session (Ben).
