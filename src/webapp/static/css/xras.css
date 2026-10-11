@@ -43,6 +43,29 @@
     white-space: nowrap;
 }
 
+/* The one slack column keeps a readable head once the table scrolls on a phone. */
+.table.xras-table td.cell-truncate {
+    min-width: 12rem;
+}
+
+/* A card header's breakdown of its count: muted facts, dot-separated. */
+.xras-header-facts > span + span::before {
+    content: " \00b7  ";
+}
+
+/* Notes said once under a card's chips, not an alert each. */
+.xras-notes {
+    margin: 0.5rem 0 0;
+    padding: 0;
+    list-style: none;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.xras-notes li + li {
+    margin-top: 0.25rem;
+}
+
 /* A comment count riding on its row button. */
 .btn-row-count {
     margin-left: 0.2rem;

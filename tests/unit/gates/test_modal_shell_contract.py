@@ -289,16 +289,11 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # routes in `xras_remediation_routes.py`, all of which render into that
     # page's fragments and nowhere else.
     #
-    # `xras_accounts_card.html` (the Pending Users card) offers the same merge
-    # modal on a stuck placeholder — deliberately the same shell, so an operator
-    # meets one merge dialogue however they arrive. It also reaches
-    # #userDetailsModal / #projectDetailsModal: a username or projcode the row
-    # has ALREADY resolved against SAM opens the shared entity modal, same as
-    # everywhere else. Both shells come from base_allocations.html (:31 project,
-    # :33 user), which xras.html extends — so the single host page carries them.
+    # The Pending Users card opens the same merge dialog as Remediations, and a
+    # username SAM has already resolved opens #userDetailsModal, which
+    # base_allocations.html ships to every allocations page.
     'dashboards/allocations/partials/xras_accounts_card.html': [
         'auditDetailsModal', 'auditDetailsModalBody',
-        'projectDetailsModal', 'projectDetailsModalBody',
         'userDetailsModal', 'userDetailsModalBody'],
     # The card's Request cell links each request number to #auditDetailsModal
     # (the single detail-modal opener) and the SAM cell keeps the
