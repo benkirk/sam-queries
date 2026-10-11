@@ -1585,7 +1585,7 @@ class TestTheEditors:
         body = auth_client.get(
             '/allocations/xras_resource_form/EXAM0001/7/530201'
             '?stage=Requested').get_data(as_text=True)
-        assert 'Edit amount — EXAM0001' in body
+        assert 'Edit amount <span class="modal-title-meta">EXAM0001</span>' in body
         assert 'Cheyenne' in body
         assert 'name="amount"' in body
 
@@ -1593,7 +1593,7 @@ class TestTheEditors:
         _reader(monkeypatch, payload=_detail_payload())
         body = auth_client.get(
             '/allocations/xras_dates_form/EXAM0001/7').get_data(as_text=True)
-        assert 'allocation dates — EXAM0001' in body
+        assert 'allocation dates <span class="modal-title-meta">EXAM0001</span>' in body
         assert 'name="begin_date"' in body
 
     def test_the_detail_modal_offers_editors_on_requested_rows(
@@ -1670,7 +1670,7 @@ class TestTheEditors:
         _reader(monkeypatch, payload=_detail_payload())
         body = auth_client.get(
             '/allocations/xras_attributes_form/EXAM0001').get_data(as_text=True)
-        assert 'Edit attributes — EXAM0001' in body
+        assert 'Edit attributes <span class="modal-title-meta">EXAM0001</span>' in body
         assert 'value="Turbulence at scale"' in body   # prefilled title
         assert 'name="abstract"' in body
 
@@ -1679,7 +1679,7 @@ class TestTheEditors:
         _reader(monkeypatch, payload=_detail_payload())
         body = auth_client.get(
             '/allocations/xras_action_fields_form/EXAM0001/7').get_data(as_text=True)
-        assert 'Edit action 7 — EXAM0001' in body
+        assert 'Edit action 7 <span class="modal-title-meta">EXAM0001</span>' in body
         assert 'name="user_comments"' in body
 
     def test_the_detail_modal_offers_the_text_editors(self, auth_client, armed,
@@ -1818,7 +1818,7 @@ class TestPartCIsAdminOnly:
         _reader(monkeypatch, payload=_detail_payload())
         body = auth_client.get(
             '/allocations/xras_add_action_form/EXAM0001').get_data(as_text=True)
-        assert 'Add action — EXAM0001' in body
+        assert 'Add action <span class="modal-title-meta">EXAM0001</span>' in body
         assert 'name="action_type"' in body
         assert 'Supplement' in body
 

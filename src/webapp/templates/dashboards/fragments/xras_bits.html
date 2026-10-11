@@ -225,3 +225,22 @@
 {%- else -%}{{ attention('unidentified', title='XRAS has not reconciled this identity either: there is no confirmed person behind the username yet') }}
 {%- endif -%}
 {%- endmacro %}
+
+{#- The writes-off fact, said once at the top of a form, from the one constant. -#}
+{% macro writes_off(write_enabled) -%}
+{%- if not write_enabled %}
+<ul class="modal-facts"><li><i class="fa-solid fa-lock" aria-hidden="true"></i>{{ WHY_OFF }} Nothing here can be saved.</li></ul>
+{%- endif -%}
+{%- endmacro %}
+
+{#- A form dialog's footer: Back (or Cancel) quiet at the start, the verb at the end,
+    bound to the body's form by `form=` (the footer sits outside it). -#}
+{% macro form_footer(form_id, back_url, write_enabled, verb='Save', verb_class='btn-primary', back_label='Back') -%}
+{% call dialog_footer() %}
+<div class="xras-footer-start">
+    {%- if back_url %}<button type="button" class="btn btn-secondary" hx-get="{{ back_url }}" hx-target="#xrasModalBody" hx-swap="innerHTML">{{ back_label }}</button>
+    {%- else %}<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ back_label }}</button>{% endif %}
+</div>
+<button type="submit" form="{{ form_id }}" class="btn {{ verb_class }}"{% if not write_enabled %} disabled title="{{ WHY_OFF }}"{% endif %}>{{ verb }}</button>
+{% endcall %}
+{%- endmacro %}
