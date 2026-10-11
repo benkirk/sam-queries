@@ -295,12 +295,8 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/allocations/partials/xras_accounts_card.html': [
         'auditDetailsModal', 'auditDetailsModalBody',
         'userDetailsModal', 'userDetailsModalBody'],
-    # The card's Request cell links each request number to #auditDetailsModal
-    # (the single detail-modal opener) and the SAM cell keeps the
-    # #projectDetailsModal badge link.
     'dashboards/allocations/partials/xras_remediations_card.html': [
-        'auditDetailsModal', 'auditDetailsModalBody',
-        'projectDetailsModal', 'projectDetailsModalBody'],
+        'auditDetailsModal', 'auditDetailsModalBody'],
     # The XRAS state-language macros: request_link opens the request dialog.
     # Imported only by the XRAS cards and dialogs, all hosted by xras.html.
     'dashboards/fragments/xras_bits.html': [

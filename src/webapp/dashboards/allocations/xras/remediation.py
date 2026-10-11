@@ -137,9 +137,11 @@ def xras_remediations_fragment():
     pending_total = sum(1 for r in rows if is_pending_work(r))
 
     # Default is the pending-work queue (XRAS admin's "Recent submissions"),
-    # which is state, not a window. "Show everything" restores the date filter.
+    # which is state, not a window. "Everything in the window" restores the filter.
     show_all = read_flag(request.args, 'show_all')
     window = _parse_activity_window(request.args)
+    in_window = [r for r in rows if _in_window(r, window['since'])]
+    pending_in_window = sum(1 for r in in_window if is_pending_work(r))
     rows = _scope_rows(rows, request.args)
 
     # The two data-fix strips rank over the rows IN VIEW (queue or everything,
@@ -185,6 +187,8 @@ def xras_remediations_fragment():
         total=len(rows),
         swept_total=swept_total,
         window_total=window_total,
+        in_window_total=len(in_window),
+        pending_in_window=pending_in_window,
         search=search,
         snapshot=payload,
         show_all=show_all,
@@ -225,7 +229,7 @@ def xras_recheck_request(request_number: str):
     return htmx_success_message(
         {'refreshXrasTab': {}},
         f'Re-checked {request_number}: {checked} action(s) — '
-        f'{counts.get("rechecked", 0)} would land, {counts.get("failed", 0)} would fail, '
+        f'{counts.get("rechecked", 0)} would succeed, {counts.get("failed", 0)} would fail, '
         f'{counts.get("manual", 0)} would park, {counts.get("incomplete", 0)} incomplete.',
         detail='Nothing was applied. The card shows the fresh verdicts.')
 
@@ -278,7 +282,7 @@ def xras_recheck_visible():
                   f'run it again to continue. ') + detail
     return htmx_success_message(
         {'refreshXrasTab': {}},
-        f'Checked {len(capped)} request(s): {totals["rechecked"]} would land, '
+        f'Checked {len(capped)} request(s): {totals["rechecked"]} would succeed, '
         f'{totals["failed"]} would fail, {totals["manual"]} would park, '
         f'{totals["incomplete"]} incomplete.',
         detail=detail)

@@ -46,7 +46,7 @@ def _rows(card):
     an expansion would otherwise be counted as requests.
     """
     return card.locator(
-        '> .card > .card-body > .table-responsive > table > tbody '
+        '> .card > .table-responsive > table > tbody '
         '> tr:not(.collapse):not(.table-subtle)')
 
 
@@ -97,7 +97,7 @@ class TestInteraction:
         if rows.count() == 0:
             pytest.skip('no swept requests on this stack')
 
-        link = card.locator('a[hx-get*="xras_request_detail"]').first
+        link = card.locator('[hx-get*="xras_request_detail"]').first
         assert link.count() == 1, 'the request has no detail-modal link'
         link.click()
         page.wait_for_selector('#auditDetailsModal.show', timeout=15_000)

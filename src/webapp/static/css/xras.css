@@ -66,6 +66,30 @@
     margin-top: 0.25rem;
 }
 
+/* A ranked data fix above the remediation table: quieter than an alert. */
+.xras-strip {
+    display: flex;
+    gap: 0.6rem;
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-left: 3px solid var(--border-default);
+    background-color: var(--surface-tertiary);
+    font-size: 0.875rem;
+}
+
+.xras-strip > .fa-solid {
+    margin-top: 0.2rem;
+    color: var(--text-secondary);
+}
+
+/* The remediation SAM cell: blockers, verdict, project, on one line. */
+.xras-sam-cell,
+.xras-blockers {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
 /* A comment count riding on its row button. */
 .btn-row-count {
     margin-left: 0.2rem;

@@ -112,3 +112,19 @@
 <button type="button" class="btn btn-link btn-sm p-0 align-baseline"
         data-action="facet-clear-all" data-form-id="{{ form_id }}">{{ text }}</button>
 {%- endmacro %}
+
+{#- A ranked data fix above the remediation table: an icon, then caller()'s body. -#}
+{% macro unblock_strip(icon, strip_id='') -%}
+<div class="xras-strip"{% if strip_id %} id="{{ strip_id }}"{% endif %}>
+    <i class="fa-solid {{ icon }}" aria-hidden="true"></i>
+    <div>{{ caller() }}</div>
+</div>
+{%- endmacro %}
+
+{#- Narrows the remediation table to the rows one strip blocks. -#}
+{% macro show_in_table(form_id, blocker) -%}
+<button type="button" class="btn btn-link btn-sm p-0 align-baseline"
+        data-action="set-filter-submit" data-form-id="{{ form_id }}"
+        data-field="blockers" data-value="{{ blocker }}"
+        title="Filter the table to the requests this blocks">Show in&nbsp;table&nbsp;›</button>
+{%- endmacro %}

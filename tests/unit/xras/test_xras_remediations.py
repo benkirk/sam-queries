@@ -555,7 +555,7 @@ class TestPendingWorkToggle:
                                                          'push_state': 'seen_in_log'}})]})
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
         assert '1 pending' in body
-        assert '1 more with Show everything' in body
+        assert '1 more with Everything in the window' in body
 
     def test_the_batch_recheck_honors_the_toggle(self, auth_client, configured,
                                                  monkeypatch):
@@ -732,7 +732,8 @@ class TestEveryExpandableRowShowsAChevron:
         'xras_table.html',
     ])
     def test_each_expandable_table_offers_one(self, name):
-        assert 'collapse-icon' in (self.PARTIALS / name).read_text()
+        text = (self.PARTIALS / name).read_text()
+        assert 'collapse-icon' in text or 'drill_toggle(' in text
 
     @pytest.mark.parametrize('name', [
         'xras_activity_card.html', 'xras_table.html'])
@@ -913,7 +914,7 @@ class TestRendering:
                         'roleTypeId': 14}]})
         _publish(payload)
         body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
-        assert 'Project Admin' in body      # the column header
+        assert 'Project admin' in body      # the column header
         assert 'Al Manager' in body         # the resolved admin
 
     def test_the_project_admin_column_is_blank_without_one(self, auth_client,
@@ -922,7 +923,7 @@ class TestRendering:
         and the header still renders."""
         _publish(_payload())
         body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
-        assert 'Project Admin' in body
+        assert 'Project admin' in body
 
 
 # the project link

@@ -432,14 +432,14 @@ ACCOUNT_FACETS = FacetSet(
 )
 
 
-#: Readiness chips, worst first; the icon matches the row badge so the strip is
-#: the column's legend. ``none`` is a real bucket: a swept request with no
+#: Readiness chips, worst first; words and icons match xras_bits.verdict, so the
+#: strip is the column's legend. ``none`` is a real bucket: a swept request with no
 #: pending action checked (out of window, or all applied).
 _READINESS = (
     ('failed', 'Would fail', 'fa-triangle-exclamation text-danger-emphasis'),
     ('manual', 'Would park', 'fa-circle-pause text-warning-emphasis'),
     ('incomplete', 'Incomplete', 'fa-circle-question text-secondary-emphasis'),
-    ('rechecked', 'Would land', 'fa-circle-check text-success-emphasis'),
+    ('rechecked', 'Would succeed', 'fa-circle-check text-success-emphasis'),
     ('none', 'Not checked', 'fa-rotate text-secondary-emphasis'),
 )
 
