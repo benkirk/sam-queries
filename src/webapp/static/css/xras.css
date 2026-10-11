@@ -97,8 +97,10 @@
     font-weight: var(--font-weight-regular);
 }
 
-/* One badge size in an XRAS table, so a hue and a neutral tag line up. */
-.table.xras-table .badge {
+/* One badge size across the XRAS page and its dialog, so a hue and a neutral
+   tag line up wherever they meet. */
+.xras-section .badge,
+#xrasModal .badge {
     padding: 0.15rem 0.4rem;
     font-size: 0.6875rem;
 }
