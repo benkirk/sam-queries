@@ -123,7 +123,7 @@
                                             action_id=action.action_id, resource_id=r.resource_id),
                                     write_enabled, post=True, variant='danger',
                                     confirm='Remove the requested line for ' ~ r.name ~ ' from ' ~ request_number ~ ' in XRAS?',
-                                    confirm_title='Remove requested resource', confirm_ok='Remove') }}
+                                    confirm_title='Remove requested resource', confirm_label='Remove') }}
                     {% endif %}
                 </td>
                 {% endif %}
@@ -163,7 +163,7 @@
                                         action_id=action.action_id, allocation_date_id=d.allocation_date_id),
                                 write_enabled, post=True, variant='danger',
                                 confirm='Remove this allocation-date range from ' ~ request_number ~ ' in XRAS?',
-                                confirm_title='Remove allocation dates', confirm_ok='Remove') }}
+                                confirm_title='Remove allocation dates', confirm_label='Remove') }}
                 {% endif %}
             </div>
             {% else %}
@@ -243,8 +243,8 @@
 {% include 'dashboards/allocations/partials/_xras_remediation_actions.html' %}
 {% endif %}
 
-{# The dialog's verbs. Destructive ones keep their words and sit on the right;
-   a merge is a person-level act, offered once per placeholder username. #}
+{# The dialog's verbs at the start, Delete last; Done alone at the end, apart from
+   the irreversible verb. A merge is a person-level act, offered once per placeholder. #}
 {% set latest_action = (detail_actions | selectattr('is_latest') | first) if detail_actions else none %}
 {% set merges = [] %}
 {% for m in (row.roster if row else []) %}
@@ -275,12 +275,12 @@
     {{ footer_verb('Renew…', url_for('allocations_dashboard.xras_request_renew', request_number=request_number),
                    write_enabled, post=True,
                    confirm='Spawn a renewal of ' ~ request_number ~ ' in XRAS?', confirm_title='Renew request in XRAS',
-                   confirm_ok='Renew', confirm_variant='warning', icon='repeat') }}
+                   confirm_label='Renew', confirm_variant='warning', icon='repeat') }}
     {# Deletes the whole project tree, so the confirm names the full scope. #}
     {{ footer_verb('Delete project…', url_for('allocations_dashboard.xras_request_delete', request_number=request_number),
                    write_enabled, post=True, tone='danger',
                    confirm='DELETE the ENTIRE project ' ~ request_number ~ ' from XRAS: ' ~ (family.requests | length) ~ ' request(s) and ' ~ (family.timeline | length) ~ ' action(s). This is IRREVERSIBLE: the whole allocation history is removed.',
-                   confirm_title='Delete the whole project in XRAS', confirm_ok='Delete permanently', icon='trash-can') }}
+                   confirm_title='Delete the whole project in XRAS', confirm_label='Delete permanently', icon='trash-can') }}
     {% endif %}
 </div>
 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Done</button>

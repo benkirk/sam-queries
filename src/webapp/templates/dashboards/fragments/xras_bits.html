@@ -170,21 +170,21 @@
 
 {#- A write inside the dialog: an icon btn-row that swaps the body, disabled with its
     reason when writes are off. confirm= routes it through the shared confirm dialog. -#}
-{% macro write_button(verb, icon, url, write_enabled, post=False, variant='', confirm=None, confirm_title='', confirm_ok='') -%}
+{% macro write_button(verb, icon, url, write_enabled, post=False, variant='', confirm=None, confirm_title='', confirm_label='') -%}
 <button type="button" class="btn btn-row{{ (' btn-row-' ~ variant) if variant }}" aria-label="{{ verb }}"
         title="{{ verb if write_enabled else WHY_OFF }}"{% if not write_enabled %} disabled{% endif %}
         {{ 'hx-post' if post else 'hx-get' }}="{{ url }}" hx-target="#xrasModalBody" hx-swap="innerHTML"
         {%- if confirm %} hx-confirm="{{ confirm }}" data-confirm-title="{{ confirm_title }}"
-        data-confirm-ok="{{ confirm_ok }}" data-confirm-variant="danger"{% endif %}><i class="fa-solid fa-{{ icon }}" aria-hidden="true"></i></button>
+        data-confirm-label="{{ confirm_label }}" data-confirm-variant="danger"{% endif %}><i class="fa-solid fa-{{ icon }}" aria-hidden="true"></i></button>
 {%- endmacro %}
 
 {#- A consequential verb, worded, in the dialog's footer (Withdraw, Renew, Delete, Merge). -#}
-{% macro footer_verb(label, url, write_enabled, post=False, tone='secondary', confirm=None, confirm_title='', confirm_ok='', confirm_variant='danger', icon=None) -%}
+{% macro footer_verb(label, url, write_enabled, post=False, tone='secondary', confirm=None, confirm_title='', confirm_label='', confirm_variant='danger', icon=None) -%}
 <button type="button" class="btn btn-{{ 'outline-' if tone != 'secondary' }}{{ tone }}"
         {% if not write_enabled %}disabled title="{{ WHY_OFF }}"{% endif %}
         {{ 'hx-post' if post else 'hx-get' }}="{{ url }}" hx-target="#xrasModalBody" hx-swap="innerHTML"
         {%- if confirm %} hx-confirm="{{ confirm }}" data-confirm-title="{{ confirm_title }}"
-        data-confirm-ok="{{ confirm_ok }}" data-confirm-variant="{{ confirm_variant }}"{% endif %}>
+        data-confirm-label="{{ confirm_label }}" data-confirm-variant="{{ confirm_variant }}"{% endif %}>
 {%- if icon %}<i class="fa-solid fa-{{ icon }} me-1" aria-hidden="true"></i>{% endif %}{{ label }}</button>
 {%- endmacro %}
 
