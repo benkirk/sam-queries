@@ -5,42 +5,18 @@
 {% from 'dashboards/fragments/clipboard.html' import copy_button %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/project_bits.html' import project_link with context %}
+{% from 'dashboards/fragments/xras_bits.html' import request_link, type_label %}
 {#
   XRAS action-log HTMX fragment.
-
-  Context:
-    rows, total, summary, page, sort, filters
-    fragment_url, target_id, form_id, sortable_columns
-
-  WARNING: WHERE THE COLLAPSE TOGGLE GOES, AND WHY IT IS NOT ON THE <tr>
-
-  Bootstrap registers its collapse data-api with EventHandler.on(document, ...),
-  which runs in the CAPTURE phase. Capture descends document -> row -> button, so
-  a data-bs-toggle="collapse" on the <tr> has ALREADY fired before any handler on
-  a nested button executes — `data-stop-propagation` is powerless against it by
-  construction (see dashboards/fragments/collapse.html for the full write-up).
-
-  This table has three interactive things inside its rows: the Request # and
-  Result project-modal buttons, the details button, and the re-check button. So the
-  toggle lives on the Errors <td> ALONE. That cell is also the best affordance:
-  the error list is what an operator is triaging, and "3 errors ⌄" says what will
-  happen when you click it.
-
-  Rows with no errors get no toggle at all — a chevron that expands to nothing
-  reads as broken.
+  Context: rows, total, page, sort, filters, status_facets, action_type_facets,
+  fragment_url, target_id, form_id, sortable_columns, configured, can_view_projects.
+  WARNING: the collapse toggle is on the Errors <td> ALONE, never the <tr>: the
+  row's buttons cannot stop a capture-phase toggle (collapse.html). A row with
+  no errors gets no toggle; a chevron that opens nothing reads as broken.
 #}
 
-{# Facet strip — clickable. A chip writes its value into the filter form and
-   re-submits it, so the whole fragment (chips included) re-renders with new
-   counts and new active states. Clicking the active chip clears that filter.
-
-   The counts come from SELF-EXCLUDING rollups (see xras_fragment): each
-   dimension's chips ignore its own filter, so they stay a way to move between
-   values rather than collapsing to zeros as soon as one is picked.
-
-   The headline count is `total` — the table's real filtered row count. It is
-   deliberately NOT either facet's total: with each facet unscoped in one
-   dimension, neither of those is the number of rows on screen. #}
+{# The chips' counts are self-excluding rollups, so the headline is `total`, the
+   rows actually on screen, never either facet's own total. #}
 <div class="d-flex flex-wrap align-items-baseline gap-2 mb-1 small">
     <span class="text-muted">Showing</span>
     <strong>{{ total | fmt_number }}</strong>
@@ -48,20 +24,15 @@
 </div>
 
 <div class="facet-grid mb-2">
-    {# Both lists are shaped in the route — ordering and the NULL drop are data
-       decisions, not layout ones, and display code here takes ready dicts. #}
     {{ facet_row('Status', status_facets,
                  form_id, 'status', filters.status or [], badge=True) }}
     {{ facet_row('Action type', action_type_facets,
                  form_id, 'action_type', filters.action_type or []) }}
 </div>
 
-{# The id is the htmx swap target and the re-check route's refresh anchor.
-   The chevron below needs no JS: `.collapse-icon` rotates off the
-   `aria-expanded` Bootstrap writes onto the toggling cell — components.css. #}
 <div id="xrasActionsTable">
     <div class="table-responsive">
-    <table class="table table-sm table-hover align-middle mb-0 audit-table">
+    <table class="table table-sm table-hover align-middle mb-0 xras-table">
         <thead class="table-subtle">
             <tr>
                 <th class="col-shrink">{{ sort_header('received_time', 'Received') }}</th>
@@ -77,8 +48,7 @@
             {% for r in rows %}
             {% set errors_id = 'xras-errors-' ~ r.action_log_id %}
             <tr>
-                {# Column shows the date; the tooltip carries the time of day, which
-                   is what separates six actions posted in the same second. #}
+                {# The time of day rides the title: it separates same-second posts. #}
                 <td class="text-nowrap"
                     title="{{ r.received_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}">
                     {% if r.source_action_id %}
@@ -87,78 +57,28 @@
                     {% endif %}
                     {{ r.received_time | fmt_date }}
                 </td>
-                <td>
-                    {% if r.action_type %}
-                    <span class="badge bg-secondary">{{ r.action_type }}</span>
-                    {% else %}
-                    {# NULL action_type is meaningful: the body would not parse, so
-                       we genuinely do not know what was being asked for. #}
-                    <span class="text-muted" title="Body could not be parsed">—</span>
-                    {% endif %}
-                </td>
+                <td class="text-nowrap">{{ type_label(r.action_type) }}</td>
+                {# The XRAS request: its detail dialog when an outbound read is configured
+                   (even for a live projcode; Result keeps the project link). Else three
+                   states: a project, a New's request token (no project yet, normal), or
+                   neither, which means the project is gone or the payload mis-sent. #}
                 <td class="text-nowrap">
-                    {# The Request # is the XRAS request itself, so when an
-                       outbound read is available it opens the full request
-                       detail modal — EVEN when the number is a live projcode
-                       (the Result column keeps the project link). Incoming-only
-                       falls back to the three-state cell below. #}
-                    {% if not r.request_number %}
-                    <span class="text-muted">—</span>
-                    {% elif configured %}
-                    <button class="btn btn-link p-0"
-                            title="Full request detail (read-only)"
-                            data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
-                            hx-get="{{ url_for('allocations_dashboard.xras_request_detail', request_number=r.request_number) }}"
-                            hx-target="#auditDetailsModalBody"
-                            hx-swap="innerHTML"
-                            data-stop-propagation>
-                        {% if r.request_is_project or r.request_is_token %}
-                        <strong>{{ r.request_number }}</strong>
-                        {% else %}
-                        {# Not a project and not a recognized token: still let the
-                           operator look — the modal degrades gracefully if XRAS
-                           has no such request — but keep the warning cue. #}
-                        <span class="text-warning-emphasis"
-                              title="Not a SAM project, and not a recognised XRAS request number — the project may have been deleted or renamed">
-                            <i class="fa-solid fa-triangle-exclamation small me-1"></i>{{ r.request_number }}
-                        </span>
-                        {% endif %}
-                    </button>
-                    {% else %}
-                    {# Incoming-only. Three states, because "not a project" means
-                       two different things. On the New path request_number is a
-                       request token (NCAR#### here — XRAS_REQUEST_TOKEN_PREFIXES)
-                       and having no project yet is the normal, expected case. On
-                       every other path it IS a projcode, so failing to resolve
-                       means the project is gone, renamed, or the payload was
-                       mis-sent. Linking either one blindly would 404 on the 21%
-                       of traffic that fails most. #}
-                    {% if r.request_is_project %}
-                    {{ project_link(r.request_number, can_view_projects, stop_propagation=True) }}
-                    {% elif r.request_is_token %}
-                    <span title="XRAS request number — no project exists yet, which is normal for a New action">
-                        {{ r.request_number }}
-                    </span>
-                    {% else %}
-                    <span class="text-warning-emphasis"
-                          title="Not a SAM project, and not a recognised XRAS request number — the project may have been deleted or renamed">
-                        <i class="fa-solid fa-triangle-exclamation small me-1"></i>{{ r.request_number }}
-                    </span>
-                    {% endif %}
-                    {% endif %}
+                    {{ request_link(r.request_number, configured, is_project=r.request_is_project,
+                                    suspect=not (r.request_is_project or r.request_is_token),
+                                    can_view_projects=can_view_projects) }}
                     {% if r.request_number %}{{ copy_button(r.request_number, label='Copy request number', inline=true) }}{% endif %}
                 </td>
                 <td class="text-nowrap">
-                    {{ status_badge(r.status) }}
+                    {# Color only where a person must look: failed, parked, unmapped. #}
+                    {{ status_badge(r.status, quiet=r.status not in ('failed', 'manual', 'unmapped')) }}
                     {% if r.http_status %}
-                    {# 400 vs 422 both live under status='failed'; the code is the
-                       only thing that separates "unparseable" from "rejected". #}
+                    {# 400 vs 422 both read 'failed'; only the code tells them apart. #}
                     <span class="text-muted small ms-1">{{ r.http_status }}</span>
                     {% endif %}
                     {% if r.recheck_count %}
-                    <span class="badge bg-secondary ms-1"
+                    <span class="text-muted small ms-1 text-nowrap"
                           title="Re-checked {{ r.recheck_count }} time{{ '' if r.recheck_count == 1 else 's' }}">
-                        <i class="fa-solid fa-arrow-rotate-right"></i> {{ r.recheck_count }}
+                        <i class="fa-solid fa-arrow-rotate-right" aria-hidden="true"></i> {{ r.recheck_count }}
                     </span>
                     {% endif %}
                 </td>
@@ -171,47 +91,32 @@
                     <span class="text-muted">—</span>
                     {% endif %}
                 </td>
-                {# THE toggle cell — the only one. See the header note. #}
+                {# THE toggle cell, the only one; the slack column, so the excerpt truncates. #}
                 {% if r.errors %}
-                <td class="cursor-pointer small" {{ collapse_toggle(errors_id) }}>
-                    {# The chevron and count stay joined; the excerpt may drop to a second line. #}
-                    <span class="text-nowrap">
+                <td class="cell-truncate cursor-pointer small" title="{{ r.errors[0] }}" {{ collapse_toggle(errors_id) }}>
                     <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
-                    {# text-danger-emphasis, NOT text-danger: the latter is the
-                       saturated brand red, which measures 3.35:1 against the dark
-                       card (--surface-card #1b2733) and fails WCAG AA. The
-                       -emphasis token is theme-aware and measures 6.00:1 dark /
-                       7.9:1 light. Measured in the browser, not eyeballed. #}
-                    <span class="text-danger-emphasis">
-                        {{ r.errors | length }} error{{ '' if r.errors | length == 1 else 's' }}
-                    </span>
-                    </span>
-                    <span class="text-muted ms-1 d-inline-block text-truncate align-bottom"
-                          style="max-width:38ch;">{{ r.errors[0] }}</span>
+                    {# -emphasis: text-danger measures 3.35:1 on the dark card and fails AA. #}
+                    <span class="text-danger-emphasis">{{ r.errors | length }} error{{ '' if r.errors | length == 1 else 's' }}</span>
+                    <span class="text-muted ms-1">{{ r.errors[0] }}</span>
                 </td>
                 {% else %}
-                {# Warnings are non-fatal and listed in the details modal; the count
-                   keeps a warned row from reading as a clean one. #}
+                {# Warnings are non-fatal (listed in the dialog); the count keeps the row from reading clean. #}
                 <td class="text-muted small">
                     {%- if r.warnings %}{{ r.warnings | length | fmt_plural('warning', 'warnings') }}{% else %}—{% endif -%}
                 </td>
                 {% endif %}
                 <td class="text-end text-nowrap">
+                    <span class="row-actions">
                     <button class="btn btn-row" type="button"
                             title="View action details" aria-label="View action details"
-                            data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                            data-bs-toggle="modal" data-bs-target="#xrasModal"
                             hx-get="{{ url_for('allocations_dashboard.xras_action_details', action_id=r.action_log_id) }}"
-                            hx-target="#auditDetailsModalBody"
+                            hx-target="#xrasModalBody"
                             hx-swap="innerHTML">
-                        <i class="fa-solid fa-circle-info"></i>
+                        <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
                     </button>
-                    {# Re-check is offered only where the question means something.
-                       A `processed` row already changed the data it would run
-                       against — a successful New now finds its own project, so the
-                       dispatcher would route it to Update and the answer would
-                       describe a different action. `received` rows have not been
-                       tried yet, so there is nothing to re-check either. That
-                       leaves the two cohorts an operator is actually chasing. #}
+                    {# Not on `processed` (it changed the data a re-check would read: a New
+                       now finds its own project) nor `received` (never tried). #}
                     {% if has_permission(Permission.MANAGE_XRAS)
                           and r.status in ('failed', 'manual', 'rechecked') %}
                     <button type="button" class="btn btn-row"
@@ -219,16 +124,16 @@
                             hx-post="{{ url_for('allocations_dashboard.xras_recheck', action_id=r.action_log_id) }}"
                             hx-confirm="Re-check action #{{ r.action_log_id }} against today's code and data?&#10;&#10;Nothing is applied and XRAS is not contacted — this only answers whether a resend would succeed. A new linked audit row records the verdict."
                             hx-swap="none">
-                        <i class="fa-solid fa-clipboard-check"></i>
+                        <i class="fa-solid fa-clipboard-check" aria-hidden="true"></i>
                     </button>
                     {% endif %}
+                    </span>
                 </td>
             </tr>
             {% if r.errors %}
             <tr class="collapse" id="{{ errors_id }}">
                 <td colspan="7" class="bg-body-tertiary">
-                    {# The ordered list IS the wire contract — this is verbatim what
-                       XRAS was told in the 422 body, in the order it was told. #}
+                    {# Verbatim and in order: what XRAS was told in the 422 body. #}
                     <ol class="mb-0 small">
                         {% for e in r.errors %}
                         <li><code>{{ e }}</code></li>
@@ -240,7 +145,6 @@
             {% else %}
             <tr>
                 <td colspan="7" class="text-center text-muted py-4">
-                    <i class="fa-solid fa-inbox"></i>
                     No XRAS actions match the current filter.
                 </td>
             </tr>

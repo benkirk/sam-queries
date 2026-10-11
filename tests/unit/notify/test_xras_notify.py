@@ -472,7 +472,7 @@ class TestNoPathMay500:
     def test_a_missing_project_is_a_message_not_an_error_page(
             self, auth_client, notifier):
         resp = auth_client.post('/allocations/xras_notify/999999999')
-        assert resp.status_code == 404
+        assert resp.status_code == 200      # into the open dialog; htmx skips a 4xx
         assert b'not found' in resp.data.lower()
 
 

@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from sam.dates import parse_wire_date, parse_ymd_or
 from webapp.utils.windows import read_days, read_log_window
 
-from flask import current_app, render_template
+from flask import current_app, render_template, url_for
 
 from webapp.extensions import db
 from webapp.utils.facets import Facet, FacetSet
@@ -69,11 +69,29 @@ def _entry(request_number):
     return None
 
 
-def _degraded(message, *, title='XRAS unavailable'):
-    """A 200 body explaining why a modal cannot proceed. See the module docstring."""
+def _dialog_message(message, *, title=None, variant='warning'):
+    """A 200 body saying why the XRAS dialog stopped; title=None keeps its title."""
     return render_template(
-        'dashboards/allocations/partials/xras_remediation_degraded.html',
-        title=title, message=message)
+        'dashboards/allocations/partials/xras_dialog_message.html',
+        title=title, message=message, variant=variant)
+
+
+def _degraded(message, *, title='XRAS unavailable'):
+    """XRAS is not answering, or cannot be used here (see the module docstring)."""
+    return _dialog_message(message, title=title)
+
+
+def _not_found(noun, message=None):
+    """The one "not found" answer inside the dialog: a 200, never a 404 or bare text."""
+    return _dialog_message(message or f'{noun} not found. It may have been removed or '
+                           'renamed since this page loaded.', title=f'{noun} not found')
+
+
+def _back_to_detail(request_number):
+    """The request dialog a sub-dialog returns to, or None outside one."""
+    if not request_number:
+        return None
+    return url_for('allocations_dashboard.xras_request_detail', request_number=request_number)
 
 
 def _render_xras_modal(*, build, template, noun, not_found, log_label):
@@ -432,14 +450,14 @@ ACCOUNT_FACETS = FacetSet(
 )
 
 
-#: Readiness chips, worst first; the icon matches the row badge so the strip is
-#: the column's legend. ``none`` is a real bucket: a swept request with no
+#: Readiness chips, worst first; words and icons match xras_bits.verdict, so the
+#: strip is the column's legend. ``none`` is a real bucket: a swept request with no
 #: pending action checked (out of window, or all applied).
 _READINESS = (
     ('failed', 'Would fail', 'fa-triangle-exclamation text-danger-emphasis'),
     ('manual', 'Would park', 'fa-circle-pause text-warning-emphasis'),
     ('incomplete', 'Incomplete', 'fa-circle-question text-secondary-emphasis'),
-    ('rechecked', 'Would land', 'fa-circle-check text-success-emphasis'),
+    ('rechecked', 'Would succeed', 'fa-circle-check text-success-emphasis'),
     ('none', 'Not checked', 'fa-rotate text-secondary-emphasis'),
 )
 
@@ -468,5 +486,4 @@ REMEDIATION_FACETS = FacetSet(
 )
 
 
-_WINDOW_TARGET = 'alloc-xras-window'
 

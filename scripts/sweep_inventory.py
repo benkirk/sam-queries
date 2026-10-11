@@ -292,7 +292,7 @@ def bs4_classes(template_files, css_files):
     return sorted(rows, key=lambda r: (-r["count"], r["class"]))
 
 
-_MODAL_BODY = re.compile(r'htmx_form\(|modal_title\(|class="modal-body')
+_MODAL_BODY = re.compile(r'htmx_form\(|modal_title\(|dialog_title\(|class="modal-body')
 # A fragment that targets a modal body and carries no opener lives inside that modal (the XRAS forms).
 _MODAL_BODY_TARGET = re.compile(r'hx-target="#\w+ModalBody"')
 

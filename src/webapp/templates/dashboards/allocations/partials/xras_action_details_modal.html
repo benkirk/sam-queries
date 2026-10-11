@@ -1,44 +1,27 @@
-{# XRAS action details — HTMX fragment rendered into #auditDetailsModalBody.
+{# XRAS action details — HTMX fragment rendered into #xrasModalBody.
 
    Context:
      r               a single row dict from get_recent_xras_actions
      may_see_payload whether the viewer holds MANAGE_XRAS
 
-   Style matches partials/transaction_details_modal.html — the .project-stats-box /
-   .stat-item language, and empty fields omitted rather than rendered as "— ".
+   The .project-stats-box language of the transaction details; empty fields are omitted.
 
    The raw payload is gated on MANAGE_XRAS in the ROUTE as well as here: without it
    `r` has no `raw_payload` key at all, so the PII never reaches the response body.
    The {% if %} below is the second of two locks, not the only one. #}
 {% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/xras_bits.html' import dialog_title, done_footer, type_label %}
+{{ dialog_title('XRAS action', 'circle-info', meta='#' ~ r.action_log_id) }}
 
-{# Retitle the shared audit modal out-of-band — the same shell serves Transactions,
-   Adjustments and this. #}
-<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
-    XRAS Action Details
-</h5>
-
-<div class="mb-3 d-flex align-items-center flex-wrap gap-2">
-    {% if r.action_type %}
-    <span class="badge bg-secondary fs-6">{{ r.action_type }}</span>
-    {% else %}
-    <span class="badge bg-secondary fs-6">unparsed</span>
-    {% endif %}
-    <span class="text-muted">·</span>
-    {{ status_badge(r.status) }}
-    {% if r.http_status %}
-    <span class="text-muted small">HTTP {{ r.http_status }}</span>
-    {% endif %}
-    {% if r.source_action_id %}
-    <span class="badge bg-info" title="This row is a re-check">
-        <i class="fa-solid fa-arrow-rotate-right me-1"></i>re-check of #{{ r.source_action_id }}
-    </span>
-    {% endif %}
-</div>
+{# What the action is and how it ended, once; the grid below holds the rest. #}
+<p class="xras-request-meta">
+    {% if r.action_type %}<span class="text-body fw-semibold">{{ r.action_type }}</span>{% else %}<span>unparsed</span>{% endif %}
+    {{ status_badge(r.status, quiet=r.status not in ('failed', 'manual', 'unmapped')) }}
+    {% if r.http_status %}<span>HTTP {{ r.http_status }}</span>{% endif %}
+    {% if r.recheck_count %}<span>re-checked {{ r.recheck_count | fmt_plural('time') }}</span>{% endif %}
+</p>
 
 <div class="project-stats-box stats-two-col">
-    <h6><i class="fa-solid fa-circle-info"></i> Action Information</h6>
-
     <div class="stat-item">
         <span class="stat-label">Received:</span>
         <span class="stat-value">{{ r.received_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}</span>
@@ -48,13 +31,6 @@
     <div class="stat-item">
         <span class="stat-label">Processed:</span>
         <span class="stat-value">{{ r.processed_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}</span>
-    </div>
-    {% endif %}
-
-    {% if r.action_type %}
-    <div class="stat-item">
-        <span class="stat-label">Action type:</span>
-        <span class="stat-value">{{ r.action_type }}</span>
     </div>
     {% endif %}
 
@@ -70,18 +46,6 @@
     <div class="stat-item">
         <span class="stat-label">Resulting projcode:</span>
         <span class="stat-value">{{ r.projcode_result }}</span>
-    </div>
-    {% endif %}
-
-    <div class="stat-item">
-        <span class="stat-label">Status:</span>
-        <span class="stat-value">{{ r.status }}</span>
-    </div>
-
-    {% if r.http_status %}
-    <div class="stat-item">
-        <span class="stat-label">HTTP status:</span>
-        <span class="stat-value">{{ r.http_status }}</span>
     </div>
     {% endif %}
 
@@ -108,20 +72,13 @@
         <span class="stat-value">
             {# Navigating the lineage without leaving the modal: swap this same
                body for the parent's. #}
-            <button class="btn btn-link p-0"
+            <button type="button" class="btn btn-link btn-entity p-0"
                     hx-get="{{ url_for('allocations_dashboard.xras_action_details', action_id=r.source_action_id) }}"
-                    hx-target="#auditDetailsModalBody"
+                    hx-target="#xrasModalBody"
                     hx-swap="innerHTML">
                 <code>#{{ r.source_action_id }}</code>
             </button>
         </span>
-    </div>
-    {% endif %}
-
-    {% if r.recheck_count %}
-    <div class="stat-item">
-        <span class="stat-label">Re-checks:</span>
-        <span class="stat-value">{{ r.recheck_count }}</span>
     </div>
     {% endif %}
 
@@ -173,3 +130,4 @@
     {% endif %}
 
 </div>
+{{ done_footer() }}

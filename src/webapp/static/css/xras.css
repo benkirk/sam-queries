@@ -1,0 +1,430 @@
+/**
+ * Allocations > XRAS: the page's sections, its cards and dialogs.
+ * Loaded by allocations/xras.html only.
+ */
+
+/* ===================================================================
+   Page sections: a heading that collapses its half of the page
+   =================================================================== */
+
+.xras-section + .xras-section {
+    margin-top: 1.5rem;
+}
+
+.xras-section-title {
+    font-size: 1.1rem;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border-default);
+}
+
+.xras-section-toggle {
+    display: block;
+    width: 100%;
+    padding: 0 0 0.5rem;
+    border: 0;
+    background: none;
+    color: var(--text-primary);
+    font: inherit;
+    font-weight: var(--font-weight-semi-bold);
+    text-align: left;
+}
+
+.xras-section-toggle .accordion-chevron {
+    color: var(--text-secondary);
+    margin-top: 0.3rem;
+}
+
+/* ===================================================================
+   The state language (fragments/xras_bits.html)
+   =================================================================== */
+
+.xras-type,
+.xras-verdict {
+    white-space: nowrap;
+}
+
+/* The one slack column keeps a readable head once the table scrolls on a phone. */
+.table.xras-table td.cell-truncate {
+    min-width: 12rem;
+}
+
+/* A card header's breakdown of its count: muted facts, dot-separated. */
+.xras-header-facts > span + span::before {
+    content: " \00b7  ";
+}
+
+/* Notes said once under a card's chips, not an alert each. */
+.xras-notes {
+    margin: 0.5rem 0 0;
+    padding: 0;
+    list-style: none;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.xras-notes li + li {
+    margin-top: 0.25rem;
+}
+
+/* A ranked data fix above the remediation table: quieter than an alert. */
+.xras-strip {
+    display: flex;
+    gap: 0.6rem;
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-left: 3px solid var(--border-default);
+    background-color: var(--surface-tertiary);
+    font-size: 0.875rem;
+}
+
+.xras-strip > .fa-solid {
+    margin-top: 0.2rem;
+    color: var(--text-secondary);
+}
+
+/* The remediation SAM cell: blockers, verdict, project, on one line. */
+.xras-sam-cell,
+.xras-blockers {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+/* Identifiers in an XRAS table read at body weight: a column of bold codes
+   outweighed the states beside them. */
+.table.xras-table .btn-entity,
+.table.xras-table a > strong {
+    font-weight: var(--font-weight-regular);
+}
+
+/* One badge size across the XRAS page and its dialog, so a hue and a neutral
+   tag line up wherever they meet. */
+.xras-section .badge,
+#xrasModal .badge {
+    padding: 0.15rem 0.4rem;
+    font-size: 0.6875rem;
+}
+
+/* A comment count riding on its row button. */
+.btn-row-count {
+    margin-left: 0.2rem;
+    font-size: 0.75em;
+    font-variant-numeric: tabular-nums;
+}
+
+/* An empty card says what is not here, then what to do. */
+.xras-empty {
+    padding: 1rem 1.25rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.xras-empty-headline {
+    margin-bottom: 0.25rem;
+    color: var(--text-primary);
+    font-weight: var(--font-weight-semi-bold);
+}
+
+/* A row's drawer: label over value, one pair per fact. */
+.xras-drawer {
+    margin: 0;
+    padding: 0.25rem 0.5rem;
+}
+
+.xras-drawer dt {
+    color: var(--text-secondary);
+    font-weight: var(--font-weight-semi-bold);
+    font-size: 0.75rem;
+}
+
+.xras-drawer dd {
+    margin-bottom: 0.5rem;
+}
+
+.xras-drawer dd:last-child {
+    margin-bottom: 0;
+}
+
+.xras-deliveries {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.xras-deliveries li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.5rem;
+}
+
+/* ===================================================================
+   The XRAS dialog (#xrasModal)
+   =================================================================== */
+
+/* What just happened: a colored icon beside a headline, not an alert box. */
+.xras-outcome {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.xras-outcome > .fa-solid {
+    font-size: 1.5rem;
+    margin-top: 0.1rem;
+}
+
+.xras-outcome-headline {
+    margin-bottom: 0.25rem;
+    font-weight: var(--font-weight-semi-bold);
+}
+
+.xras-section-label {
+    margin: 1rem 0 0.4rem;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: var(--font-weight-semi-bold);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.xras-recipients {
+    margin: 0 0 1rem;
+    padding: 0;
+    list-style: none;
+}
+
+.xras-recipients li + li {
+    margin-top: 0.25rem;
+}
+
+.xras-back {
+    display: inline-block;
+    margin-bottom: 0.75rem;
+    font-size: 0.875rem;
+}
+
+/* A one-line result inside a dialog (a save, a refusal): text, not an alert. */
+.xras-flash {
+    margin-bottom: 0.75rem;
+    font-size: 0.875rem;
+}
+
+/* The request dialog's header line: status, kind, opportunity, dates, link. */
+.xras-request-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.75rem;
+    margin-bottom: 0.75rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.xras-request-title {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+/* One action of the family: a header that collapses its body. */
+.xras-action {
+    margin-bottom: 0.5rem;
+    border: 1px solid var(--border-default);
+    border-radius: var(--bs-border-radius);
+}
+
+.xras-action.is-latest {
+    border-left: 3px solid var(--text-link);
+}
+
+.xras-action-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 0;
+    background: none;
+    color: var(--text-primary);
+    font: inherit;
+    text-align: left;
+}
+
+.xras-action-body {
+    padding: 0.25rem 0.75rem 0.75rem;
+    border-top: 1px solid var(--border-default);
+    font-size: 0.875rem;
+}
+
+.xras-action-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.xras-action-label {
+    flex: 0 0 8.5rem;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: var(--font-weight-semi-bold);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.xras-date + .xras-date {
+    margin-top: 0.25rem;
+}
+
+.xras-matrix-note td {
+    padding-top: 0;
+    color: var(--text-secondary);
+    font-style: italic;
+    font-size: 0.8125rem;
+}
+
+/* A compact figure whose exact value is a tooltip away: a help cursor, no
+   underline (a dotted underline means editable here). */
+.xras-figure {
+    cursor: help;
+}
+
+.xras-figure:focus-visible {
+    outline: 2px solid var(--text-link);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+/* The amount that is its own editor: a figure with a quiet dotted underline; the
+   pencil shows only on hover or focus. */
+.xras-amount-show {
+    padding: 0;
+    border: 0;
+    border-bottom: 1px dotted var(--text-secondary);
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+}
+
+.xras-amount-show .fa-pen {
+    margin-left: 0.35rem;
+    color: var(--text-link);
+    font-size: 0.75em;
+    opacity: 0;
+}
+
+.xras-amount-show:hover,
+.xras-amount-show:focus-visible {
+    border-bottom-color: var(--text-link);
+    color: var(--text-link);
+}
+
+.xras-amount-show:hover .fa-pen,
+.xras-amount-show:focus-visible .fa-pen {
+    opacity: 1;
+}
+
+.xras-amount-form {
+    display: none;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.25rem;
+}
+
+.xras-amount-form .form-control {
+    width: 8rem;
+    text-align: end;
+}
+
+.xras-amount.is-editing .xras-amount-show {
+    display: none;
+}
+
+.xras-amount.is-editing .xras-amount-form {
+    display: inline-flex;
+}
+
+/* The pre-flight under an action: a quiet panel, its verdict in the state language. */
+.xras-preflight {
+    margin-top: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--surface-tertiary);
+    border-left: 3px solid var(--border-default);
+}
+
+.xras-preflight-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.75rem;
+}
+
+.xras-preflight-messages {
+    margin: 0.35rem 0 0;
+    padding-left: 1.25rem;
+    color: var(--bs-danger-text-emphasis);
+}
+
+.xras-preflight-actual {
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border-default);
+}
+
+.xras-overrides {
+    margin-top: 1rem;
+}
+
+/* A dialog with many verbs: smaller footer buttons than the house two-button
+   size, so six verbs fit on a line or two instead of three. */
+#xrasModalFooter .btn {
+    font-size: 0.8125rem;
+    padding: 0.3rem 0.7rem;
+}
+
+/* A rarely used form behind its summary. */
+.xras-disclosure > summary {
+    margin-bottom: 0.5rem;
+    color: var(--text-link);
+    font-size: 0.875rem;
+}
+
+.xras-disclosure .form-label {
+    font-size: 0.875rem;
+}
+
+/* The dialog footer: its verbs at the start, Done at the end. */
+.xras-footer-start {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-right: auto;
+}
+
+/* ===================================================================
+   XRAS merge form — the whole candidate card is the control
+   =================================================================== */
+
+.xras-candidate {
+    cursor: pointer;
+    border-color: var(--border-default);
+}
+
+.xras-candidate .xras-candidate-check {
+    color: var(--text-link);
+    visibility: hidden;
+}
+
+.xras-candidate:has(.form-check-input:checked) {
+    border-color: var(--text-link);
+    background-color: var(--surface-accent);
+    box-shadow: inset 0.25rem 0 0 var(--text-link);
+}
+
+.xras-candidate:has(.form-check-input:checked) .xras-candidate-check {
+    visibility: visible;
+}

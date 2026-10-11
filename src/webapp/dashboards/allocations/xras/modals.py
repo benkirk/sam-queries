@@ -35,13 +35,12 @@ from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from sam.dates import parse_wire_date
 from sam.text import strip_or_none
 from webapp.extensions import db
-from webapp.utils.htmx import htmx_modal_not_found
 from webapp.utils.rbac import Permission, has_permission, require_permission
 
 from .. import bp
 from ._shared import (
-    _degraded, _entry, _impersonation, _live_family,
-    _primary_line, _read_client, _render_xras_modal, _role_options,
+    _back_to_detail, _dialog_message, _entry, _impersonation, _live_family,
+    _not_found, _primary_line, _read_client, _render_xras_modal, _role_options,
 )
 
 
@@ -309,7 +308,7 @@ def xras_request_detail(request_number: str):
     return _render_xras_modal(
         build=lambda: _detail_context(request_number),
         template=_DETAIL_FORM, noun='request',
-        not_found=lambda: htmx_modal_not_found('Request'),
+        not_found=lambda: _not_found('Request'),
         log_label='xras request detail')
 
 
@@ -326,9 +325,8 @@ def _render_detail(request_number, *, flash=None, flash_error=None):
         context = None
     if context is None:
         note = flash or flash_error or 'Done.'
-        cls = 'alert-danger' if flash_error else 'alert-success'
-        return (f'<div class="alert {cls} mb-0">{note} '
-                'The card may lag until the next hourly sweep.</div>', 200)
+        return _dialog_message(f'{note} The card may lag until the next hourly sweep.',
+                               variant='danger' if flash_error else 'success')
     response = current_app.make_response(render_template(_DETAIL_FORM, **context))
     response.headers['HX-Trigger'] = 'refreshXrasTab'
     return response
@@ -374,7 +372,7 @@ def xras_readiness_detail(request_number: str):
     """
     context = _readiness_context(request_number)
     if context is None:
-        return htmx_modal_not_found('Request')
+        return _not_found('Request')
     return render_template(_READINESS_FORM, **context)
 
 
@@ -441,9 +439,7 @@ def _user_context(username, *, back_request_number=None):
     is_reconciled = person.get('isReconciled')
     merge_target = _merge_target_for(person) if placeholder else None
 
-    back_url = (url_for('allocations_dashboard.xras_request_detail',
-                        request_number=back_request_number)
-                if back_request_number else None)
+    back_url = _back_to_detail(back_request_number)
 
     return {
         'username': username,
@@ -451,7 +447,7 @@ def _user_context(username, *, back_request_number=None):
         'role_groups': role_groups,
         # SAM cross-reference, informational only: the SAM user modal lives
         # inside its own #userDetailsModal, and opening it from within this
-        # already-open #auditDetailsModal would stack two Bootstrap modals — an
+        # already-open #xrasModal would stack two Bootstrap modals — an
         # idiom this page does not use. The Accounts-Needed card keeps the SAM
         # user opener in its non-modal home.
         'in_sam': sam_user is not None,
@@ -487,10 +483,10 @@ def xras_user_detail(username: str):
     return _render_xras_modal(
         build=lambda: _user_context(username, back_request_number=back),
         template=_USER_DETAIL_FORM, noun='user',
-        not_found=lambda: _degraded(
-            f'XRAS has no account named "{username}". A placeholder is often '
-            'gone because it was merged into a real identity; the card will '
-            'catch up on the next sweep.', title='Unknown XRAS user'),
+        not_found=lambda: _not_found(
+            'XRAS user', f'XRAS has no account named "{username}". A placeholder is '
+            'often gone because it was merged into a real identity; the card will '
+            'catch up on the next sweep.'),
         log_label='xras user detail')
 
 
@@ -511,9 +507,7 @@ def _opportunity_context(opportunity_id, *, back_request_number=None):
     opportunity = get_opportunity(opportunity_id)
     if opportunity is None:
         return None
-    back_url = (url_for('allocations_dashboard.xras_request_detail',
-                        request_number=back_request_number)
-                if back_request_number else None)
+    back_url = _back_to_detail(back_request_number)
     return {
         'opportunity_id': opportunity_id,
         'opportunity': opportunity,
@@ -543,8 +537,7 @@ def xras_opportunity_detail(opportunity_id: int):
         build=lambda: _opportunity_context(opportunity_id,
                                            back_request_number=back),
         template=_OPPORTUNITY_DETAIL_FORM, noun='opportunity',
-        not_found=lambda: _degraded(
-            f'XRAS has no opportunity #{opportunity_id}.',
-            title='Unknown opportunity'),
+        not_found=lambda: _not_found(
+            'Opportunity', f'XRAS has no opportunity #{opportunity_id}.'),
         log_label='xras opportunity detail')
 

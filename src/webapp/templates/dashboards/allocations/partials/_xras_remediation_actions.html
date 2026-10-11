@@ -1,128 +1,57 @@
 {#
-  Roster editor for one request, rendered inside the read-only detail modal
-  (`xras_request_detail.html`). The action list moved to a family-wide
-  collapsible section in that template.
-
-  The roster is full width with its editing controls inline — add a role, remove
-  a role, resolve a placeholder identity — so there is no separate "Roles…"
-  view to bounce through.
-
-  WARNING: **No `data-bs-toggle="modal"` on any control here.** Every button lives
-  INSIDE the already-open `#auditDetailsModal` and swaps `#auditDetailsModalBody`
-  in place. A `data-bs-toggle="modal"` would fire Bootstrap's toggle on the open
-  modal and HIDE it — which read as "the button does nothing" while the content
-  loaded behind the closed modal.
-
-  Context:
-    row            an index-entry dict (request_index_entry shape):
-                   request_number, pi.username, roster[] (with role_id), actions[]
-    write_enabled  XRAS_WRITE_ENABLED
-    xa_user        the identity SAM impersonates for a write, or None
-    role_options   (wire-name, display) pairs for the add-role select
-    role_add_url   POST target for the add-role form
-
- THE OFFERS HERE ARE SNAPSHOT-DERIVED, NOT AUTHORITATIVE
-  XRAS publishes the real answer to "what may I do to this action" in
-  `rules{allowedOperations}` on `GET /v1/requests/<id>`. That route is
-  XA-USER-scoped (200 as the request's PI, 401 as arcguest) and reading it is
-  parked (docs/plans/implemented/XRAS_DATA_MODEL_UPLIFT.md). So `can_withdraw` /
-  `can_resubmit` are computed from the action's last-swept status: good enough
-  to decide which button to draw, never good enough to decide whether it may be
-  pressed. Each modal re-reads XRAS live, and the client verifies afterwards.
-
-  Drawing a button XRAS then refuses is fine — it comes back as XRAS's own
-  refusal, in the modal. Hiding a button that would have worked is not.
+  The roster editor inside the request dialog: one row per role, edited inline.
+  Context: row (request_index_entry: request_number, pi, roster[] with role_id),
+  write_enabled, xa_user, role_options, role_add_url.
+  WARNING: no data-bs-toggle="modal" here; every control swaps #xrasModalBody (#464).
+  The offers are snapshot-derived (`rules{allowedOperations}` reading is parked):
+  drawing a button XRAS refuses is fine, hiding one that would work is not.
 #}
+{% from 'dashboards/fragments/xras_bits.html' import attention, section_label, tag, write_button %}
 {% set disabled = 'disabled' if not write_enabled else '' %}
 {% set why_disabled = 'XRAS writes are switched off for this deployment (XRAS_WRITE_ENABLED).' %}
 
-<div class="mb-3">
-    {% if row.pi.username %}
-    <span class="small text-muted">
-        SAM acts as <code>{{ row.pi.username }}</code> (project lead) for
-        changes to this request.
-    </span>
-    {% else %}
-    <span class="small text-danger">
-        No project lead on this request — XRAS will refuse changes to it.
-    </span>
-    {% endif %}
-</div>
-
-{# Roster (full width, editable inline) #}
-<div class="small text-uppercase text-muted mb-1">Roster</div>
+{{ section_label('Roster') }}
+<p class="small {{ 'text-muted' if row.pi.username else 'text-danger-emphasis' }} mb-2">
+    {% if row.pi.username %}SAM acts as <code>{{ row.pi.username }}</code> (project lead) for changes to this request.
+    {% else %}No project lead on this request: XRAS will refuse changes to it.{% endif %}
+</p>
 <table class="table table-sm align-middle mb-2">
     <tbody>
-    {# WARNING: The roster is one row per ROLE — a person holding both PI and User
-       appears twice, and that is deliberate: role removal is keyed on
-       `role_id`, so collapsing to one row per person would lose the identifier
-       the Remove button needs.
-
-       But **merge is a person-level operation**. Offered per row it renders
-       twice for one human, which reads as two different people or two different
-       merges when either button does the same single, irreversible thing. So
-       the merge offer is shown once, on the first row that names each username;
-       Remove is per role. Measured live on NCAR4262, one placeholder, two
-       roles. #}
+    {# WARNING: one row per ROLE (removal is keyed on role_id), but a merge is per
+       PERSON: its state shows once, on the first row naming each username, and
+       the Merge verb is in the dialog footer. #}
     {% set merge_offered = [] %}
     {% for member in row.roster %}
         <tr>
-            {# Username opens the XRAS User modal in place — a plain hx-get into
-               this same modal body, NO data-bs-toggle (the modal is already
-               open; a toggle would hide it — the #464 bug). `request_number`
-               rides along so the user modal can offer a way back here. #}
-            <td class="font-monospace">
-                <a href="#" class="text-decoration-none"
-                   title="View this XRAS user"
+            {# Opens the XRAS user in place, carrying this number for a Back link. #}
+            <td class="col-shrink font-monospace">
+                <a href="#" title="View this XRAS user"
                    hx-get="{{ url_for('allocations_dashboard.xras_user_detail',
                                       username=member.username) }}?request_number={{ row.request_number }}"
-                   hx-target="#auditDetailsModalBody" hx-swap="innerHTML">{{ member.username }}</a>
+                   hx-target="#xrasModalBody" hx-swap="innerHTML">{{ member.username }}</a>
             </td>
             <td>{{ member.name or '—' }}</td>
-            <td>{{ member.role_type or '—' }}
-                {%- if member.active == false %}
-                <span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle"
-                      title="This role's date window is over in XRAS.">ended</span>
-                {%- endif %}</td>
-            <td class="text-end text-nowrap">
-                {% if member.placeholder
-                      and (member.is_reconciled or (member.merge_target and member.merge_target.active))
-                      and member.username not in merge_offered %}
+            <td class="col-shrink">{{ member.role_type or '—' }}
+                {%- if member.active == false %} {{ tag('ended', title="This role's date window is over in XRAS.") }}{% endif %}</td>
+            <td class="col-shrink text-end text-nowrap">
+                {% if member.placeholder and member.username not in merge_offered %}
                 {% set _ = merge_offered.append(member.username) %}
-                {# WARNING: The contradiction the merge fixup exists for. Reconciliation
-                   in XRAS IS a merge, so a reconciled placeholder that still
-                   exists was flagged without one — XRAS keeps sending the
-                   throwaway username and the handoff never completes. #}
-                <button type="button" class="btn btn-sm btn-outline-danger" {{ disabled }}
-                        {% if not write_enabled %}title="{{ why_disabled }}"{% endif %}
-                        hx-get="{{ url_for('allocations_dashboard.xras_merge_form',
-                                           username=member.username) }}"
-                        hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
-                    Resolve identity (merge)…
-                </button>
-                {% elif member.placeholder
-                        and member.username not in merge_offered %}
-                {% set _ = merge_offered.append(member.username) %}
-                <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle"
-                      title="No active SAM account holds this person's email yet. Once one does, the merge is offered here.">
-                    needs an account
-                </span>
+                {% if member.is_reconciled or (member.merge_target and member.merge_target.active) %}
+                {# The contradiction the merge exists for: reconciled without a merge. #}
+                {{ attention('needs a merge', title='Merge it into its SAM account with the Merge button below.') }}
+                {% else %}
+                {{ tag('needs an account', title="No active SAM account holds this person's email yet. Once one does, the merge is offered.") }}
                 {% endif %}
-                {# Remove is per role, keyed on role_id. Bodiless POST behind the
-                   shared confirm; re-renders the detail modal in place. #}
+                {% endif %}
                 {% if member.role_id is not none %}
-                <button type="button" class="btn btn-row btn-row-danger ms-1" {{ disabled }}
-                        title="{% if not write_enabled %}{{ why_disabled }}{% else %}Remove {{ member.username }} as {{ member.role_type }}{% endif %}"
-                        aria-label="Remove {{ member.username }} as {{ member.role_type }}"
-                        hx-post="{{ url_for('allocations_dashboard.xras_role_remove',
-                                            request_number=row.request_number,
-                                            role_id=member.role_id) }}"
-                        hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
-                        hx-confirm="Remove {{ member.username }} as {{ member.role_type }} on {{ row.request_number }} in XRAS?"
-                        data-confirm-title="Remove role in XRAS"
-                        data-confirm-ok="Remove" data-confirm-variant="danger">
-                    <i class="fa-solid fa-user-minus"></i>
-                </button>
+                <span class="row-actions">
+                {{ write_button('Remove ' ~ member.username ~ ' as ' ~ member.role_type, 'user-minus',
+                                url_for('allocations_dashboard.xras_role_remove', request_number=row.request_number,
+                                        role_id=member.role_id),
+                                write_enabled, post=True, variant='danger',
+                                confirm='Remove ' ~ member.username ~ ' as ' ~ member.role_type ~ ' on ' ~ row.request_number ~ ' in XRAS?',
+                                confirm_title='Remove role in XRAS', confirm_label='Remove') }}
+                </span>
                 {% endif %}
             </td>
         </tr>
@@ -132,13 +61,9 @@
     </tbody>
 </table>
 
-{# Add a role. A plain username field — the handler resolves it against XRAS
-   before writing and refuses one XRAS does not already know, so this cannot
-   mint a new placeholder. Every active SAM account resolves (XRAS proxies
-   SAM's identity service), so a SAM username is always a safe entry. Errors
-   surface as a flash at the top of the modal (no per-field macros here). #}
-<form hx-post="{{ role_add_url }}"
-      hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+{# Add a role. The handler resolves the username against XRAS and refuses one XRAS
+   does not know, so this cannot mint a placeholder; errors arrive as the flash. #}
+<form hx-post="{{ role_add_url }}" hx-target="#xrasModalBody" hx-swap="innerHTML"
       class="row g-2 align-items-end mb-3">
     <div class="col-sm-6">
         <label class="form-label small mb-1" for="xras-add-role-username">Add username (SAM or XRAS)</label>
@@ -155,14 +80,8 @@
         </select>
     </div>
     <div class="col-sm-2">
-        <button type="submit" class="btn btn-sm btn-outline-primary w-100"
+        <button type="submit" class="btn btn-sm btn-outline-secondary w-100"
                 {% if not write_enabled or not xa_user %}disabled
-                title="{% if not write_enabled %}{{ why_disabled }}{% else %}This request has no role-holder for SAM to act as.{% endif %}"{% endif %}>
-            Add
-        </button>
+                title="{% if not write_enabled %}{{ why_disabled }}{% else %}This request has no role-holder for SAM to act as.{% endif %}"{% endif %}>Add</button>
     </div>
 </form>
-
-{# The action list (with Withdraw/Re-submit) now lives in xras_request_detail.html
-   as one chronological, family-wide collapsible section — only the most-recent
-   action is editable. This include is the roster editor only. #}

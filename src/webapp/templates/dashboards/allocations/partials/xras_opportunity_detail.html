@@ -1,63 +1,49 @@
 {#
   Read-only detail of one XRAS opportunity (an allocation "call"), rendered into
-  #auditDetailsModalBody. The analogue of xras_request_detail / xras_user_detail
+  #xrasModalBody. The analogue of xras_request_detail / xras_user_detail
   for the opportunity a request was submitted against.
 
   Context: opportunity_id, opportunity (a /v1/opportunities/:id dict),
            back_url / back_request_number, configured.
 
   WARNING: No `data-bs-toggle="modal"` on any control — this body is swapped into the
-  already-open #auditDetailsModal, and a toggle would hide it (#464 rule).
+  already-open #xrasModal, and a toggle would hide it (#464 rule).
 
   Read-only: an opportunity is an allocation call SAM never writes, so there is
   nothing to edit here.
 #}
-{% import 'dashboards/allocations/partials/xras_modal_shell.html' as shell %}
+{% from 'dashboards/fragments/xras_bits.html' import back_link, dialog_title, done_footer, tag %}
 {% set opp = opportunity %}
 {% set info = opp.allocationTypeInfo or {} %}
-{% call shell.modal_title() %}Opportunity — {{ opp.displayOpportunityName or opp.opportunityName or ('#' ~ opportunity_id) }}{% endcall %}
+{{ dialog_title(opp.displayOpportunityName or opp.opportunityName or 'Opportunity', 'layer-group', meta='#' ~ opportunity_id) }}
+{{ back_link(back_url, back_request_number) }}
 
-{{ shell.back_link(back_url, back_request_number) }}
+<p class="xras-request-meta">
+    {% if opp.opportunityType %}{{ tag(opp.opportunityType) }}{% endif %}
+    {% if opp.allocationType %}{{ tag(opp.allocationType ~ ' allocation') }}{% endif %}
+    {% for state in opp.opportunityStates or [] %}{{ tag(state) }}{% endfor %}
+</p>
 
-{# header badges #}
-<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-    {% if opp.opportunityType %}
-    <span class="badge bg-body-secondary text-body-secondary border">{{ opp.opportunityType }}</span>
-    {% endif %}
-    {% if opp.allocationType %}
-    <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle">{{ opp.allocationType }} allocation</span>
-    {% endif %}
-    {% for state in opp.opportunityStates or [] %}
-    <span class="badge bg-body-secondary text-body-secondary border fw-normal">{{ state }}</span>
-    {% endfor %}
-    <span class="text-muted small ms-auto font-monospace">#{{ opportunity_id }}</span>
-</div>
-
-{# the human description of the allocation type #}
 {% if info.description %}
-<p class="small mb-3" style="white-space: pre-wrap;">{{ info.description }}</p>
+<p class="small mb-3 stat-pre">{{ info.description }}</p>
 {% else %}
 <p class="small text-muted fst-italic mb-3">No description on file for this opportunity.</p>
 {% endif %}
 
-{# the few structured facts worth surfacing #}
-<dl class="row g-2 small mb-0">
-    <div class="col-md-6 mb-0">
-        <dt class="text-muted fw-normal d-inline">Award period:</dt>
-        <dd class="d-inline ms-1 mb-0">
-            {% if opp.defaultAllocationAwardPeriod %}{{ opp.defaultAllocationAwardPeriod }} months{% else %}—{% endif %}
-        </dd>
+<div class="project-stats-box stats-two-col mb-0">
+    <div class="stat-item">
+        <span class="stat-label">Award period:</span>
+        <span class="stat-value">{% if opp.defaultAllocationAwardPeriod %}{{ opp.defaultAllocationAwardPeriod }} months{% else %}—{% endif %}</span>
     </div>
-    <div class="col-md-6 mb-0">
-        <dt class="text-muted fw-normal d-inline">Announced:</dt>
-        <dd class="d-inline ms-1 mb-0">{{ announcement_date | fmt_date if announcement_date else '—' }}</dd>
+    <div class="stat-item">
+        <span class="stat-label">Announced:</span>
+        <span class="stat-value">{{ announcement_date | fmt_date if announcement_date else '—' }}</span>
     </div>
     {% if info.allocationType %}
-    <div class="col-md-6 mb-0">
-        <dt class="text-muted fw-normal d-inline">Allocation type:</dt>
-        <dd class="d-inline ms-1 mb-0">{{ info.allocationType }}</dd>
+    <div class="stat-item">
+        <span class="stat-label">Allocation type:</span>
+        <span class="stat-value">{{ info.allocationType }}</span>
     </div>
     {% endif %}
-</dl>
-
-{{ shell.done_footer() }}
+</div>
+{{ done_footer() }}

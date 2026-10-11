@@ -12,7 +12,7 @@ from flask_login import current_user, login_required
 from webapp.api.xras.recheck import recheck_action
 from webapp.extensions import db
 from webapp.utils.htmx import (
-    handle_htmx_form_post, htmx_modal_not_found, htmx_not_found, htmx_success,
+    handle_htmx_form_post, htmx_not_found, htmx_success,
     htmx_success_message,
 )
 from webapp.utils.email_preview import (
@@ -40,7 +40,7 @@ from sam.queries.xras_notices import build_xras_messages, load_xras_action
 from sam.schemas.forms import XrasActivationEventForm, XrasDismissForm
 
 from .. import bp
-from ._shared import _XRAS_MODAL_TRIGGERS
+from ._shared import _XRAS_MODAL_TRIGGERS, _not_found
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +151,7 @@ def xras_notify_form(project_id: int):
     """
     project, action, people, messages = _xras_notify_inputs(project_id)
     if project is None:
-        return htmx_modal_not_found('Project')
+        return _not_found('Project')
 
     pane = _xras_preview_ctx(project, action, messages)
     return render_template(
@@ -227,7 +227,7 @@ def xras_notify(project_id: int):
     """
     project, action, people, messages = _xras_notify_inputs(project_id)
     if project is None:
-        return htmx_not_found('Project')
+        return _not_found('Project')
 
     # Unchecked checkboxes are omitted from the request entirely, so presence
     # is the signal — never a value comparison. See CLAUDE.md § 10.
@@ -323,7 +323,7 @@ def xras_dismiss_form(project_id: int):
     """Modal body: ask for the reason a project should not be activated."""
     project = _load_pending_project(project_id)
     if project is None:
-        return htmx_modal_not_found('Project')
+        return _not_found('Project')
     return render_template(
         'dashboards/allocations/partials/xras_pending_event_form.html',
         project=project,
@@ -345,7 +345,7 @@ def xras_dismiss(project_id: int):
     """
     project = _load_pending_project(project_id)
     if project is None:
-        return htmx_not_found('Project')
+        return _not_found('Project')
 
     return handle_htmx_form_post(
         schema_cls=XrasDismissForm,
@@ -430,7 +430,7 @@ def xras_history(project_id: int):
     """
     project = _load_pending_project(project_id)
     if project is None:
-        return htmx_modal_not_found('Project')
+        return _not_found('Project')
     return render_template(
         'dashboards/allocations/partials/xras_pending_history_modal.html',
         project=project,
@@ -447,7 +447,7 @@ def xras_comment(project_id: int):
     """Append a note to a pending project's timeline."""
     project = _load_pending_project(project_id)
     if project is None:
-        return htmx_not_found('Project')
+        return _not_found('Project')
 
     return handle_htmx_form_post(
         schema_cls=XrasActivationEventForm,
@@ -485,7 +485,7 @@ def xras_action_details(action_id: int):
         # error page would be worse than useless. text-danger-emphasis rather
         # than text-danger — the saturated brand red fails WCAG AA on the dark
         # card (3.35:1 measured); the -emphasis token is theme-aware.
-        return htmx_modal_not_found('Action')
+        return _not_found('Action')
     return render_template(
         'dashboards/allocations/partials/xras_action_details_modal.html',
         r=rows[0], may_see_payload=may_see_payload,
@@ -512,8 +512,7 @@ def xras_recheck(action_id: int):
         # Deliberately does not interpolate the exception: this renders into the
         # operator's page, and an exception string is neither actionable nor
         # guaranteed to be free of internals. The traceback is in the log.
-        return ('<div class="alert alert-danger mb-0">Re-check failed — '
-                'see the application log.</div>', 500)
+        return 'Re-check failed; see the application log.', 500
 
     headline = {
         'rechecked': 'Would succeed now.',

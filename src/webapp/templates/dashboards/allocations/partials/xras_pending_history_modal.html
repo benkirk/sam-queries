@@ -1,5 +1,5 @@
 {#
-  Activation timeline for one project — rendered into #auditDetailsModalBody.
+  Activation timeline for one project — rendered into #xrasModalBody.
 
   Context:
     project   the Project
@@ -13,8 +13,9 @@
   WARNING: Gated on MANAGE_XRAS in the ROUTE, not just here — `notified_to` carries
   project lead/admin contact details, the same category as the raw payload.
 #}
-{# `with context` is load-bearing — see xras_pending_event_form.html. #}
+{# `with context` is load-bearing: see xras_pending_event_form.html. #}
 {% from 'dashboards/fragments/form_fields.html' import textarea_field, form_errors_panel with context %}
+{% from 'dashboards/fragments/xras_bits.html' import dialog_title, form_footer %}
 
 {% set _ICONS = {
     'notified':  'fa-envelope',
@@ -31,16 +32,14 @@
     'restored':  'Restored',
 } %}
 
-<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
-    Activation history — {{ project.projcode }}
-</h5>
+{{ dialog_title('Activation history', 'clock-rotate-left', meta=project.projcode) }}
 
 {% if events %}
 <ul class="list-unstyled mb-4">
     {% for e in events %}
     <li class="d-flex gap-3 pb-3 mb-3 border-bottom">
         <div class="text-muted pt-1">
-            <i class="fa-solid {{ _ICONS.get(e.event_type, 'fa-circle') }}"></i>
+            <i class="fa-solid {{ _ICONS.get(e.event_type, 'fa-circle') }}" aria-hidden="true"></i>
         </div>
         <div class="flex-grow-1">
             <div class="d-flex align-items-baseline flex-wrap gap-2">
@@ -67,16 +66,10 @@
 <p class="text-muted">Nothing has been recorded for this project yet.</p>
 {% endif %}
 
-<form hx-post="{{ post_url }}"
-      hx-target="#auditDetailsModalBody"
-      hx-swap="innerHTML">
+<form id="xras-dialog-form" hx-post="{{ post_url }}" hx-target="#xrasModalBody" hx-swap="innerHTML">
     {{ textarea_field('comment', 'Add a comment', required=True, rows=2,
                       maxlength=4000,
                       placeholder='Anything the next person should know.') }}
     {{ form_errors_panel() }}
-    <div class="d-flex justify-content-end gap-2">
-        <button type="submit" class="btn btn-primary">
-            <i class="fa-solid fa-comment"></i> Add comment
-        </button>
-    </div>
 </form>
+{{ form_footer('xras-dialog-form', none, true, back_label='Done', verb='Add comment', icon='comment') }}

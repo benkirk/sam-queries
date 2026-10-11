@@ -6,6 +6,28 @@
 (function () {
     'use strict';
 
+    /* A scaffold with a footer slot (modal_scaffold footer_id=): a body swap empties
+     * the footer the previous body sent unless the new one re-sends its own out of
+     * band. WARNING: mark before, clear after. Emptying it in beforeSwap would detach
+     * a footer button that made the request (Back); htmx resolves out-of-band targets
+     * from the requesting element's root, so the new title and footer would drop.
+     * An out-of-band replacement is a fresh node without the mark. */
+    function footerOf(target) {
+        var id = target && target.dataset ? target.dataset.footerId : null;
+        return id ? document.getElementById(id) : null;
+    }
+    document.body.addEventListener('htmx:beforeSwap', function (e) {
+        var footer = e.detail.shouldSwap ? footerOf(e.detail.target) : null;
+        if (footer) { footer.dataset.stale = '1'; }
+    });
+    document.body.addEventListener('htmx:afterSwap', function (e) {
+        var footer = footerOf(e.detail.target);
+        if (footer && footer.dataset.stale) {
+            footer.replaceChildren();
+            delete footer.dataset.stale;
+        }
+    });
+
     /* Outage modals
      * Time-zone strategy: datetime-local inputs are TZ-blind. The browser
      * TZ is captured into a hidden `tz` field at modal-show time so the
