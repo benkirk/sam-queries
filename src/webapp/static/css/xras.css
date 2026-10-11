@@ -35,6 +35,68 @@
 }
 
 /* ===================================================================
+   The state language (fragments/xras_bits.html)
+   =================================================================== */
+
+.xras-type,
+.xras-verdict {
+    white-space: nowrap;
+}
+
+/* A comment count riding on its row button. */
+.btn-row-count {
+    margin-left: 0.2rem;
+    font-size: 0.75em;
+    font-variant-numeric: tabular-nums;
+}
+
+/* An empty card says what is not here, then what to do. */
+.xras-empty {
+    padding: 1rem 1.25rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.xras-empty-headline {
+    margin-bottom: 0.25rem;
+    color: var(--text-primary);
+    font-weight: var(--font-weight-semi-bold);
+}
+
+/* A row's drawer: label over value, one pair per fact. */
+.xras-drawer {
+    margin: 0;
+    padding: 0.25rem 0.5rem;
+}
+
+.xras-drawer dt {
+    color: var(--text-secondary);
+    font-weight: var(--font-weight-semi-bold);
+    font-size: 0.75rem;
+}
+
+.xras-drawer dd {
+    margin-bottom: 0.5rem;
+}
+
+.xras-drawer dd:last-child {
+    margin-bottom: 0;
+}
+
+.xras-deliveries {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.xras-deliveries li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.5rem;
+}
+
+/* ===================================================================
    XRAS merge form — the whole candidate card is the control
    =================================================================== */
 

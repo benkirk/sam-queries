@@ -306,6 +306,10 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/allocations/partials/xras_remediations_card.html': [
         'auditDetailsModal', 'auditDetailsModalBody',
         'projectDetailsModal', 'projectDetailsModalBody'],
+    # The XRAS state-language macros: request_link opens the request dialog.
+    # Imported only by the XRAS cards and dialogs, all hosted by xras.html.
+    'dashboards/fragments/xras_bits.html': [
+        'auditDetailsModal', 'auditDetailsModalBody'],
     # The shared roster/actions strip, included only by the read-only detail
     # modal. Its controls swap #auditDetailsModalBody in place and carry NO
     # data-bs-toggle="modal" — clicked inside the open modal that would hide it —

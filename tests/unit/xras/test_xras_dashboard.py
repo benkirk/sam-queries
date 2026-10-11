@@ -1055,7 +1055,7 @@ class TestActivityRowExpansion:
                 target_id='alloc-xras-pending', **counts)
 
     def _actions_cell(self, body):
-        cell = body.split('<td class="text-end"')[1].split('</td>')[0]
+        cell = body.split('<td class="text-end text-nowrap"')[1].split('</td>')[0]
         assert 'xras_history' in cell, 'wrong cell — test is vacuous'
         return cell
 
@@ -1096,7 +1096,7 @@ class TestActivityRowExpansion:
         queue = self._render(app, may_manage=True,
                              rows=[self._row(needs_activation=True, project_active=False)])
         assert '>State<' not in queue
-        action_cell = queue.split('<span class="badge bg-secondary">Supplement</span>')[1].split('</td>')[0]
+        action_cell = queue.split('<span class="xras-type">Supplement</span>')[1].split('</td>')[0]
         assert 'Needs activation' in action_cell
         everything = self._render(app, may_manage=True, show_all=True,
                                   rows=[self._row(needs_activation=True, project_active=False)])
@@ -1112,7 +1112,7 @@ class TestActivityRowExpansion:
     def test_the_strip_never_wraps(self, app):
         cell = self._actions_cell(self._render(app, may_manage=True))
         # .row-actions is an inline-flex nowrap strip; the cell itself is nowrap too.
-        assert 'class="row-actions"' in cell and 'white-space:nowrap' in cell
+        assert 'class="row-actions"' in cell
 
     def test_the_hidden_count_badge_names_the_switch(self, app):
         body = self._render(app, may_manage=True, window_total=3, hidden_count=2)
@@ -1134,7 +1134,7 @@ class TestActivityRowExpansion:
         Activate live in the last cell; the toggle must not.
         See dashboards/fragments/collapse.html."""
         body = self._render(app, may_manage=True)
-        actions_cell = body.split('<td class="text-end"')[1].split('</td>')[0]
+        actions_cell = body.split('<td class="text-end text-nowrap"')[1].split('</td>')[0]
         assert 'data-bs-toggle="collapse"' not in actions_cell
         assert 'xras_notify_form' in actions_cell, 'wrong cell — test is vacuous'
 

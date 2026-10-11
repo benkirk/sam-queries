@@ -1,0 +1,114 @@
+{#
+  The XRAS page's shared pieces: one state language for its cards and dialogs.
+
+  A state is a quiet tag (`tag`); color is kept for what needs a person
+  (`attention`, `alarm`). An action type is a word, not a badge. Verdicts are an
+  icon and a word from one table, so the chips, the rows and the dialogs agree.
+  Specimens: /dev/gallery.
+#}
+{% from 'dashboards/fragments/project_bits.html' import project_link with context %}
+
+{#- A neutral fact about a row (a request status, a role, a queue state). -#}
+{% macro tag(label, title='') -%}
+<span class="badge state-tag"{% if title %} title="{{ title }}"{% endif %}>{{ label }}</span>
+{%- endmacro %}
+
+{#- Something a person should act on. -#}
+{% macro attention(label, title='') -%}
+<span class="badge bg-warning"{% if title %} title="{{ title }}"{% endif %}>{{ label }}</span>
+{%- endmacro %}
+
+{#- Something that went wrong. -#}
+{% macro alarm(label, title='') -%}
+<span class="badge bg-danger"{% if title %} title="{{ title }}"{% endif %}>{{ label }}</span>
+{%- endmacro %}
+
+{% macro type_label(action_type) -%}
+{%- if action_type %}<span class="xras-type">{{ action_type }}</span>
+{%- else %}<span class="text-muted" title="Body could not be parsed">—</span>{% endif -%}
+{%- endmacro %}
+
+{#- Pre-flight verdicts, worst first; _shared._READINESS draws the chips from the same words. -#}
+{%- set _VERDICTS = {
+    'failed':     ('Would fail',    'fa-triangle-exclamation', 'danger'),
+    'manual':     ('Would park',    'fa-circle-pause',         'warning'),
+    'incomplete': ('Incomplete',    'fa-circle-question',      'secondary'),
+    'rechecked':  ('Would succeed', 'fa-circle-check',         'success'),
+} -%}
+
+{#- An icon and its word; icon_only keeps the word in title for a dense cell. count suffixes "(n)". -#}
+{% macro verdict(status, icon_only=False, title=None, count=None) -%}
+{%- set v = _VERDICTS.get(status) -%}
+{%- if v -%}
+<span class="xras-verdict text-{{ v[2] }}-emphasis text-nowrap" title="{{ title or v[0] }}"
+      {%- if icon_only %} aria-label="{{ v[0] }}"{% endif %}><i class="fa-solid {{ v[1] }}" aria-hidden="true"></i>
+{%- if not icon_only %} {{ v[0] }}{% if count %} ({{ count }}){% endif %}{% endif %}</span>
+{%- else -%}
+<span class="xras-verdict text-muted text-nowrap" title="{{ title or 'Not checked' }}"
+      {%- if icon_only %} aria-label="Not checked"{% endif %}><i class="fa-solid fa-rotate" aria-hidden="true"></i>
+{%- if not icon_only %} Not checked{% endif %}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{#- The XRAS request behind a number. configured: open its detail dialog (live read).
+    Otherwise a project link when SAM has one, else plain text; `suspect` warns that the
+    number is neither a project nor a request token. -#}
+{% macro request_link(number, configured, is_project=False, suspect=False, can_view_projects=True) -%}
+{%- set warn = 'Not a SAM project, and not a recognised XRAS request number: the project may have been deleted or renamed' -%}
+{%- if not number -%}<span class="text-muted">—</span>
+{%- elif configured -%}
+<button type="button" class="btn btn-link btn-entity p-0{{ ' text-warning-emphasis' if suspect }}"
+        title="{{ warn if suspect else 'Full request detail (read-only)' }}"
+        data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+        hx-get="{{ url_for('allocations_dashboard.xras_request_detail', request_number=number) }}"
+        hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+{%- if suspect %}<i class="fa-solid fa-triangle-exclamation small me-1" aria-hidden="true"></i>{% endif -%}
+<span class="font-monospace">{{ number }}</span></button>
+{%- elif is_project -%}{{ project_link(number, can_view_projects, compact=True, stop_propagation=True) }}
+{%- elif suspect -%}<span class="font-monospace text-warning-emphasis" title="{{ warn }}"><i class="fa-solid fa-triangle-exclamation small me-1" aria-hidden="true"></i>{{ number }}</span>
+{%- else -%}<span class="font-monospace" title="No SAM project by this name yet: normal before the handoff completes">{{ number }}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{#- A card's header count: the rows shown, then what the switch or the window hides. -#}
+{% macro queue_badges(count, noun='', more=0, more_label='', more_title='', outside=0, outside_label='outside the date filter', outside_title='') -%}
+<span class="badge bg-secondary count-badge">{{ count | fmt_number }}{% if noun %} {{ noun }}{% endif %}</span>
+{%- if more %}
+<span class="badge bg-info" title="{{ more_title }}">{{ more | fmt_number }} more with {{ more_label }}</span>
+{%- endif %}
+{%- if outside %}
+<span class="badge bg-warning" title="{{ outside_title }}">{{ outside | fmt_number }} {{ outside_label }}</span>
+{%- endif %}
+{%- endmacro %}
+
+{#- The queue-vs-everything switch, bound to the card's hidden filter form. -#}
+{% macro queue_switch(switch_id, label, checked, form_id, fragment_url, target_id, help='') -%}
+<div class="form-check form-switch small mb-0">
+    <input class="form-check-input" type="checkbox" role="switch"
+           id="{{ switch_id }}" name="show_all" value="1"
+           form="{{ form_id }}" {% if checked %}checked{% endif %}
+           hx-get="{{ fragment_url }}" hx-target="#{{ target_id }}" hx-swap="innerHTML"
+           hx-trigger="change" hx-include="#xras-window-filters, #{{ form_id }}">
+    <label class="form-check-label" for="{{ switch_id }}">{{ label }}</label>
+    {{ help }}
+</div>
+{%- endmacro %}
+
+{#- When a cached card was built: the sweep is hourly, never live. -#}
+{% macro swept_stamp(when, detail='', title='Rendered from what the xras_sweep task last published; not fetched live.') -%}
+<span class="small text-muted ms-auto" title="{{ title }}">swept {{ when | fmt_date }}{% if detail %} · {{ detail }}{% endif %}</span>
+{%- endmacro %}
+
+{#- An empty card: what is (or is not) here, then what to do. caller() is the body. -#}
+{% macro empty_state(headline) -%}
+<div class="xras-empty">
+    <p class="xras-empty-headline">{{ headline }}</p>
+    {%- if caller is defined %}<p class="mb-0">{{ caller() }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{#- An inline "clear the filters" button for an empty state. -#}
+{% macro clear_filters(form_id, text='clear the filters') -%}
+<button type="button" class="btn btn-link btn-sm p-0 align-baseline"
+        data-action="facet-clear-all" data-form-id="{{ form_id }}">{{ text }}</button>
+{%- endmacro %}
