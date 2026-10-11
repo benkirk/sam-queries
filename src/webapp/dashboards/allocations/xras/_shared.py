@@ -468,5 +468,4 @@ REMEDIATION_FACETS = FacetSet(
 )
 
 
-_WINDOW_TARGET = 'alloc-xras-window'
 

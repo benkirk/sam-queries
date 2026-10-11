@@ -249,8 +249,6 @@ def xras_pending_fragment():
         recipients=recipients,
         may_activate=may_activate,
         may_manage=may_manage,
-        window=window,
-        window_pill_choices=_ACTIVITY_WINDOW_PILLS,
         facet_values=facet_values,
         selected=selected,
         show_all=show_all,
@@ -362,8 +360,6 @@ def xras_accounts_fragment():
         sortable_columns=set(_ACCOUNTS_SORT),
         may_manage=may_manage,
         enrichment=enrichment,
-        window=window,
-        window_pill_choices=_ACTIVITY_WINDOW_PILLS,
         facet_values=facet_values,
         selected=selected,
         # The Feed-B half's state, so the card can render a degraded-half note
