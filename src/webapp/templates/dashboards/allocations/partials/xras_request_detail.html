@@ -1,4 +1,4 @@
-{% from 'dashboards/fragments/xras_bits.html' import alarm, amount_editor, dialog_footer, dialog_title, footer_verb, section_label, tag, type_label, write_button %}
+{% from 'dashboards/fragments/xras_bits.html' import alarm, amount_editor, dialog_footer, figure, dialog_title, footer_verb, section_label, tag, type_label, write_button %}
 {#
   One XRAS request (and its family), rendered into #xrasModalBody.
   Context: request_number, payload (GET /v1/reports/request_numbers/<n>, self-
@@ -108,10 +108,10 @@
                     {{ amount_editor(cell.amount,
                                      url_for('allocations_dashboard.xras_resource_edit', request_number=request_number,
                                              action_id=action.action_id, resource_id=r.resource_id),
-                                     stage, cell.comments, r.name, write_enabled,
+                                     stage, cell.comments, r.name, write_enabled, units=r.units,
                                      form_url=url_for('allocations_dashboard.xras_resource_form', request_number=request_number,
                                                       action_id=action.action_id, resource_id=r.resource_id) ~ '?stage=' ~ stage) }}
-                    {%- else -%}{{ (cell.amount | float | fmt_number) if cell.amount is not none else '—' }}
+                    {%- else -%}{{ figure(cell.amount, r.units) }}
                     {%- endif -%}
                 </td>
                 {% endfor %}

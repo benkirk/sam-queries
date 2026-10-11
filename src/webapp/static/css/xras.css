@@ -286,6 +286,18 @@
     font-size: 0.8125rem;
 }
 
+/* A compact figure whose exact value is a tooltip away: a help cursor, no
+   underline (a dotted underline means editable here). */
+.xras-figure {
+    cursor: help;
+}
+
+.xras-figure:focus-visible {
+    outline: 2px solid var(--text-link);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
 /* The amount that is its own editor: a figure with a quiet dotted underline; the
    pencil shows only on hover or focus. */
 .xras-amount-show {

@@ -1613,7 +1613,25 @@ writes. `recipes.json` (21 page, card and dialog recipes), `shoot.sh`, `pair.py`
 after), `pin_check.py` (footer pinned, body scrolls), `edit_check.py` (the inline editor).
 Milestones: M0 base, M2 cards (sent to Ben), M5 final.
 
-**Done, in this sweep's PR**, one commit per card or dialog group (the plan said per finding; a
+**Dialog natural height**, M0 -> M5 (px, light; a phone dialog is fullscreen, so only the ones
+taller than the screen move there):
+
+| dialog | 1440px | 390px |
+|---|---|---|
+| request, three stages | 1825 -> 1414 | 2281 -> 1832 |
+| request, submitted | 1715 -> 1313 | 2110 -> 1622 |
+| request, incomplete | 1523 -> 1180 | 1886 -> 1425 |
+| push readiness | 677 -> 414 | fullscreen |
+| merge | 780 -> 704 | 1174 -> 954 |
+| action details | 623 -> 538 | fullscreen |
+| withdraw | 502 -> 465 | fullscreen |
+| notify | 924 -> 959 | 1050 -> 1079 |
+| opportunity / XRAS user / history | 257 / 373 / 291 -> 310 / 421 / 313 | fullscreen |
+
+The three that grew gained a real footer row (Done, or Back and Save) where there was none or an
+in-body button.
+
+**Done, in PR #796**, one commit per card or dialog group (the plan said per finding; a
 finding spanned every card, so a commit per surface kept each one testable):
 
 - [x] Page: the two halves are collapsible section headings, not cards around the pane cards; the

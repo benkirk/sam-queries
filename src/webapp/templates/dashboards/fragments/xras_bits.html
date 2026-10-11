@@ -188,16 +188,30 @@
 {%- if icon %}<i class="fa-solid fa-{{ icon }} me-1" aria-hidden="true"></i>{% endif %}{{ label }}</button>
 {%- endmacro %}
 
+{#- A figure in the house compact form; when that rounds, the exact value is one hover,
+    tap or focus away (a Bootstrap tooltip, since a bare title never shows on a phone). -#}
+{% macro figure(amount, units='') -%}
+{%- if amount is none -%}<span class="text-muted">—</span>
+{%- else -%}
+{%- set shown = amount | float | fmt_number -%}
+{%- set exact = amount | float | fmt_number(raw=True) -%}
+{%- if shown != exact -%}
+<span class="xras-figure" tabindex="0" data-bs-toggle="tooltip" data-bs-title="{{ exact }}{{ (' ' ~ units) if units }}">{{ shown }}</span>
+{%- else -%}{{ shown }}{%- endif -%}
+{%- endif -%}
+{%- endmacro %}
+
 {#- An amount that is its own editor: the figure is the button; Save posts to `url`
     (stage + the cell's comment ride along, so a save never clears the comment).
     static/js/xras.js swaps the figure for the form and back. -#}
-{% macro amount_editor(amount, url, stage, comment, label, write_enabled, form_url=None) -%}
+{% macro amount_editor(amount, url, stage, comment, label, write_enabled, form_url=None, units='') -%}
 {%- set shown = (amount | float | fmt_number) if amount is not none else '—' -%}
-{%- if not write_enabled -%}{{ shown }}
+{%- set exact = ((amount | float | fmt_number(raw=True)) ~ ((' ' ~ units) if units else '')) if amount is not none else '' -%}
+{%- if not write_enabled -%}{{ figure(amount, units) }}
 {%- else -%}
 <span class="xras-amount" data-xras-amount>
     <button type="button" class="xras-amount-show" data-action="xras-amount-edit"
-            title="Edit the {{ stage | lower }} amount" aria-label="Edit the {{ stage | lower }} amount for {{ label }}">{{ shown }}<i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+            title="{{ exact }}: edit the {{ stage | lower }} amount" aria-label="Edit the {{ stage | lower }} amount for {{ label }}, now {{ exact }}">{{ shown }}<i class="fa-solid fa-pen" aria-hidden="true"></i></button>
     <form class="xras-amount-form" hx-post="{{ url }}" hx-target="#xrasModalBody" hx-swap="innerHTML">
         <input type="hidden" name="stage" value="{{ stage }}">
         <input type="hidden" name="comment" value="{{ comment or '' }}">
