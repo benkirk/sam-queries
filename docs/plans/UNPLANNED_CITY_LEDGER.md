@@ -37,6 +37,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-09 | `afafd5b9` + sweep 19 (#773 from the air) | 50 / 59 / 24 | 1 (2) | 15 / 49 | 20 (20), 2 kept | 4,822 / 51 / 7 | 165 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-09 | `2af64319` + sweep 20 (`src/cli`) | 49 / 58 / 24 | 1 (2) | 14 / 46 | 20 (20), 2 kept | 4,822 / 51 / 7 | 165 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-10 | `bd428a14` + sweep 21 (HEUV port, #786) | 49 / 58 / 24 | 1 (2) | 14 / 46 | 20 (20), 2 kept | 4,822 / 51 / 7 | 165 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
+| 2026-10-11 | `c25a7cb8` + sweep 22 (XRAS cards and dialogs) | 49 / 58 / 24 | 1 (2) | 14 / 46 | 20 (20), 2 kept | 5,224 / 51 / 7 | 127 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -305,7 +306,7 @@ visual on purpose, and each commit declares its change. `src/` across the branch
 - [ ] Resource Details (user `resource_details*` and the day/user subtrees): nested tables, 13 raw
   collapse toggles, and `td.text-end` instead of `col-num`.
 - [ ] `xras_request_detail.html`: 9 small outline buttons remain beside its 6 `btn-row`s. The XRAS
-  cards are only half adopted (nested tables, `width:99%`).
+  cards are only half adopted (nested tables, `width:99%`). Done in entry 22.
 - [x] The saturated `modal_scaffold` headers (entry 9: quiet accent headers) and the `text-bg-*` toasts (the alert recipe, sweep follow-ups). This is an app-wide
   design call.
   - Create: `bg-success`.
@@ -601,7 +602,8 @@ themes). Ben's calls: quiet accent headers everywhere; one PR; the three bugs fi
   New Allocation Type's Panel cascade fills for its own creators (sweep follow-ups).
 - [ ] The hand-rolled detail shells (project, user, contract, audit, chart expand, outage)
   could share a static-body scaffold.
-- [ ] The XRAS forms' own footers keep the page-size buttons (they are not `.modal-footer`).
+- [ ] The XRAS forms' own footers keep the page-size buttons (they are not `.modal-footer`). Done
+  in entry 22.
 - [ ] Extend's resource table scrolls sideways at 390px now that its dates no longer wrap.
 - [x] The toasts take the alert recipe instead of `text-bg-*` fills (sweep follow-ups).
 - [x] `test_ticket_card::test_a_request_without_tickets_renders_no_ticket_row` reads only its
@@ -1590,6 +1592,96 @@ angle, and parity against prod turned up a SAMuel bug.
   No Account), deleted allocations in the usage tree, the 364-day divisor and 31-day window.
 - [ ] A disk file mixing dates keeps each row's own date; an account dated before its resource's
   newest scan reads as gone. Not seen (Campaign_Store scans are weekly, single-date).
+
+## 22. 2026-10-11: area sweep, `templates` + `css`, Allocations > XRAS (cards and dialogs)
+
+**Mode:** area, the XRAS page and its 23 dialogs, from entry 5's and entry 9's open items. Branch
+`xras-ui-sweep` off `origin/staging` (`c25a7cb8`). The Python XRAS census (entry 12) stays deferred
+until `XRAS_SUBMISSION.md` lands (Ben, 2026-10-11: "lay an aesthetic foundation"); route code moved
+only for a bug, a dead key, the window count and the sort.
+
+**Design stance:** one XRAS state language, inside the brand stance of entries 5 and 14 (no new hue,
+no new type). A state is a quiet `state-tag`; color is kept for what needs a person (`attention`)
+or went wrong (`alarm`); an action type is a word. One small badge size across the page and its
+dialog (Ben). The deliberate move is in the request dialog: the amount is its own editor.
+
+**Proof rig (untracked, `utils/profiling/xras_ui/`):** XRAS data is live-read and the local action
+log is empty, so `serve.sh` + `serve.py` run a worktree with a fake XRAS client (outbound to anything
+but localhost raises), the card queries patched to test-shaped rows, and the sweep snapshot and
+Feed B published to its own Redis DB. Base on 5053, branch on 5052, identical fixtures; no SAM DB
+writes. `recipes.json` (21 page, card and dialog recipes), `shoot.sh`, `pair.py` (labeled before |
+after), `pin_check.py` (footer pinned, body scrolls), `edit_check.py` (the inline editor).
+Milestones: M0 base, M2 cards (sent to Ben), M5 final.
+
+**Done, in this sweep's PR**, one commit per card or dialog group (the plan said per finding; a
+finding spanned every card, so a commit per surface kept each one testable):
+
+- [x] Page: the two halves are collapsible section headings, not cards around the pane cards; the
+  log reloads on `refreshXrasTab` through `hx-trigger` (a `dashboard-init.js` listener went). XRAS
+  styles move to `static/css/xras.css`.
+- [x] `fragments/xras_bits.html`: `tag` / `attention` / `alarm`, `type_label`, `verdict` (one
+  table with the chips; "Would succeed", was "would land", in the chips, toasts and `sam-admin
+  xras`), `identity_tag`, `request_link` (the third request-opener idiom goes), `queue_badges`,
+  `queue_switch`, `swept_stamp`, `empty_state`, `unblock_strip`, and the dialog set below.
+- [x] The four cards on the column vocabulary: 34 inline styles, `width:99%` x3 and `50%/50%` go;
+  one `.cell-truncate` slack column each (two had none and no `title=`: **bug**, Person and Project
+  lead); `drill_toggle` chevrons; `group_count` + `.cell-child`; `.row-inactive` for a dismissed
+  row; `pane_toolbar` for the bulk buttons; muted empty states (copy pinned, unchanged).
+- [x] Remediations: the switch is "Everything in the window (N)" (was "Show everything (N
+  swept)", but `show_all` applies the window; the route counts `in_window_total`); the three
+  data-fix strips are one macro.
+- [x] The log: quiet tags for `processed` / `received`, hue for `failed` / `manual` / `unmapped`
+  (`status_badge(quiet=)`, additive); identifiers at body weight (Ben: "lots of colors").
+- [x] Activation card sorts by Project and Received, like the other three cards.
+- [x] Dead: two context keys on two routes, `_WINDOW_TARGET`, the `audit-table` class (5 logs).
+- [x] **XRAS gets its own dialog** (`modal_scaffold(scrollable=, footer_id=)`): the body is the
+  `.modal-body` and a sibling footer slot is filled out of band; `modals.js` clears it on each body
+  swap; `.modal-footer:empty` hides it. Bare-string route responses keep a padded body. The audit
+  modal stays on the page for the Accounts-queue reason forms (admin fragments). Closes entry 9's
+  footer and static-body-shell items for XRAS.
+- [x] Request dialog (Ben: "the pencil edits ... a crisp design"): the figure is the control,
+  swapped for a small input with Save / Cancel / "with a comment…" (Enter, Esc), posting to the
+  existing route with the cell's comment so a save never clears it; one lock on the Approved
+  header; Remove trails each line; dates: the range is its editor. Worded consequential verbs are
+  footer buttons with an icon (Ben), smaller than the house two-button footer. Closes entry 5's
+  `xras_request_detail.html` item.
+- [x] Every dialog: `dialog_title` (house `modal_title` + quiet meta); facts in `.modal-facts` /
+  `.project-stats-box`; `outcome` for a result; the writes-off fact once from one constant;
+  `form_footer` (Back quiet, the bare verb, `form=`); `xras_modal_shell.html` retired.
+  **Bug, a11y:** the override reason boxes had placeholders and no label.
+- [x] **Bug:** notify, dismiss and comment answered a missing project with a 404 into the open
+  dialog, which htmx does not swap; now `htmx_modal_not_found` (200).
+- [x] **Bug (visual):** a disabled `.btn-row` drew Bootstrap's disabled border (an outlined box on
+  every writes-off icon editor); it dims, borderless.
+- [x] Growth rule: the modal-alerts detector recognizes `dialog_title(` (fixture test).
+  `MODAL_ALERTS` 33 -> 17; XRAS holds 2 (Add action's warning, Notify's inactive project).
+- [x] `/dev/gallery` "XRAS state language" section, live (loads xras.css and xras.js).
+
+**Deviations from the NCAR brand / Unity:** the XRAS footer's buttons are 0.8125rem (the house
+`.modal-footer .btn` is 1rem, sized for two buttons); `.xras-section .badge` one size page-wide.
+
+**Tried and dropped:**
+- A negative-margin "flush" footer inside the borrowed modal body (Ben: a hack); the footer slot
+  replaced it.
+- Child rows for the activation drawer's deliveries and the Pending Users drawer's actions: each
+  lists a different entity in its own columns, so it stays a drawer (now a list / a small table).
+- `user_link` for the Pending Users usernames: only the rare Reactivation row links, so it must
+  not inherit the cell color; the `btn-entity` button stays.
+- Pending Users' Queue column on `account_request_bits.status_line`: that macro takes the admin
+  card's view object (tickets, digest stamp); the colors are aligned instead.
+
+**Open from this sweep:**
+
+- [ ] Smoke the writes on samuel-dev against XRAS dev (Ben, 2026-10-11: dev is wired to XRAS dev;
+  approvals blocked by their login): inline amount save, dates, title, footer verbs.
+- [ ] The small badge size could go app-wide (Ben liked it); a separate call, every page moves.
+- [ ] Still Submission-bound (entry 12 plus): `remediation.py`'s Python-built alerts
+  (`_inline_alert`, the re-submit refusals), `modals.py:328`, eleven `back_url` builders, flash ->
+  `showToast`, "not found" said three ways.
+- [ ] The XRAS log's facet chips and filter panel are page-tier while the cards are card-tier;
+  the log has no `facet_clear_all` (its form also carries the age and request fields).
+- [ ] The person sheet (`xras_person_detail`) breaks a long hyphenated email mid-word in a narrow
+  column (the XRAS user dialog at lg).
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

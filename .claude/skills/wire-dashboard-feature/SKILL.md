@@ -65,11 +65,11 @@ The families:
   `draw_chart`, and passes `titles=hover_titles(codes)` when it names projects
   (`webapp/utils/charts.py`). Gates: `test_chart_frame.py`, `test_chart_errors.py`.
 - **Help** — `help.help_icon` / `help.term`, keyed to a `glossary.g_*` term.
-- **Queue-vs-everything switch** — a form-bound `show_all` checkbox inside
-  the swap target (`xras_activity_card.html`, `xras_remediations_card.html`),
-  read with `read_flag`, scoped through `_shared.scope_rows`; the header badge
-  says `N <queue>` + `M more with <switch label>`. Copy the idiom, not the
-  markup.
+- **XRAS** — `xras_bits`: states (`tag` / `attention` / `alarm`, `verdict`,
+  `identity_tag`), the card header (`queue_badges`, `queue_switch`, read with
+  `read_flag` through `_shared.scope_rows`), and the dialog set (`dialog_title`,
+  `dialog_footer`, `form_footer`, `outcome`, `amount_editor`). Its dialogs live in
+  `#xrasModal`, a `modal_scaffold(footer_id=)` whose footer slot fills out of band.
 
 Open `/dev/gallery` (dev builds only) to see each of these rendered in light and
 dark across the three layouts, and to copy the exact call.
