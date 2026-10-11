@@ -1,0 +1,59 @@
+/**
+ * Allocations > XRAS: the page's sections, its cards and dialogs.
+ * Loaded by allocations/xras.html only.
+ */
+
+/* ===================================================================
+   Page sections: a heading that collapses its half of the page
+   =================================================================== */
+
+.xras-section + .xras-section {
+    margin-top: 1.5rem;
+}
+
+.xras-section-title {
+    font-size: 1.1rem;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border-default);
+}
+
+.xras-section-toggle {
+    display: block;
+    width: 100%;
+    padding: 0 0 0.5rem;
+    border: 0;
+    background: none;
+    color: var(--text-primary);
+    font: inherit;
+    font-weight: var(--font-weight-semi-bold);
+    text-align: left;
+}
+
+.xras-section-toggle .accordion-chevron {
+    color: var(--text-secondary);
+    margin-top: 0.3rem;
+}
+
+/* ===================================================================
+   XRAS merge form — the whole candidate card is the control
+   =================================================================== */
+
+.xras-candidate {
+    cursor: pointer;
+    border-color: var(--border-default);
+}
+
+.xras-candidate .xras-candidate-check {
+    color: var(--text-link);
+    visibility: hidden;
+}
+
+.xras-candidate:has(.form-check-input:checked) {
+    border-color: var(--text-link);
+    background-color: var(--surface-accent);
+    box-shadow: inset 0.25rem 0 0 var(--text-link);
+}
+
+.xras-candidate:has(.form-check-input:checked) .xras-candidate-check {
+    visibility: visible;
+}

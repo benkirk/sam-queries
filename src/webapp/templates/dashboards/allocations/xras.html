@@ -5,66 +5,36 @@
 
 {% block title %}XRAS Action Log - SAM{% endblock %}
 
+{% block extra_css %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/xras.css') }}">
+{% endblock %}
+
 {% block alloc_content %}
 
-{# The operator worklists, tabbed
-   Three panes over the same time window, above the action log: the log is
-   the reference, these are the actionable things.
+{# Three panes over one time window, above the action log.
+   WARNING: the window control renders ONCE, here. In each pane it would put three
+   start_date/end_date pairs in one form; `form.elements['start_date']` is then a
+   RadioNodeList that set-filter-submit cannot assign, so the pills would filter nothing.
+   WARNING: the filter forms live outside the panes. A pane that renders its empty
+   state would take its controls with it, and refreshXrasTab's re-fetch keeps the
+   window and chips only through `hx-include`. Each pane listens for TWO submits:
+   the shared window's (moves all three) and its own facet form's (moves one).
+   Wiring only the window leaves every chip silently inert. #}
 
-   WARNING: THE WINDOW CONTROL IS RENDERED ONCE, HERE, and shared by all three.
-   `window_pills` emits the start_date/end_date pair bound to its form with
-   `form=`, so rendering it inside each fragment would put three same-named
-   pairs in one form — and `form.elements['start_date']` then returns a
-   RadioNodeList that `set-filter-submit` cannot assign to. The control would
-   render, respond to clicks, and filter nothing.
-
-   WARNING: THE FILTER FORMS LIVE OUT HERE, outside the panes, for two reasons and
-   the second is the one that bites:
-     1. A pane renders a table OR an empty state. Controls living inside it
-        vanish with the table, so an over-narrow filter would hide the very
-        control needed to widen it — an unrecoverable dead end.
-     2. Each container re-fetches a BARE hx-get on refreshXrasTab, which would
-        drop every filter param on each write. `hx-include` is what makes the
-        window and the chips survive a refresh.
-
-   How the shared window reaches three panes with no JavaScript: the pills'
-   `set-filter-submit` action ends in `htmx.trigger(form, 'submit')`, which
-   dispatches a BUBBLING synthetic event — so each pane listens for
-   `submit from:#xras-window-filters` and re-fetches itself. The shared form
-   deliberately carries no hx-* attributes of its own: the event is synthetic,
-   so there is no native navigation to suppress, and nothing needs a no-op
-   endpoint to post at.
-
-   Each pane listens for TWO submits — the shared window's and its OWN facet
-   form's. Both are needed and neither is redundant: the window moves all
-   three panes, a chip moves only its own. Wiring just the window is the easy
-   mistake, and it makes every chip on every tab silently inert. #}
-
-{# Section 1: Work Queue
-   The two logical halves of this page are wrapped in collapsible cards, each
-   default open. This one holds the tabbed worklists and the conditional
-   Remediations write surface; the header is the collapse toggle (title +
-   chevron ONLY — no interactive control, so Bootstrap's capture-phase collapse
-   data-api can't collapse the card when a tab or window pill inside is clicked).
-   nav-view-persistence.js persists the open/closed state by id and only ever
-   re-opens, so a default-open card never comes back collapsed on reload. #}
-<div class="card mb-3">
-    <div class="card-header d-flex align-items-center gap-2 cursor-pointer" role="button"
-         {{ collapse_toggle('xras-section-workqueue', expanded=true) }}>
-        <i class="fa-solid fa-chevron-right small text-muted collapse-icon"></i>
-        <strong>Work Queue</strong>
-    </div>
-    <div id="xras-section-workqueue" class="collapse show">
-        <div class="card-body">
+{# The halves are collapsible sections, not cards (the panes are the cards). #}
+<section class="xras-section">
+<h2 class="xras-section-title">
+    <button type="button" class="xras-section-toggle" aria-controls="xras-section-workqueue"
+            {{ collapse_toggle('xras-section-workqueue', expanded=true) }}>
+        <i class="fa-solid fa-chevron-down accordion-chevron float-end" aria-hidden="true"></i>Work Queue
+    </button>
+</h2>
+<div id="xras-section-workqueue" class="collapse show">
 
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-    {# These two panes are deep-linked via ?view= (data-tab-url-param): the
-       route reads it, stamps the active pane, and nav-view-persistence.js
-       mirrors a tab click back into the URL — replacing the "tab:xrasWorklistTabs"
-       localStorage channel (a tablist uses one channel or the other, never
-       both). The sibling Remediations and Logs cards are reached by the same
-       ?view= via a data-deeplink scroll handler, since they are cards, not tabs.
-       activity is the default; accounts wins only when explicitly asked. #}
+    {# Deep-linked via ?view= (data-tab-url-param), never localStorage: a tablist
+       uses one channel. Remediations and Logs take the same ?view= by data-deeplink. #}
     <ul class="nav nav-tabs border-0" role="tablist" id="xrasWorklistTabs" data-tab-url-param="view">
         <li class="nav-item" role="presentation">
             <button class="nav-link {{ 'active' if xras_view != 'accounts' }}" data-bs-toggle="tab"
@@ -77,8 +47,7 @@
                     role="tab">Pending Users</button>
         </li>
     </ul>
-    {# Its own swap target: the pills must re-render to restyle the active
-       one. See partials/xras_window_control.html. #}
+    {# Its own swap target: the pills re-render to restyle the active one. #}
     <div id="alloc-xras-window"
          hx-get="{{ url_for('allocations_dashboard.xras_window_fragment') }}"
          hx-trigger="submit from:#xras-window-filters"
@@ -88,15 +57,12 @@
     </div>
 </div>
 
-{# The shared window. `days` only — start_date/end_date are emitted by the
-   pills above and bound here with `form=`. #}
+{# The shared window: `days` here; the pills bind start_date/end_date with `form=`. #}
 <form id="xras-window-filters" class="d-none">
     <input type="hidden" name="days" value="">
 </form>
 
-{# Per-pane chip state, built from the same FacetSet as the chips so a
-   dimension cannot have a chip without a control. Sort is form state too, so
-   it survives every chip and window change. #}
+{# Per-pane chip state, from the chips' own FacetSet; sort rides the form too. #}
 {{ facet_form('xras-activity-filters', activity_facets) }}
 {{ facet_form('xras-accounts-filters', account_facets, sort=True) }}
 {% if has_permission(Permission.MANAGE_XRAS) %}
@@ -112,8 +78,6 @@
              hx-swap="innerHTML"></div>
     </div>
 
-    {# Pending Users: both feeds unioned. The fragment owns the degraded-half
-       note for when Feed B is unconfigured, unpublished, or unreadable. #}
     <div class="tab-pane fade {{ 'show active' if xras_view == 'accounts' }}" id="xras-pane-accounts" role="tabpanel">
         <div id="alloc-xras-accounts"
              hx-get="{{ url_for('allocations_dashboard.xras_accounts_fragment') }}"
@@ -124,20 +88,8 @@
 </div>
 
 {% if has_permission(Permission.MANAGE_XRAS) %}
-{# The operator WRITE surface
-   A CARD, not a third tab: `#xrasWorklistTabs` stays at two, which both
-   e2e/test_xras_remediations_card.py and
-   test_xras_remediations.py::TestItIsACardNotATab pin. The two tabs are read-only views of the same window; this is
-   a different kind of thing — every control on it changes production XRAS —
-   and burying it as a peer of "Pending Users" would understate that.
-
-   Double-gated: this block and every route behind it check MANAGE_XRAS. The
-   template gate keeps a view-only operator from seeing controls they cannot
-   use; the route gate is the one that matters.
-
-   Listens for BOTH submits, like every pane above: the shared window moves
-   the whole page, its own facet form moves only this card. Wiring just the
-   window is the easy mistake and it makes every chip here silently inert. #}
+{# The write surface is a card, not a third tab (TestItIsACardNotATab): every
+   control on it changes production XRAS. MANAGE_XRAS here and on every route. #}
 <div id="alloc-xras-remediations"
      data-deeplink="remediations"
      hx-get="{{ url_for('allocations_dashboard.xras_remediations_fragment') }}"
@@ -146,22 +98,18 @@
      hx-swap="innerHTML"></div>
 {% endif %}
 
-        </div>{# .card-body #}
-    </div>{# #xras-section-workqueue #}
-</div>{# Work Queue card #}
+</div>{# #xras-section-workqueue #}
+</section>
 
-{# Section 2: XRAS Logs
-   The API action log and its filter sidebar. Own collapse toggle; runs off its
-   own #xras-filters form (not the shared window above), so collapsing either
-   card touches no wiring. #}
-<div class="card mb-3" data-deeplink="logs">
-    <div class="card-header d-flex align-items-center gap-2 cursor-pointer" role="button"
-         {{ collapse_toggle('xras-section-logs', expanded=true) }}>
-        <i class="fa-solid fa-chevron-right small text-muted collapse-icon"></i>
-        <strong>XRAS Logs</strong>
-    </div>
-    <div id="xras-section-logs" class="collapse show">
-        <div class="card-body">
+{# The action log runs off its own #xras-filters form, not the shared window. #}
+<section class="xras-section" data-deeplink="logs">
+<h2 class="xras-section-title">
+    <button type="button" class="xras-section-toggle" aria-controls="xras-section-logs"
+            {{ collapse_toggle('xras-section-logs', expanded=true) }}>
+        <i class="fa-solid fa-chevron-down accordion-chevron float-end" aria-hidden="true"></i>XRAS Logs
+    </button>
+</h2>
+<div id="xras-section-logs" class="collapse show">
 
 <div class="filter-sidebar mb-3">
     {{ xras_filters(
@@ -173,12 +121,9 @@
         request_example=request_example) }}
 </div>
 
-{# data-refresh-url: read by dashboard-init.js on refreshXrasTab (fired by the
-   re-check route's HX-Trigger), so a re-check re-renders the table it came from. #}
 <div id="alloc-xras-fragment"
-     data-refresh-url="{{ url_for('allocations_dashboard.xras_fragment') }}"
      hx-get="{{ url_for('allocations_dashboard.xras_fragment') }}"
-     hx-trigger="load"
+     hx-trigger="load, refreshXrasTab from:body"
      hx-include="#xras-filters"
      hx-swap="innerHTML">
     <div class="text-center text-muted py-4">
@@ -188,9 +133,8 @@
     </div>
 </div>
 
-        </div>{# .card-body #}
-    </div>{# #xras-section-logs #}
-</div>{# XRAS Logs card #}
+</div>{# #xras-section-logs #}
+</section>
 
 {% include 'dashboards/allocations/partials/audit_details_modal.html' %}
 
