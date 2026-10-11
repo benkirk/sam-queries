@@ -1674,6 +1674,10 @@ finding spanned every card, so a commit per surface kept each one testable):
 - [x] Growth rule: the modal-alerts detector recognizes `dialog_title(` (fixture test).
   `MODAL_ALERTS` 33 -> 17; XRAS holds 2 (Add action's warning, Notify's inactive project).
 - [x] `/dev/gallery` "XRAS state language" section, live (loads xras.css and xras.js).
+- [x] Pulled forward from the Submission-bound list (Ben: "a better exemplar for the later work"):
+  `_dialog_message` replaces the Python-built alert strings (one interpolated the flash unescaped),
+  `_not_found` is the one "not found" (was three idioms), `_back_to_detail` the eleven back links.
+- [x] Compact matrix figures carry their exact value in a tooltip (tap, hover or focus; Ben).
 
 **Deviations from the NCAR brand / Unity:** the XRAS footer's buttons are 0.8125rem (the house
 `.modal-footer .btn` is 1rem, sized for two buttons); `.xras-section .badge` one size page-wide.
@@ -1693,9 +1697,7 @@ finding spanned every card, so a commit per surface kept each one testable):
 - [ ] Smoke the writes on samuel-dev against XRAS dev (Ben, 2026-10-11: dev is wired to XRAS dev;
   approvals blocked by their login): inline amount save, dates, title, footer verbs.
 - [ ] The small badge size could go app-wide (Ben liked it); a separate call, every page moves.
-- [ ] Still Submission-bound (entry 12 plus): `remediation.py`'s Python-built alerts
-  (`_inline_alert`, the re-submit refusals), `modals.py:328`, eleven `back_url` builders, flash ->
-  `showToast`, "not found" said three ways.
+- [ ] Still Submission-bound: entry 12's list, and flash -> `showToast` for the editors' success.
 - [ ] The XRAS log's facet chips and filter panel are page-tier while the cards are card-tier;
   the log has no `facet_clear_all` (its form also carries the age and request fields).
 - [ ] The person sheet (`xras_person_detail`) breaks a long hyphenated email mid-word in a narrow
