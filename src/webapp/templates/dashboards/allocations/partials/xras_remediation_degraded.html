@@ -1,9 +1,0 @@
-{% from 'dashboards/fragments/xras_bits.html' import dialog_title, done_footer, outcome %}
-{#
-  Why a dialog cannot proceed. Context: title, message.
-  WARNING: rendered with 200, never a 4xx: htmx will not swap a 4xx into an
-  already-open dialog, which would leave it empty with no explanation.
-#}
-{{ dialog_title(title, 'triangle-exclamation') }}
-{% call outcome('warning', message) %}{% endcall %}
-{{ done_footer('Close') }}
