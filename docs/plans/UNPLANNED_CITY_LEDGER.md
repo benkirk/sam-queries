@@ -1678,6 +1678,9 @@ finding spanned every card, so a commit per surface kept each one testable):
   `_dialog_message` replaces the Python-built alert strings (one interpolated the flash unescaped),
   `_not_found` is the one "not found" (was three idioms), `_back_to_detail` the eleven back links.
 - [x] Compact matrix figures carry their exact value in a tooltip (tap, hover or focus; Ben).
+- [x] **Bug:** a footer button's own request (Back from a form) left the dialog's title and footer
+  stale, `htmx:oobErrorNoTarget` because the footer was cleared before the OOB swap; `modals.js`
+  now marks the slot stale before the swap and clears it only if no OOB footer replaced it.
 
 **Deviations from the NCAR brand / Unity:** the XRAS footer's buttons are 0.8125rem (the house
 `.modal-footer .btn` is 1rem, sized for two buttons); `.xras-section .badge` one size page-wide.
@@ -1694,8 +1697,14 @@ finding spanned every card, so a commit per surface kept each one testable):
 
 **Open from this sweep:**
 
-- [ ] Smoke the writes on samuel-dev against XRAS dev (Ben, 2026-10-11: dev is wired to XRAS dev;
-  approvals blocked by their login): inline amount save, dates, title, footer verbs.
+- [x] Smoke on samuel-dev against XRAS dev (`sha-a17340d`, NCAR4086 + NCAR4081, each value
+  restored): page and cards, dialog, inline amount (save, Esc, "with a comment" + Back), title,
+  comments, Re-check, not-found, compact-figure tooltip (NCAR4052), footer pinned on a phone; no
+  console errors at desktop-light or phone-dark. Every write is a `verified` row in
+  `xras_remediation_event` under the operator. Found the Back footer bug above.
+- [ ] Dates write on NCAR4081: XRAS dev refused `allocationDateId=240823 not found in
+  actionId=371320` (404), although its own read lists that date on that action. The pairing and
+  handler predate this sweep; the refusal rendered inline. An XRAS-side question, not a UI one.
 - [ ] The small badge size could go app-wide (Ben liked it); a separate call, every page moves.
 - [ ] Still Submission-bound: entry 12's list, and flash -> `showToast` for the editors' success.
 - [ ] The XRAS log's facet chips and filter panel are page-tier while the cards are card-tier;
