@@ -159,6 +159,52 @@
 }
 
 /* ===================================================================
+   The XRAS dialog (#xrasModal)
+   =================================================================== */
+
+/* What just happened: a colored icon beside a headline, not an alert box. */
+.xras-outcome {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.xras-outcome > .fa-solid {
+    font-size: 1.5rem;
+    margin-top: 0.1rem;
+}
+
+.xras-outcome-headline {
+    margin-bottom: 0.25rem;
+    font-weight: var(--font-weight-semi-bold);
+}
+
+.xras-section-label {
+    margin: 1rem 0 0.4rem;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: var(--font-weight-semi-bold);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.xras-recipients {
+    margin: 0 0 1rem;
+    padding: 0;
+    list-style: none;
+}
+
+.xras-recipients li + li {
+    margin-top: 0.25rem;
+}
+
+.xras-back {
+    display: inline-block;
+    margin-bottom: 0.75rem;
+    font-size: 0.875rem;
+}
+
+/* ===================================================================
    XRAS merge form — the whole candidate card is the control
    =================================================================== */
 

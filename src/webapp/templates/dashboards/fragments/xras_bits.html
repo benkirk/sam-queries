@@ -7,6 +7,7 @@
   Specimens: /dev/gallery.
 #}
 {% from 'dashboards/fragments/project_bits.html' import project_link with context %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
 
 {#- A neutral fact about a row (a request status, a role, a queue state). -#}
 {% macro tag(label, title='') -%}
@@ -128,3 +129,39 @@
         data-field="blockers" data-value="{{ blocker }}"
         title="Filter the table to the requests this blocks">Show in&nbsp;table&nbsp;›</button>
 {%- endmacro %}
+
+{#- ===== The XRAS dialog (#xrasModal, hosted by allocations/xras.html) ===== -#}
+
+{#- A dialog fragment's title, swapped over the shell's out of band. -#}
+{% macro dialog_title(title, icon, meta=None) -%}
+{{ modal_title('xrasModalLabel', title, icon, meta) }}
+{%- endmacro %}
+
+{#- The shell's footer slot, filled out of band; modals.js empties it on the next body swap. -#}
+{% macro dialog_footer() -%}
+<div class="modal-footer" id="xrasModalFooter" hx-swap-oob="true">{{ caller() }}</div>
+{%- endmacro %}
+
+{% macro done_footer(label='Done') -%}
+{% call dialog_footer() %}<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ label }}</button>{% endcall %}
+{%- endmacro %}
+
+{#- Back to the request a sub-dialog came from: a body swap, never a modal toggle (#464). -#}
+{% macro back_link(url, request_number) -%}
+{%- if url %}<a href="#" class="xras-back" hx-get="{{ url }}" hx-target="#xrasModalBody" hx-swap="innerHTML"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Back to request {{ request_number }}</a>{% endif -%}
+{%- endmacro %}
+
+{#- What just happened, said once: a colored icon and a headline; caller() is the detail. -#}
+{% macro outcome(variant, headline) -%}
+{%- set icon = {'success': 'fa-circle-check', 'warning': 'fa-triangle-exclamation', 'danger': 'fa-circle-xmark'}[variant] -%}
+<div class="xras-outcome">
+    <i class="fa-solid {{ icon }} text-{{ variant }}-emphasis" aria-hidden="true"></i>
+    <div>
+        <p class="xras-outcome-headline">{{ headline }}</p>
+        {%- if caller is defined %}{{ caller() }}{% endif %}
+    </div>
+</div>
+{%- endmacro %}
+
+{#- A dialog's small section label. -#}
+{% macro section_label(text) -%}<h6 class="xras-section-label">{{ text }}</h6>{%- endmacro %}
