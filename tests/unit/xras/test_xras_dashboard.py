@@ -658,16 +658,26 @@ class TestActivationMissingProject:
     so the answer must be a message rather than a 404 error page."""
 
     @pytest.mark.parametrize('path', [
-        '/allocations/xras_notify/999999999',
         '/allocations/xras_activate/999999999',
-        '/allocations/xras_dismiss/999999999',
         '/allocations/xras_restore/999999999',
-        '/allocations/xras_comment/999999999',
     ])
-    def test_write_routes_report_not_found(self, auth_client, path):
+    def test_card_writes_report_not_found(self, auth_client, path):
+        """Card buttons (hx-swap="none"): a 404 reaches the error toast."""
         resp = auth_client.post(path)
         assert resp.status_code == 404
         assert b'not found' in resp.data.lower()
+
+    @pytest.mark.parametrize('path', [
+        '/allocations/xras_notify/999999999',
+        '/allocations/xras_dismiss/999999999',
+        '/allocations/xras_comment/999999999',
+    ])
+    def test_dialog_writes_report_not_found_inline(self, auth_client, path):
+        """These post into the open dialog, and htmx does not swap a 4xx: a 404
+        left the dialog showing the form that was just submitted."""
+        resp = auth_client.post(path)
+        assert resp.status_code == 200
+        assert b'Project not found' in resp.data
 
     @pytest.mark.parametrize('path', [
         '/allocations/xras_dismiss_form/999999999',

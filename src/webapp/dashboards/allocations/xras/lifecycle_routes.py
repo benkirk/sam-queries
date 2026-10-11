@@ -227,7 +227,7 @@ def xras_notify(project_id: int):
     """
     project, action, people, messages = _xras_notify_inputs(project_id)
     if project is None:
-        return htmx_not_found('Project')
+        return htmx_modal_not_found('Project')
 
     # Unchecked checkboxes are omitted from the request entirely, so presence
     # is the signal — never a value comparison. See CLAUDE.md § 10.
@@ -345,7 +345,7 @@ def xras_dismiss(project_id: int):
     """
     project = _load_pending_project(project_id)
     if project is None:
-        return htmx_not_found('Project')
+        return htmx_modal_not_found('Project')
 
     return handle_htmx_form_post(
         schema_cls=XrasDismissForm,
@@ -447,7 +447,7 @@ def xras_comment(project_id: int):
     """Append a note to a pending project's timeline."""
     project = _load_pending_project(project_id)
     if project is None:
-        return htmx_not_found('Project')
+        return htmx_modal_not_found('Project')
 
     return handle_htmx_form_post(
         schema_cls=XrasActivationEventForm,
