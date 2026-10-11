@@ -1,52 +1,27 @@
 {#
-  Dismiss form — rendered into #xrasModalBody, re-rendered in place on
-  validation error by handle_htmx_form_post.
-
-  Context:
-    project   the Project being dismissed
-    post_url  where to POST (passed in so this stays action-agnostic)
-
-  Dismiss offers a reason field rather than using an hx-confirm, deliberately:
-  the row leaves the attention queue, so "why" is what the next operator will
-  want, and the moment of the decision is the cheapest time to capture it. The
-  reason is optional -- an empty one dismisses cleanly.
+  Dismiss: rendered into #xrasModalBody, re-rendered in place on a validation
+  error. A reason field rather than an hx-confirm: the row leaves the attention
+  queue, and "why" is what the next operator needs. The reason is optional.
+  Context: project, post_url.
+  WARNING: `with context` is load-bearing: the field macros read `field_errors`
+  and `form` from it, or a rejected form re-renders with no message.
 #}
-{# `with context` is load-bearing: the field macros read `field_errors` and `form`
-   from the template context, and a plain import gives them neither — the form
-   would re-render on a validation failure with no message and no preserved
-   input, i.e. a silent rejection. Every other call site does the same. #}
 {% from 'dashboards/fragments/form_fields.html' import textarea_field, form_errors_panel with context %}
+{% from 'dashboards/fragments/xras_bits.html' import dialog_title, form_footer %}
+{{ dialog_title('Dismiss', 'eye-slash', meta=project.projcode) }}
 
-<h5 id="xrasModalLabel" class="modal-title" hx-swap-oob="true">
-    Dismiss {{ project.projcode }}
-</h5>
+{# The row is a record of an XRAS action and stays, grayed. Never say it hides the project. #}
+<p class="modal-lead">This takes the row out of the attention queue and marks the project as one
+    that should not be activated from XRAS. The row stays under <strong>Everything in the
+    window</strong>, grayed, with your reason on it, and no automatic notice goes out for it.
+    Not permanent: <strong>Restore</strong> undoes it, and a new XRAS action naming the project
+    brings it back.</p>
 
-{# Dismissing takes the row out of the attention queue and clears its call to
-   action; the row is a record of an XRAS action and stays, grayed, under
-   Everything in the window. Never say it hides the project. #}
-<p class="text-muted small">
-    This takes the row out of the attention queue and marks the project as one
-    that should not be activated from XRAS. The row stays in the list under
-    <strong>Everything in the window</strong>, grayed, with your reason on it
-    if you leave one, and no automatic notice goes out for it. Not permanent: click
-    <strong>Restore</strong> to undo, and a new XRAS action naming the project
-    brings it back.
-</p>
-
-<form hx-post="{{ post_url }}"
-      hx-target="#xrasModalBody"
-      hx-swap="innerHTML">
-    {{ textarea_field('comment', 'Reason', required=False, rows=3,
-                      maxlength=4000,
+<form id="xras-dialog-form" hx-post="{{ post_url }}" hx-target="#xrasModalBody" hx-swap="innerHTML">
+    {{ textarea_field('comment', 'Reason', required=False, rows=3, maxlength=4000,
                       placeholder='Why should this not be activated via XRAS?',
                       help='Recorded on the project timeline with your username.') }}
     {{ form_errors_panel() }}
-    <div class="d-flex justify-content-end gap-2 mt-3">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-            Cancel
-        </button>
-        <button type="submit" class="btn btn-warning">
-            <i class="fa-solid fa-eye-slash"></i> Dismiss
-        </button>
-    </div>
 </form>
+{{ form_footer('xras-dialog-form', none, true, back_label='Cancel', verb='Dismiss',
+               verb_class='btn-warning', icon='eye-slash') }}

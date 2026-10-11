@@ -235,12 +235,14 @@
 
 {#- A form dialog's footer: Back (or Cancel) quiet at the start, the verb at the end,
     bound to the body's form by `form=` (the footer sits outside it). -#}
-{% macro form_footer(form_id, back_url, write_enabled, verb='Save', verb_class='btn-primary', back_label='Back') -%}
+{% macro form_footer(form_id, back_url, write_enabled, verb='Save', verb_class='btn-primary', back_label='Back', blocked=None, icon=None) -%}
 {% call dialog_footer() %}
 <div class="xras-footer-start">
     {%- if back_url %}<button type="button" class="btn btn-secondary" hx-get="{{ back_url }}" hx-target="#xrasModalBody" hx-swap="innerHTML">{{ back_label }}</button>
     {%- else %}<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ back_label }}</button>{% endif %}
 </div>
-<button type="submit" form="{{ form_id }}" class="btn {{ verb_class }}"{% if not write_enabled %} disabled title="{{ WHY_OFF }}"{% endif %}>{{ verb }}</button>
+{%- set _why = WHY_OFF if not write_enabled else blocked -%}
+<button type="submit" form="{{ form_id }}" class="btn {{ verb_class }}"{% if _why %} disabled title="{{ _why }}"{% endif %}>
+{%- if icon %}<i class="fa-solid fa-{{ icon }} me-1" aria-hidden="true"></i>{% endif %}{{ verb }}</button>
 {% endcall %}
 {%- endmacro %}
