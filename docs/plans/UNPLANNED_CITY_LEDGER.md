@@ -1681,6 +1681,10 @@ finding spanned every card, so a commit per surface kept each one testable):
 - [x] **Bug:** a footer button's own request (Back from a form) left the dialog's title and footer
   stale, `htmx:oobErrorNoTarget` because the footer was cleared before the OOB swap; `modals.js`
   now marks the slot stale before the swap and clears it only if no OOB footer replaced it.
+- [x] **Bug (review):** `data-confirm-ok` (5 in base, carried into the new macros) is not an
+  attribute the confirm dialog reads, so those confirms said "Confirm"; now `data-confirm-label`.
+  Growth rule: `test_confirm_attributes.py` derives the read set from the two JS readers and
+  fails on any other `data-confirm-*` a template writes.
 
 **Deviations from the NCAR brand / Unity:** the XRAS footer's buttons are 0.8125rem (the house
 `.modal-footer .btn` is 1rem, sized for two buttons); `.xras-section .badge` one size page-wide.
