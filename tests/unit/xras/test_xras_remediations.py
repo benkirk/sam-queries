@@ -1601,9 +1601,22 @@ class TestTheEditors:
         _reader(monkeypatch, payload=_detail_payload())
         body = auth_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
-        assert 'xras_resource_form/EXAM0001/7/530201' in body   # Edit…
+        # Writes off here: the figures are plain, the other editors render disabled.
+        assert 'data-xras-amount' not in body
         assert 'xras_resource_remove/EXAM0001/7/530201' in body  # Remove
         assert 'xras_dates_form/EXAM0001/7' in body             # Set dates…
+
+    def test_with_writes_on_the_requested_amount_is_its_own_editor(
+            self, auth_client, armed, monkeypatch):
+        from webapp.dashboards.allocations.xras import modals
+        monkeypatch.setattr(modals, 'xras_write_configured', lambda *a: True)
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert body.count('data-xras-amount') == 1              # Requested only
+        assert 'hx-post="/allocations/xras_resource_edit/EXAM0001/7/530201"' in body
+        assert 'xras_resource_form/EXAM0001/7/530201?stage=Requested' in body  # with a comment
+        assert 'name="stage" value="Approved"' not in body       # the award stays locked
 
     def test_the_award_editor_is_locked_without_the_elevated_key(
             self, auth_client, armed, monkeypatch):
@@ -1612,8 +1625,7 @@ class TestTheEditors:
         _reader(monkeypatch, payload=_detail_payload())
         body = auth_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
-        assert 'Edit award' in body
-        assert 'elevated XRAS key' in body
+        assert 'editing the award needs an elevated XRAS key' in body
         # and it is NOT a live link to the Approved editor
         assert 'stage=Approved' not in body
 
@@ -1791,7 +1803,7 @@ class TestPartCIsAdminOnly:
         body = auth_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'xras_request_delete/EXAM0001' in body
-        assert 'Destructive' in body
+        assert 'Delete project…' in body
 
     def test_the_danger_zone_is_hidden_from_a_manage_only_operator(
             self, manage_not_admin_client, armed, monkeypatch):
@@ -1799,7 +1811,7 @@ class TestPartCIsAdminOnly:
         body = manage_not_admin_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'xras_request_delete' not in body
-        assert 'Destructive' not in body
+        assert 'Delete project…' not in body
 
     def test_the_add_action_form_renders_the_type_picker(self, auth_client,
                                                         armed, monkeypatch):

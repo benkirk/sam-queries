@@ -165,3 +165,50 @@
 
 {#- A dialog's small section label. -#}
 {% macro section_label(text) -%}<h6 class="xras-section-label">{{ text }}</h6>{%- endmacro %}
+
+{%- set WHY_OFF = 'XRAS writes are switched off for this deployment (XRAS_WRITE_ENABLED).' -%}
+
+{#- A write inside the dialog: an icon btn-row that swaps the body, disabled with its
+    reason when writes are off. confirm= routes it through the shared confirm dialog. -#}
+{% macro write_button(verb, icon, url, write_enabled, post=False, variant='', confirm=None, confirm_title='', confirm_ok='') -%}
+<button type="button" class="btn btn-row{{ (' btn-row-' ~ variant) if variant }}" aria-label="{{ verb }}"
+        title="{{ verb if write_enabled else WHY_OFF }}"{% if not write_enabled %} disabled{% endif %}
+        {{ 'hx-post' if post else 'hx-get' }}="{{ url }}" hx-target="#xrasModalBody" hx-swap="innerHTML"
+        {%- if confirm %} hx-confirm="{{ confirm }}" data-confirm-title="{{ confirm_title }}"
+        data-confirm-ok="{{ confirm_ok }}" data-confirm-variant="danger"{% endif %}><i class="fa-solid fa-{{ icon }}" aria-hidden="true"></i></button>
+{%- endmacro %}
+
+{#- A consequential verb, worded, in the dialog's footer (Withdraw, Renew, Delete, Merge). -#}
+{% macro footer_verb(label, url, write_enabled, post=False, tone='secondary', confirm=None, confirm_title='', confirm_ok='', confirm_variant='danger') -%}
+<button type="button" class="btn btn-{{ 'outline-' if tone != 'secondary' }}{{ tone }}"
+        {% if not write_enabled %}disabled title="{{ WHY_OFF }}"{% endif %}
+        {{ 'hx-post' if post else 'hx-get' }}="{{ url }}" hx-target="#xrasModalBody" hx-swap="innerHTML"
+        {%- if confirm %} hx-confirm="{{ confirm }}" data-confirm-title="{{ confirm_title }}"
+        data-confirm-ok="{{ confirm_ok }}" data-confirm-variant="{{ confirm_variant }}"{% endif %}>{{ label }}</button>
+{%- endmacro %}
+
+{#- An amount that is its own editor: the figure is the button; Save posts to `url`
+    (stage + the cell's comment ride along, so a save never clears the comment).
+    static/js/xras.js swaps the figure for the form and back. -#}
+{% macro amount_editor(amount, url, stage, comment, label, write_enabled, form_url=None) -%}
+{%- set shown = (amount | float | fmt_number) if amount is not none else '—' -%}
+{%- if not write_enabled -%}{{ shown }}
+{%- else -%}
+<span class="xras-amount" data-xras-amount>
+    <button type="button" class="xras-amount-show" data-action="xras-amount-edit"
+            title="Edit the {{ stage | lower }} amount" aria-label="Edit the {{ stage | lower }} amount for {{ label }}">{{ shown }}<i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+    <form class="xras-amount-form" hx-post="{{ url }}" hx-target="#xrasModalBody" hx-swap="innerHTML">
+        <input type="hidden" name="stage" value="{{ stage }}">
+        <input type="hidden" name="comment" value="{{ comment or '' }}">
+        <input type="number" name="amount" class="form-control form-control-sm" min="0" step="any" required
+               value="{{ amount if amount is not none else '' }}" aria-label="{{ stage }} amount for {{ label }}">
+        <button type="submit" class="btn btn-row btn-row-success" title="Save" aria-label="Save"><i class="fa-solid fa-check" aria-hidden="true"></i></button>
+        <button type="button" class="btn btn-row" data-action="xras-amount-cancel" title="Cancel (Esc)" aria-label="Cancel"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+        {%- if form_url %}
+        <button type="button" class="btn btn-row" title="Edit with a comment…" aria-label="Edit the {{ stage | lower }} amount for {{ label }} with a comment"
+                hx-get="{{ form_url }}" hx-target="#xrasModalBody" hx-swap="innerHTML"><i class="fa-solid fa-comment-dots" aria-hidden="true"></i></button>
+        {%- endif %}
+    </form>
+</span>
+{%- endif -%}
+{%- endmacro %}

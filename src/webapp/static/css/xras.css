@@ -204,6 +204,195 @@
     font-size: 0.875rem;
 }
 
+/* A one-line result inside a dialog (a save, a refusal): text, not an alert. */
+.xras-flash {
+    margin-bottom: 0.75rem;
+    font-size: 0.875rem;
+}
+
+/* The request dialog's header line: status, kind, opportunity, dates, link. */
+.xras-request-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.75rem;
+    margin-bottom: 0.75rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.xras-request-title {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+/* One action of the family: a header that collapses its body. */
+.xras-action {
+    margin-bottom: 0.5rem;
+    border: 1px solid var(--border-default);
+    border-radius: var(--bs-border-radius);
+}
+
+.xras-action.is-latest {
+    border-left: 3px solid var(--text-link);
+}
+
+.xras-action-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 0;
+    background: none;
+    color: var(--text-primary);
+    font: inherit;
+    text-align: left;
+}
+
+.xras-action-body {
+    padding: 0.25rem 0.75rem 0.75rem;
+    border-top: 1px solid var(--border-default);
+    font-size: 0.875rem;
+}
+
+.xras-action-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.xras-action-label {
+    flex: 0 0 8.5rem;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: var(--font-weight-semi-bold);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.xras-date + .xras-date {
+    margin-top: 0.25rem;
+}
+
+.xras-matrix-note td {
+    padding-top: 0;
+    color: var(--text-secondary);
+    font-style: italic;
+    font-size: 0.8125rem;
+}
+
+/* The amount that is its own editor: a figure with a quiet dotted underline; the
+   pencil shows only on hover or focus. */
+.xras-amount-show {
+    padding: 0;
+    border: 0;
+    border-bottom: 1px dotted var(--text-secondary);
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+}
+
+.xras-amount-show .fa-pen {
+    margin-left: 0.35rem;
+    color: var(--text-link);
+    font-size: 0.75em;
+    opacity: 0;
+}
+
+.xras-amount-show:hover,
+.xras-amount-show:focus-visible {
+    border-bottom-color: var(--text-link);
+    color: var(--text-link);
+}
+
+.xras-amount-show:hover .fa-pen,
+.xras-amount-show:focus-visible .fa-pen {
+    opacity: 1;
+}
+
+.xras-amount-form {
+    display: none;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.25rem;
+}
+
+.xras-amount-form .form-control {
+    width: 8rem;
+    text-align: end;
+}
+
+.xras-amount.is-editing .xras-amount-show {
+    display: none;
+}
+
+.xras-amount.is-editing .xras-amount-form {
+    display: inline-flex;
+}
+
+/* The pre-flight under an action: a quiet panel, its verdict in the state language. */
+.xras-preflight {
+    margin-top: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--surface-tertiary);
+    border-left: 3px solid var(--border-default);
+}
+
+.xras-preflight-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.75rem;
+}
+
+.xras-preflight-messages {
+    margin: 0.35rem 0 0;
+    padding-left: 1.25rem;
+    color: var(--bs-danger-text-emphasis);
+}
+
+.xras-preflight-actual {
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border-default);
+}
+
+.xras-overrides {
+    margin-top: 1rem;
+}
+
+/* A dialog with many verbs: smaller footer buttons than the house two-button
+   size, so six verbs fit on a line or two instead of three. */
+#xrasModalFooter .btn {
+    font-size: 0.875rem;
+    padding: 0.375rem 0.875rem;
+}
+
+/* A rarely used form behind its summary. */
+.xras-disclosure > summary {
+    margin-bottom: 0.5rem;
+    color: var(--text-link);
+    font-size: 0.875rem;
+}
+
+.xras-disclosure .form-label {
+    font-size: 0.875rem;
+}
+
+/* The dialog footer: its verbs at the start, Done at the end. */
+.xras-footer-start {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-right: auto;
+}
+
 /* ===================================================================
    XRAS merge form — the whole candidate card is the control
    =================================================================== */
