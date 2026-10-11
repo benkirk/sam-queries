@@ -28,6 +28,7 @@ SECTIONS = [
     {'id': 'stats', 'title': 'Stat grids (container query)'},
     {'id': 'openers', 'title': 'Inert modal openers'},
     {'id': 'icons', 'title': 'Icons'},
+    {'id': 'xras', 'title': 'XRAS state language'},
     {'id': 'skipped', 'title': 'Needs live context (note-and-skip)'},
 ]
 

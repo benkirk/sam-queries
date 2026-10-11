@@ -555,7 +555,7 @@ class TestPendingWorkToggle:
                                                          'push_state': 'seen_in_log'}})]})
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
         assert '1 pending' in body
-        assert '1 more with Show everything' in body
+        assert '1 more with Everything in the window' in body
 
     def test_the_batch_recheck_honors_the_toggle(self, auth_client, configured,
                                                  monkeypatch):
@@ -732,7 +732,8 @@ class TestEveryExpandableRowShowsAChevron:
         'xras_table.html',
     ])
     def test_each_expandable_table_offers_one(self, name):
-        assert 'collapse-icon' in (self.PARTIALS / name).read_text()
+        text = (self.PARTIALS / name).read_text()
+        assert 'collapse-icon' in text or 'drill_toggle(' in text
 
     @pytest.mark.parametrize('name', [
         'xras_activity_card.html', 'xras_table.html'])
@@ -913,7 +914,7 @@ class TestRendering:
                         'roleTypeId': 14}]})
         _publish(payload)
         body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
-        assert 'Project Admin' in body      # the column header
+        assert 'Project admin' in body      # the column header
         assert 'Al Manager' in body         # the resolved admin
 
     def test_the_project_admin_column_is_blank_without_one(self, auth_client,
@@ -922,7 +923,7 @@ class TestRendering:
         and the header still renders."""
         _publish(_payload())
         body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
-        assert 'Project Admin' in body
+        assert 'Project admin' in body
 
 
 # the project link
@@ -962,7 +963,7 @@ class TestTheSamBadgeLinksWhenTheProjectExists:
         _publish(_payload('EXAM0001'), pending=False)
         body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert '/allocations/xras_request_detail/EXAM0001' in body
-        assert 'data-bs-target="#auditDetailsModal"' in body
+        assert 'data-bs-target="#xrasModal"' in body
         # The SAM cell still links the found project — Request vs Result.
         assert '/user/project-details-modal/EXAM0001' in body
 
@@ -1295,7 +1296,7 @@ class TestRequestDetailModal:
         _reader(monkeypatch, payload=_detail_payload())
         body = auth_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
-        assert 'id="auditDetailsModalTitle"' in body
+        assert 'id="xrasModalLabel"' in body
         assert 'hx-swap-oob="true"' in body
 
     def test_it_carries_the_shared_write_buttons(self, auth_client, armed,
@@ -1402,7 +1403,7 @@ class TestUserDetailModal:
         _reader(monkeypatch, person=_person())
         body = auth_client.get(
             '/allocations/xras_user_detail/janebaldwin').get_data(as_text=True)
-        assert 'id="auditDetailsModalTitle"' in body
+        assert 'id="xrasModalLabel"' in body
         assert 'hx-swap-oob="true"' in body
 
     def test_it_lists_cross_request_roles_linked_to_the_request_modal(
@@ -1501,7 +1502,7 @@ class TestOpportunityModal:
         _reader(monkeypatch, opportunity=_OPPORTUNITY)
         body = auth_client.get(
             '/allocations/xras_opportunity_detail/532220').get_data(as_text=True)
-        assert 'id="auditDetailsModalTitle"' in body
+        assert 'id="xrasModalLabel"' in body
         assert 'hx-swap-oob="true"' in body
 
     def test_an_unknown_opportunity_degrades_with_a_200(self, auth_client, armed,
@@ -1584,7 +1585,7 @@ class TestTheEditors:
         body = auth_client.get(
             '/allocations/xras_resource_form/EXAM0001/7/530201'
             '?stage=Requested').get_data(as_text=True)
-        assert 'Edit amount — EXAM0001' in body
+        assert 'Edit amount <span class="modal-title-meta">EXAM0001</span>' in body
         assert 'Cheyenne' in body
         assert 'name="amount"' in body
 
@@ -1592,7 +1593,7 @@ class TestTheEditors:
         _reader(monkeypatch, payload=_detail_payload())
         body = auth_client.get(
             '/allocations/xras_dates_form/EXAM0001/7').get_data(as_text=True)
-        assert 'allocation dates — EXAM0001' in body
+        assert 'allocation dates <span class="modal-title-meta">EXAM0001</span>' in body
         assert 'name="begin_date"' in body
 
     def test_the_detail_modal_offers_editors_on_requested_rows(
@@ -1600,9 +1601,22 @@ class TestTheEditors:
         _reader(monkeypatch, payload=_detail_payload())
         body = auth_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
-        assert 'xras_resource_form/EXAM0001/7/530201' in body   # Edit…
+        # Writes off here: the figures are plain, the other editors render disabled.
+        assert 'data-xras-amount' not in body
         assert 'xras_resource_remove/EXAM0001/7/530201' in body  # Remove
         assert 'xras_dates_form/EXAM0001/7' in body             # Set dates…
+
+    def test_with_writes_on_the_requested_amount_is_its_own_editor(
+            self, auth_client, armed, monkeypatch):
+        from webapp.dashboards.allocations.xras import modals
+        monkeypatch.setattr(modals, 'xras_write_configured', lambda *a: True)
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert body.count('data-xras-amount') == 1              # Requested only
+        assert 'hx-post="/allocations/xras_resource_edit/EXAM0001/7/530201"' in body
+        assert 'xras_resource_form/EXAM0001/7/530201?stage=Requested' in body  # with a comment
+        assert 'name="stage" value="Approved"' not in body       # the award stays locked
 
     def test_the_award_editor_is_locked_without_the_elevated_key(
             self, auth_client, armed, monkeypatch):
@@ -1611,8 +1625,7 @@ class TestTheEditors:
         _reader(monkeypatch, payload=_detail_payload())
         body = auth_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
-        assert 'Edit award' in body
-        assert 'elevated XRAS key' in body
+        assert 'editing the award needs an elevated XRAS key' in body
         # and it is NOT a live link to the Approved editor
         assert 'stage=Approved' not in body
 
@@ -1657,7 +1670,7 @@ class TestTheEditors:
         _reader(monkeypatch, payload=_detail_payload())
         body = auth_client.get(
             '/allocations/xras_attributes_form/EXAM0001').get_data(as_text=True)
-        assert 'Edit attributes — EXAM0001' in body
+        assert 'Edit attributes <span class="modal-title-meta">EXAM0001</span>' in body
         assert 'value="Turbulence at scale"' in body   # prefilled title
         assert 'name="abstract"' in body
 
@@ -1666,7 +1679,7 @@ class TestTheEditors:
         _reader(monkeypatch, payload=_detail_payload())
         body = auth_client.get(
             '/allocations/xras_action_fields_form/EXAM0001/7').get_data(as_text=True)
-        assert 'Edit action 7 — EXAM0001' in body
+        assert 'Edit action 7 <span class="modal-title-meta">EXAM0001</span>' in body
         assert 'name="user_comments"' in body
 
     def test_the_detail_modal_offers_the_text_editors(self, auth_client, armed,
@@ -1790,7 +1803,7 @@ class TestPartCIsAdminOnly:
         body = auth_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'xras_request_delete/EXAM0001' in body
-        assert 'Destructive' in body
+        assert 'Delete project…' in body
 
     def test_the_danger_zone_is_hidden_from_a_manage_only_operator(
             self, manage_not_admin_client, armed, monkeypatch):
@@ -1798,14 +1811,14 @@ class TestPartCIsAdminOnly:
         body = manage_not_admin_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'xras_request_delete' not in body
-        assert 'Destructive' not in body
+        assert 'Delete project…' not in body
 
     def test_the_add_action_form_renders_the_type_picker(self, auth_client,
                                                         armed, monkeypatch):
         _reader(monkeypatch, payload=_detail_payload())
         body = auth_client.get(
             '/allocations/xras_add_action_form/EXAM0001').get_data(as_text=True)
-        assert 'Add action — EXAM0001' in body
+        assert 'Add action <span class="modal-title-meta">EXAM0001</span>' in body
         assert 'name="action_type"' in body
         assert 'Supplement' in body
 
@@ -2266,7 +2279,7 @@ class TestIdentityUnblockStrip:
         strip = body.split('id="xras-identity-strip"')[1][:4000]
         assert 'ready to merge' in strip
         assert '/allocations/xras_merge_form/ghost-user-abcde' in strip
-        assert 'data-bs-target="#auditDetailsModal"' in strip
+        assert 'data-bs-target="#xrasModal"' in strip
         assert 'ghost' in strip
         assert self.EMAIL not in strip, 'the strip names accounts, never emails'
 

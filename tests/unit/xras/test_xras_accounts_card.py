@@ -238,10 +238,10 @@ class TestTheRowStillExpands:
         badge it reads as that badge's icon — so it needs a trigger of its
         own, the username cell having none."""
         body = auth_client.get(URL).get_data(as_text=True)
-        assert ('<span class="cursor-pointer" data-bs-toggle="collapse"'
-                in body)
-        span = body.split('<span class="cursor-pointer" data-bs-toggle="collapse"', 1)[1]
-        assert 'collapse-icon' in span.split('</span>', 1)[0]
+        cell = body.split('<td class="font-monospace text-nowrap">', 1)[1].split('</td>', 1)[0]
+        button = cell.split('<button', 1)[1].split('</button>', 1)[0]
+        assert 'data-bs-target="#xras-acct-1"' in button
+        assert 'collapse-icon' in button
 
 
 class TestAccess:
@@ -345,7 +345,7 @@ class TestTheXrasIdentityLinksToTheUserModal:
                             lambda username: None)
         body = auth_client.get(URL).get_data(as_text=True)
         assert '/allocations/xras_user_detail/placeholder38-user-00038' in body
-        assert 'data-bs-target="#auditDetailsModal"' in body
+        assert 'data-bs-target="#xrasModal"' in body
 
     def test_it_degrades_without_the_outbound_api(
             self, auth_client, committed_worklist_action, monkeypatch):

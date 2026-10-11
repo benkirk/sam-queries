@@ -1,0 +1,11 @@
+{% from 'dashboards/fragments/xras_bits.html' import dialog_title, done_footer, outcome %}
+{#
+  Why a dialog stopped: an outage, a missing thing, a refusal, a partial write.
+  Context: message, variant ('warning'|'danger'|'success'), title (None keeps the
+  dialog's current title). Rendered by _shared._dialog_message.
+  WARNING: always a 200: htmx will not swap a 4xx into an already-open dialog,
+  which would leave it showing the last body with no explanation.
+#}
+{% if title %}{{ dialog_title(title, 'triangle-exclamation' if variant != 'success' else 'circle-check') }}{% endif %}
+{% call outcome(variant, message) %}{% endcall %}
+{{ done_footer('Close') }}

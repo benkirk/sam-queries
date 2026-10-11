@@ -111,7 +111,8 @@ Run each pass and collect findings. The examples are real.
     pair restating the title (`modal-alerts`, ratcheted). Facts go in `.modal-facts`, help in
     `tip=` / a term, identity in `modal_title`. Open the opener first: two "modals" in the
     sweep had none (an orphan is a deletion). Prove it with `ui_snapshots.py --recipes`
-    heights before and after.
+    heights before and after. A dialog borrowing another page's shell, whose body IS the
+    `.modal-body`, cannot have a footer: give it its own `modal_scaffold(footer_id=)` (entry 22).
 - **Propagate.** List the shared pieces the window introduced: macros, chart families, JS
   modules, query helpers. For each, find an older surface doing the same job the old way. The
   sunburst started on the allocations page and then moved to job history; that is the shape to

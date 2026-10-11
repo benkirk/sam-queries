@@ -1,5 +1,5 @@
 {#
-  Preview modal for the Notify button, rendered into #auditDetailsModalBody
+  Preview modal for the Notify button, rendered into #xrasModalBody
   by GET xras_notify_form. A preview rather than an hx-confirm: it answers the
   operator's real question, "and what does it say".
 
@@ -12,106 +12,69 @@
     project_inactive  the project is not active yet
     post_url          where Send posts
 #}
-<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
-    Notify — {{ project.projcode }}
-</h5>
+{% from 'dashboards/fragments/xras_bits.html' import dialog_footer, dialog_title, section_label %}
+{{ dialog_title('Notify', 'envelope', meta=project.projcode) }}
 
-{# Sits ABOVE the pane's redirect banner: the message being wrong outranks
-   where it is going. The activation notice asserts "is now active", and the
-   pre-deploy smoke sent one 64 s before the project was activated. #}
+{# Above the pane's redirect banner: the message being wrong outranks where it
+   goes. The activation notice says "is now active"; one smoke sent it 64 s early. #}
 {% if project_inactive %}
 <div class="alert alert-danger d-flex align-items-start gap-2">
-    <i class="fa-solid fa-triangle-exclamation mt-1"></i>
-    <div>
-        <strong>{{ project.projcode }} is not active yet.</strong>
-        <div>
-            The notice below tells the recipients their allocation is ready to
-            use. Activate the project first, or send now if you are about to.
-        </div>
-    </div>
+    <i class="fa-solid fa-triangle-exclamation mt-1" aria-hidden="true"></i>
+    <div><strong>{{ project.projcode }} is not active yet.</strong>
+        The notice below tells the recipients their allocation is ready to use.
+        Activate the project first, or send now if you are about to.</div>
 </div>
 {% endif %}
 
-<h6 class="text-muted text-uppercase small mb-2">Recipients</h6>
+{{ section_label('Recipients') }}
 {% if people %}
-<ul class="list-unstyled mb-3">
+<ul class="xras-recipients">
     {% for person in people %}
-    <li class="mb-1">
-        <code class="user-select-all">{{ person.email }}</code>
-        <span class="text-muted small">— {{ person.name }} ({{ person.role }})</span>
-    </li>
+    <li><code class="user-select-all">{{ person.email }}</code>
+        <span class="text-muted small">{{ person.name }} ({{ person.role }})</span></li>
     {% endfor %}
 </ul>
 {% else %}
 <p class="text-danger-emphasis">
-    <i class="fa-solid fa-circle-exclamation"></i>
-    No lead or admin email address is on file for this project — there is
-    nobody to send to.
+    <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
+    No lead or admin email address is on file for this project: there is nobody to send to.
 </p>
 {% endif %}
 
-<h6 class="text-muted text-uppercase small mb-2">Message</h6>
+{{ section_label('Message') }}
 <div id="xrasPreviewPane" class="mb-3">
     {% include 'dashboards/fragments/email_preview_pane.html' %}
 </div>
 
+{# Only when a duplicate would be suppressed, so the toggle means something. It
+   overrides the duplicate check and nothing else; NOTIFY_ENABLED still fails closed. #}
 {% if already_notified %}
-{# Shown ONLY when a duplicate would actually be suppressed, which is what
-   makes the toggle meaningful rather than a permanent piece of furniture the
-   operator learns to tick. Without it the recovery for "we need to send that
-   again" is a DELETE against notification_log.
-
-   Scope, stated on the label because it is the thing people get wrong: this
-   overrides the duplicate check and nothing else. NOTIFY_ENABLED still fails
-   closed above. #}
-<div class="alert alert-info d-flex align-items-start gap-2">
-    <i class="fa-solid fa-clock-rotate-left mt-1"></i>
-    <div class="flex-grow-1">
-        <strong>
-            {% if already_notified | length == people | length %}
-            These recipients have
-            {% else %}
-            {{ already_notified | length }} of {{ people | length }} recipients have
-            {% endif %}
-            already been notified about this XRAS action.
-        </strong>
-        <div class="small mt-1">
-            {% for r in already_notified %}
-            <code class="user-select-all">{{ r.address }}</code>{% if not loop.last %}, {% endif %}
-            {% endfor %}
-        </div>
-        <div class="form-check mt-2">
-            <input class="form-check-input" type="checkbox"
-                   id="xrasNotifyForce" name="force" value="1">
-            <label class="form-check-label" for="xrasNotifyForce">
-                Send again anyway
-                <span class="text-muted small d-block">
-                    Overrides the duplicate check only — a corrected address, a
-                    fixed template, or a recipient who lost the mail.
-                </span>
-            </label>
-        </div>
-    </div>
-</div>
+<ul class="modal-facts">
+    <li><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+        {% if already_notified | length == people | length %}These recipients have
+        {% else %}{{ already_notified | length }} of {{ people | length }} recipients have{% endif %}
+        already been notified about this XRAS action:
+        {% for r in already_notified %}<code class="user-select-all">{{ r.address }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</li>
+    <li class="form-check mb-0">
+        <input class="form-check-input" type="checkbox" id="xrasNotifyForce" name="force" value="1">
+        <label class="form-check-label" for="xrasNotifyForce">Send again anyway
+            <span class="text-muted small d-block">Overrides the duplicate check only: a corrected
+                address, a fixed template, or a recipient who lost the mail.</span></label>
+    </li>
+</ul>
 {% endif %}
 
-<div class="d-flex justify-content-end gap-2 mt-3">
-    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-        Cancel
-    </button>
-    {# hx-include only when the force checkbox is actually on the page. htmx
-       logs "selector returned no matches" as a console ERROR, and the common
-       case — a first-time notify — has no checkbox, so leaving it
-       unconditional put a red herring in the console on every send. An
-       unchecked box sends no key at all, which is precisely the signal the
-       route reads. #}
-    <button type="button" class="btn btn-primary"
-            hx-post="{{ post_url }}"
-            {% if already_notified %}hx-include="#xrasNotifyForce"{% endif %}
-            hx-target="#auditDetailsModalBody"
-            hx-swap="innerHTML"
-            {% if not people %}disabled{% endif %}>
-        <i class="fa-solid fa-paper-plane"></i>
-        Send{% if people %} to {{ people | length }}{% endif %}
-    </button>
+{% call dialog_footer() %}
+<div class="xras-footer-start">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
 </div>
+{# hx-include only when the checkbox exists: htmx logs a missing selector as a
+   console ERROR. An unchecked box sends no key, which is the signal the route reads. #}
+<button type="button" class="btn btn-primary"
+        hx-post="{{ post_url }}"
+        {% if already_notified %}hx-include="#xrasNotifyForce"{% endif %}
+        hx-target="#xrasModalBody" hx-swap="innerHTML"
+        {% if not people %}disabled{% endif %}>
+    <i class="fa-solid fa-paper-plane me-1" aria-hidden="true"></i>Send{% if people %} to {{ people | length }}{% endif %}
+</button>
+{% endcall %}

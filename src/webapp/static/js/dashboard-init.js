@@ -31,19 +31,6 @@
         }, 300);
     });
 
-    /* After a replay POST (HX-Trigger event), reload the XRAS action table
-     * carrying the current filter form. No setTimeout here — unlike the
-     * adjustment create, replay fires from a button in the table itself, so
-     * there is no modal animation to wait out. The pending-activation card
-     * listens for the same event via hx-trigger and reloads itself. */
-    document.body.addEventListener('refreshXrasTab', function () {
-        var target = document.getElementById('alloc-xras-fragment');
-        if (!target) { return; }
-        htmx.ajax('GET', target.dataset.refreshUrl,
-                  {target: '#alloc-xras-fragment', swap: 'innerHTML',
-                   source: '#xras-filters'});
-    });
-
     /* Expansion follows the resource tab: a facility open under Casper is open
      * under Derecho too, and the Share/Pace pill matches. Facilities missing
      * from the previous pane keep their own state; type rows (lazy project

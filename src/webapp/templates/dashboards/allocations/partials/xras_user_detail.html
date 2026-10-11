@@ -1,5 +1,5 @@
 {#
-  Read-only detail of one XRAS person, rendered into #auditDetailsModalBody —
+  Read-only detail of one XRAS person, rendered into #xrasModalBody —
   the analogue of xras_request_detail.html for the *user* side of the roster.
 
   Context: username, person (a /v1/people dict), role_groups (grouped
@@ -8,7 +8,7 @@
            back_request_number, write_enabled, configured.
 
   WARNING: No `data-bs-toggle="modal"` on any control here. This body is always
-  swapped INTO the already-open #auditDetailsModal, so every link just
+  swapped INTO the already-open #xrasModal, so every link just
   hx-gets a new body — a toggle would fire on the open modal and HIDE it (the
   PR #464 self-closing-modal bug). The Request links below reuse that idiom to
   swap the request detail in place, and the merge button reuses the merge form.
@@ -16,87 +16,37 @@
   Read-only apart from the reused identity merge: XRAS exposes no
   person-attribute write on our key, so there is nothing else to edit here.
 #}
-{% import 'dashboards/allocations/partials/xras_modal_shell.html' as shell %}
-{% call shell.modal_title() %}XRAS User — <span class="font-monospace">{{ username }}</span>{% endcall %}
-
-{# Back link (if we came from a request roster) — plain body-swap, no toggle. #}
-{{ shell.back_link(back_url, back_request_number) }}
-
-{# who XRAS says this is #}
 {% from 'dashboards/fragments/xras_person_detail.html' import person_detail %}
+{% from 'dashboards/fragments/xras_bits.html' import back_link, dialog_footer, dialog_title, footer_verb, identity_tag, section_label, tag, type_label %}
+{{ dialog_title('XRAS user', 'user', meta=username) }}
+{{ back_link(back_url, back_request_number) }}
+
 {{ person_detail(person) }}
 
-{# identity state + SAM cross-reference #}
-<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-    {# XRAS-side reconciliation state, in the Accounts-Needed vocabulary. #}
-    {% if is_reconciled is none %}
-    <span class="badge bg-body-secondary text-body-secondary border fw-normal"
-          title="XRAS was not asked, or does not say">identity unknown</span>
-    {% elif stuck_placeholder %}
-    <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle"
-          title="Misidentified — XRAS flagged this placeholder as reconciled without merging it, so it keeps sending the throwaway username and the handoff cannot complete.">misidentified</span>
-    {% elif is_reconciled %}
-    <span class="badge bg-body-secondary text-body-secondary border fw-normal"
-          title="XRAS has linked this username to a real identity. It does NOT mean a SAM account exists.">identified</span>
-    {% else %}
-    <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
-          title="XRAS has not reconciled this identity — there is no confirmed person behind the username yet">unidentified</span>
-    {% endif %}
-
-    {% if placeholder %}
-    <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle"
-          title="An ARC placeholder username XRAS mints for a researcher with no site account">placeholder</span>
-    {% endif %}
-
-    {# SAM cross-reference — informational, deliberately not a modal opener (a
-       nested #userDetailsModal would stack two modals). #}
-    <span class="ms-auto small">
-        {% if sam_active %}
-        <span class="text-success"><i class="fa-solid fa-circle-check"></i> Active SAM account</span>
-        {% elif in_sam %}
-        <span class="text-warning"><i class="fa-solid fa-circle-exclamation"></i> SAM account exists but is inactive</span>
-        {% elif merge_target and merge_target.active %}
-        <span class="text-success"><i class="fa-solid fa-circle-check"></i> SAM holds this email on <span class="font-monospace">{{ merge_target.username }}</span></span>
-        {% elif merge_target %}
-        <span class="text-warning"><i class="fa-solid fa-circle-exclamation"></i> SAM holds this email on <span class="font-monospace">{{ merge_target.username }}</span>, inactive</span>
-        {% else %}
-        <span class="text-muted"><i class="fa-solid fa-circle-xmark"></i> No SAM account</span>
-        {% endif %}
-    </span>
-</div>
-
-{# the one write: resolve a placeholder by merge -- misidentified, or
-   unidentified with a SAM account already holding its email #}
-{% if mergeable %}
-<div class="alert alert-warning d-flex align-items-center gap-2 py-2">
-    <i class="fa-solid fa-triangle-exclamation"></i>
-    <div class="small flex-grow-1">
-        {% if stuck_placeholder %}
-        XRAS marks this placeholder identified but never merged it, so XRAS
+{# Who XRAS says this is, and whether SAM knows them. The SAM side is a fact, not
+   a modal opener: #userDetailsModal over this dialog would stack two modals. #}
+<ul class="modal-facts">
+    <li><i class="fa-solid fa-id-badge" aria-hidden="true"></i>
+        XRAS identity: {{ identity_tag(is_reconciled, placeholder, unknown='identity unknown') }}
+        {%- if placeholder %} {{ tag('placeholder', title='An ARC placeholder username XRAS mints for a researcher with no site account') }}{% endif %}</li>
+    <li><i class="fa-solid fa-user-check" aria-hidden="true"></i>
+        {% if sam_active %}<span class="text-success-emphasis">Active SAM account.</span>
+        {% elif in_sam %}<span class="text-warning-emphasis">The SAM account exists but is inactive.</span>
+        {% elif merge_target and merge_target.active %}<span class="text-success-emphasis">SAM holds this email on <span class="font-monospace">{{ merge_target.username }}</span>.</span>
+        {% elif merge_target %}<span class="text-warning-emphasis">SAM holds this email on <span class="font-monospace">{{ merge_target.username }}</span>, inactive.</span>
+        {% else %}No SAM account.{% endif %}</li>
+    {% if mergeable %}
+    <li><i class="fa-solid fa-code-merge" aria-hidden="true"></i>
+        {% if stuck_placeholder %}XRAS marks this placeholder identified but never merged it, so it
         keeps sending the throwaway username and any handoff stays blocked.
-        {% else %}
-        SAM already holds this person's email on
-        <span class="font-monospace">{{ merge_target.username }}</span>, which
-        XRAS resolves; merging the placeholder into it lets XRAS send the real
-        username.
-        {% endif %}
-    </div>
-    <button type="button" class="btn btn-sm btn-outline-danger text-nowrap"
-            {% if not write_enabled %}disabled
-            title="XRAS writes are switched off for this deployment (XRAS_WRITE_ENABLED)."{% endif %}
-            hx-get="{{ merge_url }}"
-            hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
-        Resolve identity (merge)…
-    </button>
-</div>
-{% endif %}
+        {% else %}Merging the placeholder into <span class="font-monospace">{{ merge_target.username }}</span>
+        lets XRAS send the real username.{% endif %}</li>
+    {% endif %}
+</ul>
 
-<hr>
-
-{# requests this person holds a role on — one project per projcode, with its
-   list of actions. Two date kinds are kept distinct: the action's period of
-   performance (begin – end) and when the action was entered in XRAS. #}
-<div class="small text-uppercase text-muted mb-1">Projects &amp; roles</div>
+{# One project per projcode, its actions below. Two dates stay distinct: the period
+   of performance and when the action was entered in XRAS. #}
+{{ section_label('Projects and roles') }}
 {% if role_groups %}
 {% for group in role_groups %}
 <div class="mb-3">
@@ -110,12 +60,10 @@
         <div class="d-flex flex-wrap align-items-baseline gap-2">
             <span class="font-monospace">
                 {% if configured %}
-                {# Swap the request detail in place — no toggle, the modal is
-                   already open. #}
-                <a href="#" class="text-decoration-none"
+                <a href="#"
                    hx-get="{{ url_for('allocations_dashboard.xras_request_detail',
                                       request_number=proj.request_number) }}"
-                   hx-target="#auditDetailsModalBody" hx-swap="innerHTML">{{ proj.request_number }}</a>
+                   hx-target="#xrasModalBody" hx-swap="innerHTML">{{ proj.request_number }}</a>
                 {% else %}{{ proj.request_number }}{% endif %}
             </span>
             <span class="fw-semibold">{{ proj.title or '—' }}</span>
@@ -136,9 +84,7 @@
             {% for a in proj.actions %}
                 <tr>
                     <td class="text-nowrap small">
-                        {% if a.action_type %}
-                        <span class="badge bg-body-secondary text-body-secondary border fw-normal">{{ a.action_type }}</span>
-                        {% endif %}
+                        {{ type_label(a.action_type) }}
                     </td>
                     <td class="text-nowrap small text-muted">
                         {% if a.begin_date %}{{ a.begin_date | fmt_date }}{% endif %}
@@ -164,4 +110,11 @@
 </div>
 {% endif %}
 
-{{ shell.done_footer() }}
+{% call dialog_footer() %}
+{% if mergeable %}
+<div class="xras-footer-start">
+    {{ footer_verb('Resolve identity (merge)…', merge_url, write_enabled, icon='code-merge') }}
+</div>
+{% endif %}
+<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Done</button>
+{% endcall %}

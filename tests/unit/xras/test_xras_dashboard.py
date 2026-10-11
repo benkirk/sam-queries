@@ -658,16 +658,26 @@ class TestActivationMissingProject:
     so the answer must be a message rather than a 404 error page."""
 
     @pytest.mark.parametrize('path', [
-        '/allocations/xras_notify/999999999',
         '/allocations/xras_activate/999999999',
-        '/allocations/xras_dismiss/999999999',
         '/allocations/xras_restore/999999999',
-        '/allocations/xras_comment/999999999',
     ])
-    def test_write_routes_report_not_found(self, auth_client, path):
+    def test_card_writes_report_not_found(self, auth_client, path):
+        """Card buttons (hx-swap="none"): a 404 reaches the error toast."""
         resp = auth_client.post(path)
         assert resp.status_code == 404
         assert b'not found' in resp.data.lower()
+
+    @pytest.mark.parametrize('path', [
+        '/allocations/xras_notify/999999999',
+        '/allocations/xras_dismiss/999999999',
+        '/allocations/xras_comment/999999999',
+    ])
+    def test_dialog_writes_report_not_found_inline(self, auth_client, path):
+        """These post into the open dialog, and htmx does not swap a 4xx: a 404
+        left the dialog showing the form that was just submitted."""
+        resp = auth_client.post(path)
+        assert resp.status_code == 200
+        assert b'Project not found' in resp.data
 
     @pytest.mark.parametrize('path', [
         '/allocations/xras_dismiss_form/999999999',
@@ -1048,14 +1058,13 @@ class TestActivityRowExpansion:
                 may_activate={}, may_manage=may_manage,
                 window={'days': 30, 'since': None, 'until': None,
                         'start_date': '', 'end_date': '', 'custom': False},
-                window_pill_choices=((7, '7D'), (30, '30D')),
                 facet_values={}, selected={},
                 form_id='xras-activity-filters',
                 fragment_url='/allocations/xras_pending_fragment',
                 target_id='alloc-xras-pending', **counts)
 
     def _actions_cell(self, body):
-        cell = body.split('<td class="text-end"')[1].split('</td>')[0]
+        cell = body.split('<td class="text-end text-nowrap"')[1].split('</td>')[0]
         assert 'xras_history' in cell, 'wrong cell — test is vacuous'
         return cell
 
@@ -1096,7 +1105,7 @@ class TestActivityRowExpansion:
         queue = self._render(app, may_manage=True,
                              rows=[self._row(needs_activation=True, project_active=False)])
         assert '>State<' not in queue
-        action_cell = queue.split('<span class="badge bg-secondary">Supplement</span>')[1].split('</td>')[0]
+        action_cell = queue.split('<span class="xras-type">Supplement</span>')[1].split('</td>')[0]
         assert 'Needs activation' in action_cell
         everything = self._render(app, may_manage=True, show_all=True,
                                   rows=[self._row(needs_activation=True, project_active=False)])
@@ -1112,7 +1121,7 @@ class TestActivityRowExpansion:
     def test_the_strip_never_wraps(self, app):
         cell = self._actions_cell(self._render(app, may_manage=True))
         # .row-actions is an inline-flex nowrap strip; the cell itself is nowrap too.
-        assert 'class="row-actions"' in cell and 'white-space:nowrap' in cell
+        assert 'class="row-actions"' in cell
 
     def test_the_hidden_count_badge_names_the_switch(self, app):
         body = self._render(app, may_manage=True, window_total=3, hidden_count=2)
@@ -1134,7 +1143,7 @@ class TestActivityRowExpansion:
         Activate live in the last cell; the toggle must not.
         See dashboards/fragments/collapse.html."""
         body = self._render(app, may_manage=True)
-        actions_cell = body.split('<td class="text-end"')[1].split('</td>')[0]
+        actions_cell = body.split('<td class="text-end text-nowrap"')[1].split('</td>')[0]
         assert 'data-bs-toggle="collapse"' not in actions_cell
         assert 'xras_notify_form' in actions_cell, 'wrong cell — test is vacuous'
 
@@ -1185,7 +1194,6 @@ class TestActivityRowExpansion:
                 may_activate={}, may_manage=True,
                 window={'days': 30, 'since': None, 'until': None,
                         'start_date': '', 'end_date': '', 'custom': False},
-                window_pill_choices=((7, '7D'), (30, '30D')),
                 facet_values={}, selected={},
                 form_id='xras-activity-filters',
                 fragment_url='/allocations/xras_pending_fragment',
@@ -1209,3 +1217,22 @@ class TestActivityRowExpansion:
 # `TestSignedIncrements` moved to tests/unit/xras/test_xras_notices_builder.py
 # along with the helper it exercises — it was the one white-box test in this
 # file, reaching past the routes into a private blueprint symbol.
+
+
+class TestActivitySort:
+    """The activation card sorts server-side like its three siblings."""
+
+    def test_project_and_received_sort(self, auth_client, monkeypatch):
+        from datetime import datetime
+        from webapp.dashboards.allocations.xras import card_routes
+        rows = [dict(TestActivityRowExpansion()._row(), action_log_id=i, projcode=code,
+                     received_time=datetime(2026, 10, day), needs_activation=True,
+                     tags=['needs_activation'])
+                for i, (code, day) in enumerate((('BBBB0002', 9), ('AAAA0001', 10)), 1)]
+        monkeypatch.setattr(card_routes, 'get_xras_activity', lambda *a, **k: rows)
+        url = '/allocations/xras_pending_fragment'
+        body = auth_client.get(url, query_string={'sort_by': 'project', 'sort_dir': 'asc'}).get_data(as_text=True)
+        assert body.index('AAAA0001') < body.index('BBBB0002')
+        body = auth_client.get(url, query_string={'sort_by': 'received', 'sort_dir': 'asc'}).get_data(as_text=True)
+        assert body.index('BBBB0002') < body.index('AAAA0001')
+        assert 'data-sort-by="received"' in body

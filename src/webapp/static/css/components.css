@@ -416,6 +416,9 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
     --bs-btn-active-color: var(--text-link);
     --bs-btn-active-bg: rgba(var(--ncar-blue-rgb), 0.16);
     --bs-btn-active-border-color: rgba(var(--ncar-blue-rgb), 0.5);
+    --bs-btn-disabled-color: var(--text-tertiary);
+    --bs-btn-disabled-bg: transparent;
+    --bs-btn-disabled-border-color: transparent;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -897,4 +900,9 @@ tr.collapsing {
     height: 0.625rem;
     border-radius: 0.125rem;
     overflow: hidden;
+}
+
+/* A footer slot no fragment has filled (modal_scaffold footer_id=). */
+.modal-footer:empty {
+    display: none;
 }

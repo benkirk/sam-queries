@@ -41,7 +41,7 @@ def _status(value) -> str:
 _READINESS_STYLE = {'failed': '[red]would fail[/red]',
                     'manual': '[yellow]would park[/yellow]',
                     'incomplete': '[dim]incomplete[/dim]',
-                    'rechecked': '[green]would land[/green]',
+                    'rechecked': '[green]would succeed[/green]',
                     None: '[dim]—[/dim]'}
 
 

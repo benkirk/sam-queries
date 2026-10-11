@@ -131,8 +131,11 @@ def test_modal_alerts_counts_only_modal_body_templates(tmp_path):
                      '<div class="alert alert-info"></div></form>')
     opener = _write(tmp_path, 'opener.html', '<div class="alert alert-info"></div>'
                     '<tr data-bs-toggle="modal" hx-get="/x" hx-target="#auditDetailsModalBody"></tr>')
-    rows = inv.modal_alerts([form, card, quiet, swapped, opener])
-    assert [(r['file'].rsplit('/', 1)[1], r['count']) for r in rows] == [('form.html', 2), ('swapped.html', 1)]
+    # An XRAS dialog fragment titles itself with xras_bits.dialog_title.
+    dialog = _write(tmp_path, 'dialog.html', "{{ dialog_title('X', 'plug') }}<div class=\"alert alert-info\"></div>")
+    rows = inv.modal_alerts([form, card, quiet, swapped, opener, dialog])
+    assert [(r['file'].rsplit('/', 1)[1], r['count']) for r in rows] == [
+        ('form.html', 2), ('dialog.html', 1), ('swapped.html', 1)]
 
 
 def test_js_dup_names_and_listeners(tmp_path):

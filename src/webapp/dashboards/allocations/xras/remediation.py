@@ -64,14 +64,15 @@ from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from webapp.extensions import db
 from webapp.utils.fk_validation import FKValidationError, validate_fk_existence
 from webapp.utils.form_handler import FormError, HtmxFormHandler
-from webapp.utils.htmx import (htmx_modal_not_found, htmx_success_message,
+from webapp.utils.htmx import (htmx_success_message,
                                read_flag, read_sort, register_typeahead,
                                sort_rows)
 from webapp.utils.rbac import Permission, require_permission
 
 from .. import bp
 from ._shared import (
-    REMEDIATION_FACETS, _XRAS_MODAL_TRIGGERS, _degraded, _entry, _impersonation,
+    REMEDIATION_FACETS, _XRAS_MODAL_TRIGGERS, _back_to_detail, _degraded, _dialog_message,
+    _entry, _impersonation, _not_found,
     _index,
     _live_family, _live_request, _parse_activity_window, _read_client,
     _role_options, _session_factory, scope_rows,
@@ -137,9 +138,11 @@ def xras_remediations_fragment():
     pending_total = sum(1 for r in rows if is_pending_work(r))
 
     # Default is the pending-work queue (XRAS admin's "Recent submissions"),
-    # which is state, not a window. "Show everything" restores the date filter.
+    # which is state, not a window. "Everything in the window" restores the filter.
     show_all = read_flag(request.args, 'show_all')
     window = _parse_activity_window(request.args)
+    in_window = [r for r in rows if _in_window(r, window['since'])]
+    pending_in_window = sum(1 for r in in_window if is_pending_work(r))
     rows = _scope_rows(rows, request.args)
 
     # The two data-fix strips rank over the rows IN VIEW (queue or everything,
@@ -185,6 +188,8 @@ def xras_remediations_fragment():
         total=len(rows),
         swept_total=swept_total,
         window_total=window_total,
+        in_window_total=len(in_window),
+        pending_in_window=pending_in_window,
         search=search,
         snapshot=payload,
         show_all=show_all,
@@ -225,7 +230,7 @@ def xras_recheck_request(request_number: str):
     return htmx_success_message(
         {'refreshXrasTab': {}},
         f'Re-checked {request_number}: {checked} action(s) — '
-        f'{counts.get("rechecked", 0)} would land, {counts.get("failed", 0)} would fail, '
+        f'{counts.get("rechecked", 0)} would succeed, {counts.get("failed", 0)} would fail, '
         f'{counts.get("manual", 0)} would park, {counts.get("incomplete", 0)} incomplete.',
         detail='Nothing was applied. The card shows the fresh verdicts.')
 
@@ -278,7 +283,7 @@ def xras_recheck_visible():
                   f'run it again to continue. ') + detail
     return htmx_success_message(
         {'refreshXrasTab': {}},
-        f'Checked {len(capped)} request(s): {totals["rechecked"]} would land, '
+        f'Checked {len(capped)} request(s): {totals["rechecked"]} would succeed, '
         f'{totals["failed"]} would fail, {totals["manual"]} would park, '
         f'{totals["incomplete"]} incomplete.',
         detail=detail)
@@ -296,7 +301,7 @@ def _readiness_response(request_number, *, error=None):
     """Re-render the readiness modal body and reload the card behind it."""
     context = _readiness_context(request_number) if request_number else None
     if context is None:
-        return htmx_modal_not_found('Request')
+        return _not_found('Request')
     context['override_error'] = error
     response = current_app.make_response(render_template(_READINESS_FORM, **context))
     response.headers['HX-Trigger'] = json.dumps({'refreshXrasTab': {}})
@@ -908,7 +913,7 @@ def xras_withdraw_form(request_number: str, action_id: int):
         return _degraded('Withdrawing needs a live read of the request from '
                          'XRAS, and XRAS is not answering.')
     if context is None:
-        return htmx_modal_not_found('Request')
+        return _not_found('Request')
     if context['action'] is None:
         return _degraded(
             f'XRAS no longer lists action {action_id} on {request_number}. '
@@ -1038,7 +1043,7 @@ def xras_resubmit_form(request_number: str, action_id: int):
         return _degraded('Re-submitting needs a live read of the request from '
                          'XRAS, and XRAS is not answering.')
     if context is None:
-        return htmx_modal_not_found('Request')
+        return _not_found('Request')
     if context['action'] is None:
         return _degraded(
             f'XRAS no longer lists action {action_id} on {request_number}.',
@@ -1065,12 +1070,10 @@ def xras_resubmit(request_number: str, action_id: int):
     """
     context = _safe_action_context(request_number, action_id, mode='resubmit')
     if context['action'] is None:
-        return ('<div class="alert alert-warning mb-0">XRAS no longer lists '
-                'this action.</div>', 200)
+        return _dialog_message('XRAS no longer lists this action.')
     if not context['xa_user']:
-        return ('<div class="alert alert-warning mb-0">This request has no '
-                'role-holder for SAM to act as, so XRAS would refuse the '
-                're-submission.</div>', 200)
+        return _dialog_message('This request has no role-holder for SAM to act as, '
+                               'so XRAS would refuse the re-submission.')
 
     try:
         outcome = remediation.resubmit_action(
@@ -1078,21 +1081,17 @@ def xras_resubmit(request_number: str, action_id: int):
             request_id=context['request_id'], action_id=action_id,
             pi_username=context['xa_user'], operator=current_user.username)
     except XrasWriteNotConfigured:
-        return ('<div class="alert alert-warning mb-0">XRAS writes are '
-                'switched off for this deployment. Nothing was sent.</div>', 200)
+        return _dialog_message('XRAS writes are switched off for this deployment. '
+                               'Nothing was sent.')
 
     if outcome.status != 'verified':
-        from markupsafe import escape
         reason = outcome.error or 'XRAS did not confirm it'
-        # A 400's errors[] ride on the parked exception — render them, they
-        # are the actionable part of a validation refusal. Escaped: this is a
-        # raw-string response, so Jinja's autoescape never sees it.
+        # A 400's errors[] ride on the parked exception: the actionable part of a refusal.
         extra = getattr(outcome.result, 'errors', None)
         if extra:
             reason += ' — ' + '; '.join(str(m) for m in extra)
-        return (f'<div class="alert alert-danger mb-0">Re-submission did not '
-                f'complete: {escape(reason)}. The '
-                f'attempt is recorded in the remediation log.</div>', 200)
+        return _dialog_message(f'Re-submission did not complete: {reason}. The attempt '
+                               'is recorded in the remediation log.', variant='danger')
 
     detail = (f"Sent as {context['xa_user']}. It is now under review in XRAS.")
     if not outcome.patched:
@@ -1367,8 +1366,7 @@ def _resource_form_context(request_number, action_id, resource_id, stage):
         'post_url': url_for('allocations_dashboard.xras_resource_edit',
                             request_number=request_number, action_id=action_id,
                             resource_id=resource_id),
-        'back_url': url_for('allocations_dashboard.xras_request_detail',
-                            request_number=request_number),
+        'back_url': _back_to_detail(request_number),
     }
 
 
@@ -1388,8 +1386,7 @@ def _safe_resource_form_context(request_number, action_id, resource_id, stage):
         'post_url': url_for('allocations_dashboard.xras_resource_edit',
                             request_number=request_number, action_id=action_id,
                             resource_id=resource_id),
-        'back_url': url_for('allocations_dashboard.xras_request_detail',
-                            request_number=request_number),
+        'back_url': _back_to_detail(request_number),
     }
 
 
@@ -1408,7 +1405,7 @@ def xras_resource_form(request_number: str, action_id: int, resource_id: int):
         return _degraded('Editing an amount needs a live read from XRAS, and '
                          'XRAS is not answering.')
     if context is None:
-        return htmx_modal_not_found('Request')
+        return _not_found('Request')
     return render_template(_RESOURCE_FORM, **context)
 
 
@@ -1514,8 +1511,7 @@ def _dates_form_context(request_number, action_id, allocation_date_id=None):
         'write_enabled': xras_write_configured(),
         'post_url': url_for('allocations_dashboard.xras_dates_edit',
                             request_number=request_number, action_id=action_id),
-        'back_url': url_for('allocations_dashboard.xras_request_detail',
-                            request_number=request_number),
+        'back_url': _back_to_detail(request_number),
     }
 
 
@@ -1531,8 +1527,7 @@ def _safe_dates_form_context(request_number, action_id, allocation_date_id=None)
         'end_date': None, 'write_enabled': xras_write_configured(),
         'post_url': url_for('allocations_dashboard.xras_dates_edit',
                             request_number=request_number, action_id=action_id),
-        'back_url': url_for('allocations_dashboard.xras_request_detail',
-                            request_number=request_number),
+        'back_url': _back_to_detail(request_number),
     }
 
 
@@ -1549,7 +1544,7 @@ def xras_dates_form(request_number: str, action_id: int):
         return _degraded('Editing allocation dates needs a live read from '
                          'XRAS, and XRAS is not answering.')
     if context is None:
-        return htmx_modal_not_found('Request')
+        return _not_found('Request')
     return render_template(_DATES_FORM, **context)
 
 
@@ -1647,8 +1642,7 @@ def _attributes_form_context(request_number):
         'write_enabled': xras_write_configured(),
         'post_url': url_for('allocations_dashboard.xras_attributes_edit',
                             request_number=request_number),
-        'back_url': url_for('allocations_dashboard.xras_request_detail',
-                            request_number=request_number),
+        'back_url': _back_to_detail(request_number),
     }
 
 
@@ -1662,8 +1656,7 @@ def _safe_attributes_form_context(request_number):
         'abstract': None, 'write_enabled': xras_write_configured(),
         'post_url': url_for('allocations_dashboard.xras_attributes_edit',
                             request_number=request_number),
-        'back_url': url_for('allocations_dashboard.xras_request_detail',
-                            request_number=request_number),
+        'back_url': _back_to_detail(request_number),
     }
 
 
@@ -1679,7 +1672,7 @@ def xras_attributes_form(request_number: str):
         return _degraded('Editing the request attributes needs a live read '
                          'from XRAS, and XRAS is not answering.')
     if context is None:
-        return htmx_modal_not_found('Request')
+        return _not_found('Request')
     return render_template(_ATTRIBUTES_FORM, **context)
 
 
@@ -1740,8 +1733,7 @@ def _action_fields_form_context(request_number, action_id):
         'write_enabled': xras_write_configured(),
         'post_url': url_for('allocations_dashboard.xras_action_fields_edit',
                             request_number=request_number, action_id=action_id),
-        'back_url': url_for('allocations_dashboard.xras_request_detail',
-                            request_number=request_number),
+        'back_url': _back_to_detail(request_number),
     }
 
 
@@ -1757,8 +1749,7 @@ def _safe_action_fields_form_context(request_number, action_id):
         'user_comments': None, 'write_enabled': xras_write_configured(),
         'post_url': url_for('allocations_dashboard.xras_action_fields_edit',
                             request_number=request_number, action_id=action_id),
-        'back_url': url_for('allocations_dashboard.xras_request_detail',
-                            request_number=request_number),
+        'back_url': _back_to_detail(request_number),
     }
 
 
@@ -1774,7 +1765,7 @@ def xras_action_fields_form(request_number: str, action_id: int):
         return _degraded('Editing the action fields needs a live read from '
                          'XRAS, and XRAS is not answering.')
     if context is None:
-        return htmx_modal_not_found('Request')
+        return _not_found('Request')
     if context.get('_missing'):
         return _degraded(
             f'XRAS no longer lists action {action_id} on {request_number}.',
@@ -1827,12 +1818,6 @@ def xras_action_fields_edit(request_number: str, action_id: int):
 # MANAGE_XRAS — a full-editor operator cannot reach them. The verbs are
 # irreversible in XRAS and were not live-probed; they are fail-visible.
 
-def _inline_alert(message, *, variant='warning'):
-    """A raw 200 alert for a bodiless destructive route (Jinja never sees it)."""
-    from markupsafe import escape
-    return (f'<div class="alert alert-{variant} mb-0">{escape(message)}</div>', 200)
-
-
 @bp.route('/xras_request_delete/<path:request_number>', methods=['POST'])
 @login_required
 @require_permission(Permission.ADMIN_XRAS)
@@ -1850,10 +1835,10 @@ def xras_request_delete(request_number: str):
     try:
         lines = _live_family(request_number)
     except XrasSourceUnavailable:
-        return _inline_alert('XRAS could not be reached, so nothing was changed. '
+        return _dialog_message('XRAS could not be reached, so nothing was changed. '
                              'Try again shortly.')
     if not lines:
-        return _inline_alert('XRAS no longer lists this request.')
+        return _dialog_message('XRAS no longer lists this request.')
 
     deleted, failures = [], []
     for line in lines:
@@ -1868,7 +1853,7 @@ def xras_request_delete(request_number: str):
                 request_id=request_id, pi_username=xa_user,
                 operator=current_user.username)
         except XrasWriteNotConfigured:
-            return _inline_alert('XRAS writes are switched off for this '
+            return _dialog_message('XRAS writes are switched off for this '
                                  'deployment. Nothing was sent.')
         if outcome.status == 'verified':
             deleted.append(request_id)
@@ -1887,7 +1872,7 @@ def xras_request_delete(request_number: str):
             f'({n} request{"" if n == 1 else "s"}).',
             detail='It no longer exists in XRAS and drops off the card.')
 
-    return _inline_alert(
+    return _dialog_message(
         f'Deleted {len(deleted)} of {len(lines)} request(s) for {request_number}; '
         f'these did not complete: {"; ".join(failures)}. The attempts are recorded '
         'in the remediation log.', variant='danger')
@@ -1934,8 +1919,7 @@ def _safe_add_action_form_context(request_number):
         'write_enabled': xras_write_configured(),
         'post_url': url_for('allocations_dashboard.xras_add_action',
                             request_number=request_number),
-        'back_url': url_for('allocations_dashboard.xras_request_detail',
-                            request_number=request_number),
+        'back_url': _back_to_detail(request_number),
     }
 
 

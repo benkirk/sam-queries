@@ -1,0 +1,262 @@
+{#
+  The XRAS page's shared pieces: one state language for its cards and dialogs.
+
+  A state is a quiet tag (`tag`); color is kept for what needs a person
+  (`attention`, `alarm`). An action type is a word, not a badge. Verdicts are an
+  icon and a word from one table, so the chips, the rows and the dialogs agree.
+  Specimens: /dev/gallery.
+#}
+{% from 'dashboards/fragments/project_bits.html' import project_link with context %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+
+{#- A neutral fact about a row (a request status, a role, a queue state). -#}
+{% macro tag(label, title='') -%}
+<span class="badge state-tag"{% if title %} title="{{ title }}"{% endif %}>{{ label }}</span>
+{%- endmacro %}
+
+{#- Something a person should act on. -#}
+{% macro attention(label, title='') -%}
+<span class="badge bg-warning"{% if title %} title="{{ title }}"{% endif %}>{{ label }}</span>
+{%- endmacro %}
+
+{#- Something that went wrong. -#}
+{% macro alarm(label, title='') -%}
+<span class="badge bg-danger"{% if title %} title="{{ title }}"{% endif %}>{{ label }}</span>
+{%- endmacro %}
+
+{% macro type_label(action_type) -%}
+{%- if action_type %}<span class="xras-type">{{ action_type }}</span>
+{%- else %}<span class="text-muted" title="Body could not be parsed">—</span>{% endif -%}
+{%- endmacro %}
+
+{#- Pre-flight verdicts, worst first; _shared._READINESS draws the chips from the same words. -#}
+{%- set _VERDICTS = {
+    'failed':     ('Would fail',    'fa-triangle-exclamation', 'danger'),
+    'manual':     ('Would park',    'fa-circle-pause',         'warning'),
+    'incomplete': ('Incomplete',    'fa-circle-question',      'secondary'),
+    'rechecked':  ('Would succeed', 'fa-circle-check',         'success'),
+} -%}
+
+{#- An icon and its word; icon_only keeps the word in title for a dense cell. count suffixes "(n)". -#}
+{% macro verdict(status, icon_only=False, title=None, count=None) -%}
+{%- set v = _VERDICTS.get(status) -%}
+{%- if v -%}
+<span class="xras-verdict text-{{ v[2] }}-emphasis text-nowrap" title="{{ title or v[0] }}"
+      {%- if icon_only %} aria-label="{{ v[0] }}"{% endif %}><i class="fa-solid {{ v[1] }}" aria-hidden="true"></i>
+{%- if not icon_only %} {{ v[0] }}{% if count %} ({{ count }}){% endif %}{% endif %}</span>
+{%- else -%}
+<span class="xras-verdict text-muted text-nowrap" title="{{ title or 'Not checked' }}"
+      {%- if icon_only %} aria-label="Not checked"{% endif %}><i class="fa-solid fa-rotate" aria-hidden="true"></i>
+{%- if not icon_only %} Not checked{% endif %}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{#- The XRAS request behind a number. configured: open its detail dialog (live read).
+    Otherwise a project link when SAM has one, else plain text; `suspect` warns that the
+    number is neither a project nor a request token. -#}
+{% macro request_link(number, configured, is_project=False, suspect=False, can_view_projects=True) -%}
+{%- set warn = 'Not a SAM project, and not a recognised XRAS request number: the project may have been deleted or renamed' -%}
+{%- if not number -%}<span class="text-muted">—</span>
+{%- elif configured -%}
+<button type="button" class="btn btn-link btn-entity p-0{{ ' text-warning-emphasis' if suspect }}"
+        title="{{ warn if suspect else 'Full request detail (read-only)' }}"
+        data-bs-toggle="modal" data-bs-target="#xrasModal"
+        hx-get="{{ url_for('allocations_dashboard.xras_request_detail', request_number=number) }}"
+        hx-target="#xrasModalBody" hx-swap="innerHTML">
+{%- if suspect %}<i class="fa-solid fa-triangle-exclamation small me-1" aria-hidden="true"></i>{% endif -%}
+<span class="font-monospace">{{ number }}</span></button>
+{%- elif is_project -%}{{ project_link(number, can_view_projects, compact=True, stop_propagation=True) }}
+{%- elif suspect -%}<span class="font-monospace text-warning-emphasis" title="{{ warn }}"><i class="fa-solid fa-triangle-exclamation small me-1" aria-hidden="true"></i>{{ number }}</span>
+{%- else -%}<span class="font-monospace" title="No SAM project by this name yet: normal before the handoff completes">{{ number }}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{#- A card's header count: the rows shown, then what the switch or the window hides. -#}
+{% macro queue_badges(count, noun='', more=0, more_label='', more_title='', outside=0, outside_label='outside the date filter', outside_title='') -%}
+<span class="badge bg-secondary count-badge">{{ count | fmt_number }}{% if noun %} {{ noun }}{% endif %}</span>
+{%- if more %}
+<span class="badge bg-info" title="{{ more_title }}">{{ more | fmt_number }} more with {{ more_label }}</span>
+{%- endif %}
+{%- if outside %}
+<span class="badge bg-warning" title="{{ outside_title }}">{{ outside | fmt_number }} {{ outside_label }}</span>
+{%- endif %}
+{%- endmacro %}
+
+{#- The queue-vs-everything switch, bound to the card's hidden filter form. -#}
+{% macro queue_switch(switch_id, label, checked, form_id, fragment_url, target_id, help='') -%}
+<div class="form-check form-switch small mb-0">
+    <input class="form-check-input" type="checkbox" role="switch"
+           id="{{ switch_id }}" name="show_all" value="1"
+           form="{{ form_id }}" {% if checked %}checked{% endif %}
+           hx-get="{{ fragment_url }}" hx-target="#{{ target_id }}" hx-swap="innerHTML"
+           hx-trigger="change" hx-include="#xras-window-filters, #{{ form_id }}">
+    <label class="form-check-label" for="{{ switch_id }}">{{ label }}</label>
+    {{ help }}
+</div>
+{%- endmacro %}
+
+{#- When a cached card was built: the sweep is hourly, never live. -#}
+{% macro swept_stamp(when, detail='', title='Rendered from what the xras_sweep task last published; not fetched live.') -%}
+<span class="small text-muted ms-auto" title="{{ title }}">swept {{ when | fmt_date }}{% if detail %} · {{ detail }}{% endif %}</span>
+{%- endmacro %}
+
+{#- An empty card: what is (or is not) here, then what to do. caller() is the body. -#}
+{% macro empty_state(headline) -%}
+<div class="xras-empty">
+    <p class="xras-empty-headline">{{ headline }}</p>
+    {%- if caller is defined %}<p class="mb-0">{{ caller() }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{#- An inline "clear the filters" button for an empty state. -#}
+{% macro clear_filters(form_id, text='clear the filters') -%}
+<button type="button" class="btn btn-link btn-sm p-0 align-baseline"
+        data-action="facet-clear-all" data-form-id="{{ form_id }}">{{ text }}</button>
+{%- endmacro %}
+
+{#- A ranked data fix above the remediation table: an icon, then caller()'s body. -#}
+{% macro unblock_strip(icon, strip_id='') -%}
+<div class="xras-strip"{% if strip_id %} id="{{ strip_id }}"{% endif %}>
+    <i class="fa-solid {{ icon }}" aria-hidden="true"></i>
+    <div>{{ caller() }}</div>
+</div>
+{%- endmacro %}
+
+{#- Narrows the remediation table to the rows one strip blocks. -#}
+{% macro show_in_table(form_id, blocker) -%}
+<button type="button" class="btn btn-link btn-sm p-0 align-baseline"
+        data-action="set-filter-submit" data-form-id="{{ form_id }}"
+        data-field="blockers" data-value="{{ blocker }}"
+        title="Filter the table to the requests this blocks">Show in&nbsp;table&nbsp;›</button>
+{%- endmacro %}
+
+{#- ===== The XRAS dialog (#xrasModal, hosted by allocations/xras.html) ===== -#}
+
+{#- A dialog fragment's title, swapped over the shell's out of band. -#}
+{% macro dialog_title(title, icon, meta=None) -%}
+{{ modal_title('xrasModalLabel', title, icon, meta) }}
+{%- endmacro %}
+
+{#- The shell's footer slot, filled out of band; modals.js empties it on the next body swap. -#}
+{% macro dialog_footer() -%}
+<div class="modal-footer" id="xrasModalFooter" hx-swap-oob="true">{{ caller() }}</div>
+{%- endmacro %}
+
+{% macro done_footer(label='Done') -%}
+{% call dialog_footer() %}<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ label }}</button>{% endcall %}
+{%- endmacro %}
+
+{#- Back to the request a sub-dialog came from: a body swap, never a modal toggle (#464). -#}
+{% macro back_link(url, request_number) -%}
+{%- if url %}<a href="#" class="xras-back" hx-get="{{ url }}" hx-target="#xrasModalBody" hx-swap="innerHTML"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Back to request {{ request_number }}</a>{% endif -%}
+{%- endmacro %}
+
+{#- What just happened, said once: a colored icon and a headline; caller() is the detail. -#}
+{% macro outcome(variant, headline) -%}
+{%- set icon = {'success': 'fa-circle-check', 'warning': 'fa-triangle-exclamation', 'danger': 'fa-circle-xmark'}[variant] -%}
+<div class="xras-outcome">
+    <i class="fa-solid {{ icon }} text-{{ variant }}-emphasis" aria-hidden="true"></i>
+    <div>
+        <p class="xras-outcome-headline">{{ headline }}</p>
+        {%- if caller is defined %}{{ caller() }}{% endif %}
+    </div>
+</div>
+{%- endmacro %}
+
+{#- A dialog's small section label. -#}
+{% macro section_label(text) -%}<h6 class="xras-section-label">{{ text }}</h6>{%- endmacro %}
+
+{%- set WHY_OFF = 'XRAS writes are switched off for this deployment (XRAS_WRITE_ENABLED).' -%}
+
+{#- A write inside the dialog: an icon btn-row that swaps the body, disabled with its
+    reason when writes are off. confirm= routes it through the shared confirm dialog. -#}
+{% macro write_button(verb, icon, url, write_enabled, post=False, variant='', confirm=None, confirm_title='', confirm_label='') -%}
+<button type="button" class="btn btn-row{{ (' btn-row-' ~ variant) if variant }}" aria-label="{{ verb }}"
+        title="{{ verb if write_enabled else WHY_OFF }}"{% if not write_enabled %} disabled{% endif %}
+        {{ 'hx-post' if post else 'hx-get' }}="{{ url }}" hx-target="#xrasModalBody" hx-swap="innerHTML"
+        {%- if confirm %} hx-confirm="{{ confirm }}" data-confirm-title="{{ confirm_title }}"
+        data-confirm-label="{{ confirm_label }}" data-confirm-variant="danger"{% endif %}><i class="fa-solid fa-{{ icon }}" aria-hidden="true"></i></button>
+{%- endmacro %}
+
+{#- A consequential verb, worded, in the dialog's footer (Withdraw, Renew, Delete, Merge). -#}
+{% macro footer_verb(label, url, write_enabled, post=False, tone='secondary', confirm=None, confirm_title='', confirm_label='', confirm_variant='danger', icon=None) -%}
+<button type="button" class="btn btn-{{ 'outline-' if tone != 'secondary' }}{{ tone }}"
+        {% if not write_enabled %}disabled title="{{ WHY_OFF }}"{% endif %}
+        {{ 'hx-post' if post else 'hx-get' }}="{{ url }}" hx-target="#xrasModalBody" hx-swap="innerHTML"
+        {%- if confirm %} hx-confirm="{{ confirm }}" data-confirm-title="{{ confirm_title }}"
+        data-confirm-label="{{ confirm_label }}" data-confirm-variant="{{ confirm_variant }}"{% endif %}>
+{%- if icon %}<i class="fa-solid fa-{{ icon }} me-1" aria-hidden="true"></i>{% endif %}{{ label }}</button>
+{%- endmacro %}
+
+{#- A figure in the house compact form; when that rounds, the exact value is one hover,
+    tap or focus away (a Bootstrap tooltip, since a bare title never shows on a phone). -#}
+{% macro figure(amount, units='') -%}
+{%- if amount is none -%}<span class="text-muted">—</span>
+{%- else -%}
+{%- set shown = amount | float | fmt_number -%}
+{%- set exact = amount | float | fmt_number(raw=True) -%}
+{%- if shown != exact -%}
+<span class="xras-figure" tabindex="0" data-bs-toggle="tooltip" data-bs-title="{{ exact }}{{ (' ' ~ units) if units }}">{{ shown }}</span>
+{%- else -%}{{ shown }}{%- endif -%}
+{%- endif -%}
+{%- endmacro %}
+
+{#- An amount that is its own editor: the figure is the button; Save posts to `url`
+    (stage + the cell's comment ride along, so a save never clears the comment).
+    static/js/xras.js swaps the figure for the form and back. -#}
+{% macro amount_editor(amount, url, stage, comment, label, write_enabled, form_url=None, units='') -%}
+{%- set shown = (amount | float | fmt_number) if amount is not none else '—' -%}
+{%- set exact = ((amount | float | fmt_number(raw=True)) ~ ((' ' ~ units) if units else '')) if amount is not none else '' -%}
+{%- if not write_enabled -%}{{ figure(amount, units) }}
+{%- else -%}
+<span class="xras-amount" data-xras-amount>
+    <button type="button" class="xras-amount-show" data-action="xras-amount-edit"
+            title="{{ exact }}: edit the {{ stage | lower }} amount" aria-label="Edit the {{ stage | lower }} amount for {{ label }}, now {{ exact }}">{{ shown }}<i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+    <form class="xras-amount-form" hx-post="{{ url }}" hx-target="#xrasModalBody" hx-swap="innerHTML">
+        <input type="hidden" name="stage" value="{{ stage }}">
+        <input type="hidden" name="comment" value="{{ comment or '' }}">
+        <input type="number" name="amount" class="form-control form-control-sm" min="0" step="any" required
+               value="{{ amount if amount is not none else '' }}" aria-label="{{ stage }} amount for {{ label }}">
+        <button type="submit" class="btn btn-row btn-row-success" title="Save" aria-label="Save"><i class="fa-solid fa-check" aria-hidden="true"></i></button>
+        <button type="button" class="btn btn-row" data-action="xras-amount-cancel" title="Cancel (Esc)" aria-label="Cancel"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+        {%- if form_url %}
+        <button type="button" class="btn btn-row" title="Edit with a comment…" aria-label="Edit the {{ stage | lower }} amount for {{ label }} with a comment"
+                hx-get="{{ form_url }}" hx-target="#xrasModalBody" hx-swap="innerHTML"><i class="fa-solid fa-comment-dots" aria-hidden="true"></i></button>
+        {%- endif %}
+    </form>
+</span>
+{%- endif -%}
+{%- endmacro %}
+
+{#- XRAS-side identity, never progress. mergeable wins: SAM already holds the email.
+    A reconciled placeholder is a contradiction (flagged without the merge that
+    reconciling is), so it never clears on its own. -#}
+{% macro identity_tag(is_reconciled, placeholder, mergeable=False, unknown='—') -%}
+{%- if mergeable -%}{{ tag('mergeable', title="SAM already holds this person's email on an active account: ready to merge") }}
+{%- elif is_reconciled is none -%}<span class="text-muted" title="XRAS was not asked, or does not say">{{ unknown }}</span>
+{%- elif is_reconciled and placeholder -%}{{ alarm('misidentified', title='Misidentified: XRAS flagged this placeholder as reconciled without merging it, so it keeps sending the throwaway username and the handoff cannot complete.') }}
+{%- elif is_reconciled -%}{{ tag('identified', title='XRAS has linked this username to a real identity, so its person detail is usable for account creation. It does NOT mean the account exists.') }}
+{%- else -%}{{ attention('unidentified', title='XRAS has not reconciled this identity either: there is no confirmed person behind the username yet') }}
+{%- endif -%}
+{%- endmacro %}
+
+{#- The writes-off fact, said once at the top of a form, from the one constant. -#}
+{% macro writes_off(write_enabled) -%}
+{%- if not write_enabled %}
+<ul class="modal-facts"><li><i class="fa-solid fa-lock" aria-hidden="true"></i>{{ WHY_OFF }} Nothing here can be saved.</li></ul>
+{%- endif -%}
+{%- endmacro %}
+
+{#- A form dialog's footer: Back (or Cancel) quiet at the start, the verb at the end,
+    bound to the body's form by `form=` (the footer sits outside it). -#}
+{% macro form_footer(form_id, back_url, write_enabled, verb='Save', verb_class='btn-primary', back_label='Back', blocked=None, icon=None) -%}
+{% call dialog_footer() %}
+<div class="xras-footer-start">
+    {%- if back_url %}<button type="button" class="btn btn-secondary" hx-get="{{ back_url }}" hx-target="#xrasModalBody" hx-swap="innerHTML">{{ back_label }}</button>
+    {%- else %}<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ back_label }}</button>{% endif %}
+</div>
+{%- set _why = WHY_OFF if not write_enabled else blocked -%}
+<button type="submit" form="{{ form_id }}" class="btn {{ verb_class }}"{% if _why %} disabled title="{{ _why }}"{% endif %}>
+{%- if icon %}<i class="fa-solid fa-{{ icon }} me-1" aria-hidden="true"></i>{% endif %}{{ verb }}</button>
+{% endcall %}
+{%- endmacro %}
