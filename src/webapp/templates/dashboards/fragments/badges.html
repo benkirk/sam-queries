@@ -107,9 +107,10 @@
 
   The table rows keep theirs, which is where the explanation is actually useful.
 #}
-{% macro status_badge(state, extra='', small=False, label=None, tooltip=True) -%}
+{#- quiet=True drops the hue for a neutral state-tag: a log where most rows are fine. -#}
+{% macro status_badge(state, extra='', small=False, label=None, tooltip=True, quiet=False) -%}
 {%- set key = state|lower -%}
-{%- set variant = _STATUS_VARIANTS.get(key, 'bg-secondary') -%}
+{%- set variant = 'state-tag' if quiet else _STATUS_VARIANTS.get(key, 'bg-secondary') -%}
 {%- set text = label if label is not none else _STATUS_LABELS.get(key, state) -%}
 {%- set tip = _STATUS_TOOLTIPS.get(key) if tooltip else None -%}
 <span class="badge {{ variant }}{% if extra %} {{ extra }}{% endif %}"

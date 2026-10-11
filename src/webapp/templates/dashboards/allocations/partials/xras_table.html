@@ -69,7 +69,8 @@
                     {% if r.request_number %}{{ copy_button(r.request_number, label='Copy request number', inline=true) }}{% endif %}
                 </td>
                 <td class="text-nowrap">
-                    {{ status_badge(r.status) }}
+                    {# Color only where a person must look: failed, parked, unmapped. #}
+                    {{ status_badge(r.status, quiet=r.status not in ('failed', 'manual', 'unmapped')) }}
                     {% if r.http_status %}
                     {# 400 vs 422 both read 'failed'; only the code tells them apart. #}
                     <span class="text-muted small ms-1">{{ r.http_status }}</span>
