@@ -370,8 +370,8 @@
 /* A dialog with many verbs: smaller footer buttons than the house two-button
    size, so six verbs fit on a line or two instead of three. */
 #xrasModalFooter .btn {
-    font-size: 0.875rem;
-    padding: 0.375rem 0.875rem;
+    font-size: 0.8125rem;
+    padding: 0.3rem 0.7rem;
 }
 
 /* A rarely used form behind its summary. */

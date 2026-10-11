@@ -265,7 +265,7 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/allocations/partials/transactions_table.html': [
         'auditDetailsModal', 'auditDetailsModalBody'],
     # The XRAS trio loads only into dashboards/allocations/xras.html, which
-    # includes partials/audit_details_modal.html itself and inherits
+    # includes the XRAS dialog (modal_scaffold) itself and inherits
     # #projectDetailsModal from base_allocations.html — same arrangement as the
     # transactions and adjustments tables above.
     'dashboards/allocations/partials/xras_action_details_modal.html': [
@@ -278,14 +278,14 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'xrasModalBody'],
     # The pending card's action buttons open the shared audit modal for the
     # notify preview, the dismiss form and the activation history. Same shell,
-    # same single host page (xras.html includes partials/audit_details_modal.html).
+    # same single host page (xras.html includes the XRAS dialog (modal_scaffold)).
     'dashboards/allocations/partials/xras_activity_card.html': [
         'xrasModal', 'xrasModalBody'],
     'dashboards/allocations/partials/xras_pending_event_form.html': [
         'xrasModalBody'],
     # The Remediations family. Every one of these is reached only from
     # `xras.html`, the same single host page as the pending card above, and it
-    # includes partials/audit_details_modal.html — verified by grepping the
+    # includes the XRAS dialog (modal_scaffold) — verified by grepping the
     # routes in `xras_remediation_routes.py`, all of which render into that
     # page's fragments and nowhere else.
     #
@@ -302,25 +302,20 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/fragments/xras_bits.html': [
         'xrasModal', 'xrasModalBody'],
     # The shared roster/actions strip, included only by the read-only detail
-    # modal. Its controls swap #auditDetailsModalBody in place and carry NO
+    # modal. Its controls swap #xrasModalBody in place and carry NO
     # data-bs-toggle="modal" — clicked inside the open modal that would hide it —
     # so it references the body id alone, not the modal shell.
     'dashboards/allocations/partials/_xras_remediation_actions.html': [
         'xrasModalBody'],
     # The read-only + editor detail modal and its two editor forms, all reached
     # only from xras.html (same host page as the card) and all rendering into
-    # #auditDetailsModalBody. The detail modal's Requested-stage editors and the
+    # #xrasModalBody. The detail modal's Requested-stage editors and the
     # forms' Back/Save all target that body.
     'dashboards/allocations/partials/xras_request_detail.html': [
         'xrasModalBody'],
-    # The focused push-readiness modal a verdict badge opens — same body, reached
-    # only from xras.html. Snapshot-only, its "Open the full request" link and the
-    # shared shell's footer target the body in place, no toggle.
-    'dashboards/allocations/partials/xras_readiness_modal.html': [
-        'xrasModalBody'],
     # The shared operator-overrides controls, included by BOTH the readiness
     # modal and the read-only detail modal above — both reached only from
-    # xras.html and both swapped into #auditDetailsModalBody. Its set/clear forms
+    # xras.html and both swapped into #xrasModalBody. Its set/clear forms
     # target that body in place (a `return_to` field routes the re-render back to
     # whichever modal invoked them), no data-bs-toggle.
     'dashboards/allocations/partials/_xras_override_controls.html': [
@@ -330,18 +325,6 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # or the Accounts-Needed card (data-bs-toggle from the closed modal); its
     # Back link and its in-panel Request links target the body, no toggle.
     'dashboards/allocations/partials/xras_user_detail.html': [
-        'xrasModalBody'],
-    # The shared modal-shell macros (title / back link / done footer) for the
-    # three detail modals. Loaded via {% import %}, which the closure walker
-    # does not follow, so it reads as a runtime fragment; its back_link macro
-    # targets #auditDetailsModalBody. Used only by the three XRAS detail modals,
-    # all rendered only into xras.html, which ships the shell.
-    #
-    # xras_opportunity_detail.html is no longer listed: its only shell target
-    # was the Back link, which now lives in this shared shell. xras_request_detail
-    # and xras_user_detail keep their entries — they still target the body
-    # directly (the editors / the in-panel Request links).
-    'dashboards/allocations/partials/xras_modal_shell.html': [
         'xrasModalBody'],
     'dashboards/allocations/partials/xras_resource_form.html': [
         'xrasModalBody'],

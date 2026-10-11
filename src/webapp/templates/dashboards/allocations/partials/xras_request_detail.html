@@ -255,32 +255,32 @@
     <button type="button" class="btn btn-secondary"
             title="Re-run SAM's push-readiness pre-flight for this request. Nothing is applied."
             hx-post="{{ url_for('allocations_dashboard.xras_recheck_request', request_number=request_number) }}"
-            hx-swap="none">Re-check</button>
+            hx-swap="none"><i class="fa-solid fa-rotate me-1" aria-hidden="true"></i>Re-check</button>
     {% if latest_action and latest_action.can_withdraw %}
     {{ footer_verb('Withdraw…',
                    url_for('allocations_dashboard.xras_withdraw_form', request_number=request_number, action_id=latest_action.action_id),
-                   write_enabled) }}
+                   write_enabled, icon='rotate-left') }}
     {% elif latest_action and latest_action.can_resubmit %}
     {{ footer_verb('Re-submit…',
                    url_for('allocations_dashboard.xras_resubmit_form', request_number=request_number, action_id=latest_action.action_id),
-                   write_enabled) }}
+                   write_enabled, icon='paper-plane') }}
     {% endif %}
     {% for username in merges %}
     {{ footer_verb('Resolve identity (merge)…' if merges | length == 1 else 'Merge ' ~ username ~ '…',
                    url_for('allocations_dashboard.xras_merge_form', username=username),
-                   write_enabled) }}
+                   write_enabled, icon='code-merge') }}
     {% endfor %}
     {% if is_xras_admin %}
-    {{ footer_verb('Add action…', url_for('allocations_dashboard.xras_add_action_form', request_number=request_number), write_enabled) }}
+    {{ footer_verb('Add action…', url_for('allocations_dashboard.xras_add_action_form', request_number=request_number), write_enabled, icon='plus') }}
     {{ footer_verb('Renew…', url_for('allocations_dashboard.xras_request_renew', request_number=request_number),
                    write_enabled, post=True,
                    confirm='Spawn a renewal of ' ~ request_number ~ ' in XRAS?', confirm_title='Renew request in XRAS',
-                   confirm_ok='Renew', confirm_variant='warning') }}
+                   confirm_ok='Renew', confirm_variant='warning', icon='repeat') }}
     {# Deletes the whole project tree, so the confirm names the full scope. #}
     {{ footer_verb('Delete project…', url_for('allocations_dashboard.xras_request_delete', request_number=request_number),
                    write_enabled, post=True, tone='danger',
                    confirm='DELETE the ENTIRE project ' ~ request_number ~ ' from XRAS: ' ~ (family.requests | length) ~ ' request(s) and ' ~ (family.timeline | length) ~ ' action(s). This is IRREVERSIBLE: the whole allocation history is removed.',
-                   confirm_title='Delete the whole project in XRAS', confirm_ok='Delete permanently') }}
+                   confirm_title='Delete the whole project in XRAS', confirm_ok='Delete permanently', icon='trash-can') }}
     {% endif %}
 </div>
 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Done</button>

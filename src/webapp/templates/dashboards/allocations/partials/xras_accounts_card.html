@@ -3,7 +3,7 @@
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_row %}
 {% from 'dashboards/fragments/xras_person_detail.html' import person_detail %}
-{% from 'dashboards/fragments/xras_bits.html' import alarm, attention, empty_state, queue_badges, request_link, swept_stamp, tag, type_label, verdict %}
+{% from 'dashboards/fragments/xras_bits.html' import empty_state, identity_tag, queue_badges, request_link, swept_stamp, tag, type_label, verdict %}
 {#
   Pending Users: everyone who needs a SAM account before an XRAS handoff can
   land, from both feeds unioned on the username (received pushes + the sweep's
@@ -195,8 +195,8 @@
                     </td>
                     {% endif %}
 
-                    {# XRAS-side IDENTITY, not progress: a row leaves this list when its
-                       `users` row is active. No toggle when it links the XRAS user. #}
+                    {# A row leaves this list when its `users` row is active. No toggle:
+                       the state links the XRAS user. #}
                     <td class="text-nowrap">
                         {% if configured %}
                         <a href="#" class="text-decoration-none" title="View this XRAS user"
@@ -205,19 +205,7 @@
                                               username=row.username) }}"
                            hx-target="#xrasModalBody" hx-swap="innerHTML">
                         {% endif %}
-                        {% if row.remedy == 'merge' %}
-                        {{ tag('mergeable', title="SAM already holds this person's email on an active account: ready to merge") }}
-                        {% elif row.is_reconciled is none %}
-                        <span class="text-muted" title="XRAS was not asked">—</span>
-                        {% elif row.is_reconciled and row.placeholder %}
-                        {# WARNING: a contradiction, not a good state: flagged reconciled
-                           without the merge that reconciling is, so it never clears. #}
-                        {{ alarm('misidentified', title='Misidentified: XRAS flagged this placeholder as reconciled without merging it, so it keeps sending the throwaway username and the handoff cannot complete. Expand the row to resolve it.') }}
-                        {% elif row.is_reconciled %}
-                        {{ tag('identified', title='XRAS has linked this username to a real identity, so the person detail here is usable for account creation. It does NOT mean the account exists.') }}
-                        {% else %}
-                        {{ attention('unidentified', title='XRAS has not reconciled this identity either: there is no confirmed person behind the username yet') }}
-                        {% endif %}
+                        {{ identity_tag(row.is_reconciled, row.placeholder, mergeable=(row.remedy == 'merge')) }}
                         {% if configured %}</a>{% endif %}
                     </td>
 

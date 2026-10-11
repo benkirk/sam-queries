@@ -179,12 +179,13 @@
 {%- endmacro %}
 
 {#- A consequential verb, worded, in the dialog's footer (Withdraw, Renew, Delete, Merge). -#}
-{% macro footer_verb(label, url, write_enabled, post=False, tone='secondary', confirm=None, confirm_title='', confirm_ok='', confirm_variant='danger') -%}
+{% macro footer_verb(label, url, write_enabled, post=False, tone='secondary', confirm=None, confirm_title='', confirm_ok='', confirm_variant='danger', icon=None) -%}
 <button type="button" class="btn btn-{{ 'outline-' if tone != 'secondary' }}{{ tone }}"
         {% if not write_enabled %}disabled title="{{ WHY_OFF }}"{% endif %}
         {{ 'hx-post' if post else 'hx-get' }}="{{ url }}" hx-target="#xrasModalBody" hx-swap="innerHTML"
         {%- if confirm %} hx-confirm="{{ confirm }}" data-confirm-title="{{ confirm_title }}"
-        data-confirm-ok="{{ confirm_ok }}" data-confirm-variant="{{ confirm_variant }}"{% endif %}>{{ label }}</button>
+        data-confirm-ok="{{ confirm_ok }}" data-confirm-variant="{{ confirm_variant }}"{% endif %}>
+{%- if icon %}<i class="fa-solid fa-{{ icon }} me-1" aria-hidden="true"></i>{% endif %}{{ label }}</button>
 {%- endmacro %}
 
 {#- An amount that is its own editor: the figure is the button; Save posts to `url`
@@ -210,5 +211,17 @@
         {%- endif %}
     </form>
 </span>
+{%- endif -%}
+{%- endmacro %}
+
+{#- XRAS-side identity, never progress. mergeable wins: SAM already holds the email.
+    A reconciled placeholder is a contradiction (flagged without the merge that
+    reconciling is), so it never clears on its own. -#}
+{% macro identity_tag(is_reconciled, placeholder, mergeable=False, unknown='—') -%}
+{%- if mergeable -%}{{ tag('mergeable', title="SAM already holds this person's email on an active account: ready to merge") }}
+{%- elif is_reconciled is none -%}<span class="text-muted" title="XRAS was not asked, or does not say">{{ unknown }}</span>
+{%- elif is_reconciled and placeholder -%}{{ alarm('misidentified', title='Misidentified: XRAS flagged this placeholder as reconciled without merging it, so it keeps sending the throwaway username and the handoff cannot complete.') }}
+{%- elif is_reconciled -%}{{ tag('identified', title='XRAS has linked this username to a real identity, so its person detail is usable for account creation. It does NOT mean the account exists.') }}
+{%- else -%}{{ attention('unidentified', title='XRAS has not reconciled this identity either: there is no confirmed person behind the username yet') }}
 {%- endif -%}
 {%- endmacro %}
