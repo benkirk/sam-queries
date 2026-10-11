@@ -4,6 +4,7 @@
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_xras_attention_queue with context %}
 {% from 'dashboards/fragments/project_bits.html' import project_link with context %}
+{% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {% from 'dashboards/fragments/table_bits.html' import pane_toolbar %}
 {% from 'dashboards/fragments/xras_bits.html' import alarm, attention, clear_filters, empty_state, queue_badges, queue_switch, tag, type_label %}
 {#
@@ -69,10 +70,10 @@
         <table class="table table-sm table-hover mb-0 align-middle xras-table">
             <thead class="table-subtle">
                 <tr>
-                    <th class="col-shrink">Project</th>
+                    <th class="col-shrink">{{ sort_header('project', 'Project') }}</th>
                     <th>Title</th>
                     <th class="col-shrink">Action</th>
-                    <th class="col-shrink">Received</th>
+                    <th class="col-shrink">{{ sort_header('received', 'Received') }}</th>
                     {# Only under Everything: in the queue a row is Active or Needs
                        activation, and the latter rides on the Action cell. #}
                     {% if show_all %}

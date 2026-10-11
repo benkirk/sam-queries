@@ -67,6 +67,12 @@ def _person_sort_key(row):
     return (name or row.get('username') or '').casefold()
 
 
+#: Sortable non-facet columns of the activation card; Action and State are chips.
+_ACTIVITY_SORT = {
+    'project': lambda r: (r.get('projcode') or '').casefold(),
+    'received': lambda r: r.get('received_time'),
+}
+
 _ACCOUNTS_SORT = {
     'username': lambda r: (r.get('username') or '').casefold(),
     'person': _person_sort_key,
@@ -232,6 +238,8 @@ def xras_pending_fragment():
 
     facet_values = ACTIVITY_FACETS.strips(rows, selected)
     rows = ACTIVITY_FACETS.apply(rows, selected)
+    sort = read_sort(request.args, set(_ACTIVITY_SORT), default_dir='desc')
+    rows = sort_rows(rows, sort, _ACTIVITY_SORT)
 
     recipients = {}
     may_activate = {}
@@ -249,6 +257,8 @@ def xras_pending_fragment():
         recipients=recipients,
         may_activate=may_activate,
         may_manage=may_manage,
+        sort=sort,
+        sortable_columns=set(_ACTIVITY_SORT),
         facet_values=facet_values,
         selected=selected,
         show_all=show_all,

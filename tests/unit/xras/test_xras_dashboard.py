@@ -1207,3 +1207,22 @@ class TestActivityRowExpansion:
 # `TestSignedIncrements` moved to tests/unit/xras/test_xras_notices_builder.py
 # along with the helper it exercises — it was the one white-box test in this
 # file, reaching past the routes into a private blueprint symbol.
+
+
+class TestActivitySort:
+    """The activation card sorts server-side like its three siblings."""
+
+    def test_project_and_received_sort(self, auth_client, monkeypatch):
+        from datetime import datetime
+        from webapp.dashboards.allocations.xras import card_routes
+        rows = [dict(TestActivityRowExpansion()._row(), action_log_id=i, projcode=code,
+                     received_time=datetime(2026, 10, day), needs_activation=True,
+                     tags=['needs_activation'])
+                for i, (code, day) in enumerate((('BBBB0002', 9), ('AAAA0001', 10)), 1)]
+        monkeypatch.setattr(card_routes, 'get_xras_activity', lambda *a, **k: rows)
+        url = '/allocations/xras_pending_fragment'
+        body = auth_client.get(url, query_string={'sort_by': 'project', 'sort_dir': 'asc'}).get_data(as_text=True)
+        assert body.index('AAAA0001') < body.index('BBBB0002')
+        body = auth_client.get(url, query_string={'sort_by': 'received', 'sort_dir': 'asc'}).get_data(as_text=True)
+        assert body.index('BBBB0002') < body.index('AAAA0001')
+        assert 'data-sort-by="received"' in body

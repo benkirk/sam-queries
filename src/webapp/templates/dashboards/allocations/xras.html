@@ -63,7 +63,7 @@
 </form>
 
 {# Per-pane chip state, from the chips' own FacetSet; sort rides the form too. #}
-{{ facet_form('xras-activity-filters', activity_facets) }}
+{{ facet_form('xras-activity-filters', activity_facets, sort=True) }}
 {{ facet_form('xras-accounts-filters', account_facets, sort=True) }}
 {% if has_permission(Permission.MANAGE_XRAS) %}
 {{ facet_form('xras-remediation-filters', remediation_facets, sort=True) }}
