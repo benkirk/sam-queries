@@ -169,7 +169,7 @@ projects_data = ProjectListSchema(many=True).dump(projects)
 }
 ```
 
-For detailed schema documentation, see [CLAUDE.md](../../CLAUDE.md#serialization-schemas-samschemas).
+For detailed schema documentation, see [webapp-api.md](../../.claude/rules/webapp-api.md#serialization-schemas-samschemas).
 
 ## Authentication & Authorization
 
@@ -586,8 +586,9 @@ Check:
 
 ## Further Documentation
 
-- **../../CLAUDE.md**: Project conventions (form validation, route protection,
-  display formatting, testing)
+- **../../CLAUDE.md**: Project conventions (route protection, writes, testing);
+  topic detail (form validation, static assets, display formatting) in
+  `.claude/rules/`
 - **../cli/README.md**: CLI architecture (shared conventions with the webapp)
 - **Flask-Login docs**: https://flask-login.readthedocs.io/
 

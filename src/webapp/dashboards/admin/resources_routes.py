@@ -636,7 +636,7 @@ class _DiskRootFormHandler(HtmxFormHandler):
 
     def form_input(self):
         # Inject explicit booleans for checkboxes (absent from request.form
-        # when unchecked) per CLAUDE.md §9.
+        # when unchecked) per .claude/rules/webapp-ui.md §9.
         raw = {k: v for k, v in request.form.items() if v != ''}
         raw['charging_exempt'] = 'charging_exempt' in request.form
         raw['active'] = 'active' in request.form

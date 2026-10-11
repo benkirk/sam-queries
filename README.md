@@ -668,8 +668,8 @@ sam-queries/
 - **REST API endpoints** - See [src/webapp/README.md](src/webapp/README.md#rest-api)
 - **[docs/apis/SYSTEMS_INTEGRATION_APIs.md](docs/apis/SYSTEMS_INTEGRATION_APIs.md)** - Directory access, project access & fairshare tree APIs (legacy SAM replacement for LDAP/PBS)
 - **[docs/apis/CHARGING_INTEGRATION.md](docs/apis/CHARGING_INTEGRATION.md)** - HPC charge ingest integration
-- **Marshmallow schemas** - See [CLAUDE.md](CLAUDE.md#serialization-schemas-samschemas)
-- **ORM models** - See [CLAUDE.md](CLAUDE.md#key-orm-models)
+- **Marshmallow schemas** - See [webapp-api.md](.claude/rules/webapp-api.md#serialization-schemas-samschemas)
+- **ORM models** - See [orm.md](.claude/rules/orm.md#key-orm-models)
 
 ---
 
@@ -952,7 +952,7 @@ For additional troubleshooting, see **[CONTRIBUTING.md](CONTRIBUTING.md#troubles
    - **Docker issues** → [docs/DOCKER_TROUBLESHOOTING.md](docs/DOCKER_TROUBLESHOOTING.md)
    - **Database switching** → [docs/DATABASE_SWITCHING.md](docs/DATABASE_SWITCHING.md)
    - **Credential setup** → [docs/CREDENTIALS.md](docs/CREDENTIALS.md)
-   - **ORM patterns** → [CLAUDE.md](CLAUDE.md#key-orm-models)
+   - **ORM patterns** → [orm.md](.claude/rules/orm.md#key-orm-models)
    - **API usage** → [src/webapp/README.md](src/webapp/README.md#rest-api)
    - **Testing** → [README.md § Testing](#testing)
 

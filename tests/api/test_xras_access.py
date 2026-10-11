@@ -551,7 +551,7 @@ def no_handlers():
     Needed by any capture-off test that is *not* about a handler's behavior. A
     registered handler writes through ``management_transaction``, which **commits** —
     on the route's own connection, outside the suite's per-test SAVEPOINT — so it would
-    leak rows into the shared xdist database. House convention (CLAUDE.md § Testing)
+    leak rows into the shared xdist database. House convention (.claude/rules/testing.md)
     puts happy-path writes at the model layer for exactly this reason; the HTTP tier
     covers auth, validation, status codes and the audit-row transitions.
 

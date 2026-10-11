@@ -821,7 +821,7 @@ has a currently-active allocation. Consumed by DASG for disk provisioning.
 **This is the reference for the "legacy shape via a declared schema" pattern**:
 the camelCase contract is declared with marshmallow `data_key`
 (`DiskQuotaSchema`), not hand-built in the query layer — unlike the older
-legacy-compat endpoints (see CLAUDE.md § API, "Output shaping").
+legacy-compat endpoints (see .claude/rules/webapp-api.md, "Output shaping").
 
 ### Endpoints
 

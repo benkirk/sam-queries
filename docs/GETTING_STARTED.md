@@ -217,7 +217,7 @@ We use a **three-tier schema architecture** for optimal API performance:
 - Matches `sam-search` CLI output
 - Aggregates charges from multiple summary tables
 - Handles manual adjustments
-- See CLAUDE.md "Marshmallow-SQLAlchemy Schemas" section for details
+- See .claude/rules/webapp-api.md "Serialization Schemas" for details
 
 ---
 

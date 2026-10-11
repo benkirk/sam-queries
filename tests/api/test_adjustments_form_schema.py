@@ -2,7 +2,7 @@
 
 The schema is pure input coercion + shape validation. It does NOT validate
 that the submitted ``charge_adjustment_type_id`` is in the supported set —
-that's a DB-backed membership check the route owns (see CLAUDE.md §9).
+that's a DB-backed membership check the route owns (see .claude/rules/webapp-ui.md §9).
 """
 import pytest
 from marshmallow import ValidationError
@@ -110,7 +110,7 @@ class TestRequiredFields:
 class TestTypeIdIsShapeOnly:
     """Schema deliberately does not gate charge_adjustment_type_id on the
     webapp's supported set — that check requires a DB lookup and lives in
-    the route (see CLAUDE.md §9). The schema only coerces to int."""
+    the route (see .claude/rules/webapp-ui.md §9). The schema only coerces to int."""
 
     @pytest.mark.parametrize('type_id_str', ['1', '2', '3', '4', '5', '6'])
     def test_any_positive_int_accepted(self, type_id_str):

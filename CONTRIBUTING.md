@@ -351,7 +351,7 @@ pytest-xdist against the isolated `mysql-test` container.
 #### Adding API Endpoints
 
 1. **Create Marshmallow schema** in `src/sam/schemas/` (serialization) or
-   `src/sam/schemas/forms/` (POST/PUT form validation — see CLAUDE.md §9
+   `src/sam/schemas/forms/` (POST/PUT form validation — see .claude/rules/webapp-ui.md §9
    for the handler tiers: `handle_htmx_form_post`, `CrudSpec`,
    `HtmxFormHandler`):
    ```python
@@ -635,13 +635,9 @@ class Account(Base):
 
 ### Documentation Resources
 
-- **[CLAUDE.md](CLAUDE.md)** - Comprehensive technical reference:
-  - Detailed ORM model documentation
-  - Database schema patterns
-  - Marshmallow-SQLAlchemy schema usage
-  - Allocation balance calculation logic
-  - Common queries and examples
-  - Known issues and gotchas
+- **[CLAUDE.md](CLAUDE.md)** - Cross-cutting conventions and pitfalls, plus an
+  index of the topic rules in `.claude/rules/` (ORM models, API and
+  serialization schemas, forms and htmx, notifications, charts, CLI, testing)
 
 - **Inline documentation** - Most modules have detailed docstrings
   ```bash
