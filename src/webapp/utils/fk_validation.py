@@ -1,7 +1,7 @@
 """Foreign-key existence checks for HTMX/API form handlers.
 
 Form schemas in `sam.schemas.forms` can validate shape and types but cannot
-touch the database — per CLAUDE.md §9, FK existence checks stay in routes.
+touch the database — per .claude/rules/webapp-ui.md §9, FK existence checks stay in routes.
 This module gives routes a canonical way to express those checks so they
 integrate with `handle_htmx_form_post` error flow.
 

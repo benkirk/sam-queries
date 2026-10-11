@@ -40,7 +40,7 @@ class CreateOutageForm(HtmxFormSchema):
     """Report a new system outage.
 
     ``system_name`` is resolved to a ``system_id`` by the model's
-    ``system_name`` setter (a DB hit) — that stays in the route per CLAUDE.md §9.
+    ``system_name`` setter (a DB hit) — that stays in the route per .claude/rules/webapp-ui.md §9.
     """
     system_name = f.Str(required=True, validate=v.OneOf(_SYSTEMS))
     title = f.Str(required=True, validate=v.Length(min=1, max=255))

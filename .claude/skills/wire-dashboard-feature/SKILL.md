@@ -10,7 +10,7 @@ description: >-
 # Wire a dashboard feature
 
 An ordered checklist for adding or changing UI on a SAM dashboard page: the
-*procedure* that applies the rules in the always-loaded `CLAUDE.md`, plus the traps
+*procedure* that applies the rules in `CLAUDE.md` and `.claude/rules/webapp-ui.md`, plus the traps
 that only bite at author time. Each step names the section that holds the full rule.
 
 Work top to bottom. Steps 1–3 are reuse and formatting; 4 is the write path;
@@ -85,7 +85,7 @@ code. Prefer the shared link macros over hand-rolled anchors.
 Route every number, date, percentage, and size through `sam.fmt` — the Jinja
 filters `fmt_number`, `fmt_date`, `fmt_size`, `fmt_pct`, `fmt_hours`, and the
 rest. Never `strftime` or a raw `'{:,}'` in a template or in CLI display code.
-See CLAUDE.md § Display Formatting.
+See .claude/rules/formatting.md.
 
 ## 4. Writes (POST / PUT)
 
@@ -93,9 +93,9 @@ See CLAUDE.md § Display Formatting.
   view receives the resolved object, not the id (CLAUDE.md §8).
 - Load input through a schema in `sam.schemas.forms` — add one if none fits.
   No inline `strptime` / `float()` / `int()` ladders, no manual empty-string
-  dropping (CLAUDE.md §9).
+  dropping (.claude/rules/webapp-ui.md §9).
 - Pick the smallest handler tier that fits: `handle_htmx_form_post`, then a
-  `CrudSpec`, then an `HtmxFormHandler` subclass (CLAUDE.md §9).
+  `CrudSpec`, then an `HtmxFormHandler` subclass (.claude/rules/webapp-ui.md §9).
 - Gate a PUT's update dict on keys present in the original `request.form`, not
   on the loaded output — `load_default` fills absent fields with None and would
   clear them.
@@ -190,13 +190,13 @@ Gates: `test_action_cells_nowrap`, and for the admin cards the rendered
 An unchecked htmx checkbox sends no key, so a missing `active_only` means
 "include inactive rows". Read it with `read_active_only` from
 `webapp/utils/htmx.py` (absent = off), never a hand-rolled comparison
-(CLAUDE.md §10).
+(.claude/rules/webapp-ui.md §10).
 
 ## 9. Static assets and CSP
 
 Reference every asset with `url_for('static', filename=...)` so it gets its `?v=` cache tag;
 never a literal `/static/...` path, and never append `?` or `#` after the `url_for` result
-(CLAUDE.md §11). No inline `<script>`, no `on*` handler attributes, no `hx-on:`, no `<style>`
+(.claude/rules/webapp-ui.md §11). No inline `<script>`, no `on*` handler attributes, no `hx-on:`, no `<style>`
 block — behavior goes in a static JS file, styling in a static CSS file. Gates:
 `test_static_assets`, `test_template_csp_lint`.
 
@@ -218,7 +218,7 @@ the utility. Delete a class's rule in the commit that removes its last user (`te
 passes `layout=read_layout()` and forwards it into every layout-aware macro and
 chart. A fragment renderer that relays to a delegate must forward the `layout`
 it was given, or the fragment silently renders at desktop forever. See
-CLAUDE.md § Charts.
+.claude/rules/charts.md.
 
 ## 12. Before commit — smoke and gates
 

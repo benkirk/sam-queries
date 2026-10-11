@@ -14,7 +14,7 @@ class CreateWallclockExemptionForm(HtmxFormSchema):
     """Create a wallclock exemption for a route-resolved user.
 
     Queue existence and the user lookup require DB access and stay in the
-    route/handler per CLAUDE.md §9.
+    route/handler per .claude/rules/webapp-ui.md §9.
     """
     queue_id = f.Int(
         required=True,

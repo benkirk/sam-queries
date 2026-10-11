@@ -230,7 +230,7 @@ def xras_notify(project_id: int):
         return _not_found('Project')
 
     # Unchecked checkboxes are omitted from the request entirely, so presence
-    # is the signal — never a value comparison. See CLAUDE.md § 10.
+    # is the signal — never a value comparison. See .claude/rules/webapp-ui.md §10.
     force = 'force' in request.form
 
     results = get_notifier().send_many(messages, force=force) if messages else []

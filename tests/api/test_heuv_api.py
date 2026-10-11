@@ -1,7 +1,7 @@
 """HTTP contract of the HEUV API: auth, the 400 envelope, the bare 404, key order on snapshot rows.
 
 Exact bytes per rule are pinned at the query/schema layer (``tests/unit/queries/test_heuv_*``):
-routes read ``db.session`` and see committed snapshot rows only (CLAUDE.md § Testing).
+routes read ``db.session`` and see committed snapshot rows only (.claude/rules/testing.md).
 """
 
 import json

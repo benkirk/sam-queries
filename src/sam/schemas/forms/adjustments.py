@@ -17,7 +17,7 @@ class CreateChargeAdjustmentForm(HtmxFormSchema):
     (populated by /static/js/fk-picker.js when a search result is clicked).
     The schema only coerces to int; FK existence (does the Project row
     exist? does the (project, resource) -> Account row exist?) is a DB-backed
-    check and stays in the route per CLAUDE.md §9.
+    check and stays in the route per .claude/rules/webapp-ui.md §9.
 
     ``charge_adjustment_type_id`` membership (the set of types exposed by
     the webapp) is likewise a DB-backed check: the supported set lives in

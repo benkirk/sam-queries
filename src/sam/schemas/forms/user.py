@@ -16,7 +16,7 @@ class SetShellForm(HtmxFormSchema):
 
     The route enforces that ``shell_name`` is in the allowable set
     (shells present on every active HPC+DAV resource) — that requires a
-    DB hit and stays in the route per CLAUDE.md §9.
+    DB hit and stays in the route per .claude/rules/webapp-ui.md §9.
     """
     shell_name = f.Str(required=True, validate=v.Length(min=1, max=25))
 
@@ -27,7 +27,7 @@ class SetPrimaryGidForm(HtmxFormSchema):
     Membership validation (``unix_gid`` must be in the user's allowable
     set from ``get_user_group_access(..., include_projects=True)``)
     happens inside ``User.set_primary_gid`` — requires a DB hit, so it
-    stays on the model per CLAUDE.md §9.
+    stays on the model per .claude/rules/webapp-ui.md §9.
     """
     unix_gid = f.Integer(required=True)
 
@@ -64,7 +64,7 @@ class ChangeProjectAdminForm(HtmxFormSchema):
     ``admin_username`` empty/absent means "remove the admin role" — the
     base ``@pre_load`` strips empty strings, so both spellings arrive as
     None. User existence / membership checks require DB access and stay in
-    the route per CLAUDE.md §9.
+    the route per .claude/rules/webapp-ui.md §9.
     """
     admin_username = f.Str(load_default=None)
 
@@ -94,7 +94,7 @@ class GrantMemberAccessForm(HtmxFormSchema):
 
     Only the username is submitted; the set of missing resources is derived
     server-side from ``Project.get_members_access_status``. User existence /
-    membership checks require DB access and stay in the route per CLAUDE.md §9.
+    membership checks require DB access and stay in the route per .claude/rules/webapp-ui.md §9.
     """
     username = f.Str(required=True, validate=v.Length(min=1))
 
@@ -207,7 +207,7 @@ class AllocateResidualForm(HtmxFormSchema):
     The manage layer re-validates the target against the server-computed
     frontier (``get_carveout_frontier``) and the amount against the
     unallocated residual — DB-dependent checks stay out of the schema per
-    CLAUDE.md §9.
+    .claude/rules/webapp-ui.md §9.
     """
     target = f.Str(
         required=True,
