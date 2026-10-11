@@ -34,6 +34,7 @@
 {% import 'dashboards/fragments/contract_bits.html' as contract_bits with context %}
 {% import 'dashboards/fragments/action_buttons.html' as action_buttons with context %}
 {% import 'dashboards/fragments/table_bits.html' as table_bits %}
+{% import 'dashboards/fragments/xras_bits.html' as xb with context %}
 {% from 'dashboards/user/partials/project_card.html' import render_project_info with context %}
 
 {# Card chrome shared by every specimen. #}
@@ -43,6 +44,14 @@
   <div class="card-body">{{ caller() }}</div>
 </div>
 {% endmacro %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/xras.css') }}">
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/xras.js') }}"></script>
+{% endblock %}
 
 {% block breadcrumbs %}
 <nav aria-label="breadcrumb" class="sam-breadcrumbs">
@@ -461,6 +470,53 @@
 </section>
 
 {# ── Note-and-skip ───────────────────────────────────────────────────── #}
+{# ── XRAS state language (fragments/xras_bits.html) ───────────────────── #}
+<section id="xras" class="mb-5 xras-section">
+  <h2 class="h4 border-bottom pb-1 mb-3">XRAS state language</h2>
+  {% call specimen('xras_bits.tag / attention / alarm', 'a state is a quiet tag; hue only where a person must act or something failed') %}
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {{ xb.tag('Approved') }} {{ xb.tag('Pending request') }} {{ xb.attention('Needs activation') }}
+      {{ xb.attention('Not notified') }} {{ xb.alarm('No recipients') }} {{ xb.alarm('2 failed') }}
+      {{ xb.type_label('Supplement') }} {{ xb.type_label(none) }}
+    </div>
+  {% endcall %}
+  {% call specimen('xras_bits.verdict', 'the pre-flight vocabulary; icon_only=True in a dense cell (word in title)') %}
+    <div class="d-flex flex-wrap align-items-center gap-3">
+      {% for v in ('failed', 'manual', 'incomplete', 'rechecked', none) %}{{ xb.verdict(v, count=(2 if v == 'failed' else none)) }}{% endfor %}
+      <span class="text-muted">icon only:</span>
+      {% for v in ('failed', 'manual', 'incomplete', 'rechecked', none) %}{{ xb.verdict(v, icon_only=True) }}{% endfor %}
+    </div>
+  {% endcall %}
+  {% call specimen('xras_bits.identity_tag', 'XRAS-side identity: mergeable / unknown / misidentified / identified / unidentified') %}
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {{ xb.identity_tag(true, true, mergeable=True) }} {{ xb.identity_tag(none, false) }}
+      {{ xb.identity_tag(true, true) }} {{ xb.identity_tag(true, false) }} {{ xb.identity_tag(false, true) }}
+    </div>
+  {% endcall %}
+  {% call specimen('xras_bits.queue_badges', 'a card header: the count, then what the switch or the window hides') %}
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <strong>Card</strong>{{ xb.queue_badges(4, 'pending', more=1, more_label='Everything in the window', outside=2) }}
+    </div>
+  {% endcall %}
+  {% call specimen('xras_bits.outcome', 'what just happened, said once (not an alert box)') %}
+    {% call xb.outcome('success', 'Sent.') %}The project lead and admin have been notified.{% endcall %}
+    {% call xb.outcome('warning', 'Email delivery is not enabled on this deployment.') %}No mail was sent.{% endcall %}
+    {% call xb.outcome('danger', 'XRAS pre-checked this action and it does not validate.') %}<span class="small text-muted">Evaluated as <code>pi-user</code>.</span>{% endcall %}
+  {% endcall %}
+  {% call specimen('xras_bits.empty_state / unblock_strip', 'a muted empty card; a ranked data fix, quieter than an alert') %}
+    {% call xb.empty_state('Nothing needs attention.') %}An empty list here does not mean nothing is pending.{% endcall %}
+    {% call xb.unblock_strip('fa-link-slash') %}<strong>3 failing pushes cite 2 missing organization mnemonics.</strong> Create the code in Admin → Mnemonic Codes.{% endcall %}
+  {% endcall %}
+  {% call specimen('xras_bits.amount_editor / write_button', 'the figure is the control: click it, Esc cancels (Save posts nowhere here)') %}
+    <div class="d-flex align-items-center gap-3">
+      {{ xb.amount_editor(1000000, '#', 'Requested', '', 'Derecho', true) }}
+      {{ xb.amount_editor(800000, '#', 'Approved', '', 'Derecho', false) }}
+      {{ xb.write_button('Remove the requested line', 'trash-can', '#', true, post=True, variant='danger') }}
+      {{ xb.write_button('Edit the comments', 'pen', '#', false) }}
+    </div>
+  {% endcall %}
+</section>
+
 <section id="skipped" class="mb-5">
   <h2 class="h4 border-bottom pb-1 mb-3">Needs live context (note-and-skip)</h2>
   <div class="card"><div class="card-body">
