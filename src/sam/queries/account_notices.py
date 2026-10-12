@@ -17,7 +17,8 @@ from typing import Any, Dict, List, Optional, Sequence
 from sqlalchemy.orm import Session
 
 from sam import fmt
-from sam.core.account_requests import CREATED_BY_SELF, AccountRequest, AccountRequestEvent
+from sam.core.account_requests import (CREATED_BY_SELF, PURPOSE_REACTIVATION, AccountRequest,
+                                       AccountRequestEvent)
 from sam.notify import Message, Recipient
 
 from .account_requests import (
@@ -36,6 +37,8 @@ ACCOUNT_KIND_SUBJECTS = {
     'account_request_received': 'Your NCAR HPC account request has been received',
     'account_ticket': "New HPC User Request '{name}'",
 }
+#: The ticket subject for a ``reactivation`` row, in place of ``account_ticket``'s.
+REACTIVATION_TICKET_SUBJECT = "Reactivate HPC User '{name}'"
 
 
 #: How the digest prints its as-of time; the task passes local (Mountain) time.
@@ -271,10 +274,11 @@ def subject_token(request_id: int) -> str:
 
 
 def ticket_subject(name: str, *, request_id: int, event_code: str = '',
-                   project_code: str = '') -> str:
+                   project_code: str = '', reactivation: bool = False) -> str:
     """``New HPC User Request '<name>' for <event code | project code> [SAM-AR-<id>]``;
     the event wins, and a standalone request carries no ``for`` clause."""
-    base = ACCOUNT_KIND_SUBJECTS['account_ticket'].format(name=name)
+    base = (REACTIVATION_TICKET_SUBJECT if reactivation
+            else ACCOUNT_KIND_SUBJECTS['account_ticket']).format(name=name)
     suffix = event_code or project_code
     head = f'{base} for {suffix}' if suffix else base
     return f'{head} {subject_token(request_id)}'
@@ -306,12 +310,14 @@ def build_ticket_message(row: AccountRequest, *, view: Dict[str, Any], recipient
         via = f'operator {row.created_by}'
     note = (row.purpose_note or row.comment or '').strip()
     accepted = row.eula_accepted_at is not None
+    reactivation = row.purpose == PURPOSE_REACTIVATION
     return Message(
         kind='account_ticket',
         recipient=Recipient(recipient.strip(), name='NUSD', role='operator'),
         subject=ticket_subject(row.display_name, request_id=row.account_request_id,
                                event_code=view['event_code'],
-                               project_code=view['project_code']),
+                               project_code=view['project_code'],
+                               reactivation=reactivation),
         context={
             'name': row.display_name,
             'email': row.email,
@@ -332,6 +338,7 @@ def build_ticket_message(row: AccountRequest, *, view: Dict[str, Any], recipient
             'note': ' '.join(note.split()),
             'request_id': row.account_request_id,
             'queue_url': queue_url,
+            'reactivate_username': row.xras_username if reactivation else '',
         },
         entity=('account_request', row.account_request_id),
         projcode=view['project_code'] or None,

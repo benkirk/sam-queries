@@ -32,13 +32,16 @@ OPEN_STATES = ('submitted', 'claimed')
 
 #: ``account_request.purpose``. What happens on fulfillment:
 #: ``standalone`` nothing further; ``enrollment`` joins ``project_id``;
-#: ``submission`` merges ``xras_username`` (XRAS phase 3, not built).
+#: ``submission`` merges ``xras_username`` (XRAS phase 3, not built);
+#: ``reactivation`` nothing further: the XRAS-named account is active again.
 PURPOSE_STANDALONE = 'standalone'
 PURPOSE_ENROLLMENT = 'enrollment'
 PURPOSE_SUBMISSION = 'submission'
-ACCOUNT_REQUEST_PURPOSES = (PURPOSE_STANDALONE, PURPOSE_ENROLLMENT, PURPOSE_SUBMISSION)
+PURPOSE_REACTIVATION = 'reactivation'
+ACCOUNT_REQUEST_PURPOSES = (PURPOSE_STANDALONE, PURPOSE_ENROLLMENT, PURPOSE_SUBMISSION,
+                            PURPOSE_REACTIVATION)
 PURPOSE_LABELS = {PURPOSE_STANDALONE: 'Standalone', PURPOSE_ENROLLMENT: 'Enrollment',
-                  PURPOSE_SUBMISSION: 'Submission'}
+                  PURPOSE_SUBMISSION: 'Submission', PURPOSE_REACTIVATION: 'Reactivation'}
 
 CREATED_BY_SELF = 'self'
 CREATED_BY_SWEEP = 'task:xras_sweep'
@@ -190,14 +193,16 @@ class AccountRequest(Base, SessionMixin):
     """One person who needs an account, and what SAM did about it.
 
     Invariants enforced in :meth:`create` because the columns are bare
-    VARCHARs: ``enrollment`` needs a ``project_id``, ``submission`` needs an
-    ``xras_username``, ``standalone`` has no project. ``email`` is lower-cased
-    on the way in; it is the ONE key the reconcile pass matches on.
-    ``desired_username`` is a hint for NUSD and never a match key -- a
-    case-insensitive hit on a stranger's username is a plausible collision.
+    VARCHARs: ``enrollment`` needs a ``project_id``, ``submission`` and
+    ``reactivation`` need an ``xras_username``, ``standalone`` has no project.
+    ``email`` is lower-cased on the way in; it is the key the reconcile pass
+    matches on, except a ``reactivation``, which names its account by
+    ``xras_username``. ``desired_username`` is a hint for NUSD and never a
+    match key -- a case-insensitive hit on a stranger's username is a
+    plausible collision.
 
     Unlike ``XrasRemediationEvent`` a scheduled task MAY create rows here:
-    the XRAS sweep derives ``submission`` rows from handoff rosters.
+    the XRAS sweep derives ``submission`` and ``reactivation`` rows from rosters.
     """
     __tablename__ = 'account_request'
 
@@ -333,8 +338,9 @@ class AccountRequest(Base, SessionMixin):
                 f"expected one of {', '.join(ACCOUNT_REQUEST_PURPOSES)}")
         if purpose == PURPOSE_ENROLLMENT and project_id is None:
             raise ValueError('an enrollment request needs a project_id')
-        if purpose == PURPOSE_SUBMISSION and not strip_or_none(xras_username):
-            raise ValueError('a submission request needs an xras_username')
+        if (purpose in (PURPOSE_SUBMISSION, PURPOSE_REACTIVATION)
+                and not strip_or_none(xras_username)):
+            raise ValueError(f'a {purpose} request needs an xras_username')
         if purpose == PURPOSE_STANDALONE and project_id is not None:
             raise ValueError('a standalone request carries no project_id')
         address = strip_or_none(email, width=255)

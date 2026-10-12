@@ -289,6 +289,7 @@ def _account_ticket() -> Dict[str, Any]:
         'note': 'Visiting scholar for the fall term.',
         'request_id': 41,
         'queue_url': 'https://sam.hpc.ucar.edu/admin/account-requests?request=41',
+        'reactivate_username': '',
     }
 
 
@@ -400,7 +401,7 @@ VARIABLE_NOTES: Dict[str, str] = {
     'waiting_count': 'Requests already sent in an earlier digest and still open.',
     'oldest_days': 'Age in days of the oldest open request.',
     'by_purpose': 'Open requests counted per purpose.',
-    'by_purpose.purpose': "One of 'standalone', 'enrollment', 'submission'.",
+    'by_purpose.purpose': "One of 'standalone', 'enrollment', 'submission', 'reactivation'.",
     'by_purpose.count': 'Requests with that purpose.',
     'events': 'The events (workshops, classes) with open requests, nearest deadline first.',
     'events.event_code': 'The event code, e.g. WRF-TUTORIAL-2026-10.',
@@ -416,7 +417,7 @@ VARIABLE_NOTES: Dict[str, str] = {
     'rows.email': "The requester's email address, lower-cased.",
     'rows.organization': 'Institution as typed (XRAS calls it organization), or empty.',
     'rows.desired_username': 'The username the requester asked for, or empty. A hint only.',
-    'rows.purpose': "One of 'standalone', 'enrollment', 'submission'.",
+    'rows.purpose': "One of 'standalone', 'enrollment', 'submission', 'reactivation'.",
     'rows.project_code': 'The project a fulfilled account joins, or empty.',
     'rows.event_code': 'The event this request belongs to, or empty.',
     'rows.sponsor': 'Display name of the sponsor who invited them, or empty.',
@@ -443,6 +444,7 @@ VARIABLE_NOTES: Dict[str, str] = {
     'eula_sha7': 'The first seven characters of the accepted agreement text\'s SHA, or empty.',
     'email': "The requester's email address.",
     'requested_via': "How the request arrived: self-registration, an invitation, XRAS or an operator.",
+    'reactivate_username': 'The inactive SAM username to reactivate, or empty for a new account.',
     'organization': "The requester's institution, or empty.",
     'academic_status': "The requester's academic status, or empty.",
     'residence_country': "The requester's country of residence, or empty.",

@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS account_request (
   phone                VARCHAR(32)       NULL,
   desired_username     VARCHAR(64)       NULL,   -- a hint for NUSD, NEVER a match key
   -- Intent.
-  purpose              VARCHAR(16)   NOT NULL,   -- standalone|enrollment|submission
+  purpose              VARCHAR(16)   NOT NULL,   -- standalone|enrollment|submission|reactivation
   project_id           INT               NULL,   -- the project a fulfilled account joins
   sponsor_user_id      INT               NULL,   -- the user who invited them
   event_id             INT UNSIGNED      NULL,   -- account_request_event.account_request_event_id

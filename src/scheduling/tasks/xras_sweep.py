@@ -62,7 +62,7 @@ Design: ``docs/xras/outgoing/XRAS_OUTGOING_QUERIES.md``.
 from __future__ import annotations
 
 import os
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -882,13 +882,16 @@ def xras_sweep(ctx) -> TaskResult:
     detail['accounts'] = worklist_counts(enumerated)
     detail['accounts_sample'] = [r['username'] for r in enumerated][:_MAX_REPORTED]
 
-    # 3b. give every absent roster member an account_request row, once. The
-    # classifier above stays the card's source; the table is what NUSD works
-    # (claim, dismiss) and what the reconcile pass fulfills. Idempotent, and
-    # an operator's dismissal survives every later sweep.
+    # 3b. give every person the Pending Users card lists an account_request row,
+    # once: Feed B above plus the pushed actions (Feed A) of the same window,
+    # absent or inactive. The table is what NUSD works (claim, dismiss) and what
+    # the reconcile pass fulfills; an operator's dismissal survives every sweep.
     from sam.manage.account_requests import upsert_sweep_requests
+    roster = get_account_worklist(
+        session, validate=False, pending_rows=enumerated,
+        since=datetime.combine(window_start, time.min))
     detail['account_requests'] = upsert_sweep_requests(
-        session, enumerated,
+        session, roster,
         # Rows are stamped naive-Mountain; ctx.now is naive UTC.
         clock=to_local_naive(ctx.now, ZoneInfo(DEFAULT_TZ)))
 

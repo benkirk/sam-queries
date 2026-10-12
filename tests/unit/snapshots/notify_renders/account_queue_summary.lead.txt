@@ -5,8 +5,8 @@ As of 2026-09-14 08:00.
 
 By purpose
 ----------
-  enrollment  3
-  submission  1
+  enrollment    3
+  submission    1
 
 WRF-TUTORIAL-2026-10 — WRF Tutorial, October 2026 (SCSG0001)
 2 account(s) needed by 2026-10-05

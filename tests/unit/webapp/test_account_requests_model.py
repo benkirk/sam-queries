@@ -38,7 +38,7 @@ class TestTheVocabularies:
 
     def test_an_unknown_purpose_is_refused(self, session):
         with pytest.raises(ValueError, match='unknown'):
-            make_account_request(session, purpose='reactivation')
+            make_account_request(session, purpose='reinstatement')
 
 
 class TestTheInvariants:

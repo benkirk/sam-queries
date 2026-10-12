@@ -237,25 +237,50 @@ class TestUpsertSweepRequests:
         rows = [_worklist_row('Jane-User-ABC', email='jane@example.edu',
                               request_number=project.projcode),
                 _worklist_row('john-user-def', email='john@example.edu')]
-        assert upsert_sweep_requests(session, rows) == {'created': 2, 'existing': 0, 'skipped': 0}
+        assert upsert_sweep_requests(session, rows) == {'created': 2, 'existing': 0, 'skipped': 0,
+                                                        'by_purpose': {'submission': 2}}
         jane = session.query(AccountRequest).filter_by(xras_username='jane-user-abc').one()
         assert jane.purpose == 'submission' and jane.project_id == project.project_id
         assert jane.created_by == CREATED_BY_SWEEP and jane.is_open
         assert jane.organization == 'NCAR' and jane.residence_country == 'US'
-        assert upsert_sweep_requests(session, rows) == {'created': 0, 'existing': 2, 'skipped': 0}
+        assert upsert_sweep_requests(session, rows) == {'created': 0, 'existing': 2, 'skipped': 0,
+                                                        'by_purpose': {}}
 
     def test_a_dismissed_row_survives_the_next_sweep(self, session):
         rows = [_worklist_row('Gone-user-1', email='gone@example.edu')]
         upsert_sweep_requests(session, rows)
         session.query(AccountRequest).filter_by(xras_username='gone-user-1').one().dismiss('op', 'dup')
         assert upsert_sweep_requests(session, [_worklist_row('gone-user-1', email='gone@example.edu')]
-                                     ) == {'created': 0, 'existing': 1, 'skipped': 0}
+                                     ) == {'created': 0, 'existing': 1, 'skipped': 0,
+                                           'by_purpose': {}}
 
-    def test_inactive_rows_and_rows_without_a_person_are_not_taken(self, session):
-        rows = [_worklist_row('locked-user', classification='inactive', email='l@example.edu'),
+    def test_rows_without_a_person_or_a_sam_row_are_skipped(self, session):
+        rows = [_worklist_row('nobody-in-sam', classification='inactive', email='l@example.edu'),
                 _worklist_row('noemail-user', email=None),
                 _worklist_row('noname-user', email='n@example.edu', first='')]
-        assert upsert_sweep_requests(session, rows) == {'created': 0, 'existing': 0, 'skipped': 2}
+        assert upsert_sweep_requests(session, rows) == {'created': 0, 'existing': 0, 'skipped': 3,
+                                                        'by_purpose': {}}
+
+    def test_an_inactive_member_gets_a_reactivation_row_once(self, session):
+        user = _user_with_email(session, 'locked@example.edu', active=False)
+        rows = [_worklist_row(user.username.upper(), classification='inactive',
+                              email='ignored@example.edu')]
+        assert upsert_sweep_requests(session, rows)['by_purpose'] == {'reactivation': 1}
+        row = session.query(AccountRequest).filter_by(xras_username=user.username.lower()).one()
+        assert row.purpose == 'reactivation' and row.email == 'locked@example.edu'
+        assert upsert_sweep_requests(session, rows)['existing'] == 1
+
+    def test_only_a_fulfilled_row_lets_the_person_be_filed_again(self, session):
+        user = _user_with_email(session, 'back@example.edu', active=False)
+        inactive = [_worklist_row(user.username, classification='inactive')]
+        upsert_sweep_requests(session, inactive)
+        first = session.query(AccountRequest).filter_by(xras_username=user.username.lower()).one()
+        assert upsert_sweep_requests(session, inactive)['created'] == 0, 'open: still the work'
+        first.fulfill(user)
+        assert upsert_sweep_requests(session, inactive)['created'] == 1, 'fulfilled, then lapsed'
+        absent = [_worklist_row(user.username, email='back@example.edu')]
+        assert upsert_sweep_requests(session, absent)['by_purpose'] == {'submission': 1}, \
+            'another purpose is another row'
 
 
 class TestReconcile:
@@ -306,6 +331,17 @@ class TestReconcile:
         counts = reconcile_account_requests(session)
         assert counts['ambiguous'] == 1 and counts['fulfilled'] == 0
         assert amb.user_id is None and inactive.user_id is None
+
+    def test_a_reactivation_is_fulfilled_by_its_username_once_active(self, session):
+        user = _user_with_email(session, 'other@example.edu', active=False)
+        upsert_sweep_requests(session, [_worklist_row(user.username, classification='inactive')])
+        row = session.query(AccountRequest).filter_by(xras_username=user.username.lower()).one()
+        row.email = 'stale-address@example.edu'
+        assert reconcile_account_requests(session)['fulfilled'] == 0, 'still inactive'
+        user.active = True
+        session.flush()
+        assert reconcile_account_requests(session)['fulfilled'] == 1
+        assert row.user_id == user.user_id, 'matched by username, not the stale email'
 
     def test_stale_unverified_public_rows_are_purged_and_nothing_else(self, session):
         now = datetime(2026, 9, 16, 12, 0)

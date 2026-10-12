@@ -22,6 +22,7 @@ from sam.core.account_requests import (
     CREATED_BY_SELF,
     CREATED_BY_SWEEP,
     OPEN_STATES,
+    PURPOSE_REACTIVATION,
     AccountRequest,
     AccountRequestEvent,
     EventEnrollment,
@@ -91,16 +92,18 @@ def resolve_requests(session: Session,
     """``account_request_id -> Resolution`` for every row the mirror knows.
 
     Two batched queries: the email derivation, then the ``users`` rows the
-    resolved usernames and the ``desired_username`` hints name. Rows with no
-    hit are absent from the result.
+    resolved usernames, the ``desired_username`` hints and each reactivation's
+    ``xras_username`` name. A reactivation resolves by that username, not by
+    email. Rows with no hit are absent from the result.
     """
     if not rows:
         return {}
     targets = sam_merge_targets(session, [row.email for row in rows])
     wanted = {t['username'] for t in targets.values() if t.get('username')}
     hints = {row.desired_username.casefold() for row in rows if row.desired_username}
-    lookup = wanted | hints
-    users = users_by_username_ci(session, lookup)
+    named = {row.xras_username for row in rows
+             if row.purpose == PURPOSE_REACTIVATION and row.xras_username}
+    users = users_by_username_ci(session, wanted | hints | named)
 
     resolutions: Dict[int, Resolution] = {}
     for row in rows:
@@ -109,6 +112,13 @@ def resolve_requests(session: Session,
         if row.desired_username:
             hit = users.get(row.desired_username.casefold())
             hint = hit.username if hit else None
+        named_user = (users.get(row.xras_username.casefold())
+                      if row.purpose == PURPOSE_REACTIVATION and row.xras_username else None)
+        if named_user is not None:
+            resolutions[row.account_request_id] = Resolution(
+                username=named_user.username, user_id=named_user.user_id,
+                active=bool(named_user.is_active), hint=hint)
+            continue
         if target is None:
             if hint:
                 resolutions[row.account_request_id] = Resolution(hint=hint)
@@ -414,16 +424,24 @@ def unverified_count(session: Session) -> int:
             .count())
 
 
-def requests_by_xras_username(session: Session,
-                              usernames: Iterable[Optional[str]]) -> Dict[str, AccountRequest]:
-    """``{xras_key: AccountRequest}`` in one query; the newest row wins a shared key."""
+def requests_by_xras_username(session: Session, usernames: Iterable[Optional[str]]
+                              ) -> Dict[str, List[AccountRequest]]:
+    """``{xras_key: [AccountRequest, ...]}`` oldest first, in one query."""
     keys = sorted({k for k in map(AccountRequest.xras_key, usernames) if k})
     if not keys:
         return {}
-    return {req.xras_username: req for req in
-            session.query(AccountRequest)
-            .filter(AccountRequest.xras_username.in_(keys))
-            .order_by(AccountRequest.creation_time).all()}
+    found: Dict[str, List[AccountRequest]] = {}
+    for req in (session.query(AccountRequest)
+                .filter(AccountRequest.xras_username.in_(keys))
+                .order_by(AccountRequest.creation_time).all()):
+        found.setdefault(req.xras_username, []).append(req)
+    return found
+
+
+def current_request(requests: Sequence[AccountRequest]) -> Optional[AccountRequest]:
+    """The row a person's queue state is: the newest open one, else the newest."""
+    live = [r for r in requests if r.state in OPEN_STATES and not r.is_fulfilled]
+    return (live or list(requests) or [None])[-1]
 
 
 def stamp_account_requests(session: Session,
@@ -433,13 +451,14 @@ def stamp_account_requests(session: Session,
     Matched on the XRAS username the sweep stored in ``xras_username``,
     casefolded on both sides for the same reason ``classify_accounts`` is.
     Sets ``row['account_request']`` to a small dict or ``None``; every state
-    is reported so the card can offer reopen on a dismissed row.
+    is reported so the card can offer reopen on a dismissed row. A person with
+    several rows (a submission, later a reactivation) shows the open one.
     """
     if not any(r.get('username') for r in worklist_rows):
         return
     found = requests_by_xras_username(session, (r.get('username') for r in worklist_rows))
     for row in worklist_rows:
-        req = found.get(AccountRequest.xras_key(row.get('username')))
+        req = current_request(found.get(AccountRequest.xras_key(row.get('username')), ()))
         row['account_request'] = ({
             'id': req.account_request_id,
             'state': req.state,

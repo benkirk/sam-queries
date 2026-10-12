@@ -5,7 +5,7 @@ As of {{ occurrence }}.
 {% if by_purpose %}
 By purpose
 ----------
-{% for p in by_purpose %}  {{ '%-12s' | format(p.purpose) }}{{ p.count }}
+{% for p in by_purpose %}  {{ '%-14s' | format(p.purpose) }}{{ p.count }}
 {% endfor %}{% endif %}
 {%- for e in events %}
 {{ e.event_code }} — {{ e.event_name }} ({{ e.project_code }})
