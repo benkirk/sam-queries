@@ -1771,12 +1771,13 @@ the feature branch.
 
 **Open:**
 
-- [ ] `remediation.py`'s validate path builds `XrasAdminClient` on the default 3 retries
-  inside an htmx request; `interactive()` would cap it.
-- [ ] `db_browser`'s `_no_store` is the only other `private, no-store`; the XRAS user
-  modal (PII) sets none. Lift to `webapp/utils` and propagate.
-- [ ] The CSV and xlsx downloads hand-write `filename=` unquoted (safe only because the
-  names are generated ASCII); `send_file(download_name=)` quotes and encodes.
+- [x] `remediation.py`'s validate path builds `XrasAdminClient` on `interactive()` (review,
+  2026-10-12).
+- [x] `webapp/utils/downloads.py`: `file_response` (the CSV and xlsx exports, names quoted by
+  `send_file`) and `document_response` (the proxy's sniff, disposition and `no-store`); one
+  `.preview-frame` in `components.css` for the mail previews and the PDF (review, 2026-10-12).
+- [ ] `db_browser`'s `_no_store` and `file_response(no_store=)` are the two `private, no-store`
+  writers; the XRAS user modal (PII) sets none.
 - [x] Chrome's PDF viewer renders the inline PDF under the app CSP (`object-src 'none'` on
   the response); verified on samuel-dev 2026-10-12, no per-route CSP needed.
 - [x] In-modal preview (`xras_document_preview`, an unsandboxed same-origin iframe in the

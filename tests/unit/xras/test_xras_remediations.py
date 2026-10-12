@@ -493,7 +493,7 @@ class TestTheDocumentPreview:
     def test_the_frame_reads_through_the_proxy(self, auth_client, armed, monkeypatch):
         _reader(monkeypatch, payload=_detail_payload())
         body = auth_client.get(self.URL).get_data(as_text=True)
-        assert '<iframe class="xras-document-frame" src="/allocations/xras_document/EXAM0001/7/1"' in body
+        assert '<iframe class="preview-frame preview-frame-page" src="/allocations/xras_document/EXAM0001/7/1"' in body
         assert 'sandbox' not in body and 'data-bs-toggle' not in body
         assert 'hx-get="/allocations/xras_request_detail/EXAM0001"' in body
 

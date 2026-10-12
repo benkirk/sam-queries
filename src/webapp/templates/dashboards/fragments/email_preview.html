@@ -157,7 +157,7 @@
            dashboard. A bare `sandbox` (no scripts, no same-origin) makes links
            inert, which is right for a preview; the white page is what the
            recipient sees. CSP img-src blocks remote images here, as it should. #}
-        <iframe title="HTML preview" class="notify-preview-frame" sandbox
+        <iframe title="HTML preview" class="preview-frame preview-frame-mail" sandbox
                 srcdoc="{{ p.rendered.html }}"></iframe>
     </div>
     <div class="tab-pane fade" id="{{ id_prefix }}Text" role="tabpanel"

@@ -11,7 +11,7 @@ Domain-specific routes are split into sub-modules imported at the bottom:
   contracts_routes.py  — Contracts, Contract Sources, NSF Programs
 """
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, session, Response, abort
+from flask import Blueprint, render_template, request, flash, redirect, url_for, session, abort
 from markupsafe import escape
 from webapp.utils.htmx import (htmx_success, htmx_success_message, htmx_not_found,
                                read_active_only, read_tab, register_typeahead)
@@ -23,6 +23,7 @@ import csv
 import io
 
 from webapp.extensions import db, cache
+from webapp.utils.downloads import file_response
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from sam.schemas.forms import (
     AdminCreateWallclockExemptionForm,
@@ -883,13 +884,7 @@ def expirations_export():
 
         filename = f'{export_type}_projects_{datetime.now().strftime("%Y%m%d")}.csv'
 
-    # Create response
-    output.seek(0)
-    return Response(
-        output.getvalue(),
-        mimetype='text/csv',
-        headers={'Content-Disposition': f'attachment; filename={filename}'}
-    )
+    return file_response(output.getvalue().encode('utf-8'), filename, mimetype='text/csv')
 
 
 # ============================================================================

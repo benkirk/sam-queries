@@ -8,10 +8,9 @@ from ``remediation``), which is what keeps the modals<->remediation graph
 acyclic. Moved verbatim out of ``xras_remediation_routes.py``.
 """
 
-import io
 from typing import Optional
 
-from flask import Response, current_app, render_template, request, send_file, url_for
+from flask import Response, current_app, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from sam.core.users import User
@@ -38,6 +37,7 @@ from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from sam.dates import parse_wire_date
 from sam.text import strip_or_none
 from webapp.extensions import db
+from webapp.utils.downloads import document_response
 from webapp.utils.htmx import read_flag
 from webapp.utils.rbac import Permission, has_permission, require_permission
 
@@ -360,8 +360,8 @@ def xras_document(request_number: str, action_id: int, document_id: int):
     """A request document, proxied from XRAS as that request line's PI. Nothing is stored.
 
     Inline by default (the browser's PDF viewer); ``?download=1`` saves it.
-    The type is decided from the bytes, never from XRAS's header: only a body
-    starting ``%PDF-`` is served as a PDF, anything else as a download.
+    The type is decided from the bytes, never from XRAS's header
+    (``document_response``).
     """
     from sam.integration.xras_api.admin_client import XrasAdminClient
     from sam.integration.xras_api.config import XrasApiConfig
@@ -382,16 +382,10 @@ def xras_document(request_number: str, action_id: int, document_id: int):
         return _plain('XRAS no longer has this document.', 404)
 
     body, _ = fetched
-    is_pdf = body.startswith(b'%PDF-')
     current_app.logger.info('xras document: %s fetched %s action %s document %s',
                             current_user.username, request_number, action_id, document_id)
-    response = send_file(
-        io.BytesIO(body),
-        mimetype='application/pdf' if is_pdf else 'application/octet-stream',
-        as_attachment=read_flag(request.args, 'download') or not is_pdf,
-        download_name=doc['filename'] or f'document-{document_id}.pdf', max_age=0)
-    response.headers['Cache-Control'] = 'private, no-store'
-    return response
+    return document_response(body, doc['filename'] or f'document-{document_id}.pdf',
+                             download=read_flag(request.args, 'download'))
 
 
 _DOCUMENT_PREVIEW_FORM = 'dashboards/allocations/partials/xras_document_preview.html'
