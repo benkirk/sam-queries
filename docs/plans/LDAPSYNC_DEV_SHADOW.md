@@ -116,9 +116,11 @@ and `userlifecycle/pendingdeactivations/24` answers `[]`.
 
 ### 5. The daily shadow check
 
-Two `syncdInit` captures a day, prod then dev, with the daemon stopped for the five
-minutes they take (the transformer keeps spooling directory changes meanwhile; the daemon
-applies them when it restarts). `syncdInit` downloads only into an empty spool, so the
+Two `syncdInit` captures a day, prod then dev, with the daemon **and the transformer** stopped
+for the few minutes they take (a running transformer would write new update files into the
+moved-aside spool; directory changes wait in the audit log meanwhile). The script is
+`containers/ldap-pipeline/out/shadow-tools/daily_check.sh`; capture A also needs
+`-e SAM_UPDATES_STUB=sam-update-stub.log`, or the guard refuses prod with writes on. `syncdInit` downloads only into an empty spool, so the
 live spool is moved aside and back; `.reset` is never touched here, or the transformer
 would rebuild the seed diff and resend it.
 
