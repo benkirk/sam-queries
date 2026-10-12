@@ -14,6 +14,8 @@ tests select targets from the snapshot instead of building factory trees.
 Endpoints tested:
     GET  /admin/htmx/allocate-down-form/<allocation_id>
     POST /admin/htmx/allocate-down/<allocation_id>
+    GET  /admin/htmx/reclaim-form/<allocation_id>
+    POST /admin/htmx/reclaim/<allocation_id>
 """
 import os
 
@@ -241,3 +243,73 @@ class TestAllocateDownPostRoute:
         assert resp.status_code == 200
         assert 'HX-Trigger' not in resp.headers
         assert 'exceeds the unallocated residual' in resp.get_data(as_text=True)
+
+
+# ---------------------------------------------------------------------------
+# Reclaim (the inverse of allocate-down)
+# ---------------------------------------------------------------------------
+
+
+class TestReclaimRoutes:
+
+    def test_unauthenticated_redirects_or_401(self, client):
+        if os.getenv('DISABLE_AUTH') == '1':
+            pytest.skip("Auth disabled in dev environment")
+        assert client.get(f'/admin/htmx/reclaim-form/{_BOGUS}').status_code in (302, 401)
+        resp = client.post(f'/admin/htmx/reclaim/{_BOGUS}',
+                           data={'source_allocation_id': '1', 'amount': '1'})
+        assert resp.status_code in (302, 401)
+
+    def test_missing_allocation_404(self, auth_client):
+        assert auth_client.get(f'/admin/htmx/reclaim-form/{_BOGUS}').status_code == 404
+
+    def test_inheriting_allocation_renders_shared_notice(
+            self, auth_client, snapshot_inheriting_alloc):
+        resp = auth_client.get(
+            f'/admin/htmx/reclaim-form/{snapshot_inheriting_alloc.allocation_id}')
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert 'shared allocation' in html.lower()
+        assert 'id="reclaimModalLabel" hx-swap-oob="true"' in html
+
+    def test_carve_parent_renders_form_or_notice(self, auth_client, snapshot_carve_parent):
+        alloc, _ = snapshot_carve_parent
+        resp = auth_client.get(f'/admin/htmx/reclaim-form/{alloc.allocation_id}')
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        # The form when some carve-out has unused balance, else the notice.
+        assert 'name="source_allocation_id"' in html or 'unused balance to reclaim' in html
+
+    def test_missing_source_renders_inline(self, auth_client, snapshot_carve_parent):
+        alloc, _ = snapshot_carve_parent
+        resp = auth_client.post(f'/admin/htmx/reclaim/{alloc.allocation_id}',
+                                data={'amount': '1'})
+        assert resp.status_code == 200
+        assert 'HX-Trigger' not in resp.headers
+        html = resp.get_data(as_text=True)
+        select = html[html.index('name="source_allocation_id"') - 300:
+                      html.index('name="source_allocation_id"')]
+        assert 'is-invalid' in select
+
+    def test_forged_source_rejected_no_write(
+            self, auth_client, session, snapshot_carve_parent):
+        alloc, frontier = snapshot_carve_parent
+        resp = auth_client.post(f'/admin/htmx/reclaim/{alloc.allocation_id}',
+                                data={'source_allocation_id': str(_BOGUS), 'amount': '1'})
+        assert resp.status_code == 200
+        assert 'HX-Trigger' not in resp.headers
+        assert 'not a carve-out' in resp.get_data(as_text=True)
+        session.expire_all()
+        assert get_carveout_frontier(session, alloc).carve_total == frontier.carve_total
+
+    def test_beyond_unused_rejected(self, auth_client, snapshot_carve_parent):
+        alloc, frontier = snapshot_carve_parent
+        source = frontier.carve_children[0]
+        resp = auth_client.post(
+            f'/admin/htmx/reclaim/{alloc.allocation_id}',
+            data={'source_allocation_id': str(source.allocation_id),
+                  'amount': str(float(source.amount) + 1)},
+        )
+        assert resp.status_code == 200
+        assert 'HX-Trigger' not in resp.headers
+        assert 'unused balance' in resp.get_data(as_text=True)

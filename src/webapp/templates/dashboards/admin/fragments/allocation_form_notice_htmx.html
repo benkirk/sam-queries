@@ -1,5 +1,5 @@
 {#
-  An allocation modal with nothing to offer (exchange, allocate down): say why and
+  An allocation modal with nothing to offer (exchange, allocate down, reclaim): say why and
   what to do instead, in place of the form. kind selects the message; label_id, title,
   icon and meta retitle the modal, whose header may still name the previous allocation.
 #}
@@ -14,10 +14,12 @@
   {% elif kind == 'shared' %}
   <p>This is a shared allocation: it mirrors its parent and has no unallocated remainder of its
      own. Allocate from the parent allocation instead.</p>
+  {% elif kind == 'nothing_to_reclaim' %}
+  <p>No sub-project carve-out on this resource has an unused balance to reclaim.</p>
   {% elif kind == 'over_carved' %}
   <p class="text-danger">Sub-project carve-outs ({{ carve_total | fmt_number }}) exceed this
-     allocation ({{ amount | fmt_number }}). Resolve the deficit before allocating further: see
-     <code>sam-admin project --audit-trees</code>.</p>
+     allocation ({{ amount | fmt_number }}). Resolve the deficit before allocating further:
+     reclaim unused amount from a sub-project, or see <code>sam-admin project --audit-trees</code>.</p>
   {% else %}
   <p>Nothing to allocate: this allocation has no unallocated remainder available for its
      sub-projects.</p>

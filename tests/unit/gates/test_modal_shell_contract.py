@@ -368,7 +368,8 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'userDetailsModal', 'userDetailsModalBody'],
     'dashboards/shared/project_tree.html': [
         'allocateDownFormContainer', 'allocateDownModal', 'editAllocationFormContainer',
-        'editAllocationModal', 'exchangeAllocationFormContainer', 'exchangeAllocationModal'],
+        'editAllocationModal', 'exchangeAllocationFormContainer', 'exchangeAllocationModal',
+        'reclaimFormContainer', 'reclaimModal'],
     'dashboards/jobs/jobs_histogram.html': [
         'projectDetailsModal', 'projectDetailsModalBody',
         'userDetailsModal', 'userDetailsModalBody'],

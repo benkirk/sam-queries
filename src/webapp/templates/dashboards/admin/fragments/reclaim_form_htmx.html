@@ -1,0 +1,56 @@
+{#
+  Admin: Edit Project — Reclaim from Sub-project modal form, loaded into
+  #reclaimFormContainer from a parent row's reclaim button.
+
+  Returns part of a sub-project carve-out's UNUSED amount to this allocation's
+  unallocated remainder: the carve-out shrinks, the parent's own amount never changes.
+
+  Context: allocation, parent_projcode, frontier (carve_total / raw_residual),
+  candidates [{allocation_id, projcode, title, amount, used, reclaimable}],
+  max_reclaimable, resource, errors, form.
+#}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{% from 'dashboards/fragments/form_fields.html' import select_field, number_field, text_field with context %}
+{% from 'dashboards/fragments/help.html' import term with context %}
+{% from 'dashboards/fragments/glossary.html' import g_unallocated, g_carve_out with context %}
+
+{{ modal_title('reclaimModalLabel', 'Reclaim on ' ~ resource.resource_name, 'turn-up',
+               meta=parent_projcode) }}
+
+{%- set ns = namespace(options=[]) %}
+{%- for c in candidates if c.reclaimable > 0 %}
+  {%- set ns.options = ns.options + [(c.allocation_id,
+        c.projcode ~ ' — ' ~ (c.amount | fmt_number) ~ ', ' ~ (c.reclaimable | fmt_number) ~ ' unused'
+        ~ (' — ' ~ (c.title | truncate(40, True, '…')) if c.title else ''))] %}
+{%- endfor %}
+
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_reclaim', allocation_id=allocation.allocation_id),
+    '#reclaimFormContainer',
+    'Reclaim',
+    submit_icon='turn-up',
+    errors=errors
+) %}
+  <ul class="modal-facts">
+    <li>
+      {{ term('Unallocated', g_unallocated(), rich=True, title='Unallocated remainder') }}:
+      <strong class="{{ 'text-danger' if frontier.raw_residual < 0 }}">{{ frontier.raw_residual | fmt_number }}</strong>
+      of {{ allocation.amount | fmt_number }}
+      ({{ term('carved out', g_carve_out(), rich=True, title='Carve-out') }}
+      {{ frontier.carve_total | fmt_number }}). {{ parent_projcode }}'s own total is unchanged.
+    </li>
+  </ul>
+
+  {{ select_field('source_allocation_id', 'Sub-project', required=True,
+                  placeholder='— Select sub-project —', options=ns.options,
+                  help='Only the unused part of a carve-out can be reclaimed.',
+                  id='reclaimSource') }}
+  {{ number_field('amount', 'Amount', required=True, min=0.01, max=max_reclaimable, step='any',
+                  placeholder='e.g. 100000', data_attrs={'number-preview': ''},
+                  help_html='<span class="number-preview text-primary fw-semibold"></span> Up to the '
+                            ~ 'selected sub-project\'s unused balance.',
+                  id='reclaimAmount') }}
+  {{ text_field('comment', 'Comment', optional_text='(optional, recorded in the allocation history)',
+                placeholder='e.g. Unused FY2027 hours returned to the lab pool', id='reclaimComment') }}
+{% endcall %}
