@@ -191,11 +191,14 @@ def _refresh_index_entry(request_number: str, *, reader=None,
 
     from sam.integration.xras_api.cache import patch_requests_index
     from sam.integration.xras_api.client import XrasApiClient
-    from sam.queries.xras_requests import request_index_entry
+    from sam.queries.xras_requests import primary_line, request_index_entry
 
     try:
         reader = reader or XrasApiClient.from_environment()
-        payload = reader.get_request_line(request_number)
+        # The family, not get_request_line: the same one fetch, and the card's
+        # document count spans every line.
+        family = reader.get_request_family_by_number(request_number) or []
+        payload = primary_line(family)
         if payload is None:
             # XRAS no longer knows this number. Dropping the row is right here
             # — there is nothing to render and nothing left to act on.
@@ -206,7 +209,8 @@ def _refresh_index_entry(request_number: str, *, reader=None,
             with session_factory() as session:
                 verdicts, _ = _preflight_verdicts(reader, session, payload)
         entry = request_index_entry(payload, pending_push=_still_pending(request_number),
-                                    refreshed_at=datetime.now(), preflights=verdicts)
+                                    refreshed_at=datetime.now(), preflights=verdicts,
+                                    family=family)
         if entry is None:
             return False
         return patch_requests_index(request_number, entry)
@@ -227,12 +231,13 @@ def recheck_readiness(request_number: str, *, session, reader=None) -> dict:
     """
     from sam.integration.xras_api.cache import patch_requests_index
     from sam.integration.xras_api.client import XrasApiClient
-    from sam.queries.xras_requests import request_index_entry
+    from sam.queries.xras_requests import primary_line, request_index_entry
 
     counts = {'rechecked': 0, 'failed': 0, 'manual': 0, 'incomplete': 0}
     try:
         reader = reader or XrasApiClient.from_environment()
-        payload = reader.get_request_line(request_number)
+        family = reader.get_request_family_by_number(request_number) or []
+        payload = primary_line(family)
     except Exception as exc:                            # noqa: BLE001
         logger.warning('xras recheck: could not read %s (%s)', request_number, exc)
         return {'available': False, 'patched': False, 'counts': counts}
@@ -249,7 +254,7 @@ def recheck_readiness(request_number: str, *, session, reader=None) -> dict:
     # since the sweep" marker (which reads "after your change") would lie. The
     # freshly flipped verdict badge and the toast already report the outcome.
     entry = request_index_entry(payload, pending_push=_still_pending(request_number),
-                                preflights=verdicts)
+                                preflights=verdicts, family=family)
     patched = bool(entry) and patch_requests_index(request_number, entry)
     return {'available': True, 'patched': patched, 'counts': counts}
 

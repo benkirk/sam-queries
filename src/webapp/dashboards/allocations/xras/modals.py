@@ -27,6 +27,7 @@ from sam.queries.xras_accounts import is_placeholder, iter_roster_entries
 from sam.integration.xras import lookup_request_override
 from sam.queries.xras_requests import (
     actions_from_payload,
+    documents_from_action,
     person_roles_from_payload,
     request_family,
     request_index_entry,
@@ -140,21 +141,10 @@ def _detail_actions(payload):
 
 
 def _detail_documents(action):
-    """An action's documents with the wire keys read once; ``size`` only when an int."""
-    documents = []
-    for doc in action.get('documents') or ():
-        if not isinstance(doc, dict):
-            continue
-        size = doc.get('size')
-        documents.append({
-            'document_id': doc.get('documentId'),
-            'type': document_type_label(doc.get('documentType')),
-            'name': doc.get('title') or doc.get('filename') or 'document',
-            'filename': doc.get('filename'),
-            # fmt_size calls abs(): a non-int would 500 the whole modal.
-            'size': size if isinstance(size, int) and not isinstance(size, bool) else None,
-        })
-    return documents
+    """An action's documents, labeled for display."""
+    return [{**doc, 'type': document_type_label(doc['document_type']),
+             'name': doc['title'] or doc['filename'] or 'document'}
+            for doc in documents_from_action(action)]
 
 
 def _detail_grants(payload):

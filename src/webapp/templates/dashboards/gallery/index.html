@@ -487,6 +487,12 @@
       {% for v in ('failed', 'manual', 'incomplete', 'rechecked', none) %}{{ xb.verdict(v, icon_only=True) }}{% endfor %}
     </div>
   {% endcall %}
+  {% call specimen('xras_bits.icon_count', 'a quiet icon and count beside a row identity; the words in title') %}
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <span>NCAR4354{{ xb.icon_count('fa-paperclip', 2, '2 documents: Advisor letter, Supporting information') }}</span>
+      <span>failed{{ xb.icon_count('fa-arrow-rotate-right', 3, 'Re-checked 3 times') }}</span>
+    </div>
+  {% endcall %}
   {% call specimen('xras_bits.identity_tag', 'XRAS-side identity: mergeable / unknown / misidentified / identified / unidentified') %}
     <div class="d-flex flex-wrap align-items-center gap-2">
       {{ xb.identity_tag(true, true, mergeable=True) }} {{ xb.identity_tag(none, false) }}

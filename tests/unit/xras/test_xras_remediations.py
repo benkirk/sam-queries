@@ -425,6 +425,25 @@ class TestActionsColumnAndFacet:
         assert 'Supplement' not in body       # neither the cell nor the facet
 
 
+class TestDocumentsOnTheRow:
+    """A paperclip and a count in the Request cell; names stay in the modal."""
+
+    def test_a_request_with_documents_shows_the_count_and_its_types(
+            self, auth_client, configured):
+        p = _payload('EXAM0001')
+        p['actions'][0]['documents'] = [
+            {'documentId': 1, 'documentType': 'Advisor_Letter', 'title': None,
+             'filename': 'Letter for P Eye.pdf', 'size': 1000},
+            {'documentId': 2, 'documentType': 'Supp_Info', 'title': None,
+             'filename': 'cv.pdf', 'size': 2000}]
+        _publish(p, _payload('EXAM0002'))
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'fa-paperclip' in body
+        assert '2 documents: Advisor letter, Supporting information' in body
+        assert body.count('fa-paperclip') == 1, 'EXAM0002 has none'
+        assert 'Letter for P Eye' not in body, 'no filename on the card'
+
+
 class TestSortableColumns:
     """Non-facet headers sort rows within each opportunity group, as form state."""
 

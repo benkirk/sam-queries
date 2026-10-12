@@ -9,6 +9,11 @@
 {% from 'dashboards/fragments/project_bits.html' import project_link with context %}
 {% from 'dashboards/fragments/modals.html' import modal_title %}
 
+{#- A quiet icon and count beside a row's identity (re-checks, documents); the words in `title`. -#}
+{% macro icon_count(icon, n, title) -%}
+<span class="text-muted small ms-1 text-nowrap" title="{{ title }}"><i class="fa-solid {{ icon }}" aria-hidden="true"></i> {{ n | fmt_number }}</span>
+{%- endmacro %}
+
 {#- A neutral fact about a row (a request status, a role, a queue state). -#}
 {% macro tag(label, title='') -%}
 <span class="badge state-tag"{% if title %} title="{{ title }}"{% endif %}>{{ label }}</span>
