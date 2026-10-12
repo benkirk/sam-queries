@@ -28,7 +28,7 @@ Pending Users link → the Invitations tab → the flag and the public form.
 | D3 | No "sponsor notified when the last row lands" mail. The event row shows `n of m fulfilled`. | A third kind; "last" is unstable as rosters grow; NOTIFY is off everywhere it would be tested. |
 | D4 | The project surface is a fourth **Manage Project** tab, `?tab=invitations`. The invitation routes walk the project tree; the page gate (`require_project_permission(EDIT_PROJECTS)`) does not, so a tree-ancestor lead reaches the routes but not the page today. Widened 2026-09-26: `edit_project_page` and the card link take `include_ancestors=True`, so a tree-ancestor lead reaches the page too; #631 widened its tabs the same way (allocation tree, linked elements, details save, members fragment, `can_manage_project_members`), since a page that admits a lead whose tabs then answer 403 shows only spinners. | Confirmed with the operator. |
 | D5 | `desired_username` is a hint shown to the operator, never a match key. Email through `sam_merge_targets`, honoring `ambiguous`, is the only resolver. Since 2026-09-26 the forms no longer ask for it; the column and the operator display remain for older rows. | A casefolded hit on a stranger's username is a plausible collision. |
-| D6 | The sweep feeds `absent` rows only; `inactive` is the deferred `reactivation`. | § 6. |
+| D6 | The sweep feeds `absent` rows only; `inactive` is the deferred `reactivation`. Built 2026-10-12 (branch `account-queue-parity`): `inactive` files a `reactivation`, both XRAS feeds feed the queue, and the project attaches once the handoff mints it. | § 3.4, § 6. |
 | D7 | The public form is plain PRG with the hidden CSRF input, not an `HtmxFormHandler`. | A phone-facing page for people with no account. |
 | D8 | Link and page tokens on two salts of `SECRET_KEY`; the code stored as an HMAC of `id:code`. | A leaked "check your mail" URL cannot verify; constant-time, fixed width; the brute-force bound is the rate limit. |
 | D9 | An operator **Mark verified** action on the queue (vouch). | Needed in production anyway (bounced mail, a phone call), and the only path where NOTIFY is off. `NOTIFY_TRANSPORT=console` shows the mail body in compose. |
@@ -105,7 +105,7 @@ stored). `SessionMixin`; state transitions as methods.
 | Group | Columns |
 |---|---|
 | Identity claim | `email` (lower-cased; the join key SAM already uses to match people — `sam_merge_targets` in `sam/queries/xras_accounts.py` reads `email_address` the same way), `first_name`, `middle_name`, `last_name`, `organization`, `academic_status`, `residence_country`, `orcid`, `phone` — the same field set as an XRAS person (`PERSON_FIELDS`), so a row can feed `POST /v1/people` or an upstream form without re-derivation; `desired_username` nullable (the upstream mints the real one) |
-| Intent | `purpose` ∈ `standalone · enrollment · submission`; `project_id` nullable (the project a fulfilled account joins); `sponsor_user_id` nullable (which sponsor enrolled this person, § 2.2); `event_code` nullable (§ 2.1); `xras_username` nullable (the placeholder SAM minted, § 4) |
+| Intent | `purpose` ∈ `standalone · enrollment · submission · reactivation`; `project_id` nullable (the project a fulfilled account joins); `sponsor_user_id` nullable (which sponsor enrolled this person, § 2.2); `event_code` nullable (§ 2.1); `xras_username` nullable (the placeholder SAM minted, § 4) |
 | Queue state | `state` ∈ `submitted · claimed · requested · rejected · dismissed`; `assignee` (claimed by); `requested_at` (the date SAM told NUSD); `reject_reason`; `comment` |
 | Provenance | `created_by` (`self` from the public form, a username for a sponsor or operator, `task:xras_sweep` for rows derived from handoff rosters), `verified_at` (email verification), `creation_time`, `modified_time` |
 | Fulfillment | `user_id`, `upid` — stamped when the observer (§ 3.4) finds the mirrored row; `upid` is the upstream's durable person key and outlives a username change |
@@ -248,6 +248,7 @@ honoring its `ambiguous` outcome rather than guessing. A hit stamps `user_id` an
 | `standalone` | nothing further; the row is history |
 | `enrollment` | `add_user_to_project(project_id)`; the sponsor is notified once per event when the last row lands |
 | `submission` | the XRAS merge in § 4 (phase 3) |
+| `reactivation` | nothing further; it resolves by `xras_username`, not email, once that account is active |
 
 `users.creation_time` is written by the mirror and read by nothing today; the gap
 between `requested_at` and it is NUSD's lead time, worth a number on the card.
@@ -260,9 +261,12 @@ same rows, later.
 ### 3.4 XRAS-derived rows (phase 1)
 
 The queue is useful on its first day without anyone typing, because the XRAS
-worklist's rows are `account_request` rows the sweep did not have a table for: every handoff roster member with no active `users` row becomes a `submitted`
-row with `purpose = submission`, `created_by = 'task:xras_sweep'`, `xras_username`
-the ARC placeholder, and `project_id` once the handoff lands. The card keeps its
+worklist's rows are `account_request` rows the sweep did not have a table for: every
+person the Pending Users card lists (approved-pending requests and actions pushed in
+the sweep window) becomes a `submitted` row with `created_by = 'task:xras_sweep'`,
+`xras_username` the XRAS username, `purpose = submission` when no `users` row exists
+or `reactivation` when it is inactive, and `project_id` once the handoff lands. Until
+then the card groups it under "XRAS Approved Pending Projects". The card keeps its
 classification and its merge-target ranking, reads the rows instead of recomputing
 them, and gains the claim and dismiss that it has lacked. Shims first: the classifier
 keeps running beside the table until every row it would produce already exists.

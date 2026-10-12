@@ -19,7 +19,7 @@ Loaded with the account-request model, its manage layer and `/register`.
   account, and the cohort (workshop) they register under. SAM never originates
   users (they arrive by the LDAP sync API); the row holds what SAM cannot re-derive. `state` is
   submitted/claimed/rejected/dismissed — fulfilled is derived from `users` by
-  email (`sam_merge_targets`) and stamped only by
+  email (`sam_merge_targets`; a `reactivation` by `xras_username`) and stamped only by
   `sam.manage.account_requests.reconcile_account_requests()`; a render never
   writes. Design + as-built record: `docs/plans/implemented/ACCOUNT_REGISTRATION.md`.
   Surfaces: Admin → Accounts (`MANAGE_ACCOUNT_REQUESTS`), Manage Project →
