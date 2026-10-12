@@ -265,8 +265,9 @@ worklist's rows are `account_request` rows the sweep did not have a table for: e
 person the Pending Users card lists (approved-pending requests and actions pushed in
 the sweep window) becomes a `submitted` row with `created_by = 'task:xras_sweep'`,
 `xras_username` the XRAS username, `purpose = submission` when no `users` row exists
-or `reactivation` when it is inactive, and `project_id` once the handoff lands. Until
-then the card groups it under "XRAS Approved Pending Projects". The card keeps its
+or `reactivation` when it is inactive, and `project_id` once the handoff lands. The
+card groups it under "XRAS Approved Pending Projects" until then and under "XRAS
+Fulfillment" after, until the account exists. The card keeps its
 classification and its merge-target ranking, reads the rows instead of recomputing
 them, and gains the claim and dismiss that it has lacked. Shims first: the classifier
 keeps running beside the table until every row it would produce already exists.

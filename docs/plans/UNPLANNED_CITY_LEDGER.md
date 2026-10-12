@@ -1746,7 +1746,8 @@ renderers (the digest regrouped in Jinja). The two cards also hand-copied the qu
 - [ ] `_shared` `ORIGIN_PLACEHOLDER/KNOWN/MERGEABLE` is an identity bucket; rename `IDENTITY_*`.
 - [ ] Bare `'reports'` / `'action_log'` literals beside `SOURCE_*` (sweep, card, CLI display).
 - [ ] The XRAS Needs column hard-codes `_ACCOUNT_REMEDY_LABELS`' words.
-- [ ] "Project Invitations" also heads XRAS rows once their project exists (Ben's call).
+- [x] "Project Invitations" also headed XRAS rows once their project existed: they are now
+  one "XRAS Fulfillment" group (Ben, 2026-10-12).
 - [ ] Accounts card child rows have no `.cell-child`; its Note cell keeps an inline `pre-wrap`.
 - [ ] `_account_cells.html` (the mail env) keeps its own queue-state wording.
 - [ ] `merged_away_usernames` filters Feed A only; Feed B is fresh from XRAS, so moot unless
