@@ -137,3 +137,29 @@ def test_retired_rows_are_tagged_not_faded(card):
     url, _, root = card
     faded = [' '.join(r.all_text().split())[:40] for r in root.find_all('tr') if 'opacity-50' in r.classes]
     assert not faded, f'{url}: use .row-inactive + state_tag, not opacity-50: {faded[:5]}'
+
+
+def test_the_accounts_card_follows_the_conventions(auth_client, session, monkeypatch):
+    """The queue card, rendered with rows: the shared snapshot has none, and the
+    route's own connection cannot see this test's, so its row source is patched."""
+    from tests.factories.account_requests import (make_account_request,
+                                                  make_account_request_event)
+    from webapp.dashboards.admin import account_requests_routes as routes
+
+    event = make_account_request_event(session)
+    rows = [make_account_request(session),
+            make_account_request(session, purpose='enrollment', event=event),
+            make_account_request(session, purpose='submission', by='task:xras_sweep'),
+            make_account_request(session, verified_by=None)]
+    rows[0].claim('operator1')
+    rows[2].dismiss('operator1', 'duplicate')
+    monkeypatch.setattr(routes, 'all_requests', lambda _session: rows)
+
+    html = _render(auth_client, '/admin/account-requests/fragment?show_all=1', '1')
+    root = _parse(html)
+    card = ('/admin/account-requests/fragment', html, root)
+    test_tables_are_align_middle(card)
+    test_rows_span_the_header(card)
+    test_icon_only_buttons_are_labelled(card)
+    test_retired_rows_are_tagged_not_faded(card)
+    assert 'row-inactive' in html and 'claimed · operator1' in html

@@ -1,4 +1,5 @@
-{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle, drill_toggle %}
+{% from 'dashboards/fragments/table_bits.html' import group_count %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_grid_row, facet_row %}
 {% from 'dashboards/fragments/search_box.html' import filter_search %}
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
@@ -111,15 +112,15 @@
         <table class="table table-sm table-hover align-middle mb-0">
             <thead class="table-subtle">
                 <tr>
-                    <th style="width:1.5rem;"></th>
-                    <th style="width:24%;">{{ sort_header('person', 'Person') }}</th>
-                    <th style="width:30%;">{{ sort_header('email', 'Email') }}</th>
-                    <th class="text-nowrap" style="width:4.5rem;" title="Purpose and origin (hover an icon)">Kind</th>
-                    <th style="width:7rem;">Project</th>
-                    <th class="text-nowrap" style="width:5rem;" title="Readiness, address and invitation (hover an icon)">Ready</th>
-                    <th class="text-nowrap" style="width:5.5rem;">{{ sort_header('waiting', 'Wait') }}</th>
-                    <th class="text-nowrap" style="width:11rem;">{{ sort_header('state', 'Status') }}</th>
-                    <th class="text-end" style="width:8.5rem;">Actions</th>
+                    <th class="col-shrink"></th>
+                    <th>{{ sort_header('person', 'Person') }}</th>
+                    <th>{{ sort_header('email', 'Email') }}</th>
+                    <th class="col-shrink" title="Purpose and origin (hover an icon)">Kind</th>
+                    <th class="col-shrink">Project</th>
+                    <th class="col-shrink" title="Readiness, address and invitation (hover an icon)">Ready</th>
+                    <th class="col-num">{{ sort_header('waiting', 'Wait') }}</th>
+                    <th class="col-shrink">{{ sort_header('state', 'Status') }}</th>
+                    <th class="col-shrink text-end">Actions</th>
                 </tr>
             </thead>
             {% for group in groups %}
@@ -127,7 +128,7 @@
             <tbody>
                 <tr class="table-subtle fw-semibold">
                     <td colspan="9">
-                        <span class="cursor-pointer" {{ collapse_toggle(gid, expanded=true) }}><i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i></span>
+                        {{- drill_toggle(gid, label='Show or hide these requests', expanded=true) }}
                         {% if group.event %}
                         <span class="font-monospace">{{ group.event.event_code }}</span>
                         — {{ group.event.name }}
@@ -143,7 +144,7 @@
                         {% else %}
                         {{ group.label }}
                         {% endif %}
-                        <span class="cursor-pointer" {{ collapse_toggle(gid, expanded=true) }}><span class="badge bg-secondary ms-1">{{ group.rows | length }}</span></span>
+                        {{- group_count(group.rows | length) }}
                     </td>
                 </tr>
             </tbody>
@@ -151,19 +152,19 @@
                 {% for v in group.rows %}
                 {% set r = v.row %}
                 {% set body_id = 'arq-' ~ v.id %}
-                <tr id="account-request-{{ v.id }}"{% if r.state in ('dismissed', 'rejected') %} class="text-muted"{% endif %}>
-                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}><i class="fa-solid fa-chevron-right small text-muted collapse-icon"></i></td>
-                    <td class="cursor-pointer text-truncate" style="max-width:0;" title="{{ v.name }}{% if r.desired_username %} (wants {{ r.desired_username }}){% endif %}" {{ collapse_toggle(body_id) }}>
+                <tr id="account-request-{{ v.id }}"{% if r.state in ('dismissed', 'rejected') %} class="row-inactive"{% endif %}>
+                    <td class="col-shrink cursor-pointer" {{ collapse_toggle(body_id) }}><i class="fa-solid fa-chevron-right small text-muted collapse-icon"></i></td>
+                    <td class="cell-truncate cursor-pointer" title="{{ v.name }}{% if r.desired_username %} (wants {{ r.desired_username }}){% endif %}" {{ collapse_toggle(body_id) }}>
                         {{ v.name }}{% if r.desired_username %} <i class="fa-solid fa-at small text-body-secondary" aria-hidden="true"></i>{% endif %}
                     </td>
-                    <td class="cursor-pointer text-truncate" style="max-width:0;" title="{{ v.email }}" {{ collapse_toggle(body_id) }}>{{ v.email }}</td>
+                    <td class="cell-truncate cursor-pointer" title="{{ v.email }}" {{ collapse_toggle(body_id) }}>{{ v.email }}</td>
                     <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>{{ kind_icons(v) }}</td>
                     {# Not a collapse trigger: the modal opener inside would toggle the row too. #}
                     <td>
                         {% if v.project_code %}{{ project_link(v.project_code, can_view_projects, compact=True) }}{% else %}<span class="text-muted">—</span>{% endif %}
                     </td>
                     <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>{{ readiness_icons(v) }}</td>
-                    <td class="cursor-pointer text-nowrap text-muted" title="{{ r.creation_time | fmt_date }}" {{ collapse_toggle(body_id) }}>{{ v.waiting_days }} d</td>
+                    <td class="col-num text-muted cursor-pointer" title="Requested {{ r.creation_time | fmt_date }}" {{ collapse_toggle(body_id) }}>{{ v.waiting_days | fmt_number }}d</td>
                     {# Not a collapse trigger: the ticket link inside would toggle the row too. #}
                     <td>{{ status_line(v) }}</td>
                     <td class="text-end text-nowrap">{{ queue_actions(v.id, r.state, email=v.email, verified=v.verified, full=True) }}</td>
