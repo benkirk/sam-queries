@@ -434,12 +434,10 @@ def sweep_request(app):
 
 
 def _pending_feed(monkeypatch, *numbers):
-    """Feed B names the sweep row's user, in another spelling, on these requests."""
-    from sam.queries.xras_accounts import PendingFeed
-    rows = [{'username': 'zz-pending-user',
-             'actions': [{'request_number': n} for n in numbers]}]
-    monkeypatch.setattr('sam.queries.xras_accounts.load_pending_worklist_rows',
-                        lambda: PendingFeed(rows=rows, checked=True))
+    """The request index names the sweep row's user, in another spelling, on these requests."""
+    rows = [{'request_number': n, 'roster': [{'username': 'zz-pending-user'}]} for n in numbers]
+    monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                        lambda: {'rows': rows})
 
 
 class TestTheRequestBehindAPendingRow:
@@ -468,5 +466,5 @@ class TestTheRequestBehindAPendingRow:
     def test_no_pending_rows_reads_nothing(self, auth_client, monkeypatch, committed_request):
         def _refuse(*_a, **_kw):
             raise AssertionError('looked up request numbers with no pending row')
-        monkeypatch.setattr('sam.queries.xras_accounts.request_numbers_by_username', _refuse)
+        monkeypatch.setattr('sam.queries.xras_requests.request_numbers_by_username', _refuse)
         assert auth_client.get(f'{FRAGMENT}?request={committed_request}').status_code == 200

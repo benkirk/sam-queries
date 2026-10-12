@@ -766,30 +766,6 @@ def get_account_worklist(session: Session, *,
     return merge_worklists(rows, pending_rows)
 
 
-def request_numbers_by_username(session: Session, usernames: Iterable[str], *,
-                                since: datetime,
-                                pending_rows: Sequence[Dict[str, Any]] = ()
-                                ) -> Dict[str, List[str]]:
-    """``{casefolded username: [request numbers]}`` from the two feeds the sweep files
-    account requests from, without classifying anyone (two statements, not a worklist)."""
-    out: Dict[str, List[str]] = {u.casefold(): [] for u in usernames if u}
-
-    def add(username, number):
-        numbers = out.get((username or '').casefold())
-        if numbers is not None and number and number not in numbers:
-            numbers.append(number)
-
-    if not out:
-        return out
-    for row in pending_rows:
-        for action in row.get('actions') or ():
-            add(row.get('username'), action.get('request_number'))
-    for record in records_from_action_log(session, since=since, validate=False):
-        for username in record.usernames:
-            add(username, record.ref.request_number)
-    return out
-
-
 def merge_worklists(primary: Sequence[Dict[str, Any]],
                     secondary: Sequence[Dict[str, Any]]
                     ) -> List[Dict[str, Any]]:

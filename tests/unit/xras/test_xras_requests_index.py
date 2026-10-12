@@ -556,3 +556,17 @@ class TestIsPendingWork:
         from sam.queries.xras_requests import is_pending_work
         assert not is_pending_work(self._entry(self._action('Declined', 'unknown')))
         assert not is_pending_work(self._entry())
+
+
+class TestRequestNumbersByUsername:
+    """The requests a person is on, from the index's rosters, whatever SAM knows of them."""
+
+    def test_casefolded_deduped_in_index_order(self):
+        from sam.queries.xras_requests import request_numbers_by_username
+        rows = [{'request_number': 'NCAR0003', 'roster': [{'username': 'Ghost'}]},
+                {'request_number': 'NCAR0002', 'roster': [{'username': 'ghost'},
+                                                          {'username': 'other'}]},
+                {'request_number': 'NCAR0003', 'roster': [{'username': 'GHOST'}]},
+                {'request_number': None, 'roster': [{'username': 'ghost'}]}]
+        assert request_numbers_by_username(rows, ['ghost', 'nobody', None]) == {
+            'ghost': ['NCAR0003', 'NCAR0002'], 'nobody': []}

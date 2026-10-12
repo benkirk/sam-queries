@@ -10,7 +10,7 @@ Design: docs/plans/implemented/ACCOUNT_REGISTRATION.md section 3.2.
 
 import logging
 import os
-from datetime import date, datetime, time, timedelta
+from datetime import datetime
 
 from flask import current_app, render_template, request, url_for
 from marshmallow import ValidationError
@@ -108,16 +108,21 @@ def _can_open_xras_requests():
 
 
 def _stamp_request_numbers(groups):
-    """The XRAS request behind each row whose project does not exist yet."""
+    """The XRAS request behind each row whose project does not exist yet, from the
+    sweep's request index (its rosters), so a person already resolved in SAM keeps it."""
     pending = next((g['rows'] for g in groups if g['kind'] == GROUP_XRAS_PENDING), None)
     if not pending:
         return
-    from scheduling.tasks.xras_sweep import window_days
-    from sam.queries.xras_accounts import load_pending_worklist_rows, request_numbers_by_username
-    since = datetime.combine(date.today() - timedelta(days=window_days()), time.min)
-    numbers = request_numbers_by_username(
-        db.session, (v['row'].xras_username for v in pending), since=since,
-        pending_rows=load_pending_worklist_rows().rows)
+    from sam.queries.xras_requests import request_numbers_by_username
+    try:
+        from sam.integration.xras_api.cache import load_requests_index
+        index = load_requests_index() or {}
+    except Exception as exc:                     # noqa: BLE001
+        # No cache backend on a laptop raises rather than returning None.
+        logger.warning('account requests: request index unreadable (%s)', exc)
+        index = {}
+    numbers = request_numbers_by_username(index.get('rows') or (),
+                                          (v['row'].xras_username for v in pending))
     for v in pending:
         v['request_numbers'] = numbers.get((v['row'].xras_username or '').casefold(), [])
 
