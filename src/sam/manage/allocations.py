@@ -1401,7 +1401,11 @@ def _add_to_subtree(
     subtree: List[Allocation] = []
     allocation._walk_tree(lambda node: subtree.append(node))
 
+    session.flush()
     for node in subtree:
+        # Lock and re-read: unlocked, two concurrent supplements each added to the
+        # old amount and the later write erased the earlier (UNVR0027, 2026-10-12).
+        session.refresh(node, ['amount'], with_for_update=True)
         node.amount = float(node.amount or 0.0) + float(amount)
         log_integration_transaction(
             session, node, transaction_type,

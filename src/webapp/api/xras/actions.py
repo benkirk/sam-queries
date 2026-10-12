@@ -42,10 +42,11 @@ error, and a parked action is not one. Decision recorded at
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import current_app, request
 from marshmallow import ValidationError
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from sam.integration.xras import XrasActionLog
@@ -105,6 +106,11 @@ _TEXT_WIDTH = 65_535
 
 #: Room reserved for the truncation marker itself, which must always fit.
 _TRUNCATION_MARGIN = 512
+
+#: How long an earlier post of the same ``actionId`` with no outcome still counts as
+#: running. Well past gunicorn's 120 s worker timeout, so a row a crash left at
+#: ``received`` stops blocking re-pushes; short enough that it never blocks a day.
+_IN_FLIGHT_WINDOW = timedelta(minutes=15)
 
 #: The wire message a **parked** action gets, in place of the ``'OK'`` a success gets.
 #:
@@ -406,6 +412,51 @@ def _enabled_action_types():
         current_app.config.get('XRAS_ACTIONS_ENABLED'))
 
 
+def _other_live_post(log_id, action_id):
+    """``(id, status)`` of another post of this ``actionId`` that already applied or is
+    still applying, or ``None``.
+
+    Any other live post counts, whatever its id: a row gets its id at INSERT and becomes
+    visible at COMMIT, so the lower-numbered of two concurrent posts can commit second and
+    an "earlier only" rule would let both apply. In that race both posts refuse each other
+    and the next push applies, since a ``duplicate`` row never blocks.
+    """
+    if action_id is None:
+        return None
+    in_flight = and_(XrasActionLog.status == 'received',
+                     XrasActionLog.processed_time.is_(None),
+                     XrasActionLog.received_time >= datetime.now() - _IN_FLIGHT_WINDOW)
+    with Session(db.engine) as session:
+        return (session.query(XrasActionLog.xras_action_log_id, XrasActionLog.status)
+                .filter(XrasActionLog.action_id == action_id,
+                        XrasActionLog.xras_action_log_id != log_id,
+                        or_(XrasActionLog.status == 'processed', in_flight))
+                .order_by(XrasActionLog.xras_action_log_id)
+                .first())
+
+
+def _refuse_repeat(log_id, action_id, other):
+    """Close a repeat post as ``duplicate`` and answer 422; nothing is applied.
+
+    WARNING: Supplement and Adjustment are additive, so applying a repeat awards the
+    increment again (UNVR0027, 2026-10-12: one action posted three times during a
+    database stall, all three applied).
+    """
+    earlier_id, earlier_status = other
+    if earlier_status == 'processed':
+        message = (f'Action {action_id} was already applied by an earlier post '
+                   f'(SAM #{earlier_id}). Nothing was changed by this request.')
+    else:
+        message = (f'An earlier post of action {action_id} (SAM #{earlier_id}) is still '
+                   f'being applied. Nothing was changed by this request; check that '
+                   f'post\'s result before posting again.')
+    _finish(log_id, status='duplicate', http_status=422, error_messages=[message],
+            outcome_reason=f'repeat of #{earlier_id} ({earlier_status})')
+    current_app.logger.warning('XRAS action repeat refused: id=%s action_id=%s earlier=#%s (%s)',
+                               log_id, action_id, earlier_id, earlier_status)
+    return _errors([message], 422)
+
+
 def _dispatch(log_id, action):
     """Run the dispatcher and close out the audit row. Returns the HTTP response.
 
@@ -572,5 +623,10 @@ def post_action(action_id=None, request_id=None, action_type=None):
             'XRAS action captured (no dispatch): id=%s type=%s request=%s',
             log_id, action.get('actionType'), action.get('requestNumber'))
         return xras_response(message='OK')
+
+    action_id = _fit_int(audit.get('action_id'))
+    other = _other_live_post(log_id, action_id)
+    if other is not None:
+        return _refuse_repeat(log_id, action_id, other)
 
     return _dispatch(log_id, action)

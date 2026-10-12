@@ -501,8 +501,10 @@ directly and were answering in production on 2026-08-20 (22 requests, 18 account
 - `outcome_reason` — *"why did this park?"* Four causes used to produce byte-identical
   rows. A NULL `service` means nothing matched at all; a populated one means a service was
   selected and then something stopped it.
-- `action_id` — *"have I seen this action before?"* A point lookup. Three posts sharing one
-  `action_id` are a duplicate, not three awards.
+- `action_id` — *"have I seen this action before?"* A point lookup. The route applies only
+  the first post of an `action_id`; a repeat while it is applied or still applying (15 min)
+  is refused with a 422 and recorded as `duplicate`. A repeat after a `failed` or `manual`
+  row applies, which is how an XRAS admin retries after a data fix.
 - `service` — which handler ran, recorded on the failed and manual arms too.
 
 **Health signals** (§ 4.4) — these are *normal*, so do not chase them:

@@ -8,8 +8,8 @@
       {{ status_badge('expired', extra='ms-1', small=True) }}
 
   Known states (case-insensitive): active, inactive, locked, expired,
-  plus the six xras_action_log states (received, processed, manual, failed,
-  rechecked, unmapped) — see sam/queries/xras_actions.py::XRAS_ACTION_STATUSES.
+  plus the seven xras_action_log states (received, processed, manual, failed,
+  rechecked, unmapped, duplicate) — see sam/queries/xras_actions.py::XRAS_ACTION_STATUSES.
   test_xras_dashboard.py asserts every member of that tuple has an entry in all
   three dicts below.
   Unknown states fall back to bg-secondary with the raw label rendered.
@@ -38,6 +38,7 @@
     'failed':     'bg-danger',
     'rechecked':   'bg-secondary',
     'unmapped':   'bg-dark',
+    'duplicate':  'bg-secondary',
     'sent':       'bg-success',
     'queued':     'bg-info',
     'suppressed': 'bg-secondary',
@@ -58,6 +59,7 @@
     'failed':     'Failed',
     'rechecked':  'Would succeed',
     'unmapped':   'Unmapped',
+    'duplicate':  'Duplicate',
     'sent':       'Sent',
     'queued':     'Queued',
     'suppressed': 'Suppressed',
@@ -80,6 +82,7 @@
     'failed':     'Rejected. See the error list for what XRAS was told.',
     'rechecked':   'Re-checked against current code and data: this action would succeed if XRAS posted it now. Nothing was applied.',
     'unmapped':   'XRAS called a path SAM does not implement. Nothing was applied — decide whether it should be.',
+    'duplicate':  'A repeat post of an action that had already applied or was still applying. Refused; nothing was applied.',
     'sent':       'Handed to the relay and accepted.',
     'queued':     'Written before the send. Still queued long after means a process died mid-send.',
     'suppressed': 'Not sent on purpose — already notified under the same key, or notifications are disabled.',

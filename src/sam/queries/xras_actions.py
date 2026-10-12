@@ -44,8 +44,11 @@ from sam.projects.projects import Project
 #: NOT folded into ``manual`` -- the four-cause parking cohort operators filter
 #: on -- nor into ``failed``, which would inflate the dashboard's failure rate
 #: for something that never claimed to be supported.
+#:
+#: ``duplicate`` is a repeat post of an ``actionId`` that already applied or was still
+#: applying; it was refused with a 422 and applied nothing.
 XRAS_ACTION_STATUSES = ('received', 'processed', 'manual', 'failed', 'rechecked',
-                        'unmapped')
+                        'unmapped', 'duplicate')
 
 #: Action types on the wire, for the filter dropdown: legacy's own declared
 #: vocabulary (``action/domain/model/Action.java``), corrected against real
