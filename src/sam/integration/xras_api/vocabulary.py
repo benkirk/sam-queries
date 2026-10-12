@@ -1,4 +1,4 @@
-"""XRAS role-type vocabulary and stable wire-field names — the shared home.
+"""XRAS vocabularies (role types, document types) and stable wire-field names — the shared home.
 
 Both the write client (:mod:`sam.integration.xras_api.admin_client`) and the
 read-side report parsing (:mod:`sam.queries.xras_requests`) need the numeric
@@ -95,3 +95,22 @@ def role_type(key: Any) -> RoleType:
         raise ValueError(f'unknown XRAS role type {key!r}; '
                          f'expected one of {[r.name for r in ROLE_TYPES]}')
     return found
+
+
+#: ``actions[].documents[].documentType`` codes seen on NCAR requests (2026-10-12,
+#: 400 Approved requests), and their display names. ``GET /v1/types/documents``
+#: is the authority; an unseen code renders humanized rather than failing.
+DOCUMENT_TYPE_LABELS = {
+    'Advisor_Letter': 'Advisor letter',
+    'Main_Doc': 'Main document',
+    'Progress_Report': 'Progress report',
+    'Supp_Info': 'Supporting information',
+}
+
+
+def document_type_label(code: Any) -> str:
+    """The display name for a document type code; humanized when unknown."""
+    if not code:
+        return 'Document'
+    text = str(code)
+    return DOCUMENT_TYPE_LABELS.get(text) or text.replace('_', ' ').capitalize()

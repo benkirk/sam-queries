@@ -34,11 +34,13 @@ from typing import (Any, Callable, Dict, Iterable, Iterator, List, Mapping,
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from sam.core.account_requests import AccountRequest
 from sam.core.users import EmailAddress, User
 from sam.dates import parse_wire_date
 from sam.integration.xras import XrasActionLog, XrasRemediationEvent
-from sam.projects.projects import Project
-from sam.queries.xras_actions import XRAS_ACTION_STATUSES
+from sam.queries.projects import project_ids_by_code
+from sam.queries.users import users_by_username_ci
+from sam.queries.xras_actions import XRAS_ACTION_STATUSES, canonical_action_type
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +82,17 @@ USER_ROLE = 'User'
 
 #: Ranked for display: the strongest role a username holds leads the row.
 _ROLE_ORDER = (PI_ROLE, ALLOCATION_MANAGER_ROLE, USER_ROLE)
+
+#: Actions whose handler validates and applies the whole roster (Add, Update). Any
+#: other action leaves membership alone and carries a stale roster, so only its PI
+#: and Allocation Manager count, and only when their SAM account has lapsed.
+ROSTER_ACTION_TYPES = ('New', 'Renewal')
+_LEAD_ROLES = {PI_ROLE, ALLOCATION_MANAGER_ROLE}
+
+
+def _needs_whole_roster(record: 'RosterRecord') -> bool:
+    action_type = canonical_action_type(record.ref.action_type)
+    return action_type is None or action_type in ROSTER_ACTION_TYPES
 
 #: PII. Assembled only for a viewer holding ``MANAGE_XRAS`` — see the card.
 PERSON_FIELDS = ('firstName', 'middleName', 'lastName', 'email', 'phone',
@@ -140,6 +153,9 @@ class ActionRef:
     #: out, so a one-sided window on it keeps every row at every width and the
     #: control looks dead. That bounds what the sweep collects instead.
     submit_date: Optional[str] = None
+    #: Feed B only: the request's latest action recency (``report_activity_date``),
+    #: ISO. The window's fallback when the person has no queue row yet.
+    entry_date: Optional[str] = None
     source: str = SOURCE_ACTION_LOG
     #: ``dispatch_action(validate_only=True)``'s verdict. ``None`` = not run.
     would_succeed: Optional[bool] = None
@@ -443,6 +459,47 @@ def _report_action_type(payload: dict) -> Optional[str]:
     return payload.get('requestType')
 
 
+def report_entry_date(action: dict) -> Optional[date]:
+    """A report action's recency: ``entryDate``, else its often-null ``submitDate``."""
+    return (parse_wire_date(action.get('entryDate'))
+            or parse_wire_date(action.get('submitDate')))
+
+
+def report_activity_date(payload: dict) -> Optional[date]:
+    """The latest action recency on a report request, else the request's ``submitDate``."""
+    dates = [d for a in payload.get('actions') or () if isinstance(a, dict)
+             for d in (report_entry_date(a),) if d]
+    return max(dates) if dates else parse_wire_date(payload.get('submitDate'))
+
+
+def _iso(value: Optional[date]) -> Optional[str]:
+    return value.isoformat() if value else None
+
+
+def pending_in_window(row: Mapping[str, Any], since, *, first_seen=None) -> bool:
+    """Was this Feed-B person first seen approved within the window?
+
+    XRAS's reports carry no approval timestamp, so *first_seen* is when the
+    sweep first filed the person (their queue row's ``creation_time``). With
+    none, each action's ``entry_date`` stands in, then a snapshot from an older
+    image's ``submit_date``. A row with no usable date is kept: missing
+    information is not evidence of age.
+    """
+    if since is None:
+        return True
+    start = since.date() if hasattr(since, 'date') else since
+    if first_seen is not None:
+        return (first_seen.date() if hasattr(first_seen, 'date') else first_seen) >= start
+    dates = [a.get('entry_date') or a.get('submit_date') for a in row.get('actions') or []]
+    if not any(dates):
+        return True
+    for raw in dates:
+        seen = parse_wire_date(raw)
+        if seen is None or seen >= start:
+            return True
+    return False
+
+
 def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]:
     """Feed B — rosters from ``GET /v1/reports/requests`` rows.
 
@@ -493,6 +550,7 @@ def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]
                           received_time=None,
                           submit_date=(str(payload.get('submitDate'))[:10]
                                        if payload.get('submitDate') else None),
+                          entry_date=_iso(report_activity_date(payload)),
                           source=SOURCE_REPORTS),
             usernames=tuple(usernames),
             roles_by_username={k: tuple(v) for k, v in roles.items()},
@@ -556,6 +614,9 @@ def classify_accounts(session: Session,
     of 19 live roster usernames sampled during design, all 19 existed but
     **five were inactive**, a quarter of the real cases.
 
+    Only a ``New`` or ``Renewal`` roster counts in full (``ROSTER_ACTION_TYPES``);
+    any other action contributes its PI and Allocation Manager, ``inactive`` only.
+
     WARNING: ``isAccountToBeCreated`` is **never** the predicate. XRAS sets it when
     the role is created and never clears it, so live data shows active,
     present SAM users still carrying ``true``. It rides along as a hint column
@@ -577,8 +638,7 @@ def classify_accounts(session: Session,
     # lowercase ``user_<hex>``, so every scrubbed roster is already
     # case-matched, and ``roster.normalize_username`` does not fold case either
     # (it reproduces Java), so the wire spelling arrives untouched.
-    existing = {u.username.casefold(): u for u in
-                session.query(User).filter(User.username.in_(sorted(wanted))).all()}
+    existing = users_by_username_ci(session, wanted)
 
     rows: Dict[str, Dict[str, Any]] = {}
     for record in records:
@@ -591,6 +651,10 @@ def classify_accounts(session: Session,
                 continue                    # nothing to do — the common case
             classification = (CLASSIFICATION_ABSENT if user is None
                               else CLASSIFICATION_INACTIVE)
+            if not _needs_whole_roster(record) and (
+                    classification == CLASSIFICATION_ABSENT
+                    or not _LEAD_ROLES & set(record.roles_by_username.get(username, ()))):
+                continue
 
             # Grouped on the same case-insensitive key, so two spellings of
             # one account are one row of work rather than two.
@@ -641,6 +705,7 @@ def classify_accounts(session: Session,
                 'status': record.ref.status,
                 'received_time': record.ref.received_time,
                 'submit_date': record.ref.submit_date,
+                'entry_date': record.ref.entry_date,
                 'source': record.ref.source,
                 'would_succeed': record.ref.would_succeed,
                 'preflight_status': record.ref.preflight_status,
@@ -747,7 +812,7 @@ def merge_worklists(primary: Sequence[Dict[str, Any]],
                 or row['last_seen'] > seen['last_seen']):
             seen['last_seen'] = row['last_seen']
         # Person detail and the XRAS identity flag ride whichever feed carried
-        # them; Feed B always does, Feed A only after an --enrich pass.
+        # them; Feed B always does, Feed A when the push body did or after enrichment.
         for field_name in ('person', 'is_reconciled', 'latest_action_log_id',
                            'merge_target'):
             if seen.get(field_name) is None and row.get(field_name) is not None:
@@ -954,11 +1019,11 @@ def sam_merge_targets(session: Session, emails: Iterable[str]) -> Dict[str, dict
 def stamp_merge_targets(session: Session, rows: List[Dict[str, Any]]) -> Dict[str, int]:
     """Stamp ``merge_target`` on each placeholder row, re-derive ``remedy``, re-sort.
 
-    Caller-applied AFTER :func:`enrich_worklist`, for the same reason
-    :func:`stamp_project_existence` is: a Feed-A row has no ``person`` (so no
-    email) until then. Backfills rows read from a snapshot an older image
-    published, like :func:`stamp_waiting_days`. Only placeholder rows are
-    stamped -- the merge modal exists for those alone. Returns counts.
+    Caller-applied AFTER :func:`enrich_worklist`: a Feed-A row whose push body
+    carried no person has no email until then. Backfills rows read from a
+    snapshot an older image published, like :func:`stamp_waiting_days`. Only
+    placeholder rows are stamped -- the merge modal exists for those alone.
+    Returns counts.
     """
     emails = [((row.get('person') or {}).get('email') or '')
               for row in rows if row.get('placeholder')]
@@ -1021,8 +1086,7 @@ def stamp_project_existence(session: Session,
     if not codes:
         return
 
-    known = {c for (c,) in session.query(Project.projcode)
-             .filter(Project.projcode.in_(sorted(codes))).all()}
+    known = set(project_ids_by_code(session, codes))
     for action in actions:
         action['is_project'] = action.get('request_number') in known
 
@@ -1047,3 +1111,50 @@ def stamp_waiting_days(rows: Sequence[Dict[str, Any]], *,
             row['waiting_since'] = _waiting_since(row.get('first_seen'),
                                                   row.get('actions') or ())
         row['waiting_days'] = waiting_days(row, today=when)
+
+
+@dataclass
+class AssembledWorklist:
+    """The worklist every surface renders, plus what its Feed-B window hid."""
+
+    rows: List[Dict[str, Any]]
+    enrichment: Optional[Dict[str, Any]] = None
+    pending_hidden: int = 0
+
+
+def assemble_worklist(session: Session, *,
+                      pending_rows: Optional[Sequence[Dict[str, Any]]] = None,
+                      since=None, until=None, validate: bool = True,
+                      max_lookups: Optional[int] = None) -> AssembledWorklist:
+    """Feed A, windowed Feed B, the merge and every stamp, in the one safe order.
+
+    Feed B is windowed here, before injection: after the merge every Feed-A row
+    would pass the window, so it would never narrow the pending half.
+    *max_lookups* ``None`` skips enrichment; ``0`` uses inline persons only.
+    Merge targets come after enrichment because a row may get its email there.
+    """
+    pending = None
+    if pending_rows is not None:
+        first_seen = _first_seen_approved(session, pending_rows) if since else {}
+        pending = [r for r in pending_rows
+                   if pending_in_window(r, since, first_seen=first_seen.get(
+                       AccountRequest.xras_key(r.get('username'))))]
+    rows = get_account_worklist(session, since=since, until=until,
+                                validate=validate, pending_rows=pending)
+    stamp_waiting_days(rows)
+    # After the merge copies each action dict: this writes `is_project` in place.
+    stamp_project_existence(session, rows)
+    enrichment = (None if max_lookups is None
+                  else enrich_worklist(rows, max_lookups=max_lookups))
+    stamp_merge_targets(session, rows)
+    return AssembledWorklist(
+        rows=rows, enrichment=enrichment,
+        pending_hidden=(len(pending_rows) - len(pending)) if pending is not None else 0)
+
+
+def _first_seen_approved(session: Session, rows: Sequence[Dict[str, Any]]) -> Dict[str, datetime]:
+    """``{xras_key: creation_time}`` of each person's current queue row."""
+    from sam.queries.account_requests import current_request, requests_by_xras_username
+
+    found = requests_by_xras_username(session, (r.get('username') for r in rows))
+    return {key: current_request(reqs).creation_time for key, reqs in found.items() if reqs}

@@ -10,8 +10,8 @@ event ring (Redis sorted-set, or per-worker deque fallback):
                   "currently blocked" heuristic)
 
 Plus an unblock POST that drops every storage key matching an actor; the
-action is logged to the structured app log per CLAUDE.md's "long-term
-forensics live in the structured app log" convention. No ORM tables touched,
+action is logged to the structured app log, where long-term forensics
+live. No ORM tables touched,
 so the audit subsystem (which traps SQLAlchemy events) doesn't apply here.
 """
 
@@ -67,7 +67,7 @@ def rate_limits_recent():
         if actor_filter and actor_filter not in e.get('actor', '').lower():
             continue
         # Enrich with a Python datetime so the template can render via the
-        # standard fmt_date Jinja filter (per CLAUDE.md "Display Formatting").
+        # standard fmt_date Jinja filter (per .claude/rules/formatting.md).
         e = {**e, 'dt': datetime.fromtimestamp(e['ts'])}
         events.append(e)
     return render_template(

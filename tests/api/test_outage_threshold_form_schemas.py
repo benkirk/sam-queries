@@ -4,7 +4,7 @@ SetThresholdForm (sam.schemas.forms.user) and Create/EditOutageForm
 
 These schemas are pure input coercion + shape validation. DB-backed checks
 (account lookup, system_name -> system_id resolution) stay in the routes per
-CLAUDE.md §9.
+.claude/rules/webapp-ui.md §9.
 """
 import datetime as dt
 

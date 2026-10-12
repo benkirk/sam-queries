@@ -226,6 +226,41 @@ class TestNoPiiInTheSnapshot:
         assert 'Canada' not in blob
 
 
+class TestDocuments:
+    """The card counts documents across the family; it never caches a filename."""
+
+    DOC = {'documentId': 5, 'documentType': 'Advisor_Letter', 'title': None,
+           'filename': 'Letter for Ada Invented.pdf', 'size': 191992}
+
+    def _family(self):
+        new = _payload(requestId=900001, requestType='New',
+                       actions=[{'actionId': 7, 'actionType': 'New',
+                                 'actionStatus': 'Approved', 'documents': [self.DOC]}])
+        renewal = _payload(requestId=900002, requestType='Renewal',
+                           actions=[{'actionId': 8, 'actionType': 'Renewal',
+                                     'actionStatus': 'Approved'}])
+        gone = _payload(requestId=900003, isDeleted=True,
+                        actions=[{'actionId': 9, 'actionType': 'New',
+                                  'documents': [self.DOC]}])
+        return new, renewal, gone
+
+    def test_the_count_spans_the_family_and_skips_deleted_lines(self):
+        new, renewal, gone = self._family()
+        entry = request_index_entry(renewal, family=[new, renewal, gone])
+        assert entry['document_count'] == 1
+        assert entry['document_types'] == ['Advisor_Letter']
+        assert request_index_entry(renewal)['document_count'] == 0, 'this line alone'
+
+    def test_no_filename_reaches_the_entry(self):
+        new, renewal, _ = self._family()
+        assert 'Letter for Ada' not in repr(request_index_entry(renewal, family=[new, renewal]))
+
+    def test_a_non_integer_size_is_dropped(self):
+        from sam.queries.xras_requests import documents_from_action
+        doc, = documents_from_action({'documents': [{**self.DOC, 'size': '191992'}]})
+        assert doc['size'] is None and doc['document_type'] == 'Advisor_Letter'
+
+
 class TestTheOffers:
     """Snapshot-derived, because `rules{allowedOperations}` is 401 for us."""
 

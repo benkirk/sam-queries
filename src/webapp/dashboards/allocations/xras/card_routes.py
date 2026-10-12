@@ -33,12 +33,8 @@ from sam.queries.xras_activation import (
     get_xras_pending_recipients,
 )
 from sam.queries.xras_accounts import (
-    enrich_worklist,
-    get_account_worklist,
+    assemble_worklist,
     load_pending_worklist_rows,
-    stamp_merge_targets,
-    stamp_project_existence,
-    stamp_waiting_days,
     worklist_counts,
 )
 
@@ -52,7 +48,6 @@ from ._shared import (
     _ACTIVITY_WINDOW_PILLS, _XRAS_ACTIVITY_FORM_ID,
     _XRAS_ACTIVITY_TARGET, _XRAS_FORM_ID, _XRAS_FRAGMENT_TARGET,
     _parse_activity_window, _parse_xras_filters,
-    _submitted_since,
 )
 from webapp.utils.faceted_log import build_facet_strip
 from webapp.utils.htmx import read_flag, read_sort, read_tab, sort_rows
@@ -316,29 +311,15 @@ def xras_accounts_fragment():
     window = _parse_activity_window(request.args)
     selected = ACCOUNT_FACETS.read(request.args)
 
-    # Feed B, filtered BEFORE injection: after the merge every Feed-A row would
-    # pass `_submitted_since` (no submit_date => kept), so the window has to bite
-    # here or it would never narrow the pending half. `pending_hidden` is the
-    # Feed-B-scoped "outside the date filter" count -- denominator is the
-    # snapshot's rows, not its counts total.
+    # `pending_hidden` is the Feed-B-scoped "outside the date filter" count; its
+    # denominator is the snapshot's rows, not its counts total. Enrichment is
+    # best-effort and never fatal: an outage leaves the rest `person=None`.
     feed = load_pending_worklist_rows()
-    pending = [r for r in feed.rows if _submitted_since(r, window['since'])]
-    pending_hidden = len(feed.rows) - len(pending)
-
-    rows = get_account_worklist(db.session, since=window['since'],
-                                until=window['until'], pending_rows=pending)
-
-    stamp_waiting_days(rows)
-    # Safe after the merge copies each action dict: this writes `is_project` in
-    # place, and Feed-B actions gain it too so `request_cell` can link them.
-    stamp_project_existence(db.session, rows)
-
-    # Enrichment is best-effort and never fatal: it skips rows Feed B already
-    # carried a person for, and an outage leaves the rest `person=None`.
-    enrichment = enrich_worklist(rows, max_lookups=_ACCOUNTS_ENRICH_BUDGET)
-    # After enrichment (a Feed-A row has no email until then) and before the
-    # PII strip: the matched USERNAME is account state and rides top-level.
-    stamp_merge_targets(db.session, rows)
+    assembled = assemble_worklist(db.session, pending_rows=feed.rows,
+                                  since=window['since'], until=window['until'],
+                                  max_lookups=_ACCOUNTS_ENRICH_BUDGET)
+    rows, enrichment = assembled.rows, assembled.enrichment
+    pending_hidden = assembled.pending_hidden
     # The account_request the sweep wrote for this username, if any: the
     # claim/dismiss state the card can now act on. Account state, not PII, so
     # it rides on the VIEW_XRAS side; the controls themselves are gated on

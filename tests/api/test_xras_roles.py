@@ -6,7 +6,7 @@ Java and absent here. These tests pin the contract that port implements, which i
 why (in short: legacy's four-branch error ladder can never fire, so its real behavior is
 400-for-everything carrying a leaked ``ValidationException:`` string).
 
-House convention applies (CLAUDE.md § Testing): the HTTP tier covers auth, validation,
+House convention applies (.claude/rules/testing.md): the HTTP tier covers auth, validation,
 status codes and audit-row transitions. The happy-path *write* is asserted through a
 patched ``Project.update`` rather than by inspecting the database — a route-level write
 commits on ``db.session``'s own connection, outside the suite's per-test SAVEPOINT, and

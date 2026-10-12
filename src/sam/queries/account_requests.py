@@ -22,6 +22,7 @@ from sam.core.account_requests import (
     CREATED_BY_SELF,
     CREATED_BY_SWEEP,
     OPEN_STATES,
+    PURPOSE_REACTIVATION,
     AccountRequest,
     AccountRequestEvent,
     EventEnrollment,
@@ -30,6 +31,8 @@ from sam.accounting.allocations import AllocationType
 from sam.core.users import User
 from sam.integration.tickets.queries import ACCOUNT_REQUEST, tickets_for
 from sam.projects.projects import Project
+from sam.queries.projects import project_codes
+from sam.queries.users import users_by_username_ci
 from sam.resources.facilities import Panel
 
 from .xras_accounts import sam_merge_targets
@@ -54,6 +57,8 @@ class Resolution:
 
 #: Where a row came from, for the card's Origin facet and the digest.
 ORIGIN_SELF, ORIGIN_SPONSOR, ORIGIN_SWEEP = 'self', 'sponsor', 'sweep'
+ORIGIN_LABELS = {ORIGIN_SELF: 'Public form', ORIGIN_SPONSOR: 'Invited',
+                 ORIGIN_SWEEP: 'XRAS roster'}
 
 
 def origin_of(row: AccountRequest) -> str:
@@ -87,21 +92,18 @@ def resolve_requests(session: Session,
     """``account_request_id -> Resolution`` for every row the mirror knows.
 
     Two batched queries: the email derivation, then the ``users`` rows the
-    resolved usernames and the ``desired_username`` hints name. Rows with no
-    hit are absent from the result.
+    resolved usernames, the ``desired_username`` hints and each reactivation's
+    ``xras_username`` name. A reactivation resolves by that username, not by
+    email. Rows with no hit are absent from the result.
     """
     if not rows:
         return {}
     targets = sam_merge_targets(session, [row.email for row in rows])
     wanted = {t['username'] for t in targets.values() if t.get('username')}
     hints = {row.desired_username.casefold() for row in rows if row.desired_username}
-    lookup = wanted | hints
-    users: Dict[str, User] = {}
-    if lookup:
-        # users.username is case-insensitive at the DB, so IN matches either
-        # spelling; the dict must be casefolded to find what came back.
-        users = {u.username.casefold(): u for u in
-                 session.query(User).filter(User.username.in_(sorted(lookup))).all()}
+    named = {row.xras_username for row in rows
+             if row.purpose == PURPOSE_REACTIVATION and row.xras_username}
+    users = users_by_username_ci(session, wanted | hints | named)
 
     resolutions: Dict[int, Resolution] = {}
     for row in rows:
@@ -110,6 +112,13 @@ def resolve_requests(session: Session,
         if row.desired_username:
             hit = users.get(row.desired_username.casefold())
             hint = hit.username if hit else None
+        named_user = (users.get(row.xras_username.casefold())
+                      if row.purpose == PURPOSE_REACTIVATION and row.xras_username else None)
+        if named_user is not None:
+            resolutions[row.account_request_id] = Resolution(
+                username=named_user.username, user_id=named_user.user_id,
+                active=bool(named_user.is_active), hint=hint)
+            continue
         if target is None:
             if hint:
                 resolutions[row.account_request_id] = Resolution(hint=hint)
@@ -186,11 +195,8 @@ def request_views(session: Session, rows: Sequence[AccountRequest], *,
     sponsors = ({u.user_id: u for u in session.query(User)
                  .filter(User.user_id.in_(sponsor_ids)).all()}
                 if sponsor_ids else {})
-    project_ids = sorted({r.project_id for r in rows if r.project_id}
-                         | {e.project_id for e in events.values()})
-    projects = (dict(session.query(Project.project_id, Project.projcode)
-                     .filter(Project.project_id.in_(project_ids)).all())
-                if project_ids else {})
+    projects = project_codes(session, {r.project_id for r in rows}
+                             | {e.project_id for e in events.values()})
     today = today or date.today()
     tickets = ticket_views(session, [r.account_request_id for r in rows])
     views = []
@@ -271,10 +277,7 @@ def events_for_user(session: Session, user_id: int) -> List[Dict[str, Any]]:
               session.query(AccountRequestEvent).filter(
                   AccountRequestEvent.account_request_event_id.in_(
                       {r.event_id for r in rows})).all()}
-    project_ids = {e.project_id for e in events.values()}
-    projects = (dict(session.query(Project.project_id, Project.projcode)
-                     .filter(Project.project_id.in_(project_ids)).all())
-                if project_ids else {})
+    projects = project_codes(session, (e.project_id for e in events.values()))
     out = []
     for r in rows:
         event = events.get(r.event_id)
@@ -363,25 +366,49 @@ def enrolled_event_ids(session: Session, user_id: int) -> set:
             .filter(EventEnrollment.user_id == user_id).all()}
 
 
+#: ``group_by_event`` kinds, and the headings the card and digest print for them.
+GROUP_EVENT, GROUP_PROJECT, GROUP_OTHER = 'event', 'project', 'other'
+GROUP_XRAS_PENDING, GROUP_XRAS_FULFILLMENT = 'xras_pending', 'xras_fulfillment'
+GROUP_LABELS = {GROUP_PROJECT: 'Project Invitations',
+                GROUP_XRAS_PENDING: 'XRAS Approved Pending Projects',
+                GROUP_XRAS_FULFILLMENT: 'XRAS Fulfillment',
+                GROUP_OTHER: 'Other requests'}
+
+
 def group_by_event(views: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Event groups nearest deadline first, then the event-less views: one
-    group per project (by projcode), project-less last, each in input order. A
-    view whose event is gone is event-less, not lost. Each group is
-    ``{'event', 'rows', 'project_code'}``.
+    """Event groups nearest deadline first, then the event-less views: the
+    sweep's rows whose project does not exist yet, the sweep's rows whose
+    project does (the account is what is missing), one group per project (by
+    projcode), the rest project-less last, each in input order. A view whose
+    event is gone is event-less, not lost. Each group is
+    ``{'kind', 'label', 'key', 'event', 'rows', 'project_code'}``; ``key`` is
+    unique per group and safe in a DOM id.
     """
     by_event: Dict[int, List[Dict[str, Any]]] = {}
     loose: Dict[str, List[Dict[str, Any]]] = {}
+    xras: Dict[str, List[Dict[str, Any]]] = {GROUP_XRAS_PENDING: [], GROUP_XRAS_FULFILLMENT: []}
     for v in views:
         if v['event']:
             by_event.setdefault(v['event'].account_request_event_id, []).append(v)
+        elif v['origin'] == ORIGIN_SWEEP:
+            xras[GROUP_XRAS_FULFILLMENT if v['project_code'] else GROUP_XRAS_PENDING].append(v)
         else:
             loose.setdefault(v['project_code'] or '', []).append(v)
-    groups = [{'event': members[0]['event'], 'rows': members,
+    groups = [{'kind': GROUP_EVENT, 'label': members[0]['event'].name,
+               'key': f"event-{members[0]['event'].account_request_event_id}",
+               'event': members[0]['event'], 'rows': members,
                'project_code': members[0]['event_project_code']}
               for members in by_event.values()]
     groups.sort(key=lambda g: (g['event'].accounts_needed_by, g['event'].event_code))
+    for kind, members in xras.items():
+        if members:
+            groups.append({'kind': kind, 'label': GROUP_LABELS[kind], 'key': kind,
+                           'event': None, 'rows': members, 'project_code': ''})
     for code in sorted(loose, key=lambda c: (c == '', c)):
-        groups.append({'event': None, 'rows': loose[code], 'project_code': code})
+        kind = GROUP_PROJECT if code else GROUP_OTHER
+        groups.append({'kind': kind, 'label': GROUP_LABELS[kind],
+                       'key': f'{kind}-{code}' if code else kind,
+                       'event': None, 'rows': loose[code], 'project_code': code})
     return groups
 
 
@@ -410,6 +437,26 @@ def unverified_count(session: Session) -> int:
             .count())
 
 
+def requests_by_xras_username(session: Session, usernames: Iterable[Optional[str]]
+                              ) -> Dict[str, List[AccountRequest]]:
+    """``{xras_key: [AccountRequest, ...]}`` oldest first, in one query."""
+    keys = sorted({k for k in map(AccountRequest.xras_key, usernames) if k})
+    if not keys:
+        return {}
+    found: Dict[str, List[AccountRequest]] = {}
+    for req in (session.query(AccountRequest)
+                .filter(AccountRequest.xras_username.in_(keys))
+                .order_by(AccountRequest.creation_time).all()):
+        found.setdefault(req.xras_username, []).append(req)
+    return found
+
+
+def current_request(requests: Sequence[AccountRequest]) -> Optional[AccountRequest]:
+    """The row a person's queue state is: the newest open one, else the newest."""
+    live = [r for r in requests if r.state in OPEN_STATES and not r.is_fulfilled]
+    return (live or list(requests) or [None])[-1]
+
+
 def stamp_account_requests(session: Session,
                            worklist_rows: Sequence[Dict[str, Any]]) -> None:
     """Point each Pending Users row at its ``account_request``, in place.
@@ -417,23 +464,19 @@ def stamp_account_requests(session: Session,
     Matched on the XRAS username the sweep stored in ``xras_username``,
     casefolded on both sides for the same reason ``classify_accounts`` is.
     Sets ``row['account_request']`` to a small dict or ``None``; every state
-    is reported so the card can offer reopen on a dismissed row.
+    is reported so the card can offer reopen on a dismissed row. A person with
+    several rows (a submission, later a reactivation) shows the open one.
     """
-    wanted = sorted({(r.get('username') or '').lower()
-                     for r in worklist_rows if r.get('username')})
-    if not wanted:
+    if not any(r.get('username') for r in worklist_rows):
         return
-    found = {}
-    for req in (session.query(AccountRequest)
-                .filter(AccountRequest.xras_username.in_(wanted))
-                .order_by(AccountRequest.creation_time).all()):
-        found[req.xras_username] = req
+    found = requests_by_xras_username(session, (r.get('username') for r in worklist_rows))
     for row in worklist_rows:
-        req = found.get((row.get('username') or '').lower())
+        req = current_request(found.get(AccountRequest.xras_key(row.get('username')), ()))
         row['account_request'] = ({
             'id': req.account_request_id,
             'state': req.state,
             'assignee': req.assignee,
             'requested_at': req.requested_at,
             'fulfilled': req.is_fulfilled,
+            'creation_time': req.creation_time,
         } if req else None)

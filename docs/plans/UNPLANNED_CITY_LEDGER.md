@@ -38,6 +38,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-09 | `2af64319` + sweep 20 (`src/cli`) | 49 / 58 / 24 | 1 (2) | 14 / 46 | 20 (20), 2 kept | 4,822 / 51 / 7 | 165 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-10 | `bd428a14` + sweep 21 (HEUV port, #786) | 49 / 58 / 24 | 1 (2) | 14 / 46 | 20 (20), 2 kept | 4,822 / 51 / 7 | 165 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-11 | `c25a7cb8` + sweep 22 (XRAS cards and dialogs) | 49 / 58 / 24 | 1 (2) | 14 / 46 | 20 (20), 2 kept | 5,224 / 51 / 7 | 127 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
+| 2026-10-12 | `726a0e0c` + sweep 23 (account queue / Pending Users), py only | 51 / 63 / 26 | 1 (2) | 16 / 52 | — | — | — | — | — | — | — | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -1715,6 +1716,73 @@ finding spanned every card, so a commit per surface kept each one testable):
   the log has no `facet_clear_all` (its form also carries the age and request fields).
 - [ ] The person sheet (`xras_person_detail`) breaks a long hyphenated email mid-word in a narrow
   column (the XRAS user dialog at lg).
+
+## 23. 2026-10-12: area sweep, the Accounts queue and XRAS Pending Users
+
+**Mode:** area, planning input for one feature (the two lists of people who need an account
+for XRAS work), base `origin/staging` (`726a0e0c`), branch `account-queue-parity`. Refactor
+commits first, then the feature, in one PR.
+
+**Why:** the feature would have made a third copy of the action-date fallback, a sixth
+"which codes are projects" lookup, a second spelling of the `projcode_result`/`request_number`
+pair, a fifth worklist pipeline and a third username lookup, and relabeled two group
+renderers (the digest regrouped in Jinja). The two cards also hand-copied the queue buttons.
+
+**Done, on `account-queue-parity`:**
+
+- [x] `report_entry_date` / `report_activity_date` / `pending_in_window` in
+  `sam/queries/xras_accounts.py` (from preflight, xras_requests and the webapp's `_submitted_since`).
+- [x] `project_ids_by_code` / `project_codes` in `sam/queries/projects.py` (five sites);
+  `project_ids_for_actions` in `sam/queries/xras_actions.py` reads `_PROJCODE_COLUMNS`.
+- [x] `assemble_worklist`: the card, the CLI and the identity strip; the CLI now windows Feed B.
+- [x] `users_by_username_ci`, `requests_by_xras_username`, `AccountRequest.xras_key`.
+- [x] `PURPOSE_*` / `PURPOSE_LABELS`, `ORIGIN_LABELS` beside their constants.
+- [x] `group_by_event` returns kind/label/key; the digest loops `sections`.
+- [x] `queue_actions` / `queue_state` macros on both cards; the Accounts card on the table
+  conventions, now covered by `test_admin_table_conventions` with rows.
+
+**Open:**
+
+- [ ] `_shared` `ORIGIN_PLACEHOLDER/KNOWN/MERGEABLE` is an identity bucket; rename `IDENTITY_*`.
+- [ ] Bare `'reports'` / `'action_log'` literals beside `SOURCE_*` (sweep, card, CLI display).
+- [ ] The XRAS Needs column hard-codes `_ACCOUNT_REMEDY_LABELS`' words.
+- [x] "Project Invitations" also headed XRAS rows once their project existed: they are now
+  one "XRAS Fulfillment" group (Ben, 2026-10-12).
+- [ ] Accounts card child rows have no `.cell-child`; its Note cell keeps an inline `pre-wrap`.
+- [ ] `_account_cells.html` (the mail env) keeps its own queue-state wording.
+- [ ] `merged_away_usernames` filters Feed A only; Feed B is fresh from XRAS, so moot unless
+  a snapshot outlives a merge.
+
+## 24. 2026-10-12: area sweep, XRAS request documents
+
+**Mode:** area, planning input for one feature (PI documents on XRAS requests), base
+`origin/staging` (`d5d23e32`), branch `xras-request-documents`. Picks landed as commits on
+the feature branch.
+
+**Done, on `xras-request-documents`:**
+
+- [x] `documents_from_action` in `sam/queries/xras_requests.py`: one reader for the modal
+  and the card count; the count spans the family (`request_index_entry(family=)`).
+- [x] `xras_bits.icon_count`: the re-check count in `xras_table.html` and the card's
+  paperclip; its title through `fmt_plural`.
+- [x] `XrasApiConfig.interactive()` replaces `_read_client`'s hand-rolled `replace`.
+- [x] `_XrasTransport._send_get` under `_get` and the new capped `_get_bytes`.
+- [x] Grants table on the table conventions beside the Documents table.
+
+**Open:**
+
+- [x] `remediation.py`'s validate path builds `XrasAdminClient` on `interactive()` (review,
+  2026-10-12).
+- [x] `webapp/utils/downloads.py`: `file_response` (the CSV and xlsx exports, names quoted by
+  `send_file`) and `document_response` (the proxy's sniff, disposition and `no-store`); one
+  `.preview-frame` in `components.css` for the mail previews and the PDF (review, 2026-10-12).
+- [ ] `db_browser`'s `_no_store` and `file_response(no_store=)` are the two `private, no-store`
+  writers; the XRAS user modal (PII) sets none.
+- [x] Chrome's PDF viewer renders the inline PDF under the app CSP (`object-src 'none'` on
+  the response); verified on samuel-dev 2026-10-12, no per-route CSP needed.
+- [x] In-modal preview (`xras_document_preview`, an unsandboxed same-origin iframe in the
+  dialog body): renders, Back, new tab, Download and the phone-width hide verified in Chrome
+  on samuel-dev 2026-10-12.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

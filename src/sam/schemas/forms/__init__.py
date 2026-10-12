@@ -34,7 +34,7 @@ class HtmxFormSchema(Schema):
     - unknown=EXCLUDE: silently ignore extra form fields (CSRF tokens, etc.)
     - @pre_load strips empty-string values so optional Int/Float/Date fields
       fall through to ``load_default`` instead of failing to coerce ``''``.
-      This matches the pattern documented in CLAUDE.md §9 (dropping empties
+      This matches the pattern documented in .claude/rules/webapp-ui.md §9 (dropping empties
       from ``request.form``) but moves it into the schema layer so every
       HTMX route benefits automatically.
     """
@@ -61,7 +61,7 @@ class HtmxFormSchema(Schema):
           through unchanged.
 
         This eliminates the need for per-schema ``coerce_empty`` post-loads
-        and matches the pattern documented in CLAUDE.md §9 (dropping empties
+        and matches the pattern documented in .claude/rules/webapp-ui.md §9 (dropping empties
         from ``request.form``) but moves it into the schema layer so every
         HTMX route benefits automatically.
         """

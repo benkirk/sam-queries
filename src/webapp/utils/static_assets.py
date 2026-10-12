@@ -2,7 +2,7 @@
 
 ``url_for('static', ...)`` grows a ``?v=<content hash>``; a response carrying
 that parameter is declared immutable for a year, and one without it gets an
-hour. The rule, the measurements behind it and the gates: CLAUDE.md section 11.
+hour. The rule, the measurements behind it and the gates: .claude/rules/webapp-ui.md §11.
 
 An ``after_request`` header shaper, not a cache this app owns -- hence its
 place beside ``security_headers.py`` rather than under ``caching/``. The digest

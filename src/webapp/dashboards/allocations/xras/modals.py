@@ -10,10 +10,11 @@ acyclic. Moved verbatim out of ``xras_remediation_routes.py``.
 
 from typing import Optional
 
-from flask import current_app, render_template, request, url_for
+from flask import Response, current_app, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from sam.core.users import User
+from sam.integration.xras_api.vocabulary import document_type_label
 from sam.integration.xras_api import (
     XrasSourceUnavailable,
     fos_name_map,
@@ -26,6 +27,7 @@ from sam.queries.xras_accounts import is_placeholder, iter_roster_entries
 from sam.integration.xras import lookup_request_override
 from sam.queries.xras_requests import (
     actions_from_payload,
+    documents_from_action,
     person_roles_from_payload,
     request_family,
     request_index_entry,
@@ -35,6 +37,8 @@ from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from sam.dates import parse_wire_date
 from sam.text import strip_or_none
 from webapp.extensions import db
+from webapp.utils.downloads import document_response
+from webapp.utils.htmx import read_flag
 from webapp.utils.rbac import Permission, has_permission, require_permission
 
 from .. import bp
@@ -133,10 +137,22 @@ def _detail_actions(payload):
                        'type': d.get('allocationDateType')}
                       for d in (action.get('allocationDates') or ())
                       if isinstance(d, dict)],
-            'documents': [d for d in (action.get('documents') or ())
-                          if isinstance(d, dict)],
+            'documents': _detail_documents(action),
         })
     return actions
+
+
+def _label_document(doc):
+    """One document, labeled for display; ``previewable`` is a ``.pdf`` filename."""
+    filename = doc['filename'] or ''
+    return {**doc, 'type': document_type_label(doc['document_type']),
+            'name': doc['title'] or filename or 'document',
+            'previewable': filename.lower().endswith('.pdf')}
+
+
+def _detail_documents(action):
+    """An action's documents, labeled for display."""
+    return [_label_document(doc) for doc in documents_from_action(action)]
 
 
 def _detail_grants(payload):
@@ -240,6 +256,13 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
         # calibration comparison the request modal renders against the prediction.
         action['actual'] = actuals.get(action['action_id'])
     xa_user, is_pi, placeholder = _impersonation(entry, live=payload)
+    # Every action's documents in one list: they sit on the original New, which
+    # is collapsed once any later action exists.
+    documents = [{**doc, 'action_id': action['action_id'],
+                  'action_type': action['action_type'],
+                  'request_id': action['request_id'],
+                  'date': action['entry_date'] or action['submit_date']}
+                 for action in detail_actions for doc in action['documents']]
 
     request_id = (row or {}).get('request_id')
     return {
@@ -257,6 +280,7 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
         # danger-zone delete confirm and any family-level display.
         'family': family,
         'detail_actions': detail_actions,
+        'documents': documents,
         'grants': _detail_grants(payload),
         'xa_user': xa_user,
         'xa_user_is_pi': is_pi,
@@ -310,6 +334,86 @@ def xras_request_detail(request_number: str):
         template=_DETAIL_FORM, noun='request',
         not_found=lambda: _not_found('Request'),
         log_label='xras request detail')
+
+
+def _find_document(lines, action_id, document_id):
+    """``(line, document)`` for a document on a live line's action, else ``(None, None)``."""
+    for line in lines or ():
+        if not isinstance(line, dict) or line.get('isDeleted'):
+            continue
+        for action in line.get('actions') or ():
+            if isinstance(action, dict) and action.get('actionId') == action_id:
+                for doc in documents_from_action(action):
+                    if doc['document_id'] == document_id:
+                        return line, doc
+    return None, None
+
+
+def _plain(message, status):
+    return Response(message, status=status, mimetype='text/plain')
+
+
+@bp.route('/xras_document/<path:request_number>/<int:action_id>/<int:document_id>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_document(request_number: str, action_id: int, document_id: int):
+    """A request document, proxied from XRAS as that request line's PI. Nothing is stored.
+
+    Inline by default (the browser's PDF viewer); ``?download=1`` saves it.
+    The type is decided from the bytes, never from XRAS's header
+    (``document_response``).
+    """
+    from sam.integration.xras_api.admin_client import XrasAdminClient
+    from sam.integration.xras_api.config import XrasApiConfig
+
+    try:
+        line, doc = _find_document(_live_family(request_number), action_id, document_id)
+        if doc is None:
+            return _plain('No such document on this request.', 404)
+        xa_user, _, _ = _impersonation(None, live=line)
+        client = XrasAdminClient.from_environment(XrasApiConfig.from_environment().interactive())
+        fetched = client.get_document(line.get('requestId'), action_id, document_id,
+                                      xa_user=xa_user)
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('xras document %s/%s/%s: %s',
+                                   request_number, action_id, document_id, exc)
+        return _plain('XRAS is not answering, or would not release this document.', 502)
+    if fetched is None:
+        return _plain('XRAS no longer has this document.', 404)
+
+    body, _ = fetched
+    current_app.logger.info('xras document: %s fetched %s action %s document %s',
+                            current_user.username, request_number, action_id, document_id)
+    return document_response(body, doc['filename'] or f'document-{document_id}.pdf',
+                             download=read_flag(request.args, 'download'))
+
+
+_DOCUMENT_PREVIEW_FORM = 'dashboards/allocations/partials/xras_document_preview.html'
+
+
+def _document_preview_context(request_number, action_id, document_id):
+    """The preview's context, or ``None`` when the document is not on a live line."""
+    _, doc = _find_document(_live_family(request_number), action_id, document_id)
+    if doc is None:
+        return None
+    return {'request_number': request_number,
+            'doc': _label_document(doc),
+            'doc_url': url_for('allocations_dashboard.xras_document',
+                               request_number=request_number, action_id=action_id,
+                               document_id=document_id),
+            'back_url': _back_to_detail(request_number)}
+
+
+@bp.route('/xras_document_preview/<path:request_number>/<int:action_id>/<int:document_id>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_document_preview(request_number: str, action_id: int, document_id: int):
+    """Modal body: one request document in a frame, read through :func:`xras_document`."""
+    return _render_xras_modal(
+        build=lambda: _document_preview_context(request_number, action_id, document_id),
+        template=_DOCUMENT_PREVIEW_FORM, noun='document',
+        not_found=lambda: _not_found('Document', 'XRAS has no such document on this request.'),
+        log_label='xras document preview')
 
 
 def _render_detail(request_number, *, flash=None, flash_error=None):

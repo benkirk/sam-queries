@@ -35,8 +35,8 @@ def _recent_submit_date():
     """A submit_date comfortably inside the default 30-day window, off the same
     clock the route filters with. A fixed string sits on the boundary as the
     wall clock advances and flips in/out with the process time zone (the route's
-    ``since`` is ``datetime.now() - 30d`` -- see ``_submitted_since`` in
-    ``xras/_shared.py``)."""
+    ``since`` is ``datetime.now() - 30d`` -- see ``pending_in_window`` in
+    ``sam/queries/xras_accounts.py``)."""
     from datetime import timedelta
     return (datetime.now() - timedelta(days=5)).date().isoformat()
 

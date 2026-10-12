@@ -395,6 +395,15 @@ DELETE FROM role_api_credentials rac USING role r, api_credentials a
     AND r.name = 'ROLE_API_HEUV' AND a.username = 'admin';
 ```
 
+**Status 2026-10-12.** Callers identified: `54.85.201.121` is the ARC portal and `52.11.85.75`
+the ARC Allocation Recommender (same team, Luis Metzger). Together they call exactly eight `GET`
+routes: `user/{u}/group`, `/access`, `/defaultproject`, `/assignedproject`,
+`/wallclockexemption?active=true`, `search/projcode`, `report/project/{p}`,
+`report/usage/project/{p}` (the recommender only the last). Step 1 confirmed outside-in (an
+off-network fetch of `/api/v1/health/ready` on `sam.hpc`). ARC-dev swapped hosts at 15:44Z with
+the `heuv` key: all 200, data field-for-field equal, list order differs (F3, intended). ARC prod
+follows in its next release; the recommender's dev environment is next.
+
 ## 13. Open questions for Ben
 
 1. §7 g: the fstree/rolling-usage threshold divisor is one day shorter than legacy's. Fix fstree too (changes its live output) or keep two divisors? *Found 2026-10-10: both are wrong, knowingly. The true daily share divides by the allocation's inclusive day count (365 for a FY). Legacy divides by 364 and says so (`NDayUsagePeriod.java` calculateThresholdAllocation: "TODO: durationInDays is one day short right now - this how it has always been done in the past. Ick"). SAMuel's `fstree_divisor` and `rolling_usage.py:11,241` (the dashboards' rolling windows) apply that minus-one to an exclusive count, so 363. Both stacks also sum the window over period+1 calendar days (today plus 30) against a 30-day share. Proposal: HEUV stays legacy-exact through cutover; one correct rule for all three in the follow-on plan.* **Decided 2026-10-10 (Ben): match legacy's day count everywhere.** `prorate_divisor` (legacy's count, an open end read as now, floor 1) replaces `fstree_divisor` and the inline formula in `rolling_usage.py`. Local fstree before/after: only `useLimitCharges` (16 values) and `pctUsed` (8) moved, no `accountStatus`. The 31-day window stays (legacy has it too); the true 365-day rule remains a follow-on candidate.
@@ -503,3 +512,37 @@ Rules for this session:
 | `report/usercomputeusage[detail]/...` | `UserComputeUsageReportController.java:34,50` | heavy; zero calls |
 | `report/allocationchange/project/{p}/resource/{r}` | `AllocationChangeReportController.java:30` | zero calls |
 | `report/dataholdings[detail]/project/{p}/resource/{r}` | `DataHoldingsReportController.java:33,49` | zero calls |
+
+## Appendix C — `allocationchange`, scoped but not ported
+
+Both callers confirmed on 2026-10-12 that nothing calls it (dead code in their client, to be
+removed). Port it only on request; about half a day with tests and a parity run.
+
+**Route.** `GET report/allocationchange/project/{p}/resource/{r}[?reportDate=]`
+(`AllocationChangeReportController.java:30`). Validation: projcode exists AND active, resource
+name exists; reuse `active_project_or_400` and `find_resource` with the
+`getAllocationChangeReport.<param>` prefixes. `reportDate` is the one decision: follow F9 (400)
+or honor it (it only moves the cutoff).
+
+**Shape.** `{projcode, resourceName, username: null, reportDate: <today yyyy-MM-dd>, changes: [...]}`
+(no `@JsonInclude`, so nulls are written), each change
+`{date, type, subtype, comment, amount, propagated}` (`AllocationChange.java`).
+
+**Logic** (`reporting/api/allocationchangereport/`, `ReportingConfig.java:178-198`,
+`reporting/accountstatustree/query/Default*Query.java`). Cutoff = end of today, Mountain.
+
+1. Account = the first of the project's accounts with project active, resource commissioned
+   on the cutoff and `creation_time <= cutoff` (`Account.isActive(Date)`; `deleted` not read).
+   None: `changes: []`, 200.
+2. Allocation = the first on that account with `start <= cutoff <= end` (end null = open).
+3. Transactions of that allocation, `creation_time <= cutoff`, ascending: `type "Allocation"`,
+   `subtype` = the type label (`NEW` -> `New`), `amount` = `round(transaction_amount)`,
+   `propagated` as stored. None when step 2 finds no allocation.
+4. Then, appended (not merged by date): every `charge_adjustment` on the account with
+   `adjustment_date <= cutoff`, ascending, NOT windowed to the allocation: `type "Charge"`,
+   `subtype` = the adjustment type, `amount` = minus the stored amount, `propagated: false`.
+
+**Traps.** Steps 1 and 2 take the first match in an unordered collection; a tie needs a defined
+order (the overlap guard, #692, prevents new overlaps). Step 4's unwindowed history is either
+copied or named as a deliberate fix in `docs/apis/HEUV_API.md`. Dates follow §4.
+

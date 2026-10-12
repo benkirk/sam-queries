@@ -29,12 +29,11 @@
     </table>
     {% endfor %}
 
-    {% set loose = rows | rejectattr('event_code') | list %}
-    {% if loose %}
-    <h3>Other requests</h3>
+    {% for s in sections %}
+    <h3>{{ s.label }}</h3>
     <table class="data">
         <tr><th>Person</th><th>Request</th><th class="num">Waiting</th><th>Status</th></tr>
-        {% for r in loose %}
+        {% for r in s.rows %}
         <tr>{{ person(r) }}
             <td>{{ r.purpose }}{% if r.project_code or r.sponsor %}<br><small>
                 {%- if r.project_code %}{{ r.project_code }}{% endif %}
@@ -43,7 +42,7 @@
         </tr>
         {% endfor %}
     </table>
-    {% endif %}
+    {% endfor %}
 
     {% if queue_url %}
     <p><a href="{{ queue_url }}">Work the queue</a> — claim rows and mark them done.</p>

@@ -7,7 +7,7 @@ grouped hierarchically by Resource -> Facility -> Allocation Type -> Projects.
 
 
 from flask import (
-    render_template, request, flash, redirect, url_for, jsonify, Response,
+    render_template, request, flash, redirect, url_for, jsonify,
 )
 from flask_login import login_required, current_user
 from sqlalchemy.orm import joinedload
@@ -16,6 +16,7 @@ from typing import List, Dict
 
 from webapp.extensions import db, cache, user_aware_cache_key
 from webapp.utils import age_bands
+from webapp.utils.downloads import file_response
 from webapp.utils.htmx import (
     handle_htmx_form_post, read_flag, read_layout, read_multi, read_page,
     read_switch,
@@ -1170,11 +1171,9 @@ def projects_export():
         sheets = [('Allocations', _EXPORT_COLUMNS, [])]
 
     filename = f'allocations_{active_at.strftime("%Y-%m-%d")}.xlsx'
-    return Response(
-        build_workbook(sheets),
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        headers={'Content-Disposition': f'attachment; filename={filename}'},
-    )
+    return file_response(
+        build_workbook(sheets), filename,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
 def _enrich_project_info(rows_by_resource: Dict[str, List[Dict]]) -> None:

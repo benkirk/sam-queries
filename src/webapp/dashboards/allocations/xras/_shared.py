@@ -12,7 +12,7 @@ from ``xras_remediation_routes.py`` — ``git blame -C`` follows both moves.
 """
 
 from datetime import datetime, timedelta
-from sam.dates import parse_wire_date, parse_ymd_or
+from sam.dates import parse_ymd_or
 from webapp.utils.windows import read_days, read_log_window
 
 from flask import current_app, render_template, url_for
@@ -95,7 +95,7 @@ def _back_to_detail(request_number):
 
 
 def _render_xras_modal(*, build, template, noun, not_found, log_label):
-    """Shared body for the three read-only detail modals (request/user/opportunity).
+    """Shared body for the read-only modals (request, user, opportunity, document preview).
 
     Every one does the same four things and differs only in the four arguments:
     run ``build()``; degrade with a **200** on an XRAS outage (htmx will not swap
@@ -116,14 +116,10 @@ def _render_xras_modal(*, build, template, noun, not_found, log_label):
 
 
 def _read_client():
-    # Interactive htmx path: cap retries so a slow/unreachable XRAS can pin a
-    # worker thread for at most one (connect, read) budget, not three plus
-    # backoff (~33s). Reports degrade to "source unavailable" instead.
-    import dataclasses
+    """The read client on the interactive budget: an outage degrades, not blocks."""
     from sam.integration.xras_api import XrasApiClient
     from sam.integration.xras_api.config import XrasApiConfig
-    config = dataclasses.replace(XrasApiConfig.from_environment(), max_retries=1)
-    return XrasApiClient.from_environment(config)
+    return XrasApiClient.from_environment(XrasApiConfig.from_environment().interactive())
 
 
 def _primary_line(lines):
@@ -403,29 +399,6 @@ _SOURCE_LABELS = {
 #: otherwise render a chip wall; the cap is on the CHIPS, not the rows, and
 #: the rows all stay visible whether or not their request earned one.
 _MAX_REQUEST_CHIPS = 12
-
-
-def _submitted_since(row, since):
-    """Did any request naming this person appear in XRAS within the window?
-
-    The Feed-B analogue of Feed A's ``received_time`` filter — the same
-    question ("when did this show up?") asked of a feed that has no arrival of
-    its own, which is what lets one control span both tabs.
-
-    A row with no usable submit date is kept: that is missing information, not
-    evidence of age, and dropping it would silently shrink the queue.
-    """
-    if since is None:
-        return True
-    start = since.date() if hasattr(since, 'date') else since
-    dates = [a.get('submit_date') for a in row.get('actions') or []]
-    if not any(dates):
-        return True
-    for raw in dates:
-        submitted = parse_wire_date(raw)
-        if submitted is None or submitted >= start:
-            return True
-    return False
 
 
 def _request_numbers(row):

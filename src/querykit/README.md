@@ -56,7 +56,7 @@ count, page, facet.
 
 That is the same reasoning that justifies the package at all — it was extracted
 because notifications and tasks would have been the *third* copy of the pattern
-— and the same discipline `CLAUDE.md` states for `CrudSpec`: *an entity needing
+— and the same discipline `.claude/rules/webapp-ui.md` states for `CrudSpec`: *an entity needing
 more than the spec expresses stays bespoke; don't grow the spec for one case.*
 
 Two clients is a coincidence. Three is a pattern.

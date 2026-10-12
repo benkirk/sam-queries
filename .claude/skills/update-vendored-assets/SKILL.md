@@ -68,7 +68,7 @@ the table's pointers drift, the grep does not:
 
 ```bash
 rg -n -i 'bootstrap|htmx|font\s*awesome|fontawesome|jquery|poppins' \
-   src/webapp/static/js src/webapp/static/css docs CLAUDE.md \
+   src/webapp/static/js src/webapp/static/css docs CLAUDE.md .claude/rules \
    .claude/skills/wire-dashboard-feature/SKILL.md
 ```
 
@@ -208,7 +208,7 @@ A bump may fix one (removable, step 7) or invalidate one (blocking, step 4).
 The grep in step 3 catches any added since; this table is the starting set.
 
 - **Bootstrap — modals/toggles.** PR #464 fragment-in-open-modal trap
-  (`CLAUDE.md` §9, gated by `tests/unit/gates/test_modal_shell_contract.py`);
+  (`.claude/rules/webapp-ui.md` §9, gated by `tests/unit/gates/test_modal_shell_contract.py`);
   cross-modal z-index stacking (`static/js/htmx-config.js`); a `data-bs-toggle`
   inside an open modal closes its host (`static/js/actions.js`); pinch-zoom
   scrollbar-pad miscalculation (`static/js/modals.js`); manual tooltip/popover
@@ -232,7 +232,7 @@ The grep in step 3 catches any added since; this table is the starting set.
   behavior is load-bearing across the dashboards.
 - **Font Awesome.** The entry-point CSS resolves webfonts by relative
   `../webfonts/` `url()`, which no `url_for` can reach — the short-TTL branch of
-  the cache-header rule exists for exactly these (`CLAUDE.md` §11), and their
+  the cache-header rule exists for exactly these (`.claude/rules/webapp-ui.md` §11), and their
   presence is gated (`tests/unit/gates/test_vendor_assets.py`). A **major** can rename
   or retire icon classes — grep template `fa-*` usage before bumping (step 4).
   Also: the webfont **family name is versioned** (`'Font Awesome 6 Free'` →

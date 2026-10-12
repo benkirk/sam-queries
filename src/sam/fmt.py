@@ -13,7 +13,7 @@ keyword overrides. ``SAM_RAW_OUTPUT=1`` skips compact notation entirely,
 
 ``register_jinja_filters(app)`` exposes these as ``{{ x | fmt_number }}`` etc;
 ``mpl_number_formatter()`` is the matplotlib tick formatter. Filter table:
-CLAUDE.md, *Display Formatting*.
+.claude/rules/formatting.md.
 """
 import math
 import os

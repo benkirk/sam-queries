@@ -1,6 +1,6 @@
 """HTTP contract of the LDAP sync API: auth, the error envelope, the no-404 rule, reads.
 
-Happy-path writes are covered at the model layer (CLAUDE.md § Testing): a route-level
+Happy-path writes are covered at the model layer (.claude/rules/testing.md): a route-level
 write commits on ``db.session``'s own connection, outside the per-test SAVEPOINT.
 """
 

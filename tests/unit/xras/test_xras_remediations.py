@@ -425,6 +425,112 @@ class TestActionsColumnAndFacet:
         assert 'Supplement' not in body       # neither the cell nor the facet
 
 
+class TestTheDocumentProxy:
+    """A document, fetched as the line's PI and served from our origin; nothing stored."""
+
+    URL = '/allocations/xras_document/EXAM0001/7/1'
+
+    def _admin(self, monkeypatch, fetched=None, error=None):
+        client = MagicMock()
+        if error:
+            client.get_document.side_effect = error
+        else:
+            client.get_document.return_value = fetched
+        monkeypatch.setattr(
+            'sam.integration.xras_api.admin_client.XrasAdminClient.from_environment',
+            classmethod(lambda cls, *a, **k: client))
+        return client
+
+    def test_it_is_gated(self, view_only_client):
+        assert view_only_client.get(self.URL).status_code == 403
+
+    def test_a_pdf_is_served_inline_as_the_pi(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        client = self._admin(monkeypatch, fetched=(b'%PDF-1.7 body', {}))
+        resp = auth_client.get(self.URL)
+        assert resp.status_code == 200 and resp.mimetype == 'application/pdf'
+        assert resp.headers['Content-Disposition'].startswith('inline')
+        assert 'award.pdf' in resp.headers['Content-Disposition']
+        assert resp.headers['Cache-Control'] == 'private, no-store'
+        assert client.get_document.call_args.kwargs['xa_user'] == 'pi-user'
+        # The harness pins the write lever off in app config; the modal's gate is the flag.
+        monkeypatch.setattr('webapp.dashboards.allocations.xras.modals.xras_write_configured',
+                            lambda: True)
+        body = auth_client.get('/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert self.URL in body and self.URL + '?download=1' in body
+
+    def test_download_and_non_pdf_bytes_are_attachments(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        self._admin(monkeypatch, fetched=(b'%PDF-1.7 body', {}))
+        assert auth_client.get(self.URL + '?download=1').headers[
+            'Content-Disposition'].startswith('attachment')
+        self._admin(monkeypatch, fetched=(b'<html>not a pdf</html>', {'Content-Type': 'text/html'}))
+        resp = auth_client.get(self.URL)
+        assert resp.mimetype == 'application/octet-stream'
+        assert resp.headers['Content-Disposition'].startswith('attachment')
+
+    def test_a_document_not_on_the_request_is_404_without_a_fetch(
+            self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        client = self._admin(monkeypatch, fetched=(b'%PDF-', {}))
+        assert auth_client.get('/allocations/xras_document/EXAM0001/7/999').status_code == 404
+        client.get_document.assert_not_called()
+
+    def test_an_outage_degrades_to_502(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        self._admin(monkeypatch, error=XrasSourceUnavailable('down'))
+        assert auth_client.get(self.URL).status_code == 502
+
+
+class TestTheDocumentPreview:
+    """The request dialog swaps to a frame on the proxy; nothing is fetched to render it."""
+
+    URL = '/allocations/xras_document_preview/EXAM0001/7/1'
+
+    def test_it_is_gated(self, view_only_client):
+        assert view_only_client.get(self.URL).status_code == 403
+
+    def test_the_frame_reads_through_the_proxy(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(self.URL).get_data(as_text=True)
+        assert '<iframe class="preview-frame preview-frame-page" src="/allocations/xras_document/EXAM0001/7/1"' in body
+        assert 'sandbox' not in body and 'data-bs-toggle' not in body
+        assert 'hx-get="/allocations/xras_request_detail/EXAM0001"' in body
+
+    def test_a_document_not_on_the_request_says_so_in_the_dialog(
+            self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        resp = auth_client.get('/allocations/xras_document_preview/EXAM0001/7/999')
+        assert resp.status_code == 200 and '<iframe' not in resp.get_data(as_text=True)
+
+    def test_the_documents_row_offers_it_when_writes_are_on(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        detail = '/allocations/xras_request_detail/EXAM0001'
+        assert self.URL not in auth_client.get(detail).get_data(as_text=True)
+        monkeypatch.setattr('webapp.dashboards.allocations.xras.modals.xras_write_configured',
+                            lambda: True)
+        assert f'hx-get="{self.URL}"' in auth_client.get(detail).get_data(as_text=True)
+
+
+class TestDocumentsOnTheRow:
+    """A paperclip and a count in the Request cell; names stay in the modal."""
+
+    def test_a_request_with_documents_shows_the_count_and_its_types(
+            self, auth_client, configured):
+        p = _payload('EXAM0001')
+        p['actions'][0]['documents'] = [
+            {'documentId': 1, 'documentType': 'Advisor_Letter', 'title': None,
+             'filename': 'Letter for P Eye.pdf', 'size': 1000},
+            {'documentId': 2, 'documentType': 'Supp_Info', 'title': None,
+             'filename': 'cv.pdf', 'size': 2000}]
+        _publish(p, _payload('EXAM0002'))
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'fa-paperclip' in body
+        assert '2 documents: Advisor letter, Supporting information' in body
+        assert body.count('fa-paperclip') == 1, 'EXAM0002 has none'
+        assert 'Letter for P Eye' not in body, 'no filename on the card'
+
+
 class TestSortableColumns:
     """Non-facet headers sort rows within each opportunity group, as form state."""
 
@@ -1290,6 +1396,28 @@ class TestRequestDetailModal:
         assert 'Atmospheric Science' in body                  # FoS
         assert 'AGS-123' in body                              # grant
         assert 'award.pdf' in body                            # document
+
+    def test_documents_on_an_older_action_show_above_the_actions(
+            self, auth_client, armed, monkeypatch):
+        """They sit on the original New, collapsed once a later action exists."""
+        payload = _detail_payload()
+        first = payload['actions'][0]
+        payload['actions'].append({**first, 'actionId': first['actionId'] + 1,
+                                   'actionType': 'Extension', 'documents': [],
+                                   'resources': [], 'allocationDates': []})
+        _reader(monkeypatch, payload=payload)
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'Supporting information' in body, 'Supp_Info gets its label'
+        assert body.index('Award Letter') < body.index('xras-action-head')
+
+    def test_a_non_integer_size_does_not_break_the_modal(
+            self, auth_client, armed, monkeypatch):
+        payload = _detail_payload()
+        payload['actions'][0]['documents'][0]['size'] = '44042'
+        _reader(monkeypatch, payload=payload)
+        response = auth_client.get('/allocations/xras_request_detail/EXAM0001')
+        assert response.status_code == 200 and 'Award Letter' in response.get_data(as_text=True)
 
     def test_it_carries_the_oob_title(self, auth_client, armed, monkeypatch):
         """The shared modal shell reads the title from an OOB swap."""

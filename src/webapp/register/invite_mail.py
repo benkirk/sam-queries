@@ -11,7 +11,8 @@ from typing import Callable, Iterable, List, Optional, Sequence
 
 from flask import current_app
 
-from sam.core.account_requests import OPEN_STATES, AccountRequest, AccountRequestEvent
+from sam.core.account_requests import (OPEN_STATES, PURPOSE_ENROLLMENT, AccountRequest,
+                                       AccountRequestEvent)
 from sam.core.users import User
 from sam.manage import management_transaction
 from sam.queries.account_notices import build_invite_message
@@ -64,7 +65,7 @@ def preview_invite_rows(entries: Iterable[dict], *, project_id: int, sponsor: Us
     now = datetime.now()
     return [AccountRequest(
         email=e['email'], first_name=e['first_name'], last_name=e['last_name'],
-        organization=e.get('organization'), purpose='enrollment', state='submitted',
+        organization=e.get('organization'), purpose=PURPOSE_ENROLLMENT, state='submitted',
         project_id=project_id, sponsor_user_id=sponsor.user_id,
         event_id=event.account_request_event_id if event else None,
         created_by=sponsor.username, verified_by=sponsor.username,

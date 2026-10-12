@@ -651,7 +651,7 @@ def htmx_create_outage():
 
     # Schema's @post_load already converted the datetime-local values to
     # naive-UTC via the submitted `tz`. system_name -> system_id resolution
-    # happens in the model setter (a DB hit) and stays here per CLAUDE.md §9.
+    # happens in the model setter (a DB hit) and stays here per .claude/rules/webapp-ui.md §9.
     outage = SystemOutage(
         system_name=data['system_name'],
         title=data['title'],

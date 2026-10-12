@@ -20,7 +20,7 @@ WARNING: cache keys hash input data, not rendering code, so after a deploy warm
 Redis entries serve old-code SVGs until the 600 s TTL expires. Run
 `sam-admin cache --refresh --category chart` when a change is user-visible.
 
-Module layout and the family hierarchy: CLAUDE.md, *Charts*.
+Module layout and the family hierarchy: .claude/rules/charts.md.
 """
 
 from webapp.dashboards.charts import (  # noqa: F401

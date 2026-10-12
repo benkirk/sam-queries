@@ -215,19 +215,12 @@ def build_account_worklist(session, *, since=None, until=None,
 def _stamped_worklist(session, *, since=None, until=None, enrich=False,
                       max_lookups=100, pending_rows=None):
     """The worklist with every caller-applied stamp; ``(rows, enrichment)``."""
-    from sam.queries.xras_accounts import (enrich_worklist,
-                                           get_account_worklist,
-                                           stamp_merge_targets,
-                                           stamp_waiting_days)
+    from sam.queries.xras_accounts import assemble_worklist
 
-    rows = get_account_worklist(session, since=since, until=until,
-                                pending_rows=pending_rows)
-    stamp_waiting_days(rows)
-    enrichment = (enrich_worklist(rows, max_lookups=max_lookups)
-                  if enrich else None)
-    # After enrichment: a Feed-A row has no email to match until then.
-    stamp_merge_targets(session, rows)
-    return rows, enrichment
+    assembled = assemble_worklist(session, pending_rows=pending_rows,
+                                  since=since, until=until,
+                                  max_lookups=max_lookups if enrich else None)
+    return assembled.rows, assembled.enrichment
 
 
 def build_identity_report(session, *, pending_rows=None, enrich=False,

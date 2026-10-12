@@ -19,15 +19,14 @@ from flask_login import current_user, login_required
 from sam.core.account_requests import (
     ACCOUNT_REQUEST_PURPOSES,
     ACCOUNT_REQUEST_STATES,
+    PURPOSE_LABELS,
     AccountRequest,
 )
 from sam.manage import management_transaction
 from sam.manage.account_requests import reconcile_account_requests
 from sam.queries.account_notices import build_queue_summary, build_rejection_message
 from sam.queries.account_requests import (
-    ORIGIN_SELF,
-    ORIGIN_SPONSOR,
-    ORIGIN_SWEEP,
+    ORIGIN_LABELS,
     all_requests,
     events_for,
     group_by_event,
@@ -66,16 +65,15 @@ _REASON_FORM = 'dashboards/admin/fragments/account_request_reason_form_htmx.html
 _TRIGGERS = {'refreshAccountQueue': {}, 'refreshXrasTab': {}}
 _MODAL_TRIGGERS = modal_triggers('refreshAccountQueue', 'refreshXrasTab')
 
-_ORIGIN_LABELS = {ORIGIN_SELF: 'Public form', ORIGIN_SPONSOR: 'Invited',
-                  ORIGIN_SWEEP: 'XRAS roster'}
 _READINESS_LABELS = {'open': 'No account yet', 'ready': 'Account exists',
                      'inactive': 'Account inactive', 'ambiguous': 'Ambiguous email',
                      'failed': 'Enrollment failed', 'fulfilled': 'Fulfilled'}
 _READINESS_ORDER = ('ready', 'failed', 'inactive', 'ambiguous', 'open', 'fulfilled')
 _FACETS = FacetSet(
     Facet('state', order=ACCOUNT_REQUEST_STATES, hide_zero=True),
-    Facet('purpose', order=ACCOUNT_REQUEST_PURPOSES, hide_zero=True),
-    Facet('origin', order=tuple(_ORIGIN_LABELS), labels=_ORIGIN_LABELS,
+    Facet('purpose', order=ACCOUNT_REQUEST_PURPOSES, labels=PURPOSE_LABELS,
+          hide_zero=True),
+    Facet('origin', order=tuple(ORIGIN_LABELS), labels=ORIGIN_LABELS,
           hide_zero=True),
     Facet('readiness', order=_READINESS_ORDER, labels=_READINESS_LABELS,
           hide_zero=True),
@@ -156,7 +154,7 @@ def account_requests_fragment():
         show_all=show_all, search=search, pinned=pinned,
         queue_page_url=url_for('admin_dashboard.account_requests'),
         facet_values=facet_values, selected=selected,
-        origin_labels=_ORIGIN_LABELS, readiness_labels=_READINESS_LABELS,
+        origin_labels=ORIGIN_LABELS, readiness_labels=_READINESS_LABELS,
         sort=sort, sortable_columns=set(_SORT),
         form_id=_FORM_ID, target_id=_TARGET,
         fragment_url=url_for('admin_dashboard.account_requests_fragment'),

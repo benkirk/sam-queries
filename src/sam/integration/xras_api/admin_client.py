@@ -59,6 +59,10 @@ logger = logging.getLogger(__name__)
 #: docstring for why one class cannot serve both contexts.
 XA_ADMIN_CONTEXT = 'submit'
 
+#: The largest document SAM proxies: the body is held in memory, so this bounds
+#: what one download can cost a worker.
+DOCUMENT_MAX_BYTES = 25 * 1024 * 1024
+
 
 # The role-type vocabulary (``RoleType``, ``ROLE_TYPES``, ``role_type``,
 # ``PI_ROLE_TYPE_ID``) now lives in the dependency-light ``vocabulary`` module
@@ -418,6 +422,20 @@ class XrasAdminClient(_XrasTransport):
             xa_user=xa_user)
         return result if isinstance(result, dict) else {'validation': None,
                                                         'errors': []}
+
+    def get_document(self, request_id: int, action_id: int, document_id: int, *,
+                     xa_user: str, max_bytes: int = DOCUMENT_MAX_BYTES
+                     ) -> Optional[Tuple[bytes, Dict[str, str]]]:
+        """One action document's bytes and headers, or ``None`` if XRAS has no such document.
+
+        A read, but on this client: probed 2026-10-12, only ``submit`` as a role
+        holder answers (``report`` and ``submit`` as the default user are 401).
+        """
+        return self._get_bytes(
+            f'/v1/requests/{int(request_id)}/actions/{int(action_id)}'
+            f'/documents/{int(document_id)}',
+            xa_user=xa_user, max_bytes=max_bytes,
+            accept='application/pdf, application/octet-stream')
 
     def withdraw_action(self, request_id: int, action_id: int, *,
                         request_number: str, xa_user: str) -> XrasWriteResult:

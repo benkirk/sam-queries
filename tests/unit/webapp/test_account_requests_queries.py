@@ -165,8 +165,26 @@ class TestGrouping:
                                    project=make_account_request_event(session).project_id)
         view, = self._views(session, [row])
         assert view['event'] is None and view['event_code'] == ''
+        code = view['project_code']
         assert group_by_event([view]) == [
-            {'event': None, 'rows': [view], 'project_code': view['project_code']}]
+            {'kind': 'project', 'label': 'Project Invitations', 'key': f'project-{code}',
+             'event': None, 'rows': [view], 'project_code': code}]
+
+    def test_sweep_rows_group_by_whether_their_project_exists(self, session):
+        project = make_project(session)
+        standalone = make_account_request(session)
+        invited = make_account_request(session, purpose='enrollment', project=project)
+        pending = make_account_request(session, purpose='submission', by='task:xras_sweep')
+        landed = make_account_request(session, purpose='submission', by='task:xras_sweep',
+                                      project=project)
+        groups = group_by_event(self._views(session, [standalone, invited, pending, landed]))
+        assert [(g['kind'], g['label']) for g in groups] == [
+            ('xras_pending', 'XRAS Approved Pending Projects'),
+            ('xras_fulfillment', 'XRAS Fulfillment'),
+            ('project', 'Project Invitations'), ('other', 'Other requests')]
+        assert [[v['id'] for v in g['rows']] for g in groups] == [
+            [pending.account_request_id], [landed.account_request_id],
+            [invited.account_request_id], [standalone.account_request_id]]
 
     def test_views_carry_the_sponsor_and_both_project_codes(self, session):
         sponsor = make_user(session)
@@ -197,7 +215,7 @@ class TestStampAccountRequests:
         stamp_account_requests(session, worklist)
         assert worklist[0]['account_request'] == {
             'id': row.account_request_id, 'state': 'claimed', 'assignee': 'op',
-            'requested_at': None, 'fulfilled': False}
+            'requested_at': None, 'fulfilled': False, 'creation_time': row.creation_time}
         assert worklist[1]['account_request'] is None
 
     def test_an_empty_worklist_is_a_no_op(self, session):

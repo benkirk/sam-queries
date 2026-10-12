@@ -32,8 +32,16 @@ OPEN_STATES = ('submitted', 'claimed')
 
 #: ``account_request.purpose``. What happens on fulfillment:
 #: ``standalone`` nothing further; ``enrollment`` joins ``project_id``;
-#: ``submission`` merges ``xras_username`` (XRAS phase 3, not built).
-ACCOUNT_REQUEST_PURPOSES = ('standalone', 'enrollment', 'submission')
+#: ``submission`` merges ``xras_username`` (XRAS phase 3, not built);
+#: ``reactivation`` nothing further: the XRAS-named account is active again.
+PURPOSE_STANDALONE = 'standalone'
+PURPOSE_ENROLLMENT = 'enrollment'
+PURPOSE_SUBMISSION = 'submission'
+PURPOSE_REACTIVATION = 'reactivation'
+ACCOUNT_REQUEST_PURPOSES = (PURPOSE_STANDALONE, PURPOSE_ENROLLMENT, PURPOSE_SUBMISSION,
+                            PURPOSE_REACTIVATION)
+PURPOSE_LABELS = {PURPOSE_STANDALONE: 'Standalone', PURPOSE_ENROLLMENT: 'Enrollment',
+                  PURPOSE_SUBMISSION: 'Submission', PURPOSE_REACTIVATION: 'Reactivation'}
 
 CREATED_BY_SELF = 'self'
 CREATED_BY_SWEEP = 'task:xras_sweep'
@@ -185,14 +193,16 @@ class AccountRequest(Base, SessionMixin):
     """One person who needs an account, and what SAM did about it.
 
     Invariants enforced in :meth:`create` because the columns are bare
-    VARCHARs: ``enrollment`` needs a ``project_id``, ``submission`` needs an
-    ``xras_username``, ``standalone`` has no project. ``email`` is lower-cased
-    on the way in; it is the ONE key the reconcile pass matches on.
-    ``desired_username`` is a hint for NUSD and never a match key -- a
-    case-insensitive hit on a stranger's username is a plausible collision.
+    VARCHARs: ``enrollment`` needs a ``project_id``, ``submission`` and
+    ``reactivation`` need an ``xras_username``, ``standalone`` has no project.
+    ``email`` is lower-cased on the way in; it is the key the reconcile pass
+    matches on, except a ``reactivation``, which names its account by
+    ``xras_username``. ``desired_username`` is a hint for NUSD and never a
+    match key -- a case-insensitive hit on a stranger's username is a
+    plausible collision.
 
     Unlike ``XrasRemediationEvent`` a scheduled task MAY create rows here:
-    the XRAS sweep derives ``submission`` rows from handoff rosters.
+    the XRAS sweep derives ``submission`` and ``reactivation`` rows from rosters.
     """
     __tablename__ = 'account_request'
 
@@ -277,6 +287,12 @@ class AccountRequest(Base, SessionMixin):
         return (f"<AccountRequest {self.account_request_id} {self.email!r} "
                 f"{self.purpose}/{self.state}>")
 
+    @staticmethod
+    def xras_key(username: Optional[str]) -> Optional[str]:
+        """``xras_username`` as stored and matched: stripped, width-capped, lower-cased."""
+        name = strip_or_none(username, width=64)
+        return name.lower() if name else None
+
     @property
     def display_name(self) -> str:
         return ' '.join(p for p in (self.first_name, self.last_name) if p)
@@ -320,11 +336,12 @@ class AccountRequest(Base, SessionMixin):
             raise ValueError(
                 f"unknown account_request.purpose {purpose!r}; "
                 f"expected one of {', '.join(ACCOUNT_REQUEST_PURPOSES)}")
-        if purpose == 'enrollment' and project_id is None:
+        if purpose == PURPOSE_ENROLLMENT and project_id is None:
             raise ValueError('an enrollment request needs a project_id')
-        if purpose == 'submission' and not strip_or_none(xras_username):
-            raise ValueError('a submission request needs an xras_username')
-        if purpose == 'standalone' and project_id is not None:
+        if (purpose in (PURPOSE_SUBMISSION, PURPOSE_REACTIVATION)
+                and not strip_or_none(xras_username)):
+            raise ValueError(f'a {purpose} request needs an xras_username')
+        if purpose == PURPOSE_STANDALONE and project_id is not None:
             raise ValueError('a standalone request carries no project_id')
         address = strip_or_none(email, width=255)
         if not address or '@' not in address:
@@ -352,7 +369,7 @@ class AccountRequest(Base, SessionMixin):
             project_id=project_id,
             sponsor_user_id=sponsor_user_id,
             event_id=event_id,
-            xras_username=placeholder.lower() if placeholder else None,
+            xras_username=cls.xras_key(xras_username),
             state='submitted',
             comment=strip_or_none(comment),
             purpose_note=strip_or_none(purpose_note, width=500),

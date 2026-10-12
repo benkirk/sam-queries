@@ -283,7 +283,7 @@ def htmx_contracts_table():
     NOT as `default=True` here. htmx omits an unchecked checkbox entirely, so
     absent has to mean off; reading it as on makes the toggle a no-op
     (measured: unchecking re-fetched without the param and still returned the
-    369 active rows). See CLAUDE.md § 10.
+    369 active rows). See .claude/rules/webapp-ui.md §10.
     """
     active_only = read_active_only(request.args)
 

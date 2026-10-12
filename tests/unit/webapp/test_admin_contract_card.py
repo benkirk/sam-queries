@@ -364,7 +364,7 @@ class TestNsfProgramContracts:
 class TestContractsTableToggle:
     """The Active-only switch on the moved table.
 
-    Absent means OFF (CLAUDE.md § 10): htmx omits an unchecked checkbox
+    Absent means OFF (.claude/rules/webapp-ui.md §10): htmx omits an unchecked checkbox
     entirely, so the route must NOT pass `default=True` — doing so made the
     toggle a silent no-op, which Playwright caught and no unit test did.
     The default-on behavior lives in the template instead: the checkbox

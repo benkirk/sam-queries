@@ -6,7 +6,7 @@
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {% from 'dashboards/fragments/table_bits.html' import group_count, pane_toolbar %}
 {% from 'dashboards/fragments/project_bits.html' import project_link with context %}
-{% from 'dashboards/fragments/xras_bits.html' import clear_filters, empty_state, queue_badges, queue_switch, request_link, show_in_table, swept_stamp, tag, type_label, unblock_strip, verdict %}
+{% from 'dashboards/fragments/xras_bits.html' import clear_filters, empty_state, icon_count, queue_badges, queue_switch, request_link, show_in_table, swept_stamp, tag, type_label, unblock_strip, verdict %}
 {#
   XRAS Remediations: the operator WRITE surface. Every button here changes
   production XRAS (a merge deletes an account; a withdraw de-approves an award).
@@ -291,6 +291,8 @@
                         <i class="fa-solid fa-circle-check text-success-emphasis ms-1"
                            title="Updated just now, after your change: newer than the sweep."></i>
                         {% endif %}
+                        {# Absent on a snapshot swept before documents were counted. #}
+                        {% if row.document_count %}{{ icon_count('fa-paperclip', row.document_count, (row.document_count | fmt_plural('document')) ~ ': ' ~ (row.document_types | map('xras_document_type') | join(', '))) }}{% endif %}
                     </td>
                     {# `latest_action_type` is absent on a snapshot swept before it existed. #}
                     <td class="text-nowrap">{{ type_label(row.latest_action_type) if row.latest_action_type else '—' }}</td>

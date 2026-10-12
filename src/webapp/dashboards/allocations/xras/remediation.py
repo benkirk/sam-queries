@@ -434,17 +434,13 @@ def _identity_summary(rows_in_view) -> dict:
     no dispatch preflight (`validate=False`). The CLI's `--identity-report`
     enriches; the strip points at it for the full list.
     """
-    from sam.queries.xras_accounts import (enrich_worklist,
-                                           get_account_worklist,
-                                           load_pending_worklist_rows,
-                                           stamp_merge_targets)
+    from sam.queries.xras_accounts import (assemble_worklist,
+                                           load_pending_worklist_rows)
     from sam.queries.xras_identity_report import identity_merge_report
 
     feed = load_pending_worklist_rows()
-    worklist = get_account_worklist(db.session, validate=False,
-                                    pending_rows=feed.rows if feed.checked else None)
-    enrich_worklist(worklist, max_lookups=0)
-    stamp_merge_targets(db.session, worklist)
+    worklist = assemble_worklist(db.session, validate=False, max_lookups=0,
+                                 pending_rows=feed.rows if feed.checked else None).rows
     return identity_merge_report(
         worklist, in_view={r.get('request_number') for r in rows_in_view},
         generated_at=(feed.snapshot or {}).get('generated_at'))
@@ -1017,8 +1013,10 @@ def xras_resubmit_form(request_number: str, action_id: int):
         context = _action_context(request_number, action_id, mode='resubmit')
         if context and context['xa_user'] and context['request_id']:
             from sam.integration.xras_api.admin_client import XrasAdminClient
+            from sam.integration.xras_api.config import XrasApiConfig
             try:
-                admin = XrasAdminClient.from_environment()
+                admin = XrasAdminClient.from_environment(
+                    XrasApiConfig.from_environment().interactive())
                 context['validation'] = admin.validate_action(
                     context['request_id'], action_id,
                     xa_user=context['xa_user'])

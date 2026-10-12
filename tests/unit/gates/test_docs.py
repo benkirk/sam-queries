@@ -521,7 +521,7 @@ LINE_BUDGETS = {
     # +7 on 2026-09-27: the samuel_role_* RBAC catalog and its RBAC_SOURCE switch.
     # +25 on 2026-10-05: the filter tiers and their macros, and the compose --watch trap.
     ".claude/skills/wire-dashboard-feature/SKILL.md": 275,
-    "CLAUDE.md": 1067,
+    "CLAUDE.md": 439,
     "CONTRIBUTING.md": 740,
     "README.md": 1070,
     "collectors/README.md": 370,
@@ -558,3 +558,111 @@ def test_docs_stay_within_length_budget():
     assert not over, ("over budget -- split it, or move the detail into a "
                       "docs/plans/ record and link it, rather than raising "
                       "the number:\n" + "\n".join(over))
+
+
+# ---------------------------------------------------------------------------
+# Claude topic rules: `.claude/rules/*.md`, each loaded by its `paths:` globs
+# ---------------------------------------------------------------------------
+
+RULES_DIR = ".claude/rules/"
+ROOT_MEMORY = "CLAUDE.md"
+FRONTMATTER_GLOB = re.compile(r'^  - "([^"]+)"$')
+NUMBERED_SECTION = re.compile(r"^#{2,4}\s+(\d+)\.\s")
+ROOT_CITATION = re.compile(r"CLAUDE\.md`?\s*(?:§\s*|section\s+)(\d+)\b")
+RULE_CITATION = re.compile(r"\.claude/rules/([\w-]+\.md)(?:`?\s*§\s*(\d+)\b)?")
+
+
+def rule_files():
+    return sorted(f for f in tracked_files()
+                  if f.startswith(RULES_DIR) and f.endswith(".md"))
+
+
+def rule_globs(rel):
+    """The `paths:` globs, or None when the frontmatter is not the strict form.
+
+    Claude Code loads a rule with unparseable frontmatter *unscoped*, into
+    every session, so anything but `paths:` plus quoted list items fails here.
+    """
+    lines = (REPO_ROOT / rel).read_text(encoding="utf-8").splitlines()
+    if lines[:2] != ["---", "paths:"] or "---" not in lines[2:]:
+        return None
+    body = lines[2:lines.index("---", 2)]
+    globs = [FRONTMATTER_GLOB.match(l) for l in body]
+    if not body or not all(globs):
+        return None
+    return [m.group(1) for m in globs]
+
+
+def glob_regex(pattern):
+    """Translate a rule glob (`**`, `*`, `?`) into an anchored regex."""
+    out, i = [], 0
+    while i < len(pattern):
+        if pattern.startswith("**/", i):
+            out.append("(?:.*/)?"); i += 3
+        elif pattern.startswith("**", i):
+            out.append(".*"); i += 2
+        elif pattern[i] == "*":
+            out.append("[^/]*"); i += 1
+        elif pattern[i] == "?":
+            out.append("[^/]"); i += 1
+        else:
+            out.append(re.escape(pattern[i])); i += 1
+    return re.compile("".join(out) + r"\Z")
+
+
+def numbered_sections(rel):
+    return {m.group(1) for _, line in numbered_lines(rel)
+            for m in [NUMBERED_SECTION.match(line)] if m}
+
+
+def test_rules_exist():
+    assert rule_files(), "no tracked .claude/rules/*.md -- did the dir move?"
+
+
+def test_rules_are_path_scoped():
+    bad = [f for f in rule_files() if rule_globs(f) is None]
+    assert not bad, ("frontmatter must be exactly `paths:` and `  - \"glob\"` "
+                     "lines, or the rule loads in every session:\n"
+                     + "\n".join(bad))
+
+
+def test_rule_globs_match_tracked_files():
+    """A glob that matches nothing means its rule silently never loads."""
+    files = [f for f in tracked_files()]
+    dead = ["%s: %s" % (rule, g)
+            for rule in rule_files() for g in rule_globs(rule) or []
+            if not any(glob_regex(g).match(f) for f in files)]
+    assert not dead, "globs matching no tracked file:\n" + "\n".join(dead)
+
+
+def test_root_memory_indexes_every_rule():
+    root = (REPO_ROOT / ROOT_MEMORY).read_text(encoding="utf-8")
+    listed = set(re.findall(r"^\| `([\w-]+\.md)` \|", root, re.M))
+    present = {f[len(RULES_DIR):] for f in rule_files()}
+    assert listed == present, ("CLAUDE.md's rule index and .claude/rules/ "
+                               "disagree: unlisted %s, missing %s"
+                               % (sorted(present - listed),
+                                  sorted(listed - present)))
+
+
+def test_section_citations_resolve():
+    """`CLAUDE.md §N` and `.claude/rules/x.md §N` name a numbered heading there."""
+    root_sections = numbered_sections(ROOT_MEMORY)
+    rule_sections = {f[len(RULES_DIR):]: numbered_sections(f) for f in rule_files()}
+    broken = []
+    for rel in tracked_files():
+        if is_record(rel) or not rel.endswith(PROSE_SUFFIXES) or rel in PROSE_EXEMPT:
+            continue
+        try:
+            text = (REPO_ROOT / rel).read_text(encoding="utf-8")
+        except (UnicodeDecodeError, FileNotFoundError):
+            continue
+        for n, line in enumerate(text.splitlines(), 1):
+            for m in ROOT_CITATION.finditer(line):
+                if m.group(1) not in root_sections:
+                    broken.append("%s:%d: CLAUDE.md §%s" % (rel, n, m.group(1)))
+            for m in RULE_CITATION.finditer(line):
+                name, num = m.groups()
+                if name not in rule_sections or (num and num not in rule_sections[name]):
+                    broken.append("%s:%d: %s" % (rel, n, m.group(0)))
+    assert not broken, "citations naming no such section:\n" + "\n".join(broken)

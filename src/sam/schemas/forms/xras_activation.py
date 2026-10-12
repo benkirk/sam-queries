@@ -13,7 +13,7 @@ opposite base classes and opposite empty-string semantics do not belong behind o
 module name, which is why this is its own file.
 
 The one-click actions (notify, activate, restore) carry **no body at all** and
-therefore need no schema — see CLAUDE.md §9, whose tiers exist to kill inline
+therefore need no schema — see .claude/rules/webapp-ui.md §9, whose tiers exist to kill inline
 coercion ladders, and ``xras_replay`` in the allocations blueprint for the
 established shape of a bodiless operator POST on this same page.
 """

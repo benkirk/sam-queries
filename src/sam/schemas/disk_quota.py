@@ -4,7 +4,7 @@ Reference for the "legacy shape via a declared schema" pattern: the legacy
 camelCase contract is declared with marshmallow ``data_key`` rather than
 hand-built in the query layer. Input is the plain record from
 ``sam.queries.disk_quota.get_disk_quotas``; output matches legacy
-``GET /api/protected/admin/dasg/diskquota``. See CLAUDE.md section API.
+``GET /api/protected/admin/dasg/diskquota``. See .claude/rules/webapp-api.md.
 """
 
 from marshmallow import Schema, fields

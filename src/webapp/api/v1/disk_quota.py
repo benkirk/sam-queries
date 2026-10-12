@@ -6,7 +6,7 @@ Per-project disk allocations and paths for DASG provisioning. Reproduces legacy
 ``GET /`` all disk accounts, ``POST /refresh`` invalidates the cache. Unlike the
 other legacy-compat blueprints the JSON is produced by a Marshmallow schema
 (``DiskQuotaSchema``, ``data_key`` for the camelCase legacy shape), not a
-hand-built dict -- see CLAUDE.md section API. Response shape:
+hand-built dict -- see .claude/rules/webapp-api.md. Response shape:
 ``docs/apis/SYSTEMS_INTEGRATION_APIs.md``.
 
 Note: legacy gates this behind ``ROLE_API_DASG``; SAM has no disk-specific

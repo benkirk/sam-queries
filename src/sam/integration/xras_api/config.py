@@ -25,7 +25,7 @@ XRAS.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Dict, Optional
 
 from sam.integration._config import (config_bool as _config_bool,
@@ -101,6 +101,10 @@ class XrasApiConfig:
                                           DEFAULT_CONNECT_TIMEOUT),
             max_retries=_config_int('XRAS_API_MAX_RETRIES', DEFAULT_MAX_RETRIES),
         )
+
+    def interactive(self) -> 'XrasApiConfig':
+        """The htmx budget: one attempt, so a slow XRAS holds a worker for one timeout, not ~33 s."""
+        return replace(self, max_retries=1)
 
     @property
     def configured(self) -> bool:

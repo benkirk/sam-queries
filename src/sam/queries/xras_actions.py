@@ -24,7 +24,7 @@ drift (``src/cli/README.md`` § *Adding New Commands*).
 """
 
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -198,6 +198,27 @@ def action_names_project(projcode):
     single-project lookup and the join.
     """
     return or_(*(column == projcode for column in _PROJCODE_COLUMNS))
+
+
+def project_ids_for_actions(session: Session,
+                            actions: Sequence[Dict[str, Any]]) -> List[Optional[int]]:
+    """The project each worklist action names, aligned with *actions*; ``None`` if none yet.
+
+    A pushed action (``action_log_id``) is read through ``_PROJCODE_COLUMNS``,
+    ``projcode_result`` first: a New is pushed under its XRAS token and SAM mints
+    a different projcode. A pending one has only its ``request_number``.
+    """
+    from sam.queries.projects import project_ids_by_code
+
+    log_ids = sorted({a['action_log_id'] for a in actions if a.get('action_log_id')})
+    logged = ({row[0]: row[1:] for row in session.query(
+                   XrasActionLog.xras_action_log_id, *_PROJCODE_COLUMNS)
+               .filter(XrasActionLog.xras_action_log_id.in_(log_ids)).all()}
+              if log_ids else {})
+    candidates = [logged.get(a.get('action_log_id')) or (a.get('request_number'),)
+                  for a in actions]
+    ids = project_ids_by_code(session, (c for codes in candidates for c in codes))
+    return [next((ids[c] for c in codes if c in ids), None) for codes in candidates]
 
 
 def _split_errors(error_messages: Optional[str]) -> List[str]:

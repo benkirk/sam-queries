@@ -78,11 +78,14 @@ date is edited it reports the original date; SAMuel reports the allocation row.
 `PUT user/{u}/access`, `PUT user/{u}/defaultproject`, `PUT user/{u}/group`, and the reports
 `hierarchicalusage`, `monthlycomputeusage[detail]`, `usercomputeusage[detail]`,
 `allocationchange`, `dataholdings[detail]`: zero calls in three 30-day log windows. They
-answer 404 or 405.
+answer 404 or 405. Both callers use only the eight `GET` routes their owner listed on
+2026-10-12; `allocationchange` is dead code in their client. If it is ever needed, its scope
+is `docs/plans/HEUV_API_PORT.md` Appendix C.
 
 ## Callers and parity
 
-About 125 calls a day: the portal (Ruby, AWS) and a python-httpx client (`report/usage` only).
+About 125 calls a day from two apps run by one team: the ARC portal (Ruby, AWS) and the ARC
+Allocation Recommender (python-httpx, AWS, `report/usage` only, a weekday ~06:00 MT batch).
 Compare a deployment with legacy:
 
 ```bash
