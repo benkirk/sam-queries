@@ -118,7 +118,8 @@ def _stamp_request_numbers(groups):
         from sam.integration.xras_api.cache import load_requests_index
         index = load_requests_index() or {}
     except Exception as exc:                     # noqa: BLE001
-        # No cache backend on a laptop raises rather than returning None.
+        # No backend reads as None; a Redis that went away after the adapter was
+        # built raises from the read (redis_ttl.py), and the queue must still render.
         logger.warning('account requests: request index unreadable (%s)', exc)
         index = {}
     numbers = request_numbers_by_username(index.get('rows') or (),

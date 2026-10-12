@@ -1826,3 +1826,11 @@ sunburst, which started on the allocations page and then moved to job history.
   inline `fromisoformat` try block (sweep 4).
 - [ ] `sam.text.strip_or_none`: `samuel_roles._clean_note` is `strip_or_none(note, _NOTE_MAX)`
   (sweep 4).
+- [ ] A guarded read of the request index (#806, `admin/account_requests_routes.py`
+  `_stamp_request_numbers`): `load_requests_index()` returns `None` with no backend, but a Redis
+  that went away after the adapter was built raises from the read (`sam/caching/redis_ttl.py`
+  has no `RedisError` handling on `__contains__` / `__getitem__`). The five other readers are
+  bare: `allocations/xras/_shared.py` `_index`, `sam/manage/xras_remediation.py` (two),
+  `cli/xras/commands.py` (three). Either lift the guard into the cache (a `None` that then
+  also means "unreachable", which the Remediations card renders as "no sweep yet") or guard
+  the Remediations card.
