@@ -1779,6 +1779,9 @@ the feature branch.
   names are generated ASCII); `send_file(download_name=)` quotes and encodes.
 - [x] Chrome's PDF viewer renders the inline PDF under the app CSP (`object-src 'none'` on
   the response); verified on samuel-dev 2026-10-12, no per-route CSP needed.
+- [x] In-modal preview (`xras_document_preview`, an unsandboxed same-origin iframe in the
+  dialog body): renders, Back, new tab, Download and the phone-width hide verified in Chrome
+  on samuel-dev 2026-10-12.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
