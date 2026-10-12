@@ -91,14 +91,29 @@ def skills_for_paths(changed):
     return skills
 
 
-def memory_lines(number, index=MEMORY_INDEX):
-    """Index lines naming ``#<number>``; [] when the index is not on this machine."""
+def memory_lines(number, index=MEMORY_INDEX, *, branch="", cited=()):
+    """Index lines naming ``#<number>``, the head *branch* or a *cited* PR; [] when the
+    index is not on this machine. A PR on its first review has no line of its own, so
+    the branch and the PRs its body cites are what lead to the predecessor's memory."""
     try:
         text = Path(index).read_text(encoding="utf-8")
     except OSError:
         return []
-    needle = re.compile(r"#%d\b" % int(number))
-    return [line.strip() for line in text.splitlines() if needle.search(line)]
+    numbers = {int(number)} | {int(n) for n in cited}
+    needle = re.compile(r"#(?:%s)\b" % "|".join(str(n) for n in sorted(numbers)))
+    return [line.strip() for line in text.splitlines()
+            if needle.search(line) or (branch and branch in line)]
+
+
+def cited_prs(pr):
+    """Every ``#N`` the PR's title, body and commit titles mention, in order."""
+    text = " ".join([pr.get("title") or "", pr.get("body") or ""]
+                    + [c["title"] for c in pr.get("commits", [])])
+    seen = []
+    for n in re.findall(r"#(\d+)\b", text):
+        if int(n) not in seen:
+            seen.append(int(n))
+    return seen
 
 
 def _run(cmd):
@@ -134,7 +149,10 @@ def pr_brief(number):
 def assemble(brief):
     brief["rules"] = rules_for_paths(brief["changed"])
     brief["skills"] = skills_for_paths(brief["changed"])
-    brief["memory"] = memory_lines(brief["number"]) if brief["number"] else []
+    pr = brief.get("pr") or {}
+    brief["memory"] = memory_lines(
+        brief["number"], branch=pr.get("headRefName") or "", cited=cited_prs(pr),
+    ) if brief["number"] else []
     return brief
 
 
@@ -165,9 +183,11 @@ def report(brief, out=sys.stdout):
     for s in brief["skills"]:
         print(f"  {s}", file=out)
     if brief["memory"]:
-        print("\nMemory index lines naming this PR:", file=out)
+        print("\nMemory index lines naming this PR, its branch or a PR it cites:", file=out)
         for line in brief["memory"]:
             print(f"  {line}", file=out)
+    else:
+        print("\nMemory index lines: none; scan MEMORY.md for the PR's area.", file=out)
 
 
 def main(argv=None):
