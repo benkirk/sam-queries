@@ -12,7 +12,7 @@ This module imports ``sam.notify``; the gate is
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from sqlalchemy.orm import Session
 
@@ -21,7 +21,8 @@ from sam.core.account_requests import CREATED_BY_SELF, AccountRequest, AccountRe
 from sam.notify import Message, Recipient
 
 from .account_requests import (
-    ORIGIN_SELF, ORIGIN_SWEEP, events_for, group_by_event, origin_of, request_views,
+    GROUP_LABELS, GROUP_OTHER, GROUP_PROJECT, ORIGIN_SELF, ORIGIN_SWEEP, events_for,
+    group_by_event, origin_of, request_views,
     waiting_days,
 )
 
@@ -50,7 +51,12 @@ def invite_label(row: AccountRequest) -> str:
 
 def queue_summary_context(session: Session, rows: Sequence[AccountRequest], *,
                           occurrence: datetime, queue_url: str = '') -> Dict[str, Any]:
-    """The digest payload: two flat lists, event groups first then the rest."""
+    """The digest payload: event groups, then ``sections`` of the event-less rows.
+
+    ``events`` and the flat ``rows`` stay for template overrides written
+    against them. A project group shares the "Other requests" section: the
+    mail lists the project per row instead of a heading per project.
+    """
     events = events_for(session, rows)
     views = request_views(session, rows, resolutions={}, events=events,
                           today=occurrence.date())
@@ -76,8 +82,11 @@ def queue_summary_context(session: Session, rows: Sequence[AccountRequest], *,
         }
 
     out_events, out_rows = [], []
+    sections: Dict[str, List[Dict[str, Any]]] = {}
     for group in groups:
         event = group['event']
+        group_rows = [_row(v) for v in group['rows']]
+        out_rows.extend(group_rows)
         if event:
             out_events.append({
                 'event_code': event.event_code,
@@ -86,7 +95,9 @@ def queue_summary_context(session: Session, rows: Sequence[AccountRequest], *,
                 'deadline': fmt.date_str(event.accounts_needed_by),
                 'count': len(group['rows']),
             })
-        out_rows.extend(_row(v) for v in group['rows'])
+        else:
+            kind = GROUP_OTHER if group['kind'] == GROUP_PROJECT else group['kind']
+            sections.setdefault(GROUP_LABELS[kind], []).extend(group_rows)
     by_purpose: Dict[str, int] = {}
     for r in rows:
         by_purpose[r.purpose] = by_purpose.get(r.purpose, 0) + 1
@@ -100,6 +111,8 @@ def queue_summary_context(session: Session, rows: Sequence[AccountRequest], *,
         'by_purpose': [{'purpose': p, 'count': by_purpose[p]} for p in sorted(by_purpose)],
         'events': out_events,
         'rows': out_rows,
+        'sections': [{'label': label, 'rows': section_rows}
+                     for label, section_rows in sections.items()],
         'queue_url': queue_url,
     }
 

@@ -356,11 +356,17 @@ def enrolled_event_ids(session: Session, user_id: int) -> set:
             .filter(EventEnrollment.user_id == user_id).all()}
 
 
+#: ``group_by_event`` kinds, and the headings the card and digest print for them.
+GROUP_EVENT, GROUP_PROJECT, GROUP_OTHER = 'event', 'project', 'other'
+GROUP_LABELS = {GROUP_PROJECT: 'Project Invitations', GROUP_OTHER: 'Other requests'}
+
+
 def group_by_event(views: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Event groups nearest deadline first, then the event-less views: one
     group per project (by projcode), project-less last, each in input order. A
     view whose event is gone is event-less, not lost. Each group is
-    ``{'event', 'rows', 'project_code'}``.
+    ``{'kind', 'label', 'key', 'event', 'rows', 'project_code'}``; ``key`` is
+    unique per group and safe in a DOM id.
     """
     by_event: Dict[int, List[Dict[str, Any]]] = {}
     loose: Dict[str, List[Dict[str, Any]]] = {}
@@ -369,12 +375,17 @@ def group_by_event(views: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
             by_event.setdefault(v['event'].account_request_event_id, []).append(v)
         else:
             loose.setdefault(v['project_code'] or '', []).append(v)
-    groups = [{'event': members[0]['event'], 'rows': members,
+    groups = [{'kind': GROUP_EVENT, 'label': members[0]['event'].name,
+               'key': f"event-{members[0]['event'].account_request_event_id}",
+               'event': members[0]['event'], 'rows': members,
                'project_code': members[0]['event_project_code']}
               for members in by_event.values()]
     groups.sort(key=lambda g: (g['event'].accounts_needed_by, g['event'].event_code))
     for code in sorted(loose, key=lambda c: (c == '', c)):
-        groups.append({'event': None, 'rows': loose[code], 'project_code': code})
+        kind = GROUP_PROJECT if code else GROUP_OTHER
+        groups.append({'kind': kind, 'label': GROUP_LABELS[kind],
+                       'key': f'{kind}-{code}' if code else kind,
+                       'event': None, 'rows': loose[code], 'project_code': code})
     return groups
 
 

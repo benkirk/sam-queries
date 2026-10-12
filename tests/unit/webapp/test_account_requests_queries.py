@@ -165,8 +165,10 @@ class TestGrouping:
                                    project=make_account_request_event(session).project_id)
         view, = self._views(session, [row])
         assert view['event'] is None and view['event_code'] == ''
+        code = view['project_code']
         assert group_by_event([view]) == [
-            {'event': None, 'rows': [view], 'project_code': view['project_code']}]
+            {'kind': 'project', 'label': 'Project Invitations', 'key': f'project-{code}',
+             'event': None, 'rows': [view], 'project_code': code}]
 
     def test_views_carry_the_sponsor_and_both_project_codes(self, session):
         sponsor = make_user(session)

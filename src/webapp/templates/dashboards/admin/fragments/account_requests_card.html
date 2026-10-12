@@ -123,7 +123,7 @@
                 </tr>
             </thead>
             {% for group in groups %}
-            {% set gid = 'arq-group-' ~ (group.event.account_request_event_id if group.event else 'loose-' ~ (group.project_code or 'none')) %}
+            {% set gid = 'arq-group-' ~ group.key %}
             <tbody>
                 <tr class="table-subtle fw-semibold">
                     <td colspan="9">
@@ -138,10 +138,10 @@
                         {# Event-less rows arrive one group per project; the
                            project-less ones (standalone, sweep) come last. #}
                         {% elif group.project_code %}
-                        Project Invitations
+                        {{ group.label }}
                         <span class="text-muted fw-normal">({{ project_link(group.project_code, can_view_projects, compact=True) }})</span>
                         {% else %}
-                        Other requests
+                        {{ group.label }}
                         {% endif %}
                         <span class="cursor-pointer" {{ collapse_toggle(gid, expanded=true) }}><span class="badge bg-secondary ms-1">{{ group.rows | length }}</span></span>
                     </td>
