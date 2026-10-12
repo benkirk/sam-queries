@@ -779,7 +779,7 @@ def merge_worklists(primary: Sequence[Dict[str, Any]],
                 or row['last_seen'] > seen['last_seen']):
             seen['last_seen'] = row['last_seen']
         # Person detail and the XRAS identity flag ride whichever feed carried
-        # them; Feed B always does, Feed A only after an --enrich pass.
+        # them; Feed B always does, Feed A when the push body did or after enrichment.
         for field_name in ('person', 'is_reconciled', 'latest_action_log_id',
                            'merge_target'):
             if seen.get(field_name) is None and row.get(field_name) is not None:
@@ -986,11 +986,11 @@ def sam_merge_targets(session: Session, emails: Iterable[str]) -> Dict[str, dict
 def stamp_merge_targets(session: Session, rows: List[Dict[str, Any]]) -> Dict[str, int]:
     """Stamp ``merge_target`` on each placeholder row, re-derive ``remedy``, re-sort.
 
-    Caller-applied AFTER :func:`enrich_worklist`, for the same reason
-    :func:`stamp_project_existence` is: a Feed-A row has no ``person`` (so no
-    email) until then. Backfills rows read from a snapshot an older image
-    published, like :func:`stamp_waiting_days`. Only placeholder rows are
-    stamped -- the merge modal exists for those alone. Returns counts.
+    Caller-applied AFTER :func:`enrich_worklist`: a Feed-A row whose push body
+    carried no person has no email until then. Backfills rows read from a
+    snapshot an older image published, like :func:`stamp_waiting_days`. Only
+    placeholder rows are stamped -- the merge modal exists for those alone.
+    Returns counts.
     """
     emails = [((row.get('person') or {}).get('email') or '')
               for row in rows if row.get('placeholder')]
@@ -1078,3 +1078,39 @@ def stamp_waiting_days(rows: Sequence[Dict[str, Any]], *,
             row['waiting_since'] = _waiting_since(row.get('first_seen'),
                                                   row.get('actions') or ())
         row['waiting_days'] = waiting_days(row, today=when)
+
+
+@dataclass
+class AssembledWorklist:
+    """The worklist every surface renders, plus what its Feed-B window hid."""
+
+    rows: List[Dict[str, Any]]
+    enrichment: Optional[Dict[str, Any]] = None
+    pending_hidden: int = 0
+
+
+def assemble_worklist(session: Session, *,
+                      pending_rows: Optional[Sequence[Dict[str, Any]]] = None,
+                      since=None, until=None, validate: bool = True,
+                      max_lookups: Optional[int] = None) -> AssembledWorklist:
+    """Feed A, windowed Feed B, the merge and every stamp, in the one safe order.
+
+    Feed B is windowed here, before injection: after the merge every Feed-A row
+    would pass the window, so it would never narrow the pending half.
+    *max_lookups* ``None`` skips enrichment; ``0`` uses inline persons only.
+    Merge targets come after enrichment because a row may get its email there.
+    """
+    pending = None
+    if pending_rows is not None:
+        pending = [r for r in pending_rows if pending_in_window(r, since)]
+    rows = get_account_worklist(session, since=since, until=until,
+                                validate=validate, pending_rows=pending)
+    stamp_waiting_days(rows)
+    # After the merge copies each action dict: this writes `is_project` in place.
+    stamp_project_existence(session, rows)
+    enrichment = (None if max_lookups is None
+                  else enrich_worklist(rows, max_lookups=max_lookups))
+    stamp_merge_targets(session, rows)
+    return AssembledWorklist(
+        rows=rows, enrichment=enrichment,
+        pending_hidden=(len(pending_rows) - len(pending)) if pending is not None else 0)
