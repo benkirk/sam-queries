@@ -359,6 +359,17 @@ class TestReconcile:
         assert counts['projects_attached'] == 1 and row.project_id == project.project_id
         assert upsert_sweep_requests(session, rows)['projects_attached'] == 0
 
+    def test_an_open_submission_gets_its_project_when_its_account_is_inactive(self, session):
+        user = _user_with_email(session, 'arrived-locked@example.edu', active=False)
+        upsert_sweep_requests(session, [_worklist_row(user.username, email='a@example.edu')])
+        row = session.query(AccountRequest).filter_by(xras_username=user.username.lower()).one()
+        project = make_project(session)
+        inactive = _worklist_row(user.username, classification='inactive',
+                                 request_number=project.projcode)
+        counts = upsert_sweep_requests(session, [inactive])
+        assert counts['created'] == 0 and counts['projects_attached'] == 1
+        assert row.purpose == 'submission' and row.project_id == project.project_id
+
     def test_a_pushed_new_is_attached_through_its_minted_projcode(self, session):
         from factories import make_xras_action
 

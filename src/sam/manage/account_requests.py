@@ -256,9 +256,10 @@ def upsert_sweep_requests(session: Session, worklist_rows: Sequence[Dict[str, An
         project_id = projects[id(row)]
         if (key, purpose) in known:
             counts['existing'] += 1
-            # The project lands after the row: attach it once the handoff has.
+            # The project lands after the row: attach it once the handoff has, to
+            # any open row (it blocked this purpose too; see _blocked_purposes).
             for req in existing.get(key, ()):
-                if (project_id and req.purpose == purpose and req.project_id is None
+                if (project_id and req.project_id is None
                         and req.is_open and not req.is_fulfilled):
                     req.project_id = project_id
                     counts['projects_attached'] += 1
