@@ -154,10 +154,19 @@ PUT tallies by type and status, 5xx, verdict.
 
 ### 6. Re-baseline, once in the window
 
-`bin/collect`; `docker compose stop syncd ldap-poll`; `make refresh-dev` (record T1);
-reset the spool (aside + `.reset`); `docker compose up -d syncd ldap-poll`. Pass 1 is the
-delta between dev-at-T1 and the replica, small again. Legacy's pending-deactivation
-stamps come across with the data, as before.
+A reset rebuilds the daemon's picture of the directory from the transformer's latest LDAP dump
+plus the audit log since. Prod's LDAP writes that dump nightly; the testbed's `ldap` container
+writes one only when it starts, so a reset without a fresh dump compares SAM against a stale
+directory and **tombstones every person created since** (it happened on 2026-10-09, § 10.7).
+So every reset restarts `ldap` first.
+
+1. `bin/collect`; `docker compose stop syncd transformer ldap-poll`.
+2. `make refresh-dev` (Ben); record T1.
+3. `docker compose restart ldap` (the entrypoint writes `<ts>-0-slapcat` and `<ts>-1-slapcat`
+   into `/var/data/auditlog.d`; confirm the new timestamp).
+4. Reset the spool (rename aside, `touch /var/data/.reset` owned 303:303), then
+   `docker compose up -d transformer syncd ldap-poll`. Pass 1 is the seed diff again, against
+   dev at T1.
 
 ### 7. Exit
 
