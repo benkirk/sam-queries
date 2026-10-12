@@ -1,4 +1,4 @@
-A new NCAR HPC account request is ready for the account team.
+{% if reactivate_username %}An inactive NCAR HPC account, {{ reactivate_username }}, is named on an approved XRAS request and needs reactivating.{% else %}A new NCAR HPC account request is ready for the account team.{% endif %}
 
 Name:            {{ name }}
 Email:           {{ email }}

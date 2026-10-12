@@ -2,6 +2,7 @@
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle, drill_toggle %}
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_row %}
+{% from 'dashboards/fragments/account_request_bits.html' import queue_actions, queue_state %}
 {% from 'dashboards/fragments/xras_person_detail.html' import person_detail %}
 {% from 'dashboards/fragments/xras_bits.html' import empty_state, identity_tag, queue_badges, request_link, swept_stamp, tag, type_label, verdict %}
 {#
@@ -25,7 +26,7 @@
         {{ queue_badges(counts.total,
                         outside=(pending_hidden if pending_hidden and pending_hidden > 0 else 0),
                         outside_label='pending-request row(s) outside the date filter',
-                        outside_title='Older pending requests are hidden by the date filter above. On this list an older unpushed request is usually the more urgent one; widen the filter to see them.') }}
+                        outside_title='People first seen on an approved request before the date filter are hidden. On this list an older unpushed request is usually the more urgent one; widen the filter to see them.') }}
         {# What the count is made of. "placeholder", never "unreconciled": a
            username shape, not XRAS's identity state. #}
         <span class="small text-muted xras-header-facts">
@@ -213,14 +214,8 @@
                         {% set arq = row.account_request %}
                         {% if not arq %}
                         <span class="text-muted" title="No account request yet: the next sweep writes one for an absent member with an email">—</span>
-                        {% elif arq.fulfilled %}
-                        <span class="badge bg-success" title="The account exists; the request is fulfilled">fulfilled</span>
-                        {% elif arq.state == 'claimed' %}
-                        <span class="badge bg-info" title="Claimed by {{ arq.assignee }} on the Accounts queue">claimed · {{ arq.assignee }}</span>
-                        {% elif arq.state == 'submitted' %}
-                        {{ tag('sent' if arq.requested_at else 'open', title=('Open on the Accounts queue' ~ (('; sent to NUSD ' ~ (arq.requested_at | fmt_date)) if arq.requested_at else ''))) }}
                         {% else %}
-                        {{ tag(arq.state, title='Set aside on the Accounts queue') }}
+                        {{ queue_state(arq.state, arq.assignee, requested_at=arq.requested_at, fulfilled=arq.fulfilled) }}
                         {% endif %}
                     </td>
 
@@ -271,32 +266,9 @@
                                 {%- elif arq.state in ('dismissed', 'rejected') %}: {{ arq.state }}
                                 {%- elif arq.requested_at %}: sent to NUSD {{ arq.requested_at | fmt_date }}
                                 {%- else %}: open{% endif %}.
+                                First seen approved {{ arq.creation_time | fmt_date }}.
                             </div>
-                            <span class="row-actions">
-                                {% if arq.state in ('submitted', 'claimed') %}
-                                {% if arq.state == 'claimed' %}
-                                <button type="button" class="btn btn-row"
-                                        title="Release: take the claim off this request" aria-label="Release"
-                                        hx-post="{{ url_for('admin_dashboard.account_request_unclaim', request_id=arq.id) }}"
-                                        hx-swap="none"><i class="fa-solid fa-hand-back-fist" aria-hidden="true"></i></button>
-                                {% else %}
-                                <button type="button" class="btn btn-row btn-row-primary"
-                                        title="Claim: tell other operators you are working this one" aria-label="Claim"
-                                        hx-post="{{ url_for('admin_dashboard.account_request_claim', request_id=arq.id) }}"
-                                        hx-swap="none"><i class="fa-solid fa-hand" aria-hidden="true"></i></button>
-                                {% endif %}
-                                <button type="button" class="btn btn-row"
-                                        title="Dismiss: a duplicate, or someone who already has an account" aria-label="Dismiss"
-                                        hx-get="{{ url_for('admin_dashboard.account_request_dismiss_form', request_id=arq.id) }}"
-                                        hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
-                                        data-bs-toggle="modal" data-bs-target="#auditDetailsModal"><i class="fa-solid fa-eye-slash" aria-hidden="true"></i></button>
-                                {% else %}
-                                <button type="button" class="btn btn-row"
-                                        title="Reopen: put this request back in the queue" aria-label="Reopen"
-                                        hx-post="{{ url_for('admin_dashboard.account_request_reopen', request_id=arq.id) }}"
-                                        hx-swap="none"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button>
-                                {% endif %}
-                            </span>
+                            {{ queue_actions(arq.id, arq.state) }}
                         </div>
                         {% endif %}
                         {% if may_manage %}{{ person_detail(row.person) }}{% endif %}
@@ -318,12 +290,12 @@
                                     <td class="text-nowrap">{{ type_label(action.action_type) }}</td>
                                     <td class="text-nowrap">{% if action.status %}{{ status_badge(action.status, tooltip=False) }}{% endif %}</td>
                                     <td class="text-nowrap">{{ 'Received push' if action.source == 'action_log' else 'Pending request' }}</td>
-                                    {# submit_date is already a YYYY-MM-DD string. #}
+                                    {# entry_date/submit_date are already YYYY-MM-DD strings. #}
                                     <td class="text-nowrap">
                                         {%- if action.source == 'action_log' -%}
                                         {{ action.received_time | fmt_date }}
                                         {%- else -%}
-                                        {{ action.submit_date or '—' }}
+                                        <span title="Latest action entered in XRAS">{{ action.entry_date or action.submit_date or '—' }}</span>
                                         {%- endif -%}
                                     </td>
                                     {# "Would fail", never "needs an account": the pre-flight

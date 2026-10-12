@@ -5,8 +5,8 @@ As of 2026-09-14 08:00.
 
 By purpose
 ----------
-  enrollment  3
-  submission  1
+  enrollment    3
+  submission    1
 
 WRF-TUTORIAL-2026-10 — WRF Tutorial, October 2026 (SCSG0001)
 2 account(s) needed by 2026-10-05
@@ -18,13 +18,17 @@ WRF-TUTORIAL-2026-10 — WRF Tutorial, October 2026 (SCSG0001)
     enrollment, invited by Jane Lead; waiting 3 day(s); claimed by operator1; awaiting invitee
 
 
+XRAS Approved Pending Projects
+------------------------------------------------------------------------
+  Linus Torvalds <linus@example.edu>
+    submission; waiting 37 day(s)
+    note: XRAS placeholder linus-user-8f2a
+
+
 Other requests
 ------------------------------------------------------------------------
   Grace Hopper <grace@example.edu>, NCAR
     enrollment on UCUB0001, invited by Alex Admin; waiting 1 day(s)
-  Linus Torvalds <linus@example.edu>
-    submission; waiting 37 day(s)
-    note: XRAS placeholder linus-user-8f2a
 
 
 Work the queue, claim rows and mark them done: https://sam.hpc.ucar.edu/dashboards/admin/account-requests

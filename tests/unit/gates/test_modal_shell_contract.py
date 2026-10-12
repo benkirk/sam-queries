@@ -180,6 +180,10 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # so #projectDetailsModal(Body) is that macro's pinned dependency, not this card's.
     'dashboards/admin/fragments/account_requests_card.html': [
         'auditDetailsModal', 'auditDetailsModalBody'],
+    # queue_actions' Dismiss/Reject openers, called by the Accounts card above
+    # and the XRAS Pending Users card; both host pages ship the audit shell.
+    'dashboards/fragments/account_request_bits.html': [
+        'auditDetailsModal', 'auditDetailsModalBody'],
     # The Invitations tab (loaded only into admin/edit_project.html, which
     # includes invitation_modals_htmx.html). Its openers target that shell; the
     # forms that land in it carry no toggle of their own.
@@ -293,7 +297,6 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # username SAM has already resolved opens #userDetailsModal, which
     # base_allocations.html ships to every allocations page.
     'dashboards/allocations/partials/xras_accounts_card.html': [
-        'auditDetailsModal', 'auditDetailsModalBody',
         'userDetailsModal', 'userDetailsModalBody', 'xrasModal', 'xrasModalBody'],
     'dashboards/allocations/partials/xras_remediations_card.html': [
         'xrasModal', 'xrasModalBody'],

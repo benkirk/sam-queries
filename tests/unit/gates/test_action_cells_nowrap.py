@@ -24,11 +24,14 @@ _ACTION = re.compile(
     r'<button\b'
     r'|edit_modal_button\('
     r'|delete_row_button\('
+    r'|queue_actions\('
     r'|copy_button\('
     r'|<a\b[^>]*class="[^"]*\bbtn\b',
     re.S,
 )
 _MACRO = re.compile(r'edit_modal_button\(|delete_row_button\(')
+# A macro that emits a whole strip on its own, so one call is an action cell.
+_STRIP_MACRO = re.compile(r'queue_actions\(')
 
 
 def _action_cells():
@@ -37,7 +40,7 @@ def _action_cells():
         text = path.read_text()
         for m in _CELL.finditer(text):
             attrs, body = m.group(1), m.group(2)
-            if len(_ACTION.findall(body)) < 2:
+            if len(_ACTION.findall(body)) < 2 and not _STRIP_MACRO.search(body):
                 continue
             if 'text-end' not in attrs and not _MACRO.search(body):
                 continue

@@ -48,6 +48,7 @@
     'standalone': ('fa-user', 'Standalone: an account, no project'),
     'enrollment': ('fa-chalkboard-user', 'Enrollment: an account plus a project or event membership'),
     'submission': ('fa-file-signature', 'Submission: named on an XRAS request'),
+    'reactivation': ('fa-user-clock', 'Reactivation: named on an XRAS request; the SAM account is inactive'),
 } %}
 {% set _ORIGIN_ICONS = {
     'self': ('fa-globe', 'Public form: the person asked for themselves'),
@@ -94,17 +95,69 @@
 {%- set r = v.row -%}
 {%- set t = v.tickets | first if v.tickets else none -%}
 <span class="text-nowrap">
-{%- if r.state == 'claimed' -%}
-<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle" title="Claimed by {{ r.assignee }}"><i class="fa-solid fa-hand me-1" aria-hidden="true"></i>{{ r.assignee }}</span>
-{%- elif r.state == 'submitted' -%}
-<span class="badge bg-body-secondary text-body-secondary border">open</span>
-{%- else -%}
-<span class="badge bg-secondary" title="{{ r.closed_reason }} — {{ r.closed_by }}, {{ r.closed_at | fmt_date }}">{{ r.state }}</span>
-{%- endif -%}
+{{- queue_state(r.state, r.assignee, title=(r.closed_reason ~ ' — ' ~ r.closed_by ~ ', ' ~ (r.closed_at | fmt_date))) -}}
 {%- if t %} {% if t.url %}<a href="{{ t.url }}" target="_blank" rel="noopener" class="font-monospace small" title="Help-desk ticket{% if t.status %}: {{ t.status }}{% endif %}">{{ t.key }}</a>{% else %}<span class="font-monospace small text-body-secondary">{{ t.key }}</span>{% endif -%}
 {%- if v.tickets | length > 1 %}<small class="text-body-secondary" title="{{ v.tickets | length }} tickets carry this request's handle">+{{ v.tickets | length - 1 }}</small>{% endif -%}
 {%- if t.closed_at and not r.fulfilled_at and r.state in ('submitted', 'claimed') %} {{ _icon('fa-solid fa-triangle-exclamation text-warning-emphasis', 'The desk closed ' ~ t.key ~ ' on ' ~ (t.closed_at | fmt_date) ~ ' and no SAM account holds this address yet: closed without an account') }}{% endif -%}
 {%- endif -%}
 {%- if r.requested_at %} {{ _icon('fa-solid fa-paper-plane text-body-secondary', 'Included in a digest to NUSD ' ~ (r.requested_at | fmt_date)) }}{% endif -%}
+</span>
+{%- endmacro %}
+
+{#- One request's queue state as a badge, for both cards. `title` overrides the
+    closed-state tooltip; `requested_at` turns an open row into "sent". #}
+{% macro queue_state(state, assignee='', requested_at=none, fulfilled=false, title='') -%}
+{%- if fulfilled -%}
+<span class="badge bg-success" title="The account exists; the request is fulfilled">fulfilled</span>
+{%- elif state == 'claimed' -%}
+<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle" title="Claimed by {{ assignee }} on the Accounts queue"><i class="fa-solid fa-hand me-1" aria-hidden="true"></i>claimed · {{ assignee }}</span>
+{%- elif state == 'submitted' -%}
+<span class="badge state-tag" title="Open on the Accounts queue{% if requested_at %}; sent to NUSD {{ requested_at | fmt_date }}{% endif %}">{{ 'sent' if requested_at else 'open' }}</span>
+{%- else -%}
+<span class="badge state-tag" title="{{ title or 'Set aside on the Accounts queue' }}">{{ state }}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{#- The queue verbs for one request, as a row-actions strip. `full` adds the
+    Accounts card's Verify and Reject; the XRAS card offers the rest. -#}
+{% macro queue_actions(request_id, state, email='', verified=true, full=false) -%}
+<span class="row-actions">
+{%- if state in ('submitted', 'claimed') %}
+{%- if full and not verified %}
+<button type="button" class="btn btn-row btn-row-attention"
+        title="Mark verified: vouch for this address; the request enters the queue" aria-label="Mark verified"
+        hx-post="{{ url_for('admin_dashboard.account_request_verify', request_id=request_id) }}"
+        hx-confirm="Vouch for {{ email }} without the mail round trip?"
+        hx-swap="none"><i class="fa-solid fa-envelope-circle-check" aria-hidden="true"></i></button>
+{%- endif %}
+{%- if state == 'claimed' %}
+<button type="button" class="btn btn-row"
+        title="Release: take the claim off this request" aria-label="Release"
+        hx-post="{{ url_for('admin_dashboard.account_request_unclaim', request_id=request_id) }}"
+        hx-swap="none"><i class="fa-solid fa-hand-back-fist" aria-hidden="true"></i></button>
+{%- else %}
+<button type="button" class="btn btn-row btn-row-primary"
+        title="Claim: tell other operators you are working this one" aria-label="Claim"
+        hx-post="{{ url_for('admin_dashboard.account_request_claim', request_id=request_id) }}"
+        hx-swap="none"><i class="fa-solid fa-hand" aria-hidden="true"></i></button>
+{%- endif %}
+<button type="button" class="btn btn-row"
+        title="Dismiss: a duplicate, or someone who already has an account" aria-label="Dismiss"
+        hx-get="{{ url_for('admin_dashboard.account_request_dismiss_form', request_id=request_id) }}"
+        hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+        data-bs-toggle="modal" data-bs-target="#auditDetailsModal"><i class="fa-solid fa-eye-slash" aria-hidden="true"></i></button>
+{%- if full %}
+<button type="button" class="btn btn-row btn-row-danger"
+        title="Reject: refuse the request; optionally email the reason to the requester" aria-label="Reject"
+        hx-get="{{ url_for('admin_dashboard.account_request_reject_form', request_id=request_id) }}"
+        hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+        data-bs-toggle="modal" data-bs-target="#auditDetailsModal"><i class="fa-solid fa-ban" aria-hidden="true"></i></button>
+{%- endif %}
+{%- else %}
+<button type="button" class="btn btn-row"
+        title="Reopen: put this request back in the queue" aria-label="Reopen"
+        hx-post="{{ url_for('admin_dashboard.account_request_reopen', request_id=request_id) }}"
+        hx-swap="none"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button>
+{%- endif %}
 </span>
 {%- endmacro %}

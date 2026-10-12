@@ -16,14 +16,21 @@ from sqlalchemy.orm import Session
 from sam.core.account_requests import (
     CREATED_BY_SELF,
     CREATED_BY_SWEEP,
+    PURPOSE_ENROLLMENT,
+    PURPOSE_REACTIVATION,
+    PURPOSE_STANDALONE,
+    PURPOSE_SUBMISSION,
     AccountRequest,
     AccountRequestEvent,
     EventEnrollment,
 )
 from sam.core.users import User
-from sam.projects.projects import Project
-from sam.queries.account_requests import queue_requests, resolve_requests
-from sam.queries.xras_accounts import CLASSIFICATION_ABSENT, sam_merge_targets
+from sam.queries.account_requests import (queue_requests, requests_by_xras_username,
+                                          resolve_requests)
+from sam.queries.users import users_by_username_ci
+from sam.queries.xras_actions import project_ids_for_actions
+from sam.queries.xras_accounts import (CLASSIFICATION_ABSENT, CLASSIFICATION_INACTIVE,
+                                       sam_merge_targets)
 
 from . import add_user_to_project
 
@@ -125,7 +132,7 @@ def invite_user(session: Session, *, project_id: int, sponsor: User, email: str,
     row = AccountRequest.create(
         session,
         email=address, first_name=first_name, last_name=last_name,
-        purpose='enrollment', project_id=project_id,
+        purpose=PURPOSE_ENROLLMENT, project_id=project_id,
         sponsor_user_id=sponsor.user_id,
         event_id=event.account_request_event_id if event else None,
         comment=comment, created_by=sponsor.username,
@@ -199,62 +206,116 @@ def paste_roster(session: Session, *, event: AccountRequestEvent, sponsor: User,
     return outcomes
 
 
-def upsert_sweep_requests(session: Session, worklist_rows: Sequence[Dict[str, Any]],
-                          *, clock=None) -> Dict[str, int]:
-    """Give every absent roster member a ``submission`` row. Idempotent.
+#: What the sweep files for each worklist classification.
+_PURPOSE_BY_CLASSIFICATION = {CLASSIFICATION_ABSENT: PURPOSE_SUBMISSION,
+                              CLASSIFICATION_INACTIVE: PURPOSE_REACTIVATION}
 
-    Keyed on the XRAS username, casefolded. An existing row in any state is
-    left alone -- a dismissal must survive the next sweep. ``inactive`` rows
-    are not taken: reactivation is a purpose this queue does not have yet.
-    A row without a person email cannot be matched later, so it is skipped
-    and counted rather than created blind.
+
+def _blocked_purposes(req: AccountRequest) -> Tuple[str, ...]:
+    """What *req* keeps the sweep from filing again for its username.
+
+    An open row is the work already, whatever its purpose: a submission whose
+    account arrives inactive must not gain a reactivation beside it. A
+    dismissal or rejection survives the next sweep for its own purpose only.
+    A fulfilled row blocks nothing: the person may lapse and be filed again.
     """
-    counts = {'created': 0, 'existing': 0, 'skipped': 0}
-    absent = [r for r in worklist_rows
-              if r.get('classification') == CLASSIFICATION_ABSENT and r.get('username')]
-    if not absent:
+    if req.is_fulfilled:
+        return ()
+    if req.state in ('dismissed', 'rejected'):
+        return (req.purpose,)
+    return tuple(_PURPOSE_BY_CLASSIFICATION.values())
+
+
+def upsert_sweep_requests(session: Session, worklist_rows: Sequence[Dict[str, Any]],
+                          *, clock=None) -> Dict[str, Any]:
+    """Give every absent or inactive worklist member a row. Idempotent.
+
+    ``absent`` files a ``submission``, ``inactive`` a ``reactivation``. Keyed
+    on (XRAS username, purpose): an open row blocks either purpose, a dismissed
+    or rejected one its own (``_blocked_purposes``). An absent person's email
+    comes from XRAS; a row without one cannot be matched later, so it is
+    skipped and counted rather than created blind. An inactive person's detail
+    comes from their SAM row.
+    """
+    counts: Dict[str, Any] = {'created': 0, 'existing': 0, 'skipped': 0,
+                              'projects_attached': 0, 'by_purpose': {}}
+    wanted = [r for r in worklist_rows
+              if r.get('classification') in _PURPOSE_BY_CLASSIFICATION and r.get('username')]
+    if not wanted:
         return counts
-    keys = sorted({r['username'].lower() for r in absent})
-    known = {req.xras_username for req in
-             session.query(AccountRequest.xras_username)
-             .filter(AccountRequest.xras_username.in_(keys)).all()}
-    numbers = sorted({a.get('request_number') for r in absent
-                      for a in r.get('actions', ()) if a.get('request_number')})
-    projects = {}
-    if numbers:
-        projects = dict(session.query(Project.projcode, Project.project_id)
-                        .filter(Project.projcode.in_(numbers)).all())
-    for row in absent:
-        key = row['username'].lower()
-        if key in known:
+    existing = requests_by_xras_username(session, (r['username'] for r in wanted))
+    known = {(key, purpose) for key, reqs in existing.items()
+             for req in reqs for purpose in _blocked_purposes(req)}
+    sam_users = users_by_username_ci(
+        session, (r['username'] for r in wanted
+                  if r['classification'] == CLASSIFICATION_INACTIVE))
+    projects = _projects_by_row(session, wanted)
+    for row in wanted:
+        purpose = _PURPOSE_BY_CLASSIFICATION[row['classification']]
+        key = AccountRequest.xras_key(row['username'])
+        project_id = projects[id(row)]
+        if (key, purpose) in known:
             counts['existing'] += 1
+            # The project lands after the row: attach it once the handoff has, to
+            # any open row (it blocked this purpose too; see _blocked_purposes).
+            for req in existing.get(key, ()):
+                if (project_id and req.project_id is None
+                        and req.is_open and not req.is_fulfilled):
+                    req.project_id = project_id
+                    counts['projects_attached'] += 1
             continue
-        person = row.get('person') or {}
-        email = (person.get('email') or '').strip().lower()
-        first = (person.get('firstName') or '').strip()
-        last = (person.get('lastName') or '').strip()
-        if not email or not first or not last:
+        if purpose == PURPOSE_REACTIVATION:
+            fields = _person_from_user(sam_users.get(row['username'].casefold()))
+        else:
+            fields = _person_from_xras(row.get('person') or {})
+        if fields is None:
             counts['skipped'] += 1
             continue
-        project_id = next((projects[a['request_number']]
-                           for a in row.get('actions', ())
-                           if a.get('request_number') in projects), None)
         AccountRequest.create(
-            session,
-            email=email, first_name=first, last_name=last,
-            middle_name=person.get('middleName'),
-            organization=person.get('organization'),
-            academic_status=person.get('academicStatus'),
-            residence_country=person.get('residenceCountry'),
-            orcid=person.get('orcid'), phone=person.get('phone'),
-            purpose='submission', project_id=project_id,
+            session, **fields, purpose=purpose, project_id=project_id,
             xras_username=row['username'],
             created_by=CREATED_BY_SWEEP, verified_by=CREATED_BY_SWEEP,
             clock=clock,
         )
-        known.add(key)
+        known.add((key, purpose))
         counts['created'] += 1
+        counts['by_purpose'][purpose] = counts['by_purpose'].get(purpose, 0) + 1
+    if counts['projects_attached']:
+        session.flush()
     return counts
+
+
+def _projects_by_row(session: Session, rows: Sequence[Dict[str, Any]]) -> Dict[int, Optional[int]]:
+    """``{id(row): project_id}``: the first of a row's actions that names a project."""
+    actions = [(id(row), a) for row in rows for a in row.get('actions') or ()]
+    found = project_ids_for_actions(session, [a for _, a in actions])
+    out: Dict[int, Optional[int]] = {id(row): None for row in rows}
+    for (key, _), project_id in zip(actions, found):
+        if out[key] is None:
+            out[key] = project_id
+    return out
+
+
+def _person_from_xras(person: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    email = (person.get('email') or '').strip().lower()
+    first = (person.get('firstName') or '').strip()
+    last = (person.get('lastName') or '').strip()
+    if not email or not first or not last:
+        return None
+    return {'email': email, 'first_name': first, 'last_name': last,
+            'middle_name': person.get('middleName'),
+            'organization': person.get('organization'),
+            'academic_status': person.get('academicStatus'),
+            'residence_country': person.get('residenceCountry'),
+            'orcid': person.get('orcid'), 'phone': person.get('phone')}
+
+
+def _person_from_user(user: Optional[User]) -> Optional[Dict[str, Any]]:
+    email = ((user.primary_email or '') if user else '').strip().lower()
+    if not email or not user.first_name or not user.last_name:
+        return None
+    return {'email': email, 'first_name': user.first_name, 'last_name': user.last_name,
+            'middle_name': user.middle_name}
 
 
 def reconcile_account_requests(session: Session, *, clock=None,
@@ -289,7 +350,7 @@ def reconcile_account_requests(session: Session, *, clock=None,
         if row.user_id is None:
             row.fulfill(user, when=now)
             counts['fulfilled'] += 1
-        if row.purpose == 'enrollment' and row.project_id:
+        if row.purpose == PURPOSE_ENROLLMENT and row.project_id:
             try:
                 with session.begin_nested():
                     event = (session.get(AccountRequestEvent, row.event_id)
@@ -328,7 +389,7 @@ def register_request(session: Session, *, email: str, first_name: str, last_name
     return AccountRequest.create(
         session,
         email=email, first_name=first_name, last_name=last_name,
-        purpose='enrollment' if event else 'standalone',
+        purpose=PURPOSE_ENROLLMENT if event else PURPOSE_STANDALONE,
         project_id=event.project_id if event else None,
         event_id=event.account_request_event_id if event else None,
         created_by=CREATED_BY_SELF, verified_by=None, clock=clock, **person,

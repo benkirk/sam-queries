@@ -95,6 +95,7 @@ _ACTION = re.compile(
     r'<button\b'
     r'|edit_modal_button\('
     r'|delete_row_button\('
+    r'|queue_actions\('
     r'|copy_button\('
     r'|<a\b[^>]*class="[^"]*\bbtn\b',
     re.S,

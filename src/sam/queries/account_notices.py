@@ -12,16 +12,18 @@ This module imports ``sam.notify``; the gate is
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from sqlalchemy.orm import Session
 
 from sam import fmt
-from sam.core.account_requests import CREATED_BY_SELF, AccountRequest, AccountRequestEvent
+from sam.core.account_requests import (CREATED_BY_SELF, PURPOSE_REACTIVATION, AccountRequest,
+                                       AccountRequestEvent)
 from sam.notify import Message, Recipient
 
 from .account_requests import (
-    ORIGIN_SELF, ORIGIN_SWEEP, events_for, group_by_event, origin_of, request_views,
+    GROUP_LABELS, GROUP_OTHER, GROUP_PROJECT, ORIGIN_SELF, ORIGIN_SWEEP, events_for,
+    group_by_event, origin_of, request_views,
     waiting_days,
 )
 
@@ -35,6 +37,8 @@ ACCOUNT_KIND_SUBJECTS = {
     'account_request_received': 'Your NCAR HPC account request has been received',
     'account_ticket': "New HPC User Request '{name}'",
 }
+#: The ticket subject for a ``reactivation`` row, in place of ``account_ticket``'s.
+REACTIVATION_TICKET_SUBJECT = "Reactivate HPC User '{name}'"
 
 
 #: How the digest prints its as-of time; the task passes local (Mountain) time.
@@ -50,7 +54,12 @@ def invite_label(row: AccountRequest) -> str:
 
 def queue_summary_context(session: Session, rows: Sequence[AccountRequest], *,
                           occurrence: datetime, queue_url: str = '') -> Dict[str, Any]:
-    """The digest payload: two flat lists, event groups first then the rest."""
+    """The digest payload: event groups, then ``sections`` of the event-less rows.
+
+    ``events`` and the flat ``rows`` stay for template overrides written
+    against them. A project group shares the "Other requests" section: the
+    mail lists the project per row instead of a heading per project.
+    """
     events = events_for(session, rows)
     views = request_views(session, rows, resolutions={}, events=events,
                           today=occurrence.date())
@@ -76,8 +85,11 @@ def queue_summary_context(session: Session, rows: Sequence[AccountRequest], *,
         }
 
     out_events, out_rows = [], []
+    sections: Dict[str, List[Dict[str, Any]]] = {}
     for group in groups:
         event = group['event']
+        group_rows = [_row(v) for v in group['rows']]
+        out_rows.extend(group_rows)
         if event:
             out_events.append({
                 'event_code': event.event_code,
@@ -86,7 +98,9 @@ def queue_summary_context(session: Session, rows: Sequence[AccountRequest], *,
                 'deadline': fmt.date_str(event.accounts_needed_by),
                 'count': len(group['rows']),
             })
-        out_rows.extend(_row(v) for v in group['rows'])
+        else:
+            kind = GROUP_OTHER if group['kind'] == GROUP_PROJECT else group['kind']
+            sections.setdefault(GROUP_LABELS[kind], []).extend(group_rows)
     by_purpose: Dict[str, int] = {}
     for r in rows:
         by_purpose[r.purpose] = by_purpose.get(r.purpose, 0) + 1
@@ -100,6 +114,8 @@ def queue_summary_context(session: Session, rows: Sequence[AccountRequest], *,
         'by_purpose': [{'purpose': p, 'count': by_purpose[p]} for p in sorted(by_purpose)],
         'events': out_events,
         'rows': out_rows,
+        'sections': [{'label': label, 'rows': section_rows}
+                     for label, section_rows in sections.items()],
         'queue_url': queue_url,
     }
 
@@ -258,10 +274,11 @@ def subject_token(request_id: int) -> str:
 
 
 def ticket_subject(name: str, *, request_id: int, event_code: str = '',
-                   project_code: str = '') -> str:
+                   project_code: str = '', reactivation: bool = False) -> str:
     """``New HPC User Request '<name>' for <event code | project code> [SAM-AR-<id>]``;
     the event wins, and a standalone request carries no ``for`` clause."""
-    base = ACCOUNT_KIND_SUBJECTS['account_ticket'].format(name=name)
+    base = (REACTIVATION_TICKET_SUBJECT if reactivation
+            else ACCOUNT_KIND_SUBJECTS['account_ticket']).format(name=name)
     suffix = event_code or project_code
     head = f'{base} for {suffix}' if suffix else base
     return f'{head} {subject_token(request_id)}'
@@ -293,12 +310,14 @@ def build_ticket_message(row: AccountRequest, *, view: Dict[str, Any], recipient
         via = f'operator {row.created_by}'
     note = (row.purpose_note or row.comment or '').strip()
     accepted = row.eula_accepted_at is not None
+    reactivation = row.purpose == PURPOSE_REACTIVATION
     return Message(
         kind='account_ticket',
         recipient=Recipient(recipient.strip(), name='NUSD', role='operator'),
         subject=ticket_subject(row.display_name, request_id=row.account_request_id,
                                event_code=view['event_code'],
-                               project_code=view['project_code']),
+                               project_code=view['project_code'],
+                               reactivation=reactivation),
         context={
             'name': row.display_name,
             'email': row.email,
@@ -319,6 +338,7 @@ def build_ticket_message(row: AccountRequest, *, view: Dict[str, Any], recipient
             'note': ' '.join(note.split()),
             'request_id': row.account_request_id,
             'queue_url': queue_url,
+            'reactivate_username': row.xras_username if reactivation else '',
         },
         entity=('account_request', row.account_request_id),
         projcode=view['project_code'] or None,

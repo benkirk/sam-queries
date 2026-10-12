@@ -20,6 +20,7 @@ from datetime import date, datetime
 from typing import (Any, Dict, Iterator, Mapping, Optional, Tuple)
 
 from sam.dates import parse_wire_date
+from sam.queries.xras_accounts import report_entry_date
 from sam.queries.xras_actions import canonical_action_type
 
 logger = logging.getLogger(__name__)
@@ -72,10 +73,6 @@ class Verdict:
     resolved: Optional[dict]
 
 
-def _entry_date(action: dict) -> Optional[date]:
-    return parse_wire_date(action.get('entryDate') or action.get('submitDate'))
-
-
 def iter_candidate_actions(report_payload: dict, *,
                            since: Optional[date] = None) -> Iterator[dict]:
     """Yield the actions worth a preflight: not Declined, not deleted, in-window."""
@@ -89,7 +86,7 @@ def iter_candidate_actions(report_payload: dict, *,
         if action.get('isDeleted'):
             continue
         if since is not None:
-            when = _entry_date(action)
+            when = report_entry_date(action)
             if when is not None and when < since:
                 continue
         yield action
