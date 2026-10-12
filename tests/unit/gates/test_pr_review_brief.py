@@ -49,6 +49,8 @@ class TestRulesForPaths:
         assert found == {'always.md': [brief.EVERY_SESSION]}
 
     def test_the_real_tree_maps_the_reviewed_prs(self):
+        if not list((REPO / '.claude/rules').glob('*.md')):
+            pytest.skip('.claude/ is not in this tree (the test image: .dockerignore `.*/`)')
         rules = brief.rules_for_paths(['src/webapp/api/xras/actions.py'], REPO / '.claude/rules')
         assert 'webapp-api.md' in rules, 'the #803 route'
         rules = brief.rules_for_paths(['src/sam/manage/account_requests.py'], REPO / '.claude/rules')
