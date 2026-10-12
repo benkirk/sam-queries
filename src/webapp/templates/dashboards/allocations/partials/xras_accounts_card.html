@@ -262,13 +262,15 @@
                             <div class="small flex-grow-1">
                                 <i class="fa-solid fa-user-plus me-1 text-muted" aria-hidden="true"></i>
                                 On the <a href="{{ url_for('admin_dashboard.account_requests') }}">Accounts queue</a>
-                                {%- if arq.state == 'claimed' %}: claimed by <span class="font-monospace">{{ arq.assignee }}</span>
+                                {%- if arq.fulfilled %}: fulfilled
+                                {%- elif arq.state == 'claimed' %}: claimed by <span class="font-monospace">{{ arq.assignee }}</span>
                                 {%- elif arq.state in ('dismissed', 'rejected') %}: {{ arq.state }}
                                 {%- elif arq.requested_at %}: sent to NUSD {{ arq.requested_at | fmt_date }}
                                 {%- else %}: open{% endif %}.
                                 First seen approved {{ arq.creation_time | fmt_date }}.
                             </div>
-                            {{ queue_actions(arq.id, arq.state) }}
+                            {# A fulfilled row is done: nothing to claim or dismiss. #}
+                            {% if not arq.fulfilled %}{{ queue_actions(arq.id, arq.state) }}{% endif %}
                         </div>
                         {% endif %}
                         {% if may_manage %}{{ person_detail(row.person) }}{% endif %}
