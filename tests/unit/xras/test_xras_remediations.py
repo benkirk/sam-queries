@@ -1291,6 +1291,28 @@ class TestRequestDetailModal:
         assert 'AGS-123' in body                              # grant
         assert 'award.pdf' in body                            # document
 
+    def test_documents_on_an_older_action_show_above_the_actions(
+            self, auth_client, armed, monkeypatch):
+        """They sit on the original New, collapsed once a later action exists."""
+        payload = _detail_payload()
+        first = payload['actions'][0]
+        payload['actions'].append({**first, 'actionId': first['actionId'] + 1,
+                                   'actionType': 'Extension', 'documents': [],
+                                   'resources': [], 'allocationDates': []})
+        _reader(monkeypatch, payload=payload)
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'Supporting information' in body, 'Supp_Info gets its label'
+        assert body.index('Award Letter') < body.index('xras-action-head')
+
+    def test_a_non_integer_size_does_not_break_the_modal(
+            self, auth_client, armed, monkeypatch):
+        payload = _detail_payload()
+        payload['actions'][0]['documents'][0]['size'] = '44042'
+        _reader(monkeypatch, payload=payload)
+        response = auth_client.get('/allocations/xras_request_detail/EXAM0001')
+        assert response.status_code == 200 and 'Award Letter' in response.get_data(as_text=True)
+
     def test_it_carries_the_oob_title(self, auth_client, armed, monkeypatch):
         """The shared modal shell reads the title from an OOB swap."""
         _reader(monkeypatch, payload=_detail_payload())

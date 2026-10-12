@@ -3,7 +3,7 @@
   One XRAS request (and its family), rendered into #xrasModalBody.
   Context: request_number, payload (GET /v1/reports/request_numbers/<n>, self-
   describing: displayResourceName + resourceUnits + type per resource), row (its
-  request_index_entry), family, detail_actions, grants, fos_names, flash /
+  request_index_entry), family, detail_actions, documents, grants, fos_names, flash /
   flash_error, write_enabled, configured, admin_context_available, is_xras_admin,
   plus the roster and override includes' keys.
   The editors render whether or not writes are on: a disabled control teaches
@@ -54,6 +54,23 @@
                     url_for('allocations_dashboard.xras_attributes_form', request_number=request_number),
                     write_enabled) }}
 </div>
+
+{% if documents %}
+{{ section_label('Documents') }}
+{# Every action's documents, so one on an older (collapsed) action is still in view. #}
+<table class="table table-sm align-middle mb-3">
+    <tbody>
+    {% for doc in documents %}
+        <tr>
+            <td class="col-shrink">{{ tag(doc.type) }}</td>
+            <td class="cell-truncate" title="{{ doc.filename or doc.name }}">{{ doc.name }}</td>
+            <td class="col-num small text-muted">{{ doc.size | fmt_size }}</td>
+            <td class="col-shrink small text-muted">{{ type_label(doc.action_type) }} {{ doc.date | fmt_date }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
 
 {{ section_label('Actions' ~ ((' · ' ~ family.requests | length ~ ' requests in this project') if family and family.requests | length > 1 else '')) }}
 {# One chronological list across every request line; only the latest is open and editable. #}
@@ -196,8 +213,8 @@
         <span class="xras-action-label">Documents</span>
         <div class="flex-grow-1">
             {% for doc in action.documents %}
-            <span>{{ doc.title or doc.filename or 'document' }}
-                {%- if doc.filename %} <span class="text-muted">({{ doc.filename }}{% if doc.size %}, {{ doc.size | fmt_size }}{% endif %})</span>{% endif %}</span>{% if not loop.last %}; {% endif %}
+            <span>{{ doc.type }}: {{ doc.name }}
+                {%- if doc.size is not none %} <span class="text-muted">({{ doc.size | fmt_size }})</span>{% endif %}</span>{% if not loop.last %}; {% endif %}
             {% endfor %}
         </div>
     </div>

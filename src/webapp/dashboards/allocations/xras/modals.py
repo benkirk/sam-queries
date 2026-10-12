@@ -14,6 +14,7 @@ from flask import current_app, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from sam.core.users import User
+from sam.integration.xras_api.vocabulary import document_type_label
 from sam.integration.xras_api import (
     XrasSourceUnavailable,
     fos_name_map,
@@ -133,10 +134,27 @@ def _detail_actions(payload):
                        'type': d.get('allocationDateType')}
                       for d in (action.get('allocationDates') or ())
                       if isinstance(d, dict)],
-            'documents': [d for d in (action.get('documents') or ())
-                          if isinstance(d, dict)],
+            'documents': _detail_documents(action),
         })
     return actions
+
+
+def _detail_documents(action):
+    """An action's documents with the wire keys read once; ``size`` only when an int."""
+    documents = []
+    for doc in action.get('documents') or ():
+        if not isinstance(doc, dict):
+            continue
+        size = doc.get('size')
+        documents.append({
+            'document_id': doc.get('documentId'),
+            'type': document_type_label(doc.get('documentType')),
+            'name': doc.get('title') or doc.get('filename') or 'document',
+            'filename': doc.get('filename'),
+            # fmt_size calls abs(): a non-int would 500 the whole modal.
+            'size': size if isinstance(size, int) and not isinstance(size, bool) else None,
+        })
+    return documents
 
 
 def _detail_grants(payload):
@@ -240,6 +258,13 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
         # calibration comparison the request modal renders against the prediction.
         action['actual'] = actuals.get(action['action_id'])
     xa_user, is_pi, placeholder = _impersonation(entry, live=payload)
+    # Every action's documents in one list: they sit on the original New, which
+    # is collapsed once any later action exists.
+    documents = [{**doc, 'action_id': action['action_id'],
+                  'action_type': action['action_type'],
+                  'request_id': action['request_id'],
+                  'date': action['entry_date'] or action['submit_date']}
+                 for action in detail_actions for doc in action['documents']]
 
     request_id = (row or {}).get('request_id')
     return {
@@ -257,6 +282,7 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
         # danger-zone delete confirm and any family-level display.
         'family': family,
         'detail_actions': detail_actions,
+        'documents': documents,
         'grants': _detail_grants(payload),
         'xa_user': xa_user,
         'xa_user_is_pi': is_pi,
