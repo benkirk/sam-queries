@@ -57,15 +57,25 @@
 
 {% if documents %}
 {{ section_label('Documents') }}
-{# Every action's documents, so one on an older (collapsed) action is still in view. #}
+{# Every action's documents, so one on an older (collapsed) action is still in view.
+   The proxy reads as the PI through the write client, so links need writes configured. #}
 <table class="table table-sm align-middle mb-3">
     <tbody>
     {% for doc in documents %}
+        {% set doc_url = url_for('allocations_dashboard.xras_document', request_number=request_number,
+                                 action_id=doc.action_id, document_id=doc.document_id)
+                         if write_enabled and doc.document_id is not none else none %}
         <tr>
             <td class="col-shrink">{{ tag(doc.type) }}</td>
-            <td class="cell-truncate" title="{{ doc.filename or doc.name }}">{{ doc.name }}</td>
+            <td class="cell-truncate" title="{{ doc.filename or doc.name }}">
+                {%- if doc_url %}<a href="{{ doc_url }}" target="_blank" rel="noopener" title="Open {{ doc.filename or doc.name }} in a new tab">{{ doc.name }}</a>
+                {%- else %}{{ doc.name }}{% endif -%}
+            </td>
             <td class="col-num small text-muted">{{ doc.size | fmt_size }}</td>
             <td class="col-shrink small text-muted">{{ type_label(doc.action_type) }} {{ doc.date | fmt_date }}</td>
+            <td class="text-end text-nowrap">
+                {%- if doc_url %}<span class="row-actions"><a class="btn btn-row" href="{{ doc_url }}?download=1" title="Download {{ doc.filename or doc.name }}" aria-label="Download"><i class="fa-solid fa-download" aria-hidden="true"></i></a></span>{% endif -%}
+            </td>
         </tr>
     {% endfor %}
     </tbody>

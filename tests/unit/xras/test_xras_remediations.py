@@ -425,6 +425,63 @@ class TestActionsColumnAndFacet:
         assert 'Supplement' not in body       # neither the cell nor the facet
 
 
+class TestTheDocumentProxy:
+    """A document, fetched as the line's PI and served from our origin; nothing stored."""
+
+    URL = '/allocations/xras_document/EXAM0001/7/1'
+
+    def _admin(self, monkeypatch, fetched=None, error=None):
+        client = MagicMock()
+        if error:
+            client.get_document.side_effect = error
+        else:
+            client.get_document.return_value = fetched
+        monkeypatch.setattr(
+            'sam.integration.xras_api.admin_client.XrasAdminClient.from_environment',
+            classmethod(lambda cls, *a, **k: client))
+        return client
+
+    def test_it_is_gated(self, view_only_client):
+        assert view_only_client.get(self.URL).status_code == 403
+
+    def test_a_pdf_is_served_inline_as_the_pi(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        client = self._admin(monkeypatch, fetched=(b'%PDF-1.7 body', {}))
+        resp = auth_client.get(self.URL)
+        assert resp.status_code == 200 and resp.mimetype == 'application/pdf'
+        assert resp.headers['Content-Disposition'].startswith('inline')
+        assert 'award.pdf' in resp.headers['Content-Disposition']
+        assert resp.headers['Cache-Control'] == 'private, no-store'
+        assert client.get_document.call_args.kwargs['xa_user'] == 'pi-user'
+        # The harness pins the write lever off in app config; the modal's gate is the flag.
+        monkeypatch.setattr('webapp.dashboards.allocations.xras.modals.xras_write_configured',
+                            lambda: True)
+        body = auth_client.get('/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert self.URL in body and self.URL + '?download=1' in body
+
+    def test_download_and_non_pdf_bytes_are_attachments(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        self._admin(monkeypatch, fetched=(b'%PDF-1.7 body', {}))
+        assert auth_client.get(self.URL + '?download=1').headers[
+            'Content-Disposition'].startswith('attachment')
+        self._admin(monkeypatch, fetched=(b'<html>not a pdf</html>', {'Content-Type': 'text/html'}))
+        resp = auth_client.get(self.URL)
+        assert resp.mimetype == 'application/octet-stream'
+        assert resp.headers['Content-Disposition'].startswith('attachment')
+
+    def test_a_document_not_on_the_request_is_404_without_a_fetch(
+            self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        client = self._admin(monkeypatch, fetched=(b'%PDF-', {}))
+        assert auth_client.get('/allocations/xras_document/EXAM0001/7/999').status_code == 404
+        client.get_document.assert_not_called()
+
+    def test_an_outage_degrades_to_502(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        self._admin(monkeypatch, error=XrasSourceUnavailable('down'))
+        assert auth_client.get(self.URL).status_code == 502
+
+
 class TestDocumentsOnTheRow:
     """A paperclip and a count in the Request cell; names stay in the modal."""
 

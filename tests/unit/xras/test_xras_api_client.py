@@ -662,3 +662,41 @@ class TestOpportunityResolution:
         (_method, url), _kwargs = client.session.request.call_args
         assert url.endswith('/v1/opportunities')
         assert '/list/' not in url
+
+
+class TestTheDocumentGet:
+    """`get_document`: a capped, streamed byte read on the write client, as a role holder."""
+
+    def _admin(self, monkeypatch, responses):
+        from sam.integration.xras_api.admin_client import XrasAdminClient
+        config = XrasApiConfig(enabled=True, write_enabled=True, api_key='not-a-real-key')
+        client = XrasAdminClient(config)
+        monkeypatch.setattr(client.session, 'request', MagicMock(side_effect=responses))
+        monkeypatch.setattr('sam.integration.xras_api.client.time.sleep', lambda _s: None)
+        return client
+
+    def _bytes(self, *chunks, headers=None):
+        resp = _response(200)
+        resp.iter_content.return_value = list(chunks)
+        resp.headers = headers or {'Content-Type': 'application/pdf'}
+        resp.__enter__ = lambda self: self
+        resp.__exit__ = lambda self, *a: None
+        return resp
+
+    def test_it_returns_the_body_and_reads_as_the_named_user(self, monkeypatch):
+        client = self._admin(monkeypatch, [self._bytes(b'%PDF-', b'1.7')])
+        body, headers = client.get_document(1, 2, 3, xa_user='pi-user')
+        assert body == b'%PDF-1.7' and headers['Content-Type'] == 'application/pdf'
+        (_method, url), kwargs = client.session.request.call_args
+        assert url.endswith('/v1/requests/1/actions/2/documents/3')
+        assert kwargs['headers']['XA-USER'] == 'pi-user' and kwargs['stream'] is True
+        assert 'application/pdf' in kwargs['headers']['Accept']
+
+    def test_a_body_past_the_cap_is_refused(self, monkeypatch):
+        client = self._admin(monkeypatch, [self._bytes(b'x' * 6, b'x' * 6)])
+        with pytest.raises(XrasSourceUnavailable, match='cap'):
+            client.get_document(1, 2, 3, xa_user='pi-user', max_bytes=10)
+
+    def test_a_missing_document_is_none(self, monkeypatch):
+        client = self._admin(monkeypatch, [_response(404)])
+        assert client.get_document(1, 2, 3, xa_user='pi-user') is None

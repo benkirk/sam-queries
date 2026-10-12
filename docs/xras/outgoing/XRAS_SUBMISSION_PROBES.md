@@ -130,6 +130,16 @@ Exploratory New the only document rule is the Advisor Letter, and validate names
 exactly the unmet rule and nothing else — the rule-book tables in § 5 are the
 authoritative form spec.
 
+**Reading one back (2026-10-12, read-only).** `GET /v1/requests/<rid>/actions/<aid>/documents/<did>`
+returns the raw file (`Content-Disposition: attachment`, `application/pdf`). Probed on
+one production document (UMIC0132's Advisor letter): `report` as the default user
+**401**, `submit` as the default user **401**, `submit` as the request's PI **200**.
+So a read is request-scoped like every write (`XRAS_WRITE_PROBES.md`): SAM proxies it
+through the write client as the line's PI (`XrasAdminClient.get_document`, the
+`xras_document` route). Across 400 Approved requests, 242 carry documents, nearly all
+on the `New` action; the type codes are `Advisor_Letter`, `Supp_Info`, `Main_Doc` and
+`Progress_Report`, `title` is almost always null, and `size` is an int.
+
 ---
 
 ## 4. Final state

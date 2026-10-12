@@ -2087,6 +2087,13 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_document",
+    "/allocations/xras_document/<path:request_number>/<int:action_id>/<int:document_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_fragment",
     "/allocations/xras_fragment",
     [

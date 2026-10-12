@@ -116,14 +116,10 @@ def _render_xras_modal(*, build, template, noun, not_found, log_label):
 
 
 def _read_client():
-    # Interactive htmx path: cap retries so a slow/unreachable XRAS can pin a
-    # worker thread for at most one (connect, read) budget, not three plus
-    # backoff (~33s). Reports degrade to "source unavailable" instead.
-    import dataclasses
+    """The read client on the interactive budget: an outage degrades, not blocks."""
     from sam.integration.xras_api import XrasApiClient
     from sam.integration.xras_api.config import XrasApiConfig
-    config = dataclasses.replace(XrasApiConfig.from_environment(), max_retries=1)
-    return XrasApiClient.from_environment(config)
+    return XrasApiClient.from_environment(XrasApiConfig.from_environment().interactive())
 
 
 def _primary_line(lines):

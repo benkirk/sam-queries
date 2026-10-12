@@ -8,9 +8,10 @@ from ``remediation``), which is what keeps the modals<->remediation graph
 acyclic. Moved verbatim out of ``xras_remediation_routes.py``.
 """
 
+import io
 from typing import Optional
 
-from flask import current_app, render_template, request, url_for
+from flask import Response, current_app, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 
 from sam.core.users import User
@@ -37,6 +38,7 @@ from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from sam.dates import parse_wire_date
 from sam.text import strip_or_none
 from webapp.extensions import db
+from webapp.utils.htmx import read_flag
 from webapp.utils.rbac import Permission, has_permission, require_permission
 
 from .. import bp
@@ -326,6 +328,64 @@ def xras_request_detail(request_number: str):
         template=_DETAIL_FORM, noun='request',
         not_found=lambda: _not_found('Request'),
         log_label='xras request detail')
+
+
+def _find_document(lines, action_id, document_id):
+    """``(line, document)`` for a document on a live line's action, else ``(None, None)``."""
+    for line in lines or ():
+        if not isinstance(line, dict) or line.get('isDeleted'):
+            continue
+        for action in line.get('actions') or ():
+            if isinstance(action, dict) and action.get('actionId') == action_id:
+                for doc in documents_from_action(action):
+                    if doc['document_id'] == document_id:
+                        return line, doc
+    return None, None
+
+
+def _plain(message, status):
+    return Response(message, status=status, mimetype='text/plain')
+
+
+@bp.route('/xras_document/<path:request_number>/<int:action_id>/<int:document_id>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_document(request_number: str, action_id: int, document_id: int):
+    """A request document, proxied from XRAS as that request line's PI. Nothing is stored.
+
+    Inline by default (the browser's PDF viewer); ``?download=1`` saves it.
+    The type is decided from the bytes, never from XRAS's header: only a body
+    starting ``%PDF-`` is served as a PDF, anything else as a download.
+    """
+    from sam.integration.xras_api.admin_client import XrasAdminClient
+    from sam.integration.xras_api.config import XrasApiConfig
+
+    try:
+        line, doc = _find_document(_live_family(request_number), action_id, document_id)
+        if doc is None:
+            return _plain('No such document on this request.', 404)
+        xa_user, _, _ = _impersonation(None, live=line)
+        client = XrasAdminClient.from_environment(XrasApiConfig.from_environment().interactive())
+        fetched = client.get_document(line.get('requestId'), action_id, document_id,
+                                      xa_user=xa_user)
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('xras document %s/%s/%s: %s',
+                                   request_number, action_id, document_id, exc)
+        return _plain('XRAS is not answering, or would not release this document.', 502)
+    if fetched is None:
+        return _plain('XRAS no longer has this document.', 404)
+
+    body, _ = fetched
+    is_pdf = body.startswith(b'%PDF-')
+    current_app.logger.info('xras document: %s fetched %s action %s document %s',
+                            current_user.username, request_number, action_id, document_id)
+    response = send_file(
+        io.BytesIO(body),
+        mimetype='application/pdf' if is_pdf else 'application/octet-stream',
+        as_attachment=read_flag(request.args, 'download') or not is_pdf,
+        download_name=doc['filename'] or f'document-{document_id}.pdf', max_age=0)
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
 
 
 def _render_detail(request_number, *, flash=None, flash_error=None):
