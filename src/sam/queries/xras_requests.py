@@ -27,7 +27,7 @@ is fetched live inside a permission-gated route.
 from __future__ import annotations
 
 from datetime import date
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
 from sam.dates import parse_wire_date
 from sam.text import strip_or_none
@@ -564,3 +564,16 @@ def person_roles_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 (projects[n] for n in order),
                 key=lambda p: p.get('activity_date') or date.min, reverse=True)})
     return groups
+
+
+def request_numbers_by_username(index_rows: Sequence[Mapping[str, Any]],
+                                usernames: Iterable[Optional[str]]) -> Dict[str, List[str]]:
+    """``{casefolded username: [request numbers]}`` from the request index's rosters."""
+    out: Dict[str, List[str]] = {u.casefold(): [] for u in usernames if u}
+    for row in index_rows if out else ():
+        number = row.get('request_number')
+        for person in row.get('roster') or ():
+            numbers = out.get((person.get('username') or '').casefold())
+            if numbers is not None and number and number not in numbers:
+                numbers.append(number)
+    return out

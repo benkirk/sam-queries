@@ -176,8 +176,11 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/admin/fragments/account_request_reason_form_htmx.html': [
         'auditDetailsModalBody'],
     # The Dismiss/Reject buttons open the audit modal from the card. The projcode
-    # links now go through the shared project_link macro (fragments/project_bits.html),
+    # links go through the shared project_link macro (fragments/project_bits.html),
     # so #projectDetailsModal(Body) is that macro's pinned dependency, not this card's.
+    # Likewise xras_bits.request_link opens #xrasModal, which account_requests.html
+    # ships only when `can_open_xras` is true; the opener renders under the same flag,
+    # and this scan cannot see either, because `{% from %}` is not followed.
     'dashboards/admin/fragments/account_requests_card.html': [
         'auditDetailsModal', 'auditDetailsModalBody'],
     # queue_actions' Dismiss/Reject openers, called by the Accounts card above
@@ -301,7 +304,8 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/allocations/partials/xras_remediations_card.html': [
         'xrasModal', 'xrasModalBody'],
     # The XRAS state-language macros: request_link opens the request dialog.
-    # Imported only by the XRAS cards and dialogs, all hosted by xras.html.
+    # Imported by the XRAS cards and dialogs (hosted by xras.html) and by the
+    # Accounts card, whose page ships the shell behind `can_open_xras`.
     'dashboards/fragments/xras_bits.html': [
         'xrasModal', 'xrasModalBody'],
     # The shared roster/actions strip, included only by the read-only detail
