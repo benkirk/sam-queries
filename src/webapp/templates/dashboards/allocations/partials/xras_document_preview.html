@@ -1,0 +1,18 @@
+{% from 'dashboards/fragments/xras_bits.html' import back_link, dialog_title %}
+{#
+  One request document in the browser's PDF viewer, rendered into #xrasModalBody.
+  Context: request_number, doc (a labeled document), doc_url (the xras_document proxy), back_url.
+  WARNING: no sandbox attribute: Chrome will not render a PDF in a sandboxed frame, and the CSP
+  (object-src 'none') blocks object/embed. No data-bs-toggle on any control (#464).
+#}
+{{ dialog_title(doc.name, 'file-pdf', meta=request_number) }}
+{{ back_link(back_url, request_number) }}
+
+<p class="xras-request-meta">
+    <span>{{ doc.type }}</span>
+    <span>{{ doc.size | fmt_size }}</span>
+    <a href="{{ doc_url }}" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Open in a new tab</a>
+    <a href="{{ doc_url }}?download=1"><i class="fa-solid fa-download" aria-hidden="true"></i> Download</a>
+</p>
+
+<iframe class="xras-document-frame" src="{{ doc_url }}" title="{{ doc.filename or doc.name }}"></iframe>

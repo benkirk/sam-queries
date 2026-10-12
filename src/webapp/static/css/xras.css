@@ -228,6 +228,15 @@
     margin-bottom: 0.5rem;
 }
 
+/* A request document previewed in the dialog; the browser's PDF viewer fills it. */
+.xras-document-frame {
+    display: block;
+    width: 100%;
+    height: 70vh;
+    border: 1px solid var(--border-default);
+    border-radius: var(--bs-border-radius);
+}
+
 /* One action of the family: a header that collapses its body. */
 .xras-action {
     margin-bottom: 0.5rem;

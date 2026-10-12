@@ -95,7 +95,7 @@ def _back_to_detail(request_number):
 
 
 def _render_xras_modal(*, build, template, noun, not_found, log_label):
-    """Shared body for the three read-only detail modals (request/user/opportunity).
+    """Shared body for the read-only modals (request, user, opportunity, document preview).
 
     Every one does the same four things and differs only in the four arguments:
     run ``build()``; degrade with a **200** on an XRAS outage (htmx will not swap

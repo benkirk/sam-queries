@@ -142,11 +142,17 @@ def _detail_actions(payload):
     return actions
 
 
+def _label_document(doc):
+    """One document, labeled for display; ``previewable`` is a ``.pdf`` filename."""
+    filename = doc['filename'] or ''
+    return {**doc, 'type': document_type_label(doc['document_type']),
+            'name': doc['title'] or filename or 'document',
+            'previewable': filename.lower().endswith('.pdf')}
+
+
 def _detail_documents(action):
     """An action's documents, labeled for display."""
-    return [{**doc, 'type': document_type_label(doc['document_type']),
-             'name': doc['title'] or doc['filename'] or 'document'}
-            for doc in documents_from_action(action)]
+    return [_label_document(doc) for doc in documents_from_action(action)]
 
 
 def _detail_grants(payload):
@@ -386,6 +392,34 @@ def xras_document(request_number: str, action_id: int, document_id: int):
         download_name=doc['filename'] or f'document-{document_id}.pdf', max_age=0)
     response.headers['Cache-Control'] = 'private, no-store'
     return response
+
+
+_DOCUMENT_PREVIEW_FORM = 'dashboards/allocations/partials/xras_document_preview.html'
+
+
+def _document_preview_context(request_number, action_id, document_id):
+    """The preview's context, or ``None`` when the document is not on a live line."""
+    _, doc = _find_document(_live_family(request_number), action_id, document_id)
+    if doc is None:
+        return None
+    return {'request_number': request_number,
+            'doc': _label_document(doc),
+            'doc_url': url_for('allocations_dashboard.xras_document',
+                               request_number=request_number, action_id=action_id,
+                               document_id=document_id),
+            'back_url': _back_to_detail(request_number)}
+
+
+@bp.route('/xras_document_preview/<path:request_number>/<int:action_id>/<int:document_id>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_document_preview(request_number: str, action_id: int, document_id: int):
+    """Modal body: one request document in a frame, read through :func:`xras_document`."""
+    return _render_xras_modal(
+        build=lambda: _document_preview_context(request_number, action_id, document_id),
+        template=_DOCUMENT_PREVIEW_FORM, noun='document',
+        not_found=lambda: _not_found('Document', 'XRAS has no such document on this request.'),
+        log_label='xras document preview')
 
 
 def _render_detail(request_number, *, flash=None, flash_error=None):

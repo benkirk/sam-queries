@@ -73,7 +73,12 @@
             </td>
             <td class="col-num small text-muted">{{ doc.size | fmt_size }}</td>
             <td class="col-shrink text-end text-nowrap">
-                {%- if doc_url %}<span class="row-actions"><a class="btn btn-row" href="{{ doc_url }}?download=1" title="Download {{ doc.filename or doc.name }}" aria-label="Download"><i class="fa-solid fa-download" aria-hidden="true"></i></a></span>{% endif -%}
+                {%- if doc_url %}<span class="row-actions">
+                {%- if doc.previewable %}<button type="button" class="btn btn-row d-none d-sm-inline-flex" title="Preview {{ doc.filename or doc.name }}" aria-label="Preview"
+                        hx-get="{{ url_for('allocations_dashboard.xras_document_preview', request_number=request_number,
+                                           action_id=doc.action_id, document_id=doc.document_id) }}"
+                        hx-target="#xrasModalBody" hx-swap="innerHTML"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>{% endif -%}
+                <a class="btn btn-row" href="{{ doc_url }}?download=1" title="Download {{ doc.filename or doc.name }}" aria-label="Download"><i class="fa-solid fa-download" aria-hidden="true"></i></a></span>{% endif -%}
             </td>
         </tr>
     {% endfor %}

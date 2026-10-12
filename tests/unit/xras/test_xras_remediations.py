@@ -482,6 +482,36 @@ class TestTheDocumentProxy:
         assert auth_client.get(self.URL).status_code == 502
 
 
+class TestTheDocumentPreview:
+    """The request dialog swaps to a frame on the proxy; nothing is fetched to render it."""
+
+    URL = '/allocations/xras_document_preview/EXAM0001/7/1'
+
+    def test_it_is_gated(self, view_only_client):
+        assert view_only_client.get(self.URL).status_code == 403
+
+    def test_the_frame_reads_through_the_proxy(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(self.URL).get_data(as_text=True)
+        assert '<iframe class="xras-document-frame" src="/allocations/xras_document/EXAM0001/7/1"' in body
+        assert 'sandbox' not in body and 'data-bs-toggle' not in body
+        assert 'hx-get="/allocations/xras_request_detail/EXAM0001"' in body
+
+    def test_a_document_not_on_the_request_says_so_in_the_dialog(
+            self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        resp = auth_client.get('/allocations/xras_document_preview/EXAM0001/7/999')
+        assert resp.status_code == 200 and '<iframe' not in resp.get_data(as_text=True)
+
+    def test_the_documents_row_offers_it_when_writes_are_on(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        detail = '/allocations/xras_request_detail/EXAM0001'
+        assert self.URL not in auth_client.get(detail).get_data(as_text=True)
+        monkeypatch.setattr('webapp.dashboards.allocations.xras.modals.xras_write_configured',
+                            lambda: True)
+        assert f'hx-get="{self.URL}"' in auth_client.get(detail).get_data(as_text=True)
+
+
 class TestDocumentsOnTheRow:
     """A paperclip and a count in the Request cell; names stay in the modal."""
 
