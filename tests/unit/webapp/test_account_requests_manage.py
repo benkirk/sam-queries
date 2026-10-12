@@ -279,8 +279,24 @@ class TestUpsertSweepRequests:
         first.fulfill(user)
         assert upsert_sweep_requests(session, inactive)['created'] == 1, 'fulfilled, then lapsed'
         absent = [_worklist_row(user.username, email='back@example.edu')]
+        assert upsert_sweep_requests(session, absent)['created'] == 0, 'open: still the work'
+        for row in session.query(AccountRequest).filter_by(xras_username=user.username.lower()):
+            row.fulfill(user)
         assert upsert_sweep_requests(session, absent)['by_purpose'] == {'submission': 1}, \
-            'another purpose is another row'
+            'fulfilled: another purpose is another row'
+
+    def test_an_open_row_blocks_the_other_purpose_too(self, session):
+        """A submission whose account arrives inactive gains no reactivation beside it."""
+        user = _user_with_email(session, 'a1@example.edu', active=False)
+        upsert_sweep_requests(session, [_worklist_row(user.username, email='a1@example.edu')])
+        inactive = [_worklist_row(user.username, classification='inactive')]
+        counts = upsert_sweep_requests(session, inactive)
+        assert counts['created'] == 0 and counts['existing'] == 1
+        row, = session.query(AccountRequest).filter_by(xras_username=user.username.lower()).all()
+        assert row.purpose == 'submission' and row.is_open
+        row.dismiss('op', 'left')
+        assert upsert_sweep_requests(session, inactive)['by_purpose'] == {'reactivation': 1}, \
+            'a dismissal blocks its own purpose only'
 
 
 class TestReconcile:

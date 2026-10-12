@@ -211,10 +211,19 @@ _PURPOSE_BY_CLASSIFICATION = {CLASSIFICATION_ABSENT: PURPOSE_SUBMISSION,
                               CLASSIFICATION_INACTIVE: PURPOSE_REACTIVATION}
 
 
-def _blocks_a_new_row(req: AccountRequest) -> bool:
-    """An open row is the work already; a dismissal or rejection must survive
-    the next sweep. Only a fulfilled row lets the person be filed again."""
-    return req.state in ('dismissed', 'rejected') or not req.is_fulfilled
+def _blocked_purposes(req: AccountRequest) -> Tuple[str, ...]:
+    """What *req* keeps the sweep from filing again for its username.
+
+    An open row is the work already, whatever its purpose: a submission whose
+    account arrives inactive must not gain a reactivation beside it. A
+    dismissal or rejection survives the next sweep for its own purpose only.
+    A fulfilled row blocks nothing: the person may lapse and be filed again.
+    """
+    if req.is_fulfilled:
+        return ()
+    if req.state in ('dismissed', 'rejected'):
+        return (req.purpose,)
+    return tuple(_PURPOSE_BY_CLASSIFICATION.values())
 
 
 def upsert_sweep_requests(session: Session, worklist_rows: Sequence[Dict[str, Any]],
@@ -222,10 +231,11 @@ def upsert_sweep_requests(session: Session, worklist_rows: Sequence[Dict[str, An
     """Give every absent or inactive worklist member a row. Idempotent.
 
     ``absent`` files a ``submission``, ``inactive`` a ``reactivation``. Keyed
-    on (XRAS username, purpose): a row of that purpose that is open, dismissed
-    or rejected is left alone. An absent person's email comes from XRAS; a row
-    without one cannot be matched later, so it is skipped and counted rather
-    than created blind. An inactive person's detail comes from their SAM row.
+    on (XRAS username, purpose): an open row blocks either purpose, a dismissed
+    or rejected one its own (``_blocked_purposes``). An absent person's email
+    comes from XRAS; a row without one cannot be matched later, so it is
+    skipped and counted rather than created blind. An inactive person's detail
+    comes from their SAM row.
     """
     counts: Dict[str, Any] = {'created': 0, 'existing': 0, 'skipped': 0,
                               'projects_attached': 0, 'by_purpose': {}}
@@ -234,8 +244,8 @@ def upsert_sweep_requests(session: Session, worklist_rows: Sequence[Dict[str, An
     if not wanted:
         return counts
     existing = requests_by_xras_username(session, (r['username'] for r in wanted))
-    known = {(key, req.purpose) for key, reqs in existing.items()
-             for req in reqs if _blocks_a_new_row(req)}
+    known = {(key, purpose) for key, reqs in existing.items()
+             for req in reqs for purpose in _blocked_purposes(req)}
     sam_users = users_by_username_ci(
         session, (r['username'] for r in wanted
                   if r['classification'] == CLASSIFICATION_INACTIVE))
