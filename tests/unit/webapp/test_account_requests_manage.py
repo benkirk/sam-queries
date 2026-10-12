@@ -237,13 +237,13 @@ class TestUpsertSweepRequests:
         rows = [_worklist_row('Jane-User-ABC', email='jane@example.edu',
                               request_number=project.projcode),
                 _worklist_row('john-user-def', email='john@example.edu')]
-        assert upsert_sweep_requests(session, rows) == {'created': 2, 'existing': 0, 'skipped': 0,
+        assert upsert_sweep_requests(session, rows) == {'created': 2, 'existing': 0, 'skipped': 0, 'projects_attached': 0,
                                                         'by_purpose': {'submission': 2}}
         jane = session.query(AccountRequest).filter_by(xras_username='jane-user-abc').one()
         assert jane.purpose == 'submission' and jane.project_id == project.project_id
         assert jane.created_by == CREATED_BY_SWEEP and jane.is_open
         assert jane.organization == 'NCAR' and jane.residence_country == 'US'
-        assert upsert_sweep_requests(session, rows) == {'created': 0, 'existing': 2, 'skipped': 0,
+        assert upsert_sweep_requests(session, rows) == {'created': 0, 'existing': 2, 'skipped': 0, 'projects_attached': 0,
                                                         'by_purpose': {}}
 
     def test_a_dismissed_row_survives_the_next_sweep(self, session):
@@ -251,14 +251,14 @@ class TestUpsertSweepRequests:
         upsert_sweep_requests(session, rows)
         session.query(AccountRequest).filter_by(xras_username='gone-user-1').one().dismiss('op', 'dup')
         assert upsert_sweep_requests(session, [_worklist_row('gone-user-1', email='gone@example.edu')]
-                                     ) == {'created': 0, 'existing': 1, 'skipped': 0,
+                                     ) == {'created': 0, 'existing': 1, 'skipped': 0, 'projects_attached': 0,
                                            'by_purpose': {}}
 
     def test_rows_without_a_person_or_a_sam_row_are_skipped(self, session):
         rows = [_worklist_row('nobody-in-sam', classification='inactive', email='l@example.edu'),
                 _worklist_row('noemail-user', email=None),
                 _worklist_row('noname-user', email='n@example.edu', first='')]
-        assert upsert_sweep_requests(session, rows) == {'created': 0, 'existing': 0, 'skipped': 3,
+        assert upsert_sweep_requests(session, rows) == {'created': 0, 'existing': 0, 'skipped': 3, 'projects_attached': 0,
                                                         'by_purpose': {}}
 
     def test_an_inactive_member_gets_a_reactivation_row_once(self, session):
@@ -331,6 +331,30 @@ class TestReconcile:
         counts = reconcile_account_requests(session)
         assert counts['ambiguous'] == 1 and counts['fulfilled'] == 0
         assert amb.user_id is None and inactive.user_id is None
+
+    def test_the_project_is_attached_once_it_exists(self, session):
+        rows = [_worklist_row('later-user-1', email='later@example.edu',
+                              request_number='ZZPEND01')]
+        upsert_sweep_requests(session, rows)
+        row = session.query(AccountRequest).filter_by(xras_username='later-user-1').one()
+        assert row.project_id is None
+        project = make_project(session, projcode='ZZPEND01')
+        counts = upsert_sweep_requests(session, rows)
+        assert counts['projects_attached'] == 1 and row.project_id == project.project_id
+        assert upsert_sweep_requests(session, rows)['projects_attached'] == 0
+
+    def test_a_pushed_new_is_attached_through_its_minted_projcode(self, session):
+        from factories import make_xras_action
+
+        project = make_project(session)
+        log = make_xras_action(session, action_type='New', request_number='NCAR9999',
+                               status='processed', projcode_result=project.projcode)
+        row = _worklist_row('minted-user-1', email='minted@example.edu')
+        row['actions'] = [{'action_log_id': log.xras_action_log_id,
+                           'request_number': 'NCAR9999'}]
+        upsert_sweep_requests(session, [row])
+        req = session.query(AccountRequest).filter_by(xras_username='minted-user-1').one()
+        assert req.project_id == project.project_id, 'NCAR9999 is not the projcode'
 
     def test_a_reactivation_is_fulfilled_by_its_username_once_active(self, session):
         user = _user_with_email(session, 'other@example.edu', active=False)

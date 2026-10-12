@@ -25,10 +25,10 @@ from sam.core.account_requests import (
     EventEnrollment,
 )
 from sam.core.users import User
-from sam.queries.projects import project_ids_by_code
 from sam.queries.account_requests import (queue_requests, requests_by_xras_username,
                                           resolve_requests)
 from sam.queries.users import users_by_username_ci
+from sam.queries.xras_actions import project_ids_for_actions
 from sam.queries.xras_accounts import (CLASSIFICATION_ABSENT, CLASSIFICATION_INACTIVE,
                                        sam_merge_targets)
 
@@ -228,7 +228,7 @@ def upsert_sweep_requests(session: Session, worklist_rows: Sequence[Dict[str, An
     than created blind. An inactive person's detail comes from their SAM row.
     """
     counts: Dict[str, Any] = {'created': 0, 'existing': 0, 'skipped': 0,
-                              'by_purpose': {}}
+                              'projects_attached': 0, 'by_purpose': {}}
     wanted = [r for r in worklist_rows
               if r.get('classification') in _PURPOSE_BY_CLASSIFICATION and r.get('username')]
     if not wanted:
@@ -239,13 +239,19 @@ def upsert_sweep_requests(session: Session, worklist_rows: Sequence[Dict[str, An
     sam_users = users_by_username_ci(
         session, (r['username'] for r in wanted
                   if r['classification'] == CLASSIFICATION_INACTIVE))
-    projects = project_ids_by_code(session, (a.get('request_number') for r in wanted
-                                             for a in r.get('actions', ())))
+    projects = _projects_by_row(session, wanted)
     for row in wanted:
         purpose = _PURPOSE_BY_CLASSIFICATION[row['classification']]
         key = AccountRequest.xras_key(row['username'])
+        project_id = projects[id(row)]
         if (key, purpose) in known:
             counts['existing'] += 1
+            # The project lands after the row: attach it once the handoff has.
+            for req in existing.get(key, ()):
+                if (project_id and req.purpose == purpose and req.project_id is None
+                        and req.is_open and not req.is_fulfilled):
+                    req.project_id = project_id
+                    counts['projects_attached'] += 1
             continue
         if purpose == PURPOSE_REACTIVATION:
             fields = _person_from_user(sam_users.get(row['username'].casefold()))
@@ -254,9 +260,6 @@ def upsert_sweep_requests(session: Session, worklist_rows: Sequence[Dict[str, An
         if fields is None:
             counts['skipped'] += 1
             continue
-        project_id = next((projects[a['request_number']]
-                           for a in row.get('actions', ())
-                           if a.get('request_number') in projects), None)
         AccountRequest.create(
             session, **fields, purpose=purpose, project_id=project_id,
             xras_username=row['username'],
@@ -266,7 +269,20 @@ def upsert_sweep_requests(session: Session, worklist_rows: Sequence[Dict[str, An
         known.add((key, purpose))
         counts['created'] += 1
         counts['by_purpose'][purpose] = counts['by_purpose'].get(purpose, 0) + 1
+    if counts['projects_attached']:
+        session.flush()
     return counts
+
+
+def _projects_by_row(session: Session, rows: Sequence[Dict[str, Any]]) -> Dict[int, Optional[int]]:
+    """``{id(row): project_id}``: the first of a row's actions that names a project."""
+    actions = [(id(row), a) for row in rows for a in row.get('actions') or ()]
+    found = project_ids_for_actions(session, [a for _, a in actions])
+    out: Dict[int, Optional[int]] = {id(row): None for row in rows}
+    for (key, _), project_id in zip(actions, found):
+        if out[key] is None:
+            out[key] = project_id
+    return out
 
 
 def _person_from_xras(person: Dict[str, Any]) -> Optional[Dict[str, Any]]:
