@@ -37,6 +37,7 @@ from sam.integration.xras_api.vocabulary import (
     PI_ROLE_TYPE_ID,
 )
 from sam.queries.xras_accounts import (is_placeholder, iter_roster_entries,
+                                       report_activity_date,
                                        role_in_window)
 
 #: Action fields carried into the entry. The states are what the card's
@@ -337,12 +338,8 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
     _pi = resolve_role(roster, PI_ROLE_TYPE_ID) or {}
     _admin = resolve_role(roster, ADMIN_ROLE_TYPE_ID) or {}
     actions = actions_from_payload(payload, preflights)
-    # Most-recent activity across the request's actions — what a date filter must
-    # window on. Falls back to the request's own submitDate for a request whose
-    # actions carry no date.
-    _adates = [d for a in actions
-               for d in (a.get('entry_date') or a.get('submit_date'),) if d]
-    activity_date = max(_adates) if _adates else parse_wire_date(payload.get('submitDate'))
+    # Most-recent activity across the request's actions: what a date filter windows on.
+    activity_date = report_activity_date(payload)
     return {
         'request_number': number,
         'request_id': request_id,

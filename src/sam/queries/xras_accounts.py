@@ -443,6 +443,38 @@ def _report_action_type(payload: dict) -> Optional[str]:
     return payload.get('requestType')
 
 
+def report_entry_date(action: dict) -> Optional[date]:
+    """A report action's recency: ``entryDate``, else its often-null ``submitDate``."""
+    return (parse_wire_date(action.get('entryDate'))
+            or parse_wire_date(action.get('submitDate')))
+
+
+def report_activity_date(payload: dict) -> Optional[date]:
+    """The latest action recency on a report request, else the request's ``submitDate``."""
+    dates = [d for a in payload.get('actions') or () if isinstance(a, dict)
+             for d in (report_entry_date(a),) if d]
+    return max(dates) if dates else parse_wire_date(payload.get('submitDate'))
+
+
+def pending_in_window(row: Mapping[str, Any], since) -> bool:
+    """Did any request naming this Feed-B person appear in XRAS within the window?
+
+    The Feed-B analogue of Feed A's ``received_time`` filter. A row with no
+    usable date is kept: missing information is not evidence of age.
+    """
+    if since is None:
+        return True
+    start = since.date() if hasattr(since, 'date') else since
+    dates = [a.get('submit_date') for a in row.get('actions') or []]
+    if not any(dates):
+        return True
+    for raw in dates:
+        submitted = parse_wire_date(raw)
+        if submitted is None or submitted >= start:
+            return True
+    return False
+
+
 def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]:
     """Feed B — rosters from ``GET /v1/reports/requests`` rows.
 

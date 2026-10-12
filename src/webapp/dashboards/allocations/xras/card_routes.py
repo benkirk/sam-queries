@@ -36,6 +36,7 @@ from sam.queries.xras_accounts import (
     enrich_worklist,
     get_account_worklist,
     load_pending_worklist_rows,
+    pending_in_window,
     stamp_merge_targets,
     stamp_project_existence,
     stamp_waiting_days,
@@ -52,7 +53,6 @@ from ._shared import (
     _ACTIVITY_WINDOW_PILLS, _XRAS_ACTIVITY_FORM_ID,
     _XRAS_ACTIVITY_TARGET, _XRAS_FORM_ID, _XRAS_FRAGMENT_TARGET,
     _parse_activity_window, _parse_xras_filters,
-    _submitted_since,
 )
 from webapp.utils.faceted_log import build_facet_strip
 from webapp.utils.htmx import read_flag, read_sort, read_tab, sort_rows
@@ -317,12 +317,12 @@ def xras_accounts_fragment():
     selected = ACCOUNT_FACETS.read(request.args)
 
     # Feed B, filtered BEFORE injection: after the merge every Feed-A row would
-    # pass `_submitted_since` (no submit_date => kept), so the window has to bite
+    # pass `pending_in_window` (no submit_date => kept), so the window has to bite
     # here or it would never narrow the pending half. `pending_hidden` is the
     # Feed-B-scoped "outside the date filter" count -- denominator is the
     # snapshot's rows, not its counts total.
     feed = load_pending_worklist_rows()
-    pending = [r for r in feed.rows if _submitted_since(r, window['since'])]
+    pending = [r for r in feed.rows if pending_in_window(r, window['since'])]
     pending_hidden = len(feed.rows) - len(pending)
 
     rows = get_account_worklist(db.session, since=window['since'],
