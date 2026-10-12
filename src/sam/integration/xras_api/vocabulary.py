@@ -1,4 +1,4 @@
-"""XRAS role-type vocabulary and stable wire-field names — the shared home.
+"""XRAS vocabularies (role types, document types) and stable wire-field names — the shared home.
 
 Both the write client (:mod:`sam.integration.xras_api.admin_client`) and the
 read-side report parsing (:mod:`sam.queries.xras_requests`) need the numeric

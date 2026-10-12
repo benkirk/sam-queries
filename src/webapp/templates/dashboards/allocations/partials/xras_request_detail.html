@@ -208,17 +208,6 @@
                                 action_id=action.action_id), write_enabled) }}
         {% endif %}
     </div>
-    {% if action.documents %}
-    <div class="xras-action-row">
-        <span class="xras-action-label">Documents</span>
-        <div class="flex-grow-1">
-            {% for doc in action.documents %}
-            <span>{{ doc.type }}: {{ doc.name }}
-                {%- if doc.size is not none %} <span class="text-muted">({{ doc.size | fmt_size }})</span>{% endif %}</span>{% if not loop.last %}; {% endif %}
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
 
     {% include 'dashboards/allocations/partials/_xras_readiness_why.html' %}
     </div>
@@ -241,12 +230,12 @@
 
 {% if grants %}
 {{ section_label('Grants') }}
-<table class="table table-sm mb-3">
+<table class="table table-sm align-middle mb-3">
     <tbody>
     {% for g in grants %}
         <tr>
             <td class="col-shrink font-monospace">{{ g.grantNumber or '—' }}</td>
-            <td>{{ g.title or '—' }}{% if g.piName %}<div class="small text-muted">{{ g.piName }}</div>{% endif %}</td>
+            <td class="cell-truncate" title="{{ g.title or '' }}">{{ g.title or '—' }}{% if g.piName %}<div class="small text-muted">{{ g.piName }}</div>{% endif %}</td>
             <td class="col-shrink small text-muted">
                 {% if g.begin %}{{ g.begin | fmt_date }}{% endif %}{% if g.end %} – {{ g.end | fmt_date }}{% endif %}
             </td>
