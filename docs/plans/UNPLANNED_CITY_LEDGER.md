@@ -1777,8 +1777,8 @@ the feature branch.
   modal (PII) sets none. Lift to `webapp/utils` and propagate.
 - [ ] The CSV and xlsx downloads hand-write `filename=` unquoted (safe only because the
   names are generated ASCII); `send_file(download_name=)` quotes and encodes.
-- [ ] Chrome's PDF viewer under the app CSP (`object-src 'none'` on the PDF response) is
-  unverified; check on samuel-dev, override CSP on `xras_document` only if it is blank.
+- [x] Chrome's PDF viewer renders the inline PDF under the app CSP (`object-src 'none'` on
+  the response); verified on samuel-dev 2026-10-12, no per-route CSP needed.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
