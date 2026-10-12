@@ -1753,6 +1753,33 @@ renderers (the digest regrouped in Jinja). The two cards also hand-copied the qu
 - [ ] `merged_away_usernames` filters Feed A only; Feed B is fresh from XRAS, so moot unless
   a snapshot outlives a merge.
 
+## 24. 2026-10-12: area sweep, XRAS request documents
+
+**Mode:** area, planning input for one feature (PI documents on XRAS requests), base
+`origin/staging` (`d5d23e32`), branch `xras-request-documents`. Picks landed as commits on
+the feature branch.
+
+**Done, on `xras-request-documents`:**
+
+- [x] `documents_from_action` in `sam/queries/xras_requests.py`: one reader for the modal
+  and the card count; the count spans the family (`request_index_entry(family=)`).
+- [x] `xras_bits.icon_count`: the re-check count in `xras_table.html` and the card's
+  paperclip; its title through `fmt_plural`.
+- [x] `XrasApiConfig.interactive()` replaces `_read_client`'s hand-rolled `replace`.
+- [x] `_XrasTransport._send_get` under `_get` and the new capped `_get_bytes`.
+- [x] Grants table on the table conventions beside the Documents table.
+
+**Open:**
+
+- [ ] `remediation.py`'s validate path builds `XrasAdminClient` on the default 3 retries
+  inside an htmx request; `interactive()` would cap it.
+- [ ] `db_browser`'s `_no_store` is the only other `private, no-store`; the XRAS user
+  modal (PII) sets none. Lift to `webapp/utils` and propagate.
+- [ ] The CSV and xlsx downloads hand-write `filename=` unquoted (safe only because the
+  names are generated ASCII); `send_file(download_name=)` quotes and encodes.
+- [ ] Chrome's PDF viewer under the app CSP (`object-src 'none'` on the PDF response) is
+  unverified; check on samuel-dev, override CSP on `xras_document` only if it is blank.
+
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
 Surfaced by the first run of `scripts/sweep_inventory.py`. Each item belongs to an area sweep;
