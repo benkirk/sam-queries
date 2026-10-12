@@ -102,6 +102,25 @@ def test_repeat_while_in_flight(xras_client, action_log, dispatching, scenario, 
     assert action_log.rows()[-1]['status'] == 'manual'
 
 
+def test_a_newer_live_post_blocks_an_older_one(xras_client, action_log, dispatching, app,
+                                               snapshot_project):
+    """Ids are assigned at INSERT and seen at COMMIT, so the lower-numbered of two
+    concurrent posts can run its check last: any other live post must block it."""
+    from webapp.api.xras.actions import _other_live_post
+
+    payload = {'actionType': 'Advance', 'actionId': 40005,
+               'requestNumber': snapshot_project.projcode, 'resources': [], 'roles': []}
+    app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = True
+    for _ in range(2):
+        assert _post(xras_client, payload).status_code == 200
+    app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = False
+    older, newer = action_log.rows()
+
+    with app.app_context():
+        assert _other_live_post(older['id'], 40005) == (newer['id'], 'received')
+        assert _other_live_post(newer['id'], 40005) == (older['id'], 'received')
+
+
 def test_repeat_after_failure(xras_client, action_log, dispatching, scenario,
                               committing_route, snapshot_project):
     """A failed post is not a reason to refuse its repost: the admin fixes the data and

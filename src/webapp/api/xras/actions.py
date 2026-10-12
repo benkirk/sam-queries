@@ -412,12 +412,14 @@ def _enabled_action_types():
         current_app.config.get('XRAS_ACTIONS_ENABLED'))
 
 
-def _earlier_post(log_id, action_id):
-    """``(id, status)`` of an earlier post of this ``actionId`` that already applied or
-    is still applying, or ``None``.
+def _other_live_post(log_id, action_id):
+    """``(id, status)`` of another post of this ``actionId`` that already applied or is
+    still applying, or ``None``.
 
-    Every post's row is committed before this runs, so of two concurrent posts the later
-    always sees the earlier: only the lowest-numbered live post applies.
+    Any other live post counts, whatever its id: a row gets its id at INSERT and becomes
+    visible at COMMIT, so the lower-numbered of two concurrent posts can commit second and
+    an "earlier only" rule would let both apply. In that race both posts refuse each other
+    and the next push applies, since a ``duplicate`` row never blocks.
     """
     if action_id is None:
         return None
@@ -427,20 +429,20 @@ def _earlier_post(log_id, action_id):
     with Session(db.engine) as session:
         return (session.query(XrasActionLog.xras_action_log_id, XrasActionLog.status)
                 .filter(XrasActionLog.action_id == action_id,
-                        XrasActionLog.xras_action_log_id < log_id,
+                        XrasActionLog.xras_action_log_id != log_id,
                         or_(XrasActionLog.status == 'processed', in_flight))
                 .order_by(XrasActionLog.xras_action_log_id)
                 .first())
 
 
-def _refuse_repeat(log_id, action_id, earlier):
+def _refuse_repeat(log_id, action_id, other):
     """Close a repeat post as ``duplicate`` and answer 422; nothing is applied.
 
     WARNING: Supplement and Adjustment are additive, so applying a repeat awards the
     increment again (UNVR0027, 2026-10-12: one action posted three times during a
     database stall, all three applied).
     """
-    earlier_id, earlier_status = earlier
+    earlier_id, earlier_status = other
     if earlier_status == 'processed':
         message = (f'Action {action_id} was already applied by an earlier post '
                    f'(SAM #{earlier_id}). Nothing was changed by this request.')
@@ -623,8 +625,8 @@ def post_action(action_id=None, request_id=None, action_type=None):
         return xras_response(message='OK')
 
     action_id = _fit_int(audit.get('action_id'))
-    earlier = _earlier_post(log_id, action_id)
-    if earlier is not None:
-        return _refuse_repeat(log_id, action_id, earlier)
+    other = _other_live_post(log_id, action_id)
+    if other is not None:
+        return _refuse_repeat(log_id, action_id, other)
 
     return _dispatch(log_id, action)

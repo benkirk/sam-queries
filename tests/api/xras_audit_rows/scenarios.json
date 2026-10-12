@@ -200,8 +200,8 @@
     "triage": "Did the second click apply anything?",
     "verdict": "no — it is refused and says the first is still applying",
     "notes": [
-      "UNVR0027's second post arrived 44 s into the first. Only the",
-      "lowest-numbered live post applies; 'live' ends 15 min after receipt."
+      "UNVR0027's second post arrived 44 s into the first. Any other live post",
+      "of the actionId refuses this one; 'live' ends 15 min after receipt."
     ]
   },
   "repeat_after_failure": {
