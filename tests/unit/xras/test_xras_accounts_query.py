@@ -1024,3 +1024,52 @@ class TestLoadPendingWorklistRows:
         feed = load_pending_worklist_rows()
         assert feed.checked is True and feed.reason is None
         assert feed.rows == [{'username': 'x'}] and feed.snapshot is snap
+
+
+class TestThePendingWindow:
+    """Feed B is windowed on first seen approved: XRAS reports have no approval
+    timestamp, so the sweep's first filing of the person stands in for one."""
+
+    SINCE = datetime(2026, 10, 1)
+
+    def _row(self, entry='2026-10-05', submit='2025-01-01'):
+        return {'username': 'pend-user-1',
+                'actions': [{'entry_date': entry, 'submit_date': submit}]}
+
+    def test_first_seen_wins_over_every_xras_date(self):
+        from sam.queries.xras_accounts import pending_in_window
+        old = self._row(entry='2024-01-01')
+        assert pending_in_window(old, self.SINCE, first_seen=datetime(2026, 10, 2, 9))
+        assert not pending_in_window(self._row(), self.SINCE, first_seen=datetime(2026, 9, 1))
+
+    def test_without_a_queue_row_the_entry_date_then_the_submit_date_stand_in(self):
+        from sam.queries.xras_accounts import pending_in_window
+        assert pending_in_window(self._row(), self.SINCE)
+        assert not pending_in_window(self._row(entry=None), self.SINCE), 'old submitDate'
+        assert pending_in_window(self._row(entry=None, submit=None), self.SINCE), 'no date: kept'
+
+    def test_feed_b_carries_the_latest_action_entry(self):
+        payload = {'requestNumber': 'NCAR0001', 'submitDate': '2025-01-01T00:00:00Z',
+                   'actions': [{'actionType': 'New', 'entryDate': '2026-09-01T10:00:00Z'},
+                               {'actionType': 'Extension', 'entryDate': '2026-10-03T10:00:00Z'}],
+                   'roles': [{'person': {'username': 'pend-user-2'},
+                              'roles': [{'role': 'PI', 'beginDate': None, 'endDate': None}]}]}
+        record, = records_from_report_requests([payload])
+        assert record.ref.entry_date == '2026-10-03'
+
+    def test_assemble_hides_a_person_first_seen_before_the_window(self, session):
+        from factories import make_account_request
+        from sam.queries.xras_accounts import assemble_worklist
+        make_account_request(session, purpose='submission', xras_username='seen-user-old',
+                             when=datetime(2026, 8, 1))
+        make_account_request(session, purpose='submission', xras_username='seen-user-new',
+                             when=datetime(2026, 10, 2))
+        pending = [{'username': name, 'classification': 'absent', 'roles': ('User',),
+                    'actions': [{'entry_date': '2026-10-05', 'submit_date': None,
+                                 'request_number': 'NCAR0001', 'source': 'reports'}],
+                    'sources': ['reports']}
+                   for name in ('seen-user-old', 'seen-user-new')]
+        assembled = assemble_worklist(session, pending_rows=pending, since=self.SINCE,
+                                      validate=False)
+        assert assembled.pending_hidden == 1
+        assert 'seen-user-new' in {r['username'] for r in assembled.rows}

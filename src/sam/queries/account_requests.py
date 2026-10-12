@@ -477,4 +477,5 @@ def stamp_account_requests(session: Session,
             'assignee': req.assignee,
             'requested_at': req.requested_at,
             'fulfilled': req.is_fulfilled,
+            'creation_time': req.creation_time,
         } if req else None)

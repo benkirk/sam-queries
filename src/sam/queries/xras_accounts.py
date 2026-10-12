@@ -34,6 +34,7 @@ from typing import (Any, Callable, Dict, Iterable, Iterator, List, Mapping,
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from sam.core.account_requests import AccountRequest
 from sam.core.users import EmailAddress, User
 from sam.dates import parse_wire_date
 from sam.integration.xras import XrasActionLog, XrasRemediationEvent
@@ -141,6 +142,9 @@ class ActionRef:
     #: out, so a one-sided window on it keeps every row at every width and the
     #: control looks dead. That bounds what the sweep collects instead.
     submit_date: Optional[str] = None
+    #: Feed B only: the request's latest action recency (``report_activity_date``),
+    #: ISO. The window's fallback when the person has no queue row yet.
+    entry_date: Optional[str] = None
     source: str = SOURCE_ACTION_LOG
     #: ``dispatch_action(validate_only=True)``'s verdict. ``None`` = not run.
     would_succeed: Optional[bool] = None
@@ -457,21 +461,30 @@ def report_activity_date(payload: dict) -> Optional[date]:
     return max(dates) if dates else parse_wire_date(payload.get('submitDate'))
 
 
-def pending_in_window(row: Mapping[str, Any], since) -> bool:
-    """Did any request naming this Feed-B person appear in XRAS within the window?
+def _iso(value: Optional[date]) -> Optional[str]:
+    return value.isoformat() if value else None
 
-    The Feed-B analogue of Feed A's ``received_time`` filter. A row with no
-    usable date is kept: missing information is not evidence of age.
+
+def pending_in_window(row: Mapping[str, Any], since, *, first_seen=None) -> bool:
+    """Was this Feed-B person first seen approved within the window?
+
+    XRAS's reports carry no approval timestamp, so *first_seen* is when the
+    sweep first filed the person (their queue row's ``creation_time``). With
+    none, each action's ``entry_date`` stands in, then a snapshot from an older
+    image's ``submit_date``. A row with no usable date is kept: missing
+    information is not evidence of age.
     """
     if since is None:
         return True
     start = since.date() if hasattr(since, 'date') else since
-    dates = [a.get('submit_date') for a in row.get('actions') or []]
+    if first_seen is not None:
+        return (first_seen.date() if hasattr(first_seen, 'date') else first_seen) >= start
+    dates = [a.get('entry_date') or a.get('submit_date') for a in row.get('actions') or []]
     if not any(dates):
         return True
     for raw in dates:
-        submitted = parse_wire_date(raw)
-        if submitted is None or submitted >= start:
+        seen = parse_wire_date(raw)
+        if seen is None or seen >= start:
             return True
     return False
 
@@ -526,6 +539,7 @@ def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]
                           received_time=None,
                           submit_date=(str(payload.get('submitDate'))[:10]
                                        if payload.get('submitDate') else None),
+                          entry_date=_iso(report_activity_date(payload)),
                           source=SOURCE_REPORTS),
             usernames=tuple(usernames),
             roles_by_username={k: tuple(v) for k, v in roles.items()},
@@ -673,6 +687,7 @@ def classify_accounts(session: Session,
                 'status': record.ref.status,
                 'received_time': record.ref.received_time,
                 'submit_date': record.ref.submit_date,
+                'entry_date': record.ref.entry_date,
                 'source': record.ref.source,
                 'would_succeed': record.ref.would_succeed,
                 'preflight_status': record.ref.preflight_status,
@@ -1102,7 +1117,10 @@ def assemble_worklist(session: Session, *,
     """
     pending = None
     if pending_rows is not None:
-        pending = [r for r in pending_rows if pending_in_window(r, since)]
+        first_seen = _first_seen_approved(session, pending_rows) if since else {}
+        pending = [r for r in pending_rows
+                   if pending_in_window(r, since, first_seen=first_seen.get(
+                       AccountRequest.xras_key(r.get('username'))))]
     rows = get_account_worklist(session, since=since, until=until,
                                 validate=validate, pending_rows=pending)
     stamp_waiting_days(rows)
@@ -1114,3 +1132,11 @@ def assemble_worklist(session: Session, *,
     return AssembledWorklist(
         rows=rows, enrichment=enrichment,
         pending_hidden=(len(pending_rows) - len(pending)) if pending is not None else 0)
+
+
+def _first_seen_approved(session: Session, rows: Sequence[Dict[str, Any]]) -> Dict[str, datetime]:
+    """``{xras_key: creation_time}`` of each person's current queue row."""
+    from sam.queries.account_requests import current_request, requests_by_xras_username
+
+    found = requests_by_xras_username(session, (r.get('username') for r in rows))
+    return {key: current_request(reqs).creation_time for key, reqs in found.items() if reqs}

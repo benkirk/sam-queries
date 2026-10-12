@@ -26,7 +26,7 @@
         {{ queue_badges(counts.total,
                         outside=(pending_hidden if pending_hidden and pending_hidden > 0 else 0),
                         outside_label='pending-request row(s) outside the date filter',
-                        outside_title='Older pending requests are hidden by the date filter above. On this list an older unpushed request is usually the more urgent one; widen the filter to see them.') }}
+                        outside_title='People first seen on an approved request before the date filter are hidden. On this list an older unpushed request is usually the more urgent one; widen the filter to see them.') }}
         {# What the count is made of. "placeholder", never "unreconciled": a
            username shape, not XRAS's identity state. #}
         <span class="small text-muted xras-header-facts">
@@ -266,6 +266,7 @@
                                 {%- elif arq.state in ('dismissed', 'rejected') %}: {{ arq.state }}
                                 {%- elif arq.requested_at %}: sent to NUSD {{ arq.requested_at | fmt_date }}
                                 {%- else %}: open{% endif %}.
+                                First seen approved {{ arq.creation_time | fmt_date }}.
                             </div>
                             {{ queue_actions(arq.id, arq.state) }}
                         </div>
@@ -289,12 +290,12 @@
                                     <td class="text-nowrap">{{ type_label(action.action_type) }}</td>
                                     <td class="text-nowrap">{% if action.status %}{{ status_badge(action.status, tooltip=False) }}{% endif %}</td>
                                     <td class="text-nowrap">{{ 'Received push' if action.source == 'action_log' else 'Pending request' }}</td>
-                                    {# submit_date is already a YYYY-MM-DD string. #}
+                                    {# entry_date/submit_date are already YYYY-MM-DD strings. #}
                                     <td class="text-nowrap">
                                         {%- if action.source == 'action_log' -%}
                                         {{ action.received_time | fmt_date }}
                                         {%- else -%}
-                                        {{ action.submit_date or '—' }}
+                                        <span title="Latest action entered in XRAS">{{ action.entry_date or action.submit_date or '—' }}</span>
                                         {%- endif -%}
                                     </td>
                                     {# "Would fail", never "needs an account": the pre-flight
