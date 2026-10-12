@@ -169,7 +169,8 @@ def _account_queue_summary() -> Dict[str, Any]:
                     'project_code': 'SCSG0001', 'deadline': '2026-10-05',
                     'count': 2}],
         'rows': rows,
-        'sections': [{'label': 'Other requests', 'rows': rows[2:]}],
+        'sections': [{'label': 'XRAS Approved Pending Projects', 'rows': rows[3:]},
+                     {'label': 'Other requests', 'rows': rows[2:3]}],
         'queue_url': 'https://sam.hpc.ucar.edu/dashboards/admin/account-requests',
     }
 

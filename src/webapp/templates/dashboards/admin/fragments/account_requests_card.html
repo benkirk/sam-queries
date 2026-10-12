@@ -136,8 +136,8 @@
                             ({% if group.project_code %}{{ project_link(group.project_code, can_view_projects, compact=True) }}{% else %}?{% endif %}; accounts needed by
                             <strong>{{ group.event.accounts_needed_by | fmt_date }}</strong>{% if not group.event.active %}; closed{% endif %})
                         </span>
-                        {# Event-less rows arrive one group per project; the
-                           project-less ones (standalone, sweep) come last. #}
+                        {# Event-less rows: the sweep's project-less ones, then one
+                           group per project, then the rest (group_by_event). #}
                         {% elif group.project_code %}
                         {{ group.label }}
                         <span class="text-muted fw-normal">({{ project_link(group.project_code, can_view_projects, compact=True) }})</span>

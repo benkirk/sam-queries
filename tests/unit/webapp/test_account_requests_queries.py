@@ -170,6 +170,15 @@ class TestGrouping:
             {'kind': 'project', 'label': 'Project Invitations', 'key': f'project-{code}',
              'event': None, 'rows': [view], 'project_code': code}]
 
+    def test_project_less_sweep_rows_get_their_own_group_ahead_of_the_rest(self, session):
+        standalone = make_account_request(session)
+        swept = make_account_request(session, purpose='submission', by='task:xras_sweep')
+        views = self._views(session, [standalone, swept])
+        groups = group_by_event(views)
+        assert [(g['kind'], g['label']) for g in groups] == [
+            ('xras_pending', 'XRAS Approved Pending Projects'), ('other', 'Other requests')]
+        assert [v['id'] for v in groups[0]['rows']] == [swept.account_request_id]
+
     def test_views_carry_the_sponsor_and_both_project_codes(self, session):
         sponsor = make_user(session)
         event = make_account_request_event(session)

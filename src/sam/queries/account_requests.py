@@ -368,21 +368,29 @@ def enrolled_event_ids(session: Session, user_id: int) -> set:
 
 #: ``group_by_event`` kinds, and the headings the card and digest print for them.
 GROUP_EVENT, GROUP_PROJECT, GROUP_OTHER = 'event', 'project', 'other'
-GROUP_LABELS = {GROUP_PROJECT: 'Project Invitations', GROUP_OTHER: 'Other requests'}
+GROUP_XRAS_PENDING = 'xras_pending'
+GROUP_LABELS = {GROUP_PROJECT: 'Project Invitations',
+                GROUP_XRAS_PENDING: 'XRAS Approved Pending Projects',
+                GROUP_OTHER: 'Other requests'}
 
 
 def group_by_event(views: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Event groups nearest deadline first, then the event-less views: one
-    group per project (by projcode), project-less last, each in input order. A
-    view whose event is gone is event-less, not lost. Each group is
+    """Event groups nearest deadline first, then the event-less views: the
+    sweep's project-less rows (an approved XRAS request whose project does not
+    exist yet), one group per project (by projcode), the rest project-less
+    last, each in input order. A view whose event is gone is event-less, not
+    lost. Each group is
     ``{'kind', 'label', 'key', 'event', 'rows', 'project_code'}``; ``key`` is
     unique per group and safe in a DOM id.
     """
     by_event: Dict[int, List[Dict[str, Any]]] = {}
     loose: Dict[str, List[Dict[str, Any]]] = {}
+    xras_pending: List[Dict[str, Any]] = []
     for v in views:
         if v['event']:
             by_event.setdefault(v['event'].account_request_event_id, []).append(v)
+        elif not v['project_code'] and v['origin'] == ORIGIN_SWEEP:
+            xras_pending.append(v)
         else:
             loose.setdefault(v['project_code'] or '', []).append(v)
     groups = [{'kind': GROUP_EVENT, 'label': members[0]['event'].name,
@@ -391,6 +399,10 @@ def group_by_event(views: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
                'project_code': members[0]['event_project_code']}
               for members in by_event.values()]
     groups.sort(key=lambda g: (g['event'].accounts_needed_by, g['event'].event_code))
+    if xras_pending:
+        groups.append({'kind': GROUP_XRAS_PENDING, 'label': GROUP_LABELS[GROUP_XRAS_PENDING],
+                       'key': GROUP_XRAS_PENDING, 'event': None, 'rows': xras_pending,
+                       'project_code': ''})
     for code in sorted(loose, key=lambda c: (c == '', c)):
         kind = GROUP_PROJECT if code else GROUP_OTHER
         groups.append({'kind': kind, 'label': GROUP_LABELS[kind],
