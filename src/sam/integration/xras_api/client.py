@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, Iterator, List, Mapping, Optional
+from typing import Any, Dict, Iterator, List, Mapping, Optional, Tuple
 from urllib.parse import quote
 
 import requests
@@ -126,29 +126,32 @@ class _XrasTransport:
         raise XrasSourceUnavailable(
             f'{url} returned HTTP {status}: {response.text[:200]}')
 
-    def _get(self, path: str, *,
-             params: Optional[Mapping[str, Any]] = None,
-             xa_user: Optional[str] = None,
-             context: Optional[str] = None) -> Optional[Any]:
-        """Return the unwrapped ``result``, or ``None`` when XRAS has no such thing.
+    def _send_get(self, path: str, *,
+                  params: Optional[Mapping[str, Any]] = None,
+                  xa_user: Optional[str] = None,
+                  context: Optional[str] = None,
+                  accept: Optional[str] = None,
+                  stream: bool = False) -> Optional['requests.Response']:
+        """The retrying GET under :meth:`_get` and :meth:`_get_bytes`: a response, or ``None`` on 404.
 
-        The only transport primitive shared by both clients. Reads are
-        idempotent, so this retries 5xx with ``2 ** attempt`` backoff; a 404 is
-        an answer (``None``), and a 4xx is a deterministic refusal routed
-        through :meth:`_client_error`.
+        Reads are idempotent, so this retries 5xx with ``2 ** attempt`` backoff;
+        a 404 is an answer, and a 4xx is a deterministic refusal routed through
+        :meth:`_client_error`.
 
         Raises:
-            XrasSourceUnavailable: every attempt failed, or an unparseable
-                body. A 4xx raises whatever :meth:`_client_error` raises.
+            XrasSourceUnavailable: every attempt failed. A 4xx raises whatever
+                :meth:`_client_error` raises.
         """
         url = self._url(path)
+        headers = self._headers(xa_user, context)
+        if accept:
+            headers = {**(headers or {}), 'Accept': accept}
         last_error: Optional[Exception] = None
 
         for attempt in range(self.config.max_retries):
             try:
                 response = self.session.request(
-                    'GET', url, params=params,
-                    headers=self._headers(xa_user, context),
+                    'GET', url, params=params, headers=headers, stream=stream,
                     timeout=(self.config.connect_timeout, self.config.timeout))
             except requests.RequestException as exc:
                 last_error = exc
@@ -180,18 +183,55 @@ class _XrasTransport:
                 time.sleep(wait)
                 continue
 
-            try:
-                body = response.json()
-            except ValueError as exc:
-                raise XrasSourceUnavailable(
-                    f'{url} returned non-JSON body: {exc}') from exc
-
             logger.info('xras api GET %s -> %s', url, status)
-            return _unwrap(body)
+            return response
 
         raise XrasSourceUnavailable(
             f'{url} unreachable after {self.config.max_retries} attempts: '
             f'{last_error}')
+
+    def _get(self, path: str, *,
+             params: Optional[Mapping[str, Any]] = None,
+             xa_user: Optional[str] = None,
+             context: Optional[str] = None) -> Optional[Any]:
+        """Return the unwrapped ``result``, or ``None`` when XRAS has no such thing.
+
+        Raises:
+            XrasSourceUnavailable: every attempt failed, or an unparseable
+                body. A 4xx raises whatever :meth:`_client_error` raises.
+        """
+        response = self._send_get(path, params=params, xa_user=xa_user, context=context)
+        if response is None:
+            return None
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise XrasSourceUnavailable(
+                f'{self._url(path)} returned non-JSON body: {exc}') from exc
+        return _unwrap(body)
+
+    def _get_bytes(self, path: str, *, max_bytes: int,
+                   xa_user: Optional[str] = None,
+                   context: Optional[str] = None,
+                   accept: str = '*/*') -> Optional[Tuple[bytes, Dict[str, str]]]:
+        """A binary body and its headers, or ``None`` on 404; streamed and capped at *max_bytes*.
+
+        Raises:
+            XrasSourceUnavailable: unreachable, or the body passes *max_bytes*.
+        """
+        response = self._send_get(path, xa_user=xa_user, context=context,
+                                  accept=accept, stream=True)
+        if response is None:
+            return None
+        with response:
+            chunks, total = [], 0
+            for chunk in response.iter_content(64 * 1024):
+                total += len(chunk)
+                if total > max_bytes:
+                    raise XrasSourceUnavailable(
+                        f'{self._url(path)} body passes the {max_bytes}-byte cap')
+                chunks.append(chunk)
+            return b''.join(chunks), dict(response.headers)
 
 
 class XrasApiClient(_XrasTransport):

@@ -520,7 +520,8 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
             continue
         entry = request_index_entry(primary_line(live),
                                     pending_push=number in pending,
-                                    preflights=preflights_by_number.get(number))
+                                    preflights=preflights_by_number.get(number),
+                                    family=live)
         if entry is not None:
             entries.append(entry)
 

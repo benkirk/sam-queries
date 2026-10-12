@@ -1753,6 +1753,37 @@ renderers (the digest regrouped in Jinja). The two cards also hand-copied the qu
 - [ ] `merged_away_usernames` filters Feed A only; Feed B is fresh from XRAS, so moot unless
   a snapshot outlives a merge.
 
+## 24. 2026-10-12: area sweep, XRAS request documents
+
+**Mode:** area, planning input for one feature (PI documents on XRAS requests), base
+`origin/staging` (`d5d23e32`), branch `xras-request-documents`. Picks landed as commits on
+the feature branch.
+
+**Done, on `xras-request-documents`:**
+
+- [x] `documents_from_action` in `sam/queries/xras_requests.py`: one reader for the modal
+  and the card count; the count spans the family (`request_index_entry(family=)`).
+- [x] `xras_bits.icon_count`: the re-check count in `xras_table.html` and the card's
+  paperclip; its title through `fmt_plural`.
+- [x] `XrasApiConfig.interactive()` replaces `_read_client`'s hand-rolled `replace`.
+- [x] `_XrasTransport._send_get` under `_get` and the new capped `_get_bytes`.
+- [x] Grants table on the table conventions beside the Documents table.
+
+**Open:**
+
+- [x] `remediation.py`'s validate path builds `XrasAdminClient` on `interactive()` (review,
+  2026-10-12).
+- [x] `webapp/utils/downloads.py`: `file_response` (the CSV and xlsx exports, names quoted by
+  `send_file`) and `document_response` (the proxy's sniff, disposition and `no-store`); one
+  `.preview-frame` in `components.css` for the mail previews and the PDF (review, 2026-10-12).
+- [ ] `db_browser`'s `_no_store` and `file_response(no_store=)` are the two `private, no-store`
+  writers; the XRAS user modal (PII) sets none.
+- [x] Chrome's PDF viewer renders the inline PDF under the app CSP (`object-src 'none'` on
+  the response); verified on samuel-dev 2026-10-12, no per-route CSP needed.
+- [x] In-modal preview (`xras_document_preview`, an unsandboxed same-origin iframe in the
+  dialog body): renders, Back, new tab, Download and the phone-width hide verified in Chrome
+  on samuel-dev 2026-10-12.
+
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
 Surfaced by the first run of `scripts/sweep_inventory.py`. Each item belongs to an area sweep;

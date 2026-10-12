@@ -5,7 +5,7 @@
 {% from 'dashboards/fragments/clipboard.html' import copy_button %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/project_bits.html' import project_link with context %}
-{% from 'dashboards/fragments/xras_bits.html' import request_link, type_label %}
+{% from 'dashboards/fragments/xras_bits.html' import icon_count, request_link, type_label %}
 {#
   XRAS action-log HTMX fragment.
   Context: rows, total, page, sort, filters, status_facets, action_type_facets,
@@ -75,12 +75,7 @@
                     {# 400 vs 422 both read 'failed'; only the code tells them apart. #}
                     <span class="text-muted small ms-1">{{ r.http_status }}</span>
                     {% endif %}
-                    {% if r.recheck_count %}
-                    <span class="text-muted small ms-1 text-nowrap"
-                          title="Re-checked {{ r.recheck_count }} time{{ '' if r.recheck_count == 1 else 's' }}">
-                        <i class="fa-solid fa-arrow-rotate-right" aria-hidden="true"></i> {{ r.recheck_count }}
-                    </span>
-                    {% endif %}
+                    {% if r.recheck_count %}{{ icon_count('fa-arrow-rotate-right', r.recheck_count, 'Re-checked ' ~ (r.recheck_count | fmt_plural('time'))) }}{% endif %}
                 </td>
                 <td>
                     {% if r.projcode_result and r.result_is_project %}

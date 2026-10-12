@@ -309,15 +309,24 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
     overflow: auto;
 }
 
-/* Mail clients paint on white whatever the reader's theme; so does the
-   preview. sandbox blocks scripts, so the frame cannot size itself. */
-.notify-preview-frame {
+/* A page or document previewed in a frame: a mail (sandboxed srcdoc) or a PDF
+   (the browser's viewer on a same-origin proxy). A sandboxed frame cannot size
+   itself, so the height is a modifier. */
+.preview-frame {
     display: block;
     width: 100%;
     height: 22rem;
     border: 1px solid var(--border-default);
     border-radius: 0.25rem;
+}
+
+/* Mail clients paint on white whatever the reader's theme; so does the preview. */
+.preview-frame-mail {
     background: var(--surface-email);
+}
+
+.preview-frame-page {
+    height: 70vh;
 }
 
 /* An envelope is a mail header: one label/value pair per row at every width.
@@ -330,7 +339,7 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
     overflow-wrap: anywhere;
 }
 
-.notify-preview-frame-tall {
+.preview-frame-tall {
     height: 32rem;
 }
 

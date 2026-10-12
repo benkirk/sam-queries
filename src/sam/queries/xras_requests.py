@@ -27,7 +27,7 @@ is fetched live inside a permission-gated route.
 from __future__ import annotations
 
 from datetime import date
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from sam.dates import parse_wire_date
 from sam.text import strip_or_none
@@ -129,6 +129,31 @@ def resolve_pi(roster: List[Dict[str, Any]]) -> Optional[str]:
     return (resolve_role(roster, PI_ROLE_TYPE_ID) or {}).get('username')
 
 
+def documents_from_action(action: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    """An action's documents with the wire keys read once; ``size`` only when an int."""
+    documents = []
+    for doc in action.get('documents') or ():
+        if not isinstance(doc, dict):
+            continue
+        size = doc.get('size')
+        documents.append({
+            'document_id': doc.get('documentId'),
+            'document_type': doc.get('documentType'),
+            'title': doc.get('title'),
+            'filename': doc.get('filename'),
+            # fmt_size calls abs(): anything but an int would raise at render.
+            'size': size if isinstance(size, int) and not isinstance(size, bool) else None,
+        })
+    return documents
+
+
+def _family_documents(lines: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+    """Every document on the family's live lines: they sit on the New, often an older line."""
+    return [doc for line in lines if isinstance(line, dict) and not line.get('isDeleted')
+            for action in line.get('actions') or () if isinstance(action, dict)
+            for doc in documents_from_action(action)]
+
+
 def actions_from_payload(payload: Dict[str, Any],
                          preflights: Optional[Mapping[Any, dict]] = None
                          ) -> List[Dict[str, Any]]:
@@ -167,6 +192,7 @@ def actions_from_payload(payload: Dict[str, Any],
                             and status not in TERMINAL_ACTION_STATUSES,
             'can_resubmit': status == DRAFT_ACTION_STATUS,
             'preflight': (preflights or {}).get(action.get('actionId')),
+            'document_count': len(documents_from_action(action)),
         })
     # Chronological by action_id — XRAS's true sequence. Date-only ties lose
     # order (two same-day actions differ only by id/time), and the payload
@@ -301,7 +327,8 @@ def row_blockers(row: Mapping[str, Any]) -> set:
 
 def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
                         refreshed_at: Any = None,
-                        preflights: Optional[Mapping[Any, dict]] = None
+                        preflights: Optional[Mapping[Any, dict]] = None,
+                        family: Optional[Sequence[Mapping[str, Any]]] = None
                         ) -> Optional[Dict[str, Any]]:
     """Build one Remediations-card entry. ``None`` for an unusable payload.
 
@@ -340,6 +367,9 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
     actions = actions_from_payload(payload, preflights)
     # Most-recent activity across the request's actions: what a date filter windows on.
     activity_date = report_activity_date(payload)
+    # Counted across the family (``family``, else this line); no filenames: they
+    # name people, and the card renders from this cache (module docstring).
+    documents = _family_documents(family or [payload])
     return {
         'request_number': number,
         'request_id': request_id,
@@ -374,6 +404,8 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
         'has_stuck_placeholder': any(r['placeholder'] and r['is_reconciled']
                                      for r in roster),
         'refreshed_at': refreshed_at,
+        'document_count': len(documents),
+        'document_types': sorted({d['document_type'] for d in documents if d['document_type']}),
     }
 
 
