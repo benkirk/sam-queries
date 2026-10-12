@@ -409,3 +409,64 @@ class TestTheTicketDeepLink:
         html = auth_client.get(f'{FRAGMENT}?request={MISSING}').get_data(as_text=True)
         assert f'Request #{MISSING} does not exist' in html
         assert 'id="account-request-' not in html
+
+
+@pytest.fixture
+def sweep_request(app):
+    """A committed sweep row whose project does not exist yet (XRAS Approved Pending Projects)."""
+    from sam.core.account_requests import CREATED_BY_SWEEP, PURPOSE_SUBMISSION, AccountRequest
+    from webapp.extensions import db
+
+    with app.app_context():
+        row = AccountRequest.create(
+            db.session, email='zz.pending.test@example.invalid', first_name='Pen',
+            last_name='Ding', purpose=PURPOSE_SUBMISSION, xras_username='Zz-Pending-User',
+            created_by=CREATED_BY_SWEEP, verified_by=CREATED_BY_SWEEP)
+        db.session.commit()
+        row_id = row.account_request_id
+
+    yield row_id
+
+    with app.app_context():
+        db.session.query(AccountRequest).filter(
+            AccountRequest.account_request_id == row_id).delete()
+        db.session.commit()
+
+
+def _pending_feed(monkeypatch, *numbers):
+    """Feed B names the sweep row's user, in another spelling, on these requests."""
+    from sam.queries.xras_accounts import PendingFeed
+    rows = [{'username': 'zz-pending-user',
+             'actions': [{'request_number': n} for n in numbers]}]
+    monkeypatch.setattr('sam.queries.xras_accounts.load_pending_worklist_rows',
+                        lambda: PendingFeed(rows=rows, checked=True))
+
+
+class TestTheRequestBehindAPendingRow:
+    """No project yet: the cell names the XRAS request, and opens it for MANAGE_XRAS."""
+
+    def test_the_number_is_plain_text_while_xras_is_unconfigured(
+            self, auth_client, monkeypatch, sweep_request):
+        _pending_feed(monkeypatch, 'NCAR4227')
+        html = auth_client.get(f'{FRAGMENT}?request={sweep_request}').get_data(as_text=True)
+        assert 'Project or Request' in html
+        assert '<span class="font-monospace" title="No SAM project' in html and 'NCAR4227' in html
+        assert 'xras_request_detail' not in html
+        assert 'id="xrasModal"' not in auth_client.get(PAGE).get_data(as_text=True)
+
+    def test_a_configured_xras_opens_the_request_dialog_in_place(
+            self, auth_client, monkeypatch, sweep_request):
+        _pending_feed(monkeypatch, 'NCAR4227', 'NCAR4228', 'NCAR4227', 'NCAR4229')
+        monkeypatch.setattr('sam.integration.xras_api.xras_api_configured', lambda: True)
+        html = auth_client.get(f'{FRAGMENT}?request={sweep_request}').get_data(as_text=True)
+        assert 'hx-get="/allocations/xras_request_detail/NCAR4227"' in html
+        assert 'data-bs-target="#xrasModal"' in html
+        assert 'NCAR4229' not in html and '+1' in html
+        page = auth_client.get(PAGE).get_data(as_text=True)
+        assert 'id="xrasModal"' in page and 'id="xrasModalFooter"' in page
+
+    def test_no_pending_rows_reads_nothing(self, auth_client, monkeypatch, committed_request):
+        def _refuse(*_a, **_kw):
+            raise AssertionError('looked up request numbers with no pending row')
+        monkeypatch.setattr('sam.queries.xras_accounts.request_numbers_by_username', _refuse)
+        assert auth_client.get(f'{FRAGMENT}?request={committed_request}').status_code == 200

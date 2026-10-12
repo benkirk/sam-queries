@@ -47,6 +47,7 @@ from sam.queries.xras_accounts import (
     merge_worklists,
     records_from_action_log,
     records_from_report_requests,
+    request_numbers_by_username,
     stamp_waiting_days,
     worklist_counts,
 )
@@ -989,6 +990,27 @@ class TestMergeWorklists:
         # A row on both feeds counts in both.
         assert counts['received_push'] == 1
         assert counts['pending_request'] == 2
+
+
+class TestRequestNumbersByUsername:
+    """The XRAS requests behind an account-request row: both feeds, no classification."""
+
+    def test_both_feeds_casefolded_deduped_pending_first(self, monkeypatch):
+        posted = [_record('Ghost', request_number='NCAR0003'),
+                  _record('ghost', 'other', request_number='NCAR0002')]
+        monkeypatch.setattr('sam.queries.xras_accounts.records_from_action_log',
+                            lambda session, **kw: posted)
+        pending = [{'username': 'GHOST', 'actions': [{'request_number': 'NCAR0002'},
+                                                      {'request_number': None}]}]
+        out = request_numbers_by_username(None, ['ghost', 'nobody'],
+                                          since=datetime(2026, 7, 1), pending_rows=pending)
+        assert out == {'ghost': ['NCAR0002', 'NCAR0003'], 'nobody': []}
+
+    def test_no_usernames_reads_nothing(self, monkeypatch):
+        def _refuse(*_a, **_kw):
+            raise AssertionError('read the action log for nobody')
+        monkeypatch.setattr('sam.queries.xras_accounts.records_from_action_log', _refuse)
+        assert request_numbers_by_username(None, [None, ''], since=datetime(2026, 7, 1)) == {}
 
 
 class TestLoadPendingWorklistRows:

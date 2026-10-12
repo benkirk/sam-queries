@@ -4,7 +4,8 @@
 
   Context:
     form_id, target_id, fragment_url, facets, initial_url (fragment_url, or
-    fragment_url?request=<id> when the page was opened from a ticket link)
+    fragment_url?request=<id> when the page was opened from a ticket link),
+    can_open_xras (hosts the XRAS request dialog)
 
   The card (fragments/account_requests_card.html) is loaded by htmx and
   refreshed by `refreshAccountQueue`. Its facet state lives in the hidden
@@ -13,8 +14,19 @@
   writes into a field that does not exist and filters nothing.
 #}
 {% from 'dashboards/fragments/facet_chips.html' import facet_form %}
+{% from 'dashboards/fragments/modals.html' import modal_scaffold %}
 
 {% block title %}Account requests — SAM admin{% endblock %}
+
+{% block extra_css %}
+{{ super() }}
+{% if can_open_xras %}<link rel="stylesheet" href="{{ url_for('static', filename='css/xras.css') }}">{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{{ super() }}
+{% if can_open_xras %}<script src="{{ url_for('static', filename='js/xras.js') }}"></script>{% endif %}
+{% endblock %}
 
 {% block admin_content %}
 <div class="row mb-3">
@@ -44,4 +56,9 @@
 </div>
 
 {% include 'dashboards/allocations/partials/audit_details_modal.html' %}
+{# The XRAS request dialog, for a row whose project does not exist yet. #}
+{% if can_open_xras %}
+{{ modal_scaffold('xrasModal', 'XRAS', 'plug', 'xrasModalBody', size='lg',
+                  scrollable=True, footer_id='xrasModalFooter') }}
+{% endif %}
 {% endblock %}

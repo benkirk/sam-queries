@@ -4,6 +4,7 @@
 {% from 'dashboards/fragments/search_box.html' import filter_search %}
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {% from 'dashboards/fragments/project_bits.html' import project_link %}
+{% from 'dashboards/fragments/xras_bits.html' import request_link %}
 {% from 'dashboards/fragments/account_request_bits.html' import invite_details, ticket_details, kind_icons, queue_actions, readiness_icons, status_line %}
 {#
   The account-request queue card.
@@ -18,6 +19,7 @@
     facet_values / selected / origin_labels / readiness_labels
     sort / sortable_columns / form_id / target_id / fragment_url
     digest_recipient  NOTIFY_ACCOUNT_QUEUE_TO, or ''
+    can_open_xras   the XRAS request dialog is on the page (MANAGE_XRAS, XRAS configured)
 
   Every row action answers with an HX-Trigger (`refreshAccountQueue`); the
   two that take a reason open the shared #auditDetailsModal from the card,
@@ -116,7 +118,7 @@
                     <th>{{ sort_header('person', 'Person') }}</th>
                     <th>{{ sort_header('email', 'Email') }}</th>
                     <th class="col-shrink" title="Purpose and origin (hover an icon)">Kind</th>
-                    <th class="col-shrink">Project</th>
+                    <th class="col-shrink" title="The SAM project, or the XRAS request until its project exists">Project or Request</th>
                     <th class="col-shrink" title="Readiness, address and invitation (hover an icon)">Ready</th>
                     <th class="col-num">{{ sort_header('waiting', 'Wait') }}</th>
                     <th class="col-shrink">{{ sort_header('state', 'Status') }}</th>
@@ -159,9 +161,14 @@
                     </td>
                     <td class="cell-truncate cursor-pointer" title="{{ v.email }}" {{ collapse_toggle(body_id) }}>{{ v.email }}</td>
                     <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>{{ kind_icons(v) }}</td>
-                    {# Not a collapse trigger: the modal opener inside would toggle the row too. #}
-                    <td>
-                        {% if v.project_code %}{{ project_link(v.project_code, can_view_projects, compact=True) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                    {# Not a collapse trigger: the modal openers inside would toggle the row too.
+                       No project yet: the XRAS request(s) behind the row instead. #}
+                    <td class="text-nowrap">
+                        {% if v.project_code %}{{ project_link(v.project_code, can_view_projects, compact=True) }}
+                        {% elif v.request_numbers %}
+                        {%- for number in v.request_numbers[:2] %}{{ request_link(number, can_open_xras) }}{% if not loop.last %}, {% endif %}{% endfor %}
+                        {%- if v.request_numbers | length > 2 %} <span class="text-muted">+{{ v.request_numbers | length - 2 }}</span>{% endif %}
+                        {% else %}<span class="text-muted">—</span>{% endif %}
                     </td>
                     <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>{{ readiness_icons(v) }}</td>
                     <td class="col-num text-muted cursor-pointer" title="Requested {{ r.creation_time | fmt_date }}" {{ collapse_toggle(body_id) }}>{{ v.waiting_days | fmt_number }}d</td>

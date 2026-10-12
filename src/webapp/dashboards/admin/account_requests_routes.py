@@ -10,7 +10,7 @@ Design: docs/plans/implemented/ACCOUNT_REGISTRATION.md section 3.2.
 
 import logging
 import os
-from datetime import datetime
+from datetime import date, datetime, time, timedelta
 
 from flask import current_app, render_template, request, url_for
 from marshmallow import ValidationError
@@ -26,6 +26,7 @@ from sam.manage import management_transaction
 from sam.manage.account_requests import reconcile_account_requests
 from sam.queries.account_notices import build_queue_summary, build_rejection_message
 from sam.queries.account_requests import (
+    GROUP_XRAS_PENDING,
     ORIGIN_LABELS,
     all_requests,
     events_for,
@@ -49,7 +50,7 @@ from webapp.utils.email_preview import (
 )
 from webapp.utils.notify import get_notifier, notify_config
 from webapp.utils.rbac import (
-    Permission, has_permission_any_facility, require_permission,
+    Permission, has_permission, has_permission_any_facility, require_permission,
 )
 
 from .blueprint import bp
@@ -100,6 +101,27 @@ def _search(views, term):
         v['sponsor'].display_name if v['sponsor'] else '')).casefold()]
 
 
+def _can_open_xras_requests():
+    """The XRAS request dialog is MANAGE_XRAS and reads XRAS live."""
+    from sam.integration.xras_api import xras_api_configured
+    return has_permission(current_user, Permission.MANAGE_XRAS) and xras_api_configured()
+
+
+def _stamp_request_numbers(groups):
+    """The XRAS request behind each row whose project does not exist yet."""
+    pending = next((g['rows'] for g in groups if g['kind'] == GROUP_XRAS_PENDING), None)
+    if not pending:
+        return
+    from scheduling.tasks.xras_sweep import window_days
+    from sam.queries.xras_accounts import load_pending_worklist_rows, request_numbers_by_username
+    since = datetime.combine(date.today() - timedelta(days=window_days()), time.min)
+    numbers = request_numbers_by_username(
+        db.session, (v['row'].xras_username for v in pending), since=since,
+        pending_rows=load_pending_worklist_rows().rows)
+    for v in pending:
+        v['request_numbers'] = numbers.get((v['row'].xras_username or '').casefold(), [])
+
+
 @bp.route('/account-requests')
 @login_required
 @require_permission(Permission.MANAGE_ACCOUNT_REQUESTS)
@@ -114,6 +136,7 @@ def account_requests():
         initial_url=url_for('admin_dashboard.account_requests_fragment',
                             request=pinned or None),
         facets=_FACETS,
+        can_open_xras=_can_open_xras_requests(),
     )
 
 
@@ -145,10 +168,12 @@ def account_requests_fragment():
     views = _FACETS.apply(views, selected)
     sort = read_sort(request.args, _SORT, default_dir='asc')
     views = sort_rows(views, sort, _SORT)
+    groups = group_by_event(views)
+    _stamp_request_numbers(groups)
 
     return render_template(
         _CARD,
-        groups=group_by_event(views),
+        groups=groups,
         total=len(views), scoped_total=scoped_total,
         counts=counts, unverified=unverified_count(db.session),
         show_all=show_all, search=search, pinned=pinned,
@@ -161,6 +186,7 @@ def account_requests_fragment():
         digest_recipient=_digest_recipient(),
         can_view_projects=has_permission_any_facility(
             current_user, Permission.VIEW_PROJECTS),
+        can_open_xras=_can_open_xras_requests(),
     )
 
 
