@@ -174,7 +174,8 @@
                     <td class="col-num text-muted cursor-pointer" title="Requested {{ r.creation_time | fmt_date }}" {{ collapse_toggle(body_id) }}>{{ v.waiting_days | fmt_number }}d</td>
                     {# Not a collapse trigger: the ticket link inside would toggle the row too. #}
                     <td>{{ status_line(v) }}</td>
-                    <td class="text-end text-nowrap">{{ queue_actions(v.id, r.state, email=v.email, verified=v.verified, full=True) }}</td>
+                    {# A fulfilled row is done: nothing to claim, dismiss or reject. #}
+                    <td class="text-end text-nowrap">{% if v.readiness != 'fulfilled' %}{{ queue_actions(v.id, r.state, email=v.email, verified=v.verified, full=True) }}{% endif %}</td>
                 </tr>
                 <tr class="collapse" id="{{ body_id }}">
                     <td></td>

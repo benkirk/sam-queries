@@ -468,3 +468,22 @@ class TestTheRequestBehindAPendingRow:
             raise AssertionError('looked up request numbers with no pending row')
         monkeypatch.setattr('sam.queries.xras_requests.request_numbers_by_username', _refuse)
         assert auth_client.get(f'{FRAGMENT}?request={committed_request}').status_code == 200
+
+
+class TestAFulfilledRowIsDone:
+    """Under "Show everything" a fulfilled row says so and offers no queue actions."""
+
+    def _fulfil(self, app, row_id, user_id):
+        from sam.core.account_requests import AccountRequest
+        from webapp.extensions import db
+        with app.app_context():
+            db.session.get(AccountRequest, row_id).user_id = user_id
+            db.session.commit()
+
+    def test_fulfilled_reads_fulfilled_without_actions(self, auth_client, app, sweep_request):
+        html = auth_client.get(f'{FRAGMENT}?request={sweep_request}').get_data(as_text=True)
+        assert '>open</span>' in html and 'aria-label="Claim"' in html
+        self._fulfil(app, sweep_request, 1)
+        html = auth_client.get(f'{FRAGMENT}?request={sweep_request}').get_data(as_text=True)
+        assert '>fulfilled</span>' in html and '>open</span>' not in html
+        assert 'aria-label="Claim"' not in html and 'aria-label="Dismiss"' not in html
