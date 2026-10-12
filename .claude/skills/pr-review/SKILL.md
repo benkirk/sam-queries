@@ -28,7 +28,9 @@ Then, before reading any code:
 - **Read every rule it lists** with the Read tool. A rule loads only when a matching file is
   Read or edited (`CLAUDE.md`, Topic rules); the brief matching a path is not the same thing.
 - **`cat` the memory files** behind the index lines it prints: an earlier session may have
-  shaped the PR (the design choice, the deferral, the incident).
+  shaped the PR (the design choice, the deferral, the incident). The brief matches the PR
+  number, the head branch and the PRs the body cites; when it prints none, the PR is new to
+  memory, so scan `MEMORY.md` for its area (#806 had two lines under the predecessor, #800).
 - **Load the skills it names.** `wire-dashboard-feature` is the checklist for any dashboard
   path. `unplanned-city-sweep` is the lens for every PR: its "read as one design" seams
   (prose describing an earlier step, a silent path promoted to the default, the assumed branch
@@ -47,8 +49,13 @@ git diff origin/<base>...origin/<head> -- docs/ '*.md'                # then the
 Source first, so the tests are read as claims about code already understood. A diff over
 ~30 KB lands in the persisted-output file; `sed -n '/^diff --git a\/<path>/,$p'` on that file
 is cheaper than a second diff. Shell notes that cost a turn each: zsh expands `=word`, so a
-separator is `echo '-----'`; `$files` does not word-split (use `${=files}`); read pytest's
-exit code from `${pipestatus[1]}`, never from a `| tail`.
+separator is `echo '-----'`; `$files` does not word-split (use `${=files}`); `--include=*.py`
+is globbed, so quote it; read pytest's exit code from `${pipestatus[1]}`, never from a
+`| tail`.
+
+**If the head moves during the review** (the owner pushes while you read), `git fetch` and
+diff `<reviewed head>..origin/<head>`: run step 3 on that delta only, and say in the report
+and the comment which head the review covers.
 
 ## 3. Trace where a gap hides
 
@@ -105,12 +112,19 @@ Then one `AskUserQuestion`, multi-select, the recommended fixes first and "None,
 last. Never ask while an Explore agent is still running: every option must rest on finished
 research.
 
+An *ops* finding that one browser look would settle (a phone-width cell, a dialog hosted on
+a new page) gets that look after the comment, offered, not assumed: a samuel-dev login is
+Ben's (Playwright window, his 2FA). When no live row carries the data, inject the markup
+into the live cell and measure with `getBoundingClientRect` (`wire-dashboard-feature`,
+step 12.3); the screenshots carry dev's names and emails, so they stay in the session.
+
 ## 6. Land the picks
 
-- **Get onto the PR head.** `git checkout <head>`. When `git worktree list` shows it checked
-  out in another worktree (another session's), do not touch that tree: `git checkout -B
-  review-<head> origin/<head>`, and push later with `git push origin HEAD:<head>`. Say so in
-  the comment, since that worktree is then behind.
+- **Get onto the PR head.** Already checked out here: `git pull --ff-only origin <head>`.
+  Elsewhere: `git checkout <head>`. When `git worktree list` shows it checked out in another
+  worktree (another session's), do not touch that tree: `git checkout -B review-<head>
+  origin/<head>`, and push later with `git push origin HEAD:<head>`. Say so in the comment,
+  since that worktree is then behind.
 - **One commit per finding**, named paths staged (`git add <paths>`), the house message:
   a one-line title, `## Summary` saying the mechanism and the fix, `### Test Results`, the
   attribution lines. Apply the comment budget (`CLAUDE.md` §12): the fix keeps the trap in a
@@ -148,6 +162,8 @@ in it (`CLAUDE.md`, Skipping CI).
 
 Update the PR's project memory, or write one: reviewed on which date, what landed (SHAs), what
 was noted and why it was left. One index line in `MEMORY.md` says the same in a few words.
+When Ben merges while the session is open, add the squash SHA to both. The local branch is
+then gone; the worktree stays, whatever `gh pr merge` suggests about removing it.
 
 ## Boundaries
 

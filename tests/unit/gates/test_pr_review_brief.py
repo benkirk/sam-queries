@@ -70,3 +70,14 @@ class TestSkillsAndMemory:
         index.write_text('- [A](a.md) PR #803 reviewed\n- [B](b.md) #8030 open\n- [C](c.md)\n')
         assert brief.memory_lines(803, index) == ['- [A](a.md) PR #803 reviewed']
         assert brief.memory_lines(803, tmp_path / 'missing.md') == []
+
+    def test_a_first_review_reaches_memory_by_branch_and_cited_pr(self, tmp_path):
+        index = tmp_path / 'MEMORY.md'
+        index.write_text('- [A](a.md) PR #800 merged\n- [B](b.md) branch xras-docs open\n'
+                         '- [C](c.md) #8000\n')
+        assert brief.memory_lines(806, index) == []
+        assert brief.memory_lines(806, index, branch='xras-docs', cited=[800]) == [
+            '- [A](a.md) PR #800 merged', '- [B](b.md) branch xras-docs open']
+        pr = {'title': 'Follow #800', 'body': 'see #801 and #800', 'commits': [{'title': 'x #803'}]}
+        assert brief.cited_prs(pr) == [800, 801, 803]
+        assert brief.cited_prs({}) == []
