@@ -37,7 +37,7 @@ from sqlalchemy.orm import Session
 from sam.core.users import EmailAddress, User
 from sam.dates import parse_wire_date
 from sam.integration.xras import XrasActionLog, XrasRemediationEvent
-from sam.projects.projects import Project
+from sam.queries.projects import project_ids_by_code
 from sam.queries.xras_actions import XRAS_ACTION_STATUSES
 
 logger = logging.getLogger(__name__)
@@ -1053,8 +1053,7 @@ def stamp_project_existence(session: Session,
     if not codes:
         return
 
-    known = {c for (c,) in session.query(Project.projcode)
-             .filter(Project.projcode.in_(sorted(codes))).all()}
+    known = set(project_ids_by_code(session, codes))
     for action in actions:
         action['is_project'] = action.get('request_number') in known
 

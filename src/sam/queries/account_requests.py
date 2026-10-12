@@ -30,6 +30,7 @@ from sam.accounting.allocations import AllocationType
 from sam.core.users import User
 from sam.integration.tickets.queries import ACCOUNT_REQUEST, tickets_for
 from sam.projects.projects import Project
+from sam.queries.projects import project_codes
 from sam.resources.facilities import Panel
 
 from .xras_accounts import sam_merge_targets
@@ -186,11 +187,8 @@ def request_views(session: Session, rows: Sequence[AccountRequest], *,
     sponsors = ({u.user_id: u for u in session.query(User)
                  .filter(User.user_id.in_(sponsor_ids)).all()}
                 if sponsor_ids else {})
-    project_ids = sorted({r.project_id for r in rows if r.project_id}
-                         | {e.project_id for e in events.values()})
-    projects = (dict(session.query(Project.project_id, Project.projcode)
-                     .filter(Project.project_id.in_(project_ids)).all())
-                if project_ids else {})
+    projects = project_codes(session, {r.project_id for r in rows}
+                             | {e.project_id for e in events.values()})
     today = today or date.today()
     tickets = ticket_views(session, [r.account_request_id for r in rows])
     views = []
@@ -271,10 +269,7 @@ def events_for_user(session: Session, user_id: int) -> List[Dict[str, Any]]:
               session.query(AccountRequestEvent).filter(
                   AccountRequestEvent.account_request_event_id.in_(
                       {r.event_id for r in rows})).all()}
-    project_ids = {e.project_id for e in events.values()}
-    projects = (dict(session.query(Project.project_id, Project.projcode)
-                     .filter(Project.project_id.in_(project_ids)).all())
-                if project_ids else {})
+    projects = project_codes(session, (e.project_id for e in events.values()))
     out = []
     for r in rows:
         event = events.get(r.event_id)

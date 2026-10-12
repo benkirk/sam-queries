@@ -437,7 +437,7 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
     the account worklist, and a remediation feed that fails must not cost the
     feed that was already working.
     """
-    from sam.projects.projects import Project
+    from sam.queries.projects import project_ids_by_code
     from sam.queries.xras_requests import request_index_entry
 
     payloads = list(approved_payloads or ())
@@ -474,8 +474,7 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
         return []
 
     try:
-        known = {code for (code,) in session.query(Project.projcode)
-                 .filter(Project.projcode.in_(sorted(numbers))).all()}
+        known = set(project_ids_by_code(session, numbers))
     except Exception as exc:                            # noqa: BLE001
         # None, not []: without the pending classification every entry would
         # be wrong, and publishing an empty index over the last good one would
@@ -665,7 +664,7 @@ def xras_sweep(ctx) -> TaskResult:
     from sam.integration.xras_api.cache import (load_requests_index,
                                                 store_pending_worklist,
                                                 store_requests_index)
-    from sam.projects.projects import Project
+    from sam.queries.projects import project_ids_by_code
     from sam.queries.xras_accounts import (
         classify_accounts,
         get_account_worklist,
@@ -849,8 +848,7 @@ def xras_sweep(ctx) -> TaskResult:
                if p.get('requestNumber')}
     pending_set: set = set()
     if numbers:
-        known = {code for (code,) in session.query(Project.projcode)
-                 .filter(Project.projcode.in_(sorted(numbers))).all()}
+        known = set(project_ids_by_code(session, numbers))
         pending_set = numbers - known
         pending = sorted(pending_set)
         detail['pending_push'] = len(pending)

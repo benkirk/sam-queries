@@ -112,6 +112,24 @@ def project_facilities(session: Session,
     return {code: (fid, name) for code, (fid, name, _) in project_panels(session, projcodes).items()}
 
 
+def project_ids_by_code(session: Session, projcodes: Iterable[str]) -> Dict[str, int]:
+    """``{projcode: project_id}`` in one query; unknown codes are absent."""
+    codes = sorted({c for c in projcodes if c})
+    if not codes:
+        return {}
+    return dict(session.query(Project.projcode, Project.project_id)
+                .filter(Project.projcode.in_(codes)).all())
+
+
+def project_codes(session: Session, project_ids: Iterable[int]) -> Dict[int, str]:
+    """``{project_id: projcode}`` in one query; unknown ids are absent."""
+    ids = sorted({i for i in project_ids if i})
+    if not ids:
+        return {}
+    return dict(session.query(Project.project_id, Project.projcode)
+                .filter(Project.project_id.in_(ids)).all())
+
+
 def project_titles(session: Session, projcodes: Iterable[str],
                    facility_names: Optional[Iterable[str]] = None) -> Dict[str, str]:
     """``{projcode: title}`` in one query; unknown codes are absent.

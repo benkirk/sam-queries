@@ -21,7 +21,7 @@ from sam.core.account_requests import (
     EventEnrollment,
 )
 from sam.core.users import User
-from sam.projects.projects import Project
+from sam.queries.projects import project_ids_by_code
 from sam.queries.account_requests import queue_requests, resolve_requests
 from sam.queries.xras_accounts import CLASSIFICATION_ABSENT, sam_merge_targets
 
@@ -218,12 +218,8 @@ def upsert_sweep_requests(session: Session, worklist_rows: Sequence[Dict[str, An
     known = {req.xras_username for req in
              session.query(AccountRequest.xras_username)
              .filter(AccountRequest.xras_username.in_(keys)).all()}
-    numbers = sorted({a.get('request_number') for r in absent
-                      for a in r.get('actions', ()) if a.get('request_number')})
-    projects = {}
-    if numbers:
-        projects = dict(session.query(Project.projcode, Project.project_id)
-                        .filter(Project.projcode.in_(numbers)).all())
+    projects = project_ids_by_code(session, (a.get('request_number') for r in absent
+                                             for a in r.get('actions', ())))
     for row in absent:
         key = row['username'].lower()
         if key in known:
