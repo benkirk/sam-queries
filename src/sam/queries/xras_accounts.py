@@ -38,6 +38,7 @@ from sam.core.users import EmailAddress, User
 from sam.dates import parse_wire_date
 from sam.integration.xras import XrasActionLog, XrasRemediationEvent
 from sam.queries.projects import project_ids_by_code
+from sam.queries.users import users_by_username_ci
 from sam.queries.xras_actions import XRAS_ACTION_STATUSES
 
 logger = logging.getLogger(__name__)
@@ -609,8 +610,7 @@ def classify_accounts(session: Session,
     # lowercase ``user_<hex>``, so every scrubbed roster is already
     # case-matched, and ``roster.normalize_username`` does not fold case either
     # (it reproduces Java), so the wire spelling arrives untouched.
-    existing = {u.username.casefold(): u for u in
-                session.query(User).filter(User.username.in_(sorted(wanted))).all()}
+    existing = users_by_username_ci(session, wanted)
 
     rows: Dict[str, Dict[str, Any]] = {}
     for record in records:

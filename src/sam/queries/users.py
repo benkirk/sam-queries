@@ -40,6 +40,19 @@ from sam.accounting.accounts import Account, AccountUser
 # Project Membership Queries
 # ============================================================================
 
+def users_by_username_ci(session: Session, usernames: Iterable[str]) -> Dict[str, User]:
+    """``{username.casefold(): User}`` in one query.
+
+    ``users.username`` is case-insensitive at the DB, so ``IN`` matches either
+    spelling; the dict is casefolded so a caller finds what came back.
+    """
+    names = sorted({n for n in usernames if n})
+    if not names:
+        return {}
+    return {u.username.casefold(): u for u in
+            session.query(User).filter(User.username.in_(names)).all()}
+
+
 def get_users_on_project(session: Session, projcode: str) -> List[Dict]:
     """
     Get all users associated with a project with their contact information.

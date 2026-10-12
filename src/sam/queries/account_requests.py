@@ -31,6 +31,7 @@ from sam.core.users import User
 from sam.integration.tickets.queries import ACCOUNT_REQUEST, tickets_for
 from sam.projects.projects import Project
 from sam.queries.projects import project_codes
+from sam.queries.users import users_by_username_ci
 from sam.resources.facilities import Panel
 
 from .xras_accounts import sam_merge_targets
@@ -97,12 +98,7 @@ def resolve_requests(session: Session,
     wanted = {t['username'] for t in targets.values() if t.get('username')}
     hints = {row.desired_username.casefold() for row in rows if row.desired_username}
     lookup = wanted | hints
-    users: Dict[str, User] = {}
-    if lookup:
-        # users.username is case-insensitive at the DB, so IN matches either
-        # spelling; the dict must be casefolded to find what came back.
-        users = {u.username.casefold(): u for u in
-                 session.query(User).filter(User.username.in_(sorted(lookup))).all()}
+    users = users_by_username_ci(session, lookup)
 
     resolutions: Dict[int, Resolution] = {}
     for row in rows:
@@ -405,6 +401,18 @@ def unverified_count(session: Session) -> int:
             .count())
 
 
+def requests_by_xras_username(session: Session,
+                              usernames: Iterable[Optional[str]]) -> Dict[str, AccountRequest]:
+    """``{xras_key: AccountRequest}`` in one query; the newest row wins a shared key."""
+    keys = sorted({k for k in map(AccountRequest.xras_key, usernames) if k})
+    if not keys:
+        return {}
+    return {req.xras_username: req for req in
+            session.query(AccountRequest)
+            .filter(AccountRequest.xras_username.in_(keys))
+            .order_by(AccountRequest.creation_time).all()}
+
+
 def stamp_account_requests(session: Session,
                            worklist_rows: Sequence[Dict[str, Any]]) -> None:
     """Point each Pending Users row at its ``account_request``, in place.
@@ -414,17 +422,11 @@ def stamp_account_requests(session: Session,
     Sets ``row['account_request']`` to a small dict or ``None``; every state
     is reported so the card can offer reopen on a dismissed row.
     """
-    wanted = sorted({(r.get('username') or '').lower()
-                     for r in worklist_rows if r.get('username')})
-    if not wanted:
+    if not any(r.get('username') for r in worklist_rows):
         return
-    found = {}
-    for req in (session.query(AccountRequest)
-                .filter(AccountRequest.xras_username.in_(wanted))
-                .order_by(AccountRequest.creation_time).all()):
-        found[req.xras_username] = req
+    found = requests_by_xras_username(session, (r.get('username') for r in worklist_rows))
     for row in worklist_rows:
-        req = found.get((row.get('username') or '').lower())
+        req = found.get(AccountRequest.xras_key(row.get('username')))
         row['account_request'] = ({
             'id': req.account_request_id,
             'state': req.state,

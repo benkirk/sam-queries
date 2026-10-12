@@ -277,6 +277,12 @@ class AccountRequest(Base, SessionMixin):
         return (f"<AccountRequest {self.account_request_id} {self.email!r} "
                 f"{self.purpose}/{self.state}>")
 
+    @staticmethod
+    def xras_key(username: Optional[str]) -> Optional[str]:
+        """``xras_username`` as stored and matched: stripped, width-capped, lower-cased."""
+        name = strip_or_none(username, width=64)
+        return name.lower() if name else None
+
     @property
     def display_name(self) -> str:
         return ' '.join(p for p in (self.first_name, self.last_name) if p)
@@ -352,7 +358,7 @@ class AccountRequest(Base, SessionMixin):
             project_id=project_id,
             sponsor_user_id=sponsor_user_id,
             event_id=event_id,
-            xras_username=placeholder.lower() if placeholder else None,
+            xras_username=cls.xras_key(xras_username),
             state='submitted',
             comment=strip_or_none(comment),
             purpose_note=strip_or_none(purpose_note, width=500),

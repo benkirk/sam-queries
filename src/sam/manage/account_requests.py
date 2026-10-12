@@ -22,7 +22,8 @@ from sam.core.account_requests import (
 )
 from sam.core.users import User
 from sam.queries.projects import project_ids_by_code
-from sam.queries.account_requests import queue_requests, resolve_requests
+from sam.queries.account_requests import (queue_requests, requests_by_xras_username,
+                                          resolve_requests)
 from sam.queries.xras_accounts import CLASSIFICATION_ABSENT, sam_merge_targets
 
 from . import add_user_to_project
@@ -214,14 +215,11 @@ def upsert_sweep_requests(session: Session, worklist_rows: Sequence[Dict[str, An
               if r.get('classification') == CLASSIFICATION_ABSENT and r.get('username')]
     if not absent:
         return counts
-    keys = sorted({r['username'].lower() for r in absent})
-    known = {req.xras_username for req in
-             session.query(AccountRequest.xras_username)
-             .filter(AccountRequest.xras_username.in_(keys)).all()}
+    known = set(requests_by_xras_username(session, (r['username'] for r in absent)))
     projects = project_ids_by_code(session, (a.get('request_number') for r in absent
                                              for a in r.get('actions', ())))
     for row in absent:
-        key = row['username'].lower()
+        key = AccountRequest.xras_key(row['username'])
         if key in known:
             counts['existing'] += 1
             continue
