@@ -40,7 +40,7 @@ from sam.dates import parse_wire_date
 from sam.integration.xras import XrasActionLog, XrasRemediationEvent
 from sam.queries.projects import project_ids_by_code
 from sam.queries.users import users_by_username_ci
-from sam.queries.xras_actions import XRAS_ACTION_STATUSES
+from sam.queries.xras_actions import XRAS_ACTION_STATUSES, canonical_action_type
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +82,17 @@ USER_ROLE = 'User'
 
 #: Ranked for display: the strongest role a username holds leads the row.
 _ROLE_ORDER = (PI_ROLE, ALLOCATION_MANAGER_ROLE, USER_ROLE)
+
+#: Actions whose handler validates and applies the whole roster (Add, Update). Any
+#: other action leaves membership alone and carries a stale roster, so only its PI
+#: and Allocation Manager count, and only when their SAM account has lapsed.
+ROSTER_ACTION_TYPES = ('New', 'Renewal')
+_LEAD_ROLES = {PI_ROLE, ALLOCATION_MANAGER_ROLE}
+
+
+def _needs_whole_roster(record: 'RosterRecord') -> bool:
+    action_type = canonical_action_type(record.ref.action_type)
+    return action_type is None or action_type in ROSTER_ACTION_TYPES
 
 #: PII. Assembled only for a viewer holding ``MANAGE_XRAS`` — see the card.
 PERSON_FIELDS = ('firstName', 'middleName', 'lastName', 'email', 'phone',
@@ -603,6 +614,9 @@ def classify_accounts(session: Session,
     of 19 live roster usernames sampled during design, all 19 existed but
     **five were inactive**, a quarter of the real cases.
 
+    Only a ``New`` or ``Renewal`` roster counts in full (``ROSTER_ACTION_TYPES``);
+    any other action contributes its PI and Allocation Manager, ``inactive`` only.
+
     WARNING: ``isAccountToBeCreated`` is **never** the predicate. XRAS sets it when
     the role is created and never clears it, so live data shows active,
     present SAM users still carrying ``true``. It rides along as a hint column
@@ -637,6 +651,10 @@ def classify_accounts(session: Session,
                 continue                    # nothing to do — the common case
             classification = (CLASSIFICATION_ABSENT if user is None
                               else CLASSIFICATION_INACTIVE)
+            if not _needs_whole_roster(record) and (
+                    classification == CLASSIFICATION_ABSENT
+                    or not _LEAD_ROLES & set(record.roles_by_username.get(username, ()))):
+                continue
 
             # Grouped on the same case-insensitive key, so two spellings of
             # one account are one row of work rather than two.

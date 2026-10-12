@@ -1073,3 +1073,31 @@ class TestThePendingWindow:
                                       validate=False)
         assert assembled.pending_hidden == 1
         assert 'seen-user-new' in {r['username'] for r in assembled.rows}
+
+
+class TestWhichRosterCounts:
+    """New and Renewal handlers validate and apply the whole roster; every other
+    action carries a stale one, so only its lapsed PI or Allocation Manager is work."""
+
+    def _classes(self, session, record):
+        return {r['username']: r['classification'] for r in classify_accounts(session, [record])}
+
+    def test_an_extension_keeps_only_a_lapsed_lead_or_admin(self, session):
+        lapsed_pi = make_user(session, active=False)
+        lapsed_admin = make_user(session, active=False)
+        lapsed_member = make_user(session, active=False)
+        record = _record(lapsed_pi.username, lapsed_admin.username, lapsed_member.username,
+                         'nobody-user-ext1', action_type='Extension',
+                         roles={lapsed_pi.username: ('PI',),
+                                lapsed_admin.username: ('Allocation Manager',),
+                                lapsed_member.username: ('User',),
+                                'nobody-user-ext1': ('PI',)})
+        assert self._classes(session, record) == {
+            lapsed_pi.username: 'inactive', lapsed_admin.username: 'inactive'}
+
+    @pytest.mark.parametrize('action_type', ['New', 'Renewal'])
+    def test_new_and_renewal_count_the_whole_roster(self, session, action_type):
+        lapsed_member = make_user(session, active=False)
+        record = _record(lapsed_member.username, 'nobody-user-new1', action_type=action_type)
+        assert self._classes(session, record) == {
+            lapsed_member.username: 'inactive', 'nobody-user-new1': 'absent'}

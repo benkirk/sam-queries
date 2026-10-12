@@ -267,7 +267,9 @@ the sweep window) becomes a `submitted` row with `created_by = 'task:xras_sweep'
 `xras_username` the XRAS username, `purpose = submission` when no `users` row exists
 or `reactivation` when it is inactive, and `project_id` once the handoff lands. The
 card groups it under "XRAS Approved Pending Projects" until then and under "XRAS
-Fulfillment" after, until the account exists. The card keeps its
+Fulfillment" after, until the account exists. A `New` or `Renewal` counts its whole roster; any
+other action (Extension, Supplement, ...) carries a stale roster, so only its PI or
+Allocation Manager counts, and only as a `reactivation` (`ROSTER_ACTION_TYPES`). The card keeps its
 classification and its merge-target ranking, reads the rows instead of recomputing
 them, and gains the claim and dismiss that it has lacked. Shims first: the classifier
 keeps running beside the table until every row it would produce already exists.
