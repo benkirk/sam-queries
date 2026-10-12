@@ -33,7 +33,12 @@ OPEN_STATES = ('submitted', 'claimed')
 #: ``account_request.purpose``. What happens on fulfillment:
 #: ``standalone`` nothing further; ``enrollment`` joins ``project_id``;
 #: ``submission`` merges ``xras_username`` (XRAS phase 3, not built).
-ACCOUNT_REQUEST_PURPOSES = ('standalone', 'enrollment', 'submission')
+PURPOSE_STANDALONE = 'standalone'
+PURPOSE_ENROLLMENT = 'enrollment'
+PURPOSE_SUBMISSION = 'submission'
+ACCOUNT_REQUEST_PURPOSES = (PURPOSE_STANDALONE, PURPOSE_ENROLLMENT, PURPOSE_SUBMISSION)
+PURPOSE_LABELS = {PURPOSE_STANDALONE: 'Standalone', PURPOSE_ENROLLMENT: 'Enrollment',
+                  PURPOSE_SUBMISSION: 'Submission'}
 
 CREATED_BY_SELF = 'self'
 CREATED_BY_SWEEP = 'task:xras_sweep'
@@ -326,11 +331,11 @@ class AccountRequest(Base, SessionMixin):
             raise ValueError(
                 f"unknown account_request.purpose {purpose!r}; "
                 f"expected one of {', '.join(ACCOUNT_REQUEST_PURPOSES)}")
-        if purpose == 'enrollment' and project_id is None:
+        if purpose == PURPOSE_ENROLLMENT and project_id is None:
             raise ValueError('an enrollment request needs a project_id')
-        if purpose == 'submission' and not strip_or_none(xras_username):
+        if purpose == PURPOSE_SUBMISSION and not strip_or_none(xras_username):
             raise ValueError('a submission request needs an xras_username')
-        if purpose == 'standalone' and project_id is not None:
+        if purpose == PURPOSE_STANDALONE and project_id is not None:
             raise ValueError('a standalone request carries no project_id')
         address = strip_or_none(email, width=255)
         if not address or '@' not in address:

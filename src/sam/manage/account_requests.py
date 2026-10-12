@@ -16,6 +16,9 @@ from sqlalchemy.orm import Session
 from sam.core.account_requests import (
     CREATED_BY_SELF,
     CREATED_BY_SWEEP,
+    PURPOSE_ENROLLMENT,
+    PURPOSE_STANDALONE,
+    PURPOSE_SUBMISSION,
     AccountRequest,
     AccountRequestEvent,
     EventEnrollment,
@@ -126,7 +129,7 @@ def invite_user(session: Session, *, project_id: int, sponsor: User, email: str,
     row = AccountRequest.create(
         session,
         email=address, first_name=first_name, last_name=last_name,
-        purpose='enrollment', project_id=project_id,
+        purpose=PURPOSE_ENROLLMENT, project_id=project_id,
         sponsor_user_id=sponsor.user_id,
         event_id=event.account_request_event_id if event else None,
         comment=comment, created_by=sponsor.username,
@@ -241,7 +244,7 @@ def upsert_sweep_requests(session: Session, worklist_rows: Sequence[Dict[str, An
             academic_status=person.get('academicStatus'),
             residence_country=person.get('residenceCountry'),
             orcid=person.get('orcid'), phone=person.get('phone'),
-            purpose='submission', project_id=project_id,
+            purpose=PURPOSE_SUBMISSION, project_id=project_id,
             xras_username=row['username'],
             created_by=CREATED_BY_SWEEP, verified_by=CREATED_BY_SWEEP,
             clock=clock,
@@ -283,7 +286,7 @@ def reconcile_account_requests(session: Session, *, clock=None,
         if row.user_id is None:
             row.fulfill(user, when=now)
             counts['fulfilled'] += 1
-        if row.purpose == 'enrollment' and row.project_id:
+        if row.purpose == PURPOSE_ENROLLMENT and row.project_id:
             try:
                 with session.begin_nested():
                     event = (session.get(AccountRequestEvent, row.event_id)
@@ -322,7 +325,7 @@ def register_request(session: Session, *, email: str, first_name: str, last_name
     return AccountRequest.create(
         session,
         email=email, first_name=first_name, last_name=last_name,
-        purpose='enrollment' if event else 'standalone',
+        purpose=PURPOSE_ENROLLMENT if event else PURPOSE_STANDALONE,
         project_id=event.project_id if event else None,
         event_id=event.account_request_event_id if event else None,
         created_by=CREATED_BY_SELF, verified_by=None, clock=clock, **person,

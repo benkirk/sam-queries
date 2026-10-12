@@ -56,6 +56,8 @@ class Resolution:
 
 #: Where a row came from, for the card's Origin facet and the digest.
 ORIGIN_SELF, ORIGIN_SPONSOR, ORIGIN_SWEEP = 'self', 'sponsor', 'sweep'
+ORIGIN_LABELS = {ORIGIN_SELF: 'Public form', ORIGIN_SPONSOR: 'Invited',
+                 ORIGIN_SWEEP: 'XRAS roster'}
 
 
 def origin_of(row: AccountRequest) -> str:
