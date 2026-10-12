@@ -21,6 +21,7 @@ _STATUS_STYLE = {
     'failed':    'red',
     'rechecked':  'dim',
     'unmapped':   'magenta',
+    'duplicate':  'dim',
 }
 
 #: Short Source labels, same vocabulary as the Pending Users card badges.

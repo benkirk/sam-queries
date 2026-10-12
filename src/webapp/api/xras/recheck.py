@@ -20,8 +20,8 @@ configured: ``dispatch_action(..., validate_only=True)`` returns before
 ingestion the same flag arming this button. Applying a stored payload would
 double-apply on four of the six handlers: Supplement and Adjustment are
 additive, and a re-applied successful New routes to Update (the project now
-exists) and supplements the allocation it just created. There is no
-idempotency key -- ``actionId`` is a column nothing enforces or consults.
+exists) and supplements the allocation it just created. Only the live route
+consults ``actionId`` (it refuses a repeat as ``duplicate``); this path does not.
 
 Outcomes reuse the ingest vocabulary: ``rechecked`` would succeed now,
 ``failed`` would still fail (``error_messages`` says why), ``manual`` would run

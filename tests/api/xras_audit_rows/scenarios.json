@@ -164,32 +164,53 @@
     "what": "the same Supplement posted three times",
     "expect": "processed",
     "http": 200,
+    "repeat_expect": "duplicate",
+    "repeat_http": 422,
     "triage": "Is this the same action I saw an hour ago?",
-    "verdict": "answered — action_id landed; this now proves detection",
+    "verdict": "prevented — the first post applies, each repeat is refused",
     "notes": [
-      "Supplement is ADDITIVE: three posts of 250,000 leave 750,000. That is",
-      "correct per-post behaviour and the wrong total.",
-      "Three rows were identical in every column an operator can filter on;",
-      "`actionId` lived only as bytes inside `raw_payload`, so detecting the",
-      "duplicate meant parsing JSON out of a TEXT column.",
-      "RESOLVED: `action_id` is an indexed column. XRAS still owns the retry —",
-      "this was always about DETECTION, which no later code change could add",
-      "without a second DBA ticket."
+      "Supplement is ADDITIVE: three applied posts of 250,000 leave 750,000.",
+      "Prod 2026-10-12 (UNVR0027): one actionId posted three times during a",
+      "database stall, and all three applied. The route now applies only the",
+      "first post of an actionId; a repeat gets a 422 and a `duplicate` row."
     ]
   },
   "repeat_post_extension": {
     "what": "the same Extension posted twice",
     "expect": "processed",
     "http": 200,
+    "repeat_expect": "duplicate",
+    "repeat_http": 422,
     "triage": "Same question, on the 60%-of-traffic path",
     "verdict": "answered",
     "notes": [
+      "The repeat is refused like any other; the asymmetry below is why it",
+      "mattered most for Supplement.",
       "Extension is near-idempotent, via the equal-end-date skip alone: the",
       "second post finds every account already at the requested end and writes",
       "nothing. The blast radius of a double-post is therefore zero HERE and",
       "not zero for Supplement — which is the asymmetry worth knowing before",
       "cutover, since Extension is 60% of traffic and Supplement is 15%."
     ]
+  },
+  "repeat_while_in_flight": {
+    "what": "a repeat arriving while the first post of its actionId has no outcome yet",
+    "expect": "duplicate",
+    "http": 422,
+    "triage": "Did the second click apply anything?",
+    "verdict": "no — it is refused and says the first is still applying",
+    "notes": [
+      "UNVR0027's second post arrived 44 s into the first. Only the",
+      "lowest-numbered live post applies; 'live' ends 15 min after receipt."
+    ]
+  },
+  "repeat_after_failure": {
+    "what": "a repost of an actionId whose earlier post failed",
+    "expect": "failed",
+    "http": 422,
+    "triage": "Can an XRAS admin retry after a data fix?",
+    "verdict": "yes — a failed post does not block its repost",
+    "notes": []
   },
   "park_no_service": {
     "what": "an actionType no service matches",
