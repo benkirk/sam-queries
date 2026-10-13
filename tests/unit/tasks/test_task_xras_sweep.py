@@ -367,11 +367,16 @@ class TestTwoCadences:
 
     def test_a_light_hour_still_publishes_the_worklist(self, ctx, wire,
                                                        monkeypatch):
+        from sam.integration.xras_api.cache import load_pending_worklist
+
         self._light(monkeypatch)
         wire([[_request(1, 'NCAR0001')]])
         detail = mod.xras_sweep(ctx()).detail
         assert detail['publish_backend'] in ('redis', 'local')
         assert detail['status'] == 'active'
+        # The window applies to a light run too; `0` rendered as "0d lookback".
+        assert detail['window_days'] == mod.DEFAULT_WINDOW_DAYS
+        assert load_pending_worklist()['window_days'] == mod.DEFAULT_WINDOW_DAYS
 
     def _recent(self, request_id, number, **kw):
         payload = _request(request_id, number, **kw)

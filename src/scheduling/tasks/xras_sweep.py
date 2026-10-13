@@ -801,11 +801,12 @@ def xras_sweep(ctx) -> TaskResult:
     detail['full_slot'] = is_full
     detail['mode'] = 'full' if is_full else 'active'
 
+    # Both modes window the worklist, so the card's lookback label is true for both.
+    detail['window_days'] = window
     if is_full:
         primary_status: Optional[str] = sweep_status()
         primary_active: Optional[bool] = None
         detail['status'] = primary_status or 'all'
-        detail['window_days'] = window
     else:
         primary_status = None
         primary_active = True

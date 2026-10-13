@@ -1807,14 +1807,14 @@ groundwork for one NUSD ticket per approved request (`XRAS_REQUEST_TICKETS.md`).
   16 map rows, a write the sweep never made before (2026-10-13).
 - [x] "Hourly" prose across the sweep, cache, config, templates, values.yaml,
   cirrus_watch.sh and the watch skills.
+- [x] Light runs record `detail['window_days']` too (review F1): the window applies in
+  both modes, and the card had read "0d lookback" on every light snapshot.
 
 **Open:**
 
 - [ ] One recency helper (finding 2): `pending_in_window`, `remediation._in_window`,
   `overlaps_window`'s open-ended branch and `_waiting_since` each decide "how recent"
   their own way; `_waiting_since` never reads `entry_date`.
-- [ ] Light runs never set `detail['window_days']`, so the Pending Users card says
-  "0d lookback" (finding 3).
 - [ ] `live_pending_numbers` reads a pushed request as pending until XRAS rewrites its
   `requestNumber` (hours to weeks); consult `xras_action_log` (`XRAS_REQUEST_TICKETS.md` § 6).
 - [ ] `waiting_days` (two meanings) and `activity_date` (entryDate vs updateDate) naming.
