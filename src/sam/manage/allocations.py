@@ -753,10 +753,11 @@ def exchange_allocations(
     new_from = from_alloc.amount - amount
     new_to = to_alloc.amount + amount
     post = {from_allocation_id: float(new_from), to_allocation_id: float(new_to)}
-    _refuse_resize_traps(session, from_alloc, float(new_from), new_amounts=post)
+    from_frontier = _refuse_resize_traps(session, from_alloc, float(new_from), new_amounts=post)
     _refuse_resize_traps(session, to_alloc, float(new_to), new_amounts=post)
     _refuse_endpoint_traps(session, from_alloc, post)
-    _refuse_endpoint_traps(session, to_alloc, post)
+    to_parent = _refuse_endpoint_traps(session, to_alloc, post)
+    _refuse_over_carve(session, from_frontier, to_parent, post)
 
     # log_audit_row=False: the paired TRANSFER rows below are the audit record
     # for these two allocations. Letting update_allocation also log an EDIT->
@@ -1171,13 +1172,13 @@ def _frontier_parent(session: Session, allocation: Allocation) -> Optional[Alloc
 
 
 def _refuse_endpoint_traps(session: Session, allocation: Allocation,
-                           new_amounts: Dict[int, float]) -> None:
+                           new_amounts: Dict[int, float]) -> Optional[Allocation]:
     """Refuse an exchange endpoint that is an unlinked equal-amount pool member of its parent
     (once its amount moves it reads as a carve-out; two such siblings over-carve the parent),
-    or that lands on its parent's amount (a carve-out turned pool member)."""
+    or that lands on its parent's amount (a carve-out turned pool member). Returns the parent."""
     above = _frontier_parent(session, allocation)
     if above is None or allocation.parent_allocation_id is not None:
-        return
+        return above
     code, above_code = allocation.account.project.projcode, above.account.project.projcode
     if float(allocation.amount) == float(above.amount):
         raise ValueError(
@@ -1188,6 +1189,36 @@ def _refuse_endpoint_traps(session: Session, allocation: Allocation,
     # A parent that is the other endpoint checks this row as its own carve-out, post-state.
     if above.allocation_id not in new_amounts:
         _refuse_pool_amount(above, new_amounts[allocation.allocation_id])
+    return above
+
+
+def _refuse_over_carve(session: Session, from_frontier: 'CarveoutFrontier',
+                       to_parent: Optional[Allocation], new_amounts: Dict[int, float]) -> None:
+    """Refuse an exchange that leaves FROM below its own carve-outs, or makes TO's parent
+    more over-carved (a cousin exchange grows TO's parent's carve-outs, not its amount)."""
+    def carve_total(f):
+        return round(sum(new_amounts.get(c.allocation_id, float(c.amount))
+                         for c in f.carve_children), 2)
+
+    source = from_frontier.parent
+    new_from = round(new_amounts[source.allocation_id], 2)
+    if carve_total(from_frontier) > new_from:
+        raise ValueError(
+            f"{source.account.project.projcode} would hold {_amt(new_from)}, less than it "
+            f"has carved out to its sub-projects ({_amt(carve_total(from_frontier))}). "
+            "Choose a smaller amount, or reclaim from a sub-project first."
+        )
+    if to_parent is None or to_parent.allocation_id in new_amounts:
+        return
+    f = get_carveout_frontier(session, to_parent)
+    after, amount = carve_total(f), round(float(to_parent.amount), 2)
+    # Already over-carved trees exist; refuse only an exchange that makes one worse.
+    if after > amount and after > round(f.carve_total, 2):
+        raise ValueError(
+            f"{to_parent.account.project.projcode}'s sub-projects would hold {_amt(after)}, "
+            f"more than its allocation ({_amt(amount)}). Exchange within its own "
+            "sub-projects, or allocate down to it first."
+        )
 
 
 def allocations_used(session: Session, allocations: Iterable[Allocation]) -> Dict[int, float]:
