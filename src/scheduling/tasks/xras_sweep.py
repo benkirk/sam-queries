@@ -502,7 +502,7 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
     # the line the modal shows and every write targets. XRAS pages by
     # descending requestId, so "first copy" was the newest line, not always
     # the current one. Deleted lines carry no handoff and are excluded.
-    from sam.queries.xras_requests import primary_line
+    from sam.queries.xras_requests import live_lines, primary_line
 
     by_number: dict = {}
     for payload in cohort:
@@ -512,7 +512,7 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
 
     entries, deleted = [], 0
     for number, lines in by_number.items():
-        live = [p for p in lines if not p.get('isDeleted')]
+        live = live_lines(lines)
         if not live:
             deleted += 1
             continue

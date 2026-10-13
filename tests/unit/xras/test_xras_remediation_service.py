@@ -779,3 +779,30 @@ class TestTheRefreshRerunsThePreflight:
                                   target_username='pi-user', operator='benkirk',
                                   client=client)
         assert seen == [factory]
+
+
+class TestDeletedLinesAreNotTheRequest:
+    """A deleted line is no handoff: the refresh and the re-check read live lines only."""
+
+    def test_a_refresh_drops_a_wholly_deleted_request(self, published):
+        deleted = _payload()
+        deleted['isDeleted'] = True
+        reader = MagicMock()
+        reader.get_request_family_by_number.return_value = [deleted]
+        service._refresh_index_entry('EXAM0001', reader=reader)
+        assert xras_cache.load_requests_index()['rows'] == []
+
+    def test_a_recheck_reads_the_live_line_past_a_newer_deleted_one(
+            self, published, session, monkeypatch):
+        newer = _payload()
+        newer.update(requestId=900002, isDeleted=True,
+                     actions=[{'actionId': 9, 'actionType': 'Renewal',
+                               'actionStatus': 'Approved'}])
+        reader = MagicMock()
+        reader.get_request_family_by_number.return_value = [newer, _payload()]
+        checked = []
+        monkeypatch.setattr(service, '_preflight_verdicts',
+                            lambda r, s, p: checked.append(p['requestId']) or ({}, {}))
+        result = service.recheck_readiness('EXAM0001', session=session, reader=reader)
+        assert result['patched'] and checked == [900001]
+        assert xras_cache.load_requests_index()['rows'][0]['request_id'] == 900001
