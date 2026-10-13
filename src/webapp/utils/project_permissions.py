@@ -211,7 +211,8 @@ def can_exchange_allocations(user, project) -> bool:
     of this project OR any ancestor in the project tree. The
     ancestor walk supports redistribution within a subtree the user
     leads — a lead of project A can exchange allocations among its
-    children A1, A2 without acquiring new quota.
+    children A1, A2 without acquiring new quota. The steward grant holds on
+    HPC/DAV resources only; ``steward_tools_allowed`` carries the type half.
     """
     return is_project_steward(
         user, project, Permission.EDIT_ALLOCATIONS, include_ancestors=True
@@ -230,7 +231,8 @@ def can_allocate_residual(user, project) -> bool:
     already part of the parent's awarded total, so assigning it downward
     redistributes within a subtree the user stewards without acquiring new
     quota. Kept as its own helper (not an alias) so the two operations can
-    diverge later without a template audit.
+    diverge later without a template audit. As for exchange, the steward grant
+    holds on HPC/DAV only (``steward_tools_allowed``).
     """
     return is_project_steward(
         user, project, Permission.EDIT_ALLOCATIONS, include_ancestors=True

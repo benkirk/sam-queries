@@ -1302,7 +1302,7 @@ def _exchange_candidates(project, resource_id, active_at=None):
 
 
 _ADMIN_ONLY = ('On storage resources, an allocations administrator makes this change; '
-               'project leads and admins can on HPC and DAV resources.')
+               'project leads and admins can make it on HPC and DAV resources.')
 
 
 def _steward_tool_ok(project, resource) -> bool:
