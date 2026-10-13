@@ -351,6 +351,34 @@ class TestExchangeResizeTraps:
         assert from_alloc.amount == 1_000_000.0
 
 
+def _sibling_pair(session, parent_amount, amounts):
+    """A parent allocation and two unlinked sibling allocations under it, same window."""
+    resource = make_resource(session)
+    parent = make_project(session)
+    start, end = datetime.now() - timedelta(days=30), datetime.now() + timedelta(days=365)
+    made = [make_allocation(session, account=make_account(session, project=p, resource=resource),
+                            amount=amt, start_date=start, end_date=end)
+            for p, amt in [(parent, parent_amount)]
+            + [(make_project(session, parent=parent), a) for a in amounts]]
+    return made[1], made[2]
+
+
+class TestExchangeEndpointTraps:
+    """An endpoint must not leave or land on its parent's pool by equal amount."""
+
+    def test_unlinked_pool_member_endpoint_rejected(self, session, acting_user):
+        """NRAL0001's shape: 5k between two unlinked 20k pool members over-carved the 20k parent."""
+        a, b = _sibling_pair(session, 20_000.0, [20_000.0, 20_000.0])
+        with pytest.raises(ValueError, match='reading as a carve-out of'):
+            exchange_allocations(
+                session, from_allocation_id=a.allocation_id,
+                to_allocation_id=b.allocation_id, amount=5_000.0,
+                user_id=acting_user.user_id,
+            )
+        session.refresh(a)
+        assert a.amount == 20_000.0
+
+
 class TestExchangeAllocationsAuditTrail:
     """Regression guards for the audit-trail double-count bug.
 

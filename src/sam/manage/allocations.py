@@ -755,6 +755,8 @@ def exchange_allocations(
     post = {from_allocation_id: float(new_from), to_allocation_id: float(new_to)}
     _refuse_resize_traps(session, from_alloc, float(new_from), new_amounts=post)
     _refuse_resize_traps(session, to_alloc, float(new_to), new_amounts=post)
+    _refuse_endpoint_traps(session, from_alloc, post)
+    _refuse_endpoint_traps(session, to_alloc, post)
 
     # log_audit_row=False: the paired TRANSFER rows below are the audit record
     # for these two allocations. Letting update_allocation also log an EDIT->
@@ -1150,6 +1152,38 @@ def _refuse_resize_traps(session: Session, allocation: Allocation, new_amount: f
                 "different amount."
             )
     return frontier
+
+
+def _frontier_parent(session: Session, allocation: Allocation) -> Optional[Allocation]:
+    """The allocation whose frontier holds ``allocation``: the nearest active ancestor's overlapping one."""
+    from sam.accounting.accounts import Account
+
+    resource_id = allocation.account.resource_id
+    node = allocation.account.project.parent
+    while node is not None and node.is_active:
+        acct = Account.get_by_project_and_resource(session, node.project_id, resource_id)
+        above = next((a for a in (acct.allocations if acct else [])
+                      if not a.deleted and date_ranges_overlap(a, allocation)), None)
+        if above is not None:
+            return above
+        node = node.parent
+    return None
+
+
+def _refuse_endpoint_traps(session: Session, allocation: Allocation,
+                           new_amounts: Dict[int, float]) -> None:
+    """Refuse an exchange endpoint that is an unlinked equal-amount pool member of its parent:
+    once its amount moves it reads as a carve-out, and two such siblings over-carve the parent."""
+    above = _frontier_parent(session, allocation)
+    if above is None or allocation.parent_allocation_id is not None:
+        return
+    code, above_code = allocation.account.project.projcode, above.account.project.projcode
+    if float(allocation.amount) == float(above.amount):
+        raise ValueError(
+            f"{code} mirrors {above_code}'s amount without being linked to it, so changing "
+            f"{code}'s amount would leave it reading as a carve-out of {above_code}. An "
+            f"allocations administrator can link it (Edit allocation) first."
+        )
 
 
 def allocations_used(session: Session, allocations: Iterable[Allocation]) -> Dict[int, float]:
