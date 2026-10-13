@@ -1802,8 +1802,9 @@ groundwork for one NUSD ticket per approved request (`XRAS_REQUEST_TICKETS.md`).
   request back onto the card) and the re-check (which judged the primary line alone) read
   live lines; `iter_candidate_actions` skips a deleted request.
 - [x] Light runs dedup payloads by `requestId` (the two passes overlap).
-- [x] Opportunity discovery reads the whole enumeration, so the window, now hourly too,
-  cannot narrow auto-mapping.
+- [x] Opportunity discovery stays on the windowed list. Tried and dropped: reading the
+  whole enumeration surfaced 17 historical opportunities on samuel-dev and the run wrote
+  16 map rows, a write the sweep never made before (2026-10-13).
 - [x] "Hourly" prose across the sweep, cache, config, templates, values.yaml,
   cirrus_watch.sh and the watch skills.
 

@@ -965,15 +965,16 @@ class TestUnmappedOpportunities:
         assert result.detail['opportunities_unmapped'] == 1
         assert result.detail['opportunities_unmapped_sample'] == [771004]
 
-    def test_a_request_outside_the_window_still_names_its_opportunity(
+    def test_a_request_outside_the_window_names_no_opportunity(
             self, ctx, wire, session):
-        """Discovery reads the whole enumeration, not the worklist's window."""
+        """Discovery reads the window: the whole enumeration backfilled 16 historical
+        map rows on samuel-dev (2026-10-13), a write the sweep never made before."""
         stale = self._req(1, 'NCAR9001', 771005)
         stale['endDate'] = '1999-01-01'
         wire([[stale]])
         result = mod.xras_sweep(ctx())
         assert result.detail['requests_in_window'] == 0
-        assert result.detail['opportunities_seen'] == 1
+        assert result.detail['opportunities_seen'] == 0
 
     def test_payloads_without_an_opportunity_id_are_not_counted(self, ctx, wire, session):
         wire([[_request(1, 'NCAR9001')]])

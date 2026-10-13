@@ -837,13 +837,13 @@ def xras_sweep(ctx) -> TaskResult:
             ctx, client, since=open_ended_since, detail=detail))
     detail['requests_seen'] = len(payloads)
 
-    # WARNING: `unwindowed` is the Remediations index's corpus (full slot only)
-    # and opportunity discovery's. The two feeds want opposite things from one
-    # enumeration: the account worklist wants only live periods of performance,
-    # while remediation is about requests that went stale — a 2015 approval
-    # nobody ever pushed is the row an operator needs to close, and the window
-    # would hide exactly those. Both counts are reported: `requests_seen` says
-    # how much was read, `requests_in_window` how much was work.
+    # WARNING: `unwindowed` is the Remediations index's corpus (full slot only).
+    # The two feeds want opposite things from one enumeration: the account
+    # worklist wants only live periods of performance, while remediation is
+    # about requests that went stale — a 2015 approval nobody ever pushed is the
+    # row an operator needs to close, and the window would hide exactly those.
+    # Both counts are reported: `requests_seen` says how much was read,
+    # `requests_in_window` how much was work.
     unwindowed = list(payloads)
     payloads = [p for p in payloads
                 if overlaps_window(p, window_start=window_start,
@@ -867,7 +867,10 @@ def xras_sweep(ctx) -> TaskResult:
     # it before the map existed. It is reported so a *new* opportunity is
     # visible here before any action is pushed against it, which is the lead
     # time the map exists to buy. The sweep must never write the table.
-    seen_ids = {int(oid) for p in unwindowed
+    #
+    # The windowed list, not `unwindowed`: on samuel-dev 2026-10-13 the whole
+    # enumeration surfaced 17 historical opportunities and the run wrote 16 map rows.
+    seen_ids = {int(oid) for p in payloads
                 if (oid := p.get('opportunityId')) is not None}
 
     # WARNING: **Requests cannot mention an opportunity that has none**, so the
