@@ -27,7 +27,8 @@ import pytest
 from zoneinfo import ZoneInfo
 
 from scheduling.registry import TASKS, TaskContext
-from scheduling.schedules import DEFAULT_TZ, Hourly, occurrence_key, to_local_naive
+from scheduling.schedules import (DEFAULT_TZ, AnyOf, BusinessHourly, Hourly, occurrence_key,
+                                  to_local_naive)
 from scheduling.tasks import xras_sweep as mod
 
 from factories import make_xras_opportunity_mapping
@@ -48,7 +49,7 @@ def _one_worker_at_a_time(serial_file_lock):
 
 
 NAME = 'xras_sweep'
-OCC = datetime(2033, 11, 16, 10, 30)      # naive UTC
+OCC = datetime(2033, 11, 16, 10, 0)       # naive UTC; :00, the only minute a full slot runs
 #: OCC in Mountain — the hour the full-slot gate compares against. Computed, not
 #: hardcoded, so a TZ change can't silently desync the default-full fixture.
 _OCC_LOCAL_HOUR = to_local_naive(OCC, ZoneInfo(DEFAULT_TZ)).hour
@@ -210,21 +211,18 @@ class TestRegistration:
         assert params == ['ctx'], (
             f'the registered callable takes {params}; a task body takes only ctx')
 
-    def test_it_runs_hourly_around_the_clock(self):
-        """The cadence IS the Feed-B tab's freshness — the tab renders what
-        this publishes, so a nightly sweep would show an operator yesterday's
-        queue all day, and a business-day one gave the first operator in on a
-        Monday a snapshot from Friday afternoon.
+    def test_it_runs_hourly_and_quarter_hourly_in_the_working_day(self):
+        """The cadence IS the freshness of the Feed-B tab and the Accounts queue:
+        a fresh approval reaches NUSD within a quarter hour in the working day.
 
-        WARNING: `Hourly`, not `BusinessHourly`: this task only refreshes a cache,
-        unlike its sibling `xras_notices`, which mails people and therefore
-        stays inside the business day. `Hourly` is UTC and accepts no `tz` —
-        which is the point, since a local-wall hourly schedule drops a slot
-        each fall and risks merging one each spring.
+        WARNING: the hourly member is `Hourly` (UTC, no `tz`), not a local-wall
+        hourly schedule, which drops a slot each fall and risks merging one each
+        spring; the `BusinessHourly` quarters never contain 02:00.
         """
         schedule = TASKS[NAME].schedule
-        assert isinstance(schedule, Hourly)
-        assert schedule.minute == 0
+        assert isinstance(schedule, AnyOf)
+        assert schedule.members == (Hourly(minute=0), BusinessHourly(minute=15),
+                                    BusinessHourly(minute=30), BusinessHourly(minute=45))
 
     def test_it_needs_sam_and_not_status(self):
         assert set(TASKS[NAME].needs) == {'sam'}
@@ -437,6 +435,15 @@ class TestTwoCadences:
     def test_a_full_slot_reads_no_recent_pass(self, ctx, wire):
         wire([[_request(1, 'ZZZZ9999')]])
         assert mod.xras_sweep(ctx()).detail['recent_approved'] == {}
+
+    def test_a_quarter_slot_in_the_full_hour_runs_light(self, ctx, wire, monkeypatch):
+        """The full pass is ~100s; four of them in the 04:00 hour would be waste."""
+        monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                            lambda: {'rows': []})
+        wire([[_request(1, 'NCAR0001')]])
+        assert mod.xras_sweep(ctx()).detail['mode'] == 'full'
+        quarter = mod.xras_sweep(ctx(OCC + timedelta(minutes=15))).detail
+        assert quarter['mode'] == 'active'
 
     def test_a_light_hour_self_heals_when_no_index_is_published(self, ctx, wire,
                                                                 monkeypatch):

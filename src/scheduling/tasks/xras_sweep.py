@@ -1,6 +1,6 @@
-"""``xras_sweep`` — enumerate XRAS hourly and diff it against SAM.
+"""``xras_sweep`` — enumerate XRAS and diff it against SAM.
 
-Hourly, around the clock. The first task that calls **out** to XRAS
+Hourly around the clock, every quarter hour in the working day. The first task that calls **out** to XRAS
 rather than reading only SAM's own tables, and the third declaring
 ``needs=('sam',)``.
 
@@ -42,7 +42,7 @@ NCAR process, so this task reaches three things the card cannot:
    active, which classification already checks on every render — for free.
 
 WARNING: **Ships switched off.** ``SAM_TASKS_DISABLED`` is *fail-open*: registering
-a task here puts it into production live on the next hourly wake unless its
+a task here puts it into production live on the next wake unless its
 name is added to ``helm/values.yaml`` in the **same change**. The registry is
 code-side, the list is chart-side, and nothing couples them but the reviewer —
 so ``test_task_xras_sweep.py`` greps ``values.yaml`` for the name.
@@ -69,26 +69,21 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from scheduling.registry import TaskResult, task
-from scheduling.schedules import DEFAULT_TZ, Hourly, to_local_naive
+from scheduling.schedules import (DEFAULT_TZ, AnyOf, BusinessHourly, Hourly,
+                                  to_local_naive)
 from scheduling.tasks._notice_common import positive_int_env
 
-#: Hourly, every hour of every day. The Feed-B tab reads what this publishes,
-#: so the cadence IS the tab's freshness — and unlike `xras_notices`, which
-#: mails people and therefore has no business waking at 03:00, this one only
-#: refreshes a cache. Restricting it to the business day bought nothing and
-#: cost the first operator in on a Monday a snapshot from Friday afternoon.
+#: Hourly around the clock, plus :15/:30/:45 from 08:15 to 17:45 Mon-Fri
+#: Mountain. The Feed-B tab and the Accounts queue read what this publishes, so
+#: the cadence IS their freshness: a fresh approval reaches NUSD's queue within
+#: a quarter hour in the working day and within the hour otherwise. It only
+#: refreshes a cache, so unlike `xras_notices` it has no reason to sleep at night.
 #:
-#: `Hourly` is UTC and takes no `tz`, deliberately: every zone SAM cares about
-#: is a whole-hour offset, so `:00 UTC` and `:00 Mountain` are the same
-#: instants, and computing in UTC means DST can neither duplicate nor drop a
-#: slot. The naive-Mountain conversions below use `DEFAULT_TZ` directly, which
-#: is what `BusinessHourly(tz=...)` was supplying.
-#:
-#: `minute=0` for the same reason `xras_notices` uses it: the CronJob wakes at
-#: :07 (and three more times an hour for the */15 tasks), so a :00 slot
-#: dispatches about seven minutes later. Both tasks share the wake and run
-#: sequentially under `concurrencyPolicy: Forbid`; this one takes 60-90s.
-SCHEDULE = Hourly(minute=0)
+#: Every member is DST-safe: `Hourly` computes in UTC, and the `BusinessHourly`
+#: window never contains 02:00. The CronJob wakes at :07/:22/:37/:52, so each
+#: slot dispatches about seven minutes late; a light run takes 5-10s.
+SCHEDULE = AnyOf(Hourly(minute=0), BusinessHourly(minute=15),
+                 BusinessHourly(minute=30), BusinessHourly(minute=45))
 
 #: Pages of ``reports/requests`` per run, overridable via
 #: ``$SAM_TASKS_XRAS_SWEEP_MAX_PAGES``. At the default page size that is 5,000
@@ -700,16 +695,15 @@ def _map_new_opportunities(ctx, session, client, unmapped_ids, detail,
       schedule=SCHEDULE,
       needs=('sam',),
       # Drives the LEASE, not a timeout. max(3x20min, 900s) = 3600s must exceed
-      # the CronJob's activeDeadlineSeconds (3000s), or a run killed by the pod
+      # the CronJob's activeDeadlineSeconds (840s), or a run killed by the pod
       # deadline becomes reclaimable while still running and two sweeps race.
       # `TaskContext` exposes no ledger handle, so the task cannot heartbeat
       # instead. The drift test asserts the inequality against values.yaml.
       expected_runtime=timedelta(minutes=20),
       # The 6h default. A missed slot costs little: the enumeration window is
-      # rolling, so the next run subsumes it — and now that the schedule runs
-      # around the clock, the next run is at most an hour away whenever it is. The one piece of state this now
-      # writes — opportunity mapping rows — is insert-if-absent, so a skipped
-      # slot delays a row rather than losing it.
+      # rolling, so the next run (at most an hour away) subsumes it. The one
+      # piece of state this writes, opportunity mapping rows, is insert-if-absent,
+      # so a skipped slot delays a row rather than losing it.
       misfire_grace=timedelta(hours=6),
       description='Enumerate XRAS, diff it against SAM, map new opportunities')
 def xras_sweep(ctx) -> TaskResult:
@@ -743,7 +737,7 @@ def xras_sweep(ctx) -> TaskResult:
         'window_days': 0,
         'status': '',
         # 'full' = the daily heavy Approved pass (rebuilds the Remediations
-        # index); 'active' = a light hourly worklist-only pass.
+        # index); 'active' = a light worklist-only pass.
         'mode': '',
         'full_slot': False,
         'budget_exhausted': False,
@@ -796,14 +790,14 @@ def xras_sweep(ctx) -> TaskResult:
     window_start = slot_date - timedelta(days=window)
     open_ended_since = slot_date - timedelta(days=OPEN_ENDED_MAX_AGE_DAYS)
 
-    # Two cadences from one hourly task. The cheap `active=true` worklist pass
-    # runs every hour; the heavy full-`Approved` enumeration — which the
-    # Remediations index needs un-windowed, back to 2015 — runs once a day at
-    # `full_hour()`. Self-heal: any hour that finds no published index runs the
-    # full pass, so a cold start or a missed daily slot cannot leave the card
-    # blank once the 24h TTL lapses.
-    slot_hour = to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ)).hour
-    is_full = slot_hour == full_hour() or load_requests_index() is None
+    # Two cadences from one task. Every slot runs the light pass; the heavy
+    # full-`Approved` enumeration (the un-windowed index corpus, back to 2015)
+    # runs on the :00 slot of `full_hour()` only, never on its quarters. Self-heal:
+    # any slot that finds no published index runs full, so a cold start or a
+    # missed daily slot cannot leave the card blank once the 24h TTL lapses.
+    slot = to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ))
+    is_full = ((slot.hour == full_hour() and slot.minute == 0)
+               or load_requests_index() is None)
     detail['full_slot'] = is_full
     detail['mode'] = 'full' if is_full else 'active'
 

@@ -57,8 +57,8 @@ _CACHE = BucketedTTLCache('xras_api', 'xras_api', {
     # reads it. The enumeration behind it is 21 pages and 60-90s, which no
     # htmx round-trip can afford, so the tab cannot compute this itself.
     #
-    # WARNING: **TTL is 24x the sweep cadence, on purpose.** The sweep runs hourly,
-    # but a TTL tuned to that cadence would blank the tab after a couple of
+    # WARNING: **TTL is far longer than the sweep cadence, on purpose.** The sweep
+    # runs at least hourly, but a TTL tuned to that would blank the tab after a couple of
     # failed or skipped runs (an XRAS outage, the task disabled mid-incident)
     # — and a failed index build deliberately publishes nothing, counting on
     # the previous snapshot to carry. 24h rides out a full day of misses; the

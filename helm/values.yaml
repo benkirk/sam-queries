@@ -548,9 +548,9 @@ tasks:
   enabled: true
   name: samuel-tasks
   suspend: false
-  # Four wakes an hour so account_requests_reconcile's */15 slots are claimed
-  # within minutes; every other task keeps its own hourly-or-slower schedule and
-  # reports already_claimed on the extra wakes. Offset from :00/:15/... to dodge
+  # Four wakes an hour so the quarter-hour slots (account_requests_reconcile,
+  # xras_sweep in business hours) are claimed within minutes; a task whose slot a
+  # wake already claimed reports already_claimed. Offset from :00/:15/... to dodge
   # the herd, and disjoint from the collectors' */5. The exact minutes are
   # arbitrary — the ledger keys off each TASK's schedule, not this one.
   schedule: "7,22,37,52 * * * *"
