@@ -12,10 +12,12 @@ can afford. The cadence here is therefore the tab's freshness.
 **Two cadences, one task.** The full ``status=Approved`` enumeration is ~100s
 (pages back to 2015), so it runs **once a day** at ``full_hour()`` and rebuilds
 the Remediations index (which needs the un-windowed corpus — stale approvals are
-the point). Every other hour runs only the cheap ``active=true`` pass (Approved
-with endDate null-or-future) for the account worklist, and lets the index ride
-its 24h TTL. A light hour that finds no published index self-heals to a full
-pass, so the card cannot go blank. ``detail['mode']`` says which ran.
+the point). Every other run is light: the ``active=true`` pass plus the newest
+page or two of ``status=Approved`` (``_recent_approved``), because ``active=true``
+omits every request with no ``endDate`` — every approved, not-yet-pushed one
+(measured 2026-10-13: 4 pending requests against the full pass's 20). The index
+rides its 24h TTL; a light run that finds none self-heals to a full pass.
+``detail['mode']`` says which ran.
 
 What it is for
 --------------
@@ -167,6 +169,12 @@ DEFAULT_FULL_HOUR = 4
 #: than silently truncated.
 EXTRA_STATUS_MAX_PAGES = 5
 
+#: Page bound on a light run's read of the newest ``status=Approved`` requests,
+#: which ``active=true`` cannot return (no ``endDate`` until pushed). A
+#: blast-radius bound, not a target: the read stops at the first page with
+#: nothing newer than ``OPEN_ENDED_MAX_AGE_DAYS``. 3 pages = the newest ~600.
+RECENT_APPROVED_MAX_PAGES = 3
+
 #: Cap on rows echoed into the ledger row. `detail` is TEXT and the runner
 #: truncates the JSON at 60 kB.
 _MAX_REPORTED = 100
@@ -270,6 +278,49 @@ def overlaps_window(payload: dict, *, window_start: date,
         return end >= window_start
     seen = report_activity_date(payload)
     return seen is None or seen >= open_ended_since
+
+
+def _recent_approved(ctx, client, *, since: date, detail: dict) -> list:
+    """The newest requests of the primary status, until a page holds none since *since*.
+
+    Pages arrive newest ``requestId`` first and are fetched one at a time, so
+    the stop costs at most one page past the cutoff. Never raises.
+    """
+    from sam.integration.xras_api import XrasSourceUnavailable
+    from sam.queries.xras_accounts import report_activity_date
+
+    seen, pages, more = [], 0, False
+    try:
+        for page in client.iter_request_pages(status=sweep_status(),
+                                              page_size=PAGE_SIZE,
+                                              max_pages=RECENT_APPROVED_MAX_PAGES):
+            pages += 1
+            seen.extend(page)
+            more = any((d := report_activity_date(p)) is not None and d >= since
+                       for p in page if isinstance(p, dict))
+            if not more:
+                break
+    except XrasSourceUnavailable as exc:
+        detail['unavailable_errors'] += 1
+        ctx.logger.warning('xras_sweep: recent Approved pass failed after %d page(s): %s',
+                           pages, exc)
+    detail['recent_approved'] = {
+        'seen': len(seen), 'pages': pages,
+        'budget_exhausted': more and pages >= RECENT_APPROVED_MAX_PAGES}
+    return seen
+
+
+def _unique_requests(payloads: list) -> list:
+    """First copy of each ``requestId``: the light run reads two overlapping passes."""
+    seen_ids, out = set(), []
+    for p in payloads:
+        rid = p.get('requestId') if isinstance(p, dict) else None
+        if rid is not None:
+            if rid in seen_ids:
+                continue
+            seen_ids.add(rid)
+        out.append(p)
+    return out
 
 
 def _resource_key_map(ctx, client, detail) -> Optional[dict]:
@@ -716,6 +767,8 @@ def xras_sweep(ctx) -> TaskResult:
         # that "the card is empty" and "the extra passes never ran" cannot be
         # confused for one another.
         'extra_statuses': {},
+        # Light runs only: the newest-Approved read; `{}` on a full slot.
+        'recent_approved': {},
         'index_requests': 0,
         'index_published': False,
         'index_publish_backend': '',
@@ -782,8 +835,13 @@ def xras_sweep(ctx) -> TaskResult:
         ctx.logger.warning('xras_sweep: enumeration failed after %d page(s): %s',
                            detail['pages'], exc)
 
-    detail['requests_seen'] = len(payloads)
     detail['budget_exhausted'] = detail['pages'] >= page_budget
+    if not is_full:
+        # 1b. `active=true` omits every request with no endDate, which is every
+        # approved, not-yet-pushed one: read the newest of those directly.
+        payloads = _unique_requests(payloads + _recent_approved(
+            ctx, client, since=open_ended_since, detail=detail))
+    detail['requests_seen'] = len(payloads)
 
     # WARNING: `unwindowed` is the Remediations index's corpus (full slot only)
     # and opportunity discovery's. The two feeds want opposite things from one

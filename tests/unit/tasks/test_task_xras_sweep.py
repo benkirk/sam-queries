@@ -100,8 +100,12 @@ class _StubClient:
     """A client whose enumeration is scripted, page by page."""
 
     def __init__(self, pages, *, fail_after=None, opportunities=(),
-                 open_opportunities=(), extra_pages=None, resources=()):
+                 open_opportunities=(), extra_pages=None, resources=(),
+                 approved_pages=None):
         self.pages = pages
+        #: A light run's newest-`Approved` read. None replays `pages`, which the
+        #: dedup by requestId absorbs; a list scripts it; an exception raises.
+        self.approved_pages = approved_pages
         self.fail_after = fail_after
         self.opportunities = list(opportunities)
         self.open_opportunities = list(open_opportunities)
@@ -146,6 +150,11 @@ class _StubClient:
         self.active_asked.append(active)
         pages = (self.extra_pages.get(status, [])
                  if status in mod.EXTRA_STATUSES else self.pages)
+        if active is None and status not in mod.EXTRA_STATUSES:
+            if isinstance(self.approved_pages, Exception):
+                raise self.approved_pages
+            if self.approved_pages is not None:
+                pages = self.approved_pages
         for index, page in enumerate(pages):
             if max_pages is not None and index >= max_pages:
                 return
@@ -160,12 +169,13 @@ class _StubClient:
 def wire(monkeypatch):
     """Configure the API and swap in a stub client and person lookup."""
     def configure(pages=(), *, people=None, fail_after=None,
-                  open_opportunities=(), extra_pages=None):
+                  open_opportunities=(), extra_pages=None, approved_pages=None):
         monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
         monkeypatch.setenv('XRAS_API_KEY', 'k')
         client = _StubClient(list(pages), fail_after=fail_after,
                              open_opportunities=open_opportunities,
-                             extra_pages=extra_pages)
+                             extra_pages=extra_pages,
+                             approved_pages=approved_pages)
         monkeypatch.setattr(
             'sam.integration.xras_api.XrasApiClient.from_environment',
             classmethod(lambda cls, config=None: client))
@@ -352,9 +362,9 @@ class TestTwoCadences:
         client = wire([[_request(1, 'NCAR0001')]])
         detail = mod.xras_sweep(ctx()).detail
         assert detail['mode'] == 'active' and detail['full_slot'] is False
-        # active=true, and no status/extra passes this hour
-        assert client.active_asked == [True]
-        assert client.statuses_asked == [None]
+        # active=true, then the newest Approved; no extra-status passes this hour
+        assert client.active_asked == [True, None]
+        assert client.statuses_asked == [None, 'Approved']
         assert detail['index_publish_backend'] == 'not_this_slot'
 
     def test_a_light_hour_still_publishes_the_worklist(self, ctx, wire,
@@ -364,6 +374,69 @@ class TestTwoCadences:
         detail = mod.xras_sweep(ctx()).detail
         assert detail['publish_backend'] in ('redis', 'local')
         assert detail['status'] == 'active'
+
+    def _recent(self, request_id, number, **kw):
+        payload = _request(request_id, number, **kw)
+        payload['submitDate'] = '2033-11-01'        # two weeks before OCC
+        return payload
+
+    def _stale(self, request_id, number):
+        payload = _request(request_id, number)
+        payload['submitDate'] = '2015-09-28'
+        return payload
+
+    def test_a_light_hour_files_a_new_approval_active_cannot_see(
+            self, ctx, wire, session, monkeypatch):
+        """The approved, not-yet-pushed request has no endDate, so `active=true`
+        never returns it; before this pass its people waited for 04:00."""
+        from sam.core.account_requests import AccountRequest
+
+        self._light(monkeypatch)
+        wire([], approved_pages=[[self._recent(1, 'ZZZZ9999', username='ghost-user-53',
+                                               email='new@example.edu')]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['mode'] == 'active' and detail['pending_push'] == 1
+        assert detail['account_requests']['created'] == 1
+        assert (session.query(AccountRequest)
+                .filter(AccountRequest.xras_username == 'ghost-user-53').count()) == 1
+
+    def test_the_read_stops_at_the_first_page_with_nothing_recent(
+            self, ctx, wire, monkeypatch):
+        self._light(monkeypatch)
+        wire([], approved_pages=[[self._recent(3, 'ZZZZ9993')],
+                                 [self._stale(2, 'ZZZZ9992')],
+                                 [self._recent(1, 'ZZZZ9991')]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['recent_approved'] == {'seen': 2, 'pages': 2,
+                                             'budget_exhausted': False}
+
+    def test_the_page_cap_holds_and_says_so(self, ctx, wire, monkeypatch):
+        self._light(monkeypatch)
+        wire([], approved_pages=[[self._recent(i, f'ZZZZ99{i:02d}')] for i in range(5)])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['recent_approved']['pages'] == mod.RECENT_APPROVED_MAX_PAGES
+        assert detail['recent_approved']['budget_exhausted'] is True
+
+    def test_a_request_in_both_passes_counts_once(self, ctx, wire, monkeypatch):
+        self._light(monkeypatch)
+        both = self._recent(1, 'ZZZZ9999')
+        wire([[both]], approved_pages=[[dict(both)]])
+        assert mod.xras_sweep(ctx()).detail['requests_seen'] == 1
+
+    def test_an_outage_on_the_approved_read_keeps_the_active_half(
+            self, ctx, wire, monkeypatch):
+        from sam.integration.xras_api.base import XrasSourceUnavailable
+
+        self._light(monkeypatch)
+        wire([[_request(1, 'ZZZZ9999')]], approved_pages=XrasSourceUnavailable('down'))
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['requests_seen'] == 1 and detail['pending_push'] == 1
+        assert detail['unavailable_errors'] == 1
+        assert detail['recent_approved']['pages'] == 0
+
+    def test_a_full_slot_reads_no_recent_pass(self, ctx, wire):
+        wire([[_request(1, 'ZZZZ9999')]])
+        assert mod.xras_sweep(ctx()).detail['recent_approved'] == {}
 
     def test_a_light_hour_self_heals_when_no_index_is_published(self, ctx, wire,
                                                                 monkeypatch):
