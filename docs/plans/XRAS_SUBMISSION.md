@@ -431,6 +431,29 @@ Three changes to the handoff path, each small, in the order they land:
    untouched. `NewHandler.execute` stamps `applied` and `project_id` after
    `Project.create`.
 
+### 4.7 Requests SAM did not author: what per-request tickets need of the record
+
+`XRAS_REQUEST_TICKETS.md` files one NUSD ticket per approved request, before the push,
+and most approved requests are authored in ARC, not here. Ben (2026-10-13): the table for
+them is designed here, with § 4.2's, not as a second per-request table. What tickets
+need:
+
+| Need | Why | Fit with § 4.2 |
+|---|---|---|
+| An integer key | `external_ticket.entity_id` and `notification_log.entity_id` are Integer | `request_id` is the PK already, and is stable across the rewrite |
+| `request_number` String(128), updated when observed | the family key, and what the action log and the card key on | already a column |
+| `first_seen_approved` | XRAS records no approval time; it is the trigger and the "waiting since" | new: the sweep stamps it on first sight |
+| `checklist_digest` | comment only when the checklist changes | new, or kept on the ticket side |
+| `created_by = 'task:xras_sweep'` and a state that starts at `approved` | an ARC-authored request enters the lifecycle late | the § 4.2 states from `approved` on |
+
+**Not needed:**
+
+- `pushed_at`: `xras_action_log` already holds `processed_time` and `projcode_result`
+  for the push.
+- `closed_at`: duplicates `ExternalTicket.closed_at`.
+
+Resolution reads the action log, not `requestNumber == projcode` (§ 4.2, the rewrite lag).
+
 ## 5. Gaps and open questions
 
 | Gap | Why it matters | Next step |

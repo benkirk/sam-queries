@@ -1,6 +1,6 @@
-"""``xras_sweep`` — enumerate XRAS hourly and diff it against SAM.
+"""``xras_sweep`` — enumerate XRAS and diff it against SAM.
 
-Hourly, around the clock. The first task that calls **out** to XRAS
+Hourly around the clock, every quarter hour in the working day. The first task that calls **out** to XRAS
 rather than reading only SAM's own tables, and the third declaring
 ``needs=('sam',)``.
 
@@ -12,10 +12,12 @@ can afford. The cadence here is therefore the tab's freshness.
 **Two cadences, one task.** The full ``status=Approved`` enumeration is ~100s
 (pages back to 2015), so it runs **once a day** at ``full_hour()`` and rebuilds
 the Remediations index (which needs the un-windowed corpus — stale approvals are
-the point). Every other hour runs only the cheap ``active=true`` pass (Approved
-with endDate null-or-future) for the account worklist, and lets the index ride
-its 24h TTL. A light hour that finds no published index self-heals to a full
-pass, so the card cannot go blank. ``detail['mode']`` says which ran.
+the point). Every other run is light: the ``active=true`` pass plus the newest
+page or two of ``status=Approved`` (``_recent_approved``), because ``active=true``
+omits every request with no ``endDate`` — every approved, not-yet-pushed one
+(measured 2026-10-13: 4 pending requests against the full pass's 20). The index
+rides its 24h TTL; a light run that finds none self-heals to a full pass.
+``detail['mode']`` says which ran.
 
 What it is for
 --------------
@@ -40,7 +42,7 @@ NCAR process, so this task reaches three things the card cannot:
    active, which classification already checks on every render — for free.
 
 WARNING: **Ships switched off.** ``SAM_TASKS_DISABLED`` is *fail-open*: registering
-a task here puts it into production live on the next hourly wake unless its
+a task here puts it into production live on the next wake unless its
 name is added to ``helm/values.yaml`` in the **same change**. The registry is
 code-side, the list is chart-side, and nothing couples them but the reviewer —
 so ``test_task_xras_sweep.py`` greps ``values.yaml`` for the name.
@@ -67,26 +69,21 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from scheduling.registry import TaskResult, task
-from scheduling.schedules import DEFAULT_TZ, Hourly, to_local_naive
+from scheduling.schedules import (DEFAULT_TZ, AnyOf, BusinessHourly, Hourly,
+                                  to_local_naive)
 from scheduling.tasks._notice_common import positive_int_env
 
-#: Hourly, every hour of every day. The Feed-B tab reads what this publishes,
-#: so the cadence IS the tab's freshness — and unlike `xras_notices`, which
-#: mails people and therefore has no business waking at 03:00, this one only
-#: refreshes a cache. Restricting it to the business day bought nothing and
-#: cost the first operator in on a Monday a snapshot from Friday afternoon.
+#: Hourly around the clock, plus :15/:30/:45 from 08:15 to 17:45 Mon-Fri
+#: Mountain. The Feed-B tab and the Accounts queue read what this publishes, so
+#: the cadence IS their freshness: a fresh approval reaches NUSD's queue within
+#: a quarter hour in the working day and within the hour otherwise. It only
+#: refreshes a cache, so unlike `xras_notices` it has no reason to sleep at night.
 #:
-#: `Hourly` is UTC and takes no `tz`, deliberately: every zone SAM cares about
-#: is a whole-hour offset, so `:00 UTC` and `:00 Mountain` are the same
-#: instants, and computing in UTC means DST can neither duplicate nor drop a
-#: slot. The naive-Mountain conversions below use `DEFAULT_TZ` directly, which
-#: is what `BusinessHourly(tz=...)` was supplying.
-#:
-#: `minute=0` for the same reason `xras_notices` uses it: the CronJob wakes at
-#: :07 (and three more times an hour for the */15 tasks), so a :00 slot
-#: dispatches about seven minutes later. Both tasks share the wake and run
-#: sequentially under `concurrencyPolicy: Forbid`; this one takes 60-90s.
-SCHEDULE = Hourly(minute=0)
+#: Every member is DST-safe: `Hourly` computes in UTC, and the `BusinessHourly`
+#: window never contains 02:00. The CronJob wakes at :07/:22/:37/:52, so each
+#: slot dispatches about seven minutes late; a light run takes 5-10s.
+SCHEDULE = AnyOf(Hourly(minute=0), BusinessHourly(minute=15),
+                 BusinessHourly(minute=30), BusinessHourly(minute=45))
 
 #: Pages of ``reports/requests`` per run, overridable via
 #: ``$SAM_TASKS_XRAS_SWEEP_MAX_PAGES``. At the default page size that is 5,000
@@ -116,8 +113,15 @@ PAGE_SIZE = 200
 #: performance**, not ``submitDate``: the question is who needs an account for
 #: a handoff, and a handoff only ever lands against an allocation that is
 #: live. A request whose allocation ended before the window opened cannot
-#: produce one.
+#: produce one. A request with no ``endDate`` is aged by ``OPEN_ENDED_MAX_AGE_DAYS``.
 DEFAULT_WINDOW_DAYS = 90
+
+#: How recent (latest action, else submit date) an Approved request with **no**
+#: request-level ``endDate`` must be to count as live. Every approved,
+#: not-yet-pushed request has none, so without this a 2015 approval nobody
+#: pushed reads as open (prod 2026-10-13: ten stale reactivation rows).
+#: Days; a positive int, deliberately a constant (window 90, preflight 120).
+OPEN_ENDED_MAX_AGE_DAYS = 90
 
 #: WARNING: Requests to enumerate. ``Approved`` is the default because it is the
 #: only status that produces a handoff — but the full filter vocabulary is
@@ -159,6 +163,12 @@ DEFAULT_FULL_HOUR = 4
 #: per status in ``detail`` so a cohort that outgrows it is visible rather
 #: than silently truncated.
 EXTRA_STATUS_MAX_PAGES = 5
+
+#: Page bound on a light run's read of the newest ``status=Approved`` requests,
+#: which ``active=true`` cannot return (no ``endDate`` until pushed). A
+#: blast-radius bound, not a target: the read stops at the first page with
+#: nothing newer than ``OPEN_ENDED_MAX_AGE_DAYS``. 3 pages = the newest ~600.
+RECENT_APPROVED_MAX_PAGES = 3
 
 #: Cap on rows echoed into the ledger row. `detail` is TEXT and the runner
 #: truncates the JSON at 60 kB.
@@ -239,27 +249,73 @@ def full_hour(env: Optional[dict] = None) -> int:
     return value if 0 <= value <= 23 else DEFAULT_FULL_HOUR
 
 
-def overlaps_window(payload: dict, *, window_start: date) -> bool:
-    """Was this request's allocation still open when the window began?
+def overlaps_window(payload: dict, *, window_start: date,
+                    open_ended_since: date) -> bool:
+    """Could this request still produce a handoff when the window began?
 
-    **One-sided on purpose.** The predicate is ``endDate is None or endDate >=
-    window_start`` — it drops what has already ended and keeps everything
-    live *or future*. A two-sided overlap (also requiring ``beginDate <=
-    window_end``) would discard requests whose period starts next quarter,
-    and those are precisely the population Feed B exists to reach: a PI with
-    no SAM account and months of lead time to fix it.
+    **One-sided on purpose**: ``endDate >= window_start`` keeps everything live
+    *or future*; a two-sided overlap would drop a period starting next quarter,
+    which is exactly the PI Feed B exists to reach with months of lead time.
 
-    A missing or unparseable ``endDate`` counts as open — those are the newest
-    rows, in-flight or not yet dated.
-
-    Pure and injectable so the boundary never floats: a test that read the
-    wall clock would pass or fail depending on the day it ran. Dates arrive as
-    ``YYYY-MM-DD`` and are compared as dates; no timezone reasoning applies to
-    a calendar date.
+    A deleted request never qualifies. With no parseable ``endDate`` (every
+    approved, not-yet-pushed request) its latest activity must fall on or after
+    *open_ended_since*; a request carrying no date at all is kept. Pure: both
+    boundaries are passed in, never read off the wall clock.
     """
-    from sam.dates import parse_wire_date   # lazy: importing sam loads every ORM model
+    # lazy: importing sam loads every ORM model
+    from sam.dates import parse_wire_date
+    from sam.queries.xras_accounts import report_activity_date
+
+    if payload.get('isDeleted'):
+        return False
     end = parse_wire_date(payload.get('endDate'))
-    return end is None or end >= window_start
+    if end is not None:
+        return end >= window_start
+    seen = report_activity_date(payload)
+    return seen is None or seen >= open_ended_since
+
+
+def _recent_approved(ctx, client, *, since: date, detail: dict) -> list:
+    """The newest requests of the primary status, until a page holds none since *since*.
+
+    Pages arrive newest ``requestId`` first and are fetched one at a time, so
+    the stop costs at most one page past the cutoff. Never raises.
+    """
+    from sam.integration.xras_api import XrasSourceUnavailable
+    from sam.queries.xras_accounts import report_activity_date
+
+    seen, pages, more = [], 0, False
+    try:
+        for page in client.iter_request_pages(status=sweep_status(),
+                                              page_size=PAGE_SIZE,
+                                              max_pages=RECENT_APPROVED_MAX_PAGES):
+            pages += 1
+            seen.extend(page)
+            more = any((d := report_activity_date(p)) is not None and d >= since
+                       for p in page if isinstance(p, dict))
+            if not more:
+                break
+    except XrasSourceUnavailable as exc:
+        detail['unavailable_errors'] += 1
+        ctx.logger.warning('xras_sweep: recent Approved pass failed after %d page(s): %s',
+                           pages, exc)
+    detail['recent_approved'] = {
+        'seen': len(seen), 'pages': pages,
+        'budget_exhausted': more and pages >= RECENT_APPROVED_MAX_PAGES}
+    return seen
+
+
+def _unique_requests(payloads: list) -> list:
+    """First copy of each ``requestId``: the light run reads two overlapping passes."""
+    seen_ids, out = set(), []
+    for p in payloads:
+        rid = p.get('requestId') if isinstance(p, dict) else None
+        if rid is not None:
+            if rid in seen_ids:
+                continue
+            seen_ids.add(rid)
+        out.append(p)
+    return out
 
 
 def _resource_key_map(ctx, client, detail) -> Optional[dict]:
@@ -437,8 +493,7 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
     the account worklist, and a remediation feed that fails must not cost the
     feed that was already working.
     """
-    from sam.queries.projects import project_ids_by_code
-    from sam.queries.xras_requests import request_index_entry
+    from sam.queries.xras_requests import live_pending_numbers, request_index_entry
 
     payloads = list(approved_payloads or ())
     extra_payloads = []
@@ -474,14 +529,13 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
         return []
 
     try:
-        known = set(project_ids_by_code(session, numbers))
+        pending = live_pending_numbers(session, payloads + extra_payloads)
     except Exception as exc:                            # noqa: BLE001
         # None, not []: without the pending classification every entry would
         # be wrong, and publishing an empty index over the last good one would
         # render as "nothing to remediate" — see the docstring.
         ctx.logger.warning('xras_sweep: index projcode lookup failed: %s', exc)
         return None
-    pending = numbers - known
 
     # Preflight every recent candidate action across the whole enumeration,
     # before the cohort filter — an already-pushed Approved request with a fresh
@@ -504,7 +558,7 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
     # the line the modal shows and every write targets. XRAS pages by
     # descending requestId, so "first copy" was the newest line, not always
     # the current one. Deleted lines carry no handoff and are excluded.
-    from sam.queries.xras_requests import primary_line
+    from sam.queries.xras_requests import live_lines, primary_line
 
     by_number: dict = {}
     for payload in cohort:
@@ -514,7 +568,7 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
 
     entries, deleted = [], 0
     for number, lines in by_number.items():
-        live = [p for p in lines if not p.get('isDeleted')]
+        live = live_lines(lines)
         if not live:
             deleted += 1
             continue
@@ -641,16 +695,15 @@ def _map_new_opportunities(ctx, session, client, unmapped_ids, detail,
       schedule=SCHEDULE,
       needs=('sam',),
       # Drives the LEASE, not a timeout. max(3x20min, 900s) = 3600s must exceed
-      # the CronJob's activeDeadlineSeconds (3000s), or a run killed by the pod
+      # the CronJob's activeDeadlineSeconds (840s), or a run killed by the pod
       # deadline becomes reclaimable while still running and two sweeps race.
       # `TaskContext` exposes no ledger handle, so the task cannot heartbeat
       # instead. The drift test asserts the inequality against values.yaml.
       expected_runtime=timedelta(minutes=20),
       # The 6h default. A missed slot costs little: the enumeration window is
-      # rolling, so the next run subsumes it — and now that the schedule runs
-      # around the clock, the next run is at most an hour away whenever it is. The one piece of state this now
-      # writes — opportunity mapping rows — is insert-if-absent, so a skipped
-      # slot delays a row rather than losing it.
+      # rolling, so the next run (at most an hour away) subsumes it. The one
+      # piece of state this writes, opportunity mapping rows, is insert-if-absent,
+      # so a skipped slot delays a row rather than losing it.
       misfire_grace=timedelta(hours=6),
       description='Enumerate XRAS, diff it against SAM, map new opportunities')
 def xras_sweep(ctx) -> TaskResult:
@@ -665,7 +718,6 @@ def xras_sweep(ctx) -> TaskResult:
     from sam.integration.xras_api.cache import (load_requests_index,
                                                 store_pending_worklist,
                                                 store_requests_index)
-    from sam.queries.projects import project_ids_by_code
     from sam.queries.xras_accounts import (
         classify_accounts,
         get_account_worklist,
@@ -675,6 +727,7 @@ def xras_sweep(ctx) -> TaskResult:
     )
     from sam.queries.xras_actions import (audit_opportunity_mapping,
                                           propose_opportunity_mapping)
+    from sam.queries.xras_requests import live_pending_numbers
 
     detail = {
         'skipped': False,
@@ -684,7 +737,7 @@ def xras_sweep(ctx) -> TaskResult:
         'window_days': 0,
         'status': '',
         # 'full' = the daily heavy Approved pass (rebuilds the Remediations
-        # index); 'active' = a light hourly worklist-only pass.
+        # index); 'active' = a light worklist-only pass.
         'mode': '',
         'full_slot': False,
         'budget_exhausted': False,
@@ -708,6 +761,8 @@ def xras_sweep(ctx) -> TaskResult:
         # that "the card is empty" and "the extra passes never ran" cannot be
         # confused for one another.
         'extra_statuses': {},
+        # Light runs only: the newest-Approved read; `{}` on a full slot.
+        'recent_approved': {},
         'index_requests': 0,
         'index_published': False,
         'index_publish_backend': '',
@@ -731,25 +786,27 @@ def xras_sweep(ctx) -> TaskResult:
     client = XrasApiClient.from_environment()
     page_budget = max_pages()
     window = window_days()
-    window_start = to_local_naive(
-        ctx.occurrence, ZoneInfo(DEFAULT_TZ)).date() - timedelta(days=window)
+    slot_date = to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ)).date()
+    window_start = slot_date - timedelta(days=window)
+    open_ended_since = slot_date - timedelta(days=OPEN_ENDED_MAX_AGE_DAYS)
 
-    # Two cadences from one hourly task. The cheap `active=true` worklist pass
-    # runs every hour; the heavy full-`Approved` enumeration — which the
-    # Remediations index needs un-windowed, back to 2015 — runs once a day at
-    # `full_hour()`. Self-heal: any hour that finds no published index runs the
-    # full pass, so a cold start or a missed daily slot cannot leave the card
-    # blank once the 24h TTL lapses.
-    slot_hour = to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ)).hour
-    is_full = slot_hour == full_hour() or load_requests_index() is None
+    # Two cadences from one task. Every slot runs the light pass; the heavy
+    # full-`Approved` enumeration (the un-windowed index corpus, back to 2015)
+    # runs on the :00 slot of `full_hour()` only, never on its quarters. Self-heal:
+    # any slot that finds no published index runs full, so a cold start or a
+    # missed daily slot cannot leave the card blank once the 24h TTL lapses.
+    slot = to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ))
+    is_full = ((slot.hour == full_hour() and slot.minute == 0)
+               or load_requests_index() is None)
     detail['full_slot'] = is_full
     detail['mode'] = 'full' if is_full else 'active'
 
+    # Both modes window the worklist, so the card's lookback label is true for both.
+    detail['window_days'] = window
     if is_full:
         primary_status: Optional[str] = sweep_status()
         primary_active: Optional[bool] = None
         detail['status'] = primary_status or 'all'
-        detail['window_days'] = window
     else:
         primary_status = None
         primary_active = True
@@ -773,22 +830,25 @@ def xras_sweep(ctx) -> TaskResult:
         ctx.logger.warning('xras_sweep: enumeration failed after %d page(s): %s',
                            detail['pages'], exc)
 
-    detail['requests_seen'] = len(payloads)
     detail['budget_exhausted'] = detail['pages'] >= page_budget
+    if not is_full:
+        # 1b. `active=true` omits every request with no endDate, which is every
+        # approved, not-yet-pushed one: read the newest of those directly.
+        payloads = _unique_requests(payloads + _recent_approved(
+            ctx, client, since=open_ended_since, detail=detail))
+    detail['requests_seen'] = len(payloads)
 
-    # WARNING: `unwindowed` (full slot only) is the Remediations index's corpus.
-    # The two feeds want opposite things from the same enumeration: the account
+    # WARNING: `unwindowed` is the Remediations index's corpus (full slot only).
+    # The two feeds want opposite things from one enumeration: the account
     # worklist wants only live periods of performance, while remediation is
-    # about requests that went stale — a 2015 approval nobody ever pushed is
-    # precisely the row an operator needs to close, and the window would hide
-    # exactly those. In `active` mode the API already returned only live/future,
-    # so the window is a no-op and the index is not rebuilt this slot.
-    if is_full:
-        unwindowed = list(payloads)
-        # Both counts are reported: `requests_seen` says how much was read,
-        # `requests_in_window` how much was work.
-        payloads = [p for p in payloads
-                    if overlaps_window(p, window_start=window_start)]
+    # about requests that went stale — a 2015 approval nobody ever pushed is the
+    # row an operator needs to close, and the window would hide exactly those.
+    # Both counts are reported: `requests_seen` says how much was read,
+    # `requests_in_window` how much was work.
+    unwindowed = list(payloads)
+    payloads = [p for p in payloads
+                if overlaps_window(p, window_start=window_start,
+                                   open_ended_since=open_ended_since)]
     detail['requests_in_window'] = len(payloads)
 
     # 1c. opportunities SAM cannot resolve to an allocation type
@@ -808,6 +868,9 @@ def xras_sweep(ctx) -> TaskResult:
     # it before the map existed. It is reported so a *new* opportunity is
     # visible here before any action is pushed against it, which is the lead
     # time the map exists to buy. The sweep must never write the table.
+    #
+    # The windowed list, not `unwindowed`: on samuel-dev 2026-10-13 the whole
+    # enumeration surfaced 17 historical opportunities and the run wrote 16 map rows.
     seen_ids = {int(oid) for p in payloads
                 if (oid := p.get('opportunityId')) is not None}
 
@@ -845,15 +908,10 @@ def xras_sweep(ctx) -> TaskResult:
                                    detail, known=open_payloads)
 
     # 2. dropped / pending pushes
-    numbers = {str(p.get('requestNumber')).strip() for p in payloads
-               if p.get('requestNumber')}
-    pending_set: set = set()
-    if numbers:
-        known = set(project_ids_by_code(session, numbers))
-        pending_set = numbers - known
-        pending = sorted(pending_set)
-        detail['pending_push'] = len(pending)
-        detail['pending_push_sample'] = pending[:_MAX_REPORTED]
+    pending_set = live_pending_numbers(session, payloads)
+    pending = sorted(pending_set)
+    detail['pending_push'] = len(pending)
+    detail['pending_push_sample'] = pending[:_MAX_REPORTED]
 
     # 3. classify the rosters of what has NOT been pushed
     #
@@ -920,7 +978,7 @@ def xras_sweep(ctx) -> TaskResult:
             detail['reconciled'] += 1
 
     # 4b. the Remediations index — full slot only; light hours ride its 24h TTL.
-    # `unwindowed` and the extra-status passes exist only on the full path.
+    # The extra-status passes exist only on the full path.
     if is_full:
         index_entries = _build_requests_index(ctx, client, session, unwindowed, detail)
         # 4c. fill the Pending Users tab's Pre-flight column for Feed-B rows from

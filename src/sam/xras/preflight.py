@@ -76,7 +76,7 @@ class Verdict:
 def iter_candidate_actions(report_payload: dict, *,
                            since: Optional[date] = None) -> Iterator[dict]:
     """Yield the actions worth a preflight: not Declined, not deleted, in-window."""
-    if not isinstance(report_payload, dict):
+    if not isinstance(report_payload, dict) or report_payload.get('isDeleted'):
         return
     for action in report_payload.get('actions') or ():
         if not isinstance(action, dict):

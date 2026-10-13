@@ -425,6 +425,20 @@ def primary_line(lines: Any) -> Optional[Dict[str, Any]]:
     return max(candidates, key=_max_action) if candidates else None
 
 
+def live_lines(lines: Any) -> List[Dict[str, Any]]:
+    """The request lines XRAS has not deleted; a deleted line carries no handoff."""
+    return [ln for ln in (lines or ()) if isinstance(ln, dict) and not ln.get('isDeleted')]
+
+
+def live_pending_numbers(session, payloads: Any) -> set:
+    """Request numbers with a live line and no SAM project: the pushes still owed."""
+    from sam.queries.projects import project_ids_by_code
+
+    numbers = {n for p in live_lines(payloads)
+               if (n := str(p.get('requestNumber') or '').strip())}
+    return numbers - set(project_ids_by_code(session, numbers)) if numbers else set()
+
+
 def line_by_id(lines: Any, request_id: Any) -> Optional[Dict[str, Any]]:
     """The family line whose ``requestId`` is *request_id*, or ``None``."""
     try:

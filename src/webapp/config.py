@@ -238,9 +238,9 @@ class SAMWebappConfig(SAMConfig):
     XRAS_PEOPLE_CACHE_SIZE    = int(os.getenv('XRAS_PEOPLE_CACHE_SIZE', 512))    # max entries
     XRAS_RESOURCES_CACHE_TTL  = int(os.getenv('XRAS_RESOURCES_CACHE_TTL', 86400))  # 1 day
     XRAS_RESOURCES_CACHE_SIZE = int(os.getenv('XRAS_RESOURCES_CACHE_SIZE', 8))     # max entries
-    # The Feed-B mailbox: xras_sweep publishes, the dashboard tab reads. TTL
-    # spans the overnight gap between business-hours sweeps (17:00 -> 08:00),
-    # or the tab would be blank every morning until the first run.
+    # The Feed-B mailbox: xras_sweep publishes (at least hourly), the dashboard
+    # tab reads. A day rides out a day of failed runs; see the bucket in
+    # sam/integration/xras_api/cache.py.
     XRAS_PENDING_CACHE_TTL    = int(os.getenv('XRAS_PENDING_CACHE_TTL', 86400))   # 1 day
     XRAS_PENDING_CACHE_SIZE   = int(os.getenv('XRAS_PENDING_CACHE_SIZE', 4))      # max entries
 
