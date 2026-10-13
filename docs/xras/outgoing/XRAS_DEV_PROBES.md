@@ -99,6 +99,9 @@ holding no role on the line, reads it as 401. The person is left in place.
 | ~22:26 | Ben approves NCAR4088 | — |
 | 22:37 | dev `xras_sweep` | `pending_push: 3`; accounts 2 (`harrter` absent, `hartter` inactive, both reconciled in XRAS); account requests **0 created, 2 existing**: open rows #7 (`harrter`, submission) and #15 (`hartter`, reactivation), copied from production by the refresh, were reused, not duplicated |
 | 22:49:38 | Ben posts NCAR4088 | sam_dev #9: `New`, `add`, **`failed`, 422**: "Username hartter is inactive", "Username harrter is missing". The admin app shows both verbatim. No project; a `failed` row does not block a repost |
+| 23:4x | Claude: `PUT /v1/requests/1439543/attributes?requestNumber=UHSS0002` (submit, as the PI) | 200. **NCAR4087 now resolves to nothing; UHSS0002 holds 1439543** with its New, Extension and Supplement; `requestId` unchanged. The same shape as the manual production rename (UPSU0087) |
+| 23:44:58, 23:46:34 | Ben uses "Repost to Accounting Service" | both send the request's **New** (372856), now as `requestNumber: UHSS0002`: #10 and #11, `duplicate`, 422. The repost targets the New, not a chosen action, so a parked action cannot be re-sent this way. Without the guard the New would have gone to `update` and applied again |
+| 23:47:46 | Claude files and submits Extension 372866 (end 2028-03-31); Ben approves and posts | #12: `Extension`, **UHSS0002**, `extend`, **`processed`**, 200. UHSS0002's Derecho end is 2028-03-31 |
 
 **Actions on a family whose number was never rewritten park, and XRAS is told they
 succeeded.** `select_service` (`sam/xras/dispatch.py`) resolves only `requestNumber`, so #7
@@ -118,14 +121,24 @@ production XRAS has a May Supplement action on that family is unchecked.
 
 ## 5. The `requestNumber` rewrite
 
-Watched from 19:23Z: `reports/request_numbers/NCAR4086` and `…/UCSG0004`, every minute for
-10 minutes, then every 5, then every 15, for up to 4 hours. Result: _pending_.
+**It is manual.** Steve (2026-10-13): XRAS mints the number at submit from the Client Settings
+template ("Request Number Format"), does nothing with the reply to the accounting-service post,
+and the production renames were done by hand by NCAR staff, who have since left. That explains
+every observation: 23 of 24 production award letters from 2026-09-29 to 2026-10-12 name the
+projcode (renamed between post and notify), the 2026-09-09 External Projects letters and
+Simpson's (NCAR4401) did not, UHSS0001 never changed, and XRAS-dev never renames (a watch from
+19:23Z to 23:30Z saw no change). Legacy SAM's only record of the mapping was its success mail to
+`hdt@ucar.edu` ("XRAS Request Number X, SAM Project Code Y"); SAMuel sends no such mail.
+
+**SAM can perform it.** The create and update routes take `requestNumber`; a number with no
+request master creates one, an existing one joins it (§ 3, § 4 at 23:4x). After the rename, a
+newly filed Extension applied normally (#12).
 
 ## 6. Open, and what unblocks it
 
 | Open | Blocked on |
 |---|---|
-| What rewrites `requestNumber` to the projcode, and does it still run after the 2026-08-24 repoint? | Steve |
+| A parked action on a renamed family (#7, #8) | the admin app's repost re-sends the New; re-filing, or SAM-side log resolution (`XRAS_SUBMISSION.md` § 4.6) |
 | A phase-1 action on a family already numbered by its projcode | a demo family under a projcode on which benkirk holds a PI role |
 | An approval without a click | a `review`/`admin` demo key or an auto-approve rule (Steve) |
 
@@ -134,9 +147,9 @@ Watched from 19:23Z: `reports/request_numbers/NCAR4086` and `…/UCSG0004`, ever
 | Object | State |
 |---|---|
 | 1439539 / NCAR4088 (Draft A) | Approved; posted and refused (#9, 422) |
-| 1439543 / NCAR4087 (Draft B) | Approved and posted (UHSS0002); Extension 372862 and Supplement 372863 Approved and posted, parked on SAM (#7, #8); actions 372857–58 soft-deleted |
+| 1439543 / **UHSS0002** (Draft B; minted as NCAR4087, renamed by Claude) | Approved and posted (UHSS0002); Extension 372862 and Supplement 372863 parked on SAM (#7, #8); Extension 372866 applied (#12); actions 372857–58 soft-deleted. Family UHSS0002 also holds soft-deleted 1439547 |
 | 1439538, 1439540–42, 1439544–48 | soft-deleted drafts (1439545 is the renewal line; 1439547 and 1439548 the `requestNumber` probes) |
 | person `samprobe-20261013` | `isReconciled: false`, no roles |
 | NCAR4086 (1439308) | Approved, posted, not notified; SAM project UCSG0004 (active) |
-| samuel-dev | UCSG0004 (active), UHSS0002 (inactive); `xras_action_log` #1–#9; NRAL0051 inflated by #4 |
+| samuel-dev | UCSG0004 (active), UHSS0002 (inactive); `xras_action_log` #1–#12; NRAL0051 inflated by #4; UHSS0002 Derecho ends 2028-03-31 |
 | NRAL0051 (1436558) | Approved, posted, not notified; sam_dev allocations inflated by the repeat |

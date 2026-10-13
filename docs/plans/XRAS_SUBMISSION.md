@@ -150,7 +150,7 @@ the action existed.
 
 Four findings that shape the design:
 
-- **The `requestNumber` rewrite is neither the post nor the notify** (§ 4.2).
+- **The `requestNumber` rewrite is neither the post nor the notify**: it is manual (§ 4.2).
 - **An action filed in the gap parks.** The Extension filed from ARC 17 minutes after
   the New arrived as `requestNumber: NCAR4354` and sits `manual` as #184 (§ 4.6).
 - **The admin dashboard clears at the post**, before the notify; the rows that linger
@@ -257,11 +257,12 @@ difference is measured:
 |---|---|---|
 | At `POST /v1/requests` | **`null`** — nothing is minted at create | XRAS assigns; returned in the create response with `rules{}` |
 | At submit | **minted** (`NCAR4352` appeared on the first `POST …/submit`) | unchanged |
-| At handoff | **rewritten in place to the projcode**: `UPSU0087` resolves under the projcode and `NCAR4277` stops resolving | **unchanged** — `1445869` before and after |
+| After handoff | **rewritten in place to the projcode, by hand** (NCAR staff, now gone; § 4.6 item 3 has SAM do it): `UPSU0087` resolves under the projcode and `NCAR4277` stops resolving | **unchanged** — `1445869` before and after |
 | Across a renewal | stable — the family key | a renewal spawns a **new** line/id |
 
-The rewrite runs on XRAS's own clock: hours for `UPUR0036`, a day and counting for
-`NCAR4212` → `NRAL0056`, and W9 rules out both admin steps — the family still
+The rewrite is manual (Steve, 2026-10-13; `XRAS_DEV_PROBES.md` § 5): XRAS ignores the reply
+to the post, and NCAR staff typed the projcode in, which is why it took hours for `UPUR0036`,
+a day and counting for `NCAR4212` → `NRAL0056`, and never for `UHSS0001`. W9 rules out both admin steps — the family still
 answered only to `NCAR4354` 17 min after the post and 11 min after the notify, with
 both keys re-read within seconds of each step and every five minutes after, and the
 award letter XRAS mails at the notify names `NCAR4354`. So the SAM-side record keys
@@ -408,7 +409,7 @@ none; Data Analysis — Casper only; the same for initial and supplement.
 
 ### 4.6 The incoming side: consult points and the idempotency guard
 
-Three changes to the handoff path, each small, in the order they land:
+Four changes to the handoff path, each small, in the order they land:
 
 1. **The idempotency guard: landed.** `_refuse_repeat` in `src/webapp/api/xras/actions.py`
    answers 422 `duplicate` to a post whose `action_id` already has a `processed` or
@@ -416,7 +417,7 @@ Three changes to the handoff path, each small, in the order they land:
    repoint can still apply twice on a repost (NRAL0051 on XRAS-dev, `XRAS_DEV_PROBES.md` § 4).
 2. **Resolve the project from SAM's own log, not from XRAS's rewrite** (`select_service`,
    `sam/xras/dispatch.py`). The three identifiers behave differently (§ 4.2):
-   `requestNumber` names the family and is rewritten on XRAS's clock, or never;
+   `requestNumber` names the family and is rewritten only by hand, or never;
    `requestId` names one line and is fixed from create on, across every Extension and
    Supplement on it, and only a Renewal starts a new one; `actionId` names one action.
    The processed `New` row SAM writes at the handoff (`request_id`, `request_number` as
@@ -435,7 +436,17 @@ Three changes to the handoff path, each small, in the order they land:
    and the `manual` arm answers 200, so XRAS shows the operator a successful post. The
    sweep's `live_pending_numbers` needs the same lookup (`XRAS_REQUEST_TICKETS.md` § 6).
    Belongs in `XRAS_INGEST_IMPROVEMENTS.md`.
-3. **The `New` handler's consult point** (phase 2): the top of `NewHandler.assemble`
+3. **SAM performs the rename.** `PUT /v1/requests/<request_id>/attributes?requestNumber=<projcode>`
+   under `submit` as the line's PI renames the request in place: the old number stops resolving,
+   `requestId` is unchanged, and actions filed afterwards arrive under the projcode and apply
+   (`XRAS_DEV_PROBES.md` § 4, #12). A task step, not the inbound route (XRAS is waiting on the
+   reply): for each `processed` `New` whose `request_number` differs from `projcode_result`,
+   rename through `XrasAdminClient` behind `XRAS_WRITE_ENABLED`, audit in
+   `xras_remediation_event`, and verify by re-reading both numbers. When the projcode is already
+   an XRAS family (a `New` routed to `update`), the rename joins that family, which is the
+   intended grouping. Backfill the production placeholders the manual step missed. Rules 2 and
+   3 of item 2 stay, for the window before the task runs and for actions parked earlier.
+4. **The `New` handler's consult point** (phase 2): the top of `NewHandler.assemble`
    (`sam/xras/handlers/new.py`), keyed on the payload's `requestId`, pre-setting the
    mnemonic, allocation type, contracts and area of interest from the stored FKs with
    the ladder as fallback — three branches in the shape of the two
@@ -473,12 +484,12 @@ Resolution reads the action log, not `requestNumber == projcode` (§ 4.2, the re
 |---|---|---|
 | **The form has no prototype** (§ 4.1) | the one-vs-two-page split and the reveal rules are design, not measurement | mock it before the phase-2 plumbing; keep the rule-book-driven reveal |
 | **The test loop, run** | 2026-10-13 on XRAS-dev ([`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md) § 4): an approval reached samuel-dev's sweep in about 2 minutes; a SAM-authored New (NCAR4087) became `UHSS0002` with `requestId` and `opportunityQA` on the payload; an Extension and a Supplement filed on that family before the rewrite parked `manual` with HTTP 200, which XRAS reports as a successful post | § 4.6 item 2; the `New` handler's consult point is unproven until the `xras_submission` row exists |
-| **The rewrite's mechanism and cadence** | if it is a periodic job, its cadence bounds how soon after a New an action on the family can be filed from ARC without parking. XRAS-dev had not rewritten NCAR4086 or NCAR4087 hours after their posts; XRAS's create accepts any `requestNumber` and starts a new, unlinked family under it, so filing under the projcode is no workaround | asked Steve 2026-10-13 (W9 rules out the post and the notify); § 4.6 item 2 makes the answer moot for SAM |
+| **The rewrite** | manual on production (NCAR staff, now gone), never on XRAS-dev; XRAS ignores the post's reply; create and update accept `requestNumber` (Steve, 2026-10-13). SAM renamed NCAR4087 to UHSS0002 on XRAS-dev and a later Extension applied | build § 4.6 item 3; backfill production's placeholders |
 | **`GET /v1/projects`** | proxied to the accounting service as `/api/xras/v1/users/projects/<username>`, which neither legacy SAM nor this one serves. Measured 2026-10-08: one request in six weeks of production traffic, our own probe (`xras_action_log` #182). ACCESS's accounting service documents the response shape (`XRAS_OUTGOING_QUERIES.md` § 4.6) | ask Steve whether ARC or `xras_submit` calls it for NCAR; otherwise not built |
 | **Write client gaps** | no JSON-body path in `_write`; person-create, opportunity attributes and documents unbuilt | phase 0 |
 | **`POST /v1/people/<u>`** | phase 3's placeholder person: probed on XRAS-dev 2026-10-13, `isReconciled=false` sticks and the placeholder can author a request as its PI (`XRAS_DEV_PROBES.md` § 3) | merge-on-arrival stays unprobed |
 | **Log-based resolution not landed** | § 4.6 item 2, rules 2 and 3. The guard (item 1) has landed; it cannot see an action applied before SAMuel's log began, which XRAS-dev's NRAL0051 repost applied twice (`XRAS_DEV_PROBES.md` § 4) | `XRAS_INGEST_IMPROVEMENTS.md` |
-| **Extension 399374 on `UHSS0001`** | approved and posted, parked as #184, not notified | Repost to Accounting Service once the rewrite lands, or once the fallback does |
+| **Extension 399374 on `UHSS0001`** | approved and posted, parked as #184, not notified | rename the family (§ 4.6 item 3) and file afresh: the admin app's repost re-sends the `New`, which the guard refuses |
 | **WRAP** | stays `email:wrap@uwyo.edu` until WNA opts in | flip the policy row |
 | **XRAS's own mail** | submit and notify mails are XRAS-side settings (§ 3.4); once phase 1 ships, SAM's `xras_*` notices can be the only mail | optional coordination, not a prerequisite |
 

@@ -116,9 +116,9 @@ constraint. Lifting it is deliberate, in one change:
 
 ## 6. Resolving: "the push landed" is not `requestNumber == projcode`
 
-XRAS rewrites a pushed New's `requestNumber` to the projcode **on its own clock**: hours
-for `UPUR0036`, a day and counting for `NCAR4212` -> `NRAL0056`, and still `NCAR4354`
-weeks after it was pushed as `UHSS0001` (`XRAS_SUBMISSION.md` § 4.2).
+A pushed New's `requestNumber` becomes the projcode only when someone renames it, by hand
+until now: hours for `UPUR0036`, a day and counting for `NCAR4212` -> `NRAL0056`, never for
+`UHSS0001` (`XRAS_SUBMISSION.md` § 4.2). § 4.6 item 3 there has SAM rename it.
 
 Until the rewrite, the sweep's set difference reads a landed push as still pending. The
 four requests the light pass called pending on 2026-10-13 (NCAR4212/4293/4300/4354) fit
@@ -151,7 +151,7 @@ that shape. So:
 - **Before the push.** An approved request has a request-level `beginDate` and a null
   `endDate`, so `active=true` omits it; the light sweep listed it about 2 minutes after the
   approval. The post sets `endDate`, and the request then appears in `active=true`.
-- **After the push.** `requestId` is unchanged. The rewrite is § 5 of that record.
+- **After the push.** `requestId` is unchanged. The rewrite is manual; SAM can perform it (§ 5 of that record).
 - **The action log.** The push row carries `request_number` as XRAS sent it (`NCAR4086`),
   `request_id`, and `projcode_result` (`UCSG0004`), so § 6's resolve-from-the-log works.
 
