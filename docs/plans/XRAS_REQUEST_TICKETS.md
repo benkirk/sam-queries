@@ -145,14 +145,15 @@ that shape. So:
    RC-40275/40276 were smoked.
 3. **Prod** with the lever.
 
-**Experiments on samuel-dev against XRAS dev** (Ben drives approve and push):
+**Experiments on samuel-dev against XRAS dev**, run 2026-10-13
+([`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md) § 4):
 
-- **Before the push.** The request's `endDate` and its `active=true` visibility after
-  approval.
-- **After the push.** When the `requestNumber` rewrite happens, and whether `requestId`
-  is unchanged.
-- **The action log.** What `xras_action_log` holds for the push (`request_number`,
-  `projcode_result`).
+- **Before the push.** An approved request has a request-level `beginDate` and a null
+  `endDate`, so `active=true` omits it; the light sweep listed it about 2 minutes after the
+  approval. The post sets `endDate`, and the request then appears in `active=true`.
+- **After the push.** `requestId` is unchanged. The rewrite is § 5 of that record.
+- **The action log.** The push row carries `request_number` as XRAS sent it (`NCAR4086`),
+  `request_id`, and `projcode_result` (`UCSG0004`), so § 6's resolve-from-the-log works.
 
 ## 8. Open questions for Ben
 
