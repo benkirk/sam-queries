@@ -328,9 +328,14 @@ def sync_user(session, data: dict, *, now: Optional[datetime] = None,
     user = user_by_username(session, data['user_name'])
     if user is None and upid is not None:
         holder = User.get_by_upid(session, upid)
-        if holder is not None:
+        if holder is not None and holder.username != str(upid):
             raise SyncValidationError(
                 f'Upid {upid} matches username {holder.username} (username change in ID Service?).')
+        if holder is not None:
+            # A placeholder (username == upid, made before the claim) takes the claimed name (D26).
+            logger.info('ldapsync: placeholder user %s renamed to %s', holder.username, data['user_name'])
+            holder.username = data['user_name']
+            user = holder
 
     closed_at = None
     if user is None:

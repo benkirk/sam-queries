@@ -100,6 +100,16 @@ class TestCreate:
             f'Upid {holder.upid} matches username {holder.username} '
             '(username change in ID Service?).']
 
+    def test_placeholder_holder_takes_the_claimed_username(self, session):
+        """A user created while unclaimed (username == upid) is renamed, not refused (D26)."""
+        body = _payload()
+        holder = make_user(session, username=str(body['upid']), unix_uid=body['unixUid'],
+                           upid=body['upid'])
+        assert _sync(session, body) == holder.unix_uid
+        session.refresh(holder)
+        assert holder.username == body['userName']
+        assert User.get_by_username(session, str(body['upid'])) is None
+
     def test_upid_as_a_numeric_string(self, session):
         body = _payload()
         body['upid'] = str(body['upid'])

@@ -605,6 +605,7 @@ controllers.
 | D23 | organization purge ignores children and responsible resources | each blocks the permit |
 | D24 | a naive time in the repeated DST fall-back hour reads as the later instant (MST) | the earlier (MDT); 1 position start on the clone, accepted |
 | D25 | the finish clears `deactivate`; a user reads `active = active OR deactivate IS NOT NULL` | the finish keeps the closure instant in `deactivate`; a user reads `active` alone (legacy never had `active=0` with a stamp, so the read differs on no legacy row) |
+| D26 | a user PUT whose upid belongs to another username is refused ("username change in ID Service?") | refused, except when the holder's username is the upid itself: a placeholder made while the account was unclaimed (17 in prod, all July 2026) takes the claimed name. Found 2026-10-13 (`hkostka`, user 31294 `63707`) |
 
 ### 10.4 The deactivation undo
 
