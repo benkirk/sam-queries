@@ -70,7 +70,8 @@ The part of this allocation <strong>not yet assigned to sub-projects</strong>:
 its amount minus the sub-project carve-outs on the same resource.
 Sub-projects sharing the pool (linked, or carrying the same amount) do not
 count against it. Assigning it to a sub-project increases that sub-project's
-own allocation <em>without changing this one</em>.
+own allocation <em>without changing this one</em>; reclaiming a
+sub-project's unused amount returns it here.
 {%- endmacro %}
 
 {% macro g_exchange() -%}

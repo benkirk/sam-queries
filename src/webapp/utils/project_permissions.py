@@ -219,8 +219,9 @@ def can_exchange_allocations(user, project) -> bool:
 
 def can_allocate_residual(user, project) -> bool:
     """
-    Allocate a parent node's carve-out residual down to its sub-projects
-    (the Allocations-tab "allocate down" workflow).
+    Allocate a parent node's carve-out residual down to its sub-projects, or
+    reclaim a carve-out's unused amount back up (the Allocations-tab
+    "allocate down" and "reclaim" workflows).
 
     Granted to: system EDIT_ALLOCATIONS holders, OR project lead/admin of
     this project OR any ancestor in the project tree — the same shape as

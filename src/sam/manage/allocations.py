@@ -1095,6 +1095,82 @@ def get_carveout_frontier(session: Session, allocation: Allocation, *,
     return frontier
 
 
+def _amt(x: float) -> str:
+    """An amount for a message or audit comment: exact, comma-grouped, never e-notation."""
+    return f"{round(float(x), 2):,.15g}"
+
+
+def _refuse_pool_amount(parent: Allocation, resulting_amount: float,
+                        carve_children: Iterable[Allocation] = ()) -> None:
+    """Refuse a carve-out amount equal to its parent's, or to one of its own carve-outs'.
+
+    An equal amount classifies as a pool member (``is_pool_member``'s fallback),
+    silently flipping the carve-out into a shared pool in the audit and the
+    fairshare tree; refuse the ambiguous end state instead. Reclaiming a node's
+    whole remainder lands exactly on its one carve-out's amount, hence the children.
+    """
+    if resulting_amount == float(parent.amount):
+        raise ValueError(
+            f"Resulting amount ({_amt(resulting_amount)}) would equal the "
+            f"parent allocation's ({_amt(float(parent.amount))}), which reads "
+            "as a shared-pool member rather than a carve-out. Choose a "
+            "different amount."
+        )
+    for child in carve_children:
+        if resulting_amount == float(child.amount):
+            raise ValueError(
+                f"Resulting amount ({_amt(resulting_amount)}) would equal "
+                f"{child.account.project.projcode}'s carve-out, which would then read "
+                "as a shared-pool member rather than a carve-out. Choose a "
+                "different amount."
+            )
+
+
+def allocations_used(session: Session, allocations: Iterable[Allocation]) -> Dict[int, float]:
+    """Usage per allocation id as the allocation tree shows it (subtree-wide): one kernel
+    read per (clamp date, resource), not one per allocation."""
+    from sam.queries.dashboard import build_user_projects_resources_batched
+    groups: Dict[tuple, List[Allocation]] = {}
+    now = datetime.now()     # once: a per-allocation clock read puts each in its own group
+    for a in allocations:
+        at = max(now, a.start_date)
+        if a.end_date is not None:
+            at = min(at, a.end_date)
+        groups.setdefault((at, a.account.resource.resource_name), []).append(a)
+    used: Dict[int, float] = {}
+    for (at, resource_name), group in groups.items():
+        projects = list({a.account.project.project_id: a.account.project for a in group}.values())
+        rows = build_user_projects_resources_batched(
+            session, projects, active_at=at, resource_name=resource_name,
+            with_project_metadata=False)
+        for a in group:
+            row = next((r for r in rows.get(a.account.project.project_id, [])
+                        if r['resource_name'] == resource_name), None)
+            used[a.allocation_id] = float((row or {}).get('used') or 0.0)
+    return used
+
+
+def reclaimable_amounts(session: Session, sources: Iterable[Allocation],
+                        ) -> Dict[int, Dict[str, Any]]:
+    """Per carve-out: subtree ``used``, ``unused``, its own ``frontier``, the usage
+    ``drawn`` from its own share (subtree usage less its carve-outs' subtrees) and the
+    ``limit`` a reclaim may take. A node that carves out AND spends keeps its own spend:
+    the limit is ``amount - own carve-outs - drawn``, never more than ``unused``."""
+    sources = list(sources)
+    frontiers = {s.allocation_id: get_carveout_frontier(session, s) for s in sources}
+    used = allocations_used(
+        session, sources + [gc for f in frontiers.values() for gc in f.carve_children])
+    out: Dict[int, Dict[str, Any]] = {}
+    for s in sources:
+        f = frontiers[s.allocation_id]
+        unused = float(s.amount) - used[s.allocation_id]
+        drawn = used[s.allocation_id] - sum(used[gc.allocation_id] for gc in f.carve_children)
+        limit = min(unused, f.raw_residual - drawn) if f.carve_children else unused
+        out[s.allocation_id] = {'used': used[s.allocation_id], 'unused': unused,
+                                'frontier': f, 'drawn': drawn, 'limit': limit}
+    return out
+
+
 def allocate_residual_to_child(
     session: Session,
     parent_allocation_id: int,
@@ -1150,35 +1226,21 @@ def allocate_residual_to_child(
 
     if frontier.raw_residual < 0:
         raise ValueError(
-            f"Sub-project carve-outs ({frontier.carve_total:g}) already exceed "
-            f"this allocation ({float(parent.amount):g}). Resolve the deficit "
+            f"Sub-project carve-outs ({_amt(frontier.carve_total)}) already exceed "
+            f"this allocation ({_amt(float(parent.amount))}). Resolve the deficit "
             "first — see 'sam-admin project --audit-trees'."
         )
     if amount > frontier.residual:
         raise ValueError(
-            f"Amount ({amount:g}) exceeds the unallocated residual "
-            f"({frontier.residual:g})."
+            f"Amount ({_amt(amount)}) exceeds the unallocated residual "
+            f"({_amt(frontier.residual)})."
         )
 
     parent_projcode = parent.account.project.projcode
-    sub_comment = (f"Sub-allocated +{amount:g} from {parent_projcode} "
+    sub_comment = (f"Sub-allocated +{_amt(amount)} from {parent_projcode} "
                    f"allocation #{parent.allocation_id}")
     if comment:
         sub_comment = f"{sub_comment}; {comment}"
-
-    def _guard_equal_amount(resulting_amount: float) -> None:
-        # A child whose amount EQUALS the parent's is classified as a pool
-        # member (is_pool_member's equal-amount fallback), so landing on
-        # exact equality would silently flip this carve-out into a shared
-        # pool in the audit and the fairshare tree. Refuse the ambiguous
-        # end state rather than special-case it downstream.
-        if resulting_amount == float(parent.amount):
-            raise ValueError(
-                f"Resulting amount ({resulting_amount:g}) would equal the "
-                f"parent allocation's ({float(parent.amount):g}), which reads "
-                "as a shared-pool member rather than a carve-out. Choose a "
-                "different amount."
-            )
 
     if target_allocation_id is not None:
         target = next((a for a in frontier.carve_children
@@ -1188,7 +1250,7 @@ def allocate_residual_to_child(
                 f"Allocation {target_allocation_id} is not a carve-out on "
                 f"{parent_projcode}'s direct frontier for this resource."
             )
-        _guard_equal_amount(float(target.amount) + amount)
+        _refuse_pool_amount(parent, float(target.amount) + amount)
         return update_allocation(
             session, target.allocation_id, user_id,
             amount=float(target.amount) + amount,
@@ -1202,7 +1264,7 @@ def allocate_residual_to_child(
             f"Project {target_project_id} is not an uncovered direct "
             f"sub-project branch of {parent_projcode} for this resource."
         )
-    _guard_equal_amount(amount)
+    _refuse_pool_amount(parent, amount)
     return create_allocation(
         session,
         project_id=target_project.project_id,
@@ -1212,6 +1274,91 @@ def allocate_residual_to_child(
         end_date=parent.end_date,
         user_id=user_id,
         comment=sub_comment,
+    )
+
+
+def reclaim_from_child(
+    session: Session,
+    parent_allocation_id: int,
+    user_id: int,
+    *,
+    amount: float,
+    source_allocation_id: int,
+    comment: Optional[str] = None,
+) -> Allocation:
+    """
+    Return part of a carve-out's unused amount to its parent's unallocated residual.
+
+    The inverse of ``allocate_residual_to_child``'s bump path: the frontier
+    carve-out shrinks by ``amount`` (one EDIT->ADJUSTMENT row, signed delta);
+    the parent's amount and history are untouched, so its residual grows by
+    ``amount``. Allowed on an over-carved parent: reclaiming is how that
+    deficit is cleared.
+
+    NOTE: Does NOT commit — wrap in ``management_transaction``.
+
+    Raises:
+        InheritingAllocationException: parent is a pool copy (no residual).
+        ValueError: invalid amount or source, or an amount beyond the source's
+            unused balance or cutting below its own carve-outs and its own spend.
+    """
+    if amount is None or amount <= 0:
+        raise ValueError(f"Amount must be positive, got {amount}")
+
+    parent = session.get(Allocation, parent_allocation_id)
+    if not parent or parent.deleted:
+        raise ValueError(f"Allocation {parent_allocation_id} not found")
+    if parent.is_inheriting:
+        raise InheritingAllocationException(
+            f"Allocation {parent_allocation_id} is a shared (inheriting) copy; "
+            "the unallocated residual is defined only for dedicated allocations."
+        )
+
+    parent_projcode = parent.account.project.projcode
+    frontier = get_carveout_frontier(session, parent)
+    source = next((a for a in frontier.carve_children
+                   if a.allocation_id == source_allocation_id), None)
+    if source is None:
+        raise ValueError(
+            f"Allocation {source_allocation_id} is not a carve-out on "
+            f"{parent_projcode}'s direct frontier for this resource."
+        )
+    source_projcode = source.account.project.projcode
+
+    bounds = reclaimable_amounts(session, [source])[source.allocation_id]
+    if amount > bounds['unused']:
+        raise ValueError(
+            f"Amount ({_amt(amount)}) exceeds {source_projcode}'s unused balance "
+            f"({_amt(max(bounds['unused'], 0.0))})."
+        )
+    own = bounds['frontier']
+    if own.carve_children and amount > bounds['limit']:
+        raise ValueError(
+            f"{source_projcode}'s own sub-project carve-outs ({_amt(own.carve_total)}) and its "
+            f"own usage ({_amt(bounds['drawn'])}) leave at most {_amt(max(bounds['limit'], 0.0))} "
+            "to reclaim."
+        )
+    # A pool member not linked to the source (an equal-amount mirror) gets no cascade:
+    # once the source shrinks it reads as a carve-out larger than the source.
+    mirrors = [a for a in own.pool_children if a.parent_allocation_id != source.allocation_id]
+    if mirrors:
+        codes = ', '.join(sorted(a.account.project.projcode for a in mirrors))
+        verb, them = ('mirrors', 'it') if len(mirrors) == 1 else ('mirror', 'them')
+        raise ValueError(
+            f"{codes} {verb} {source_projcode}'s amount without being linked to it, so a "
+            f"reclaim would leave {them} larger than {source_projcode}. An allocations "
+            f"administrator can link {them} (Edit allocation) first."
+        )
+    new_amount = float(source.amount) - amount
+    _refuse_pool_amount(parent, new_amount, own.carve_children)
+
+    reclaim_comment = (f"Reclaimed -{_amt(amount)} to {parent_projcode} "
+                       f"allocation #{parent.allocation_id}")
+    if comment:
+        reclaim_comment = f"{reclaim_comment}; {comment}"
+    return update_allocation(
+        session, source.allocation_id, user_id,
+        amount=new_amount, comment=reclaim_comment,
     )
 
 

@@ -8,6 +8,8 @@
   branch. The parent's amount NEVER changes and gets NO transaction row
   (replay invariant: replay(history) == amount must keep holding for every
   touched allocation).
+- ``reclaim_from_child()``: the inverse of the bump path — shrink a carve-out
+  by part of its unused balance, growing the parent's residual.
 """
 from datetime import datetime, timedelta
 
@@ -21,8 +23,13 @@ from sam.accounting.allocations import (
     InheritingAllocationException,
     replay_amount,
 )
-from sam.manage.allocations import allocate_residual_to_child, get_carveout_frontier
-from sam.schemas.forms import AllocateResidualForm
+import sam.manage.allocations as manage_allocations
+from sam.manage.allocations import (
+    allocate_residual_to_child,
+    get_carveout_frontier,
+    reclaim_from_child,
+)
+from sam.schemas.forms import AllocateResidualForm, ReclaimResidualForm
 
 from factories import (
     make_account,
@@ -429,3 +436,219 @@ class TestValidation:
                 amount=1.0,
                 target_allocation_id=carve_tree['carve_alloc'].allocation_id,
             )
+
+
+# ---------------------------------------------------------------------------
+# reclaim_from_child
+# ---------------------------------------------------------------------------
+
+
+def _two_level(session, parent_amount, child_amount):
+    """Parent allocation with one standalone child carve-out; returns (parent, child)."""
+    resource = make_resource(session)
+    root = make_project(session)
+    parent = make_allocation(
+        session, account=make_account(session, project=root, resource=resource),
+        amount=parent_amount,
+    )
+    c1 = make_project(session, parent=root)
+    child = make_allocation(
+        session, account=make_account(session, project=c1, resource=resource),
+        amount=child_amount,
+    )
+    return parent, child
+
+
+class TestReclaimResidualForm:
+
+    def test_coerces(self):
+        data = ReclaimResidualForm().load({'source_allocation_id': '12', 'amount': '100'})
+        assert data['source_allocation_id'] == 12
+        assert data['amount'] == 100.0
+        assert data['comment'] is None
+
+    def test_missing_source_and_nonpositive_amount_rejected(self):
+        with pytest.raises(ValidationError) as ei:
+            ReclaimResidualForm().load({'amount': '0'})
+        assert {'source_allocation_id', 'amount'} <= set(ei.value.messages)
+
+
+class TestReclaim:
+
+    def test_reclaim_shrinks_child_parent_unchanged(self, session, carve_tree, acting_user):
+        parent, source = carve_tree['parent_alloc'], carve_tree['carve_alloc']
+        result = reclaim_from_child(
+            session, parent.allocation_id, acting_user.user_id,
+            amount=100_000.0, source_allocation_id=source.allocation_id,
+        )
+        session.refresh(parent)
+        session.refresh(source)
+        assert result.allocation_id == source.allocation_id
+        assert source.amount == 200_000.0
+        assert parent.amount == 1_000_000.0
+        assert get_carveout_frontier(session, parent).residual == 800_000.0
+
+    def test_reclaim_audit_rows_replay(self, session, carve_tree, acting_user):
+        parent, source = carve_tree['parent_alloc'], carve_tree['carve_alloc']
+        make_allocation_transaction(
+            session, allocation=source, user=acting_user,
+            transaction_type=AllocationTransactionType.NEW,
+            transaction_amount=source.amount,
+        )
+        reclaim_from_child(
+            session, parent.allocation_id, acting_user.user_id,
+            amount=100_000.0, source_allocation_id=source.allocation_id,
+            comment='unused hours',
+        )
+        assert _txns(session, parent.allocation_id) == []
+        rows = [r for r in _txns(session, source.allocation_id)
+                if r.transaction_type == AllocationTransactionType.ADJUSTMENT]
+        assert len(rows) == 1
+        assert rows[0].transaction_amount == -100_000.0
+        assert 'Reclaimed' in rows[0].transaction_comment
+        assert 'unused hours' in rows[0].transaction_comment
+        session.refresh(source)
+        assert replay_amount(_txns(session, source.allocation_id)) == pytest.approx(
+            source.amount)
+
+    def test_reclaim_cascades_to_shared_children_of_source(
+            self, session, carve_tree, acting_user):
+        parent, source = carve_tree['parent_alloc'], carve_tree['carve_alloc']
+        linked_child = make_allocation(
+            session, account=source.account, amount=source.amount, parent=source,
+        )
+        reclaim_from_child(
+            session, parent.allocation_id, acting_user.user_id,
+            amount=50_000.0, source_allocation_id=source.allocation_id,
+        )
+        session.refresh(linked_child)
+        assert linked_child.amount == 250_000.0
+
+    def test_over_carved_parent_allowed(self, session, acting_user):
+        """Reclaiming is how an over-carved parent's deficit is cleared."""
+        parent, child = _two_level(session, 1_000_000.0, 1_200_000.0)
+        reclaim_from_child(
+            session, parent.allocation_id, acting_user.user_id,
+            amount=300_000.0, source_allocation_id=child.allocation_id,
+        )
+        assert get_carveout_frontier(session, parent).raw_residual == 100_000.0
+
+    def test_beyond_unused_balance_rejected(self, session, carve_tree, acting_user, monkeypatch):
+        parent, source = carve_tree['parent_alloc'], carve_tree['carve_alloc']
+        monkeypatch.setattr(manage_allocations, 'allocations_used',
+                            lambda session, allocs: {a.allocation_id: 250_000.0 for a in allocs})
+        with pytest.raises(ValueError, match='unused balance'):
+            reclaim_from_child(
+                session, parent.allocation_id, acting_user.user_id,
+                amount=50_001.0, source_allocation_id=source.allocation_id,
+            )
+        session.refresh(source)
+        assert source.amount == 300_000.0
+
+    def test_cannot_over_carve_the_source(self, session, carve_tree, acting_user):
+        """A source with its own carve-outs keeps at least their total."""
+        parent, source = carve_tree['parent_alloc'], carve_tree['carve_alloc']
+        gc = make_project(session, parent=source.account.project)
+        make_allocation(
+            session,
+            account=make_account(session, project=gc, resource=carve_tree['resource']),
+            amount=250_000.0,
+        )
+        with pytest.raises(ValueError, match='own sub-project carve-outs'):
+            reclaim_from_child(
+                session, parent.allocation_id, acting_user.user_id,
+                amount=60_000.0, source_allocation_id=source.allocation_id,
+            )
+        # The whole remainder lands on the grandchild's amount: a pool member by the fallback.
+        with pytest.raises(ValueError, match="carve-out, which would then read as a shared-pool"):
+            reclaim_from_child(
+                session, parent.allocation_id, acting_user.user_id,
+                amount=50_000.0, source_allocation_id=source.allocation_id,
+            )
+        reclaim_from_child(
+            session, parent.allocation_id, acting_user.user_id,
+            amount=40_000.0, source_allocation_id=source.allocation_id,
+        )
+
+    def test_own_spend_is_kept_when_the_source_carves_out(
+            self, session, carve_tree, acting_user, monkeypatch):
+        """A node that carves out and spends: its own share, not the subtree's balance."""
+        parent, source = carve_tree['parent_alloc'], carve_tree['carve_alloc']
+        gc = make_project(session, parent=source.account.project)
+        gc_alloc = make_allocation(
+            session,
+            account=make_account(session, project=gc, resource=carve_tree['resource']),
+            amount=250_000.0,
+        )
+        # source 300k: subtree used 50k, of which the grandchild's own 10k; own share 50k, 40k spent
+        usage = {source.allocation_id: 50_000.0, gc_alloc.allocation_id: 10_000.0}
+        monkeypatch.setattr(manage_allocations, 'allocations_used',
+                            lambda s, allocs: {a.allocation_id: usage.get(a.allocation_id, 0.0)
+                                               for a in allocs})
+        with pytest.raises(ValueError, match='own sub-project carve-outs'):
+            reclaim_from_child(
+                session, parent.allocation_id, acting_user.user_id,
+                amount=10_001.0, source_allocation_id=source.allocation_id,
+            )
+        reclaim_from_child(
+            session, parent.allocation_id, acting_user.user_id,
+            amount=10_000.0, source_allocation_id=source.allocation_id,
+        )
+        session.refresh(source)
+        assert source.amount == 290_000.0
+
+    def test_result_equal_to_parent_rejected(self, session, acting_user):
+        parent, child = _two_level(session, 1_000_000.0, 1_200_000.0)
+        with pytest.raises(ValueError, match='shared-pool member'):
+            reclaim_from_child(
+                session, parent.allocation_id, acting_user.user_id,
+                amount=200_000.0, source_allocation_id=child.allocation_id,
+            )
+
+    def test_unlinked_mirror_under_source_rejected(self, session, carve_tree, acting_user):
+        """An unlinked equal-amount child gets no cascade; shrinking the source would
+        flip it into a carve-out larger than the source (CESM0028 / P93300065 on Casper)."""
+        parent, source = carve_tree['parent_alloc'], carve_tree['carve_alloc']
+        gc = make_project(session, parent=source.account.project)
+        mirror = make_allocation(
+            session,
+            account=make_account(session, project=gc, resource=carve_tree['resource']),
+            amount=source.amount,
+        )
+        with pytest.raises(ValueError, match='without being linked'):
+            reclaim_from_child(
+                session, parent.allocation_id, acting_user.user_id,
+                amount=1_000.0, source_allocation_id=source.allocation_id,
+            )
+        session.refresh(source)
+        assert source.amount == 300_000.0
+        mirror.parent_allocation_id = source.allocation_id    # linked: cascades, allowed
+        session.flush()
+        reclaim_from_child(
+            session, parent.allocation_id, acting_user.user_id,
+            amount=1_000.0, source_allocation_id=source.allocation_id,
+        )
+        session.refresh(mirror)
+        assert mirror.amount == 299_000.0
+
+    def test_pool_member_source_rejected(self, session, carve_tree, acting_user):
+        with pytest.raises(ValueError, match='not a carve-out'):
+            reclaim_from_child(
+                session, carve_tree['parent_alloc'].allocation_id, acting_user.user_id,
+                amount=1.0, source_allocation_id=carve_tree['pool_alloc'].allocation_id,
+            )
+
+    def test_inheriting_parent_rejected(self, session, carve_tree, acting_user):
+        with pytest.raises(InheritingAllocationException):
+            reclaim_from_child(
+                session, carve_tree['pool_alloc'].allocation_id, acting_user.user_id,
+                amount=1.0, source_allocation_id=carve_tree['carve_alloc'].allocation_id,
+            )
+
+    def test_nonpositive_amount_rejected(self, session, carve_tree, acting_user):
+        for bad in (0.0, -5.0):
+            with pytest.raises(ValueError, match='positive'):
+                reclaim_from_child(
+                    session, carve_tree['parent_alloc'].allocation_id, acting_user.user_id,
+                    amount=bad, source_allocation_id=carve_tree['carve_alloc'].allocation_id,
+                )
