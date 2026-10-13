@@ -1569,21 +1569,20 @@ def htmx_allocate_down(allocation):
 # ---------------------------------------------------------------------------
 
 def _reclaim_context(allocation):
-    """Frontier plus the carve-outs the reclaim modal offers, each with its unused balance."""
-    from sam.manage.allocations import allocations_used, get_carveout_frontier
+    """Frontier plus the carve-outs the reclaim modal offers, each with what it can give back."""
+    from sam.manage.allocations import get_carveout_frontier, reclaimable_amounts
 
     frontier = get_carveout_frontier(db.session, allocation)
-    used_by_id = allocations_used(db.session, frontier.carve_children)
+    bounds = reclaimable_amounts(db.session, frontier.carve_children)
     candidates = []
     for a in frontier.carve_children:
-        used = used_by_id[a.allocation_id]
         candidates.append({
             'allocation_id': a.allocation_id,
             'projcode': a.account.project.projcode,
             'title': a.account.project.title or '',
             'amount': a.amount,
-            'used': used,
-            'reclaimable': max(float(a.amount) - used, 0.0),
+            'used': bounds[a.allocation_id]['used'],
+            'reclaimable': max(bounds[a.allocation_id]['limit'], 0.0),
         })
     candidates.sort(key=lambda c: c['projcode'])
     return {

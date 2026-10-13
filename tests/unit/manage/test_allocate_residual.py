@@ -564,6 +564,33 @@ class TestReclaim:
             amount=50_000.0, source_allocation_id=source.allocation_id,
         )
 
+    def test_own_spend_is_kept_when_the_source_carves_out(
+            self, session, carve_tree, acting_user, monkeypatch):
+        """A node that carves out and spends: its own share, not the subtree's balance."""
+        parent, source = carve_tree['parent_alloc'], carve_tree['carve_alloc']
+        gc = make_project(session, parent=source.account.project)
+        gc_alloc = make_allocation(
+            session,
+            account=make_account(session, project=gc, resource=carve_tree['resource']),
+            amount=250_000.0,
+        )
+        # source 300k: subtree used 50k, of which the grandchild's own 10k; own share 50k, 40k spent
+        usage = {source.allocation_id: 50_000.0, gc_alloc.allocation_id: 10_000.0}
+        monkeypatch.setattr(manage_allocations, 'allocations_used',
+                            lambda s, allocs: {a.allocation_id: usage.get(a.allocation_id, 0.0)
+                                               for a in allocs})
+        with pytest.raises(ValueError, match='own sub-project carve-outs'):
+            reclaim_from_child(
+                session, parent.allocation_id, acting_user.user_id,
+                amount=10_001.0, source_allocation_id=source.allocation_id,
+            )
+        reclaim_from_child(
+            session, parent.allocation_id, acting_user.user_id,
+            amount=10_000.0, source_allocation_id=source.allocation_id,
+        )
+        session.refresh(source)
+        assert source.amount == 290_000.0
+
     def test_result_equal_to_parent_rejected(self, session, acting_user):
         parent, child = _two_level(session, 1_000_000.0, 1_200_000.0)
         with pytest.raises(ValueError, match='shared-pool member'):

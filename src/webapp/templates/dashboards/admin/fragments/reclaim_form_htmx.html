@@ -21,7 +21,7 @@
 {%- set ns = namespace(options=[]) %}
 {%- for c in candidates if c.reclaimable > 0 %}
   {%- set ns.options = ns.options + [(c.allocation_id,
-        c.projcode ~ ' — ' ~ (c.amount | fmt_number) ~ ', ' ~ (c.reclaimable | fmt_number) ~ ' unused'
+        c.projcode ~ ' — ' ~ (c.amount | fmt_number) ~ ', ' ~ (c.reclaimable | fmt_number) ~ ' reclaimable'
         ~ (' — ' ~ (c.title | truncate(40, True, '…')) if c.title else ''))] %}
 {%- endfor %}
 
@@ -44,12 +44,12 @@
 
   {{ select_field('source_allocation_id', 'Sub-project', required=True,
                   placeholder='— Select sub-project —', options=ns.options,
-                  help='Only the unused part of a carve-out can be reclaimed.',
+                  help='Only the unused part of a carve-out can be reclaimed, and never what its own sub-projects hold.',
                   id='reclaimSource') }}
   {{ number_field('amount', 'Amount', required=True, min=0.01, max=max_reclaimable, step='any',
                   placeholder='e.g. 100000', data_attrs={'number-preview': ''},
                   help_html='<span class="number-preview text-primary fw-semibold"></span> Up to the '
-                            ~ 'selected sub-project\'s unused balance.',
+                            ~ 'selected sub-project\'s reclaimable balance.',
                   id='reclaimAmount') }}
   {{ text_field('comment', 'Comment', optional_text='(optional, recorded in the allocation history)',
                 placeholder='e.g. Unused FY2027 hours returned to the lab pool', id='reclaimComment') }}

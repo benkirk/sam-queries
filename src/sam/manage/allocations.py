@@ -1134,6 +1134,27 @@ def allocations_used(session: Session, allocations: Iterable[Allocation]) -> Dic
     return used
 
 
+def reclaimable_amounts(session: Session, sources: Iterable[Allocation],
+                        ) -> Dict[int, Dict[str, Any]]:
+    """Per carve-out: subtree ``used``, ``unused``, its own ``frontier``, the usage
+    ``drawn`` from its own share (subtree usage less its carve-outs' subtrees) and the
+    ``limit`` a reclaim may take. A node that carves out AND spends keeps its own spend:
+    the limit is ``amount - own carve-outs - drawn``, never more than ``unused``."""
+    sources = list(sources)
+    frontiers = {s.allocation_id: get_carveout_frontier(session, s) for s in sources}
+    used = allocations_used(
+        session, sources + [gc for f in frontiers.values() for gc in f.carve_children])
+    out: Dict[int, Dict[str, Any]] = {}
+    for s in sources:
+        f = frontiers[s.allocation_id]
+        unused = float(s.amount) - used[s.allocation_id]
+        drawn = used[s.allocation_id] - sum(used[gc.allocation_id] for gc in f.carve_children)
+        limit = min(unused, f.raw_residual - drawn) if f.carve_children else unused
+        out[s.allocation_id] = {'used': used[s.allocation_id], 'unused': unused,
+                                'frontier': f, 'drawn': drawn, 'limit': limit}
+    return out
+
+
 def allocate_residual_to_child(
     session: Session,
     parent_allocation_id: int,
@@ -1263,7 +1284,7 @@ def reclaim_from_child(
     Raises:
         InheritingAllocationException: parent is a pool copy (no residual).
         ValueError: invalid amount or source, or an amount beyond the source's
-            unused balance or beyond its own unallocated remainder.
+            unused balance or cutting below its own carve-outs and its own spend.
     """
     if amount is None or amount <= 0:
         raise ValueError(f"Amount must be positive, got {amount}")
@@ -1288,17 +1309,18 @@ def reclaim_from_child(
         )
     source_projcode = source.account.project.projcode
 
-    unused = float(source.amount) - allocations_used(session, [source])[source.allocation_id]
-    if amount > unused:
+    bounds = reclaimable_amounts(session, [source])[source.allocation_id]
+    if amount > bounds['unused']:
         raise ValueError(
             f"Amount ({amount:g}) exceeds {source_projcode}'s unused balance "
-            f"({max(unused, 0.0):g})."
+            f"({max(bounds['unused'], 0.0):g})."
         )
-    own = get_carveout_frontier(session, source)
-    if own.carve_children and amount > own.raw_residual:
+    own = bounds['frontier']
+    if own.carve_children and amount > bounds['limit']:
         raise ValueError(
-            f"{source_projcode}'s own sub-project carve-outs ({own.carve_total:g}) "
-            f"would exceed it; reclaim at most {max(own.raw_residual, 0.0):g}."
+            f"{source_projcode}'s own sub-project carve-outs ({own.carve_total:g}) and its "
+            f"own usage ({bounds['drawn']:g}) leave at most {max(bounds['limit'], 0.0):g} "
+            "to reclaim."
         )
     new_amount = float(source.amount) - amount
     _refuse_pool_amount(parent, new_amount)
