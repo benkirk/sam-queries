@@ -116,8 +116,15 @@ PAGE_SIZE = 200
 #: performance**, not ``submitDate``: the question is who needs an account for
 #: a handoff, and a handoff only ever lands against an allocation that is
 #: live. A request whose allocation ended before the window opened cannot
-#: produce one.
+#: produce one. A request with no ``endDate`` is aged by ``OPEN_ENDED_MAX_AGE_DAYS``.
 DEFAULT_WINDOW_DAYS = 90
+
+#: How recent (latest action, else submit date) an Approved request with **no**
+#: request-level ``endDate`` must be to count as live. Every approved,
+#: not-yet-pushed request has none, so without this a 2015 approval nobody
+#: pushed reads as open (prod 2026-10-13: ten stale reactivation rows).
+#: Days; a positive int, deliberately a constant (window 90, preflight 120).
+OPEN_ENDED_MAX_AGE_DAYS = 90
 
 #: WARNING: Requests to enumerate. ``Approved`` is the default because it is the
 #: only status that produces a handoff — but the full filter vocabulary is
@@ -239,27 +246,30 @@ def full_hour(env: Optional[dict] = None) -> int:
     return value if 0 <= value <= 23 else DEFAULT_FULL_HOUR
 
 
-def overlaps_window(payload: dict, *, window_start: date) -> bool:
-    """Was this request's allocation still open when the window began?
+def overlaps_window(payload: dict, *, window_start: date,
+                    open_ended_since: date) -> bool:
+    """Could this request still produce a handoff when the window began?
 
-    **One-sided on purpose.** The predicate is ``endDate is None or endDate >=
-    window_start`` — it drops what has already ended and keeps everything
-    live *or future*. A two-sided overlap (also requiring ``beginDate <=
-    window_end``) would discard requests whose period starts next quarter,
-    and those are precisely the population Feed B exists to reach: a PI with
-    no SAM account and months of lead time to fix it.
+    **One-sided on purpose**: ``endDate >= window_start`` keeps everything live
+    *or future*; a two-sided overlap would drop a period starting next quarter,
+    which is exactly the PI Feed B exists to reach with months of lead time.
 
-    A missing or unparseable ``endDate`` counts as open — those are the newest
-    rows, in-flight or not yet dated.
-
-    Pure and injectable so the boundary never floats: a test that read the
-    wall clock would pass or fail depending on the day it ran. Dates arrive as
-    ``YYYY-MM-DD`` and are compared as dates; no timezone reasoning applies to
-    a calendar date.
+    A deleted request never qualifies. With no parseable ``endDate`` (every
+    approved, not-yet-pushed request) its latest activity must fall on or after
+    *open_ended_since*; a request carrying no date at all is kept. Pure: both
+    boundaries are passed in, never read off the wall clock.
     """
-    from sam.dates import parse_wire_date   # lazy: importing sam loads every ORM model
+    # lazy: importing sam loads every ORM model
+    from sam.dates import parse_wire_date
+    from sam.queries.xras_accounts import report_activity_date
+
+    if payload.get('isDeleted'):
+        return False
     end = parse_wire_date(payload.get('endDate'))
-    return end is None or end >= window_start
+    if end is not None:
+        return end >= window_start
+    seen = report_activity_date(payload)
+    return seen is None or seen >= open_ended_since
 
 
 def _resource_key_map(ctx, client, detail) -> Optional[dict]:
@@ -729,8 +739,9 @@ def xras_sweep(ctx) -> TaskResult:
     client = XrasApiClient.from_environment()
     page_budget = max_pages()
     window = window_days()
-    window_start = to_local_naive(
-        ctx.occurrence, ZoneInfo(DEFAULT_TZ)).date() - timedelta(days=window)
+    slot_date = to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ)).date()
+    window_start = slot_date - timedelta(days=window)
+    open_ended_since = slot_date - timedelta(days=OPEN_ENDED_MAX_AGE_DAYS)
 
     # Two cadences from one hourly task. The cheap `active=true` worklist pass
     # runs every hour; the heavy full-`Approved` enumeration — which the
@@ -774,19 +785,17 @@ def xras_sweep(ctx) -> TaskResult:
     detail['requests_seen'] = len(payloads)
     detail['budget_exhausted'] = detail['pages'] >= page_budget
 
-    # WARNING: `unwindowed` (full slot only) is the Remediations index's corpus.
-    # The two feeds want opposite things from the same enumeration: the account
-    # worklist wants only live periods of performance, while remediation is
-    # about requests that went stale — a 2015 approval nobody ever pushed is
-    # precisely the row an operator needs to close, and the window would hide
-    # exactly those. In `active` mode the API already returned only live/future,
-    # so the window is a no-op and the index is not rebuilt this slot.
-    if is_full:
-        unwindowed = list(payloads)
-        # Both counts are reported: `requests_seen` says how much was read,
-        # `requests_in_window` how much was work.
-        payloads = [p for p in payloads
-                    if overlaps_window(p, window_start=window_start)]
+    # WARNING: `unwindowed` is the Remediations index's corpus (full slot only)
+    # and opportunity discovery's. The two feeds want opposite things from one
+    # enumeration: the account worklist wants only live periods of performance,
+    # while remediation is about requests that went stale — a 2015 approval
+    # nobody ever pushed is the row an operator needs to close, and the window
+    # would hide exactly those. Both counts are reported: `requests_seen` says
+    # how much was read, `requests_in_window` how much was work.
+    unwindowed = list(payloads)
+    payloads = [p for p in payloads
+                if overlaps_window(p, window_start=window_start,
+                                   open_ended_since=open_ended_since)]
     detail['requests_in_window'] = len(payloads)
 
     # 1c. opportunities SAM cannot resolve to an allocation type
@@ -806,7 +815,7 @@ def xras_sweep(ctx) -> TaskResult:
     # it before the map existed. It is reported so a *new* opportunity is
     # visible here before any action is pushed against it, which is the lead
     # time the map exists to buy. The sweep must never write the table.
-    seen_ids = {int(oid) for p in payloads
+    seen_ids = {int(oid) for p in unwindowed
                 if (oid := p.get('opportunityId')) is not None}
 
     # WARNING: **Requests cannot mention an opportunity that has none**, so the
@@ -913,7 +922,7 @@ def xras_sweep(ctx) -> TaskResult:
             detail['reconciled'] += 1
 
     # 4b. the Remediations index — full slot only; light hours ride its 24h TTL.
-    # `unwindowed` and the extra-status passes exist only on the full path.
+    # The extra-status passes exist only on the full path.
     if is_full:
         index_entries = _build_requests_index(ctx, client, session, unwindowed, detail)
         # 4c. fill the Pending Users tab's Pre-flight column for Feed-B rows from

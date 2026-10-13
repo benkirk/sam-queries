@@ -385,28 +385,61 @@ class TestTheWindow:
     """
 
     START = date(2026, 6, 1)
+    OPEN_SINCE = date(2026, 7, 15)
+
+    def _in(self, payload):
+        return mod.overlaps_window(payload, window_start=self.START,
+                                   open_ended_since=self.OPEN_SINCE)
 
     def test_an_allocation_that_ended_before_the_window_is_dropped(self):
-        assert not mod.overlaps_window({'endDate': '2026-05-31'},
-                                       window_start=self.START)
+        assert not self._in({'endDate': '2026-05-31'})
 
     def test_one_still_open_is_kept(self):
-        assert mod.overlaps_window({'endDate': '2026-06-01'},
-                                   window_start=self.START)
+        assert self._in({'endDate': '2026-06-01'})
 
     def test_a_future_allocation_is_kept(self):
         """**The one-sided half, and the point of it.** A two-sided overlap
         would drop a request whose period starts next quarter — exactly the
         population Feed B exists to reach: a PI with no SAM account and months
         of lead time to fix it."""
-        assert mod.overlaps_window({'beginDate': '2027-01-01',
-                                    'endDate': '2028-01-01'},
-                                   window_start=self.START)
+        assert self._in({'beginDate': '2027-01-01', 'endDate': '2028-01-01'})
 
     @pytest.mark.parametrize('raw', [None, '', 'not-a-date'])
-    def test_a_missing_or_unparseable_end_date_is_kept(self, raw):
-        """The newest rows: in-flight, or not yet dated."""
-        assert mod.overlaps_window({'endDate': raw}, window_start=self.START)
+    def test_an_open_ended_request_with_recent_activity_is_kept(self, raw):
+        """Approved, not yet pushed: no request-level endDate, a fresh submit."""
+        assert self._in({'endDate': raw, 'submitDate': '2026-07-15'})
+
+    @pytest.mark.parametrize('raw', [None, '', 'not-a-date'])
+    def test_an_open_ended_request_gone_quiet_is_dropped(self, raw):
+        """NCAR0099 on prod 2026-10-13: approved 2015, never pushed, read as open."""
+        assert not self._in({'endDate': raw, 'submitDate': '2026-07-14'})
+
+    def test_a_fresh_action_on_an_old_request_is_recent(self):
+        assert self._in({'submitDate': '2015-09-28',
+                         'actions': [{'entryDate': '2026-09-01'}]})
+
+    def test_an_open_ended_request_with_no_date_at_all_is_kept(self):
+        """Missing information is not evidence of age, as in every other window."""
+        assert self._in({'endDate': None})
+
+    @pytest.mark.parametrize('extra', [{'submitDate': '2026-09-14'},
+                                       {'endDate': '2027-09-30'}])
+    def test_a_deleted_request_is_dropped(self, extra):
+        """NCAR0007 on prod: a deleted test request, submitted last month."""
+        assert not self._in({'isDeleted': True, **extra})
+
+    def test_an_ancient_open_ended_request_files_nobody(self, ctx, wire, session):
+        from sam.core.account_requests import AccountRequest
+
+        ancient = _request(1, 'ZZZZ9998', username='ghost-user-52',
+                           email='old@example.edu')
+        ancient['submitDate'] = '2015-09-28'
+        wire([[ancient]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['requests_in_window'] == 0
+        assert detail['account_requests']['created'] == 0
+        assert not (session.query(AccountRequest)
+                    .filter(AccountRequest.xras_username == 'ghost-user-52').count())
 
     def test_both_counts_are_reported(self, ctx, wire):
         """`requests_seen` says how much was read, `requests_in_window` how
@@ -851,6 +884,16 @@ class TestUnmappedOpportunities:
         assert result.detail['opportunities_seen'] == 2
         assert result.detail['opportunities_unmapped'] == 1
         assert result.detail['opportunities_unmapped_sample'] == [771004]
+
+    def test_a_request_outside_the_window_still_names_its_opportunity(
+            self, ctx, wire, session):
+        """Discovery reads the whole enumeration, not the worklist's window."""
+        stale = self._req(1, 'NCAR9001', 771005)
+        stale['endDate'] = '1999-01-01'
+        wire([[stale]])
+        result = mod.xras_sweep(ctx())
+        assert result.detail['requests_in_window'] == 0
+        assert result.detail['opportunities_seen'] == 1
 
     def test_payloads_without_an_opportunity_id_are_not_counted(self, ctx, wire, session):
         wire([[_request(1, 'NCAR9001')]])
