@@ -513,6 +513,13 @@ class TestPendingPush:
         detail = mod.xras_sweep(ctx()).detail
         assert detail['pending_push'] == 0
 
+    def test_a_deleted_request_is_not(self, ctx, wire):
+        """NCAR0001 on prod 2026-10-13: a deleted test request counted as a push owed."""
+        deleted = _request(1, 'ZZZZ9999')
+        deleted['isDeleted'] = True
+        wire([[deleted]])
+        assert mod.xras_sweep(ctx()).detail['pending_push'] == 0
+
 
 class TestClassification:
     """WARNING: Only the **not-yet-pushed** rosters, which is the difference between

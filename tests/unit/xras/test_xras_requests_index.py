@@ -570,3 +570,40 @@ class TestRequestNumbersByUsername:
                 {'request_number': None, 'roster': [{'username': 'ghost'}]}]
         assert request_numbers_by_username(rows, ['ghost', 'nobody', None]) == {
             'ghost': ['NCAR0003', 'NCAR0002'], 'nobody': []}
+
+
+class TestLiveLines:
+    """A deleted line carries no handoff, wherever a family is read."""
+
+    def test_deleted_and_malformed_lines_are_dropped(self):
+        from sam.queries.xras_requests import live_lines
+        live = _payload(requestId=1)
+        assert live_lines([live, _payload(requestId=2, isDeleted=True), 'junk', None]) == [live]
+        assert live_lines(None) == []
+
+
+class TestLivePendingNumbers:
+    """One answer to "approved but not in SAM", shared by the sweep's count and its index."""
+
+    def test_no_project_is_pending(self, session):
+        from sam.queries.xras_requests import live_pending_numbers
+        assert live_pending_numbers(session, [_payload(requestNumber='ZZZZ9998')]) == {'ZZZZ9998'}
+
+    def test_an_existing_project_is_not(self, session):
+        from factories import make_project
+        from sam.queries.xras_requests import live_pending_numbers
+        project = make_project(session)
+        session.flush()
+        assert live_pending_numbers(session, [_payload(requestNumber=project.projcode)]) == set()
+
+    def test_a_wholly_deleted_request_is_not(self, session):
+        """NCAR0001/0004 on prod: deleted test requests read as pushes still owed."""
+        from sam.queries.xras_requests import live_pending_numbers
+        assert live_pending_numbers(
+            session, [_payload(requestNumber='ZZZZ9997', isDeleted=True)]) == set()
+
+    def test_one_live_line_keeps_the_number(self, session):
+        from sam.queries.xras_requests import live_pending_numbers
+        assert live_pending_numbers(session, [
+            _payload(requestId=1, requestNumber='ZZZZ9996', isDeleted=True),
+            _payload(requestId=2, requestNumber='ZZZZ9996')]) == {'ZZZZ9996'}

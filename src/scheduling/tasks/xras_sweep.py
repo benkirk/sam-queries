@@ -437,8 +437,7 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
     the account worklist, and a remediation feed that fails must not cost the
     feed that was already working.
     """
-    from sam.queries.projects import project_ids_by_code
-    from sam.queries.xras_requests import request_index_entry
+    from sam.queries.xras_requests import live_pending_numbers, request_index_entry
 
     payloads = list(approved_payloads or ())
     extra_payloads = []
@@ -474,14 +473,13 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
         return []
 
     try:
-        known = set(project_ids_by_code(session, numbers))
+        pending = live_pending_numbers(session, payloads + extra_payloads)
     except Exception as exc:                            # noqa: BLE001
         # None, not []: without the pending classification every entry would
         # be wrong, and publishing an empty index over the last good one would
         # render as "nothing to remediate" — see the docstring.
         ctx.logger.warning('xras_sweep: index projcode lookup failed: %s', exc)
         return None
-    pending = numbers - known
 
     # Preflight every recent candidate action across the whole enumeration,
     # before the cohort filter — an already-pushed Approved request with a fresh
@@ -665,7 +663,6 @@ def xras_sweep(ctx) -> TaskResult:
     from sam.integration.xras_api.cache import (load_requests_index,
                                                 store_pending_worklist,
                                                 store_requests_index)
-    from sam.queries.projects import project_ids_by_code
     from sam.queries.xras_accounts import (
         classify_accounts,
         get_account_worklist,
@@ -675,6 +672,7 @@ def xras_sweep(ctx) -> TaskResult:
     )
     from sam.queries.xras_actions import (audit_opportunity_mapping,
                                           propose_opportunity_mapping)
+    from sam.queries.xras_requests import live_pending_numbers
 
     detail = {
         'skipped': False,
@@ -845,15 +843,10 @@ def xras_sweep(ctx) -> TaskResult:
                                    detail, known=open_payloads)
 
     # 2. dropped / pending pushes
-    numbers = {str(p.get('requestNumber')).strip() for p in payloads
-               if p.get('requestNumber')}
-    pending_set: set = set()
-    if numbers:
-        known = set(project_ids_by_code(session, numbers))
-        pending_set = numbers - known
-        pending = sorted(pending_set)
-        detail['pending_push'] = len(pending)
-        detail['pending_push_sample'] = pending[:_MAX_REPORTED]
+    pending_set = live_pending_numbers(session, payloads)
+    pending = sorted(pending_set)
+    detail['pending_push'] = len(pending)
+    detail['pending_push_sample'] = pending[:_MAX_REPORTED]
 
     # 3. classify the rosters of what has NOT been pushed
     #
