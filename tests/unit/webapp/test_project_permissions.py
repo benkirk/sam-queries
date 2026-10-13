@@ -19,6 +19,7 @@ from webapp.utils.project_permissions import (
     can_modify_allocations,
     can_view_project_members,
     get_user_role_in_project,
+    steward_tools_allowed,
 )
 from webapp.utils.rbac import Permission
 
@@ -464,6 +465,36 @@ class TestCanModifyAllocations:
         )
         assert can_modify_allocations(user, wna_project)
         assert not can_modify_allocations(user, univ_project)
+
+
+class TestStewardToolsAllowed:
+    """Exchange / allocate-down / reclaim: a steward on compute only, an allocations
+    administrator on every resource type."""
+
+    def test_steward_on_compute_allowed(self):
+        user = create_mock_user(user_id=42, roles=[])
+        project = create_mock_project(project_lead_user_id=42)
+        assert steward_tools_allowed(user, project, 'HPC')
+        assert steward_tools_allowed(user, project, 'DAV')
+
+    def test_steward_on_storage_refused(self):
+        user = create_mock_user(user_id=42, roles=[])
+        project = create_mock_project(project_lead_user_id=42)
+        for rtype in ('DISK', 'ARCHIVE', 'DATA ACCESS', None):
+            assert not steward_tools_allowed(user, project, rtype)
+
+    def test_admin_on_storage_allowed(self):
+        user = create_mock_user(user_id=99, roles=['nusd'])
+        project = create_mock_project(project_lead_user_id=999)
+        assert steward_tools_allowed(user, project, 'DISK')
+
+    def test_facility_scoped_admin_on_storage_for_matching_facility(self, monkeypatch):
+        from webapp.utils import rbac
+        user = create_mock_user(user_id=77, roles=[], username='wna_admin')
+        monkeypatch.setitem(rbac.USER_FACILITY_PERMISSIONS, 'wna_admin',
+                            {'WNA': {Permission.EDIT_ALLOCATIONS}})
+        assert steward_tools_allowed(user, create_mock_project(999, facility_name='WNA'), 'DISK')
+        assert not steward_tools_allowed(user, create_mock_project(999, facility_name='UNIV'), 'DISK')
 
 
 # ---------------------------------------------------------------------------

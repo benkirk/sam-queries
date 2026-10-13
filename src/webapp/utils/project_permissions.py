@@ -14,6 +14,7 @@ walking ancestors)" — lives in ``is_project_steward``. All public
 ``can_*`` helpers delegate to it so the rule set stays consistent.
 """
 
+from sam.enums import ResourceTypeName
 from webapp.utils.rbac import has_permission, has_permission_for_facility, Permission
 
 
@@ -234,6 +235,12 @@ def can_allocate_residual(user, project) -> bool:
     return is_project_steward(
         user, project, Permission.EDIT_ALLOCATIONS, include_ancestors=True
     )
+
+
+def steward_tools_allowed(user, project, resource_type) -> bool:
+    """Exchange / allocate-down / reclaim on one resource type: stewards on compute (HPC/DAV)
+    only, allocations administrators on every type. Combine with the steward check."""
+    return ResourceTypeName.is_compute(resource_type) or can_modify_allocations(user, project)
 
 
 def can_edit_consumption_threshold(user, project) -> bool:

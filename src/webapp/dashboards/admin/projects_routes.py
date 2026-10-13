@@ -33,6 +33,7 @@ from webapp.utils.project_permissions import (
     can_modify_allocations,
     can_exchange_allocations,
     can_allocate_residual,
+    steward_tools_allowed,
 )
 from sam.manage import management_transaction
 from sam.accounting.allocations import InheritingAllocationException
@@ -934,7 +935,9 @@ def htmx_project_allocation_tree(project):
                 if rdata.get('allocation_id') and not rdata.get('is_inheriting'):
                     per_resource_counts[rname] = per_resource_counts.get(rname, 0) + 1
         exchange_eligible_resources = {
-            rname for rname, count in per_resource_counts.items() if count >= 2
+            rname for rname, count in per_resource_counts.items()
+            if count >= 2 and steward_tools_allowed(current_user, project,
+                                                    resource_type_lookup.get(rname))
         }
 
     # Resolve resource_id by name so the Exchange button's URL can target
@@ -993,7 +996,8 @@ def htmx_project_allocation_tree(project):
                 'residual': frontier.residual,
                 'raw_residual': frontier.raw_residual,
                 'carve_total': frontier.carve_total,
-                'can_allocate': node_can,
+                'can_allocate': node_can and steward_tools_allowed(
+                    current_user, node, rdata.get('resource_type')),
                 'has_targets': bool(frontier.carve_children or frontier.open_projects),
             }
 
@@ -1297,6 +1301,16 @@ def _exchange_candidates(project, resource_id, active_at=None):
     return candidates, resource
 
 
+_ADMIN_ONLY = ('On storage resources, an allocations administrator makes this change; '
+               'project leads and admins can on HPC and DAV resources.')
+
+
+def _steward_tool_ok(project, resource) -> bool:
+    """The resource-type half of the exchange / allocate-down / reclaim gate."""
+    rtype = resource.resource_type.resource_type if resource.resource_type else None
+    return steward_tools_allowed(current_user, project, rtype)
+
+
 def _allocation_notice(kind, label_id, title, icon, meta, **ctx):
     """Render the notice in place of an allocation form, retitling its modal."""
     return render_template('dashboards/admin/fragments/allocation_form_notice_htmx.html',
@@ -1336,6 +1350,8 @@ def htmx_exchange_allocation_form(project, resource_id):
     candidates, resource = _exchange_candidates(project, resource_id, active_at=active_at)
     if resource is None:
         return _exchange_notice(project, None, 'resource_missing')
+    if not _steward_tool_ok(project, resource):
+        return _exchange_notice(project, resource, 'admin_only')
     if len(candidates) < 2:
         return _exchange_notice(project, resource, 'exchange_needs_two')
     return render_template(
@@ -1378,6 +1394,8 @@ class _ExchangeAllocationHandler(HtmxFormHandler):
         # forged allocation IDs from outside the authorized scope.
         candidates, self.resource = _exchange_candidates(
             self.project, self.resource_id, active_at=self.active_at)
+        if self.resource is not None and not _steward_tool_ok(self.project, self.resource):
+            raise FormError(_ADMIN_ONLY)
         by_id = {c['allocation_id']: c for c in candidates}
         self.from_cand = by_id.get(data['from_allocation_id'])
         self.to_cand = by_id.get(data['to_allocation_id'])
@@ -1484,6 +1502,8 @@ def htmx_allocate_down_form(allocation):
     """
     if allocation.deleted or allocation.is_inheriting:
         return _allocate_down_notice(allocation, 'shared')
+    if not _steward_tool_ok(allocation.account.project, allocation.account.resource):
+        return _allocate_down_notice(allocation, 'admin_only')
 
     frontier, bump_candidates, create_candidates, resource = \
         _allocate_down_context(allocation)
@@ -1516,6 +1536,11 @@ class _AllocateDownHandler(HtmxFormHandler):
         (InheritingAllocationException, lambda e: str(e)),
         (ValueError, lambda e: str(e)),
     )
+
+    def clean(self, data):
+        if not _steward_tool_ok(self.allocation.account.project, self.allocation.account.resource):
+            raise FormError(_ADMIN_ONLY)
+        return data
 
     def perform(self, data):
         from sam.manage.allocations import allocate_residual_to_child
@@ -1602,6 +1627,8 @@ def htmx_reclaim_form(allocation):
     """Render the reclaim modal: return a carve-out's unused amount to this allocation."""
     if allocation.deleted or allocation.is_inheriting:
         return _reclaim_notice(allocation, 'shared')
+    if not _steward_tool_ok(allocation.account.project, allocation.account.resource):
+        return _reclaim_notice(allocation, 'admin_only')
     ctx = _reclaim_context(allocation)
     if ctx['max_reclaimable'] <= 0:
         return _reclaim_notice(allocation, 'nothing_to_reclaim')
@@ -1619,6 +1646,11 @@ class _ReclaimHandler(HtmxFormHandler):
         (InheritingAllocationException, lambda e: str(e)),
         (ValueError, lambda e: str(e)),
     )
+
+    def clean(self, data):
+        if not _steward_tool_ok(self.allocation.account.project, self.allocation.account.resource):
+            raise FormError(_ADMIN_ONLY)
+        return data
 
     def perform(self, data):
         from sam.manage.allocations import reclaim_from_child
