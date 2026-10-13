@@ -312,6 +312,45 @@ class TestExchangeAllocationsErrors:
             )
 
 
+class TestExchangeResizeTraps:
+    """Neither endpoint may reclassify a row below it."""
+
+    def test_unlinked_mirror_under_an_endpoint_rejected(self, session, exchange_pair, acting_user):
+        from_alloc, to_alloc, resource = exchange_pair
+        gc = make_project(session, parent=to_alloc.account.project)
+        mirror = make_allocation(
+            session, account=make_account(session, project=gc, resource=resource),
+            amount=to_alloc.amount, start_date=to_alloc.start_date, end_date=to_alloc.end_date,
+        )
+        with pytest.raises(ValueError, match='without being linked'):
+            exchange_allocations(
+                session, from_allocation_id=from_alloc.allocation_id,
+                to_allocation_id=to_alloc.allocation_id, amount=1_000.0,
+                user_id=acting_user.user_id,
+            )
+        mirror.parent_allocation_id = to_alloc.allocation_id
+        session.flush()
+        exchange_allocations(
+            session, from_allocation_id=from_alloc.allocation_id,
+            to_allocation_id=to_alloc.allocation_id, amount=1_000.0,
+            user_id=acting_user.user_id,
+        )
+        session.refresh(mirror)
+        assert mirror.amount == 201_000.0
+
+    def test_endpoints_meeting_at_one_amount_rejected(self, session, exchange_pair, acting_user):
+        """TO is FROM's carve-out: landing both on 600k reads TO as FROM's pool member."""
+        from_alloc, to_alloc, _ = exchange_pair
+        with pytest.raises(ValueError, match='would then read as a shared-pool'):
+            exchange_allocations(
+                session, from_allocation_id=from_alloc.allocation_id,
+                to_allocation_id=to_alloc.allocation_id, amount=400_000.0,
+                user_id=acting_user.user_id,
+            )
+        session.refresh(from_alloc)
+        assert from_alloc.amount == 1_000_000.0
+
+
 class TestExchangeAllocationsAuditTrail:
     """Regression guards for the audit-trail double-count bug.
 

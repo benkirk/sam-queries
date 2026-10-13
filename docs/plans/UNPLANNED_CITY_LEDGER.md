@@ -1834,3 +1834,10 @@ sunburst, which started on the allocations page and then moved to job history.
   `cli/xras/commands.py` (three). Either lift the guard into the cache (a `None` that then
   also means "unreachable", which the Remediations card renders as "no sweep yet") or guard
   the Remediations card.
+- [x] Resize traps on the allocation tree (the #808 review): a pool member not linked to the
+  node being resized gets no cascade and reads as a carve-out once the amounts differ; a
+  carve-out equal to the new amount reads as a pool member (`is_pool_member`'s fallback).
+  Reclaim had both guards inline; `_refuse_resize_traps` (`sam/manage/allocations.py`) now
+  serves reclaim, allocate-down's bump path and both exchange endpoints. Open: an exchange
+  between two siblings that lands one of them on their common parent's amount (exchange reads
+  those rows as dedicated by design; the NMMM0083 note).
