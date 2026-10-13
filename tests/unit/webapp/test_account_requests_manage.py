@@ -237,13 +237,13 @@ class TestUpsertSweepRequests:
         rows = [_worklist_row('Jane-User-ABC', email='jane@example.edu',
                               request_number=project.projcode),
                 _worklist_row('john-user-def', email='john@example.edu')]
-        assert upsert_sweep_requests(session, rows) == {'created': 2, 'existing': 0, 'skipped': 0, 'projects_attached': 0,
+        assert upsert_sweep_requests(session, rows) == {'created': 2, 'existing': 0, 'skipped': 0, 'already_in_sam': 0, 'projects_attached': 0,
                                                         'by_purpose': {'submission': 2}}
         jane = session.query(AccountRequest).filter_by(xras_username='jane-user-abc').one()
         assert jane.purpose == 'submission' and jane.project_id == project.project_id
         assert jane.created_by == CREATED_BY_SWEEP and jane.is_open
         assert jane.organization == 'NCAR' and jane.residence_country == 'US'
-        assert upsert_sweep_requests(session, rows) == {'created': 0, 'existing': 2, 'skipped': 0, 'projects_attached': 0,
+        assert upsert_sweep_requests(session, rows) == {'created': 0, 'existing': 2, 'skipped': 0, 'already_in_sam': 0, 'projects_attached': 0,
                                                         'by_purpose': {}}
 
     def test_a_dismissed_row_survives_the_next_sweep(self, session):
@@ -251,14 +251,14 @@ class TestUpsertSweepRequests:
         upsert_sweep_requests(session, rows)
         session.query(AccountRequest).filter_by(xras_username='gone-user-1').one().dismiss('op', 'dup')
         assert upsert_sweep_requests(session, [_worklist_row('gone-user-1', email='gone@example.edu')]
-                                     ) == {'created': 0, 'existing': 1, 'skipped': 0, 'projects_attached': 0,
+                                     ) == {'created': 0, 'existing': 1, 'skipped': 0, 'already_in_sam': 0, 'projects_attached': 0,
                                            'by_purpose': {}}
 
     def test_rows_without_a_person_or_a_sam_row_are_skipped(self, session):
         rows = [_worklist_row('nobody-in-sam', classification='inactive', email='l@example.edu'),
                 _worklist_row('noemail-user', email=None),
                 _worklist_row('noname-user', email='n@example.edu', first='')]
-        assert upsert_sweep_requests(session, rows) == {'created': 0, 'existing': 0, 'skipped': 3, 'projects_attached': 0,
+        assert upsert_sweep_requests(session, rows) == {'created': 0, 'existing': 0, 'skipped': 3, 'already_in_sam': 0, 'projects_attached': 0,
                                                         'by_purpose': {}}
 
     def test_an_inactive_member_gets_a_reactivation_row_once(self, session):
@@ -284,6 +284,25 @@ class TestUpsertSweepRequests:
             row.fulfill(user)
         assert upsert_sweep_requests(session, absent)['by_purpose'] == {'submission': 1}, \
             'fulfilled: another purpose is another row'
+
+    def test_a_placeholder_sam_already_has_files_nothing(self, session):
+        """XRAS names an active SAM user by a placeholder (pschenk-user-fuy85, 2026-10-13):
+        reconcile would fulfill the row by email, and the next sweep file it again."""
+        _user_with_email(session, 'known@example.edu')
+        rows = [_worklist_row('known-user-fuy85', email='Known@Example.edu')]
+        for _ in range(2):
+            counts = upsert_sweep_requests(session, rows)
+            assert counts['created'] == 0 and counts['already_in_sam'] == 1
+        assert session.query(AccountRequest).filter_by(xras_username='known-user-fuy85').count() == 0
+
+    def test_an_inactive_or_shared_address_is_still_filed(self, session):
+        _user_with_email(session, 'asleep@example.edu', active=False)
+        _user_with_email(session, 'shared@example.edu')
+        _user_with_email(session, 'shared@example.edu')
+        rows = [_worklist_row('asleep-user-1', email='asleep@example.edu'),
+                _worklist_row('shared-user-1', email='shared@example.edu')]
+        counts = upsert_sweep_requests(session, rows)
+        assert counts['created'] == 2 and counts['already_in_sam'] == 0
 
     def test_an_open_row_blocks_the_other_purpose_too(self, session):
         """A submission whose account arrives inactive gains no reactivation beside it."""
