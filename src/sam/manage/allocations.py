@@ -1095,12 +1095,14 @@ def get_carveout_frontier(session: Session, allocation: Allocation, *,
     return frontier
 
 
-def _refuse_pool_amount(parent: Allocation, resulting_amount: float) -> None:
-    """Refuse a carve-out amount equal to its parent's.
+def _refuse_pool_amount(parent: Allocation, resulting_amount: float,
+                        carve_children: Iterable[Allocation] = ()) -> None:
+    """Refuse a carve-out amount equal to its parent's, or to one of its own carve-outs'.
 
     An equal amount classifies as a pool member (``is_pool_member``'s fallback),
     silently flipping the carve-out into a shared pool in the audit and the
-    fairshare tree; refuse the ambiguous end state instead.
+    fairshare tree; refuse the ambiguous end state instead. Reclaiming a node's
+    whole remainder lands exactly on its one carve-out's amount, hence the children.
     """
     if resulting_amount == float(parent.amount):
         raise ValueError(
@@ -1109,6 +1111,14 @@ def _refuse_pool_amount(parent: Allocation, resulting_amount: float) -> None:
             "as a shared-pool member rather than a carve-out. Choose a "
             "different amount."
         )
+    for child in carve_children:
+        if resulting_amount == float(child.amount):
+            raise ValueError(
+                f"Resulting amount ({resulting_amount:g}) would equal "
+                f"{child.account.project.projcode}'s carve-out, which would then read "
+                "as a shared-pool member rather than a carve-out. Choose a "
+                "different amount."
+            )
 
 
 def allocations_used(session: Session, allocations: Iterable[Allocation]) -> Dict[int, float]:
@@ -1323,7 +1333,7 @@ def reclaim_from_child(
             "to reclaim."
         )
     new_amount = float(source.amount) - amount
-    _refuse_pool_amount(parent, new_amount)
+    _refuse_pool_amount(parent, new_amount, own.carve_children)
 
     reclaim_comment = (f"Reclaimed -{amount:g} to {parent_projcode} "
                        f"allocation #{parent.allocation_id}")

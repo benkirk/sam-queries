@@ -559,9 +559,15 @@ class TestReclaim:
                 session, parent.allocation_id, acting_user.user_id,
                 amount=60_000.0, source_allocation_id=source.allocation_id,
             )
+        # The whole remainder lands on the grandchild's amount: a pool member by the fallback.
+        with pytest.raises(ValueError, match="carve-out, which would then read as a shared-pool"):
+            reclaim_from_child(
+                session, parent.allocation_id, acting_user.user_id,
+                amount=50_000.0, source_allocation_id=source.allocation_id,
+            )
         reclaim_from_child(
             session, parent.allocation_id, acting_user.user_id,
-            amount=50_000.0, source_allocation_id=source.allocation_id,
+            amount=40_000.0, source_allocation_id=source.allocation_id,
         )
 
     def test_own_spend_is_kept_when_the_source_carves_out(
