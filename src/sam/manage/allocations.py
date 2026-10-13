@@ -1343,10 +1343,11 @@ def reclaim_from_child(
     mirrors = [a for a in own.pool_children if a.parent_allocation_id != source.allocation_id]
     if mirrors:
         codes = ', '.join(sorted(a.account.project.projcode for a in mirrors))
+        verb, them = ('mirrors', 'it') if len(mirrors) == 1 else ('mirror', 'them')
         raise ValueError(
-            f"{codes} mirror {source_projcode}'s amount without being linked to it, so a "
-            f"reclaim would leave them larger than {source_projcode}. An allocations "
-            "administrator can link them (Edit allocation) first."
+            f"{codes} {verb} {source_projcode}'s amount without being linked to it, so a "
+            f"reclaim would leave {them} larger than {source_projcode}. An allocations "
+            f"administrator can link {them} (Edit allocation) first."
         )
     new_amount = float(source.amount) - amount
     _refuse_pool_amount(parent, new_amount, own.carve_children)
