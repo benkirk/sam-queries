@@ -313,3 +313,71 @@ class TestReclaimRoutes:
         assert resp.status_code == 200
         assert 'HX-Trigger' not in resp.headers
         assert 'unused balance' in resp.get_data(as_text=True)
+
+
+# ---------------------------------------------------------------------------
+# Resource-type gate: stewards on compute only (steward_tools_allowed)
+# ---------------------------------------------------------------------------
+
+
+class TestStorageGate:
+    """Wiring only: the rule itself is TestStewardToolsAllowed (test_project_permissions.py).
+    Patching it to refuse stands in for a steward on a storage resource."""
+
+    @pytest.fixture
+    def refused(self, monkeypatch):
+        monkeypatch.setattr('webapp.dashboards.admin.projects_routes.steward_tools_allowed',
+                            lambda *a: False)
+
+    def test_tree_hides_allocate_down_and_reclaim(self, auth_client, monkeypatch,
+                                                  snapshot_carve_parent):
+        alloc, frontier = snapshot_carve_parent
+        projcode = alloc.account.project.projcode
+        url = f'/admin/htmx/project-allocation-tree/{projcode}'
+        reclaim = f'/admin/htmx/reclaim-form/{alloc.allocation_id}"'
+        exchange = f'/admin/htmx/exchange-allocation-form/{projcode}/'
+        html = auth_client.get(url).get_data(as_text=True)
+        assert reclaim in html
+        # The fixture guarantees one carve-out; Exchange needs two standalone sub-project rows.
+        if len(frontier.carve_children) >= 2:
+            assert exchange in html
+        monkeypatch.setattr('webapp.dashboards.admin.projects_routes.steward_tools_allowed',
+                            lambda *a: False)
+        html = auth_client.get(url).get_data(as_text=True)
+        assert reclaim not in html
+        assert exchange not in html
+        assert _form_url(alloc.allocation_id) + '"' not in html
+
+    def test_forms_render_admin_only_notice(self, auth_client, refused, snapshot_carve_parent):
+        alloc, _ = snapshot_carve_parent
+        project, resource = alloc.account.project, alloc.account.resource
+        for url, label in (
+                (_form_url(alloc.allocation_id), 'allocateDownModalLabel'),
+                (f'/admin/htmx/reclaim-form/{alloc.allocation_id}', 'reclaimModalLabel'),
+                (f'/admin/htmx/exchange-allocation-form/{project.projcode}/{resource.resource_id}',
+                 'exchangeAllocationModalLabel')):
+            resp = auth_client.get(url)
+            assert resp.status_code == 200
+            html = resp.get_data(as_text=True)
+            assert 'an allocations administrator makes this change' in html, url
+            assert f'id="{label}" hx-swap-oob="true"' in html
+
+    def test_posts_refused_no_write(self, auth_client, session, refused, snapshot_carve_parent):
+        alloc, frontier = snapshot_carve_parent
+        child = frontier.carve_children[0]
+        project, resource = alloc.account.project, alloc.account.resource
+        for url, data in (
+                (_post_url(alloc.allocation_id),
+                 {'target': f'alloc:{child.allocation_id}', 'amount': '1'}),
+                (f'/admin/htmx/reclaim/{alloc.allocation_id}',
+                 {'source_allocation_id': str(child.allocation_id), 'amount': '1'}),
+                (f'/admin/htmx/exchange-allocation/{project.projcode}',
+                 {'resource_id': resource.resource_id, 'amount': '1',
+                  'from_allocation_id': str(child.allocation_id),
+                  'to_allocation_id': str(alloc.allocation_id)})):
+            resp = auth_client.post(url, data=data)
+            assert resp.status_code == 200
+            assert 'HX-Trigger' not in resp.headers, url
+            assert 'an allocations administrator makes this change' in resp.get_data(as_text=True), url
+        session.expire_all()
+        assert get_carveout_frontier(session, alloc).carve_total == frontier.carve_total

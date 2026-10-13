@@ -14,6 +14,7 @@ walking ancestors)" — lives in ``is_project_steward``. All public
 ``can_*`` helpers delegate to it so the rule set stays consistent.
 """
 
+from sam.enums import ResourceTypeName
 from webapp.utils.rbac import has_permission, has_permission_for_facility, Permission
 
 
@@ -210,7 +211,8 @@ def can_exchange_allocations(user, project) -> bool:
     of this project OR any ancestor in the project tree. The
     ancestor walk supports redistribution within a subtree the user
     leads — a lead of project A can exchange allocations among its
-    children A1, A2 without acquiring new quota.
+    children A1, A2 without acquiring new quota. The steward grant holds on
+    HPC/DAV resources only; ``steward_tools_allowed`` carries the type half.
     """
     return is_project_steward(
         user, project, Permission.EDIT_ALLOCATIONS, include_ancestors=True
@@ -229,11 +231,18 @@ def can_allocate_residual(user, project) -> bool:
     already part of the parent's awarded total, so assigning it downward
     redistributes within a subtree the user stewards without acquiring new
     quota. Kept as its own helper (not an alias) so the two operations can
-    diverge later without a template audit.
+    diverge later without a template audit. As for exchange, the steward grant
+    holds on HPC/DAV only (``steward_tools_allowed``).
     """
     return is_project_steward(
         user, project, Permission.EDIT_ALLOCATIONS, include_ancestors=True
     )
+
+
+def steward_tools_allowed(user, project, resource_type) -> bool:
+    """Exchange / allocate-down / reclaim on one resource type: stewards on compute (HPC/DAV)
+    only, allocations administrators on every type. Combine with the steward check."""
+    return ResourceTypeName.is_compute(resource_type) or can_modify_allocations(user, project)
 
 
 def can_edit_consumption_threshold(user, project) -> bool:
