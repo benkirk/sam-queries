@@ -56,10 +56,10 @@ plumbing.
 
 | Phase | Who | What | Proves | Depends on | State |
 |---|---|---|---|---|---|
-| **0 — plumbing** | — | the JSON body path in the write client's `_write`; the vocabulary module; the `xras_submission` table and the flow layer (§ 4.2, § 4.3); the ownership predicate; the routing policy (§ 4.4); the limits table and its admin card (§ 4.5); `XRAS_SUBMIT_ENABLED`; the ingest idempotency guard (§ 4.6); the ask to Steve (§ 5) | nothing by itself | nothing external | designed |
+| **0 — plumbing** | — | the JSON body path in the write client's `_write`; the vocabulary module; the `xras_submission` table and the flow layer (§ 4.2, § 4.3); the ownership predicate; the routing policy (§ 4.4); the limits table and its admin card (§ 4.5); `XRAS_SUBMIT_ENABLED`; log-based project resolution (§ 4.6 item 2); the ask to Steve (§ 5) | nothing by itself | nothing external | designed |
 | **1 — existing projects** | the lead or admin, from the project card | Supplement and Extension; a status readout beside the control (the sweep cache entry for the projcode with `is_pending_work`, plus `get_recent_xras_actions`; `manual` and `failed` read as "being reviewed by CISL", and nothing names a notified address); the admin Add-action modal re-pointed at the flow; the routed answer for projects that cannot use XRAS. **1b — Renewal:** `/renew` on the primary line, then abstract, grants on Large and Small, and the document the rule book names, through the base64 upload | the flow layer, the audit trail and the lever. The incoming side is unchanged, because the request is the shape ARC would have sent | 0 | designed; every verb measured; test bed `UHSS0001` |
 | **2 — new request, logged in** | any SAM user | the form of § 4.1: opportunity, affiliation (fail-visible when the `user_institution` row is end-dated — the case that minted `CGD` for a CU Boulder PI), mnemonic suggestor, awards picker, resources bounded by the opportunity's `rules` and amounts by § 4.5, the explicit PI role, the EUA row, documents where the rule book demands them, preflight, submit; the `New` handler's consult point | the first phase that changes what arrives at the handoff, and the first that needs an approval to prove | 0; the test instance (§ 5) for the approval leg | designed; the form is unprototyped |
-| **3 — new request, no account** | someone without a SAM login | `ACCOUNT_REGISTRATION.md` phase 2 first. The request is created under an XRAS person SAM mints (`POST /v1/people/<u>` with `isReconciled = false` — a new verb, unprobed); the `xras_submission` row carries `registration_id`; the account's arrival merges the placeholder into the real username with `merge_placeholder`, re-pointing the PI role | closes the 55% row of § 1 | 2 in production; `ACCOUNT_REGISTRATION.md` phase 2 | designed |
+| **3 — new request, no account** | someone without a SAM login | `ACCOUNT_REGISTRATION.md` phase 2 first. The request is created under an XRAS person SAM mints (`POST /v1/people/<u>` with `isReconciled = false`, probed on XRAS-dev 2026-10-13); the `xras_submission` row carries `registration_id`; the account's arrival merges the placeholder into the real username with `merge_placeholder`, re-pointing the PI role | closes the 55% row of § 1 | 2 in production; `ACCOUNT_REGISTRATION.md` phase 2 | designed |
 
 Phase 1 can be exercised against production XRAS today: small, reversible requests
 under `benkirk`, each paired with its inverse, the one submitted request rejected by
@@ -410,18 +410,31 @@ none; Data Analysis — Casper only; the same for initial and supplement.
 
 Three changes to the handoff path, each small, in the order they land:
 
-1. **The idempotency guard, first.** `actionId` is enforced by nothing today and four
-   of the six handlers double-apply on a re-post (`XRAS_INGEST_IMPROVEMENTS.md` § 3).
-   Park a post whose `action_id` has a prior `processed` sibling as `manual`, naming
-   the earlier row. A prerequisite of phase 2 with value of its own.
-2. **A `requestId` fallback in `select_service`** (`sam/xras/dispatch.py`). W9 posted
-   an Extension 17 minutes after its New and it arrived as `requestNumber: NCAR4354`
-   — the rewrite had not run — so no service matched and the row parked. The fallback
-   is one lookup: no project under `requestNumber`, but a `processed` `New` row in
-   `xras_action_log` with the same `requestId` → route to that row's
-   `projcode_result`. It needs no new table and covers ARC-originated families; the
-   `xras_submission` row is the same lookup for SAM-authored ones. Belongs with the
-   guard, in `XRAS_INGEST_IMPROVEMENTS.md`.
+1. **The idempotency guard: landed.** `_refuse_repeat` in `src/webapp/api/xras/actions.py`
+   answers 422 `duplicate` to a post whose `action_id` already has a `processed` or
+   in-flight row. It sees only SAMuel's log, so an action applied before the 2026-08-24
+   repoint can still apply twice on a repost (NRAL0051 on XRAS-dev, `XRAS_DEV_PROBES.md` § 4).
+2. **Resolve the project from SAM's own log, not from XRAS's rewrite** (`select_service`,
+   `sam/xras/dispatch.py`). The three identifiers behave differently (§ 4.2):
+   `requestNumber` names the family and is rewritten on XRAS's clock, or never;
+   `requestId` names one line and is fixed from create on, across every Extension and
+   Supplement on it, and only a Renewal starts a new one; `actionId` names one action.
+   The processed `New` row SAM writes at the handoff (`request_id`, `request_number` as
+   sent, `projcode_result`) is therefore a permanent mapping, and the rewrite never needs
+   to be caught. Resolve in order:
+
+   | # | Rule | Catches |
+   |---|---|---|
+   | 1 | `requestNumber` is a projcode | rewritten families, and every legacy-era family (no log rows, all rewritten); today's only rule |
+   | 2 | a `processed` `New` or `Renewal` row has the same `request_id` | Extensions, Supplements and other actions on that line before the rewrite: W9's #184, XRAS-dev's #7 and #8 |
+   | 3 | a `processed` `New` or `Renewal` row has the same `request_number` | a Renewal filed before the rewrite, whose new line carries a new `requestId` but the family's number |
+
+   Rules 2 and 3 cover ARC-originated and SAM-authored families alike, so routing needs no
+   `xras_submission` row. When none matches, the park reason names the number and
+   `requestId` it could not resolve; today it reads "no service matches actionType=…",
+   and the `manual` arm answers 200, so XRAS shows the operator a successful post. The
+   sweep's `live_pending_numbers` needs the same lookup (`XRAS_REQUEST_TICKETS.md` § 6).
+   Belongs in `XRAS_INGEST_IMPROVEMENTS.md`.
 3. **The `New` handler's consult point** (phase 2): the top of `NewHandler.assemble`
    (`sam/xras/handlers/new.py`), keyed on the payload's `requestId`, pre-setting the
    mnemonic, allocation type, contracts and area of interest from the stored FKs with
@@ -459,12 +472,12 @@ Resolution reads the action log, not `requestNumber == projcode` (§ 4.2, the re
 | Gap | Why it matters | Next step |
 |---|---|---|
 | **The form has no prototype** (§ 4.1) | the one-vs-two-page split and the reveal rules are design, not measurement | mock it before the phase-2 plumbing; keep the rule-book-driven reveal |
-| **The test loop, run** | 2026-10-13 on XRAS-dev ([`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md) § 4): an approval reached samuel-dev's sweep in about 2 minutes; a SAM-authored New (NCAR4087) became `UHSS0002` with `requestId` and `opportunityQA` on the payload; an Extension and a Supplement filed on that family before the rewrite parked `manual` with HTTP 200, which XRAS reports as a successful post | the § 4.6 fallback; the `New` handler's consult point is unproven until the `xras_submission` row exists |
-| **The rewrite's mechanism and cadence** | if it is a periodic job, its cadence bounds how soon after a New an action on the family can be filed from ARC without parking. XRAS-dev had not rewritten NCAR4086 or NCAR4087 hours after their posts; XRAS's create accepts any `requestNumber` and starts a new, unlinked family under it, so filing under the projcode is no workaround | asked Steve 2026-10-13 (W9 rules out the post and the notify); the § 4.6 fallback is needed regardless |
+| **The test loop, run** | 2026-10-13 on XRAS-dev ([`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md) § 4): an approval reached samuel-dev's sweep in about 2 minutes; a SAM-authored New (NCAR4087) became `UHSS0002` with `requestId` and `opportunityQA` on the payload; an Extension and a Supplement filed on that family before the rewrite parked `manual` with HTTP 200, which XRAS reports as a successful post | § 4.6 item 2; the `New` handler's consult point is unproven until the `xras_submission` row exists |
+| **The rewrite's mechanism and cadence** | if it is a periodic job, its cadence bounds how soon after a New an action on the family can be filed from ARC without parking. XRAS-dev had not rewritten NCAR4086 or NCAR4087 hours after their posts; XRAS's create accepts any `requestNumber` and starts a new, unlinked family under it, so filing under the projcode is no workaround | asked Steve 2026-10-13 (W9 rules out the post and the notify); § 4.6 item 2 makes the answer moot for SAM |
 | **`GET /v1/projects`** | proxied to the accounting service as `/api/xras/v1/users/projects/<username>`, which neither legacy SAM nor this one serves. Measured 2026-10-08: one request in six weeks of production traffic, our own probe (`xras_action_log` #182). ACCESS's accounting service documents the response shape (`XRAS_OUTGOING_QUERIES.md` § 4.6) | ask Steve whether ARC or `xras_submit` calls it for NCAR; otherwise not built |
 | **Write client gaps** | no JSON-body path in `_write`; person-create, opportunity attributes and documents unbuilt | phase 0 |
 | **`POST /v1/people/<u>`** | phase 3's placeholder person: probed on XRAS-dev 2026-10-13, `isReconciled=false` sticks and the placeholder can author a request as its PI (`XRAS_DEV_PROBES.md` § 3) | merge-on-arrival stays unprobed |
-| **Fallback not landed** | § 4.6 item 2. The guard (item 1) is in `src/webapp/api/xras/actions.py` and refused a repeat on XRAS-dev; it cannot see an action applied before SAMuel's log began, which XRAS-dev's NRAL0051 repost applied twice (`XRAS_DEV_PROBES.md` § 4) | `XRAS_INGEST_IMPROVEMENTS.md` |
+| **Log-based resolution not landed** | § 4.6 item 2, rules 2 and 3. The guard (item 1) has landed; it cannot see an action applied before SAMuel's log began, which XRAS-dev's NRAL0051 repost applied twice (`XRAS_DEV_PROBES.md` § 4) | `XRAS_INGEST_IMPROVEMENTS.md` |
 | **Extension 399374 on `UHSS0001`** | approved and posted, parked as #184, not notified | Repost to Accounting Service once the rewrite lands, or once the fallback does |
 | **WRAP** | stays `email:wrap@uwyo.edu` until WNA opts in | flip the policy row |
 | **XRAS's own mail** | submit and notify mails are XRAS-side settings (§ 3.4); once phase 1 ships, SAM's `xras_*` notices can be the only mail | optional coordination, not a prerequisite |

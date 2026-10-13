@@ -105,7 +105,7 @@ succeeded.** `select_service` (`sam/xras/dispatch.py`) resolves only `requestNum
 and #8 match no project; a `manual` park answers 200, which the admin app reports as "The
 Action Post was Successful". The reason names the action type, while the cause is the
 unknown number. Each row carries the `request_id` of #6, a `processed` `New` naming
-UHSS0002: the one lookup the `requestId` fallback of `XRAS_SUBMISSION.md` § 4.6 item 2 makes.
+UHSS0002: rule 2 of `XRAS_SUBMISSION.md` § 4.6 item 2 resolves them from SAM's own log.
 
 **Idempotency, read together.** The route guard (`src/webapp/api/xras/actions.py`,
 `_refuse_repeat`) refuses a post whose `actionId` already has a `processed` (or in-flight)
