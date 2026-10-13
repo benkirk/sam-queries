@@ -252,6 +252,50 @@ class TestCreatePath:
         assert _txns(session, parent.allocation_id) == []
 
 
+class TestBumpResizeTraps:
+    """Bumping a carve-out must not reclassify a row below it."""
+
+    def test_unlinked_mirror_under_target_rejected(self, session, carve_tree, acting_user):
+        parent, target = carve_tree['parent_alloc'], carve_tree['carve_alloc']
+        gc = make_project(session, parent=target.account.project)
+        mirror = make_allocation(
+            session,
+            account=make_account(session, project=gc, resource=carve_tree['resource']),
+            amount=target.amount,
+        )
+        with pytest.raises(ValueError, match='without being linked'):
+            allocate_residual_to_child(
+                session, parent.allocation_id, acting_user.user_id,
+                amount=1_000.0, target_allocation_id=target.allocation_id,
+            )
+        mirror.parent_allocation_id = target.allocation_id
+        session.flush()
+        allocate_residual_to_child(
+            session, parent.allocation_id, acting_user.user_id,
+            amount=1_000.0, target_allocation_id=target.allocation_id,
+        )
+        session.refresh(mirror)
+        assert mirror.amount == 301_000.0
+
+    def test_bump_landing_on_own_carve_out_rejected(self, session, carve_tree, acting_user):
+        parent, target = carve_tree['parent_alloc'], carve_tree['carve_alloc']
+        gc = make_project(session, parent=target.account.project)
+        make_allocation(
+            session,
+            account=make_account(session, project=gc, resource=carve_tree['resource']),
+            amount=350_000.0,
+        )
+        with pytest.raises(ValueError, match='would then read as a shared-pool'):
+            allocate_residual_to_child(
+                session, parent.allocation_id, acting_user.user_id,
+                amount=50_000.0, target_allocation_id=target.allocation_id,
+            )
+        allocate_residual_to_child(
+            session, parent.allocation_id, acting_user.user_id,
+            amount=40_000.0, target_allocation_id=target.allocation_id,
+        )
+
+
 class TestValidation:
 
     def test_overdraft_rejected(self, session, carve_tree, acting_user):
