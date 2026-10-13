@@ -1570,12 +1570,13 @@ def htmx_allocate_down(allocation):
 
 def _reclaim_context(allocation):
     """Frontier plus the carve-outs the reclaim modal offers, each with its unused balance."""
-    from sam.manage.allocations import allocation_used, get_carveout_frontier
+    from sam.manage.allocations import allocations_used, get_carveout_frontier
 
     frontier = get_carveout_frontier(db.session, allocation)
+    used_by_id = allocations_used(db.session, frontier.carve_children)
     candidates = []
     for a in frontier.carve_children:
-        used = allocation_used(a)
+        used = used_by_id[a.allocation_id]
         candidates.append({
             'allocation_id': a.allocation_id,
             'projcode': a.account.project.projcode,

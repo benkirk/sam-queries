@@ -1111,15 +1111,27 @@ def _refuse_pool_amount(parent: Allocation, resulting_amount: float) -> None:
         )
 
 
-def allocation_used(allocation: Allocation) -> float:
-    """Usage charged to ``allocation`` as the allocation tree shows it (subtree-wide)."""
-    project = allocation.account.project
-    resource_name = allocation.account.resource.resource_name
-    at = max(datetime.now(), allocation.start_date)
-    if allocation.end_date is not None:
-        at = min(at, allocation.end_date)
-    usage = project.get_detailed_allocation_usage(resource_name=resource_name, active_at=at)
-    return float(usage.get(resource_name, {}).get('used') or 0.0)
+def allocations_used(session: Session, allocations: Iterable[Allocation]) -> Dict[int, float]:
+    """Usage per allocation id as the allocation tree shows it (subtree-wide): one kernel
+    read per (clamp date, resource), not one per allocation."""
+    from sam.queries.dashboard import build_user_projects_resources_batched
+    groups: Dict[tuple, List[Allocation]] = {}
+    for a in allocations:
+        at = max(datetime.now(), a.start_date)
+        if a.end_date is not None:
+            at = min(at, a.end_date)
+        groups.setdefault((at, a.account.resource.resource_name), []).append(a)
+    used: Dict[int, float] = {}
+    for (at, resource_name), group in groups.items():
+        projects = list({a.account.project.project_id: a.account.project for a in group}.values())
+        rows = build_user_projects_resources_batched(
+            session, projects, active_at=at, resource_name=resource_name,
+            with_project_metadata=False)
+        for a in group:
+            row = next((r for r in rows.get(a.account.project.project_id, [])
+                        if r['resource_name'] == resource_name), None)
+            used[a.allocation_id] = float((row or {}).get('used') or 0.0)
+    return used
 
 
 def allocate_residual_to_child(
@@ -1276,7 +1288,7 @@ def reclaim_from_child(
         )
     source_projcode = source.account.project.projcode
 
-    unused = float(source.amount) - allocation_used(source)
+    unused = float(source.amount) - allocations_used(session, [source])[source.allocation_id]
     if amount > unused:
         raise ValueError(
             f"Amount ({amount:g}) exceeds {source_projcode}'s unused balance "

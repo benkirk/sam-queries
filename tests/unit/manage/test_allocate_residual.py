@@ -535,7 +535,8 @@ class TestReclaim:
 
     def test_beyond_unused_balance_rejected(self, session, carve_tree, acting_user, monkeypatch):
         parent, source = carve_tree['parent_alloc'], carve_tree['carve_alloc']
-        monkeypatch.setattr(manage_allocations, 'allocation_used', lambda a: 250_000.0)
+        monkeypatch.setattr(manage_allocations, 'allocations_used',
+                            lambda session, allocs: {a.allocation_id: 250_000.0 for a in allocs})
         with pytest.raises(ValueError, match='unused balance'):
             reclaim_from_child(
                 session, parent.allocation_id, acting_user.user_id,
