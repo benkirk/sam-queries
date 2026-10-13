@@ -1333,6 +1333,16 @@ def reclaim_from_child(
             f"own usage ({bounds['drawn']:g}) leave at most {max(bounds['limit'], 0.0):g} "
             "to reclaim."
         )
+    # A pool member not linked to the source (an equal-amount mirror) gets no cascade:
+    # once the source shrinks it reads as a carve-out larger than the source.
+    mirrors = [a for a in own.pool_children if a.parent_allocation_id != source.allocation_id]
+    if mirrors:
+        codes = ', '.join(sorted(a.account.project.projcode for a in mirrors))
+        raise ValueError(
+            f"{codes} mirror {source_projcode}'s amount without being linked to it, so a "
+            f"reclaim would leave them larger than {source_projcode}. An allocations "
+            "administrator can link them (Edit allocation) first."
+        )
     new_amount = float(source.amount) - amount
     _refuse_pool_amount(parent, new_amount, own.carve_children)
 

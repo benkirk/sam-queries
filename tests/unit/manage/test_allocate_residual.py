@@ -605,6 +605,32 @@ class TestReclaim:
                 amount=200_000.0, source_allocation_id=child.allocation_id,
             )
 
+    def test_unlinked_mirror_under_source_rejected(self, session, carve_tree, acting_user):
+        """An unlinked equal-amount child gets no cascade; shrinking the source would
+        flip it into a carve-out larger than the source (CESM0028 / P93300065 on Casper)."""
+        parent, source = carve_tree['parent_alloc'], carve_tree['carve_alloc']
+        gc = make_project(session, parent=source.account.project)
+        mirror = make_allocation(
+            session,
+            account=make_account(session, project=gc, resource=carve_tree['resource']),
+            amount=source.amount,
+        )
+        with pytest.raises(ValueError, match='without being linked'):
+            reclaim_from_child(
+                session, parent.allocation_id, acting_user.user_id,
+                amount=1_000.0, source_allocation_id=source.allocation_id,
+            )
+        session.refresh(source)
+        assert source.amount == 300_000.0
+        mirror.parent_allocation_id = source.allocation_id    # linked: cascades, allowed
+        session.flush()
+        reclaim_from_child(
+            session, parent.allocation_id, acting_user.user_id,
+            amount=1_000.0, source_allocation_id=source.allocation_id,
+        )
+        session.refresh(mirror)
+        assert mirror.amount == 299_000.0
+
     def test_pool_member_source_rejected(self, session, carve_tree, acting_user):
         with pytest.raises(ValueError, match='not a carve-out'):
             reclaim_from_child(
