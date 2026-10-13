@@ -1126,8 +1126,9 @@ def allocations_used(session: Session, allocations: Iterable[Allocation]) -> Dic
     read per (clamp date, resource), not one per allocation."""
     from sam.queries.dashboard import build_user_projects_resources_batched
     groups: Dict[tuple, List[Allocation]] = {}
+    now = datetime.now()     # once: a per-allocation clock read puts each in its own group
     for a in allocations:
-        at = max(datetime.now(), a.start_date)
+        at = max(now, a.start_date)
         if a.end_date is not None:
             at = min(at, a.end_date)
         groups.setdefault((at, a.account.resource.resource_name), []).append(a)
