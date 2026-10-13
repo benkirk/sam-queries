@@ -146,7 +146,8 @@ the item, and a deleted Job stayed "do not re-flag" for the life of one timer.
 
 ## 4. The daily full sweep is expected
 
-`xras_sweep` runs a cheap `active` pass hourly and one heavy `full` rebuild a
+`xras_sweep` runs a cheap `active` pass hourly (and every quarter hour 08:15–17:45
+MT on weekdays) and one heavy `full` rebuild a
 day at the **10:07 UTC (04:00 MDT)** slot. A `[full]` pass there taking ~35–100s
 is EXPECTED — flag it only if it *fails* or doesn't switch back to `active`
 afterward. This is a Python task the `samuel-tasks` CronJob dispatches, not a

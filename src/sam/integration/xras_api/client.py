@@ -459,9 +459,11 @@ class XrasApiClient(_XrasTransport):
         the **person object inline** — which is why the enumeration feed never
         needs a separate ``/v1/people`` call.
 
-        ``active`` (Approved with endDate null-or-future for True, past for False)
+        ``active`` (Approved with a future ``endDate`` for True, past for False)
         is **mutually exclusive with ``status``** per the XRAS API — pass
-        ``status=None`` alongside it.
+        ``status=None`` alongside it. WARNING: True omits a request with **no**
+        ``endDate``, which is every approved, not-yet-pushed one (measured
+        2026-10-13); read those with ``status='Approved'``.
         """
         if active is not None and status is not None:
             raise ValueError("reports/requests: 'active' and 'status' are "

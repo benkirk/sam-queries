@@ -68,6 +68,12 @@ class TestCandidateSelection:
             payload, since=date(2026, 1, 1))]
         assert ids == [1]
 
+    def test_a_deleted_request_offers_no_candidates(self):
+        """Deleted test requests (NCAR0001 on prod) were preflighted and counted."""
+        payload = _report(actions=[_new_action(actionId=1)])
+        payload['isDeleted'] = True
+        assert list(iter_candidate_actions(payload, since=None)) == []
+
     def test_no_window_keeps_everything_not_declined(self):
         payload = _report(actions=[_new_action(actionId=1, entryDate='2020-01-01')])
         assert [a['actionId'] for a in iter_candidate_actions(payload, since=None)]

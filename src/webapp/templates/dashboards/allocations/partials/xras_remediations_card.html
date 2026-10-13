@@ -44,8 +44,9 @@
     {% endcall %}
     {% elif snapshot is none and not has_worklist %}
     {% call empty_state('No sweep has published yet.') %}
-        The <code>xras_sweep</code> task builds this list once an hour; it may be
-        disabled, or this may be the first hour after a deploy.
+        The <code>xras_sweep</code> task builds this list once a day, and on its
+        next run whenever it is missing; it may be disabled, or no run has
+        finished since a deploy.
     {% endcall %}
     {% elif snapshot is none %}
     {# A sweep wrote the account worklist but not this index: the hour after a

@@ -407,7 +407,7 @@ else
 fi
 
 # --- 4. tasks CronJob (read-only report — never touch it) --------------------
-# The dispatcher wakes hourly and the ledger records occurrences, not wake-ups,
+# The dispatcher wakes 4x an hour and the ledger records occurrences, not wake-ups,
 # so "is it alive?" is answerable only from the CronJob object + its Jobs. We
 # REPORT problems here; remediation (kubectl create job --from=cronjob/...) is a
 # human decision (Ben owns deploy mechanics), never automated by this watch.

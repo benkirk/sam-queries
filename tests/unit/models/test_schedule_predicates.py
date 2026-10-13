@@ -16,6 +16,7 @@ import pytest
 
 from scheduling.schedules import (
     KEY_FORMAT,
+    AnyOf,
     BusinessHourly,
     CronExpr,
     Daily,
@@ -330,6 +331,72 @@ class TestBusinessHourly:
     def test_describe_lists_a_non_contiguous_window(self):
         assert BusinessHourly(30, 9, 10, weekdays=(0, 2, 4)).describe() == (
             'hourly 09:30-10:30 Mon,Wed,Fri America/Denver')
+
+
+class TestAnyOf:
+    """The xras_sweep shape: hourly UTC, plus business-hours quarters.
+
+    2026-08-12 is a Wednesday; 08:00-17:00 MDT is 14:00-23:00 UTC.
+    """
+
+    SWEEP = AnyOf(Hourly(minute=0), BusinessHourly(minute=15),
+                  BusinessHourly(minute=30), BusinessHourly(minute=45))
+
+    def test_it_satisfies_the_protocol(self):
+        assert isinstance(self.SWEEP, Schedule)
+
+    def test_quarter_hours_inside_the_business_day(self):
+        slots = sweep(self.SWEEP, datetime(2026, 8, 12, 14, 0), hours=1, step_minutes=5)
+        assert slots == [datetime(2026, 8, 12, 14, m) for m in (0, 15, 30, 45)] + [
+            datetime(2026, 8, 12, 15, 0)]
+
+    def test_hourly_only_overnight(self):
+        # 09:15 UTC is 03:15 MDT: the newest slot is 03:00, not a quarter.
+        assert self.SWEEP.last_occurrence(datetime(2026, 8, 12, 9, 50)) == datetime(
+            2026, 8, 12, 9, 0)
+
+    def test_hourly_only_at_the_weekend(self):
+        # Saturday 14:40 MDT.
+        assert self.SWEEP.last_occurrence(datetime(2026, 8, 15, 20, 40)) == datetime(
+            2026, 8, 15, 20, 0)
+
+    def test_the_last_quarter_is_17_45(self):
+        assert self.SWEEP.last_occurrence(datetime(2026, 8, 12, 23, 50)) == datetime(
+            2026, 8, 12, 23, 45)
+        assert self.SWEEP.next_occurrence(datetime(2026, 8, 12, 23, 45)) == datetime(
+            2026, 8, 13, 0, 0)
+
+    def test_next_is_the_earliest_member(self):
+        assert self.SWEEP.next_occurrence(datetime(2026, 8, 12, 14, 0)) == datetime(
+            2026, 8, 12, 14, 15)
+
+    def test_the_fall_back_keeps_every_hourly_slot(self):
+        """Hourly is UTC, so the repeated 01:00 MST hour still gets its own slot."""
+        slots = sweep(self.SWEEP, datetime(2026, 11, 1, 6, 0), hours=4)
+        assert_evenly_spaced(slots, expected=timedelta(hours=1), label='fall back')
+
+    def test_a_member_with_no_occurrence_is_skipped(self):
+        class Never:
+            def last_occurrence(self, now_utc):
+                return None
+
+            def next_occurrence(self, after_utc):
+                return None
+
+            def describe(self):
+                return 'never'
+
+        union = AnyOf(Never(), Hourly(minute=0))
+        assert union.last_occurrence(datetime(2026, 8, 12, 9, 50)) == datetime(2026, 8, 12, 9, 0)
+        assert AnyOf(Never()).next_occurrence(datetime(2026, 8, 12, 9, 50)) is None
+
+    def test_describe_joins_the_members(self):
+        assert AnyOf(Hourly(minute=0), BusinessHourly(minute=15)).describe() == (
+            'hourly at :00 UTC + hourly 08:15-17:15 Mon-Fri America/Denver')
+
+    def test_it_needs_a_member(self):
+        with pytest.raises(ValueError):
+            AnyOf()
 
 
 class TestBusinessHourlyAndDst:

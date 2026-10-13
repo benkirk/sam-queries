@@ -100,7 +100,7 @@
 </div>
 {%- endmacro %}
 
-{#- When a cached card was built: the sweep is hourly, never live. -#}
+{#- When a cached card was built: the sweep is periodic, never live. -#}
 {% macro swept_stamp(when, detail='', title='Rendered from what the xras_sweep task last published; not fetched live.') -%}
 <span class="small text-muted ms-auto" title="{{ title }}">swept {{ when | fmt_date }}{% if detail %} · {{ detail }}{% endif %}</span>
 {%- endmacro %}

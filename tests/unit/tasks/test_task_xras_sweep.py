@@ -27,7 +27,8 @@ import pytest
 from zoneinfo import ZoneInfo
 
 from scheduling.registry import TASKS, TaskContext
-from scheduling.schedules import DEFAULT_TZ, Hourly, occurrence_key, to_local_naive
+from scheduling.schedules import (DEFAULT_TZ, AnyOf, BusinessHourly, Hourly, occurrence_key,
+                                  to_local_naive)
 from scheduling.tasks import xras_sweep as mod
 
 from factories import make_xras_opportunity_mapping
@@ -48,7 +49,7 @@ def _one_worker_at_a_time(serial_file_lock):
 
 
 NAME = 'xras_sweep'
-OCC = datetime(2033, 11, 16, 10, 30)      # naive UTC
+OCC = datetime(2033, 11, 16, 10, 0)       # naive UTC; :00, the only minute a full slot runs
 #: OCC in Mountain — the hour the full-slot gate compares against. Computed, not
 #: hardcoded, so a TZ change can't silently desync the default-full fixture.
 _OCC_LOCAL_HOUR = to_local_naive(OCC, ZoneInfo(DEFAULT_TZ)).hour
@@ -100,8 +101,12 @@ class _StubClient:
     """A client whose enumeration is scripted, page by page."""
 
     def __init__(self, pages, *, fail_after=None, opportunities=(),
-                 open_opportunities=(), extra_pages=None, resources=()):
+                 open_opportunities=(), extra_pages=None, resources=(),
+                 approved_pages=None):
         self.pages = pages
+        #: A light run's newest-`Approved` read. None replays `pages`, which the
+        #: dedup by requestId absorbs; a list scripts it; an exception raises.
+        self.approved_pages = approved_pages
         self.fail_after = fail_after
         self.opportunities = list(opportunities)
         self.open_opportunities = list(open_opportunities)
@@ -146,6 +151,11 @@ class _StubClient:
         self.active_asked.append(active)
         pages = (self.extra_pages.get(status, [])
                  if status in mod.EXTRA_STATUSES else self.pages)
+        if active is None and status not in mod.EXTRA_STATUSES:
+            if isinstance(self.approved_pages, Exception):
+                raise self.approved_pages
+            if self.approved_pages is not None:
+                pages = self.approved_pages
         for index, page in enumerate(pages):
             if max_pages is not None and index >= max_pages:
                 return
@@ -160,12 +170,13 @@ class _StubClient:
 def wire(monkeypatch):
     """Configure the API and swap in a stub client and person lookup."""
     def configure(pages=(), *, people=None, fail_after=None,
-                  open_opportunities=(), extra_pages=None):
+                  open_opportunities=(), extra_pages=None, approved_pages=None):
         monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
         monkeypatch.setenv('XRAS_API_KEY', 'k')
         client = _StubClient(list(pages), fail_after=fail_after,
                              open_opportunities=open_opportunities,
-                             extra_pages=extra_pages)
+                             extra_pages=extra_pages,
+                             approved_pages=approved_pages)
         monkeypatch.setattr(
             'sam.integration.xras_api.XrasApiClient.from_environment',
             classmethod(lambda cls, config=None: client))
@@ -200,21 +211,18 @@ class TestRegistration:
         assert params == ['ctx'], (
             f'the registered callable takes {params}; a task body takes only ctx')
 
-    def test_it_runs_hourly_around_the_clock(self):
-        """The cadence IS the Feed-B tab's freshness — the tab renders what
-        this publishes, so a nightly sweep would show an operator yesterday's
-        queue all day, and a business-day one gave the first operator in on a
-        Monday a snapshot from Friday afternoon.
+    def test_it_runs_hourly_and_quarter_hourly_in_the_working_day(self):
+        """The cadence IS the freshness of the Feed-B tab and the Accounts queue:
+        a fresh approval reaches NUSD within a quarter hour in the working day.
 
-        WARNING: `Hourly`, not `BusinessHourly`: this task only refreshes a cache,
-        unlike its sibling `xras_notices`, which mails people and therefore
-        stays inside the business day. `Hourly` is UTC and accepts no `tz` —
-        which is the point, since a local-wall hourly schedule drops a slot
-        each fall and risks merging one each spring.
+        WARNING: the hourly member is `Hourly` (UTC, no `tz`), not a local-wall
+        hourly schedule, which drops a slot each fall and risks merging one each
+        spring; the `BusinessHourly` quarters never contain 02:00.
         """
         schedule = TASKS[NAME].schedule
-        assert isinstance(schedule, Hourly)
-        assert schedule.minute == 0
+        assert isinstance(schedule, AnyOf)
+        assert schedule.members == (Hourly(minute=0), BusinessHourly(minute=15),
+                                    BusinessHourly(minute=30), BusinessHourly(minute=45))
 
     def test_it_needs_sam_and_not_status(self):
         assert set(TASKS[NAME].needs) == {'sam'}
@@ -352,18 +360,95 @@ class TestTwoCadences:
         client = wire([[_request(1, 'NCAR0001')]])
         detail = mod.xras_sweep(ctx()).detail
         assert detail['mode'] == 'active' and detail['full_slot'] is False
-        # active=true, and no status/extra passes this hour
-        assert client.active_asked == [True]
-        assert client.statuses_asked == [None]
+        # active=true, then the newest Approved; no extra-status passes this hour
+        assert client.active_asked == [True, None]
+        assert client.statuses_asked == [None, 'Approved']
         assert detail['index_publish_backend'] == 'not_this_slot'
 
     def test_a_light_hour_still_publishes_the_worklist(self, ctx, wire,
                                                        monkeypatch):
+        from sam.integration.xras_api.cache import load_pending_worklist
+
         self._light(monkeypatch)
         wire([[_request(1, 'NCAR0001')]])
         detail = mod.xras_sweep(ctx()).detail
         assert detail['publish_backend'] in ('redis', 'local')
         assert detail['status'] == 'active'
+        # The window applies to a light run too; `0` rendered as "0d lookback".
+        assert detail['window_days'] == mod.DEFAULT_WINDOW_DAYS
+        assert load_pending_worklist()['window_days'] == mod.DEFAULT_WINDOW_DAYS
+
+    def _recent(self, request_id, number, **kw):
+        payload = _request(request_id, number, **kw)
+        payload['submitDate'] = '2033-11-01'        # two weeks before OCC
+        return payload
+
+    def _stale(self, request_id, number):
+        payload = _request(request_id, number)
+        payload['submitDate'] = '2015-09-28'
+        return payload
+
+    def test_a_light_hour_files_a_new_approval_active_cannot_see(
+            self, ctx, wire, session, monkeypatch):
+        """The approved, not-yet-pushed request has no endDate, so `active=true`
+        never returns it; before this pass its people waited for 04:00."""
+        from sam.core.account_requests import AccountRequest
+
+        self._light(monkeypatch)
+        wire([], approved_pages=[[self._recent(1, 'ZZZZ9999', username='ghost-user-53',
+                                               email='new@example.edu')]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['mode'] == 'active' and detail['pending_push'] == 1
+        assert detail['account_requests']['created'] == 1
+        assert (session.query(AccountRequest)
+                .filter(AccountRequest.xras_username == 'ghost-user-53').count()) == 1
+
+    def test_the_read_stops_at_the_first_page_with_nothing_recent(
+            self, ctx, wire, monkeypatch):
+        self._light(monkeypatch)
+        wire([], approved_pages=[[self._recent(3, 'ZZZZ9993')],
+                                 [self._stale(2, 'ZZZZ9992')],
+                                 [self._recent(1, 'ZZZZ9991')]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['recent_approved'] == {'seen': 2, 'pages': 2,
+                                             'budget_exhausted': False}
+
+    def test_the_page_cap_holds_and_says_so(self, ctx, wire, monkeypatch):
+        self._light(monkeypatch)
+        wire([], approved_pages=[[self._recent(i, f'ZZZZ99{i:02d}')] for i in range(5)])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['recent_approved']['pages'] == mod.RECENT_APPROVED_MAX_PAGES
+        assert detail['recent_approved']['budget_exhausted'] is True
+
+    def test_a_request_in_both_passes_counts_once(self, ctx, wire, monkeypatch):
+        self._light(monkeypatch)
+        both = self._recent(1, 'ZZZZ9999')
+        wire([[both]], approved_pages=[[dict(both)]])
+        assert mod.xras_sweep(ctx()).detail['requests_seen'] == 1
+
+    def test_an_outage_on_the_approved_read_keeps_the_active_half(
+            self, ctx, wire, monkeypatch):
+        from sam.integration.xras_api.base import XrasSourceUnavailable
+
+        self._light(monkeypatch)
+        wire([[_request(1, 'ZZZZ9999')]], approved_pages=XrasSourceUnavailable('down'))
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['requests_seen'] == 1 and detail['pending_push'] == 1
+        assert detail['unavailable_errors'] == 1
+        assert detail['recent_approved']['pages'] == 0
+
+    def test_a_full_slot_reads_no_recent_pass(self, ctx, wire):
+        wire([[_request(1, 'ZZZZ9999')]])
+        assert mod.xras_sweep(ctx()).detail['recent_approved'] == {}
+
+    def test_a_quarter_slot_in_the_full_hour_runs_light(self, ctx, wire, monkeypatch):
+        """The full pass is ~100s; four of them in the 04:00 hour would be waste."""
+        monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                            lambda: {'rows': []})
+        wire([[_request(1, 'NCAR0001')]])
+        assert mod.xras_sweep(ctx()).detail['mode'] == 'full'
+        quarter = mod.xras_sweep(ctx(OCC + timedelta(minutes=15))).detail
+        assert quarter['mode'] == 'active'
 
     def test_a_light_hour_self_heals_when_no_index_is_published(self, ctx, wire,
                                                                 monkeypatch):
@@ -385,28 +470,61 @@ class TestTheWindow:
     """
 
     START = date(2026, 6, 1)
+    OPEN_SINCE = date(2026, 7, 15)
+
+    def _in(self, payload):
+        return mod.overlaps_window(payload, window_start=self.START,
+                                   open_ended_since=self.OPEN_SINCE)
 
     def test_an_allocation_that_ended_before_the_window_is_dropped(self):
-        assert not mod.overlaps_window({'endDate': '2026-05-31'},
-                                       window_start=self.START)
+        assert not self._in({'endDate': '2026-05-31'})
 
     def test_one_still_open_is_kept(self):
-        assert mod.overlaps_window({'endDate': '2026-06-01'},
-                                   window_start=self.START)
+        assert self._in({'endDate': '2026-06-01'})
 
     def test_a_future_allocation_is_kept(self):
         """**The one-sided half, and the point of it.** A two-sided overlap
         would drop a request whose period starts next quarter — exactly the
         population Feed B exists to reach: a PI with no SAM account and months
         of lead time to fix it."""
-        assert mod.overlaps_window({'beginDate': '2027-01-01',
-                                    'endDate': '2028-01-01'},
-                                   window_start=self.START)
+        assert self._in({'beginDate': '2027-01-01', 'endDate': '2028-01-01'})
 
     @pytest.mark.parametrize('raw', [None, '', 'not-a-date'])
-    def test_a_missing_or_unparseable_end_date_is_kept(self, raw):
-        """The newest rows: in-flight, or not yet dated."""
-        assert mod.overlaps_window({'endDate': raw}, window_start=self.START)
+    def test_an_open_ended_request_with_recent_activity_is_kept(self, raw):
+        """Approved, not yet pushed: no request-level endDate, a fresh submit."""
+        assert self._in({'endDate': raw, 'submitDate': '2026-07-15'})
+
+    @pytest.mark.parametrize('raw', [None, '', 'not-a-date'])
+    def test_an_open_ended_request_gone_quiet_is_dropped(self, raw):
+        """NCAR0099 on prod 2026-10-13: approved 2015, never pushed, read as open."""
+        assert not self._in({'endDate': raw, 'submitDate': '2026-07-14'})
+
+    def test_a_fresh_action_on_an_old_request_is_recent(self):
+        assert self._in({'submitDate': '2015-09-28',
+                         'actions': [{'entryDate': '2026-09-01'}]})
+
+    def test_an_open_ended_request_with_no_date_at_all_is_kept(self):
+        """Missing information is not evidence of age, as in every other window."""
+        assert self._in({'endDate': None})
+
+    @pytest.mark.parametrize('extra', [{'submitDate': '2026-09-14'},
+                                       {'endDate': '2027-09-30'}])
+    def test_a_deleted_request_is_dropped(self, extra):
+        """NCAR0007 on prod: a deleted test request, submitted last month."""
+        assert not self._in({'isDeleted': True, **extra})
+
+    def test_an_ancient_open_ended_request_files_nobody(self, ctx, wire, session):
+        from sam.core.account_requests import AccountRequest
+
+        ancient = _request(1, 'ZZZZ9998', username='ghost-user-52',
+                           email='old@example.edu')
+        ancient['submitDate'] = '2015-09-28'
+        wire([[ancient]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['requests_in_window'] == 0
+        assert detail['account_requests']['created'] == 0
+        assert not (session.query(AccountRequest)
+                    .filter(AccountRequest.xras_username == 'ghost-user-52').count())
 
     def test_both_counts_are_reported(self, ctx, wire):
         """`requests_seen` says how much was read, `requests_in_window` how
@@ -512,6 +630,13 @@ class TestPendingPush:
         wire([[_request(1, project.projcode)]])
         detail = mod.xras_sweep(ctx()).detail
         assert detail['pending_push'] == 0
+
+    def test_a_deleted_request_is_not(self, ctx, wire):
+        """NCAR0001 on prod 2026-10-13: a deleted test request counted as a push owed."""
+        deleted = _request(1, 'ZZZZ9999')
+        deleted['isDeleted'] = True
+        wire([[deleted]])
+        assert mod.xras_sweep(ctx()).detail['pending_push'] == 0
 
 
 class TestClassification:
@@ -844,6 +969,17 @@ class TestUnmappedOpportunities:
         assert result.detail['opportunities_seen'] == 2
         assert result.detail['opportunities_unmapped'] == 1
         assert result.detail['opportunities_unmapped_sample'] == [771004]
+
+    def test_a_request_outside_the_window_names_no_opportunity(
+            self, ctx, wire, session):
+        """Discovery reads the window: the whole enumeration backfilled 16 historical
+        map rows on samuel-dev (2026-10-13), a write the sweep never made before."""
+        stale = self._req(1, 'NCAR9001', 771005)
+        stale['endDate'] = '1999-01-01'
+        wire([[stale]])
+        result = mod.xras_sweep(ctx())
+        assert result.detail['requests_in_window'] == 0
+        assert result.detail['opportunities_seen'] == 0
 
     def test_payloads_without_an_opportunity_id_are_not_counted(self, ctx, wire, session):
         wire([[_request(1, 'NCAR9001')]])

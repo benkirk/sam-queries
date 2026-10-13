@@ -191,17 +191,17 @@ def _refresh_index_entry(request_number: str, *, reader=None,
 
     from sam.integration.xras_api.cache import patch_requests_index
     from sam.integration.xras_api.client import XrasApiClient
-    from sam.queries.xras_requests import primary_line, request_index_entry
+    from sam.queries.xras_requests import live_lines, primary_line, request_index_entry
 
     try:
         reader = reader or XrasApiClient.from_environment()
         # The family, not get_request_line: the same one fetch, and the card's
         # document count spans every line.
-        family = reader.get_request_family_by_number(request_number) or []
+        family = live_lines(reader.get_request_family_by_number(request_number))
         payload = primary_line(family)
         if payload is None:
-            # XRAS no longer knows this number. Dropping the row is right here
-            # — there is nothing to render and nothing left to act on.
+            # XRAS no longer knows this number, or every line is deleted. Dropping
+            # the row is right here: nothing to render, nothing left to act on.
             return patch_requests_index(request_number, None)
 
         verdicts = None
@@ -231,18 +231,18 @@ def recheck_readiness(request_number: str, *, session, reader=None) -> dict:
     """
     from sam.integration.xras_api.cache import patch_requests_index
     from sam.integration.xras_api.client import XrasApiClient
-    from sam.queries.xras_requests import primary_line, request_index_entry
+    from sam.queries.xras_requests import live_lines, primary_line, request_index_entry
 
     counts = {'rechecked': 0, 'failed': 0, 'manual': 0, 'incomplete': 0}
     try:
         reader = reader or XrasApiClient.from_environment()
-        family = reader.get_request_family_by_number(request_number) or []
+        family = live_lines(reader.get_request_family_by_number(request_number))
         payload = primary_line(family)
     except Exception as exc:                            # noqa: BLE001
         logger.warning('xras recheck: could not read %s (%s)', request_number, exc)
         return {'available': False, 'patched': False, 'counts': counts}
 
-    if payload is None or payload.get('isDeleted'):
+    if payload is None:
         # Gone, or deleted since the sweep — drop the row rather than leave a
         # "not checked" a re-check can never resolve.
         patch_requests_index(request_number, None)

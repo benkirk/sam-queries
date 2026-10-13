@@ -410,6 +410,34 @@ class MonthlyDay(_LocalWallSchedule):
                 f'{self.hour:02d}:{self.minute:02d} {self.tz}')
 
 
+@dataclass(frozen=True, init=False)
+class AnyOf:
+    """Fires whenever any member does; the newest member slot is the occurrence.
+
+    For a cadence no single predicate names, such as hourly around the clock
+    plus quarter-hours in business hours. Each member keeps its own zone and
+    DST rules, so a union of DST-safe members is DST-safe.
+    """
+
+    members: Tuple[Schedule, ...]
+
+    def __init__(self, *members: Schedule):
+        if not members:
+            raise ValueError('AnyOf needs at least one schedule')
+        object.__setattr__(self, 'members', tuple(members))
+
+    def last_occurrence(self, now_utc: datetime) -> Optional[datetime]:
+        found = [o for m in self.members if (o := m.last_occurrence(now_utc)) is not None]
+        return max(found) if found else None
+
+    def next_occurrence(self, after_utc: datetime) -> Optional[datetime]:
+        found = [o for m in self.members if (o := m.next_occurrence(after_utc)) is not None]
+        return min(found) if found else None
+
+    def describe(self) -> str:
+        return ' + '.join(m.describe() for m in self.members)
+
+
 @dataclass(frozen=True)
 class CronExpr:
     """A raw 5-field cron expression: ``minute hour dom month dow``.
