@@ -332,13 +332,18 @@ class TestStorageGate:
     def test_tree_hides_allocate_down_and_reclaim(self, auth_client, monkeypatch,
                                                   snapshot_carve_parent):
         alloc, _ = snapshot_carve_parent
-        url = f'/admin/htmx/project-allocation-tree/{alloc.account.project.projcode}'
+        projcode = alloc.account.project.projcode
+        url = f'/admin/htmx/project-allocation-tree/{projcode}'
         reclaim = f'/admin/htmx/reclaim-form/{alloc.allocation_id}"'
-        assert reclaim in auth_client.get(url).get_data(as_text=True)
+        exchange = f'/admin/htmx/exchange-allocation-form/{projcode}/'
+        html = auth_client.get(url).get_data(as_text=True)
+        assert reclaim in html
+        assert exchange in html, 'the fixture tree has 2+ carve-outs, so Exchange shows'
         monkeypatch.setattr('webapp.dashboards.admin.projects_routes.steward_tools_allowed',
                             lambda *a: False)
         html = auth_client.get(url).get_data(as_text=True)
         assert reclaim not in html
+        assert exchange not in html
         assert _form_url(alloc.allocation_id) + '"' not in html
 
     def test_forms_render_admin_only_notice(self, auth_client, refused, snapshot_carve_parent):
