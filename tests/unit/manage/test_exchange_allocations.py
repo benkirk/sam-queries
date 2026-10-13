@@ -378,6 +378,22 @@ class TestExchangeEndpointTraps:
         session.refresh(a)
         assert a.amount == 20_000.0
 
+    def test_sibling_landing_on_parent_amount_rejected(self, session, acting_user):
+        a, b = _sibling_pair(session, 1_000_000.0, [600_000.0, 400_000.0])
+        with pytest.raises(ValueError, match="would equal the parent allocation's"):
+            exchange_allocations(
+                session, from_allocation_id=a.allocation_id,
+                to_allocation_id=b.allocation_id, amount=600_000.0,
+                user_id=acting_user.user_id,
+            )
+        exchange_allocations(
+            session, from_allocation_id=a.allocation_id,
+            to_allocation_id=b.allocation_id, amount=500_000.0,
+            user_id=acting_user.user_id,
+        )
+        session.refresh(b)
+        assert b.amount == 900_000.0
+
 
 class TestExchangeAllocationsAuditTrail:
     """Regression guards for the audit-trail double-count bug.

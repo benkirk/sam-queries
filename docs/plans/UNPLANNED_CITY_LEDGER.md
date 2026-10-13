@@ -1838,6 +1838,7 @@ sunburst, which started on the allocations page and then moved to job history.
   node being resized gets no cascade and reads as a carve-out once the amounts differ; a
   carve-out equal to the new amount reads as a pool member (`is_pool_member`'s fallback).
   Reclaim had both guards inline; `_refuse_resize_traps` (`sam/manage/allocations.py`) now
-  serves reclaim, allocate-down's bump path and both exchange endpoints. Open: an exchange
-  between two siblings that lands one of them on their common parent's amount (exchange reads
-  those rows as dedicated by design; the NMMM0083 note).
+  serves reclaim, allocate-down's bump path and both exchange endpoints. The #809 review
+  added the view from above, for exchange only: `_refuse_endpoint_traps` refuses an endpoint
+  that is itself an unlinked equal-amount pool member (two of NRAL0001's Casper members
+  over-carved it by 20,000) or that lands on its parent's amount.

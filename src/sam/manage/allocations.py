@@ -1172,8 +1172,9 @@ def _frontier_parent(session: Session, allocation: Allocation) -> Optional[Alloc
 
 def _refuse_endpoint_traps(session: Session, allocation: Allocation,
                            new_amounts: Dict[int, float]) -> None:
-    """Refuse an exchange endpoint that is an unlinked equal-amount pool member of its parent:
-    once its amount moves it reads as a carve-out, and two such siblings over-carve the parent."""
+    """Refuse an exchange endpoint that is an unlinked equal-amount pool member of its parent
+    (once its amount moves it reads as a carve-out; two such siblings over-carve the parent),
+    or that lands on its parent's amount (a carve-out turned pool member)."""
     above = _frontier_parent(session, allocation)
     if above is None or allocation.parent_allocation_id is not None:
         return
@@ -1184,6 +1185,9 @@ def _refuse_endpoint_traps(session: Session, allocation: Allocation,
             f"{code}'s amount would leave it reading as a carve-out of {above_code}. An "
             f"allocations administrator can link it (Edit allocation) first."
         )
+    # A parent that is the other endpoint checks this row as its own carve-out, post-state.
+    if above.allocation_id not in new_amounts:
+        _refuse_pool_amount(above, new_amounts[allocation.allocation_id])
 
 
 def allocations_used(session: Session, allocations: Iterable[Allocation]) -> Dict[int, float]:
