@@ -124,9 +124,12 @@ Until the rewrite, the sweep's set difference reads a landed push as still pendi
 four requests the light pass called pending on 2026-10-13 (NCAR4212/4293/4300/4354) fit
 that shape. So:
 
-- **Key the ticket on the primary line's `request_id`** (`primary_line`, the line the
-  Remediations card shows and every write targets; a family holds several lines, each with
-  its own id). It is stable across the rewrite (§ 4.2's table); the
+- **Key the ticket on the `request_id` of the line whose approved New or Renewal
+  triggered it, and store that id.** A family holds several lines, each with its own id.
+  At the trigger this is `primary_line`, the line the Remediations card shows and every
+  write targets. Later, a newer action on another line moves `primary_line`, so a key
+  re-read from it would file a second ticket. The stored id is stable across the rewrite
+  (§ 4.2's table, which keys its record on the created line the same way); the
   `request_number` is carried and updated when observed.
 - **Resolve from `xras_action_log`.** A processed row for the request (its
   `request_number` as pushed, `projcode_result`) closes the checklist. The same test
