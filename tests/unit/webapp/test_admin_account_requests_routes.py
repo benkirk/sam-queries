@@ -409,3 +409,81 @@ class TestTheTicketDeepLink:
         html = auth_client.get(f'{FRAGMENT}?request={MISSING}').get_data(as_text=True)
         assert f'Request #{MISSING} does not exist' in html
         assert 'id="account-request-' not in html
+
+
+@pytest.fixture
+def sweep_request(app):
+    """A committed sweep row whose project does not exist yet (XRAS Approved Pending Projects)."""
+    from sam.core.account_requests import CREATED_BY_SWEEP, PURPOSE_SUBMISSION, AccountRequest
+    from webapp.extensions import db
+
+    with app.app_context():
+        row = AccountRequest.create(
+            db.session, email='zz.pending.test@example.invalid', first_name='Pen',
+            last_name='Ding', purpose=PURPOSE_SUBMISSION, xras_username='Zz-Pending-User',
+            created_by=CREATED_BY_SWEEP, verified_by=CREATED_BY_SWEEP)
+        db.session.commit()
+        row_id = row.account_request_id
+
+    yield row_id
+
+    with app.app_context():
+        db.session.query(AccountRequest).filter(
+            AccountRequest.account_request_id == row_id).delete()
+        db.session.commit()
+
+
+def _pending_feed(monkeypatch, *numbers):
+    """The request index names the sweep row's user, in another spelling, on these requests."""
+    rows = [{'request_number': n, 'roster': [{'username': 'zz-pending-user'}]} for n in numbers]
+    monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                        lambda: {'rows': rows})
+
+
+class TestTheRequestBehindAPendingRow:
+    """No project yet: the cell names the XRAS request, and opens it for MANAGE_XRAS."""
+
+    def test_the_number_is_plain_text_while_xras_is_unconfigured(
+            self, auth_client, monkeypatch, sweep_request):
+        _pending_feed(monkeypatch, 'NCAR4227')
+        html = auth_client.get(f'{FRAGMENT}?request={sweep_request}').get_data(as_text=True)
+        assert 'Project or Request' in html
+        assert '<span class="font-monospace" title="No SAM project' in html and 'NCAR4227' in html
+        assert 'xras_request_detail' not in html
+        assert 'id="xrasModal"' not in auth_client.get(PAGE).get_data(as_text=True)
+
+    def test_a_configured_xras_opens_the_request_dialog_in_place(
+            self, auth_client, monkeypatch, sweep_request):
+        _pending_feed(monkeypatch, 'NCAR4227', 'NCAR4228', 'NCAR4227', 'NCAR4229')
+        monkeypatch.setattr('sam.integration.xras_api.xras_api_configured', lambda: True)
+        html = auth_client.get(f'{FRAGMENT}?request={sweep_request}').get_data(as_text=True)
+        assert 'hx-get="/allocations/xras_request_detail/NCAR4227"' in html
+        assert 'data-bs-target="#xrasModal"' in html
+        assert 'NCAR4229' not in html and '+1' in html
+        page = auth_client.get(PAGE).get_data(as_text=True)
+        assert 'id="xrasModal"' in page and 'id="xrasModalFooter"' in page
+
+    def test_no_pending_rows_reads_nothing(self, auth_client, monkeypatch, committed_request):
+        def _refuse(*_a, **_kw):
+            raise AssertionError('looked up request numbers with no pending row')
+        monkeypatch.setattr('sam.queries.xras_requests.request_numbers_by_username', _refuse)
+        assert auth_client.get(f'{FRAGMENT}?request={committed_request}').status_code == 200
+
+
+class TestAFulfilledRowIsDone:
+    """Under "Show everything" a fulfilled row says so and offers no queue actions."""
+
+    def _fulfil(self, app, row_id, user_id):
+        from sam.core.account_requests import AccountRequest
+        from webapp.extensions import db
+        with app.app_context():
+            db.session.get(AccountRequest, row_id).user_id = user_id
+            db.session.commit()
+
+    def test_fulfilled_reads_fulfilled_without_actions(self, auth_client, app, sweep_request):
+        html = auth_client.get(f'{FRAGMENT}?request={sweep_request}').get_data(as_text=True)
+        assert '>open</span>' in html and 'aria-label="Claim"' in html
+        self._fulfil(app, sweep_request, 1)
+        html = auth_client.get(f'{FRAGMENT}?request={sweep_request}').get_data(as_text=True)
+        assert '>fulfilled</span>' in html and '>open</span>' not in html
+        assert 'aria-label="Claim"' not in html and 'aria-label="Dismiss"' not in html

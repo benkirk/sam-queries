@@ -42,7 +42,7 @@ from sam.schemas.forms import (
     AccessGridToggleForm, AddAllocationsForm, AllocateResidualForm,
     EditAllocationForm, EditProjectForm, ExchangeAllocationForm,
     ExtendAllocationsForm, RenewAllocationsForm, AlignAllocationsForm,
-    HtmxFormSchema, LinkAllocationParentForm, NotifyProjectForm,
+    HtmxFormSchema, LinkAllocationParentForm, NotifyProjectForm, ReclaimResidualForm,
 )
 from sam.schemas.forms.projects import (
     AddLinkedContractForm, AddLinkedDirectoryForm, AddLinkedOrganizationForm,
@@ -1316,6 +1316,12 @@ def _allocate_down_notice(allocation, kind, resource=None, **ctx):
                               allocation.account.project.projcode, **ctx)
 
 
+def _reclaim_notice(allocation, kind):
+    return _allocation_notice(kind, 'reclaimModalLabel',
+                              f'Reclaim on {allocation.account.resource.resource_name}', 'turn-up',
+                              allocation.account.project.projcode)
+
+
 @bp.route('/htmx/exchange-allocation-form/<projcode>/<int:resource_id>')
 @login_required
 @require_project_permission(Permission.EDIT_ALLOCATIONS)
@@ -1556,6 +1562,99 @@ class _AllocateDownHandler(HtmxFormHandler):
 def htmx_allocate_down(allocation):
     """Validate and apply an allocate-down (sub-allocation) of the residual."""
     return _AllocateDownHandler(allocation=allocation).handle()
+
+
+# ---------------------------------------------------------------------------
+# Reclaim from a sub-project (Edit Project -> Allocations tab)
+# ---------------------------------------------------------------------------
+
+def _reclaim_context(allocation):
+    """Frontier plus the carve-outs the reclaim modal offers, each with what it can give back."""
+    from sam.manage.allocations import get_carveout_frontier, reclaimable_amounts
+
+    frontier = get_carveout_frontier(db.session, allocation)
+    bounds = reclaimable_amounts(db.session, frontier.carve_children)
+    candidates = []
+    for a in frontier.carve_children:
+        candidates.append({
+            'allocation_id': a.allocation_id,
+            'projcode': a.account.project.projcode,
+            'title': a.account.project.title or '',
+            'amount': a.amount,
+            'used': bounds[a.allocation_id]['used'],
+            'reclaimable': max(bounds[a.allocation_id]['limit'], 0.0),
+        })
+    candidates.sort(key=lambda c: c['projcode'])
+    return {
+        'allocation': allocation,
+        'parent_projcode': allocation.account.project.projcode,
+        'frontier': frontier,
+        'candidates': candidates,
+        'max_reclaimable': max((c['reclaimable'] for c in candidates), default=0.0),
+        'resource': allocation.account.resource,
+    }
+
+
+@bp.route('/htmx/reclaim-form/<int:allocation_id>')
+@login_required
+@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_reclaim_form(allocation):
+    """Render the reclaim modal: return a carve-out's unused amount to this allocation."""
+    if allocation.deleted or allocation.is_inheriting:
+        return _reclaim_notice(allocation, 'shared')
+    ctx = _reclaim_context(allocation)
+    if ctx['max_reclaimable'] <= 0:
+        return _reclaim_notice(allocation, 'nothing_to_reclaim')
+    return render_template('dashboards/admin/fragments/reclaim_form_htmx.html', **ctx)
+
+
+class _ReclaimHandler(HtmxFormHandler):
+    """Validate and apply a reclaim from a sub-project carve-out."""
+
+    schema_cls = ReclaimResidualForm
+    template = 'dashboards/admin/fragments/reclaim_form_htmx.html'
+    error_prefix = 'Error reclaiming from sub-project'
+    success_message = 'Reclaimed successfully.'
+    exception_map = (
+        (InheritingAllocationException, lambda e: str(e)),
+        (ValueError, lambda e: str(e)),
+    )
+
+    def perform(self, data):
+        from sam.manage.allocations import reclaim_from_child
+        self.amount = data['amount']
+        return reclaim_from_child(
+            db.session,
+            self.allocation.allocation_id,
+            current_user.user_id,
+            amount=data['amount'],
+            source_allocation_id=data['source_allocation_id'],
+            comment=data.get('comment'),
+        )
+
+    def context(self):
+        return _reclaim_context(self.allocation)
+
+    def triggers(self, result):
+        return {'closeActiveModal': {},
+                'reloadAllocationTree': self.allocation.account.project.projcode}
+
+    def detail(self, source):
+        from sam.manage.allocations import get_carveout_frontier
+        residual_after = get_carveout_frontier(db.session, self.allocation).raw_residual
+        return (
+            f"{self.allocation.account.resource.resource_name}: "
+            f"-{self.amount:g} ← {source.account.project.projcode} "
+            f"(unallocated remainder now {residual_after:g})"
+        )
+
+
+@bp.route('/htmx/reclaim/<int:allocation_id>', methods=['POST'])
+@login_required
+@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_reclaim(allocation):
+    """Validate and apply a reclaim from a sub-project carve-out."""
+    return _ReclaimHandler(allocation=allocation).handle()
 
 
 # ---------------------------------------------------------------------------

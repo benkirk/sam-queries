@@ -648,7 +648,8 @@ class Account(Base):
 
 - **Project team** - Contact your project lead or CISL staff
 - **Issues** - File bug reports or feature requests in the issue tracker
-- **Code review** - Pull requests are reviewed by maintainers
+- **Code review** - Pull requests are reviewed by maintainers; the house
+  procedure is the `pr-review` skill (`.claude/skills/pr-review/SKILL.md`)
 
 ## Project Structure
 

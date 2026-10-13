@@ -1310,6 +1310,20 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_reclaim",
+    "/admin/htmx/reclaim/<int:allocation_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_reclaim_form",
+    "/admin/htmx/reclaim-form/<int:allocation_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_remove_project_contract",
     "/admin/htmx/project/<projcode>/contracts/<int:pc_id>/remove",
     [

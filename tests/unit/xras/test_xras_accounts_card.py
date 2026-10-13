@@ -886,3 +886,15 @@ class TestTheQueueLink:
         body = view_only_client.get(URL).get_data(as_text=True)
         assert 'claimed · operator1' in body, 'queue state is account state, not PII'
         assert f'/admin/account-requests/{committed_account_request}/' not in body
+
+    def test_a_fulfilled_row_reads_fulfilled_without_controls(
+            self, auth_client, app, committed_worklist_action, committed_account_request):
+        from webapp.extensions import db
+        from sam.core.account_requests import AccountRequest
+        with app.app_context():
+            db.session.get(AccountRequest, committed_account_request).user_id = 1
+            db.session.commit()
+        body = auth_client.get(URL).get_data(as_text=True)
+        assert '>fulfilled</span>' in body and ': fulfilled' in body
+        assert 'claimed · operator1' not in body
+        assert f'/admin/account-requests/{committed_account_request}/' not in body

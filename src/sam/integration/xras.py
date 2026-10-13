@@ -361,10 +361,9 @@ class XrasActionLog(Base):
     #: The wire's ``actionId`` -- the only identifier for the *action*, and so
     #: the idempotency key.
     #:
-    #: XRAS owns the retry, so this is **detection**, not prevention. Three
-    #: identical posts otherwise produce three rows identical in every
-    #: filterable column, and the cost of not noticing is asymmetric: Extension
-    #: writes nothing on a repeat, Supplement adds a full increment.
+    #: The route refuses a post whose ``actionId`` an earlier post already applied
+    #: or is still applying (``status='duplicate'``, 422): a repeat Supplement
+    #: would add a full increment again, as it did on UNVR0027 (2026-10-12).
     action_id = Column(Integer)
 
     #: The wire's ``requestId`` -- the identity of one request *line*, where

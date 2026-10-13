@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from sam.accounting.allocations import (
+    Allocation,
     AllocationTransaction,
     AllocationTransactionType,
     replay_amount,
@@ -321,6 +322,30 @@ class TestItIsAdditive:
         after = replay_amount(txns_for(session, allocation))
 
         assert after - before == pytest.approx(250_000.0)
+
+    def test_it_adds_to_the_stored_amount_not_a_stale_read(self, committing,
+                                                          mapped_resource):
+        """Two concurrent posts each added to the amount they had read and the later
+        write erased the earlier (UNVR0027, 2026-10-12): the add re-reads under lock."""
+        from sqlalchemy import update
+
+        session = committing
+        from factories import make_account, make_allocation, make_project
+        project = make_project(session)
+        allocation = make_allocation(
+            session, amount=1_000_000.0,
+            account=make_account(session, project=project, resource=mapped_resource))
+        session.refresh(project)
+        session.execute(update(Allocation)
+                        .where(Allocation.allocation_id == allocation.allocation_id)
+                        .values(amount=1_100_000.0)
+                        .execution_options(synchronize_session=False))
+        assert allocation.amount == pytest.approx(1_000_000.0)
+
+        handle_supplement(session, action_for(
+            project.projcode, wire_resource(mapped_resource.xras_key, '250000')))
+
+        assert allocation.amount == pytest.approx(1_350_000.0)
 
     def test_two_supplements_accumulate(self, committing, mapped_resource):
         session = committing

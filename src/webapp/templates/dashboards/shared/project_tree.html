@@ -63,7 +63,7 @@
 {%- endif -%}
 {%- endmacro %}
 
-{#- Edit / allocate-down / exchange for one row. exchange_url is set by the caller only
+{#- Edit / allocate-down / reclaim / exchange for one row. exchange_url is set by the caller only
     when 2+ descendants hold dedicated allocations; it shows on the current row only.
     edit_url replaces the admin edit form's URL (Resource Details uses the user route). -#}
 {% macro allocation_actions(res, is_current=false, can_edit=false, exchange_url=none, edit_url=none) -%}
@@ -87,6 +87,15 @@
           aria-label="Allocate unallocated remainder to a sub-project"><i class="fa-solid fa-turn-down"></i></button>
     {%- elif res.carve_residual.raw_residual < 0 -%}
   <span class="badge bg-danger" title="Sub-project carve-outs exceed this allocation — see sam-admin project --audit-trees">over-carved</span>
+    {%- endif -%}
+    {#- Reclaim: carve_residual exists only when this row has carve-outs to reclaim from. -#}
+    {%- if res.carve_residual.can_allocate -%}
+  <button type="button" class="btn btn-row"
+          hx-get="{{ url_for('admin_dashboard.htmx_reclaim_form', allocation_id=res.allocation_id) }}"
+          hx-target="#reclaimFormContainer"
+          data-bs-toggle="modal" data-bs-target="#reclaimModal"
+          title="Reclaim unused allocation from a sub-project"
+          aria-label="Reclaim unused allocation from a sub-project"><i class="fa-solid fa-turn-up"></i></button>
     {%- endif -%}
   {%- endif -%}
   {%- if is_current and exchange_url -%}

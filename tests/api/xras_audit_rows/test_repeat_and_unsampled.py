@@ -25,20 +25,22 @@ from .conftest import post_action as _post
 
 def test_repeat_post_supplement(xras_client, action_log, dispatching, scenario,
                                 committing_route, snapshot_project):
-    """Three identical posts produce three rows an operator cannot tell apart."""
+    """Three identical posts: the first applies, the two repeats are refused."""
     import sam.xras.handlers  # noqa: F401
 
     payload = {'actionType': 'Supplement', 'actionId': 40001, 'requestId': 50001,
                'requestNumber': snapshot_project.projcode,
                'allocationType': 'Small', 'resources': [], 'roles': []}
 
-    for _ in range(3):
-        resp = _post(xras_client, payload)
-        assert resp.status_code == scenario['http']
+    codes = [_post(xras_client, payload).status_code for _ in range(3)]
+    assert codes == [scenario['http']] + [scenario['repeat_http']] * 2
 
     rows = action_log.rows()
     assert len(rows) == 3
-    assert {r['status'] for r in rows} == {scenario['expect']}
+    assert [r['status'] for r in rows] == [scenario['expect']] + [scenario['repeat_expect']] * 2
+    first = rows[0]['id']
+    assert all(r['outcome_reason'] == f'repeat of #{first} (processed)' for r in rows[1:])
+    assert all('already applied' in r['error_messages'] for r in rows[1:])
 
     # WARNING: **This assertion is inverted from what it was.** It used to prove `actionId`
     # survived only as bytes inside `raw_payload`, so telling a duplicate from a
@@ -49,7 +51,7 @@ def test_repeat_post_supplement(xras_client, action_log, dispatching, scenario,
     assert {r['action_id'] for r in rows} == {40001}, (
         'three posts of one action must share one action_id — that is what makes '
         'them a detectable duplicate rather than three indistinguishable rows')
-    assert all(r['service'] == 'supplement' for r in rows)
+    assert rows[0]['service'] == 'supplement'
 
 
 def test_repeat_post_extension(xras_client, action_log, dispatching, scenario,
@@ -61,12 +63,76 @@ def test_repeat_post_extension(xras_client, action_log, dispatching, scenario,
                'requestNumber': snapshot_project.projcode,
                'actionEndDate': '2031-12-31', 'resources': [], 'roles': []}
 
-    for _ in range(2):
-        assert _post(xras_client, payload).status_code == scenario['http']
+    codes = [_post(xras_client, payload).status_code for _ in range(2)]
+    assert codes == [scenario['http'], scenario['repeat_http']]
 
     rows = action_log.rows()
-    assert len(rows) == 2
-    assert {r['status'] for r in rows} == {scenario['expect']}
+    assert [r['status'] for r in rows] == [scenario['expect'], scenario['repeat_expect']]
+
+
+def test_repeat_while_in_flight(xras_client, action_log, dispatching, scenario, app,
+                                snapshot_project):
+    """A repeat finds the first post still at ``received`` (captured here, so it never
+    finishes) and is refused; once that row is 15 min old it no longer blocks."""
+    from datetime import datetime, timedelta
+
+    from sqlalchemy.orm import Session
+
+    from sam.integration.xras import XrasActionLog
+    from webapp.extensions import db
+
+    payload = {'actionType': 'Advance', 'actionId': 40003,
+               'requestNumber': snapshot_project.projcode, 'resources': [], 'roles': []}
+    app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = True
+    assert _post(xras_client, payload).status_code == 200
+    app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = False
+
+    resp = _post(xras_client, payload)
+    assert resp.status_code == scenario['http']
+    first, repeat = action_log.rows()
+    assert repeat['status'] == scenario['expect']
+    assert repeat['outcome_reason'] == f"repeat of #{first['id']} (received)"
+    assert 'still being applied' in json.loads(resp.data)['result']['errors'][0]
+
+    with app.app_context(), Session(db.engine) as session:
+        session.get(XrasActionLog, first['id']).received_time = (
+            datetime.now() - timedelta(minutes=16))
+        session.commit()
+    assert _post(xras_client, payload).status_code == 200
+    assert action_log.rows()[-1]['status'] == 'manual'
+
+
+def test_a_newer_live_post_blocks_an_older_one(xras_client, action_log, dispatching, app,
+                                               snapshot_project):
+    """Ids are assigned at INSERT and seen at COMMIT, so the lower-numbered of two
+    concurrent posts can run its check last: any other live post must block it."""
+    from webapp.api.xras.actions import _other_live_post
+
+    payload = {'actionType': 'Advance', 'actionId': 40005,
+               'requestNumber': snapshot_project.projcode, 'resources': [], 'roles': []}
+    app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = True
+    for _ in range(2):
+        assert _post(xras_client, payload).status_code == 200
+    app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = False
+    older, newer = action_log.rows()
+
+    with app.app_context():
+        assert _other_live_post(older['id'], 40005) == (newer['id'], 'received')
+        assert _other_live_post(newer['id'], 40005) == (older['id'], 'received')
+
+
+def test_repeat_after_failure(xras_client, action_log, dispatching, scenario,
+                              committing_route, snapshot_project):
+    """A failed post is not a reason to refuse its repost: the admin fixes the data and
+    pushes again."""
+    import sam.xras.handlers  # noqa: F401
+
+    payload = {'actionType': 'Renewal', 'actionId': 40004,
+               'requestNumber': snapshot_project.projcode, 'resources': [], 'roles': []}
+    codes = [_post(xras_client, payload).status_code for _ in range(2)]
+
+    assert codes == [scenario['http']] * 2
+    assert [r['status'] for r in action_log.rows()] == [scenario['expect']] * 2
 
 
 class TestWhatADoublePostCosts:

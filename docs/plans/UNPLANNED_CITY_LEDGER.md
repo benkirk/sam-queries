@@ -1826,3 +1826,22 @@ sunburst, which started on the allocations page and then moved to job history.
   inline `fromisoformat` try block (sweep 4).
 - [ ] `sam.text.strip_or_none`: `samuel_roles._clean_note` is `strip_or_none(note, _NOTE_MAX)`
   (sweep 4).
+- [ ] A guarded read of the request index (#806, `admin/account_requests_routes.py`
+  `_stamp_request_numbers`): `load_requests_index()` returns `None` with no backend, but a Redis
+  that went away after the adapter was built raises from the read (`sam/caching/redis_ttl.py`
+  has no `RedisError` handling on `__contains__` / `__getitem__`). The five other readers are
+  bare: `allocations/xras/_shared.py` `_index`, `sam/manage/xras_remediation.py` (two),
+  `cli/xras/commands.py` (three). Either lift the guard into the cache (a `None` that then
+  also means "unreachable", which the Remediations card renders as "no sweep yet") or guard
+  the Remediations card.
+- [x] Resize traps on the allocation tree (the #808 review): a pool member not linked to the
+  node being resized gets no cascade and reads as a carve-out once the amounts differ; a
+  carve-out equal to the new amount reads as a pool member (`is_pool_member`'s fallback).
+  Reclaim had both guards inline; `_refuse_resize_traps` (`sam/manage/allocations.py`) now
+  serves reclaim, allocate-down's bump path and both exchange endpoints. The #809 review
+  added the view from above, for exchange only: `_refuse_endpoint_traps` refuses an endpoint
+  that is itself an unlinked equal-amount pool member (two of NRAL0001's Casper members
+  over-carved it by 20,000) or that lands on its parent's amount. `_refuse_over_carve` keeps
+  exchange inside the residual reclaim and allocate-down already respect: FROM may not drop
+  below its own carve-outs (NCGD0036 FY27 Derecho, 8M under NCGD0040's 8.9M), and a cousin
+  exchange may not push TO's parent further over its amount.

@@ -312,6 +312,117 @@ class TestExchangeAllocationsErrors:
             )
 
 
+class TestExchangeResizeTraps:
+    """Neither endpoint may reclassify a row below it."""
+
+    def test_unlinked_mirror_under_an_endpoint_rejected(self, session, exchange_pair, acting_user):
+        from_alloc, to_alloc, resource = exchange_pair
+        gc = make_project(session, parent=to_alloc.account.project)
+        mirror = make_allocation(
+            session, account=make_account(session, project=gc, resource=resource),
+            amount=to_alloc.amount, start_date=to_alloc.start_date, end_date=to_alloc.end_date,
+        )
+        with pytest.raises(ValueError, match='without being linked'):
+            exchange_allocations(
+                session, from_allocation_id=from_alloc.allocation_id,
+                to_allocation_id=to_alloc.allocation_id, amount=1_000.0,
+                user_id=acting_user.user_id,
+            )
+        mirror.parent_allocation_id = to_alloc.allocation_id
+        session.flush()
+        exchange_allocations(
+            session, from_allocation_id=from_alloc.allocation_id,
+            to_allocation_id=to_alloc.allocation_id, amount=1_000.0,
+            user_id=acting_user.user_id,
+        )
+        session.refresh(mirror)
+        assert mirror.amount == 201_000.0
+
+    def test_endpoints_meeting_at_one_amount_rejected(self, session, exchange_pair, acting_user):
+        """TO is FROM's carve-out: landing both on 600k reads TO as FROM's pool member."""
+        from_alloc, to_alloc, _ = exchange_pair
+        with pytest.raises(ValueError, match='would then read as a shared-pool'):
+            exchange_allocations(
+                session, from_allocation_id=from_alloc.allocation_id,
+                to_allocation_id=to_alloc.allocation_id, amount=400_000.0,
+                user_id=acting_user.user_id,
+            )
+        session.refresh(from_alloc)
+        assert from_alloc.amount == 1_000_000.0
+
+
+def _node(session, resource, amount, parent=None):
+    """An allocation on a new project under ``parent``'s project, one shared window."""
+    project = make_project(session, parent=parent.account.project if parent else None)
+    start, end = datetime(2026, 10, 1), datetime(2027, 9, 30, 23, 59, 59)
+    return make_allocation(session, account=make_account(session, project=project, resource=resource),
+                           amount=amount, start_date=start, end_date=end)
+
+
+def _exchange(session, user, from_alloc, to_alloc, amount):
+    return exchange_allocations(session, from_allocation_id=from_alloc.allocation_id,
+                                to_allocation_id=to_alloc.allocation_id, amount=amount,
+                                user_id=user.user_id)
+
+
+class TestExchangeEndpointTraps:
+    """An endpoint must not leave or land on its parent's pool by equal amount."""
+
+    def test_unlinked_pool_member_endpoint_rejected(self, session, acting_user):
+        """NRAL0001's shape: 5k between two unlinked 20k pool members over-carved the 20k parent."""
+        resource = make_resource(session)
+        parent = _node(session, resource, 20_000.0)
+        a, b = (_node(session, resource, 20_000.0, parent) for _ in range(2))
+        with pytest.raises(ValueError, match='reading as a carve-out of'):
+            _exchange(session, acting_user, a, b, 5_000.0)
+        session.refresh(a)
+        assert a.amount == 20_000.0
+
+    def test_sibling_landing_on_parent_amount_rejected(self, session, acting_user):
+        resource = make_resource(session)
+        parent = _node(session, resource, 1_000_000.0)
+        a, b = _node(session, resource, 600_000.0, parent), _node(session, resource, 400_000.0, parent)
+        with pytest.raises(ValueError, match="would equal the parent allocation's"):
+            _exchange(session, acting_user, a, b, 600_000.0)
+        _exchange(session, acting_user, a, b, 500_000.0)
+        session.refresh(b)
+        assert b.amount == 900_000.0
+
+
+class TestExchangeOverCarve:
+    """No exchange may leave a node holding less than it has carved out below it."""
+
+    def test_middle_parent_drained_below_its_carve_outs_rejected(self, session, acting_user):
+        """NCGD0036's shape: 2M out of a 10M node that had carved 8.9M to NCGD0040."""
+        resource = make_resource(session)
+        root = _node(session, resource, 2_000_000.0)
+        middle, sibling = _node(session, resource, 1_000_000.0, root), _node(session, resource, 100_000.0, root)
+        _node(session, resource, 900_000.0, middle)
+        with pytest.raises(ValueError, match='less than it has carved out'):
+            _exchange(session, acting_user, middle, sibling, 200_000.0)
+        _exchange(session, acting_user, middle, sibling, 50_000.0)
+        session.refresh(middle)
+        assert middle.amount == 950_000.0
+
+    def test_to_own_carve_out_counts_both_moves(self, session, exchange_pair, acting_user):
+        """FROM 1M -> its 200k carve-out: 450k leaves FROM 550k under a 650k carve-out."""
+        from_alloc, to_alloc, _ = exchange_pair
+        with pytest.raises(ValueError, match='less than it has carved out'):
+            _exchange(session, acting_user, from_alloc, to_alloc, 450_000.0)
+
+    def test_cousin_overfilling_its_parent_rejected(self, session, acting_user):
+        resource = make_resource(session)
+        root = _node(session, resource, 2_000_000.0)
+        a, b = _node(session, resource, 1_000_000.0, root), _node(session, resource, 500_000.0, root)
+        a1 = _node(session, resource, 400_000.0, a)
+        b1, b2 = _node(session, resource, 300_000.0, b), _node(session, resource, 200_000.0, b)
+        with pytest.raises(ValueError, match='more than its allocation'):
+            _exchange(session, acting_user, a1, b1, 50_000.0)
+        _exchange(session, acting_user, b2, b1, 50_000.0)   # within B: its total is unchanged
+        session.refresh(b1)
+        assert b1.amount == 350_000.0
+
+
 class TestExchangeAllocationsAuditTrail:
     """Regression guards for the audit-trail double-count bug.
 

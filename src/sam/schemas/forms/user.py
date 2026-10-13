@@ -224,6 +224,17 @@ class AllocateResidualForm(HtmxFormSchema):
         return data
 
 
+class ReclaimResidualForm(HtmxFormSchema):
+    """Reclaim part of a sub-project carve-out back to its parent's unallocated remainder.
+
+    The manage layer re-validates the source against the parent's frontier and
+    the amount against the source's unused balance.
+    """
+    source_allocation_id = f.Int(required=True)
+    amount = f.Float(required=True, validate=v.Range(min=0, min_inclusive=False))
+    comment = f.Str(load_default=None)
+
+
 class AddAllocationsForm(HtmxFormSchema):
     """Validate the admin 'Add Allocations' grid (Edit Project -> Allocations tab).
 
