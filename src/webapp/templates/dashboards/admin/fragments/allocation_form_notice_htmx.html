@@ -14,6 +14,9 @@
   {% elif kind == 'shared' %}
   <p>This is a shared allocation: it mirrors its parent and has no unallocated remainder of its
      own. Allocate from the parent allocation instead.</p>
+  {% elif kind == 'admin_only' %}
+  <p>On storage resources, an allocations administrator makes this change. Project leads and
+     admins can exchange, allocate down and reclaim on HPC and DAV resources.</p>
   {% elif kind == 'nothing_to_reclaim' %}
   <p>No sub-project carve-out on this resource has an unused balance to reclaim.</p>
   {% elif kind == 'over_carved' %}

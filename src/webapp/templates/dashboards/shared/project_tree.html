@@ -75,8 +75,9 @@
           data-bs-toggle="modal" data-bs-target="#editAllocationModal"
           title="Edit allocation" aria-label="Edit allocation"><i class="fa-solid fa-pencil"></i></button>
   {%- endif -%}
-  {#- Allocate-down: can_allocate is precomputed per node (EDIT_ALLOCATIONS, or lead/admin
-      of the node or an ancestor) in htmx_project_allocation_tree. -#}
+  {#- Allocate-down and reclaim: can_allocate is precomputed per node in
+      htmx_project_allocation_tree (EDIT_ALLOCATIONS on any resource type; lead/admin of the
+      node or an ancestor on HPC/DAV only: steward_tools_allowed). -#}
   {%- if res and res.carve_residual -%}
     {%- if res.carve_residual.can_allocate and res.carve_residual.residual > 0 and res.carve_residual.has_targets -%}
   <button type="button" class="btn btn-row btn-row-success"
