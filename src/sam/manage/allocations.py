@@ -1095,6 +1095,11 @@ def get_carveout_frontier(session: Session, allocation: Allocation, *,
     return frontier
 
 
+def _amt(x: float) -> str:
+    """An amount for a message or audit comment: exact, comma-grouped, never e-notation."""
+    return f"{round(float(x), 2):,.15g}"
+
+
 def _refuse_pool_amount(parent: Allocation, resulting_amount: float,
                         carve_children: Iterable[Allocation] = ()) -> None:
     """Refuse a carve-out amount equal to its parent's, or to one of its own carve-outs'.
@@ -1106,15 +1111,15 @@ def _refuse_pool_amount(parent: Allocation, resulting_amount: float,
     """
     if resulting_amount == float(parent.amount):
         raise ValueError(
-            f"Resulting amount ({resulting_amount:g}) would equal the "
-            f"parent allocation's ({float(parent.amount):g}), which reads "
+            f"Resulting amount ({_amt(resulting_amount)}) would equal the "
+            f"parent allocation's ({_amt(float(parent.amount))}), which reads "
             "as a shared-pool member rather than a carve-out. Choose a "
             "different amount."
         )
     for child in carve_children:
         if resulting_amount == float(child.amount):
             raise ValueError(
-                f"Resulting amount ({resulting_amount:g}) would equal "
+                f"Resulting amount ({_amt(resulting_amount)}) would equal "
                 f"{child.account.project.projcode}'s carve-out, which would then read "
                 "as a shared-pool member rather than a carve-out. Choose a "
                 "different amount."
@@ -1221,18 +1226,18 @@ def allocate_residual_to_child(
 
     if frontier.raw_residual < 0:
         raise ValueError(
-            f"Sub-project carve-outs ({frontier.carve_total:g}) already exceed "
-            f"this allocation ({float(parent.amount):g}). Resolve the deficit "
+            f"Sub-project carve-outs ({_amt(frontier.carve_total)}) already exceed "
+            f"this allocation ({_amt(float(parent.amount))}). Resolve the deficit "
             "first — see 'sam-admin project --audit-trees'."
         )
     if amount > frontier.residual:
         raise ValueError(
-            f"Amount ({amount:g}) exceeds the unallocated residual "
-            f"({frontier.residual:g})."
+            f"Amount ({_amt(amount)}) exceeds the unallocated residual "
+            f"({_amt(frontier.residual)})."
         )
 
     parent_projcode = parent.account.project.projcode
-    sub_comment = (f"Sub-allocated +{amount:g} from {parent_projcode} "
+    sub_comment = (f"Sub-allocated +{_amt(amount)} from {parent_projcode} "
                    f"allocation #{parent.allocation_id}")
     if comment:
         sub_comment = f"{sub_comment}; {comment}"
@@ -1323,14 +1328,14 @@ def reclaim_from_child(
     bounds = reclaimable_amounts(session, [source])[source.allocation_id]
     if amount > bounds['unused']:
         raise ValueError(
-            f"Amount ({amount:g}) exceeds {source_projcode}'s unused balance "
-            f"({max(bounds['unused'], 0.0):g})."
+            f"Amount ({_amt(amount)}) exceeds {source_projcode}'s unused balance "
+            f"({_amt(max(bounds['unused'], 0.0))})."
         )
     own = bounds['frontier']
     if own.carve_children and amount > bounds['limit']:
         raise ValueError(
-            f"{source_projcode}'s own sub-project carve-outs ({own.carve_total:g}) and its "
-            f"own usage ({bounds['drawn']:g}) leave at most {max(bounds['limit'], 0.0):g} "
+            f"{source_projcode}'s own sub-project carve-outs ({_amt(own.carve_total)}) and its "
+            f"own usage ({_amt(bounds['drawn'])}) leave at most {_amt(max(bounds['limit'], 0.0))} "
             "to reclaim."
         )
     # A pool member not linked to the source (an equal-amount mirror) gets no cascade:
@@ -1346,7 +1351,7 @@ def reclaim_from_child(
     new_amount = float(source.amount) - amount
     _refuse_pool_amount(parent, new_amount, own.carve_children)
 
-    reclaim_comment = (f"Reclaimed -{amount:g} to {parent_projcode} "
+    reclaim_comment = (f"Reclaimed -{_amt(amount)} to {parent_projcode} "
                        f"allocation #{parent.allocation_id}")
     if comment:
         reclaim_comment = f"{reclaim_comment}; {comment}"
