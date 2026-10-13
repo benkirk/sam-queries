@@ -124,7 +124,9 @@ Until the rewrite, the sweep's set difference reads a landed push as still pendi
 four requests the light pass called pending on 2026-10-13 (NCAR4212/4293/4300/4354) fit
 that shape. So:
 
-- **Key the ticket on `request_id`.** It is stable across the rewrite (§ 4.2's table); the
+- **Key the ticket on the primary line's `request_id`** (`primary_line`, the line the
+  Remediations card shows and every write targets; a family holds several lines, each with
+  its own id). It is stable across the rewrite (§ 4.2's table); the
   `request_number` is carried and updated when observed.
 - **Resolve from `xras_action_log`.** A processed row for the request (its
   `request_number` as pushed, `projcode_result`) closes the checklist. The same test
@@ -157,5 +159,7 @@ that shape. So:
   derived from the roster? A person on two requests is one row today.
 - **Comment cadence.** Is there a floor on comments, for example at most one per day per
   ticket?
-- **Open queue rows.** When a request drops out (deleted, aged out), does the request
-  lifecycle dismiss its open sweep rows? Today they stay open until an operator acts.
+- **Drop-out.** When a request drops out (deleted, aged out), does the request lifecycle
+  dismiss its open sweep rows and cancel its ticket? Neither happens today: the rows stay
+  open until an operator acts, and a ticket filed for a request XRAS then deleted would
+  stay open at NUSD with nothing left to do.
