@@ -943,7 +943,7 @@ def xras_sweep(ctx) -> TaskResult:
 
     # 3b. give every person the Pending Users card lists an account_request row,
     # once: Feed B above plus the pushed actions (Feed A) of the same window,
-    # absent or inactive. The table is what NUSD works (claim, dismiss) and what
+    # absent (unless an active SAM user holds their email) or inactive. The table is what NUSD works (claim, dismiss) and what
     # the reconcile pass fulfills; an operator's dismissal survives every sweep.
     from sam.manage.account_requests import upsert_sweep_requests
     roster = get_account_worklist(

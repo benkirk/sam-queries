@@ -802,7 +802,7 @@ class TestWhatItWrites:
         wire([[_request(1, 'ZZZZ9999', username='ghost-user-51',
                         email='Ghost@Example.edu')]])
         detail = mod.xras_sweep(ctx()).detail
-        assert detail['account_requests'] == {'created': 1, 'existing': 0, 'skipped': 0, 'projects_attached': 0,
+        assert detail['account_requests'] == {'created': 1, 'existing': 0, 'skipped': 0, 'already_in_sam': 0, 'projects_attached': 0,
                                               'by_purpose': {'submission': 1}}
         row, = self._requests_for(session, 'ghost-user-51')
         assert row.purpose == 'submission' and row.email == 'ghost@example.edu'
@@ -811,7 +811,7 @@ class TestWhatItWrites:
         assert row.project_id is None, 'ZZZZ9999 is no SAM project yet'
 
         detail = mod.xras_sweep(ctx()).detail
-        assert detail['account_requests'] == {'created': 0, 'existing': 1, 'skipped': 0, 'projects_attached': 0,
+        assert detail['account_requests'] == {'created': 0, 'existing': 1, 'skipped': 0, 'already_in_sam': 0, 'projects_attached': 0,
                                               'by_purpose': {}}
         assert len(self._requests_for(session, 'ghost-user-51')) == 1
 
@@ -845,7 +845,7 @@ class TestWhatItWrites:
             self, ctx, wire, session):
         wire([[_request(1, 'ZZZZ9999', username='ghost-user-53')]])
         detail = mod.xras_sweep(ctx()).detail
-        assert detail['account_requests'] == {'created': 0, 'existing': 0, 'skipped': 1, 'projects_attached': 0,
+        assert detail['account_requests'] == {'created': 0, 'existing': 0, 'skipped': 1, 'already_in_sam': 0, 'projects_attached': 0,
                                               'by_purpose': {}}
         assert self._requests_for(session, 'ghost-user-53') == []
 
@@ -857,7 +857,7 @@ class TestWhatItWrites:
         wire([[_request(1, project.projcode, username='ghost-user-54',
                         email='g54@example.edu')]])
         detail = mod.xras_sweep(ctx()).detail
-        assert detail['account_requests'] == {'created': 0, 'existing': 0, 'skipped': 0, 'projects_attached': 0,
+        assert detail['account_requests'] == {'created': 0, 'existing': 0, 'skipped': 0, 'already_in_sam': 0, 'projects_attached': 0,
                                               'by_purpose': {}}
         assert self._requests_for(session, 'ghost-user-54') == []
 

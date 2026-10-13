@@ -235,10 +235,13 @@ def upsert_sweep_requests(session: Session, worklist_rows: Sequence[Dict[str, An
     or rejected one its own (``_blocked_purposes``). An absent person's email
     comes from XRAS; a row without one cannot be matched later, so it is
     skipped and counted rather than created blind. An inactive person's detail
-    comes from their SAM row.
+    comes from their SAM row. An absent person whose email one active SAM user
+    holds files nothing (``already_in_sam``): reconcile would fulfill the row on
+    its next pass, and a fulfilled row blocks nothing, so the sweep would file it
+    again every run.
     """
     counts: Dict[str, Any] = {'created': 0, 'existing': 0, 'skipped': 0,
-                              'projects_attached': 0, 'by_purpose': {}}
+                              'already_in_sam': 0, 'projects_attached': 0, 'by_purpose': {}}
     wanted = [r for r in worklist_rows
               if r.get('classification') in _PURPOSE_BY_CLASSIFICATION and r.get('username')]
     if not wanted:
@@ -250,8 +253,16 @@ def upsert_sweep_requests(session: Session, worklist_rows: Sequence[Dict[str, An
         session, (r['username'] for r in wanted
                   if r['classification'] == CLASSIFICATION_INACTIVE))
     projects = _projects_by_row(session, wanted)
+    held = sam_merge_targets(session, (
+        (r.get('person') or {}).get('email') or '' for r in wanted
+        if r['classification'] == CLASSIFICATION_ABSENT))
     for row in wanted:
         purpose = _PURPOSE_BY_CLASSIFICATION[row['classification']]
+        if row['classification'] == CLASSIFICATION_ABSENT:
+            email = ((row.get('person') or {}).get('email') or '').strip().lower()
+            if (held.get(email) or {}).get('active'):
+                counts['already_in_sam'] += 1
+                continue
         key = AccountRequest.xras_key(row['username'])
         project_id = projects[id(row)]
         if (key, purpose) in known:
