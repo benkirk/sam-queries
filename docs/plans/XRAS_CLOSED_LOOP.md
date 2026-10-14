@@ -1,8 +1,7 @@
 # XRAS closed loop: SAMuel renames requests, then the submission plan under load
 
-**Status: Track 1 built (#819), proven on XRAS-dev and backfilled in production 2026-10-14
-(§ 3.3); the lever flip enabling it in production follows the backfill. Track 2 run 2026-10-14
-except scenario 6 (§ 4), which moves to phase D.** What
+**Status: Track 1 built (#819), proven on XRAS-dev, backfilled in production and enabled there
+2026-10-14 (#820; § 3.3). Track 2 run in full 2026-10-14 (§ 4).** What
 landed and what was decided: § 3.5. The wider goal this is phase A of:
 [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md). Written 2026-10-13 at the end of the session recorded in
 [`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md). Two tracks on one test bed:
@@ -206,16 +205,17 @@ Each scenario: what to file, what to click, what SAM should record. Findings go 
 
 Out of scope on the loop: the form (§ 4.1, unprototyped) and limits (§ 4.5, SAM-side only).
 
-**Run 2026-10-14** (`XRAS_DEV_PROBES.md` § 6.1): 1-5, 7 and 8 done on UHSS0003 and NCAR4090;
-6 not run (it deletes the placeholder). Nothing found needs a change to #819. For the design:
+**Run 2026-10-14** (`XRAS_DEV_PROBES.md` § 6.1): 1-5, 7 and 8 on UHSS0003 and NCAR4090; 6 on
+NCAR4091 → UHSS0004 (post 422, merge in SAMuel, repost 200, renamed 0.7 s after the reply).
+Nothing found needs a change to #819. For the design:
 a resubmit lands `Submitted`, not `Under Review`; Hold Off is a `states[]` entry, not a status,
 and survives a return and a withdraw; a request leaves the admin queue at the post, without a
 notify; a Supplement filed after a Renewal posts lands on the renewal's future window (legacy's
 `getLatestAllocation`, `XRAS_INGEST_IMPROVEMENTS.md` candidate).
 
-**Resume here (fresh session).** Open: scenario 6, which merges `samprobe-20261013` into a real
-person on XRAS-dev and so deletes it; run only with Ben's say-so. After that, each phase of
-`XRAS_POST_AUTOMATION.md` gets its scenarios on this bed as it lands.
+**Resume here (fresh session).** Nothing open: each phase of `XRAS_POST_AUTOMATION.md` gets its
+scenarios on this bed as it lands. The placeholder `samprobe-20261013` is gone (scenario 6); a
+placeholder scenario needs a fresh person, named `<x>-user-<y>` so SAM classes it as one.
 
 - **Bed:** samuel-dev on the branch image (check `kubectl -n sam-queries-dev get pods` shows the
   expected `sha-`; a staging merge re-pins `cirrus-dev` to staging, and
@@ -236,4 +236,4 @@ person on XRAS-dev and so deletes it; run only with Ben's say-so. After that, ea
 
 - Decided 2026-10-13: the rename runs after the reply (§ 3.5).
 - The backfill: one approval of the census list (§ 3.3).
-- Whether scenario 6's merge on demo is wanted (open).
+- Scenario 6's merge on demo: approved and run 2026-10-14, into benkirk.

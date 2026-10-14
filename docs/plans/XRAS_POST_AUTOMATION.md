@@ -1,7 +1,7 @@
 # XRAS: "Post to accounting service" does everything SAMuel can
 
-**Status: roadmap, 2026-10-14.** Phase A (renames) is built (#819), backfilled in production
-2026-10-14, and enabled there by the values change that follows; phases B-E are not started. This file sequences the work and points at the plans that hold
+**Status: roadmap, 2026-10-14.** Phase A (renames) is built (#819), backfilled and enabled in
+production 2026-10-14 (#820); phases B-E are not started. This file sequences the work and points at the plans that hold
 the detail; it holds the decisions, not the designs.
 
 ## 1. The goal
@@ -19,7 +19,7 @@ new projcode into XRAS's "Edit Request Number", and sending the notification fro
 
 | Step | Today | Blocks full automation | Phase |
 |---|---|---|---|
-| Rename `NCAR####` → projcode | built (#819), backfilled; the route and the task enabled in production | NUSD stops renaming by hand | A |
+| Rename `NCAR####` → projcode | live in production 2026-10-14 (#819, #820): the route and the task | NUSD stops renaming by hand | A |
 | Project, accounts, memberships | automatic in the New handler (`sam/xras/handlers/new.py`) | the whole New answers 422 on any missing or inactive user, or unresolved contract | D |
 | Activate the project | manual: the card's Activate (`webapp/dashboards/allocations/xras/lifecycle_routes.py`); a New is created inactive on purpose | an unattended path past `can_edit_project_governance` | B |
 | Notify, New | manual Notify button; sent from XRAS today | must follow activation; XRAS's own notify mail | C |
@@ -78,6 +78,13 @@ What the plan must hold (`XRAS_REQUEST_TICKETS.md` §§ 3, 4, 8):
    absent and inactive people at approval, NUSD's head start; the ticket links to them.
 4. **The first 422 cannot name its ticket.** The key lands on the ticket and SAM's card once
    it exists, and the next post's 422 names it.
+5. **One checklist line per person.** The handler answers several errors for one missing
+   person: four for a placeholder who is PI and Allocation Manager (`XRAS_DEV_PROBES.md`
+   § 6.1, scenario 6). The ticket groups them by username; the 422 to XRAS may stay verbatim.
+6. **A merge closes the placeholder's `account_request` rows.** Fulfillment matches by email,
+   so when the merge target is not the SAM account holding the placeholder's email, the
+   sweep's row for it stays open in NUSD's queue for good (scenario 6, row #22 on dev).
+   `merge_placeholder` closes the source's rows with the target as the reason.
 
 **E. Contracts where resolvable.** For an NSF award whose PI resolves to a SAM user, create
 the contract at post time from `resolve_award`; otherwise it is a checklist item on the
