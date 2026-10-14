@@ -100,11 +100,11 @@ named in `SAM_TASKS_DISABLED`** pending a soak.
 `src/scheduling/tasks/xras_rename.py`, hourly :20: renames a request line still under its
 `NCAR####` token to its projcode, the backstop to the `/actions` route's after-reply rename.
 ⚠️ **The one task that writes to XRAS**: `TASK_WRITABLE_OPERATIONS` in
-`sam/integration/xras.py` is the only `task:` operation the audit table accepts. Production
-holds two locks: the name in `SAM_TASKS_DISABLED` and no `XRAS_WRITE_ENABLED` in
-`tasks.env` (pinned by `test_xras_admin_client.py`); dev arms it through `tasks.env`.
+`sam/integration/xras.py` is the only `task:` operation the audit table accepts. Both envs
+arm it through `XRAS_WRITE_ENABLED` in `tasks.env` (pinned by `test_xras_admin_client.py`);
+removing that key, or naming the task in `SAM_TASKS_DISABLED`, disarms it.
 `--dry-run` reads only; `SAM_TASKS_XRAS_RENAME_SINCE` widens the window for the backfill.
-The `/actions` route's own rename has a separate lever, `XRAS_RENAME_ENABLED` (`"0"` in prod).
+The `/actions` route's own rename has a separate lever, `XRAS_RENAME_ENABLED` (`"1"` in both).
 Record: `docs/plans/XRAS_CLOSED_LOOP.md` § 3.3, § 3.5.
 
 ### The account-request tasks

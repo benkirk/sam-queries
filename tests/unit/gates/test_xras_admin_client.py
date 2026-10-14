@@ -210,21 +210,21 @@ class TestHelmWriteLever:
             'the lever must be present and explicit, not merely absent'
         assert str(env['XRAS_WRITE_ENABLED']) == '1'
 
-    def test_the_after_reply_rename_ships_off(self):
-        """Production renames nothing until it is proven on XRAS-dev and Steve has heard
-        (XRAS_CLOSED_LOOP.md § 3.3). Arming it means editing this line too."""
-        assert str(self._values()['webapp']['env']['XRAS_RENAME_ENABLED']) == '0'
+    def test_the_after_reply_rename_is_armed_on_purpose(self):
+        """Armed 2026-10-14 after the backfill (XRAS_CLOSED_LOOP.md § 3.3). Disarming
+        means editing this line too."""
+        assert str(self._values()['webapp']['env']['XRAS_RENAME_ENABLED']) == '1'
 
-    def test_the_tasks_env_never_arms_writes(self):
-        """No production task may write to XRAS.
+    def test_only_the_tasks_env_arms_task_writes(self):
+        """`xras_rename` is the one production task that writes to XRAS.
 
-        `cronjob-tasks.yaml` inherits nothing from `webapp.env` — it hand-lists
-        what it needs — so the guarantee is that neither production's tasks env
-        nor that manifest ever mentions the lever. Arming `xras_rename` on
-        production is an edit to this test.
+        `cronjob-tasks.yaml` inherits nothing from `webapp.env`, so the lever reaches
+        the task pod only through `tasks.env`, never the manifest itself. Disarming
+        `xras_rename` is an edit to this test.
         """
         tasks_env = (self._values().get('tasks') or {}).get('env') or {}
-        assert 'XRAS_WRITE_ENABLED' not in tasks_env
+        assert str(tasks_env.get('XRAS_WRITE_ENABLED')) == '1'
+        assert 'xras_rename' not in tasks_env['SAM_TASKS_DISABLED'].split(',')
 
         manifest = (REPO_ROOT / 'helm' / 'templates'
                     / 'cronjob-tasks.yaml').read_text()
@@ -247,15 +247,13 @@ class TestDev:
                 env['XRAS_ACTIONS_CAPTURE_ONLY']) == ('1', '1', '0')
         assert dev['xrasApiCredentials']['secretPath'] != prod['xrasApiCredentials']['secretPath']
 
-    def test_dev_arms_the_rename_task_and_production_does_not(self):
-        """The one task write (`xras_rename`): armed on dev only, and disabled by name on prod."""
-        prod = yaml.safe_load((REPO_ROOT / 'helm' / 'values.yaml').read_text())['tasks']['env']
+    def test_dev_arms_the_rename_task(self):
+        """The one task write (`xras_rename`) runs on dev against the demo instance."""
         dev = yaml.safe_load((REPO_ROOT / 'helm' / 'values-dev.yaml').read_text())['tasks']['env']
         assert dev['XRAS_WRITE_ENABLED'] == '1'
         assert yaml.safe_load((REPO_ROOT / 'helm' / 'values-dev.yaml').read_text())[
             'webapp']['env']['XRAS_RENAME_ENABLED'] == '1'
         assert 'xras_rename' not in dev['SAM_TASKS_DISABLED'].split(',')
-        assert 'xras_rename' in prod['SAM_TASKS_DISABLED'].split(',')
 
 
 # structure

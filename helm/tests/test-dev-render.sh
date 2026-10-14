@@ -212,11 +212,11 @@ prod_cron=$(render prod -s templates/cronjob-tasks.yaml)
 prod_keys=$(env_value_names "$prod_cron" '(SAM_DB|STATUS_DB)_' | tr '\n' ' ')
 [[ "$prod_keys" == "SAM_DB_DRIVER SAM_DB_REQUIRE_SSL SAM_DB_SERVER STATUS_DB_DRIVER STATUS_DB_SERVER " ]] || {
   red "FAIL: the prod CronJob must carry exactly the five original DB keys, got: $prod_keys"; exit 1; }
-[[ -z "$(env_value "$prod_cron" XRAS_WRITE_ENABLED)" ]] || {
-  red "FAIL: the prod CronJob must not carry XRAS_WRITE_ENABLED (xras_rename stays unarmed)"; exit 1; }
+[[ "$(env_value "$prod_cron" XRAS_WRITE_ENABLED)" == "1" ]] || {
+  red "FAIL: the prod CronJob must carry XRAS_WRITE_ENABLED=1 from tasks.env (xras_rename is armed)"; exit 1; }
 prod_deploy=$(render prod -s templates/deployment.yaml)
-[[ "$(env_value "$prod_deploy" XRAS_RENAME_ENABLED)" == "0" ]] || {
-  red "FAIL: prod must ship the after-reply rename off (XRAS_RENAME_ENABLED=0)"; exit 1; }
+[[ "$(env_value "$prod_deploy" XRAS_RENAME_ENABLED)" == "1" ]] || {
+  red "FAIL: prod must ship the after-reply rename on (XRAS_RENAME_ENABLED=1)"; exit 1; }
 [[ -z "$(env_value_names "$prod_deploy" 'RATELIMIT_(AUTHED|M2M|ANON|AUTH_LOGIN)')" ]] || {
   red "FAIL: prod must not carry a RATELIMIT_ tier override (only the dev overlay raises them)"; exit 1; }
 [[ "$(env_value "$prod_deploy" ACCOUNT_REGISTRATION_ENABLED)" == "0" ]] || {

@@ -1,7 +1,7 @@
 # XRAS: "Post to accounting service" does everything SAMuel can
 
-**Status: roadmap, 2026-10-14.** Phase A (renames) is built and proven on XRAS-dev (#819);
-phases B-E are not started. This file sequences the work and points at the plans that hold
+**Status: roadmap, 2026-10-14.** Phase A (renames) is built (#819), backfilled in production
+2026-10-14, and enabled there by the values change that follows; phases B-E are not started. This file sequences the work and points at the plans that hold
 the detail; it holds the decisions, not the designs.
 
 ## 1. The goal
@@ -19,7 +19,7 @@ new projcode into XRAS's "Edit Request Number", and sending the notification fro
 
 | Step | Today | Blocks full automation | Phase |
 |---|---|---|---|
-| Rename `NCAR####` → projcode | built (#819), off in production | merge, `XRAS_RENAME_ENABLED`, the `xras_rename` task | A |
+| Rename `NCAR####` → projcode | built (#819), backfilled; the route and the task enabled in production | NUSD stops renaming by hand | A |
 | Project, accounts, memberships | automatic in the New handler (`sam/xras/handlers/new.py`) | the whole New answers 422 on any missing or inactive user, or unresolved contract | D |
 | Activate the project | manual: the card's Activate (`webapp/dashboards/allocations/xras/lifecycle_routes.py`); a New is created inactive on purpose | an unattended path past `can_edit_project_governance` | B |
 | Notify, New | manual Notify button; sent from XRAS today | must follow activation; XRAS's own notify mail | C |
