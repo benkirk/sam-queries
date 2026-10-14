@@ -71,12 +71,13 @@ class TestTheRegistration:
         deadline = re.search(r'^\s*activeDeadlineSeconds:\s*(\d+)', values, re.MULTILINE)
         assert lease_for(TASKS[NAME].expected_runtime).total_seconds() > int(deadline.group(1))
 
-    def test_it_ships_switched_off_in_production(self):
-        """WARNING: `SAM_TASKS_DISABLED` is fail-OPEN, and this task writes to XRAS."""
+    def test_it_ships_enabled_in_production_on_purpose(self):
+        """Enabled 2026-10-14 after the backfill; this task writes to XRAS, so disabling
+        it (`SAM_TASKS_DISABLED` is fail-OPEN) means editing this line too."""
         values = (REPO_ROOT / 'helm' / 'values.yaml').read_text()
         line, = [ln for ln in values.splitlines()
                  if ln.strip().startswith('SAM_TASKS_DISABLED:')]
-        assert NAME in line, line
+        assert NAME not in line, line
 
 
 class TestTheWindow:
