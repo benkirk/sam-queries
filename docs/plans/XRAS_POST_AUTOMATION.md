@@ -1,8 +1,8 @@
 # XRAS: "Post to accounting service" does everything SAMuel can
 
-**Status: roadmap, 2026-10-14.** Phase A (renames) is built (#819), backfilled in production
-2026-10-14, and enabled there by the values change that follows; phases B-E are not started. This file sequences the work and points at the plans that hold
-the detail; it holds the decisions, not the designs.
+**Status: roadmap, 2026-10-14.** Phase A (renames) is live in production (#819, #820); phases
+B-E are not started. This file sequences the work and points at the plans that hold the
+detail; it holds the decisions, not the designs.
 
 ## 1. The goal
 
@@ -19,48 +19,82 @@ new projcode into XRAS's "Edit Request Number", and sending the notification fro
 
 | Step | Today | Blocks full automation | Phase |
 |---|---|---|---|
-| Rename `NCAR####` → projcode | built (#819), backfilled; the route and the task enabled in production | NUSD stops renaming by hand | A |
+| Rename `NCAR####` → projcode | live in production 2026-10-14 (#819, #820): the route and the task | NUSD stops renaming by hand | A |
 | Project, accounts, memberships | automatic in the New handler (`sam/xras/handlers/new.py`) | the whole New answers 422 on any missing or inactive user, or unresolved contract | D |
 | Activate the project | manual: the card's Activate (`webapp/dashboards/allocations/xras/lifecycle_routes.py`); a New is created inactive on purpose | an unattended path past `can_edit_project_governance` | B |
 | Notify, New | manual Notify button; sent from XRAS today | must follow activation; XRAS's own notify mail | C |
 | Notify, extend/supplement/adjust/update | built: the `xras_notices` task (1-day delay), disabled in production | soak; XRAS's own notify mail | C |
-| Contracts | 422 with a seeded create form (Admin → Contracts), or the `ignore_contract` override | `contract.principal_investigator_user_id` is NOT NULL and SAM never creates a user; award lookup is NSF-only (`sam/integration/awards`) | E |
+| Contracts | 422 with a seeded create form (Admin → Contracts), or the `ignore_contract` override | `contract.principal_investigator_user_id` is NOT NULL and SAM never creates a user; award lookup is NSF first, then USAspending (`resolve_award`, `sam/integration/awards`) | E |
 | Users absent or inactive, ARC placeholders | the sweep files `account_request` rows (live); no ticket for them | users come only from IGA and the LDAP sync; the ticket a blocked post opens is unbuilt | D |
-| XRAS's own notify mail | on | an XRAS process setting (Steve) | C (cutover blocker) |
+| XRAS's own notify mail | on | the Action Approved rules on the NCAR process's notification templates, which we own (§ 3, C) | C (cutover step) |
 
 ## 3. Phases
 
-**A. Renames live in production.** `XRAS_CLOSED_LOOP.md` § 3.3, § 3.5.
-Merge #819 and promote; backfill dry run (expect NCAR4293, 4212, 4300, 4354, 4432), apply;
-flip `XRAS_RENAME_ENABLED`; enable `xras_rename` in production (the `tasks.env` lever, drop
-it from `SAM_TASKS_DISABLED`, edit the two gate tests); tell NUSD to stop renaming (Travis
-agreed 2026-10-14). A race is harmless: SAM's pre-read skips a line already renamed, and the
-admin app's "Assign new request number" refuses a number in use. After A, NUSD still
-activates in SAM and notifies from XRAS.
+**A. Renames.** Live in production 2026-10-14 (`XRAS_CLOSED_LOOP.md` § 3.3, § 3.5):
+- After a New applies, the inbound route renames its request to the projcode within a second
+  of the reply (`XRAS_RENAME_ENABLED`).
+- The hourly `xras_rename` task is the backstop.
+- The backfill renamed the five requests posted before go-live (NCAR4293, 4212, 4300, 4354,
+  4432).
+
+NUSD stops renaming by hand (Travis agreed 2026-10-14). A race between the two is harmless:
+- SAM's pre-read skips a line already renamed;
+- the admin app's "Assign new request number" refuses a number in use.
+
+NUSD still activates in SAM and notifies from XRAS until B and C.
 
 **B. Activation on post.** Ben, 2026-10-14: yes, when nothing blocks it. Once the New
 applies cleanly, activate the project behind its own lever (`XRAS_AUTO_ACTIVATE`, default
 off, dev on), in the handler or the after-reply hook beside the rename, recording
 `xras_activation_event` with the API actor as `created_by`. This is the one deliberate
 unattended exception to `can_edit_project_governance` (`implemented/XRAS_AUTO_NOTICES.md`,
-"Phase 2 (later)").
+"Phase 2 (later)"). A New that applied under an `ignore_contract` override activates too: the
+waiver is the operator's decision (Ben, 2026-10-14). NUSD checks nothing before activating
+beyond what the handler checks (Travis, 2026-10-14), so a New that applies is ready to
+activate.
 
-**C. Notifications on post.** Blocked on turning off XRAS's own notify mail, which would
-otherwise reach the PI twice; a cutover item for Steve. Then the New's activation notice
-goes out right after activation through `build_xras_messages` (the button's dedup key, so
-nothing double-mails), and the extend/supplement/adjust/update notices either move to post
-time or keep the `xras_notices` delay as a correction window (decide then).
+**C. Notifications on post.** SAM sends the award notices:
+- The New's activation notice goes out right after activation (B), through
+  `build_xras_messages`. It uses the Notify button's dedup key, so nothing double-mails.
+- The extend, supplement, adjust and update notices either move to post time or keep the
+  `xras_notices` delay as a correction window (decide then).
+
+XRAS's own award mail would otherwise reach the PI twice. That mail is configuration of the
+NCAR process, held in the admin app under Notifications (`/notification_templates`), where Ben
+has the admin role:
+
+- **How XRAS decides to send.** A template has no on/off switch. It sends for each row of its
+  Rules table: allocation type × action type × event × recipient.
+- **The award mails** are the **Action Approved** rules, sent at the operator's Notify step:
+  - template 154: New and Renewal on Small, Educational, Exploratory, Data Analysis, CISL
+    Operations and NCAR Strategic Computing;
+  - 133: Large;
+  - 135: Extension, Appeal and Final Report;
+  - 149: Supplement and Transfer;
+  - 1803 and 417: External Projects and Strategic Computing.
+- **They copy more people than the PI:** `alloc@ucar.edu`, the allocation managers, the Co-PIs
+  and the program officers. 133 (Large) also copies two NSF addresses. SAM's notices must decide
+  each of these recipients before taking over.
+- **The cutover step** is deleting the Action Approved rules for exactly the action types SAM
+  then sends. A request leaves the admin queue at the post, without a notify
+  (`XRAS_DEV_PROBES.md` § 6.1, scenario 8), so the operator stops clicking Notify, and approve
+  and post are the whole job.
+- **XRAS keeps** the submit acknowledgments (128, 129) and the Declined mails (131, 134).
+- **Not yet confirmed:** that production carries the same rules (read on XRAS-dev, 2026-10-14),
+  and that a deleted rule silences the Notify step (one rule, one benkirk request, on the demo).
 
 **D. The failed post opens the ticket.** `XRAS_REQUEST_TICKETS.md` (designed, not built).
-Ben, 2026-10-14, the #819 second-pass review: 68 of 73 production News posted clean, so a
-ticket per approval is churn; the ticket belongs to the post that fails.
+Ben, 2026-10-14, the #819 second-pass review: of the News approved since the 2026-08-24
+repoint, 73 have applied, 3 stand refused and 3 are unposted (`XRAS_CLOSED_LOOP.md` § 3.3),
+so a ticket per approval is churn; the ticket belongs to the post that fails.
 
 - **Approve and post in one sitting.** A post that applies is done. The post stays
   all-or-nothing: a project is never created without its full roster.
 - **A blocked post answers 422 and opens the ticket.** The New handler already collects every
   blocker into one list, so the 422 is the complete checklist and the ticket's body. NUSD works
-  the list by hand and posts again; the post that applies resolves the ticket.
-- **Nothing outbound before the reply.** The open, comment or resolve runs in the after-reply
+  the list by hand and posts again; the post that applies adds a last comment, and NUSD
+  closes the ticket. Travis, 2026-10-14: no auto-close at first, to see how the process feels.
+- **Nothing outbound before the reply.** The open or comment runs in the after-reply
   hook beside the rename, so a slow JSM call never delays XRAS. The first 422 therefore reads
   "a ticket is being opened"; later ones name the key, read from `external_ticket`. Every
   provider state has truthful wording (Jira off means mail; a failed filing says so).
@@ -78,23 +112,38 @@ What the plan must hold (`XRAS_REQUEST_TICKETS.md` §§ 3, 4, 8):
    absent and inactive people at approval, NUSD's head start; the ticket links to them.
 4. **The first 422 cannot name its ticket.** The key lands on the ticket and SAM's card once
    it exists, and the next post's 422 names it.
+5. **One checklist line per person.** The handler answers several errors for one missing
+   person: four for a placeholder who is PI and Allocation Manager (`XRAS_DEV_PROBES.md`
+   § 6.1, scenario 6). The ticket groups them by username; the 422 to XRAS may stay verbatim.
+6. **A merge closes the placeholder's `account_request` rows.** Fulfillment matches by email,
+   so when the merge target is not the SAM account holding the placeholder's email, the
+   sweep's row for it stays open in NUSD's queue for good (scenario 6, row #22 on dev).
+   `merge_placeholder` closes the source's rows with the target as the reason.
 
-**E. Contracts where resolvable.** For an NSF award whose PI resolves to a SAM user, create
-the contract at post time from `resolve_award`; otherwise it is a checklist item on the
-request's ticket.
+**E. Contracts where resolvable.** For an award `resolve_award` finds (NSF, else USAspending)
+whose PI resolves to a SAM user, create the contract at post time; otherwise it is a checklist
+item on the request's ticket.
 
 ## 4. Order and dependencies
 
-A first. D before any change to the New's 422, because the blocked post's wording names the
-ticket. B can land beside D. C waits for XRAS's mail to go off. E last, smallest. Each phase
-is proven on samuel-dev ↔ XRAS-dev first (`XRAS_CLOSED_LOOP.md` § 4 holds the test bed and
-its rules).
+A is live. The order from here:
+1. **D**, before any change to the New's 422, because the blocked post's wording names the
+   ticket.
+2. **B**, beside or right after D.
+3. **C**, after B, since the New's notice follows activation. It needs nothing from XRAS's
+   side beyond our own template rules, changed at its cutover.
+4. **E** last, as the smallest.
+5. **Then the outgoing work** of `XRAS_SUBMISSION.md`: its phases 0 and 1.
+
+Each phase is proven on samuel-dev ↔ XRAS-dev first (`XRAS_CLOSED_LOOP.md` § 4 holds the test
+bed and its rules).
 
 ## 5. Related plans
 
 - `XRAS_CLOSED_LOOP.md`: the rename (phase A) and the test bed.
 - `XRAS_REQUEST_TICKETS.md`: the ticket a blocked post opens (phase D).
-- `XRAS_SUBMISSION.md` § 4.2, § 4.6, § 4.7: the request record and the incoming side.
+- `XRAS_SUBMISSION.md` § 4.2, § 4.6: the request record and the incoming side; the outgoing
+  work that follows phase D.
 - `implemented/XRAS_AUTO_NOTICES.md`: the notice task and its phase-2 activation stub.
 - `XRAS_INGEST_IMPROVEMENTS.md` § 4: paper cuts (a Supplement after a Renewal lands on the
   renewal's window).
