@@ -39,7 +39,7 @@ projcode (item 3), because PIs see the number and XRAS's other number-keyed call
 
 Read first: `XRAS_DEV_PROBES.md` (§ 3 write ladder, § 4 timeline, § 5 rewrite, § 7 state left
 on demo); `XRAS_SUBMISSION.md` § 4.2 (the three identifiers), § 4.6 items 1–4, § 5;
-[`XRAS_REQUEST_TICKETS.md`](XRAS_REQUEST_TICKETS.md) § 6; `.claude/rules/notify-and-tasks.md`.
+[`XRAS_REQUEST_TICKETS.md`](XRAS_REQUEST_TICKETS.md) § 7; `.claude/rules/notify-and-tasks.md`.
 CLAUDE.md tripwire: `SAM_TASKS_DISABLED` is fail-OPEN, so a new task ships named in
 `helm/values.yaml`'s disabled list in the same change.
 

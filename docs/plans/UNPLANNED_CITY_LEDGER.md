@@ -1817,7 +1817,7 @@ groundwork for one NUSD ticket per approved request (`XRAS_REQUEST_TICKETS.md`).
   `overlaps_window`'s open-ended branch and `_waiting_since` each decide "how recent"
   their own way; `_waiting_since` never reads `entry_date`.
 - [x] `live_pending_numbers` reads a pushed request as pending until XRAS rewrites its
-  `requestNumber` (hours to weeks); consult `xras_action_log` (`XRAS_REQUEST_TICKETS.md` § 6).
+  `requestNumber` (hours to weeks); consult `xras_action_log` (`XRAS_REQUEST_TICKETS.md` § 7).
   Done in sweep 26.
 - [ ] `waiting_days` (two meanings) and `activity_date` (entryDate vs updateDate) naming.
 - [ ] `is_pending_work` silently depends on the 120-day preflight lookback.

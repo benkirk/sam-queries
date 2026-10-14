@@ -438,7 +438,7 @@ Four changes to the handoff path, each small, in the order they land:
    `xras_submission` row. When none matches, the park reason names the number and
    `requestId` it could not resolve; today it reads "no service matches actionType=…",
    and the `manual` arm answers 200, so XRAS shows the operator a successful post. The
-   sweep's `live_pending_numbers` needs the same lookup (`XRAS_REQUEST_TICKETS.md` § 6).
+   sweep's `live_pending_numbers` needs the same lookup (`XRAS_REQUEST_TICKETS.md` § 7).
    Belongs in `XRAS_INGEST_IMPROVEMENTS.md`.
 3. **SAM performs the rename.** `PUT /v1/requests/<request_id>/attributes?requestNumber=<projcode>`
    under `submit` as the line's PI renames the request in place: the old number stops resolving,
@@ -465,7 +465,7 @@ Four changes to the handoff path, each small, in the order they land:
 
 ### 4.7 Requests SAM did not author: what per-request tickets need of the record
 
-`XRAS_REQUEST_TICKETS.md` files one NUSD ticket per approved request, before the push,
+`XRAS_REQUEST_TICKETS.md` has a blocked post open one NUSD ticket for its request,
 and most approved requests are authored in ARC, not here. Ben (2026-10-13): the table for
 them is designed here, with § 4.2's, not as a second per-request table. What tickets
 need:

@@ -5,7 +5,7 @@
 anything was pushed from XRAS-dev to samuel-dev. Claude made every API call; Ben made every
 approve and post click in the admin app. It answers the "no clean test loop" gap of
 [`XRAS_SUBMISSION.md`](../../plans/XRAS_SUBMISSION.md) § 5 and the experiments of
-[`XRAS_REQUEST_TICKETS.md`](../../plans/XRAS_REQUEST_TICKETS.md) § 7, except those that
+[`XRAS_REQUEST_TICKETS.md`](../../plans/XRAS_REQUEST_TICKETS.md) § 9, except those that
 need a SAM-authored submit (§ 7).
 
 Same method as [`XRAS_WRITE_PROBES.md`](XRAS_WRITE_PROBES.md) § 1: one attempt per write,
