@@ -582,6 +582,37 @@ class TestLiveLines:
         assert live_lines(None) == []
 
 
+class TestPrimaryLine:
+    """The current line of a family: highest live action on a live line, never lines[0]."""
+
+    def _line(self, request_id, *action_ids, deleted_actions=(), **over):
+        actions = [{'actionId': a, 'isDeleted': a in deleted_actions} for a in action_ids]
+        return _payload(requestId=request_id, actions=actions, **over)
+
+    def test_highest_action_wins_regardless_of_order(self):
+        from sam.queries.xras_requests import primary_line
+        older, newer = self._line(1, 10), self._line(2, 20)
+        assert primary_line([older, newer])['requestId'] == 2
+        assert primary_line([newer, older])['requestId'] == 2
+
+    def test_a_deleted_line_holding_the_highest_action_is_skipped(self):
+        from sam.queries.xras_requests import primary_line
+        live = self._line(1, 10)
+        assert primary_line([live, self._line(2, 30, isDeleted=True)])['requestId'] == 1
+
+    def test_a_deleted_action_does_not_count(self):
+        from sam.queries.xras_requests import primary_line
+        renewal = self._line(2, 20)
+        aborted = self._line(1, 10, 30, deleted_actions={30})
+        assert primary_line([aborted, renewal])['requestId'] == 2
+
+    def test_an_all_deleted_family_still_answers(self):
+        from sam.queries.xras_requests import primary_line
+        family = [self._line(1, 10, isDeleted=True), self._line(2, 20, isDeleted=True)]
+        assert primary_line(family)['requestId'] == 2
+        assert primary_line([]) is None and primary_line(None) is None
+
+
 class TestLivePendingNumbers:
     """One answer to "approved but not in SAM", shared by the sweep's count and its index."""
 

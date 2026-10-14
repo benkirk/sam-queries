@@ -415,13 +415,16 @@ def primary_line(lines: Any) -> Optional[Dict[str, Any]]:
     A projcode can have several lines (a New plus Renewals, each its own
     ``requestId``); the one with the highest ``actionId`` is the current
     request. Never ``lines[0]``: XRAS pages by descending ``requestId``, which
-    is not the same order.
+    is not the same order. A soft-deleted line or action can hold the family's
+    highest ``actionId``, so both are skipped; an all-deleted family still
+    answers with its newest line.
     """
     def _max_action(line):
         ids = [a.get('actionId') for a in (line.get('actions') or ())
-               if isinstance(a.get('actionId'), int)]
+               if isinstance(a.get('actionId'), int) and not a.get('isDeleted')]
         return max(ids) if ids else -1
-    candidates = [ln for ln in (lines or ()) if isinstance(ln, dict)]
+    candidates = (live_lines(lines)
+                  or [ln for ln in (lines or ()) if isinstance(ln, dict)])
     return max(candidates, key=_max_action) if candidates else None
 
 
