@@ -447,6 +447,11 @@ class XrasApiClient(_XrasTransport):
             return line_by_id(family, request_id)
         return primary_line(family)
 
+    def get_request_by_id(self, request_id: int) -> Optional[Dict[str, Any]]:
+        """One request line by ``requestId`` (``reports/requests/<rid>``), whatever its number now is."""
+        result = self._get(f'/v1/reports/requests/{int(request_id)}')
+        return result if isinstance(result, dict) else None
+
     def get_requests_page(self, *, status: Optional[str] = 'Approved',
                           limit: int = DEFAULT_PAGE_SIZE,
                           prev_min_request_id: Optional[int] = None,

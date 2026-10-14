@@ -48,10 +48,9 @@ def test_park_no_service(xras_client, action_log, dispatching, scenario):
     assert row['processed_time'] is not None
 
     # A NULL `service` IS the answer here: nothing matched, so no service was ever
-    # selected. That is a different row from one where a service WAS selected and
-    # then something stopped it running.
+    # selected. The reason names the number SAM could not resolve, not the type.
     assert row['service'] is None
-    assert 'no service matches' in row['outcome_reason']
+    assert "no SAM project for requestNumber='NOSUCH01'" in row['outcome_reason']
 
 
 def test_park_unknown_action_type(xras_client, action_log, dispatching, scenario,

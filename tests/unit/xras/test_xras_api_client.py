@@ -314,6 +314,13 @@ class TestEndpoints:
         client = _client(monkeypatch, [_response(404, {'message': 'no'})])
         assert client.get_request_family_by_number('X') == []
 
+    def test_the_id_lookup_reads_the_reports_path_whatever_the_number(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200, _envelope(_request(1439543, 'UHSS0002')))])
+        assert client.get_request_by_id(1439543)['requestNumber'] == 'UHSS0002'
+        assert client.session.request.call_args.args[1].endswith('/v1/reports/requests/1439543')
+        client = _client(monkeypatch, [_response(404, {'message': 'no'})])
+        assert client.get_request_by_id(7) is None
+
     def test_search_people_hits_the_search_route(self, monkeypatch):
         client = _client(monkeypatch, [_response(200, _envelope([PERSON]))])
         assert client.search_people('Invented') == [PERSON]

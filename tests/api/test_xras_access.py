@@ -21,6 +21,7 @@ import pathlib
 
 import pytest
 
+from factories import next_seq
 from xras_audit import action_log  # noqa: F401  — shared with tests/api/xras_audit_rows/
 from xras_helpers import (  # noqa: F401  — pytest resolves fixtures by name
     XRAS_PW,
@@ -1043,6 +1044,78 @@ class TestDispatchArms:
         assert action_log.one()['status'] == 'processed'
         assert (status, body) == (
             200, {'message': 'OK', 'result': {'projcode': 'UCUB0166'}})
+
+
+class TestRenameAfterReply:
+    """A processed post under an ``NCAR####`` renames the line once the reply has gone."""
+
+    PATH = TestDispatchArms.PATH
+    dispatching = TestDispatchArms.dispatching
+
+    @pytest.fixture
+    def renames(self, monkeypatch, app):
+        from sam.manage import xras_remediation
+        monkeypatch.setitem(app.config, 'XRAS_RENAME_ENABLED', True)
+        calls = []
+        monkeypatch.setattr(xras_remediation, 'rename_request',
+                            lambda factory, **kw: calls.append(kw) or
+                            xras_remediation.RemediationOutcome(None, status='verified'))
+        monkeypatch.setattr('sam.integration.xras_api.config.xras_write_configured',
+                            lambda *a: True)
+        return calls
+
+    def _post_new(self, xras_client, dispatching, projcode):
+        """``(response, request_id)``; the action id is minted too: the route commits
+        outside the savepoint, so a fixed one makes two xdist workers refuse each other."""
+        dispatching.register('add', lambda s, a, *, validate_only=False: dispatching.DispatchResult(
+            status='processed', service='add', projcode=projcode))
+        payload = json.loads(_payload('new_ncar4214_ok.json'))
+        payload['requestId'] = payload['actionId'] = request_id = int(next_seq('1449'))
+        resp = xras_client.post(self.PATH, data=json.dumps(payload),
+                                content_type='application/json', headers=_auth())
+        return resp, request_id
+
+    def test_a_new_that_minted_a_projcode_is_renamed_after_the_reply(
+            self, xras_client, action_log, dispatching, renames):
+        resp, request_id = self._post_new(xras_client, dispatching, 'UXYZ0001')
+        assert json.loads(resp.data) == {'message': 'OK', 'result': {'projcode': 'UXYZ0001'}}
+        resp.close()
+        (call,) = renames
+        assert (call['request_id'], call['old_number'], call['new_number']) == (
+            request_id, 'NCAR4214', 'UXYZ0001')
+        assert call['operator'].startswith('xras:')
+
+    def test_a_number_that_is_already_the_projcode_is_left_alone(
+            self, xras_client, action_log, dispatching, renames):
+        self._post_new(xras_client, dispatching, 'NCAR4214')[0].close()
+        assert renames == []
+
+    def test_no_write_lever_means_no_rename(self, xras_client, action_log, dispatching,
+                                            renames, monkeypatch):
+        monkeypatch.setattr('sam.integration.xras_api.config.xras_write_configured',
+                            lambda *a: False)
+        self._post_new(xras_client, dispatching, 'UXYZ0001')[0].close()
+        assert renames == []
+
+    def test_the_rename_lever_off_means_no_rename(self, xras_client, action_log, dispatching,
+                                                  renames, monkeypatch, app):
+        """Production ships XRAS_RENAME_ENABLED=0 with both XRAS levers on."""
+        monkeypatch.setitem(app.config, 'XRAS_RENAME_ENABLED', False)
+        resp, _ = self._post_new(xras_client, dispatching, 'UXYZ0001')
+        resp.close()
+        assert renames == []
+
+    def test_a_failing_rename_never_reaches_the_reply(self, xras_client, action_log,
+                                                      dispatching, monkeypatch, app):
+        from sam.manage import xras_remediation
+        monkeypatch.setitem(app.config, 'XRAS_RENAME_ENABLED', True)
+        monkeypatch.setattr('sam.integration.xras_api.config.xras_write_configured',
+                            lambda *a: True)
+        monkeypatch.setattr(xras_remediation, 'rename_request',
+                            lambda *a, **k: (_ for _ in ()).throw(RuntimeError('boom')))
+        resp, _ = self._post_new(xras_client, dispatching, 'UXYZ0001')
+        resp.close()
+        assert resp.status_code == 200 and action_log.one()['status'] == 'processed'
 
 
 class TestPostActionsErrors:

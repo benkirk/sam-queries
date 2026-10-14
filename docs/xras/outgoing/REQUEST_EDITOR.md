@@ -58,7 +58,7 @@ PI (`resolve_pi`). Transport is **query params** except where noted.
 |---|---|---|---|
 | Resource amount | `PUT|DELETE .../actions/<aid>/resources/<resourceId>` | MANAGE | add-or-update / remove a **stage** line; `resourceId` is the resource *type* id |
 | Allocation dates | `POST .../allocation_dates`; `PUT|DELETE .../allocation_dates/<id>` | MANAGE | `POST` returns `allocationDateId` |
-| Request attributes | `PUT .../attributes` | MANAGE | `title` / `shortTitle` / `abstract` |
+| Request attributes | `PUT .../attributes` | MANAGE | `title` / `shortTitle` / `abstract`. The route also takes `keywords`, `isSupportedByGrants`, `requestType`, `grantTypeId` and `requestNumber` (a rename, `XRAS_DEV_PROBES.md` § 4) |
 | Action fields | `PUT .../actions/<aid>` | MANAGE | `userComments` |
 | Delete project | `DELETE /v1/requests/<rid>` | **ADMIN** | loops **every** request line in the family (each as its own PI); reports partial failure; irreversible |
 | Renew request | `POST /v1/requests/<rid>/renew` | **ADMIN** | spawns a renewal off the primary line |
@@ -68,7 +68,10 @@ PI (`resolve_pi`). Transport is **query params** except where noted.
 grants (`POST|PUT|DELETE .../grants`), publications (`POST` **JSON body** / `DELETE
 .../publications/<id>`), fields of science (`PUT|DELETE .../fos/<fosTypeId>`, needs
 `isPrimary` and a new `/v1/types/fos` catalog + picker). **Beyond that:** per-action
-resource/opportunity attributes (unprobed) and documents (multipart upload).
+opportunity attributes (bulk JSON `PUT`; the single-attribute `PUT` needs a value), resource
+attributes (bulk JSON `PUT`) and documents (JSON with a base64 body, no multipart), all probed
+on XRAS-dev 2026-10-13 ([`XRAS_DEV_PROBES.md`](XRAS_DEV_PROBES.md) § 3) and documents on
+production 2026-09-14 (`XRAS_SUBMISSION_PROBES.md` § 3.4).
 
 **Deliberately excluded:** `keywords` and `collaborators` — the reports read-back
 does not echo them, so they cannot be verified (see §5), and every write here
@@ -125,9 +128,10 @@ fresh session after. Modal GETs degrade with a **200** body — htmx will not sw
 4xx into an open modal. A verified write patches the affected request back into the
 card snapshot so the operator sees their change immediately.
 
-⚠️ The **ADMIN tier verbs were not live-probed** (a delete cannot be tested without
-deleting; renew/add-action pollute the request), so they ship fail-visible and
-unprobed: a 401 surfaces in the modal. They are gated on `ADMIN_XRAS`, the write
+⚠️ The **ADMIN tier verbs were not live-probed on production** (a delete cannot be tested
+without deleting; renew/add-action pollute the request), so they ship fail-visible: a 401
+surfaces in the modal. On XRAS-dev 2026-10-13 all three answered 200 on our own drafts: delete
+is soft, renew starts a new line, add-action returns `actionId` (`XRAS_DEV_PROBES.md` § 3). They are gated on `ADMIN_XRAS`, the write
 lever, and `hx-confirm`.
 
 ## 7. Code map

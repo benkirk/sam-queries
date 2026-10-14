@@ -277,7 +277,10 @@ says what building it requires — *"an idempotency key enforced on `action_id` 
 because 4 of the 6 handlers double-apply"* — and calls the second half "a conversation,
 not a flag." This section is that conversation's agenda:
 
-1. **Phase 1 — a double-apply guard on `action_id`, wanted regardless.** A successful
+1. **Phase 1 — a double-apply guard on `action_id`, wanted regardless.** **Landed** as
+   `_refuse_repeat` (`src/webapp/api/xras/actions.py`): a 422 `duplicate` naming the earlier
+   row, not a `manual` park. It sees only SAMuel's log, so an action applied before the
+   2026-08-24 repoint still applies twice on a repost (`XRAS_DEV_PROBES.md` § 4). A successful
    re-applied `New` routes `(New, exists)` → `update` and supplements the allocation it
    just created; Supplement and Adjustment are additive. ⚠️ But `action_id` is **not an
    identity key**: `actionId` 388865 arrived twice with different bodies — `NCAR4236`
@@ -318,6 +321,7 @@ is when each will be reached for:
 | Feed-A preflight on the CLI path | handlers register by import side effect, fired only by `webapp/api/xras/actions.py`; `sam-admin xras --accounts` never imports them, so every dispatch parks and `_validate` maps a parked result to **"would succeed"**. The playbook recommends that command. Fix + test in Phase 0 of [`XRAS_PUSH_READINESS.md`](implemented/XRAS_PUSH_READINESS.md) |
 | `manual` ≠ success | the same `_validate` discards the `DispatchResult`; a parked action shows green on the Accounts card too. Carry `preflight_status` on `ActionRef` and derive `would_succeed` from it |
 | Feed-B `ActionRef.action_type` | set from `requestType`, which `schemas/forms/xras.py` documents as not the action type; read the action's `actionType` |
+| Supplement after a Renewal | `latest_allocation` (legacy's `getLatestAllocation`, max end date) puts a Supplement filed on the old line after the Renewal posted onto the renewal's **future** window. Seen on XRAS-dev 2026-10-14 (`XRAS_DEV_PROBES.md` § 6.1, #20). Decide whether a Supplement should target the window its action dates cover; until then the operator moves it by hand |
 
 ---
 
@@ -329,7 +333,10 @@ is when each will be reached for:
 - **Edit-payload-and-replay** (§ 3.3 above).
 - **Servicing `Transfer` / `Date Adjustment`** ahead of ACCESS's answer — parking is
   parity-correct and now visible; that question belongs to them.
-- **Any task-side XRAS write.** The invariant is enforced twice (chart + model) and stays.
+- **Any task-side XRAS write**, with one exception Ben chose on 2026-10-13: the rename of a
+  request's number to its new projcode, a backstop to the webapp's own rename
+  (`XRAS_CLOSED_LOOP.md`). The invariant is enforced twice (chart + model); that change lifts
+  it for that write alone, deliberately.
 - **Dual-posting during cutover.** Ruled out in the runbook; not re-proposed.
 
 ---

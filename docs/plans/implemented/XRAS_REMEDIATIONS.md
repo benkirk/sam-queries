@@ -79,9 +79,9 @@ Allocation Manager, 19 User** (no co-PI in the NCAR process).
 | Role types | `GET /v1/types/roles` | ✅ NCAR: **13 PI** ("Project Lead"), **14 Allocation Manager** ("Project Admin"), **19 User**. No co-PI. Render `displayRoleType` |
 | Roles by projcode | `POST/DELETE /v1/roles/<requestNumber>/<roleTypeId>/<u>` | ⚠️ provisioned (401 vs 404 proves it) but **cannot resolve our test request numbers** — untestable without writing to a live project. Not used |
 | Allocation dates / resource amounts / update action | `POST/PUT/DELETE .../allocation_dates`, `PUT .../resources/<id>`, `PUT .../actions/<aid>` | ⚠️ deliberately out of v1 scope |
-| Legal-moves read | `GET /v1/requests/<rid>` → `rules{...}` | ❌ **401 route-wide**, every context × every XA-USER. Offer legality comes from the snapshot + `validate` instead |
+| Legal-moves read | `GET /v1/requests/<rid>` → `rules{...}` | ❌ **401 route-wide**, every context × every XA-USER (production, 2026-08-21). Offer legality comes from the snapshot + `validate` instead. XRAS-dev 2026-10-13 answered 200 with `rules{}` to a role-holder ([`XRAS_DEV_PROBES.md`](../../xras/outgoing/XRAS_DEV_PROBES.md) § 2); unretested on production |
 | Un-reconcile | `POST /v1/people/<u>` isReconciled=false | ❌ green-and-inert — never wire a button to it |
-| Delete request | `DELETE /v1/requests/<rid>` | ❌ 401 for every XA-USER |
+| Delete request | `DELETE /v1/requests/<rid>` | ❌ 401 for every XA-USER on another PI's 2015 line (production). XRAS-dev 2026-10-13: 200, soft, on one's own draft ([`XRAS_DEV_PROBES.md`](../../xras/outgoing/XRAS_DEV_PROBES.md) § 3) |
 
 ⚠️ **The two role families encode `roleType` differently** — `/v1/roles/...` wants the integer id,
 `/v1/requests/.../roles/...` wants the string name and 400s on the id. Carry both representations.
@@ -105,7 +105,7 @@ was paired with its inverse and verified by re-read; both targets ended exactly 
 
 What it changed, in one place:
 
-1. **`rules{}` is closed** (401 route-wide) — the biggest change. Offer legality is derived from
+1. **`rules{}` is closed** (401 route-wide on production, 2026-08-21; XRAS-dev differs, see § 2 table) — the biggest change. Offer legality is derived from
    the sweep snapshot's `actionStatus` plus the `validate` preflight; `get_request()` is gone.
 2. **Validate is impersonation-dependent** — the same action validates for the PI and fails for
    the Allocation Manager. Impersonate the PI; show the verdict *with* the user it was evaluated
@@ -132,7 +132,7 @@ is overridden per call via per-request headers (never session mutation).
 class XrasAdminClient:
     from_environment()                      # raises XrasWriteNotConfigured unless write_configured
     _get(path, *, params, xa_user)          # submit-context GET; 5xx retry like the read client; 404 -> None
-    # NOTE: no get_request() — GET /v1/requests/<rid> is 401 route-wide (P1). Roster/action
+    # NOTE: no get_request() — GET /v1/requests/<rid> is 401 route-wide on production (P1). Roster/action
     # state comes from the READ client's get_request_by_number() (reports family).
     _write(method, path, *, params, xa_user)  # ONE attempt, no retry; 4xx -> XrasWriteRejected;
                                               # transport error recorded, verify still runs
@@ -322,7 +322,7 @@ docstring. Every GET form route catches `XrasSourceUnavailable` → a **200** de
 | Modal | GET (live reads) | POST | Notes |
 |---|---|---|---|
 | **Merge** `xras_merge_form/<username>` | `get_person` (404 → "already merged away; stale echo"); candidates = the SAM account holding the email resolved directly via `get_person` (rank 0), then `search_people` by full name and surname (name/username only, 20-row cap), annotated with SAM state, ranked email→org→name | `_XrasMergeHandler`: `clean()` = exactly-one-of candidate-radio / fk-picker override, target ≠ source, **target must resolve in XRAS** (fail-closed) | `XRAS_WRITE_FIXUPS.md` § 3 copy verbatim; radios `required`, NO default when >1; the picker override carries the fragility warning (the kquagraine decoy case); `btn-danger` "Merge and delete placeholder" |
-| **Withdraw** `xras_withdraw_form/<request_number>/<int:action_id>` | `get_request_by_number` only (state + roster + PI). **No `rules{}`** — it is 401 route-wide; the offer keys on `actionStatus` | `_XrasWithdrawHandler` + `XrasRemediationReasonForm` (comment required — the dismiss precedent) | Addendum copy: de-approves to a draft, reversible, rewrites history; names the impersonated PI AND the recorded operator |
+| **Withdraw** `xras_withdraw_form/<request_number>/<int:action_id>` | `get_request_by_number` only (state + roster + PI). **No `rules{}`** — it is 401 route-wide on production; the offer keys on `actionStatus` | `_XrasWithdrawHandler` + `XrasRemediationReasonForm` (comment required — the dismiss precedent) | Addendum copy: de-approves to a draft, reversible, rewrites history; names the impersonated PI AND the recorded operator |
 | **Re-submit** `xras_resubmit_form/...` | validate preflight rendered before the button, **labelled with the impersonated user** (the verdict is per-user); errors → disabled button | hand-rolled bodiless POST (no fields — a schema would be furniture); `XrasWriteRejected` re-renders with `errors[]` | inverse-of-withdraw framing |
 | **Roles** `xras_roles_form/<request_number>` | live roster | add: `_XrasRoleAddHandler` + `XrasRoleForm` (role_type OneOf imported from the service, submitted as the **string**; user via fk-picker); remove keys on the roster's `role_id`; `on_success()` re-renders the roster and does NOT close the modal (roster fixes come in batches). remove: bodiless POST + `hx-confirm` danger | warning: an unknown username creates a new XRAS identity |
 

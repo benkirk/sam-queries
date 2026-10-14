@@ -74,6 +74,33 @@ class TestTheModel:
                                 created_by='op', mnemonic_code_id=mc.mnemonic_code_id)
         assert lookup_request_override(session, 'NCAR9999', 'mnemonic') is None
 
+    def test_rekey_follows_a_rename(self, session):
+        mc = make_mnemonic_code(session)
+        XrasRequestOverride.set(session, request_number='NCAR8010', kind='mnemonic',
+                                created_by='op', mnemonic_code_id=mc.mnemonic_code_id)
+        XrasRequestOverride.set(session, request_number='NCAR8010',
+                                kind='ignore_contract', created_by='op')
+        moved, collided = XrasRequestOverride.rekey(
+            session, old_number='NCAR8010', new_number='UXYZ8010')
+        assert sorted(moved) == ['ignore_contract', 'mnemonic'] and collided == []
+        assert lookup_request_override(session, 'NCAR8010', 'mnemonic') is None
+        assert lookup_request_override(session, 'UXYZ8010', 'ignore_contract') is not None
+
+    def test_rekey_leaves_a_kind_the_new_number_already_holds(self, session):
+        XrasRequestOverride.set(session, request_number='NCAR8011',
+                                kind='ignore_contract', created_by='old')
+        XrasRequestOverride.set(session, request_number='UXYZ8011',
+                                kind='ignore_contract', created_by='new')
+        moved, collided = XrasRequestOverride.rekey(
+            session, old_number='NCAR8011', new_number='UXYZ8011')
+        assert moved == [] and collided == ['ignore_contract']
+        assert lookup_request_override(session, 'UXYZ8011', 'ignore_contract').created_by == 'new'
+        assert lookup_request_override(session, 'NCAR8011', 'ignore_contract') is not None
+
+    def test_rekey_with_nothing_to_move(self, session):
+        assert XrasRequestOverride.rekey(
+            session, old_number='NCAR8012', new_number='UXYZ8012') == ([], [])
+
     @pytest.mark.parametrize("kwargs", [
         dict(request_number='NCAR1', kind='bogus', created_by='x'),
         dict(request_number='NCAR1', kind='mnemonic', created_by='x'),     # no code
@@ -182,6 +209,16 @@ class TestContractConsult:
             session, action(requestNumber='NCAR7202',
                             grants=[{'grantNumber': 'NSF-7770003'}]), errs)
         assert [x.contract_id for x in contracts] == [c.contract_id]
+        assert not list(errs)
+
+    def test_the_waiver_survives_a_rename(self, session):
+        """An Update after the rename arrives under the projcode and must still be waived."""
+        XrasRequestOverride.set(session, request_number='NCAR7204',
+                                kind='ignore_contract', created_by='op')
+        XrasRequestOverride.rekey(session, old_number='NCAR7204', new_number='UXYZ7204')
+        errs = ActionErrors()
+        plan_contracts(session, action(requestNumber='UXYZ7204',
+                                       grants=[{'grantNumber': 'NSF-7770005'}]), errs)
         assert not list(errs)
 
     def test_override_is_keyed_on_request_number(self, session):

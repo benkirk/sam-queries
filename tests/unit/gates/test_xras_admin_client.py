@@ -120,6 +120,10 @@ class _FakeReader:
         return (line_by_id(family, request_id) if request_id is not None
                 else primary_line(family))
 
+    def get_request_by_id(self, request_id):
+        payload = self._next()
+        return payload[0] if isinstance(payload, list) else payload
+
 
 def _client(monkeypatch, responses, *, reader=None, **config_kwargs):
     config = XrasApiConfig(enabled=True, write_enabled=True,
@@ -206,12 +210,18 @@ class TestHelmWriteLever:
             'the lever must be present and explicit, not merely absent'
         assert str(env['XRAS_WRITE_ENABLED']) == '1'
 
+    def test_the_after_reply_rename_ships_off(self):
+        """Production renames nothing until it is proven on XRAS-dev and Steve has heard
+        (XRAS_CLOSED_LOOP.md § 3.3). Arming it means editing this line too."""
+        assert str(self._values()['webapp']['env']['XRAS_RENAME_ENABLED']) == '0'
+
     def test_the_tasks_env_never_arms_writes(self):
-        """No scheduled task may write to XRAS.
+        """No production task may write to XRAS.
 
         `cronjob-tasks.yaml` inherits nothing from `webapp.env` — it hand-lists
-        what it needs — so the guarantee is that neither the tasks env block
-        nor that manifest ever mentions the lever.
+        what it needs — so the guarantee is that neither production's tasks env
+        nor that manifest ever mentions the lever. Arming `xras_rename` on
+        production is an edit to this test.
         """
         tasks_env = (self._values().get('tasks') or {}).get('env') or {}
         assert 'XRAS_WRITE_ENABLED' not in tasks_env
@@ -236,6 +246,16 @@ class TestDev:
         assert (env['XRAS_OUTGOING_ENABLED'], env['XRAS_WRITE_ENABLED'],
                 env['XRAS_ACTIONS_CAPTURE_ONLY']) == ('1', '1', '0')
         assert dev['xrasApiCredentials']['secretPath'] != prod['xrasApiCredentials']['secretPath']
+
+    def test_dev_arms_the_rename_task_and_production_does_not(self):
+        """The one task write (`xras_rename`): armed on dev only, and disabled by name on prod."""
+        prod = yaml.safe_load((REPO_ROOT / 'helm' / 'values.yaml').read_text())['tasks']['env']
+        dev = yaml.safe_load((REPO_ROOT / 'helm' / 'values-dev.yaml').read_text())['tasks']['env']
+        assert dev['XRAS_WRITE_ENABLED'] == '1'
+        assert yaml.safe_load((REPO_ROOT / 'helm' / 'values-dev.yaml').read_text())[
+            'webapp']['env']['XRAS_RENAME_ENABLED'] == '1'
+        assert 'xras_rename' not in dev['SAM_TASKS_DISABLED'].split(',')
+        assert 'xras_rename' in prod['SAM_TASKS_DISABLED'].split(',')
 
 
 # structure
@@ -720,6 +740,44 @@ class TestResourceAndDateVerbs:
             900001, 7, 9, request_number='EXAM0001', xa_user='pi-user')
         assert client.session.request.call_args[0][0] == 'DELETE'
         assert result.verified is True
+
+
+class TestRenameRequest:
+    """The rename verifies by requestId: by number, the old one stops resolving."""
+
+    def test_puts_the_new_number_and_verifies_by_id(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(_reports_request(number='UXYZ0001')))
+        result = client.rename_request(900001, old_number='NCAR0001',
+                                       new_number='UXYZ0001', xa_user='pi-user')
+        assert result.verified is True and result.operation == 'rename_request'
+        method, url = client.session.request.call_args[0]
+        _, kwargs = client.session.request.call_args
+        assert method == 'PUT' and url.endswith('/requests/900001/attributes')
+        assert kwargs['params'] == {'requestNumber': 'UXYZ0001'}
+        assert kwargs['headers'] == {'XA-USER': 'pi-user'}
+        assert result.before == {'requestNumber': 'NCAR0001'}
+        assert result.after == {'requestNumber': 'UXYZ0001'}
+
+    def test_a_number_that_did_not_change_is_unverified(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(_reports_request(number='NCAR0001')))
+        result = client.rename_request(900001, old_number='NCAR0001',
+                                       new_number='UXYZ0001', xa_user='pi-user')
+        assert result.verified is False and result.status == 'unverified'
+
+    def test_a_failed_verify_read_is_unknown_not_failed(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(XrasSourceUnavailable('down')))
+        result = client.rename_request(900001, old_number='NCAR0001',
+                                       new_number='UXYZ0001', xa_user='pi-user')
+        assert result.verified is None and 'verify read failed' in result.verify_detail
+
+    def test_a_refusal_raises(self, monkeypatch):
+        client = _client(monkeypatch, [_response(401, message='no role')])
+        with pytest.raises(XrasWriteRejected):
+            client.rename_request(900001, old_number='NCAR0001',
+                                  new_number='UXYZ0001', xa_user='nobody')
 
 
 class TestMetadataVerbs:

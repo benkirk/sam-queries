@@ -213,7 +213,7 @@
     "notes": []
   },
   "park_no_service": {
-    "what": "an actionType no service matches",
+    "what": "an Adjustment naming a number SAM cannot resolve to a project",
     "expect": "manual",
     "http": 200,
     "triage": "Why did this park?",
