@@ -873,7 +873,7 @@ def _action_context(request_number, action_id, *, mode):
         'request_status': payload.get('requestStatus'),
         'action': action,
         'action_id': action_id,
-        'action_count': len(payload.get('actions') or ()),
+        'action_count': len(live_actions(payload)),
         'xa_user': xa_user,
         'xa_user_is_pi': is_pi,
         'xa_user_is_placeholder': xa_placeholder,

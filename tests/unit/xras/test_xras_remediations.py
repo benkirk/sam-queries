@@ -1730,6 +1730,12 @@ class TestASoftDeletedActionIsNotWritable:
         body = auth_client.get(f'/allocations/{form}/EXAM0001/7').get_data(as_text=True)
         assert 'deleted in XRAS' in body
 
+    def test_the_withdraw_count_ignores_it(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_with_deleted_action())
+        body = auth_client.get(
+            '/allocations/xras_withdraw_form/EXAM0001/8').get_data(as_text=True)
+        assert "the request's only action" in body
+
     @pytest.mark.parametrize('url, data', [
         ('/allocations/xras_resource_edit/EXAM0001/7/530201',
          {'amount': '20', 'stage': 'Requested'}),
