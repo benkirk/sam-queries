@@ -58,7 +58,7 @@ PI (`resolve_pi`). Transport is **query params** except where noted.
 |---|---|---|---|
 | Resource amount | `PUT|DELETE .../actions/<aid>/resources/<resourceId>` | MANAGE | add-or-update / remove a **stage** line; `resourceId` is the resource *type* id |
 | Allocation dates | `POST .../allocation_dates`; `PUT|DELETE .../allocation_dates/<id>` | MANAGE | `POST` returns `allocationDateId` |
-| Request attributes | `PUT .../attributes` | MANAGE | `title` / `shortTitle` / `abstract` |
+| Request attributes | `PUT .../attributes` | MANAGE | `title` / `shortTitle` / `abstract`. The route also takes `keywords`, `isSupportedByGrants`, `requestType`, `grantTypeId` and `requestNumber` (a rename, `XRAS_DEV_PROBES.md` § 4) |
 | Action fields | `PUT .../actions/<aid>` | MANAGE | `userComments` |
 | Delete project | `DELETE /v1/requests/<rid>` | **ADMIN** | loops **every** request line in the family (each as its own PI); reports partial failure; irreversible |
 | Renew request | `POST /v1/requests/<rid>/renew` | **ADMIN** | spawns a renewal off the primary line |

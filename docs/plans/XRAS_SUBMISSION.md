@@ -79,7 +79,7 @@ already uses.
 |---|---|---|
 | Create | `POST /v1/requests?opportunityId&requestType[&requestNumber&grantTypeId]` | the full object **with `rules{}`**, status `Incomplete`, **the first action already minted**, `requestNumber` **null**, and the creator as **Allocation Manager, not PI** |
 | PI | `POST /v1/requests/<rid>/roles/PI/<username>` | required; one person may hold PI and Allocation Manager. Validate and submit must run as the PI — the same call passes as the PI and fails as the Allocation Manager |
-| Text | `PUT /v1/requests/<rid>/attributes` | `title shortTitle abstract keywords isSupportedByGrants` |
+| Text | `PUT /v1/requests/<rid>/attributes` | `title shortTitle abstract keywords isSupportedByGrants`; the apidoc also documents `requestNumber` (renames the request into that family, § 4.6 item 3), `requestType` and `grantTypeId` |
 | Action | `POST /v1/requests/<rid>/actions?actionType[&userComments]` → `{actionId}` | accepted on `Approved`, `Incomplete` and `Submitted` lines. `DELETE …/actions/<aid>` is a **soft delete**: the row stays with `isDeleted: true`, the line's own `isDeleted` is derived from its actions, and a deleted action can hold the family's highest `actionId` — anything that walks `actions[]` must filter it |
 | Renew | `POST /v1/requests/<rid>/renew?opportunityId` | a new line with `rules{}`; **copies roster, title, keywords and field of science**, not abstract, grants, resources, dates or documents. Create-with-`requestNumber` also spawns a line but copies nothing — use `/renew` |
 | Resources, dates | `PUT …/actions/<aid>/resources/<resourceId>?amount`; `POST …/allocation_dates?beginDate&endDate` → `{allocationDateId}` | query params; the resource id is the resource *type* id |
