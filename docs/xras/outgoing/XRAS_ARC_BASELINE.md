@@ -10,7 +10,7 @@ questions the design ([`XRAS_SUBMISSION.md`](../../plans/XRAS_SUBMISSION.md) § 
 
 | Question | Answer |
 |---|---|
-| Which admin step rewrites `requestNumber` to the projcode? | **Neither the post nor the notify.** The family still answers only to `NCAR4354` at T+17 min after the post and T+11 min after the notify (§ 3). The rewrite is a later, asynchronous step — and until it lands, every action filed on the family parks in SAM (§ 3.1) |
+| Which admin step rewrites `requestNumber` to the projcode? | **Neither the post nor the notify.** The family still answers only to `NCAR4354` at T+17 min after the post and T+11 min after the notify (§ 3). The rewrite is a **manual** step: NCAR staff typed the projcode into XRAS (Steve, 2026-10-13; [`XRAS_DEV_PROBES.md`](XRAS_DEV_PROBES.md) § 5). Until someone does, every action filed on the family parks in SAM (§ 3.1) |
 | What does ARC show for an approved request? | `Approved` under the `NCAR####`, the moment the operator approves — before any post. The Actions menu offers **View, Extension, Supplement, Transfer** at that point and adds **Start a Renewal** after the notify (§ 2) |
 | What is the ARC form? | Six pages, native-HTML5 required fields, no dates, no grants, no bound on amounts, and a date picker that turns an ISO date into year 31 (§ 1) |
 
@@ -71,8 +71,9 @@ request is the six form sections read-only, with no status, number or award.
 **The rewrite is neither step.** Both `reports/request_numbers` keys were read 5 s,
 30 s and 3 min after the post and 25 s and 1½ min after the notify, then every 5
 min: `NCAR4354` resolves, `UHSS0001` does not. The award letter XRAS mails at the
-notify names `NCAR4354`. Whatever rewrites the number runs later and on its own
-clock — consistent with the hours-to-a-day lags in the design's § 2 table.
+notify names `NCAR4354`. The rename is done by hand in XRAS (Steve, 2026-10-13: XRAS ignores the
+reply to the post), which is why the lags run from hours to never; nobody renamed this test
+request. SAM can perform the rename itself (`XRAS_DEV_PROBES.md` § 5).
 
 ### 3.1 The gap has a cost: actions filed before the rewrite park
 

@@ -229,7 +229,7 @@ existing key under `report` context, 401 under `submit`:
 |---|---|
 | `GET /v1/reports/requests` ⭐ | **Every request in the NCAR process, unscoped.** Paginated: `?limit=N&prevMinRequestId=M` (descending `requestId`; strictly-less-than, so pass the smallest id seen to get the next page). Filters: `?status=` (one of `Submitted, Approved, Rejected, Incomplete, Under Review`) or `?active=true|false` (Approved with end date in future/past — mutually exclusive with `status`). Optional `fosTypeId`, `piOrganizationId`. |
 | `GET /v1/reports/request_numbers/:requestNumber` ⭐ | **Look up by request number — i.e. by projcode.** Same response as `/v1/requests/:requestId` minus the `rules` object. Optional `?status=active|inactive`. |
-| `GET /v1/reports/allocations` | All allocations (`?status=active` → ~7.9 MB for NCAR today): actionId, actionType, begin/end dates, requestNumber, PI name/institution/**username**, opportunity, per-action `resources[]` and `requestedResources[]`. |
+| `GET /v1/reports/allocations` | All allocations (`?status=active` → ~7.9 MB for NCAR today; the apidoc also documents `updatedAfter`, an incremental filter nothing here uses yet): actionId, actionType, begin/end dates, requestNumber, PI name/institution/**username**, opportunity, per-action `resources[]` and `requestedResources[]`. |
 | `GET /v1/reports/username/:username` | Roles and panels for one person: requests grouped by role name. |
 | `GET /v1/reports/opportunity_requests/:opportunityId` | Requests for one opportunity. |
 | `GET /v1/reports/requests/:requestId` | One request via the reports path. |
