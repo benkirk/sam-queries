@@ -564,27 +564,27 @@ def _rename_after_reply(response, action, projcode) -> None:
     """Rename the XRAS line to *projcode* once the reply has gone (docs/plans/XRAS_CLOSED_LOOP.md).
 
     XRAS waits on the reply and has timed out connecting, so the rename runs from
-    ``call_on_close``; the ``xras_rename`` task covers a failure here.
+    ``call_on_close``; the ``xras_rename`` task covers a failure here. The outbound
+    client stays behind ``sam.manage`` (``test_xras_incoming_boundary.py``).
     """
-    from sam.integration.xras_api.config import xras_write_configured
+    from sam.manage import xras_remediation as remediation
 
     old_number = (action.get('requestNumber') or '').strip()
     request_id = _fit_int(action.get('requestId'))
     if not projcode or request_id is None or old_number in ('', projcode):
         return
-    if not xras_write_configured():
+    if not remediation.rename_armed():
         return
     app = current_app._get_current_object()
     operator = f'xras:{get_auth_actor() or "api"}'[:_PROCESSED_BY_WIDTH]
 
     def rename():
-        from sam.manage.xras_remediation import rename_request
         started = time.monotonic()
         try:
             with app.app_context():
-                outcome = rename_request(lambda: Session(db.engine), request_id=request_id,
-                                         old_number=old_number, new_number=projcode,
-                                         operator=operator)
+                outcome = remediation.rename_request(
+                    lambda: Session(db.engine), request_id=request_id,
+                    old_number=old_number, new_number=projcode, operator=operator)
             app.logger.info('XRAS rename after reply: %s -> %s requestId=%s status=%s '
                             'event=%s %dms%s', old_number, projcode, request_id,
                             outcome.status, outcome.event_id,

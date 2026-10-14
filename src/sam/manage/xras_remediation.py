@@ -768,6 +768,12 @@ def add_action(session_factory, *, request_number, request_id, action_type,
 RENAME_DONE = ('verified', 'already_renamed')
 
 
+def rename_armed() -> bool:
+    """Whether a rename may be attempted: the XRAS write lever, outgoing switch and key."""
+    from sam.integration.xras_api.config import xras_write_configured
+    return xras_write_configured()
+
+
 def _rename_identity(line) -> Optional[str]:
     """The PI, else the Allocation Manager: the role holders a rename may act as."""
     from sam.queries.xras_requests import (ADMIN_ROLE_TYPE_ID, resolve_pi, resolve_role,
