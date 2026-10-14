@@ -36,7 +36,7 @@ from sam.integration.xras_api.vocabulary import (
     ADMIN_ROLE_TYPE_ID,
     PI_ROLE_TYPE_ID,
 )
-from sam.queries.xras_accounts import (is_placeholder, iter_roster_entries,
+from sam.queries.xras_accounts import (is_placeholder, iter_roster_entries, live_actions,
                                        report_activity_date,
                                        role_in_window)
 
@@ -163,9 +163,7 @@ def actions_from_payload(payload: Dict[str, Any],
     each action gains a ``preflight`` cell (``None`` for an action nobody checked).
     """
     rows: List[Dict[str, Any]] = []
-    for action in payload.get('actions') or ():
-        if not isinstance(action, dict):
-            continue
+    for action in live_actions(payload):
         if action.get('actionId') is None:
             # Same rule the entry itself follows for requestNumber/requestId:
             # every offer routes through url_for(..., action_id=<int>), so an
@@ -415,13 +413,16 @@ def primary_line(lines: Any) -> Optional[Dict[str, Any]]:
     A projcode can have several lines (a New plus Renewals, each its own
     ``requestId``); the one with the highest ``actionId`` is the current
     request. Never ``lines[0]``: XRAS pages by descending ``requestId``, which
-    is not the same order.
+    is not the same order. A soft-deleted line or action can hold the family's
+    highest ``actionId``, so both are skipped. An all-deleted family still
+    answers with one of its lines, so the card can say it is deleted.
     """
     def _max_action(line):
-        ids = [a.get('actionId') for a in (line.get('actions') or ())
+        ids = [a.get('actionId') for a in live_actions(line)
                if isinstance(a.get('actionId'), int)]
         return max(ids) if ids else -1
-    candidates = [ln for ln in (lines or ()) if isinstance(ln, dict)]
+    candidates = (live_lines(lines)
+                  or [ln for ln in (lines or ()) if isinstance(ln, dict)])
     return max(candidates, key=_max_action) if candidates else None
 
 

@@ -286,6 +286,19 @@ class TestTheOffers:
                                      'actionStatus': 'Under Review'}])
         assert actions_from_payload(payload)[0]['can_withdraw'] is True
 
+    def test_a_soft_deleted_action_offers_nothing_and_is_not_the_latest(self):
+        """An aborted action keeps its Incomplete status; it must not draw Resubmit or name the request."""
+        from sam.queries.xras_accounts import report_activity_date
+        payload = _payload(actions=[
+            {'actionId': 7, 'actionType': 'New', 'actionStatus': 'Approved',
+             'entryDate': '2026-09-01'},
+            {'actionId': 9, 'actionType': 'Supplement', 'isDeleted': True,
+             'actionStatus': DRAFT_ACTION_STATUS, 'entryDate': '2026-10-14'}])
+        actions = actions_from_payload(payload)
+        assert [a['action_id'] for a in actions] == [7]
+        assert latest_action_type(actions) == 'New'
+        assert report_activity_date(payload) == date(2026, 9, 1)
+
 
 class TestTheEntry:
 
@@ -580,6 +593,39 @@ class TestLiveLines:
         live = _payload(requestId=1)
         assert live_lines([live, _payload(requestId=2, isDeleted=True), 'junk', None]) == [live]
         assert live_lines(None) == []
+
+
+class TestPrimaryLine:
+    """The current line of a family: highest live action on a live line, never lines[0]."""
+
+    def _line(self, request_id, *action_ids, deleted_actions=(), **over):
+        actions = [{'actionId': a, 'isDeleted': a in deleted_actions} for a in action_ids]
+        return _payload(requestId=request_id, actions=actions, **over)
+
+    def test_highest_action_wins_regardless_of_order(self):
+        from sam.queries.xras_requests import primary_line
+        older, newer = self._line(1, 10), self._line(2, 20)
+        assert primary_line([older, newer])['requestId'] == 2
+        assert primary_line([newer, older])['requestId'] == 2
+
+    def test_a_deleted_line_holding_the_highest_action_is_skipped(self):
+        from sam.queries.xras_requests import primary_line
+        live = self._line(1, 10)
+        assert primary_line([live, self._line(2, 30, isDeleted=True)])['requestId'] == 1
+
+    def test_a_deleted_action_does_not_count(self):
+        from sam.queries.xras_requests import primary_line
+        renewal = self._line(2, 20)
+        aborted = self._line(1, 10, 30, deleted_actions={30})
+        assert primary_line([aborted, renewal])['requestId'] == 2
+
+    def test_an_all_deleted_family_still_answers(self):
+        """A deleted line's actions are deleted too, so any line will do: it carries the alarm."""
+        from sam.queries.xras_requests import primary_line
+        family = [self._line(1, 10, deleted_actions={10}, isDeleted=True),
+                  self._line(2, 20, deleted_actions={20}, isDeleted=True)]
+        assert primary_line(family)['requestId'] in (1, 2)
+        assert primary_line([]) is None and primary_line(None) is None
 
 
 class TestLivePendingNumbers:

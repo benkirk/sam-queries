@@ -23,7 +23,7 @@ from sam.integration.xras_api import (
     xras_api_configured,
     xras_write_configured,
 )
-from sam.queries.xras_accounts import is_placeholder, iter_roster_entries
+from sam.queries.xras_accounts import is_placeholder, iter_roster_entries, live_actions
 from sam.integration.xras import lookup_request_override
 from sam.queries.xras_requests import (
     actions_from_payload,
@@ -80,9 +80,7 @@ def _detail_actions(payload):
     column order together, which Jinja's ``groupby`` cannot express.
     """
     actions = []
-    for action in payload.get('actions') or ():
-        if not isinstance(action, dict):
-            continue
+    for action in live_actions(payload):
         column_order = list(_RESOURCE_STAGES) + ['Other']
         present = {stage: False for stage in column_order}
         rows_by_key, row_order = {}, []

@@ -20,7 +20,7 @@ from datetime import date, datetime
 from typing import (Any, Dict, Iterator, Mapping, Optional, Tuple)
 
 from sam.dates import parse_wire_date
-from sam.queries.xras_accounts import report_entry_date
+from sam.queries.xras_accounts import live_actions, report_entry_date
 from sam.queries.xras_actions import canonical_action_type
 
 logger = logging.getLogger(__name__)
@@ -78,12 +78,8 @@ def iter_candidate_actions(report_payload: dict, *,
     """Yield the actions worth a preflight: not Declined, not deleted, in-window."""
     if not isinstance(report_payload, dict) or report_payload.get('isDeleted'):
         return
-    for action in report_payload.get('actions') or ():
-        if not isinstance(action, dict):
-            continue
+    for action in live_actions(report_payload):
         if (action.get('actionStatus') or '') == 'Declined':
-            continue
-        if action.get('isDeleted'):
             continue
         if since is not None:
             when = report_entry_date(action)
