@@ -389,8 +389,10 @@ webapp:
     # plus hand-listed keys and the NOTIFY_* / SAM_DB_* / STATUS_DB_* prefixes, and
     # inherits nothing else from here, so a scheduled task cannot write to XRAS even
     # if one imported the admin client. Do not "fix" that by adding it there.
-    # `tests/unit/gates/test_xras_admin_client.py` asserts both halves: this key ships with
-    # the value pinned there, and the tasks env never carries it at all.
+    # The one exception is xras_rename (NCAR#### -> projcode): only a tasks.env entry
+    # arms it, values-dev.yaml sets one, and the remediation audit refuses every other
+    # task-opened write. `tests/unit/gates/test_xras_admin_client.py` asserts this key's
+    # value and that production's tasks env and the CronJob template never carry it.
     #
     # With it off the Remediations card still renders — with its controls DISABLED and
     # an explanation — rather than vanishing, so the state is visible rather than
@@ -660,6 +662,9 @@ tasks:
     #           account_requests_reconcile   (writes project memberships for
     #                                         fulfilled account requests; hourly :20)
     # Disabled: xras_notices                 (mails external PIs)
+    #           xras_rename                  (WRITES to XRAS: NCAR#### -> projcode; also
+    #                                         needs XRAS_WRITE_ENABLED in tasks.env, which
+    #                                         production does not set. XRAS_CLOSED_LOOP.md)
     #           account_queue_digest         (mails NUSD the open queue; Mon 08:00 MT.
     #                                         NUSD's handoff is the per-request
     #                                         ticket, NOTIFY_ACCOUNT_TICKET_TO)
@@ -676,4 +681,4 @@ tasks:
     # so re-enabling one mid-slot does not backfill: the first real run is the next
     # occurrence. The switch is checked ahead of `only`/`force`, so
     # `sam-admin tasks --run X --force` cannot override it.
-    SAM_TASKS_DISABLED: "xras_notices,account_queue_digest"
+    SAM_TASKS_DISABLED: "xras_notices,account_queue_digest,xras_rename"

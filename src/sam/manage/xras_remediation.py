@@ -776,6 +776,20 @@ def _rename_identity(line) -> Optional[str]:
     return resolve_pi(roster) or (resolve_role(roster, ADMIN_ROLE_TYPE_ID) or {}).get('username')
 
 
+def rename_plan(line, *, request_id, old_number, new_number):
+    """``(state, xa_user, why)`` for a line read by id; ``state`` is ``rename`` or the reason not to."""
+    current = (line or {}).get('requestNumber')
+    if current == new_number:
+        return 'already_renamed', None, None
+    if current != old_number:
+        return 'skipped', None, f'requestId {request_id} answers {current!r}, not {old_number!r}'
+    xa_user = _rename_identity(line)
+    if xa_user is None:
+        return ('no_role_holder', None,
+                f'requestId {request_id} has no PI or Allocation Manager to act as')
+    return 'rename', xa_user, None
+
+
 def _rekey_overrides(session_factory, old_number, new_number) -> None:
     """Move the request's ingest overrides to its new number; never raises."""
     from sam.integration.xras import XrasRequestOverride
@@ -807,17 +821,12 @@ def rename_request(session_factory, *, request_id, old_number, new_number, opera
         line = admin.reader.get_request_by_id(request_id)
     except XrasSourceUnavailable as exc:
         return RemediationOutcome(None, status='error', error=f'pre-read failed: {exc}')
-    current = (line or {}).get('requestNumber')
-    if current == new_number:
+    state, xa_user, why = rename_plan(line, request_id=request_id,
+                                      old_number=old_number, new_number=new_number)
+    if state == 'already_renamed':
         _rekey_overrides(session_factory, old_number, new_number)
-        return RemediationOutcome(None, status='already_renamed')
-    if current != old_number:
-        return RemediationOutcome(None, status='skipped', error=(
-            f'requestId {request_id} answers {current!r}, not {old_number!r}'))
-    xa_user = _rename_identity(line)
-    if xa_user is None:
-        return RemediationOutcome(None, status='no_role_holder', error=(
-            f'requestId {request_id} has no PI or Allocation Manager to act as'))
+    if state != 'rename':
+        return RemediationOutcome(None, status=state, error=why)
 
     outcome = _editor_op(
         'rename_request', session_factory,

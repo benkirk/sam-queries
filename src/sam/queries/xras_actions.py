@@ -266,6 +266,31 @@ def pushed_request_numbers(session: Session, numbers: Iterable[str]) -> set:
                     XrasActionLog.request_number.in_(numbers)).distinct()}
 
 
+def rename_candidates(session: Session, *, since: datetime) -> List[Dict[str, Any]]:
+    """Request lines a processed post landed on under a number other than its projcode.
+
+    One per ``request_id``, newest row first: the work of the ``xras_rename`` task.
+    """
+    rows = (session.query(XrasActionLog)
+            .filter(XrasActionLog.status == 'processed',
+                    XrasActionLog.request_id.isnot(None),
+                    XrasActionLog.projcode_result.isnot(None),
+                    XrasActionLog.request_number.isnot(None),
+                    XrasActionLog.request_number != XrasActionLog.projcode_result,
+                    XrasActionLog.received_time >= since)
+            .order_by(*_LATEST_ACTION_ORDER).all())
+    seen, out = set(), []
+    for row in rows:
+        if row.request_id in seen:
+            continue
+        seen.add(row.request_id)
+        out.append({'request_id': row.request_id, 'request_number': row.request_number,
+                    'projcode': row.projcode_result, 'action_type': row.action_type,
+                    'received_time': row.received_time,
+                    'action_log_id': row.xras_action_log_id})
+    return out
+
+
 def _split_errors(error_messages: Optional[str]) -> List[str]:
     """``error_messages`` is newline-joined; give callers the ordered list back.
 

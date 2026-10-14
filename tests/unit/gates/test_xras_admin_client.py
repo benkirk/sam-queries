@@ -211,11 +211,12 @@ class TestHelmWriteLever:
         assert str(env['XRAS_WRITE_ENABLED']) == '1'
 
     def test_the_tasks_env_never_arms_writes(self):
-        """No scheduled task may write to XRAS.
+        """No production task may write to XRAS.
 
         `cronjob-tasks.yaml` inherits nothing from `webapp.env` — it hand-lists
-        what it needs — so the guarantee is that neither the tasks env block
-        nor that manifest ever mentions the lever.
+        what it needs — so the guarantee is that neither production's tasks env
+        nor that manifest ever mentions the lever. Arming `xras_rename` on
+        production is an edit to this test.
         """
         tasks_env = (self._values().get('tasks') or {}).get('env') or {}
         assert 'XRAS_WRITE_ENABLED' not in tasks_env
@@ -240,6 +241,14 @@ class TestDev:
         assert (env['XRAS_OUTGOING_ENABLED'], env['XRAS_WRITE_ENABLED'],
                 env['XRAS_ACTIONS_CAPTURE_ONLY']) == ('1', '1', '0')
         assert dev['xrasApiCredentials']['secretPath'] != prod['xrasApiCredentials']['secretPath']
+
+    def test_dev_arms_the_rename_task_and_production_does_not(self):
+        """The one task write (`xras_rename`): armed on dev only, and disabled by name on prod."""
+        prod = yaml.safe_load((REPO_ROOT / 'helm' / 'values.yaml').read_text())['tasks']['env']
+        dev = yaml.safe_load((REPO_ROOT / 'helm' / 'values-dev.yaml').read_text())['tasks']['env']
+        assert dev['XRAS_WRITE_ENABLED'] == '1'
+        assert 'xras_rename' not in dev['SAM_TASKS_DISABLED'].split(',')
+        assert 'xras_rename' in prod['SAM_TASKS_DISABLED'].split(',')
 
 
 # structure

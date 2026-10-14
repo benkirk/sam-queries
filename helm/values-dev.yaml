@@ -100,3 +100,6 @@ tasks:
     SAM_API_BASE: "https://samuel-dev.k8s.ucar.edu"
     # xras_sweep runs: it and XRAS_OUTGOING_ENABLED are one decision.
     SAM_TASKS_DISABLED: "expiration_notices,xras_notices,account_requests_reconcile,account_queue_digest"
+    # Arms xras_rename against XRAS-dev, the one task write (values.yaml's
+    # XRAS_WRITE_ENABLED warning). Production's tasks env does not carry it.
+    XRAS_WRITE_ENABLED: "1"
