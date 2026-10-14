@@ -48,6 +48,7 @@ from sam.manage import management_transaction
 from sam.manage import xras_remediation as remediation
 from sam.queries.mnemonic_console import search_mnemonic_codes
 from sam.dates import parse_wire_date
+from sam.queries.xras_accounts import live_actions
 from sam.queries.xras_requests import is_pending_work, row_blockers
 from sam.schemas.forms import (
     XrasActionDatesForm,
@@ -863,9 +864,7 @@ def _action_context(request_number, action_id, *, mode):
         return None
 
     entry = _entry(request_number)
-    actions = [a for a in (payload.get('actions') or ())
-               if isinstance(a, dict) and a.get('actionId') == action_id]
-    action = actions[0] if actions else None
+    action = _live_action(payload, action_id)
     xa_user, is_pi, xa_placeholder = _impersonation(entry, live=payload)
 
     return {
@@ -912,8 +911,9 @@ def xras_withdraw_form(request_number: str, action_id: int):
         return _not_found('Request')
     if context['action'] is None:
         return _degraded(
-            f'XRAS no longer lists action {action_id} on {request_number}. '
-            'The card will catch up on the next sweep.', title='Action not found')
+            f'Action {action_id} on {request_number} is deleted in XRAS or no '
+            'longer listed. The card will catch up on the next sweep.',
+            title='Action not found')
 
     return render_template(
         _ACTION_FORM, **context,
@@ -939,7 +939,7 @@ class _XrasWithdrawHandler(_XrasRemediationHandler):
             raise FormError('XRAS could not be reached, so nothing was '
                             'withdrawn. Try again shortly.')
         if context is None or context['action'] is None:
-            raise FormError('XRAS no longer lists this action.')
+            raise FormError('This action is deleted in XRAS or no longer listed.')
         if not context['xa_user']:
             # Every request-scoped XRAS write authorizes on XA-USER holding a
             # role on that request; with nobody to impersonate the call would
@@ -1044,7 +1044,7 @@ def xras_resubmit_form(request_number: str, action_id: int):
         return _not_found('Request')
     if context['action'] is None:
         return _degraded(
-            f'XRAS no longer lists action {action_id} on {request_number}.',
+            f'Action {action_id} on {request_number} is deleted in XRAS or no longer listed.',
             title='Action not found')
 
     return render_template(
@@ -1068,7 +1068,7 @@ def xras_resubmit(request_number: str, action_id: int):
     """
     context = _safe_action_context(request_number, action_id, mode='resubmit')
     if context['action'] is None:
-        return _dialog_message('XRAS no longer lists this action.')
+        return _dialog_message('This action is deleted in XRAS or no longer listed.')
     if not context['xa_user']:
         return _dialog_message('This request has no role-holder for SAM to act as, '
                                'so XRAS would refuse the re-submission.')
@@ -1299,7 +1299,12 @@ _ADD_ACTION_FORM = 'dashboards/allocations/partials/xras_add_action_form.html'
 
 # the request editor (Part B): resource amounts & allocation dates
 
-def _editor_target(request_number):
+def _live_action(payload, action_id):
+    """*action_id* on *payload*, unless soft-deleted: XRAS accepts writes to a deleted action."""
+    return next((a for a in live_actions(payload) if a.get('actionId') == action_id), None)
+
+
+def _editor_target(request_number, action_id=None):
     """``(request_id, xa_user)`` for a write, or raise :class:`FormError`.
 
     Wrapped like the withdraw/role handlers' live reads: the handler base maps
@@ -1313,6 +1318,9 @@ def _editor_target(request_number):
                         'Try again shortly.')
     if payload is None:
         raise FormError('XRAS no longer lists this request.')
+    if action_id is not None and _live_action(payload, action_id) is None:
+        raise FormError(f'Action {action_id} is deleted in XRAS or no longer listed, '
+                        'so nothing was changed.')
     xa_user, _, _ = _impersonation(_entry(request_number), live=payload)
     if not xa_user:
         raise FormError('This request has no role-holder for SAM to act as, so '
@@ -1328,8 +1336,8 @@ def _find_resource(payload, action_id, resource_id, stage):
     line yet (the add case).
     """
     stage_row = any_row = None
-    for action in (payload.get('actions') or ()):
-        if not isinstance(action, dict) or action.get('actionId') != action_id:
+    for action in live_actions(payload):
+        if action.get('actionId') != action_id:
             continue
         for res in (action.get('resources') or ()):
             if not isinstance(res, dict) or res.get('resourceId') != resource_id:
@@ -1418,7 +1426,8 @@ class _XrasResourceAmountHandler(_XrasRemediationHandler):
         if self.stage != 'Requested' and not xras_admin_context_available():
             raise FormError('Editing the awarded amount needs an elevated XRAS '
                             'key, which this deployment does not have yet.')
-        self._request_id, self._xa_user = _editor_target(self.request_number)
+        self._request_id, self._xa_user = _editor_target(self.request_number,
+                                                         self.action_id)
         return data
 
     def perform(self, data):
@@ -1465,7 +1474,7 @@ def xras_resource_remove(request_number: str, action_id: int,
     rows, and the service refuses anything else structurally (submit context).
     """
     try:
-        request_id, xa_user = _editor_target(request_number)
+        request_id, xa_user = _editor_target(request_number, action_id)
     except FormError as exc:
         return _render_detail(request_number, flash_error=str(exc))
 
@@ -1494,8 +1503,8 @@ def _dates_form_context(request_number, action_id, allocation_date_id=None):
     if payload is None:
         return None
     target = None
-    for action in (payload.get('actions') or ()):
-        if isinstance(action, dict) and action.get('actionId') == action_id:
+    for action in live_actions(payload):
+        if action.get('actionId') == action_id:
             for d in (action.get('allocationDates') or ()):
                 if isinstance(d, dict) \
                         and d.get('allocationDateId') == allocation_date_id:
@@ -1554,7 +1563,7 @@ class _XrasActionDatesHandler(_XrasRemediationHandler):
     success_message = 'Allocation dates updated in XRAS.'
 
     def clean(self, data):
-        self._request_id, self._xa_user = _editor_target(self.request_number)
+        self._request_id, self._xa_user = _editor_target(self.request_number, self.action_id)
         return data
 
     def perform(self, data):
@@ -1603,7 +1612,7 @@ def xras_dates_remove(request_number: str, action_id: int,
                       allocation_date_id: int):
     """Delete one allocation-date range. Bodiless; confirmed with hx-confirm."""
     try:
-        request_id, xa_user = _editor_target(request_number)
+        request_id, xa_user = _editor_target(request_number, action_id)
     except FormError as exc:
         return _render_detail(request_number, flash_error=str(exc))
 
@@ -1719,9 +1728,7 @@ def _action_fields_form_context(request_number, action_id):
     payload = _live_request(request_number)
     if payload is None:
         return None
-    action = next((a for a in (payload.get('actions') or ())
-                   if isinstance(a, dict) and a.get('actionId') == action_id),
-                  None)
+    action = _live_action(payload, action_id)
     if action is None:
         return {'_missing': True}
     return {
@@ -1766,7 +1773,7 @@ def xras_action_fields_form(request_number: str, action_id: int):
         return _not_found('Request')
     if context.get('_missing'):
         return _degraded(
-            f'XRAS no longer lists action {action_id} on {request_number}.',
+            f'Action {action_id} on {request_number} is deleted in XRAS or no longer listed.',
             title='Action not found')
     return render_template(_ACTION_FIELDS_FORM, **context)
 
@@ -1779,7 +1786,7 @@ class _XrasActionFieldsHandler(_XrasRemediationHandler):
     success_message = 'Action fields updated in XRAS.'
 
     def clean(self, data):
-        self._request_id, self._xa_user = _editor_target(self.request_number)
+        self._request_id, self._xa_user = _editor_target(self.request_number, self.action_id)
         return data
 
     def perform(self, data):

@@ -1703,6 +1703,51 @@ class TestFosNameResolution:
 
 # the request editor (Part B)
 
+def _with_deleted_action():
+    """Action 7 soft-deleted (still listed, isDeleted) beside a live action 8, as XRAS keeps an abort."""
+    payload = _detail_payload()
+    payload['actions'][0]['isDeleted'] = True
+    payload['actions'][0]['actionStatus'] = 'Incomplete'
+    payload['actions'].append({'actionId': 8, 'actionType': 'New',
+                               'actionStatus': 'Approved'})
+    return payload
+
+
+class TestASoftDeletedActionIsNotWritable:
+    """XRAS-dev, 2026-10-14: a soft-deleted action takes resource, comment and date writes,
+    validates and submits, and the admin app then 404s it. SAM is the only guard."""
+
+    def test_the_detail_modal_offers_no_editor_on_it(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_with_deleted_action())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'xras_dates_form/EXAM0001/7' not in body
+        assert 'xras_resource_remove/EXAM0001/7/' not in body
+
+    @pytest.mark.parametrize('form', ['xras_withdraw_form', 'xras_resubmit_form'])
+    def test_the_action_modals_refuse_it(self, auth_client, armed, monkeypatch, form):
+        _reader(monkeypatch, payload=_with_deleted_action())
+        body = auth_client.get(f'/allocations/{form}/EXAM0001/7').get_data(as_text=True)
+        assert 'deleted in XRAS' in body
+
+    @pytest.mark.parametrize('url, data', [
+        ('/allocations/xras_resource_edit/EXAM0001/7/530201',
+         {'amount': '20', 'stage': 'Requested'}),
+        ('/allocations/xras_dates_edit/EXAM0001/7',
+         {'begin_date': '2026-01-01', 'end_date': '2026-12-31'}),
+        ('/allocations/xras_action_fields_edit/EXAM0001/7', {'user_comments': 'x'}),
+    ])
+    def test_a_write_to_it_is_refused_before_xras(self, auth_client, armed, monkeypatch,
+                                                  url, data):
+        from sam.manage import xras_remediation
+        for op in ('update_resource_amount', 'set_action_dates', 'update_action'):
+            monkeypatch.setattr(xras_remediation, op, MagicMock(
+                side_effect=AssertionError(f'{op} reached for a deleted action')))
+        _reader(monkeypatch, payload=_with_deleted_action())
+        body = auth_client.post(url, data=data).get_data(as_text=True)
+        assert 'deleted in XRAS' in body
+
+
 class TestTheEditors:
     """The amount/date editors: forms render, validation bites, the lever and
     the admin-context ceiling both refuse. Write happy-paths live at the
