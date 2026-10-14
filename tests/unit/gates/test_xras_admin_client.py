@@ -120,6 +120,10 @@ class _FakeReader:
         return (line_by_id(family, request_id) if request_id is not None
                 else primary_line(family))
 
+    def get_request_by_id(self, request_id):
+        payload = self._next()
+        return payload[0] if isinstance(payload, list) else payload
+
 
 def _client(monkeypatch, responses, *, reader=None, **config_kwargs):
     config = XrasApiConfig(enabled=True, write_enabled=True,
@@ -720,6 +724,44 @@ class TestResourceAndDateVerbs:
             900001, 7, 9, request_number='EXAM0001', xa_user='pi-user')
         assert client.session.request.call_args[0][0] == 'DELETE'
         assert result.verified is True
+
+
+class TestRenameRequest:
+    """The rename verifies by requestId: by number, the old one stops resolving."""
+
+    def test_puts_the_new_number_and_verifies_by_id(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(_reports_request(number='UXYZ0001')))
+        result = client.rename_request(900001, old_number='NCAR0001',
+                                       new_number='UXYZ0001', xa_user='pi-user')
+        assert result.verified is True and result.operation == 'rename_request'
+        method, url = client.session.request.call_args[0]
+        _, kwargs = client.session.request.call_args
+        assert method == 'PUT' and url.endswith('/requests/900001/attributes')
+        assert kwargs['params'] == {'requestNumber': 'UXYZ0001'}
+        assert kwargs['headers'] == {'XA-USER': 'pi-user'}
+        assert result.before == {'requestNumber': 'NCAR0001'}
+        assert result.after == {'requestNumber': 'UXYZ0001'}
+
+    def test_a_number_that_did_not_change_is_unverified(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(_reports_request(number='NCAR0001')))
+        result = client.rename_request(900001, old_number='NCAR0001',
+                                       new_number='UXYZ0001', xa_user='pi-user')
+        assert result.verified is False and result.status == 'unverified'
+
+    def test_a_failed_verify_read_is_unknown_not_failed(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(XrasSourceUnavailable('down')))
+        result = client.rename_request(900001, old_number='NCAR0001',
+                                       new_number='UXYZ0001', xa_user='pi-user')
+        assert result.verified is None and 'verify read failed' in result.verify_detail
+
+    def test_a_refusal_raises(self, monkeypatch):
+        client = _client(monkeypatch, [_response(401, message='no role')])
+        with pytest.raises(XrasWriteRejected):
+            client.rename_request(900001, old_number='NCAR0001',
+                                  new_number='UXYZ0001', xa_user='nobody')
 
 
 class TestMetadataVerbs:

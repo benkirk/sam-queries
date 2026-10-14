@@ -621,7 +621,12 @@ XRAS_REMEDIATION_OPERATIONS = (
     'delete_request',          # delete a whole request
     'renew_request',           # spawn a renewal
     'add_action',              # add an action to a request
+    # SAM's own step after a New lands (XRAS_CLOSED_LOOP.md): NCAR#### -> projcode.
+    'rename_request',
 )
+
+#: The only operations a ``task:`` operator may open: the rename's backstop task.
+TASK_WRITABLE_OPERATIONS = ('rename_request',)
 
 #: ``xras_remediation_event.status``. Five values, and the distinctions matter:
 #:
@@ -786,9 +791,9 @@ class XrasRemediationEvent(Base, SessionMixin):
 
         Raises:
             ValueError: unknown *operation* or *status*, or a ``task:``
-                operator. The last one is not hypothetical bookkeeping — it is
-                the assertion that nothing in ``src/scheduling/`` may ever write
-                to XRAS, made where a row would have to be created to do so.
+                operator on anything but :data:`TASK_WRITABLE_OPERATIONS` — the
+                assertion that ``src/scheduling/`` writes nothing else to XRAS,
+                made where a row would have to be created to do so.
         """
         if operation not in XRAS_REMEDIATION_OPERATIONS:
             raise ValueError(
@@ -798,10 +803,11 @@ class XrasRemediationEvent(Base, SessionMixin):
             raise ValueError(
                 f"unknown xras_remediation_event.status {status!r}; "
                 f"expected one of {', '.join(XRAS_REMEDIATION_STATUSES)}")
-        if str(created_by).startswith('task:'):
+        if (str(created_by).startswith('task:')
+                and operation not in TASK_WRITABLE_OPERATIONS):
             raise ValueError(
-                'XRAS remediations are operator actions; a scheduled task may '
-                f'never write one (created_by={created_by!r})')
+                f'a scheduled task may not open {operation!r}; only '
+                f"{', '.join(TASK_WRITABLE_OPERATIONS)} (created_by={created_by!r})")
 
         event = cls(
             operation=operation,

@@ -166,7 +166,8 @@ def _client(client=None):
 # cache coherence
 
 def _refresh_index_entry(request_number: str, *, reader=None,
-                         session_factory=None) -> bool:
+                         session_factory=None, index_key: Optional[str] = None,
+                         pending_push: Optional[bool] = None) -> bool:
     """Re-read one request and patch its snapshot entry. ``True`` if patched.
 
     With *session_factory* the preflight is re-run too. Without it the entry
@@ -184,6 +185,9 @@ def _refresh_index_entry(request_number: str, *, reader=None,
     must see what their click did; a row that silently vanishes reads as a bug
     and invites a second click.
 
+    *index_key* patches the row stored under another number: a rename reads the
+    family by its new number and replaces the row keyed by the old one.
+
     Never raises. Every caller reaches here having already completed and
     recorded an irreversible write.
     """
@@ -197,23 +201,25 @@ def _refresh_index_entry(request_number: str, *, reader=None,
         reader = reader or XrasApiClient.from_environment()
         # The family, not get_request_line: the same one fetch, and the card's
         # document count spans every line.
+        key = index_key or request_number
         family = live_lines(reader.get_request_family_by_number(request_number))
         payload = primary_line(family)
         if payload is None:
             # XRAS no longer knows this number, or every line is deleted. Dropping
             # the row is right here: nothing to render, nothing left to act on.
-            return patch_requests_index(request_number, None)
+            return patch_requests_index(key, None)
 
         verdicts = None
         if session_factory is not None:
             with session_factory() as session:
                 verdicts, _ = _preflight_verdicts(reader, session, payload)
-        entry = request_index_entry(payload, pending_push=_still_pending(request_number),
+        pending = _still_pending(key) if pending_push is None else pending_push
+        entry = request_index_entry(payload, pending_push=pending,
                                     refreshed_at=datetime.now(), preflights=verdicts,
                                     family=family)
         if entry is None:
             return False
-        return patch_requests_index(request_number, entry)
+        return patch_requests_index(key, entry)
     except Exception as exc:                            # noqa: BLE001
         logger.warning('xras remediation: could not refresh the card entry '
                        'for %s (%s); it will lag until the next sweep',
@@ -539,7 +545,7 @@ def change_role(session_factory, *, add, request_number, request_id, username,
 # the request editor (Part B): resources & allocation dates
 
 def _editor_op(operation, session_factory, dispatch, *, open_fields,
-               request_number, client=None, close_extra=None
+               request_number, client=None, close_extra=None, refresh=None
                ) -> RemediationOutcome:
     """Shared open->dispatch->close->patch body for **every** remediation verb.
 
@@ -549,7 +555,7 @@ def _editor_op(operation, session_factory, dispatch, *, open_fields,
     client call, ``open_fields`` are the columns the ``attempted`` row carries,
     and the optional ``close_extra(result) -> dict`` contributes extra columns
     to the success close (``add_role`` uses it to record the ``roleId`` XRAS
-    only assigns at completion).
+    only assigns at completion). ``refresh()`` replaces the card patch (the rename's).
 
     Also the body behind ``_action_op`` (withdraw/re-submit) and ``change_role``
     (add/remove role) — they were three copies of this skeleton until they were
@@ -576,8 +582,12 @@ def _editor_op(operation, session_factory, dispatch, *, open_fields,
 
     extra = close_extra(result) if close_extra else {}
     _close_event(session_factory, event_id, **extra, **_outcome_fields(result))
-    patched = (_refresh_index_entry(request_number, session_factory=session_factory)
-               if result.succeeded else True)
+    if not result.succeeded:
+        patched = True
+    elif refresh is not None:
+        patched = refresh()
+    else:
+        patched = _refresh_index_entry(request_number, session_factory=session_factory)
     return RemediationOutcome(event_id, result=result, status=result.status,
                               patched=patched)
 
@@ -750,3 +760,76 @@ def add_action(session_factory, *, request_number, request_id, action_type,
                          request_number=request_number, request_id=request_id,
                          comment=comment),
         request_number=request_number, client=client)
+
+
+# SAM's own rename after a New lands (docs/plans/XRAS_CLOSED_LOOP.md)
+
+#: :func:`rename_request` statuses meaning the line now answers the new number.
+RENAME_DONE = ('verified', 'already_renamed')
+
+
+def _rename_identity(line) -> Optional[str]:
+    """The PI, else the Allocation Manager: the role holders a rename may act as."""
+    from sam.queries.xras_requests import (ADMIN_ROLE_TYPE_ID, resolve_pi, resolve_role,
+                                           roster_from_payload)
+    roster = roster_from_payload(line or {})
+    return resolve_pi(roster) or (resolve_role(roster, ADMIN_ROLE_TYPE_ID) or {}).get('username')
+
+
+def _rekey_overrides(session_factory, old_number, new_number) -> None:
+    """Move the request's ingest overrides to its new number; never raises."""
+    from sam.integration.xras import XrasRequestOverride
+    try:
+        with session_factory() as session:
+            moved, collided = XrasRequestOverride.rekey(
+                session, old_number=old_number, new_number=new_number)
+            session.commit()
+        if collided:
+            logger.warning('xras rename %s -> %s: %s overrides left on %s; the new '
+                           'number already holds that kind', old_number, new_number,
+                           ', '.join(collided), old_number)
+    except Exception:                                   # noqa: BLE001
+        logger.exception('xras rename %s -> %s: could not move its overrides',
+                         old_number, new_number)
+
+
+def rename_request(session_factory, *, request_id, old_number, new_number, operator,
+                   client=None) -> RemediationOutcome:
+    """Rename one request line *old_number* -> *new_number* as its PI, audited.
+
+    Reads the line by id first, so a line already renamed (the route and the task
+    can both reach it) costs no write, and one answering a third number is left alone.
+    """
+    from sam.integration.xras_api.base import XrasSourceUnavailable
+
+    admin = _client(client)
+    try:
+        line = admin.reader.get_request_by_id(request_id)
+    except XrasSourceUnavailable as exc:
+        return RemediationOutcome(None, status='error', error=f'pre-read failed: {exc}')
+    current = (line or {}).get('requestNumber')
+    if current == new_number:
+        _rekey_overrides(session_factory, old_number, new_number)
+        return RemediationOutcome(None, status='already_renamed')
+    if current != old_number:
+        return RemediationOutcome(None, status='skipped', error=(
+            f'requestId {request_id} answers {current!r}, not {old_number!r}'))
+    xa_user = _rename_identity(line)
+    if xa_user is None:
+        return RemediationOutcome(None, status='no_role_holder', error=(
+            f'requestId {request_id} has no PI or Allocation Manager to act as'))
+
+    outcome = _editor_op(
+        'rename_request', session_factory,
+        lambda a: a.rename_request(request_id, old_number=old_number,
+                                   new_number=new_number, xa_user=xa_user),
+        open_fields=dict(created_by=operator, xa_user=xa_user,
+                         request_number=old_number, request_id=request_id,
+                         comment=f'rename {old_number} -> {new_number}'),
+        request_number=old_number, client=admin,
+        refresh=lambda: _refresh_index_entry(
+            new_number, session_factory=session_factory,
+            index_key=old_number, pending_push=False))
+    if outcome.succeeded:
+        _rekey_overrides(session_factory, old_number, new_number)
+    return outcome
