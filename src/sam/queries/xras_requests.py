@@ -414,8 +414,8 @@ def primary_line(lines: Any) -> Optional[Dict[str, Any]]:
     ``requestId``); the one with the highest ``actionId`` is the current
     request. Never ``lines[0]``: XRAS pages by descending ``requestId``, which
     is not the same order. A soft-deleted line or action can hold the family's
-    highest ``actionId``, so both are skipped; an all-deleted family still
-    answers with its newest line.
+    highest ``actionId``, so both are skipped. An all-deleted family still
+    answers with one of its lines, so the card can say it is deleted.
     """
     def _max_action(line):
         ids = [a.get('actionId') for a in live_actions(line)

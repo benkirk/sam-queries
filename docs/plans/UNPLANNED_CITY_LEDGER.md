@@ -1906,6 +1906,14 @@ are legitimate (by-id verifies, SAM-built rows), so it would ratchet noise.
   checking `isDeleted`; a processed New whose line was later deleted would be renamed. Unseen.
 - [ ] `xras_action_form.html`: the resubmit copy says a resubmit lands "Under Review"; XRAS-dev
   lands `Submitted` (`XRAS_DEV_PROBES.md` § 6.1); say "Submitted or Under Review".
+- [ ] Documents on a deleted action stay listed: `_family_documents` and `_find_document` filter
+  lines, not actions, while each action's `document_count` now counts live actions only, so the
+  two can disagree on a request with an aborted upload. Kept on purpose (the file is real);
+  cosmetic.
+- [ ] An action both submitted and deleted (the § 6.2 end state) cannot be withdrawn from SAM
+  any more, since the withdraw modal refuses deleted actions; the admin app 404s it, so it
+  blocks nothing. If one appears in production, clear it through the API as the PI:
+  `DELETE /v1/requests/<rid>/actions/<aid>/submit` under `submit`, as the probe was cleaned up.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

@@ -620,9 +620,11 @@ class TestPrimaryLine:
         assert primary_line([aborted, renewal])['requestId'] == 2
 
     def test_an_all_deleted_family_still_answers(self):
+        """A deleted line's actions are deleted too, so any line will do: it carries the alarm."""
         from sam.queries.xras_requests import primary_line
-        family = [self._line(1, 10, isDeleted=True), self._line(2, 20, isDeleted=True)]
-        assert primary_line(family)['requestId'] == 2
+        family = [self._line(1, 10, deleted_actions={10}, isDeleted=True),
+                  self._line(2, 20, deleted_actions={20}, isDeleted=True)]
+        assert primary_line(family)['requestId'] in (1, 2)
         assert primary_line([]) is None and primary_line(None) is None
 
 
