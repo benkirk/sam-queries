@@ -602,6 +602,18 @@ class TestLivePendingNumbers:
         assert live_pending_numbers(
             session, [_payload(requestNumber='ZZZZ9997', isDeleted=True)]) == set()
 
+    def test_a_pushed_new_not_yet_renamed_is_not(self, session):
+        """NCAR4086 on dev: pushed, XRAS still names it by its token until the rename."""
+        from factories import make_project, make_xras_action
+        from sam.queries.xras_requests import live_pending_numbers
+        project = make_project(session)
+        make_xras_action(session, status='processed', action_type='New',
+                         request_number='ZZZZ9995', projcode_result=project.projcode)
+        make_xras_action(session, status='failed', action_type='New',
+                         request_number='ZZZZ9994')
+        assert live_pending_numbers(session, [_payload(requestNumber='ZZZZ9995'),
+                                              _payload(requestNumber='ZZZZ9994')]) == {'ZZZZ9994'}
+
     def test_one_live_line_keeps_the_number(self, session):
         from sam.queries.xras_requests import live_pending_numbers
         assert live_pending_numbers(session, [
