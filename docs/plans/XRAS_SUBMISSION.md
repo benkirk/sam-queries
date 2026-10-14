@@ -151,7 +151,8 @@ the action existed.
 
 Four findings that shape the design:
 
-- **The `requestNumber` rewrite is neither the post nor the notify**: it is manual (§ 4.2).
+- **The `requestNumber` rewrite is neither the post nor the notify**: XRAS never does it;
+  SAM renames the line after the New lands (§ 4.6 item 3).
 - **An action filed in the gap parks.** The Extension filed from ARC 17 minutes after
   the New arrived as `requestNumber: NCAR4354` and sits `manual` as #184 (§ 4.6).
 - **The admin dashboard clears at the post**, before the notify; the rows that linger
@@ -418,7 +419,8 @@ Four changes to the handoff path, each small, in the order they land:
    repoint can still apply twice on a repost (NRAL0051 on XRAS-dev, `XRAS_DEV_PROBES.md` § 4).
 2. **Resolve the project from SAM's own log, not from XRAS's rewrite: built**
    (`resolve_project`, `sam/xras/dispatch.py`). The three identifiers behave differently (§ 4.2):
-   `requestNumber` names the family and is rewritten only by hand, or never;
+   `requestNumber` names the family and changes once, when SAM renames it after the New
+   lands (item 3);
    `requestId` names one line and is fixed from create on, across every Extension and
    Supplement on it, and only a Renewal starts a new one; `actionId` names one action.
    The processed `New` row SAM writes at the handoff (`request_id`, `request_number` as

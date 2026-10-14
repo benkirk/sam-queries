@@ -82,9 +82,8 @@ NCAR4088 (1439539, refused 422 for its roster); sam_dev `xras_action_log` #1–#
 ### 3.2 Decisions the build has to make
 
 1. **Before or after the reply.** XRAS waits on our answer to the post, and Steve has
-   reported connect timeouts. The webapp has no after-response hook today. Measure on demo: a
-   synchronous rename before replying (adds one PUT plus two reads), against a post-response
-   hook. Whichever is chosen, the task covers a failure.
+   reported connect timeouts. Decided: after the reply, from `response.call_on_close`
+   (§ 3.5); the task covers a failure.
 2. **Lifting the write lever into the CronJob.** `XRAS_WRITE_ENABLED` is webapp-only by
    design: `helm/values.yaml` (the lever block and the live-task list),
    `helm/templates/cronjob-tasks.yaml`, and the gate
@@ -130,7 +129,12 @@ later will carry the projcode.
 2. See the rename land before any notify, and the old number stop resolving.
 3. File an Extension via the API, approve, post: `processed` under the projcode.
 4. Disable the immediate path, repeat 1–3, and see the task do the rename.
-5. Unit tests: the client verb against a fake transport; the trigger's conditions; the task's
+5. Rename onto a live family: post a `New` for a projcode XRAS already holds (routed to
+   `update`), let the rename join that family, and read what `reports/request_numbers/<projcode>`
+   and the card's primary line show for a two-New family. Unprobed: the 2026-10-13 evidence
+   (`XRAS_DEV_PROBES.md` § 5) is creates that made new families and a rename onto a number
+   whose only line was soft-deleted. Run it before the production backfill (§ 3.3).
+6. Unit tests: the client verb against a fake transport; the trigger's conditions; the task's
    selection; the gate changes.
 
 ### 3.5 What landed (branch `xras-closed-loop`)
@@ -172,7 +176,7 @@ Out of scope on the loop: the form (§ 4.1, unprototyped) and limits (§ 4.5, SA
 
 ## 5. Questions for Ben
 
-- After measuring on demo: the rename before or after the reply.
+- Decided 2026-10-13: the rename runs after the reply (§ 3.5).
 - Whether the backfill needs per-request sign-off or one approval of the list.
 - Whether Steve hears about the rename before or after the demo proof.
 - Whether scenario 6's merge on demo is wanted.
