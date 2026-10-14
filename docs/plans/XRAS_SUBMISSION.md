@@ -87,7 +87,7 @@ already uses.
 | Opportunity attributes | `PUT …/opportunity_attributes` — **JSON body** | the EUA row (§ 4.2) |
 | Documents | `POST …/documents` — **JSON with a base64 body**; `GET …/required_documents_status` | XRAS parses the bytes (a hand-written PDF is a 400, a rendered one is a 200 with `documentId`); the status endpoint names exactly the unmet rule. No multipart transport is needed |
 | Rule book | `GET /v1/allocation_types/<at>/action_types/<act>/required_fields` | `<at>` is `opportunities[].allocationTypeInfo.allocationTypeId`; tables in the probes doc § 5 |
-| Preflight, submit | `GET …/validate`; `POST …/submit` | validate names exactly the unmet rules; a first submit lands **`Submitted`** (a re-submit lands `Under Review`) and mints the number; the submit body is `null` |
+| Preflight, submit | `GET …/validate`; `POST …/submit` | validate names exactly the unmet rules; a first submit lands **`Submitted`** and mints the number (P3's production re-submit landed `Under Review`; on XRAS-dev a resubmit after Return for Corrections or a withdraw lands `Submitted`, `XRAS_DEV_PROBES.md` § 6.1); the submit body is `null` |
 
 Every step is single-attempt with verify-by-reread (`XRAS_WRITE_PROBES.md` § 4.4: a
 200 proves nothing), and the audit row is committed **before** the write leaves
@@ -102,7 +102,8 @@ types are New and Renewal only; action types carry ids (Supplement 500020, Exten
 500017, Renewal 500021, New 500019, Adjustment 500168, Date Adjustment 500334);
 allocation-date stages are Requested 1, Suggested 3, Approved 2; a request is
 `Incomplete · Submitted · Under Review · Approved · Rejected` and a rejected action is
-`Declined`. These belong in `sam/integration/xras_api/vocabulary.py`, one module,
+`Declined`. Hold Off is not a status: it is a `states[]` entry on the action, admin-only, kept
+through a return and a withdraw and cleared by a reject (`XRAS_DEV_PROBES.md` § 6.1). These belong in `sam/integration/xras_api/vocabulary.py`, one module,
 beside the role types.
 
 **The rule book is exact.** A Supplement requires **nothing**; an Extension requires

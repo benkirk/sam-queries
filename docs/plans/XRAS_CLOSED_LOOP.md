@@ -190,13 +190,20 @@ Each scenario: what to file, what to click, what SAM should record. Findings go 
 | 1 | Supplement and Extension on a renamed family as a multi-step flow, with a failure mid-flow (abort = soft-delete the action) and a resume | § 4.3, phase 1 |
 | 2 | `/renew` on UHSS0002 → approve → post → the `update` handler; what `/renew` copies; the Progress Report rule | phase 1b |
 | 3 | Operator outcomes in the admin app: Hold Off, Return for Corrections, Reject | the state mapping, § 4.2 |
-| 4 | Withdraw after submit; resubmit lands `Under Review` | § 3.1 |
+| 4 | Withdraw after submit; resubmit (lands `Submitted` on XRAS-dev, § 6.1) | § 3.1 |
 | 5 | The SAM lead absent from the XRAS line: refused with a reason, never worked around | § 4.4 |
 | 6 | A request authored by `samprobe-20261013` → post → expected 422 → merge on arrival (demo only; a merge deletes the placeholder) → repost | phase 3 |
 | 7 | A `New` posted for an existing projcode (`update`, the NRAL0051 double-apply); two posts of one action in quick succession (the in-flight guard) | § 4.6 item 1 |
 | 8 | **Does a request leave the admin queue without a notify?** Look at UHSS0002 and UCSG0004 (posted, never notified) first. Notify only if the answer needs it, on a Ben-only request, and record where the mail goes | Ben's question, 2026-10-13 |
 
 Out of scope on the loop: the form (§ 4.1, unprototyped) and limits (§ 4.5, SAM-side only).
+
+**Run 2026-10-14** (`XRAS_DEV_PROBES.md` § 6.1): 1-5, 7 and 8 done on UHSS0003 and NCAR4090;
+6 not run (it deletes the placeholder). Nothing found needs a change to #819. For the design:
+a resubmit lands `Submitted`, not `Under Review`; Hold Off is a `states[]` entry, not a status,
+and survives a return and a withdraw; a request leaves the admin queue at the post, without a
+notify; a Supplement filed after a Renewal posts lands on the renewal's future window (legacy's
+`getLatestAllocation`, `XRAS_INGEST_IMPROVEMENTS.md` candidate).
 
 ## 5. Questions for Ben
 

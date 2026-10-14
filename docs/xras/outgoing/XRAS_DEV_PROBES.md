@@ -156,6 +156,20 @@ Claude made every API call and admin-app click; Ben signed in (2FA). Nothing was
 (the first line); "Merge request with another" moves the line under an existing number (a
 sibling). Any admin can still use it, unseen by SAM (`UNPLANNED_CITY_LEDGER.md` entry 26).
 
+### 6.1 Track 2 on the same bed (2026-10-14, `XRAS_CLOSED_LOOP.md` § 4)
+
+Every request benkirk-only; no Notify pressed. Scenario 6 (the placeholder merge) not run.
+
+| # | Done | Observed |
+|---|---|---|
+| 7 | New 1439573 / 372887 created **into** family UHSS0003 (`requestType=New&requestNumber=UHSS0003`); submit keeps the number (no `NCAR` mint). Approved, then **double-clicked** Post | Both clicks post, 0.45 s apart: #15 and #16 `update`, `failed` 422, "Action end date before existing allocation end date for Derecho" (UHSS0003 ran to 2028-03-31), shown verbatim in the admin app. Reset, re-approved with dates to 2028-10-31, double-clicked again: **#17 `update` processed** (Derecho extended to 2028-10-31, supplemented +2 → 3; replay 1+2 = 3), **#18 `duplicate` 422** "already applied by an earlier post (SAM #17)" 0.4 s later. The first post took 66 ms, so the in-flight branch (a first post still running) was not reached |
+| 2 | Renewal line 1439572 (from § 6) completed | `/renew` copies roster, title, keywords, fos; not abstract, resources, dates, EUA, documents. Exploratory's renewal needs an Advisor Letter, no Progress Report; dates not required. Posted: **#19 `update`**, a new Derecho allocation 2028-11-01 → 2029-10-31 (4) after the current one; no rename (number = projcode) |
+| 8 | dashboard read after the posts | **A posted request leaves the admin queue without a notify**: none of UHSS0002, UHSS0003 (New, Extension, Renewal) or UCSG0004 is listed; Exploratory "pending" 3 → 2. NCAR4088 (approved, post refused) stays |
+| 3 | NCAR4090 (1439574 / 372888): Hold Off, Return for Corrections, Reject | **Hold Off** is admin-only ("Visible in XRAS Admin only"): status stays `Submitted`, only `states[]` gains `Hold Off`. **Return for Corrections**: request and action `Incomplete`, `returnedForCorrections: true`, the comment in `adminComments`, `Hold Off` kept. **Reject**: request `Rejected`, action `Declined`, `Hold Off` cleared |
+| 4 | on NCAR4090 after the return: resubmit; withdraw (`DELETE …/submit`); submit | resubmit → **`Submitted`** (not `Under Review`, as production probe P3's re-submit was); withdraw → `Incomplete`; submit → `Submitted`. `Hold Off` survives all three |
+| 1 | Supplement 372889 on UHSS0003, resource set, validate, then aborted (`DELETE`); fresh Supplement 372890, submitted, approved, posted | the aborted action is kept `isDeleted: true`; a Supplement validates without user comments (an Extension does not). **#20 `supplement`** processed, but onto the **renewal's future window** (2028-11 → 2029-10, 4 → 9), not the current one: `latest_allocation` is legacy's max-end-date rule. A Supplement filed after a Renewal posts lands there |
+| 5 | `PUT …/attributes` and `GET /v1/requests/1439571` as `samprobe-20261013` (no role on the line) | 401 on both; nothing changed |
+
 ## 7. Open, and what unblocks it
 
 | Open | Blocked on |
@@ -173,6 +187,7 @@ sibling). Any admin can still use it, unseen by SAM (`UNPLANNED_CITY_LEDGER.md` 
 | 1439538, 1439540–42, 1439544–48 | soft-deleted drafts (1439545 is the renewal line; 1439547 and 1439548 the `requestNumber` probes) |
 | person `samprobe-20261013` | `isReconciled: false`, no roles |
 | 1439308 / **UCSG0004** (minted as NCAR4086, renamed by `xras_rename` 2026-10-14) | Approved, posted, not notified; SAM project UCSG0004 (active) |
-| 1439571 + 1439572 / **UHSS0003** (minted as NCAR4089) | New 372884 and Extension 372886 approved and posted (#13, #14), not notified; Renewal line 1439572 Incomplete, joined to the family by `xras_rename` |
-| samuel-dev | UCSG0004 (active), UHSS0002 and UHSS0003 (inactive); `xras_action_log` #1–#14; `xras_remediation_event` #1–#3 (renames); NRAL0051 inflated by #4; UHSS0002 Derecho ends 2028-03-31 |
+| 1439571 + 1439572 + 1439573 / **UHSS0003** (minted as NCAR4089) | New 372884, Extension 372886, Supplement 372890 (372889 soft-deleted) on 1439571; Renewal 372885 on 1439572 (joined by `xras_rename`); New 372887 on 1439573; all approved and posted (#13, #14, #17, #19, #20), none notified |
+| 1439574 / NCAR4090 | Rejected (action Declined) after Hold Off, Return for Corrections, resubmit, withdraw |
+| samuel-dev | UCSG0004 (active), UHSS0002 and UHSS0003 (inactive); `xras_action_log` #1–#20; `xras_remediation_event` #1–#3 (renames); NRAL0051 inflated by #4; UHSS0002 Derecho ends 2028-03-31; UHSS0003 Derecho 3 to 2028-10-31 and 9 for 2028-11 → 2029-10 |
 | NRAL0051 (1436558) | Approved, posted, not notified; sam_dev allocations inflated by the repeat |
