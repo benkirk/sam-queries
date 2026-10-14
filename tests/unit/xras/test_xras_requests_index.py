@@ -286,6 +286,19 @@ class TestTheOffers:
                                      'actionStatus': 'Under Review'}])
         assert actions_from_payload(payload)[0]['can_withdraw'] is True
 
+    def test_a_soft_deleted_action_offers_nothing_and_is_not_the_latest(self):
+        """An aborted action keeps its Incomplete status; it must not draw Resubmit or name the request."""
+        from sam.queries.xras_accounts import report_activity_date
+        payload = _payload(actions=[
+            {'actionId': 7, 'actionType': 'New', 'actionStatus': 'Approved',
+             'entryDate': '2026-09-01'},
+            {'actionId': 9, 'actionType': 'Supplement', 'isDeleted': True,
+             'actionStatus': DRAFT_ACTION_STATUS, 'entryDate': '2026-10-14'}])
+        actions = actions_from_payload(payload)
+        assert [a['action_id'] for a in actions] == [7]
+        assert latest_action_type(actions) == 'New'
+        assert report_activity_date(payload) == date(2026, 9, 1)
+
 
 class TestTheEntry:
 

@@ -445,6 +445,12 @@ def role_in_window(role: dict, *, on: Optional[str] = None) -> bool:
     return not (end and end < today)
 
 
+def live_actions(line: Mapping[str, Any]) -> List[dict]:
+    """The actions on a request line that XRAS has not soft-deleted (an aborted action stays listed)."""
+    return [a for a in (line.get('actions') or ())
+            if isinstance(a, dict) and not a.get('isDeleted')]
+
+
 def _report_action_type(payload: dict) -> Optional[str]:
     """The request's representative ``actionType`` — never ``requestType``.
 
@@ -453,8 +459,8 @@ def _report_action_type(payload: dict) -> Optional[str]:
     action. A request usually carries one action; take the first that names a
     type, falling back to ``requestType`` only when none do.
     """
-    for action in payload.get('actions') or ():
-        if isinstance(action, dict) and action.get('actionType'):
+    for action in live_actions(payload):
+        if action.get('actionType'):
             return action.get('actionType')
     return payload.get('requestType')
 
@@ -467,8 +473,7 @@ def report_entry_date(action: dict) -> Optional[date]:
 
 def report_activity_date(payload: dict) -> Optional[date]:
     """The latest action recency on a report request, else the request's ``submitDate``."""
-    dates = [d for a in payload.get('actions') or () if isinstance(a, dict)
-             for d in (report_entry_date(a),) if d]
+    dates = [d for a in live_actions(payload) for d in (report_entry_date(a),) if d]
     return max(dates) if dates else parse_wire_date(payload.get('submitDate'))
 
 
