@@ -1,7 +1,8 @@
 # XRAS closed loop: SAMuel renames requests, then the submission plan under load
 
-**Status: Track 1 built on branch `xras-closed-loop` (2026-10-13), pending the XRAS-dev proof
-(§ 3.4) and the production backfill (§ 3.3); Track 2 not started.** What landed and what was
+**Status: Track 1 built (#819) and proven on XRAS-dev 2026-10-14 (§ 3.4, record in
+`XRAS_DEV_PROBES.md` § 6), including the live-family join; production backfill (§ 3.3) and the
+`XRAS_RENAME_ENABLED` flip pending; Track 2 not started.** What landed and what was
 decided: § 3.5. Written 2026-10-13 at the end of the session recorded in
 [`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md). Two tracks on one test bed:
 **Track 1** builds the projcode rename in SAMuel and backfills production; **Track 2**
@@ -63,7 +64,7 @@ Ground rules, from what went right and wrong on 2026-10-13:
   production. Never carry a demo number into a production read.
 - Production database reads need Ben's say-so in the session (auto mode refused one).
 
-State to start from (details in `XRAS_DEV_PROBES.md` § 7): **UHSS0002** = request 1439543,
+State to start from (details in `XRAS_DEV_PROBES.md` § 8): **UHSS0002** = request 1439543,
 renamed, Extension 372866 applied; NCAR4086 → UCSG0004 (1439308, kyledavis's, not renamed);
 NCAR4088 (1439539, refused 422 for its roster); sam_dev `xras_action_log` #1–#12.
 
@@ -127,6 +128,9 @@ later will carry the projcode.
 
 ### 3.4 Proving it on the loop
 
+**Done 2026-10-14** (`XRAS_DEV_PROBES.md` § 6): steps 1-5 on NCAR4089 → UHSS0003, the route's
+rename 1.77 s after the reply, the task's on NCAR4086 and on the renewal sibling.
+
 1. Submit a benkirk-only `New` via the API; approve and post it through Playwright.
 2. See the rename land before any notify, and the old number stop resolving.
 3. File an Extension via the API, approve, post: `processed` under the projcode.
@@ -137,10 +141,9 @@ later will carry the projcode.
    (`NCARn`), spawn a renewal line on it (`POST …/requests/<rid>/renew`) **before** posting,
    then post the `New`: the route renames line 1 to `P`, and the `xras_rename` task's sibling
    pass renames the renewal line onto the now-live family `P`. Read
-   `reports/request_numbers/P` and the card's primary line. Unprobed: the 2026-10-13 evidence
-   (`XRAS_DEV_PROBES.md` § 5) is creates that made new families and a rename onto a number
-   whose only line was soft-deleted. Production families with a renewal hit this in the
-   backfill, so run it first (§ 3.3).
+   `reports/request_numbers/P` and the card's primary line. Proven 2026-10-14: UHSS0003 holds
+   both lines, `NCAR4089` answers nothing, and the primary line stays the New
+   (`XRAS_DEV_PROBES.md` § 6).
 6. Unit tests: the client verb against a fake transport; the trigger's conditions; the task's
    selection; the gate changes.
 

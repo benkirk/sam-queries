@@ -449,7 +449,7 @@ Four changes to the handoff path, each small, in the order they land:
    audited in `xras_remediation_event`, and verified by re-reading the line **by id**
    (`reports/requests/<rid>`). A second line still under the `NCAR####` token (a Renewal
    filed before the rename) is renamed onto the projcode's now-live family by the task, which
-   is the intended grouping, and is unprobed (`XRAS_CLOSED_LOOP.md` § 3.4 step 5). A `New`
+   is the intended grouping, proven on XRAS-dev 2026-10-14 (`XRAS_CLOSED_LOOP.md` § 3.4). A `New`
    routed to `update` already carries the projcode and is not renamed. The route's rename is
    behind its own lever, `XRAS_RENAME_ENABLED`, off in production. Rules 2 and 3 of item 2
    stay, for the window before the rename and for actions parked earlier.
