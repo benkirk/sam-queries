@@ -1,8 +1,8 @@
 # XRAS closed loop: SAMuel renames requests, then the submission plan under load
 
-**Status: Track 1 built (#819) and proven on XRAS-dev 2026-10-14 (§ 3.4, record in
-`XRAS_DEV_PROBES.md` § 6), including the live-family join; production backfill (§ 3.3) and the
-`XRAS_RENAME_ENABLED` flip pending; Track 2 run 2026-10-14 except scenario 6 (§ 4).** What
+**Status: Track 1 built (#819), proven on XRAS-dev and backfilled in production 2026-10-14
+(§ 3.3); the lever flip enabling it in production follows the backfill. Track 2 run 2026-10-14
+except scenario 6 (§ 4), which moves to phase D.** What
 landed and what was decided: § 3.5. The wider goal this is phase A of:
 [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md). Written 2026-10-13 at the end of the session recorded in
 [`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md). Two tracks on one test bed:
@@ -115,11 +115,16 @@ SAM_TASKS_XRAS_RENAME_SINCE=2026-08-24 SAM_TASKS_DISABLED= \
 # 3. apply: the same, without --dry-run and with XRAS_WRITE_ENABLED=1 for that run only
 ```
 
-Enabling the task on production afterwards is a values change: drop `xras_rename` from
-`SAM_TASKS_DISABLED`, add `XRAS_WRITE_ENABLED` to production's `tasks.env`, and edit
-`test_the_tasks_env_never_arms_writes`, which pins its absence. The route's after-reply rename
-is separate: flip `XRAS_RENAME_ENABLED` to `"1"` in `values.yaml` and edit
-`test_the_after_reply_rename_ships_off`, once the dev proof is done and Steve has heard.
+**Applied 2026-10-14 18:03Z** from a workstation: the dry run listed exactly the five
+below, and the apply verified all five (`xras_remediation_event` 13-17, `created_by`
+`task:xras_rename`, each read back from XRAS); the other 68 read `already_renamed`. Ben judged
+five lines too small to need a heads-up to Steve.
+
+Enabling the task on production is then a values change: drop `xras_rename` from
+`SAM_TASKS_DISABLED`, add `XRAS_WRITE_ENABLED` to production's `tasks.env`, and flip
+`XRAS_RENAME_ENABLED` to `"1"` for the route's after-reply rename. The gates that pin each
+value (`test_xras_admin_client.py`, `test_task_xras_rename.py`, `test-dev-render.sh`) change
+with it.
 
 A dry-run report first: every production `processed` `New` since 2026-08-24 whose XRAS line
 still answers its placeholder. Ben approves the list, then apply. Tell Steve before the first
