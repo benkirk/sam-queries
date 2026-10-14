@@ -31,8 +31,12 @@ them.
 
 The New handler already accumulates every blocker into one error list before it answers
 (`sam/xras/handlers/new.py`: the roster, area of interest, allocation type, mnemonic,
-contracts, then dates and each resource, all append to `self.errors`). A 422 from a New is therefore the complete checklist
-for that request at that moment, and it is the ticket's source of truth.
+contracts, then dates and each resource, all append to `self.errors`). A 422 from a New is
+therefore the checklist for that request at that moment, and it is the ticket's source of
+truth. It is complete only for what could be checked: a step whose input failed is skipped
+(no PI resolved leaves only "Could not produce affiliation data"; a resource, amount or date
+error skips that resource's window check, `new.py` `_plan_allocations`), so clearing one
+blocker can reveal another on the next post. The comment-on-change rule (§ 4) carries that.
 
 So:
 
@@ -119,9 +123,10 @@ when a newer action lands on another line, so the key is the stored id, never on
 rename (`XRAS_CLOSED_LOOP.md` § 3), so it is never the key.
 
 `xras_action_log` is the record: a processed row for the request (`request_number` as pushed,
-`projcode_result`) is the landed push. The same test belongs in `live_pending_numbers`
-(`sam/queries/xras_requests.py`), which today is a set difference against `project.projcode`
-only and reads a pushed-but-not-renamed request as pending.
+`projcode_result`) is the landed push. `live_pending_numbers` (`sam/queries/xras_requests.py`)
+already subtracts `pushed_request_numbers`, matched on the number as pushed; it lacks the
+`request_id` rule of `resolve_project`, so a line whose number changed between approval and
+push is the one case it still reads as pending.
 
 ## 8. An approval nobody posts
 
@@ -137,8 +142,8 @@ the operator's next step is the post, and the post opens the ticket if one is ne
    resolve" in the action log's outcome, with `JIRA_XRAS_REQUEST_*` unset.
 2. **Dev, filing** against the RC project with a label and immediate cancel, the way
    RC-40275/40276 were smoked. Work the blocked-New scenarios on the bed
-   (`XRAS_CLOSED_LOOP.md` § 4), including Scenario 6, the placeholder merge, which nobody has
-   run end to end.
+   (`XRAS_CLOSED_LOOP.md` § 4). Scenario 6, the placeholder merge, ran 2026-10-14
+   (`XRAS_DEV_PROBES.md` § 6.1): the four-error 422, the merge, the repost that applied.
 3. **Prod** with the lever.
 
 Probes on samuel-dev against XRAS-dev, 2026-10-13
