@@ -447,6 +447,7 @@ Four changes to the handoff path, each small, in the order they land:
    an XRAS family (a `New` routed to `update`), the rename joins that family, which is the
    intended grouping. Backfill the production placeholders the manual step missed. Rules 2 and
    3 of item 2 stay, for the window before the task runs and for actions parked earlier.
+   Handoff and decisions: [`XRAS_CLOSED_LOOP.md`](XRAS_CLOSED_LOOP.md).
 4. **The `New` handler's consult point** (phase 2): the top of `NewHandler.assemble`
    (`sam/xras/handlers/new.py`), keyed on the payload's `requestId`, pre-setting the
    mnemonic, allocation type, contracts and area of interest from the stored FKs with
@@ -523,6 +524,7 @@ What landed:
 | [`PROJECT_AND_ACCOUNT_LIFECYCLE.md`](../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md) | where a project comes from; SAM never originates users |
 | [`XRAS_TRIAGE_PLAYBOOK.md`](../xras/incoming/XRAS_TRIAGE_PLAYBOOK.md) | the 422 catalog § 1 answers |
 | [`XRAS_PUSH_READINESS.md`](implemented/XRAS_PUSH_READINESS.md) | the preflight engine reused as the pre-submit check |
+| [`XRAS_CLOSED_LOOP.md`](XRAS_CLOSED_LOOP.md) | handoff: SAMuel renames requests (§ 4.6 item 3), and the stress tests of this plan on the demo loop |
 | [`XRAS_INGEST_IMPROVEMENTS.md`](XRAS_INGEST_IMPROVEMENTS.md) | where the idempotency guard and the `select_service` fallback of § 4.6 land |
 | [`XRAS_ACCOUNT_QUEUE.md`](XRAS_ACCOUNT_QUEUE.md) | the Pending Users queue the registration product generalizes |
 | `https://api.xras.org/apidoc.html` | the index (86 endpoints; the same URL without `.html` is a 404 decoy); detail pages are static under `https://api.xras.org/apidoc/1.0/`, plain `curl`, and their examples are XSEDE's, so every id is read live for NCAR |
