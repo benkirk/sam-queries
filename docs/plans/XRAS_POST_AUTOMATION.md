@@ -26,7 +26,7 @@ new projcode into XRAS's "Edit Request Number", and sending the notification fro
 | Notify, extend/supplement/adjust/update | built: the `xras_notices` task (1-day delay), disabled in production | soak; XRAS's own notify mail | C |
 | Contracts | 422 with a seeded create form (Admin → Contracts), or the `ignore_contract` override | `contract.principal_investigator_user_id` is NOT NULL and SAM never creates a user; award lookup is NSF-only (`sam/integration/awards`) | E |
 | Users absent or inactive, ARC placeholders | the sweep files `account_request` rows (live); no ticket for them | users come only from IGA and the LDAP sync; the ticket a blocked post opens is unbuilt | D |
-| XRAS's own notify mail | on | an XRAS process setting (Steve) | C (cutover blocker) |
+| XRAS's own notify mail | on | the Action Approved rules on the NCAR process's notification templates, which we own (§ 3, C) | C (cutover step) |
 
 ## 3. Phases
 
@@ -45,15 +45,37 @@ off, dev on), in the handler or the after-reply hook beside the rename, recordin
 unattended exception to `can_edit_project_governance` (`implemented/XRAS_AUTO_NOTICES.md`,
 "Phase 2 (later)").
 
-**C. Notifications on post.** Blocked on turning off XRAS's own notify mail, which would
-otherwise reach the PI twice; a cutover item for Steve. Then the New's activation notice
-goes out right after activation through `build_xras_messages` (the button's dedup key, so
-nothing double-mails), and the extend/supplement/adjust/update notices either move to post
-time or keep the `xras_notices` delay as a correction window (decide then).
+**C. Notifications on post.** XRAS's own award mail would otherwise reach the PI twice. That
+mail is configuration of the NCAR process, held in the admin app under Notifications
+(`/notification_templates`), where Ben has the admin role.
+
+- **How XRAS decides to send.** A template has no on/off switch. It sends for each row of its
+  Rules table: allocation type × action type × event × recipient.
+- **The award mails** are the **Action Approved** rules, sent at the operator's Notify step:
+  - template 154: New and Renewal on Small, Educational, Exploratory, Data Analysis, CISL
+    Operations and NCAR Strategic Computing;
+  - 133: Large;
+  - 135: Extension, Appeal and Final Report;
+  - 149: Supplement and Transfer;
+  - 1803 and 417: External Projects and Strategic Computing.
+- **They copy more people than the PI:** `alloc@ucar.edu`, the allocation managers, the Co-PIs
+  and the program officers. 133 (Large) also copies two NSF addresses. SAM's notices must decide
+  each of these recipients before taking over.
+- **The cutover step** is deleting the Action Approved rules for exactly the action types SAM
+  then sends.
+- **XRAS keeps** the submit acknowledgments (128, 129) and the Declined mails (131, 134).
+- **Not yet confirmed:** that production carries the same rules (read on XRAS-dev, 2026-10-14),
+  and that a deleted rule silences the Notify step (one rule, one benkirk request, on the demo).
+
+Then the New's activation notice goes out right after activation through
+`build_xras_messages` (the button's dedup key, so nothing double-mails). The
+extend/supplement/adjust/update notices either move to post time or keep the `xras_notices`
+delay as a correction window (decide then).
 
 **D. The failed post opens the ticket.** `XRAS_REQUEST_TICKETS.md` (designed, not built).
-Ben, 2026-10-14, the #819 second-pass review: 68 of 73 production News posted clean, so a
-ticket per approval is churn; the ticket belongs to the post that fails.
+Ben, 2026-10-14, the #819 second-pass review: of the News approved since the 2026-08-24
+repoint, 73 have applied, 3 stand refused and 3 are unposted (`XRAS_CLOSED_LOOP.md` § 3.3),
+so a ticket per approval is churn; the ticket belongs to the post that fails.
 
 - **Approve and post in one sitting.** A post that applies is done. The post stays
   all-or-nothing: a project is never created without its full roster.
@@ -93,7 +115,7 @@ request's ticket.
 ## 4. Order and dependencies
 
 A first. D before any change to the New's 422, because the blocked post's wording names the
-ticket. B can land beside D. C waits for XRAS's mail to go off. E last, smallest. Each phase
+ticket. B can land beside D. C needs only our own template rules changed at its cutover. E last, smallest. Each phase
 is proven on samuel-dev ↔ XRAS-dev first (`XRAS_CLOSED_LOOP.md` § 4 holds the test bed and
 its rules).
 
@@ -101,7 +123,8 @@ its rules).
 
 - `XRAS_CLOSED_LOOP.md`: the rename (phase A) and the test bed.
 - `XRAS_REQUEST_TICKETS.md`: the ticket a blocked post opens (phase D).
-- `XRAS_SUBMISSION.md` § 4.2, § 4.6, § 4.7: the request record and the incoming side.
+- `XRAS_SUBMISSION.md` § 4.2, § 4.6: the request record and the incoming side; the outgoing
+  work that follows phase D.
 - `implemented/XRAS_AUTO_NOTICES.md`: the notice task and its phase-2 activation stub.
 - `XRAS_INGEST_IMPROVEMENTS.md` § 4: paper cuts (a Supplement after a Renewal lands on the
   renewal's window).

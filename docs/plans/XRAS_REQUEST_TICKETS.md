@@ -4,13 +4,14 @@
 Ben, 2026-10-14 (the #819 second-pass review): **the failed post opens the ticket.** Approvers
 approve and post in one sitting; a post that applies is done, with no ticket and no NUSD. A post
 that cannot apply answers 422 with its blockers, and that same post opens the ticket NUSD works
-from. The table it needs is designed in `XRAS_SUBMISSION.md` § 4.7, not here.
+from. It needs no table of its own: `external_ticket` keyed on the request's `request_id`
+(stable across the rename) holds the ticket, and `notification_log` the comments (§ 4).
 
 ## 1. Goal
 
-A ticket exists only where a person has work to do. 68 of 73 production News posted clean
-(the #819 census), so a ticket filed on every approval would be opened and closed with nothing
-in it for over nine requests in ten.
+A ticket exists only where a person has work to do. Of the News approved since the
+2026-08-24 repoint, 73 have applied, 3 stand refused and 3 are unposted (the #819 census), so a
+ticket filed on every approval would be opened and closed with nothing in it for nearly all.
 
 - **Opened** by the first post of a request that answers 422. Its body is that post's blocker
   list.
@@ -58,7 +59,7 @@ A request is posted more than once on purpose (NUSD re-posts after each fix) and
 `duplicate` and #803 handle the apply side). The ticket side must be idempotent in the same way:
 
 - **One ticket per request.** Before opening, look up the request's `external_ticket`
-  (§ 4.7 of `XRAS_SUBMISSION.md`) and then `provider.find(handle)`. Open only when both miss.
+  (`entity_type` for an XRAS request, `entity_id` = `request_id`) and then `provider.find(handle)`. Open only when both miss.
   This is `handoff_mail.py`'s find-before-create routine, lifted (§ 5).
 - **Comment only on change.** Hash the blocker list. Ledger each comment in `notification_log`
   as `xras_ticket:<request_id>:<digest>` (`dedup_key` is String(128)), so an identical retry
