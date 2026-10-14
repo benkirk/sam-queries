@@ -88,11 +88,11 @@ not provisioned for that route; a 404/422 = the route accepted us and only the
 | **Merge** one person into another | `POST /v1/people/<u>/merge/<new_u>` | 404 on nonexistent users (arcguest); **200 on the real demo** | ✅ **authorized, user-agnostic** |
 | **Un-flag** reconciliation | `POST /v1/people/<u>` with `isReconciled=false` | **200 but the flag is IGNORED** — re-GET still `true` | ❌ **impossible** — documented create-only |
 | **Withdraw** a submitted action | `DELETE /v1/requests/<id>/actions/<aid>/submit` | 404 as the PI (`msmart`), **401 as arcguest**; **200 on real demos** | ✅ authorized **but strictly `XA-USER`-scoped** to a role-holder |
-| **Delete** a whole request | `DELETE /v1/requests/<id>` | **401 for every `XA-USER`** | ❌ **not provisioned** |
+| **Delete** a whole request | `DELETE /v1/requests/<id>` | **401 for every `XA-USER`** on another PI's 2015 `Approved` line; XRAS-dev 2026-10-13: **200, soft**, on one's own `Incomplete` draft ([`XRAS_DEV_PROBES.md`](XRAS_DEV_PROBES.md) § 3) | ❌ **not for stale requests held by others**; scope otherwise untested on production |
 | **Re-submit** an action | `POST /v1/requests/<id>/actions/<aid>/submit` | **200** as a role-holder; → `Under Review` | ✅ authorized, `XA-USER`-scoped |
 | **Validate** an action (read) | `GET …/actions/<aid>/validate` | **200** as a role-holder | ✅ ⚠️ the verdict depends on *who* you impersonate |
 | **Add / remove** a role | `POST /v1/requests/<id>/roles/<roleType>/<u>`, `DELETE …/roles/<roleId>` | **200** as a role-holder | ✅ `roleType` is the **string** here, not the id |
-| **Request detail** / `rules{}` | `GET /v1/requests/<id>` | **401** in every context, for every `XA-USER` | ❌ **not provisioned** — the legal-moves read is closed |
+| **Request detail** / `rules{}` | `GET /v1/requests/<id>` | **401** in every context, for every `XA-USER` (production, 2026-08-21); XRAS-dev 2026-10-13: **200 with `rules{}`** for a role-holder | ❌ on production as measured; re-probe as a role-holder before relying on either |
 
 The last four rows were settled on **2026-08-21** by the targeted probe in
 [`XRAS_WRITE_PROBES.md`](XRAS_WRITE_PROBES.md), which also records the net-zero proof, the
@@ -370,8 +370,9 @@ Three findings, each load-bearing:
   no longer shows an approval. Fine for junk 2015 test requests; for a real
   operator tool this is heavier than the word "close" implies, and the popover
   must say so.
-- **Whole-request deletion is unavailable** (`DELETE /v1/requests/<id>` → 401 for
-  every `XA-USER`, § 2). "Make it disappear entirely" is not on the table with
+- **Whole-request deletion is unavailable for stale requests** (`DELETE /v1/requests/<id>`
+  → 401 for every `XA-USER` on another PI's 2015 line, § 2; on XRAS-dev one's own
+  `Incomplete` draft deletes, softly). "Make it disappear entirely" is not on the table with
   this key; "de-approve so it stops surfacing" is. Anything stronger needs a
   broader XRAS grant or an upstream filter on their side.
 - **Strictly `XA-USER`-scoped.** Withdrawal authorizes only when `XA-USER` is a

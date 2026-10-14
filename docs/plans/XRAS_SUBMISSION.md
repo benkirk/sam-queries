@@ -93,7 +93,8 @@ Every step is single-attempt with verify-by-reread (`XRAS_WRITE_PROBES.md` § 4.
 200 proves nothing), and the audit row is committed **before** the write leaves
 (`sam/manage/xras_remediation.py`, `_editor_op`). Two entries for the privilege
 register in `XRAS_WRITE_PROBES.md` § 7: the create response is captured because it is
-the only `rules{}` read our key gets (`GET /v1/requests/<rid>` is 401), and the
+the only `rules{}` read our key gets on production (`GET /v1/requests/<rid>` was 401 there;
+XRAS-dev answers it for a role-holder, `XRAS_DEV_PROBES.md` § 2), and the
 Requested stage is the only stage a SAM submission can populate.
 
 **Vocabulary is process-scoped**; the apidoc's examples are XSEDE's. NCAR request
@@ -344,8 +345,8 @@ needs anyway:
 > **`get_request_family_by_number(projcode)` returns a line that is not `isDeleted`.**
 
 That is exactly the condition under which XRAS accepts an action on the family, and
-it holds for legacy-era projects because the handoff rewrites `requestNumber` to the
-projcode and the family stays under it. It answers `[]` for `SCSG0001` and two lines
+it holds for legacy-era projects because their `requestNumber` was renamed to the
+projcode (by hand, § 4.2) and the family stays under it. It answers `[]` for `SCSG0001` and two lines
 for `UCUB0182`. A projcode minted in SAM that later received a `New`-on-existing
 (`select_service` in `sam/xras/dispatch.py` routes that to `update`) has a family and
 qualifies — correct, since XRAS can review actions on it. A family whose every line is
