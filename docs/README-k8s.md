@@ -344,11 +344,10 @@ until it has been reviewed on its own, so the dispatcher wakes as usual and the
 untried task writes a `skipped` row instead of running. Today
 `cleanup_status_snapshots`, `deactivate_expired_projects`, `xras_sweep`,
 `expiration_notices`, `refresh_allocation_state` and `account_requests_reconcile`
-are live; `xras_notices`, `account_queue_digest` and `xras_rename` are switched
-off (on `samuel-dev` the mail tasks and the account-request tasks are off as
-well, and the sweep and `xras_rename` run, in `values-dev.yaml`). Enabling one is
-a separate, reviewable one-line commit; `xras_rename` also needs
-`XRAS_WRITE_ENABLED` in production's `tasks.env` (`docs/plans/XRAS_CLOSED_LOOP.md`).
+are live; `xras_notices`, `account_queue_digest` and `xras_rename` are off (dev,
+in `values-dev.yaml`, also turns off the mail and account-request tasks and runs
+the sweep and `xras_rename`). Enabling one is a reviewable one-line commit;
+`xras_rename` also needs `XRAS_WRITE_ENABLED` in production's `tasks.env`.
 
 ⚠️ **It is an enumeration, and it is fail-OPEN.** `disabled_tasks()` in
 `src/scheduling/runner.py` is a case-sensitive exact match against registry

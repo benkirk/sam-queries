@@ -95,6 +95,17 @@ named in `SAM_TASKS_DISABLED`** pending a soak.
 | **Why it cannot double-mail** | button and task both call `build_xras_messages`, so both mint `{kind}:{projcode}:{action_id}:{address}`. The ledger suppresses whichever is second. No locking needed around the card. |
 | **Misfire** | the plain 6 h default. A missed slot costs nothing — the window is rolling, so the next slot subsumes it. |
 
+### The `xras_rename` task
+
+`src/scheduling/tasks/xras_rename.py`, hourly :20: renames a request line still under its
+`NCAR####` token to its projcode, the backstop to the `/actions` route's after-reply rename.
+⚠️ **The one task that writes to XRAS**: `TASK_WRITABLE_OPERATIONS` in
+`sam/integration/xras.py` is the only `task:` operation the audit table accepts. Production
+holds two locks: the name in `SAM_TASKS_DISABLED` and no `XRAS_WRITE_ENABLED` in
+`tasks.env` (pinned by `test_xras_admin_client.py`); dev arms it through `tasks.env`.
+`--dry-run` reads only; `SAM_TASKS_XRAS_RENAME_SINCE` widens the window for the backfill.
+Record: `docs/plans/XRAS_CLOSED_LOOP.md` § 3.3, § 3.5.
+
 ### The account-request tasks
 
 `account_requests_reconcile` (every 15 min, DB-only, **live in prod**: stamps fulfilled

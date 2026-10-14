@@ -1,6 +1,8 @@
 # XRAS closed loop: SAMuel renames requests, then the submission plan under load
 
-**Status: handoff, not started.** Written 2026-10-13 at the end of the session recorded in
+**Status: Track 1 built on branch `xras-closed-loop` (2026-10-13), pending the XRAS-dev proof
+(§ 3.4) and the production backfill (§ 3.3); Track 2 not started.** What landed and what was
+decided: § 3.5. Written 2026-10-13 at the end of the session recorded in
 [`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md). Two tracks on one test bed:
 **Track 1** builds the projcode rename in SAMuel and backfills production; **Track 2**
 stress-tests [`XRAS_SUBMISSION.md`](XRAS_SUBMISSION.md) on samuel-dev ↔ XRAS-dev. Track 1
@@ -101,6 +103,21 @@ NCAR4088 (1439539, refused 422 for its roster); sam_dev `xras_action_log` #1–#
 
 ### 3.3 Production backfill
 
+The `xras_rename` task with its window widened (Ben, 2026-10-13: no separate CLI). The runner
+skips a task named in `SAM_TASKS_DISABLED` even under `--force`, so each run clears it:
+
+```bash
+# 1. dry run: reads only, needs no write lever; detail lists each line and its state
+SAM_TASKS_XRAS_RENAME_SINCE=2026-08-24 SAM_TASKS_DISABLED= \
+  sam-admin tasks --run xras_rename --force --dry-run --format json
+# 2. Ben approves the list; Steve hears before the first production rename
+# 3. apply: the same, without --dry-run and with XRAS_WRITE_ENABLED=1 for that run only
+```
+
+Enabling the task on production afterwards is a values change: drop `xras_rename` from
+`SAM_TASKS_DISABLED`, add `XRAS_WRITE_ENABLED` to production's `tasks.env`, and edit
+`test_the_tasks_env_never_arms_writes`, which pins its absence.
+
 A dry-run report first: every production `processed` `New` since 2026-08-24 whose XRAS line
 still answers its placeholder. Candidates from award letters and the sweep, to confirm in the
 report: NCAR4212, NCAR4293, NCAR4300, NCAR4326, NCAR4354 (UHSS0001), NCAR4401. Ben approves the list, then apply. Tell Steve before the first
@@ -115,6 +132,25 @@ later will carry the projcode.
 4. Disable the immediate path, repeat 1–3, and see the task do the rename.
 5. Unit tests: the client verb against a fake transport; the trigger's conditions; the task's
    selection; the gate changes.
+
+### 3.5 What landed (branch `xras-closed-loop`)
+
+| Piece | Where |
+|---|---|
+| By-id read, the one key a rename does not move (probed: 1439543 answers `UHSS0002`) | `XrasApiClient.get_request_by_id` (`reports/requests/<rid>`) |
+| Client verb, verified by id | `XrasAdminClient.rename_request` |
+| Audited op: pre-read by id (already renamed = no write; a third number = left alone), PI else Allocation Manager, card row moved to the new number, overrides rekeyed | `sam.manage.xras_remediation.rename_request`, `rename_plan`; `XrasRequestOverride.rekey` |
+| The one task-writable operation | `TASK_WRITABLE_OPERATIONS = ('rename_request',)` in `sam/integration/xras.py` |
+| Immediate path, **after** the reply (decision 1) | `_rename_after_reply` in `webapp/api/xras/actions.py`, via `response.call_on_close`; logs status and ms |
+| Backstop task and backfill | `src/scheduling/tasks/xras_rename.py`; `rename_candidates` in `sam/queries/xras_actions.py` |
+| Log resolution, rules 2 and 3 (decision 4: the number-keyed routes `/roles`, `/dates/requests`, `/requests/request` do not get it; the rename covers their near-zero traffic) | `resolve_project` in `sam/xras/dispatch.py`; `logged_projcode` |
+| Sweep pending set | `live_pending_numbers` subtracts `pushed_request_numbers` |
+| Lever (decision 2) | dev `tasks.env` only; production disables the task by name and carries no lever |
+
+Every processed post whose number differs from its projcode is renamed, not only a `New`: an
+action resolved by rules 2 and 3 names a line that still needs it, and the pre-read makes a
+repeat free. The identity census behind this (nothing else needed re-keying first) is
+`UNPLANNED_CITY_LEDGER.md` entry 26.
 
 ## 4. Track 2: stress-test the submission plan
 

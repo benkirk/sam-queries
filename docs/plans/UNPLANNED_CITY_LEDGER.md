@@ -40,6 +40,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-11 | `c25a7cb8` + sweep 22 (XRAS cards and dialogs) | 49 / 58 / 24 | 1 (2) | 14 / 46 | 20 (20), 2 kept | 5,224 / 51 / 7 | 127 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
 | 2026-10-12 | `726a0e0c` + sweep 23 (account queue / Pending Users), py only | 51 / 63 / 26 | 1 (2) | 16 / 52 | — | — | — | — | — | — | — | 6 |
 | 2026-10-13 | `172a5651` + sweep 25 (XRAS sweep windows, cadence, ticket groundwork) | 51 / 63 / 26 | 1 (2) | 16 / 52 | 20 (20), 2 kept | 5,245 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
+| 2026-10-13 | `1526d856` + sweep 26 (XRAS request identity) | 51 / 63 / 26 | 1 (2) | 16 / 52 | 20 (20), 2 kept | 5,245 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -1815,13 +1816,46 @@ groundwork for one NUSD ticket per approved request (`XRAS_REQUEST_TICKETS.md`).
 - [ ] One recency helper (finding 2): `pending_in_window`, `remediation._in_window`,
   `overlaps_window`'s open-ended branch and `_waiting_since` each decide "how recent"
   their own way; `_waiting_since` never reads `entry_date`.
-- [ ] `live_pending_numbers` reads a pushed request as pending until XRAS rewrites its
+- [x] `live_pending_numbers` reads a pushed request as pending until XRAS rewrites its
   `requestNumber` (hours to weeks); consult `xras_action_log` (`XRAS_REQUEST_TICKETS.md` § 6).
+  Done in sweep 26.
 - [ ] `waiting_days` (two meanings) and `activity_date` (entryDate vs updateDate) naming.
 - [ ] `is_pending_work` silently depends on the 120-day preflight lookback.
 - [ ] Ticket-side comments say the refresh is hourly; it runs every 15 minutes.
 - [ ] Open sweep rows for a request that drops out never close (dismissed by hand on
   2026-10-13).
+
+## 26. 2026-10-13: area sweep, XRAS request identity (requestNumber vs requestId)
+
+**Mode:** area, a census of one concept ahead of a plan, base `origin/staging` (`1526d856`),
+branch `xras-closed-loop`. SAM was about to rename XRAS requests (`NCAR####` -> projcode,
+`XRAS_CLOSED_LOOP.md`). Ben asked whether everything keyed on the request number had to be
+re-keyed on `requestId` first.
+
+**Finding:** no structural re-key. XRAS's own model is "family = number"
+(`reports/request_numbers/<n>` is the only family read), so the Remediations card's 25
+`<path:request_number>` routes stay number-keyed. They fail closed: every write re-resolves
+the id live. The history tables (`xras_action_log`, `xras_remediation_event`) carry both
+keys. The sweep's pending set, preflights and worklist rebuild from live data each run.
+Three things broke under a rename, and each is fixed where SAM knows both numbers:
+
+**Done, on `xras-closed-loop`:**
+
+- [x] Post-write checks read by number, so a rename always read unverified:
+  `get_request_by_id` (`reports/requests/<rid>`) and a verb verified by id.
+- [x] The card index is rebuilt only at the 04:00 full slot, and a refresh by the old number
+  dropped the row: the rename patches the old-keyed row with the new number's entry.
+- [x] `XrasRequestOverride` is keyed on the number, so an `ignore_contract` waiver went
+  silent after a rename: `XrasRequestOverride.rekey`.
+- [x] Sweep 25's `live_pending_numbers` item.
+
+**Open:**
+
+- [ ] A rename SAM does not see (a hand rename in the admin app) still leaves the override
+  and the card row behind. Whether that path is still used is the admin-app side quest
+  (`XRAS_CLOSED_LOOP.md` § 3.4).
+- [ ] `delete_request`'s verify reads by number: a rename between the write and its re-read
+  reads as a verified delete. Move it to the by-id read.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

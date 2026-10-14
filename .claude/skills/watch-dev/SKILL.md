@@ -61,7 +61,8 @@ replica and the check says so.
 - Mail is off (`NOTIFY_ENABLED=0`), so a task "sending nothing" is correct.
   XRAS is live against the demo instance (`xras-submit-api-demo.xsede.org`):
   the `xras_sweep` (hourly, quarter-hourly in business hours) runs and posts from
-  `xras-admin-demo` dispatch.
+  `xras-admin-demo` dispatch. `xras_rename` (hourly :20) **writes** to the demo
+  instance, renaming `NCAR####` lines to their projcode; it is disabled in prod.
 - The limiter tiers are effectively off, so a load test (`profile-dev`) looks like
   real load. Check who is driving before calling a spike a fault.
 - `make refresh-dev` / `sync-dev` swap the databases and evict the pods'

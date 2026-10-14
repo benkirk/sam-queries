@@ -416,8 +416,8 @@ Four changes to the handoff path, each small, in the order they land:
    answers 422 `duplicate` to a post whose `action_id` already has a `processed` or
    in-flight row. It sees only SAMuel's log, so an action applied before the 2026-08-24
    repoint can still apply twice on a repost (NRAL0051 on XRAS-dev, `XRAS_DEV_PROBES.md` § 4).
-2. **Resolve the project from SAM's own log, not from XRAS's rewrite** (`select_service`,
-   `sam/xras/dispatch.py`). The three identifiers behave differently (§ 4.2):
+2. **Resolve the project from SAM's own log, not from XRAS's rewrite: built**
+   (`resolve_project`, `sam/xras/dispatch.py`). The three identifiers behave differently (§ 4.2):
    `requestNumber` names the family and is rewritten only by hand, or never;
    `requestId` names one line and is fixed from create on, across every Extension and
    Supplement on it, and only a Renewal starts a new one; `actionId` names one action.
@@ -440,14 +440,14 @@ Four changes to the handoff path, each small, in the order they land:
 3. **SAM performs the rename.** `PUT /v1/requests/<request_id>/attributes?requestNumber=<projcode>`
    under `submit` as the line's PI renames the request in place: the old number stops resolving,
    `requestId` is unchanged, and actions filed afterwards arrive under the projcode and apply
-   (`XRAS_DEV_PROBES.md` § 4, #12). A task step, not the inbound route (XRAS is waiting on the
-   reply): for each `processed` `New` whose `request_number` differs from `projcode_result`,
-   rename through `XrasAdminClient` behind `XRAS_WRITE_ENABLED`, audit in
-   `xras_remediation_event`, and verify by re-reading both numbers. When the projcode is already
-   an XRAS family (a `New` routed to `update`), the rename joins that family, which is the
-   intended grouping. Backfill the production placeholders the manual step missed. Rules 2 and
-   3 of item 2 stay, for the window before the task runs and for actions parked earlier.
-   Handoff and decisions: [`XRAS_CLOSED_LOOP.md`](XRAS_CLOSED_LOOP.md).
+   (`XRAS_DEV_PROBES.md` § 4, #12). **Built** (`XRAS_CLOSED_LOOP.md` § 3.5): the inbound route
+   renames after its reply has gone (`call_on_close`), and the `xras_rename` task is the
+   backstop and the production backfill. Every processed post whose `request_number` differs
+   from `projcode_result` is renamed through `XrasAdminClient` behind `XRAS_WRITE_ENABLED`,
+   audited in `xras_remediation_event`, and verified by re-reading the line **by id**
+   (`reports/requests/<rid>`). When the projcode is already an XRAS family (a `New` routed to
+   `update`), the rename joins that family, which is the intended grouping. Rules 2 and 3 of
+   item 2 stay, for the window before the rename and for actions parked earlier.
 4. **The `New` handler's consult point** (phase 2): the top of `NewHandler.assemble`
    (`sam/xras/handlers/new.py`), keyed on the payload's `requestId`, pre-setting the
    mnemonic, allocation type, contracts and area of interest from the stored FKs with
@@ -486,11 +486,11 @@ Resolution reads the action log, not `requestNumber == projcode` (§ 4.2, the re
 |---|---|---|
 | **The form has no prototype** (§ 4.1) | the one-vs-two-page split and the reveal rules are design, not measurement | mock it before the phase-2 plumbing; keep the rule-book-driven reveal |
 | **The test loop, run** | 2026-10-13 on XRAS-dev ([`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md) § 4): an approval reached samuel-dev's sweep in about 2 minutes; a SAM-authored New (NCAR4087) became `UHSS0002` with `requestId` and `opportunityQA` on the payload; an Extension and a Supplement filed on that family before the rewrite parked `manual` with HTTP 200, which XRAS reports as a successful post | § 4.6 item 2; the `New` handler's consult point is unproven until the `xras_submission` row exists |
-| **The rewrite** | manual on production (NCAR staff, now gone), never on XRAS-dev; XRAS ignores the post's reply; create and update accept `requestNumber` (Steve, 2026-10-13). SAM renamed NCAR4087 to UHSS0002 on XRAS-dev and a later Extension applied | build § 4.6 item 3; backfill production's placeholders |
+| **The rewrite** | manual on production (NCAR staff, now gone), never on XRAS-dev; XRAS ignores the post's reply; create and update accept `requestNumber` (Steve, 2026-10-13). SAM renamed NCAR4087 to UHSS0002 on XRAS-dev and a later Extension applied. § 4.6 item 3 is built (`XRAS_CLOSED_LOOP.md` § 3.5) | prove it on XRAS-dev; backfill production's placeholders (`XRAS_CLOSED_LOOP.md` § 3.3) |
 | **`GET /v1/projects`** | proxied to the accounting service as `/api/xras/v1/users/projects/<username>`, which neither legacy SAM nor this one serves. Measured 2026-10-08: one request in six weeks of production traffic, our own probe (`xras_action_log` #182). ACCESS's accounting service documents the response shape (`XRAS_OUTGOING_QUERIES.md` § 4.6) | ask Steve whether ARC or `xras_submit` calls it for NCAR; otherwise not built |
 | **Write client gaps** | no JSON-body path in `_write`; person-create, opportunity attributes and documents unbuilt | phase 0 |
 | **`POST /v1/people/<u>`** | phase 3's placeholder person: probed on XRAS-dev 2026-10-13, `isReconciled=false` sticks and the placeholder can author a request as its PI (`XRAS_DEV_PROBES.md` § 3) | merge-on-arrival stays unprobed |
-| **Log-based resolution not landed** | § 4.6 item 2, rules 2 and 3. The guard (item 1) has landed; it cannot see an action applied before SAMuel's log began, which XRAS-dev's NRAL0051 repost applied twice (`XRAS_DEV_PROBES.md` § 4) | `XRAS_INGEST_IMPROVEMENTS.md` |
+| **Actions applied before SAMuel's log** | § 4.6 items 1 and 2 are built, and both read only SAMuel's log: a repost of an action applied before the 2026-08-24 repoint applies again (XRAS-dev's NRAL0051, `XRAS_DEV_PROBES.md` § 4) | importing legacy-era actions by matching them to `allocation_transaction`: reevaluate after `XRAS_CLOSED_LOOP.md` |
 | **Extension 399374 on `UHSS0001`** | approved and posted, parked as #184, not notified | rename the family (§ 4.6 item 3) and file afresh: the admin app's repost re-sends the `New`, which the guard refuses |
 | **WRAP** | stays `email:wrap@uwyo.edu` until WNA opts in | flip the policy row |
 | **XRAS's own mail** | submit and notify mails are XRAS-side settings (§ 3.4); once phase 1 ships, SAM's `xras_*` notices can be the only mail | optional coordination, not a prerequisite |
