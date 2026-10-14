@@ -154,17 +154,14 @@ class XrasRequestOverride(Base, SessionMixin, ActiveFlagMixin):
     ``handlers`` while resolving a New action — never written by anything that
     talks to the XRAS API.
 
-    Keyed on ``request_number`` (the ``NCAR####`` / projcode token the whole
-    subsystem keys on — the card, the reports and the recheck all use it) plus
-    ``kind``, so at most one active override of each kind exists per request.
-    Clearing sets ``active`` False and keeps the row as the trail; re-setting
-    flips it back.
+    Keyed on ``request_number`` (the family token the card, the reports and the
+    recheck all use) plus ``kind``, so at most one active override of each kind
+    exists per request. Clearing sets ``active`` False and keeps the row as the
+    trail; re-setting flips it back.
 
-    WARNING: **Not ``request_id``.** The XRAS ``requestId`` is per-request-line and
-    volatile — a re-issue mints a new one, orphaning an id-keyed override, and a
-    request family exposes several ids for one ``request_number``. ``request_id``
-    is kept only as an informational column. The consult reads
-    ``get_field(action, 'requestNumber')``, which every action carries.
+    WARNING: **Not ``request_id``**, which is per line: a renewal mints a new one.
+    The number is not stable either: SAM renames ``NCAR####`` to the projcode after
+    the New lands, so that rename moves these rows with :meth:`rekey`.
 
     An override is a blunt escape hatch scoped to one request — the durable fix
     for a mnemonic gap stays the Mnemonic Codes console (map the org). It is
@@ -177,7 +174,7 @@ class XrasRequestOverride(Base, SessionMixin, ActiveFlagMixin):
         Index('xras_request_override_reqid', 'request_id'),
     )
 
-    #: The ``NCAR####`` / projcode token — the stable consult key.
+    #: The ``NCAR####`` / projcode token — the consult key; :meth:`rekey` follows a rename.
     request_number = Column(String(128), nullable=False)
 
     #: One of :data:`XRAS_REQUEST_OVERRIDE_KINDS`.
@@ -238,6 +235,22 @@ class XrasRequestOverride(Base, SessionMixin, ActiveFlagMixin):
         row.active = True
         session.flush()
         return row
+
+    @classmethod
+    def rekey(cls, session, *, old_number, new_number):
+        """Move every row of *old_number* to *new_number*; returns ``(moved, collided)`` kinds.
+
+        A kind the new number already holds stays where it is and is reported, not merged.
+        """
+        moved, collided = [], []
+        for row in session.query(cls).filter(cls.request_number == old_number).all():
+            if session.get(cls, {'request_number': new_number, 'kind': row.kind}) is not None:
+                collided.append(row.kind)
+                continue
+            row.request_number = new_number
+            moved.append(row.kind)
+        session.flush()
+        return moved, collided
 
     def clear(self):
         """Deactivate this override, keeping the row as the trail."""
