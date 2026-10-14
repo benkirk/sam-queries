@@ -34,8 +34,9 @@ one does, its service selects and falls through to ``manual``.
 See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``, *The dispatcher*.
 """
 
+import copy
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable, Dict, FrozenSet, Optional, Tuple
 
 from sam.projects.projects import Project
@@ -53,6 +54,7 @@ __all__ = [
     'registered_services',
     'parse_enabled_action_types',
     'select_service',
+    'resolve_project',
     'dispatch_action',
 ]
 
@@ -195,6 +197,39 @@ def select_service(session, action) -> Optional[str]:
     return None
 
 
+#: Types a service handles once their project exists: the ones the log may resolve.
+#: ``New`` is not one: routing a repost to ``update`` through the log applies it twice.
+_PROJECT_SCOPED = frozenset({'Renewal', 'Extension', 'Supplement', 'Transfer', 'Adjustment'})
+
+
+def resolve_project(session, action):
+    """``(action, note, unknown)``: *action* with ``requestNumber`` resolved through SAM's log.
+
+    ``XRAS_SUBMISSION.md`` § 4.6 item 2. Rule 1 is the number itself; rules 2 and 3
+    map an un-renamed ``NCAR####`` to its projcode by the processed New or Renewal
+    (``logged_projcode``). The returned action is a copy, and *note* says which rule
+    applied. *unknown* is the number when nothing resolves a project-scoped type.
+    """
+    from sam.queries.xras_actions import logged_projcode
+
+    number = (get_field(action, 'requestNumber') or '').strip()
+    if canonical_action_type(get_field(action, 'actionType')) not in _PROJECT_SCOPED:
+        return action, None, None
+    if number and Project.get_by_projcode(session, number) is not None:
+        return action, None, None
+    found = logged_projcode(session, request_id=get_field(action, 'requestId'),
+                            request_number=number)
+    if found is None or Project.get_by_projcode(session, found[0]) is None:
+        return action, None, number or None
+    projcode, rule = found
+    if isinstance(action, dict):
+        action = {**action, 'requestNumber': projcode}
+    else:
+        action = copy.copy(action)
+        action.requestNumber = projcode
+    return action, f'requestNumber {number!r} resolved to {projcode} by {rule}', None
+
+
 def dispatch_action(session, action, *,
                     enabled: Optional[FrozenSet[str]] = None,
                     validate_only: bool = False) -> DispatchResult:
@@ -219,11 +254,14 @@ def dispatch_action(session, action, *,
             for the same reason, which is what makes a re-check informative.
     """
     action_type = canonical_action_type(get_field(action, 'actionType'))
+    action, resolution, unknown = resolve_project(session, action)
     service = select_service(session, action)
 
     if service is None:
-        return DispatchResult(status='manual',
-                              reason=f'no service matches actionType={action_type!r}')
+        reason = (f'no SAM project for requestNumber={unknown!r} '
+                  f'(requestId={get_field(action, "requestId")!r})' if unknown
+                  else f'no service matches actionType={action_type!r}')
+        return DispatchResult(status='manual', reason=reason)
 
     if enabled is not None and action_type not in enabled:
         logger.warning(
@@ -238,4 +276,7 @@ def dispatch_action(session, action, *,
         return DispatchResult(status='manual', service=service,
                               reason=f'no handler is registered for {service!r}')
 
-    return handler(session, action, validate_only=validate_only)
+    result = handler(session, action, validate_only=validate_only)
+    if resolution:
+        result = replace(result, warnings=tuple(result.warnings) + (resolution,))
+    return result
