@@ -1856,6 +1856,15 @@ Three things broke under a rename, and each is fixed where SAM knows both number
   (`XRAS_CLOSED_LOOP.md` § 3.4).
 - [ ] `delete_request`'s verify reads by number: a rename between the write and its re-read
   reads as a verified delete. Move it to the by-id read.
+- [ ] Review of #819 (2026-10-13): `resolve_project` runs up to three times per post
+  (`select_service`, `dispatch_action`, the route's 422 label), one derivation with three
+  consumers; the `xras_rename` task retries a refused candidate hourly for 14 days, an audit
+  row each hour (skip on a newest `rejected` event, if one is ever seen); `already_renamed`
+  moves the overrides but not the card row.
+- [ ] `tests/api/test_xras_access.py` posts one fixed `actionId` from 14 tests while the route
+  commits outside the savepoint, so two xdist workers can refuse each other as duplicates
+  (the "11 failures as one selection"). `TestRenameAfterReply` mints ids via `next_seq`
+  (`9539b336`); the rest of the file should follow.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
