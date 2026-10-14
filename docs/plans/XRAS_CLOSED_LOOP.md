@@ -21,6 +21,18 @@ under `submit`, as the PI, renamed NCAR4087 → UHSS0002 in place, and an Extens
 afterwards applied (#12). Ben (2026-10-13): **SAMuel owns the rename**, right after the post,
 with a task backstop that also runs a one-time backfill.
 
+**Why XRAS never learns the projcode.** ACCESS's own accounting service
+(`https://allocations-api.access-ci.org/xacct/apidoc.html`, read 2026-10-13) keys everything
+on XRAS's request number: `GET /v1/users/projects/<u>` lists projects by `grantNumber` (the
+XRAS number) with each `requestId`, and every route XRAS calls is number-keyed
+(`requests/request/<n>`, `dates/requests/<list>`, `roles/<n>/…`, `users/<n>/…`,
+`usage/by_month/<n>/…`). A service with its own identifier reports it back as `projectId` under
+`projectIdLabel`; nothing renames anything, and `POST /v1/actions` documents no reply body. The
+rename is NCAR's convention, needed because SAM mints its own projcodes. So SAM needs both
+models: resolve the NCAR number from its log (§ 4.6 item 2, xacct's way) and rename XRAS to the
+projcode (item 3), because PIs see the number and XRAS's other number-keyed calls to SAM
+(`/roles`, `/dates/requests`, `/requests/request`) resolve it as a projcode.
+
 Read first: `XRAS_DEV_PROBES.md` (§ 3 write ladder, § 4 timeline, § 5 rewrite, § 7 state left
 on demo); `XRAS_SUBMISSION.md` § 4.2 (the three identifiers), § 4.6 items 1–4, § 5;
 [`XRAS_REQUEST_TICKETS.md`](XRAS_REQUEST_TICKETS.md) § 6; `.claude/rules/notify-and-tasks.md`.
@@ -81,6 +93,11 @@ NCAR4088 (1439539, refused 422 for its roster); sam_dev `xras_action_log` #1–#
    `New` routed to `update` already carries the projcode: skip. `failed` and `manual` rows have
    no projcode: skip. A PI missing from the line falls back to the Allocation Manager, else the
    task reports it.
+4. **XRAS's other number-keyed calls.** `POST|DELETE /api/xras/v1/roles/<n>/…`,
+   `dates/requests/<list>` and `requests/request/<n>` resolve `<n>` as a projcode
+   (`src/webapp/api/xras/`), so before a rename they miss an unrenamed family. Traffic is near
+   zero (legacy: `requests/request` once in 30 days, `POST /roles` never), so the rename covers
+   it; decide whether those routes also get § 4.6 item 2's log lookup.
 
 ### 3.3 Production backfill
 
