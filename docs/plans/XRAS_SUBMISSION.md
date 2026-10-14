@@ -222,19 +222,20 @@ Four findings shape the design:
 Below its routes, the admin request editor is caller-agnostic, and that is where it overlaps
 with a PI-facing form. The operator assumptions sit in:
 - the editor's routes and their `MANAGE_XRAS`/`ADMIN_XRAS` decorators;
-- `_impersonation()` ("`xa_user` is somebody else, the PI preferred");
+- `_impersonation()`: `xa_user` is the PI, else any role-holder, since the choice is who the
+  write is attributed to;
 - the operator-only keys of the detail modal's context;
 - the copy.
 
 | Piece | Where | Reused how |
 |---|---|---|
-| the write client: every verb of § 3.1 except person-create, opportunity attributes and documents; `xa_user` and `context` per call | `sam/integration/xras_api/admin_client.py` | as-is, plus a JSON-body path in `_write`, which takes params only |
+| the write client: create, PI and other roles, attributes, add action, resources, dates, user comments, validate, submit, withdraw, renew, rename, merge; `xa_user` and `context` per call. **Missing:** person-create, opportunity attributes, documents, action delete (§ 4.3's abort), field of science, grants and publications | `sam/integration/xras_api/admin_client.py` | as-is, plus a JSON-body path in `_write`, which takes params only, and the missing verbs (phase 0) |
 | the service ops, taking `operator` and the PI as parameters; the audit row opened before the write, the sweep cache patched after | `sam/manage/xras_remediation.py`, `_editor_op` | each flow step is one op |
 | `xras_remediation_event` | the audit table | `created_by` and `xa_user` coincide for a PI, which the columns allow |
-| the preflight: `synthesize_action` → `dispatch_action(validate_only=True)` in a SAVEPOINT | `sam/xras/preflight.py` | fed the draft through a report-shaped shim |
+| the preflight: `preflight_action`, which shapes the wire dict (`synthesize_action`) and runs `dispatch_action(validate_only=True)` in a SAVEPOINT | `sam/xras/preflight.py` | fed the draft through a report-shaped shim |
 | the mnemonic suggestor | `sam/queries/mnemonic_console.py` | the affiliation step |
 | the awards search | `sam-search awards` | the contract step |
-| the field validators (amount `≥ 0`, `end ≥ begin`, the comment caps) | `sam/schemas/forms/xras.py` | composed into one `ActionRequestForm` |
+| the field validators (amount `≥ 0`, `end ≥ begin`, the comment caps) | `sam/schemas/forms/xras_remediation.py` | composed into one `ActionRequestForm` |
 | the field macros and the modal shell | templates | as-is |
 | `patch_requests_index`, `request_index_entry` | the sweep cache | the status readout. A row is keyed by its request number, which is the projcode once renamed, so a per-project read is a scan |
 
@@ -261,7 +262,8 @@ modal has the same gap: it creates a bare action and stops.
   the operator modal or its templates (§ 4.3).
 - **A separate lever, `XRAS_SUBMIT_ENABLED`**, distinct from `XRAS_WRITE_ENABLED`, because
   authoring a request has a different blast radius from correcting one:
-  - webapp-only, never the tasks CronJob;
+  - webapp-only, never the tasks CronJob. The write lever itself is on both manifests since
+    #819, because `xras_rename` is the one task write; this lever stays on the webapp's alone;
   - asserted per manifest, like the write lever;
   - when off, the control renders disabled with its reason.
 - **Most XRAS-side asks are settings we own.** Ben holds the admin role on
@@ -453,7 +455,8 @@ decorator. The policy that Extend and Renew themselves are not lead-available
 
 The ARC forms bound nothing, and users on their first project are not calibrated to the scale
 of the resources. SAM already carries one number for this, `allocation_type.default_allocation_amount`:
-a single default per type (Small 50,000; Divisional 100,000; CHAP and NSC 0), read by no form.
+a single default per type (Small 50,000; Divisional 100,000; CHAP and NSC 0), shown on the
+Allocation Types admin form and used as a default by none.
 The limit is that idea made per resource, with a floor and a ceiling.
 
 `allocation_type_resource_limit` has these columns: `allocation_type_id`, `resource_id`,
@@ -536,8 +539,9 @@ to phase 2.
    (`sam/xras/handlers/new.py`), keyed on the payload's `requestId`. It pre-sets the mnemonic,
    allocation type, contracts and area of interest from the stored FKs, with the ladder as the
    fallback. That is either three branches in the shape of the two `lookup_request_override`
-   branches, or one `_consult_submission()` first statement. Either way it runs before the panel
-   check, so the 422 ordering the tests pin is untouched. `NewHandler.execute` stamps `applied`
+   branches, or one `_consult_submission()` first statement. Either way it only pre-sets inputs
+   and reports nothing, so the error order the tests pin (title, roster, area, allocation type,
+   mnemonic, contracts, dates, resources) is untouched. `NewHandler.execute` stamps `applied`
    and `project_id` after `Project.create`.
 
 ## 5. Gaps and open questions
@@ -546,7 +550,7 @@ to phase 2.
 |---|---|---|
 | **The form has no prototype** (§ 4.1) | the one-versus-two-page split and the reveal rules are design, not measurement | mock it before the phase-2 plumbing; keep the rule-book-driven reveal |
 | **Which window a Supplement lands on** (§ 4.1) | after a Renewal posts, a Supplement on the old line applies to the renewal's future window | decide the ingest rule (`XRAS_INGEST_IMPROVEMENTS.md` § 4) before phase 1's Supplement form |
-| **Write client gaps** | `_write` takes params only; person-create, opportunity attributes and document upload are unbuilt | phase 0 |
+| **Write client gaps** | `_write` takes params only; person-create, opportunity attributes, document upload, action delete, field of science, grants and publications are unbuilt. Action delete is the abort of § 4.3, so phase 1 needs it before the flow layer | phase 0 |
 | **Placeholders SAM mints** (phase 3) | SAM classifies a placeholder by its username shape alone (`PLACEHOLDER_USERNAME_RE`, `^\S+-user-\S+$`, `sam/queries/xras_accounts.py`), and fulfills an `account_request` by email. A merge into an account under a different email leaves the sweep's row open in NUSD's queue (`XRAS_DEV_PROBES.md` § 6.1, scenario 6) | SAM names its placeholders `<x>-user-<y>`; `merge_placeholder` closes the source's rows (`XRAS_POST_AUTOMATION.md` phase D, item 6) |
 | **A parked action answers 200** (§ 4.6 item 2) | XRAS shows the operator a successful post, and phase D's tickets cover New and Renewal only | ask whether a parked action opens the request's ticket too, when phase D is built |
 | **Actions applied before SAMuel's log** | § 4.6 items 1 and 2 read only SAMuel's log, so a repost of an action applied before the 2026-08-24 repoint applies again. The 12 legacy-era families still under `NCAR*` are dormant (`XRAS_CLOSED_LOOP.md` § 3.3) | import legacy-era actions (matched to `allocation_transaction`) only when a repost of a pre-repoint action actually happens |

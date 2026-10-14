@@ -24,7 +24,7 @@ new projcode into XRAS's "Edit Request Number", and sending the notification fro
 | Activate the project | manual: the card's Activate (`webapp/dashboards/allocations/xras/lifecycle_routes.py`); a New is created inactive on purpose | an unattended path past `can_edit_project_governance` | B |
 | Notify, New | manual Notify button; sent from XRAS today | must follow activation; XRAS's own notify mail | C |
 | Notify, extend/supplement/adjust/update | built: the `xras_notices` task (1-day delay), disabled in production | soak; XRAS's own notify mail | C |
-| Contracts | 422 with a seeded create form (Admin → Contracts), or the `ignore_contract` override | `contract.principal_investigator_user_id` is NOT NULL and SAM never creates a user; award lookup is NSF-only (`sam/integration/awards`) | E |
+| Contracts | 422 with a seeded create form (Admin → Contracts), or the `ignore_contract` override | `contract.principal_investigator_user_id` is NOT NULL and SAM never creates a user; award lookup is NSF first, then USAspending (`resolve_award`, `sam/integration/awards`) | E |
 | Users absent or inactive, ARC placeholders | the sweep files `account_request` rows (live); no ticket for them | users come only from IGA and the LDAP sync; the ticket a blocked post opens is unbuilt | D |
 | XRAS's own notify mail | on | the Action Approved rules on the NCAR process's notification templates, which we own (§ 3, C) | C (cutover step) |
 
@@ -48,7 +48,8 @@ applies cleanly, activate the project behind its own lever (`XRAS_AUTO_ACTIVATE`
 off, dev on), in the handler or the after-reply hook beside the rename, recording
 `xras_activation_event` with the API actor as `created_by`. This is the one deliberate
 unattended exception to `can_edit_project_governance` (`implemented/XRAS_AUTO_NOTICES.md`,
-"Phase 2 (later)").
+"Phase 2 (later)"). A New that applied under an `ignore_contract` override activates too: the
+waiver is the operator's decision (Ben, 2026-10-14).
 
 **C. Notifications on post.** SAM sends the award notices:
 - The New's activation notice goes out right after activation (B), through
@@ -116,9 +117,9 @@ What the plan must hold (`XRAS_REQUEST_TICKETS.md` §§ 3, 4, 8):
    sweep's row for it stays open in NUSD's queue for good (scenario 6, row #22 on dev).
    `merge_placeholder` closes the source's rows with the target as the reason.
 
-**E. Contracts where resolvable.** For an NSF award whose PI resolves to a SAM user, create
-the contract at post time from `resolve_award`; otherwise it is a checklist item on the
-request's ticket.
+**E. Contracts where resolvable.** For an award `resolve_award` finds (NSF, else USAspending)
+whose PI resolves to a SAM user, create the contract at post time; otherwise it is a checklist
+item on the request's ticket.
 
 ## 4. Order and dependencies
 
