@@ -119,16 +119,12 @@ below, and the apply verified all five (`xras_remediation_event` 13-17, `created
 `task:xras_rename`, each read back from XRAS); the other 68 read `already_renamed`. Ben judged
 five lines too small to need a heads-up to Steve.
 
-Enabling the task on production is then a values change: drop `xras_rename` from
-`SAM_TASKS_DISABLED`, add `XRAS_WRITE_ENABLED` to production's `tasks.env`, and flip
-`XRAS_RENAME_ENABLED` to `"1"` for the route's after-reply rename. The gates that pin each
-value (`test_xras_admin_client.py`, `test_task_xras_rename.py`, `test-dev-render.sh`) change
-with it.
-
-A dry-run report first: every production `processed` `New` since 2026-08-24 whose XRAS line
-still answers its placeholder. Ben approves the list, then apply. Tell Steve before the first
-production rename: PIs see the number in ARC, and the award letter for anything notified
-later will carry the projcode.
+**Enabled in production the same day (#820):** `xras_rename` dropped from `SAM_TASKS_DISABLED`,
+`XRAS_WRITE_ENABLED` in production's `tasks.env`, and `XRAS_RENAME_ENABLED` `"1"` for the
+route's after-reply rename. The gates (`test_xras_admin_client.py`, `test_task_xras_rename.py`,
+`test-dev-render.sh`) pin each value, so a flip in either direction is a reviewed change. The
+task's first production run found 20 candidates, all already renamed. PIs see the projcode in
+ARC, and the award letter for anything notified later carries it.
 
 **Census, 2026-10-14** (read-only: every `Approved` line in production XRAS against prod
 `xras_action_log`). 4,170 approved lines; 23 live ones still numbered `NCAR*`:
@@ -142,10 +138,10 @@ later will carry the projcode.
 
 NCAR4401 was posted on 10-06 and is renamed: NUSD still renames by hand in the admin app
 (Summary → Request Number (Edit), `XRAS_DEV_PROBES.md` § 6), after activating the project in
-SAM and copying its projcode (Travis Fair, 2026-10-14). He agreed to SAM taking the step over;
-tell NUSD when `XRAS_RENAME_ENABLED` goes on, and that the reloaded request page and XRAS's
-search show the projcode while the old number stops resolving. A window earlier than 2026-08-24 selects nothing more: the task reads
-only SAMuel's log, whose processed rows start at the repoint.
+SAM and copying its projcode (Travis Fair, 2026-10-14). He agreed to SAM taking the step over.
+With the rename on, the reloaded request page and XRAS's search show the projcode while the
+old number stops resolving. A window earlier than 2026-08-24 selects nothing more: the task
+reads only SAMuel's log, whose processed rows start at the repoint.
 
 ### 3.4 Proving it on the loop
 
@@ -176,11 +172,11 @@ rename 1.77 s after the reply, the task's on NCAR4086 and on the renewal sibling
 | Client verb, verified by id | `XrasAdminClient.rename_request` |
 | Audited op: pre-read by id (already renamed = no write; a third number = left alone), PI else Allocation Manager, card row moved to the new number, overrides rekeyed | `sam.manage.xras_remediation.rename_request`, `rename_plan`; `XrasRequestOverride.rekey` |
 | The one task-writable operation | `TASK_WRITABLE_OPERATIONS = ('rename_request',)` in `sam/integration/xras.py` |
-| Immediate path, **after** the reply (decision 1) | `_rename_after_reply` in `webapp/api/xras/actions.py`, via `response.call_on_close`; logs status and ms. Behind `XRAS_RENAME_ENABLED` (review F1): `"1"` on dev, `"0"` in production, pinned by the gate |
+| Immediate path, **after** the reply (decision 1) | `_rename_after_reply` in `webapp/api/xras/actions.py`, via `response.call_on_close`; logs status and ms. Behind `XRAS_RENAME_ENABLED` (review F1): `"1"` on dev and, since #820, in production; pinned by the gate |
 | Backstop task and backfill | `src/scheduling/tasks/xras_rename.py`; `rename_candidates` in `sam/queries/xras_actions.py` |
 | Log resolution, rules 2 and 3 (decision 4: the number-keyed routes `/roles`, `/dates/requests`, `/requests/request` do not get it; the rename covers their near-zero traffic) | `resolve_project` in `sam/xras/dispatch.py`; `logged_projcode` |
 | Sweep pending set | `live_pending_numbers` subtracts `pushed_request_numbers` |
-| Lever (decision 2) | the task: dev `tasks.env` only; production disables it by name and carries no lever. The route: `XRAS_RENAME_ENABLED` |
+| Lever (decision 2) | the task: `XRAS_WRITE_ENABLED` in each environment's `tasks.env`, the one task write; enabled by name on both. The route: `XRAS_RENAME_ENABLED` |
 
 Every processed post whose number differs from its projcode is renamed, not only a `New`: an
 action resolved by rules 2 and 3 names a line that still needs it, and the pre-read makes a
