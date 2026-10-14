@@ -49,7 +49,9 @@ off, dev on), in the handler or the after-reply hook beside the rename, recordin
 `xras_activation_event` with the API actor as `created_by`. This is the one deliberate
 unattended exception to `can_edit_project_governance` (`implemented/XRAS_AUTO_NOTICES.md`,
 "Phase 2 (later)"). A New that applied under an `ignore_contract` override activates too: the
-waiver is the operator's decision (Ben, 2026-10-14).
+waiver is the operator's decision (Ben, 2026-10-14). NUSD checks nothing before activating
+beyond what the handler checks (Travis, 2026-10-14), so a New that applies is ready to
+activate.
 
 **C. Notifications on post.** SAM sends the award notices:
 - The New's activation notice goes out right after activation (B), through
@@ -90,8 +92,9 @@ so a ticket per approval is churn; the ticket belongs to the post that fails.
   all-or-nothing: a project is never created without its full roster.
 - **A blocked post answers 422 and opens the ticket.** The New handler already collects every
   blocker into one list, so the 422 is the complete checklist and the ticket's body. NUSD works
-  the list by hand and posts again; the post that applies resolves the ticket.
-- **Nothing outbound before the reply.** The open, comment or resolve runs in the after-reply
+  the list by hand and posts again; the post that applies adds a last comment, and NUSD
+  closes the ticket. Travis, 2026-10-14: no auto-close at first, to see how the process feels.
+- **Nothing outbound before the reply.** The open or comment runs in the after-reply
   hook beside the rename, so a slow JSM call never delays XRAS. The first 422 therefore reads
   "a ticket is being opened"; later ones name the key, read from `external_ticket`. Every
   provider state has truthful wording (Jira off means mail; a failed filing says so).

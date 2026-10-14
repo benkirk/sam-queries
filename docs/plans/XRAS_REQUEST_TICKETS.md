@@ -17,7 +17,9 @@ ticket filed on every approval would be opened and closed with nothing in it for
   list.
 - **Commented** by each later post that still answers 422, when its blocker list differs from
   the last one recorded.
-- **Resolved** by the post that applies.
+- **Commented, not closed,** by the post that applies: a last internal comment says it applied
+  and names the projcode, and NUSD closes the ticket. Travis, 2026-10-14: start without
+  auto-close, to see how the process feels; closing on success is a later switch.
 
 Every write rides the post itself: the ticket's life is driven by XRAS's calls to SAM, not by
 a schedule. NUSD works the blockers by hand and posts again when they are clear.
@@ -80,8 +82,8 @@ levers and the provider. The scheduled task never files, comments or resolves. T
 `tests/unit/gates/test_helm_jira_levers.py` (`TestTheCronJobReadsOnly`),
 `scheduling/tasks/account_requests_reconcile.py`, and `tickets/registry.py` / `learn.py`.
 
-- **After the reply, never before.** The 422 goes back to XRAS first, and the open, comment or
-  resolve runs in the after-reply hook beside the rename, so a slow JSM call never sits on the
+- **After the reply, never before.** The 422 goes back to XRAS first, and the open or comment
+  runs in the after-reply hook beside the rename, so a slow JSM call never sits on the
   request XRAS is waiting on (Steve saw the admin app time out). The first 422 therefore cannot
   name its ticket; § 6 covers the wording.
 - **Lift the filer, do not copy it.** `webapp/register/handoff_mail.py` holds a complete
@@ -96,8 +98,9 @@ levers and the provider. The scheduled task never files, comments or resolves. T
 - **A new kind.** `KINDS` entry `xras_request` (`tickets/base.py`) with its own
   `JIRA_XRAS_REQUEST_*` settings, on the webapp only. Handle `SAM-XR-<request_id>`; `jira.py`'s
   exact-match filter needs the prefix.
-- **Provider gaps.** Add `transition(key, ...)` (resolve; Jira 761 needs a `resolution`) as an
-  optional method with a safe default, like `comment`. `learn` covers only `account_request` /
+- **Provider gaps.** `transition(key, ...)` (resolve; Jira 761 needs a `resolution`) is needed
+  only when closing on success is switched on; add it then, as an optional method with a safe
+  default, like `comment`. `learn` covers only `account_request` /
   `account_ticket` (`tickets/queries.py`): extend it, or give this kind no mail fallback.
 
 ## 6. What the 422 says
@@ -116,8 +119,8 @@ The key also appears on the request's Remediations card as soon as it is known.
 
 ## 7. Resolving
 
-The post that applies resolves the ticket in its after-reply hook, keyed on the `request_id` of
-the posted line. A family holds several lines, each with its own id, and `primary_line` moves
+The post that applies writes the ticket's last comment in its after-reply hook ("applied as
+<projcode>"), keyed on the `request_id` of the posted line; NUSD closes the ticket (§ 1). A family holds several lines, each with its own id, and `primary_line` moves
 when a newer action lands on another line, so the key is the stored id, never one re-read from
 `primary_line`. The `request_number` is carried and updated when observed; it changes at the
 rename (`XRAS_CLOSED_LOOP.md` § 3), so it is never the key.
@@ -138,8 +141,8 @@ the operator's next step is the post, and the post opens the ticket if one is ne
 
 ## 9. Rollout
 
-1. **Dev, shadow.** The after-reply hook computes the body and records "would open / comment /
-   resolve" in the action log's outcome, with `JIRA_XRAS_REQUEST_*` unset.
+1. **Dev, shadow.** The after-reply hook computes the body and records "would open / comment" in
+   the action log's outcome, with `JIRA_XRAS_REQUEST_*` unset.
 2. **Dev, filing** against the RC project with a label and immediate cancel, the way
    RC-40275/40276 were smoked. Work the blocked-New scenarios on the bed
    (`XRAS_CLOSED_LOOP.md` § 4). Scenario 6, the placeholder merge, ran 2026-10-14
@@ -149,7 +152,7 @@ the operator's next step is the post, and the post opens the ticket if one is ne
 Probes on samuel-dev against XRAS-dev, 2026-10-13
 ([`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md) § 4): the push row carries
 `request_number` as sent (`NCAR4086`), `request_id` and `projcode_result` (`UCSG0004`), and
-`requestId` is unchanged by the rename, so § 7's resolve-from-the-log works.
+`requestId` is unchanged by the rename, so § 7's lookup from the log works.
 
 ## 10. Open questions for Ben
 
