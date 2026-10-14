@@ -2,8 +2,9 @@
 
 **Status: Track 1 built (#819) and proven on XRAS-dev 2026-10-14 (§ 3.4, record in
 `XRAS_DEV_PROBES.md` § 6), including the live-family join; production backfill (§ 3.3) and the
-`XRAS_RENAME_ENABLED` flip pending; Track 2 not started.** What landed and what was
-decided: § 3.5. Written 2026-10-13 at the end of the session recorded in
+`XRAS_RENAME_ENABLED` flip pending; Track 2 run 2026-10-14 except scenario 6 (§ 4).** What
+landed and what was decided: § 3.5. The wider goal this is phase A of:
+[`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md). Written 2026-10-13 at the end of the session recorded in
 [`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md). Two tracks on one test bed:
 **Track 1** builds the projcode rename in SAMuel and backfills production; **Track 2**
 stress-tests [`XRAS_SUBMISSION.md`](XRAS_SUBMISSION.md) on samuel-dev ↔ XRAS-dev. Track 1
@@ -135,9 +136,11 @@ later will carry the projcode.
 | Approved, no projcode | NCAR4281, 4340, 4395 (refused, 422); NCAR4389, 4391, 4398 (never posted) | none: pending pushes, renamed after they land |
 | Legacy era (2015-2022), no SAMuel log row | NCAR0099, 0116, 0868, 0910, 2169-2174, 2178, 2179, 2181 | none: every title matches only inactive SAM projects (most expired 2018-2024), and the matches are ambiguous (five requests and five projects share one title). Left alone |
 
-NCAR4401 was posted on 10-06 and is renamed, so someone still renames by hand in the admin app
-(Summary → Request Number (Edit), `XRAS_DEV_PROBES.md` § 6). Ask Steve who, before
-`XRAS_RENAME_ENABLED` goes on. A window earlier than 2026-08-24 selects nothing more: the task reads
+NCAR4401 was posted on 10-06 and is renamed: NUSD still renames by hand in the admin app
+(Summary → Request Number (Edit), `XRAS_DEV_PROBES.md` § 6), after activating the project in
+SAM and copying its projcode (Travis Fair, 2026-10-14). He agreed to SAM taking the step over;
+tell NUSD when `XRAS_RENAME_ENABLED` goes on, and that the reloaded request page and XRAS's
+search show the projcode while the old number stops resolving. A window earlier than 2026-08-24 selects nothing more: the task reads
 only SAMuel's log, whose processed rows start at the repoint.
 
 ### 3.4 Proving it on the loop
@@ -205,9 +208,27 @@ and survives a return and a withdraw; a request leaves the admin queue at the po
 notify; a Supplement filed after a Renewal posts lands on the renewal's future window (legacy's
 `getLatestAllocation`, `XRAS_INGEST_IMPROVEMENTS.md` candidate).
 
+**Resume here (fresh session).** Open: scenario 6, which merges `samprobe-20261013` into a real
+person on XRAS-dev and so deletes it; run only with Ben's say-so. After that, each phase of
+`XRAS_POST_AUTOMATION.md` gets its scenarios on this bed as it lands.
+
+- **Bed:** samuel-dev on the branch image (check `kubectl -n sam-queries-dev get pods` shows the
+  expected `sha-`; a staging merge re-pins `cirrus-dev` to staging, and
+  `gh workflow run "Publish Images and CIRRUS Deploy" --ref <branch>` restores it). State left
+  on XRAS-dev: `XRAS_DEV_PROBES.md` § 8.
+- **Writes:** a scratchpad helper as in § 2 (one call per invocation, demo host asserted, JSONL
+  log, no key written). The New recipe that validates on Exploratory: create, `roles/PI`,
+  attributes (title, abstract, keywords, `isSupportedByGrants=false`), Derecho resource, a
+  Requested date range, fos 500003, the EUA bulk PUT (attribute 539638, `attributeValue: null`),
+  an Advisor Letter (`cupsfilter` PDF, JSON base64), validate, submit. An Extension also needs
+  `userComments`.
+- **Clicks:** Ben signs in to `xras-admin-demo` (2FA); approve on `/actions/<aid>/show_process`
+  ("Approve the requested dates", "Fill Award With Requested", Save & Approve), then Post.
+- **Rules:** benkirk-only requests; Notify only when Ben is the sole recipient; never carry a demo
+  number into a production read; production reads need the session's say-so.
+
 ## 5. Questions for Ben
 
 - Decided 2026-10-13: the rename runs after the reply (§ 3.5).
-- Whether the backfill needs per-request sign-off or one approval of the list.
-- Whether Steve hears about the rename before or after the demo proof.
-- Whether scenario 6's merge on demo is wanted.
+- The backfill: one approval of the census list (§ 3.3).
+- Whether scenario 6's merge on demo is wanted (open).

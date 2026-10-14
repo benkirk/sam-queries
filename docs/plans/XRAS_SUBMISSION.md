@@ -216,7 +216,7 @@ has the same gap; it creates a bare action and stops.
 | Default resource amounts | Allocation Types → *Available Resources* → Default Resource Amounts | the ARC form's pre-fill; SAM's § 4.5 default should match it |
 | Rule book | Allocation Types → *Allocation Type Rules*: Required Submission Fields, Required/Optional Documents, Maximum Requests per type, action time periods, ineligible lead statuses | the same rules `required_fields` and `required_documents_status` report; edit here, read there |
 | Available units per opportunity | Opportunities → *Available Resource Numbers* | the pool, not a per-request bound; leave blank |
-| Notifications | XRAS mails the submitter (to the XRAS person's address) and the `alloc@` staff list on submit, and again at the operator's "notify" step after the post; both are XRAS-side settings | once phase 1 ships, switching them off makes SAM's `xras_*` notices the only mail — an optional coordination step (§ 5), not a prerequisite |
+| Notifications | XRAS mails the submitter (to the XRAS person's address) and the `alloc@` staff list on submit, and again at the operator's "notify" step after the post; both are XRAS-side settings | turning XRAS's notify mail off is a **cutover blocker** for SAM sending on post (`XRAS_POST_AUTOMATION.md` phase C): with both on, a PI is mailed twice |
 
 ## 4. The design
 
@@ -499,7 +499,7 @@ Resolution reads the action log, not `requestNumber == projcode` (§ 4.2, the re
 | **Actions applied before SAMuel's log** | § 4.6 items 1 and 2 are built, and both read only SAMuel's log: a repost of an action applied before the 2026-08-24 repoint applies again (XRAS-dev's NRAL0051, `XRAS_DEV_PROBES.md` § 4). The 2026-10-14 census (`XRAS_CLOSED_LOOP.md` § 3.3) found 12 legacy-era families still under `NCAR*`, all dormant | not built: importing legacy-era actions (matched to `allocation_transaction`) waits for a repost of a pre-repoint action to actually happen |
 | **Extension 399374 on `UHSS0001`** | approved and posted, parked as #184, not notified | rename the family (§ 4.6 item 3) and file afresh: the admin app's repost re-sends the `New`, which the guard refuses |
 | **WRAP** | stays `email:wrap@uwyo.edu` until WNA opts in | flip the policy row |
-| **XRAS's own mail** | submit and notify mails are XRAS-side settings (§ 3.4); once phase 1 ships, SAM's `xras_*` notices can be the only mail | optional coordination, not a prerequisite |
+| **XRAS's own mail** | submit and notify mails are XRAS-side settings (§ 3.4); SAM's `xras_*` notices are built and wait on it | a cutover blocker for `XRAS_POST_AUTOMATION.md` phase C: ask Steve to turn XRAS's notify mail off for the NCAR process |
 
 **The clean loop is samuel-dev ↔ the XRAS demo instance — built 2026-10-08.** SAM has the
 internet-reachable development deployment (`https://samuel-dev.k8s.ucar.edu`,

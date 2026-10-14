@@ -1,8 +1,11 @@
 # One NUSD ticket per approved XRAS request
 
-**Status: design, not built.** Input to a later PR. The detection it rests on shipped
-with the sweep changes of 2026-10-13 (branch `xras-sweep-open-ended-window`). The table
-it needs is designed in `XRAS_SUBMISSION.md` § 4.7, not here.
+**Status: design, not built.** Phase D of [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md),
+which records how a post behaves while this ticket is open (Ben, 2026-10-14: ticket first,
+post when clear; a blocked post answers 422 naming the ticket and comments on it, or opens it).
+The detection it rests on shipped with the sweep changes of 2026-10-13 (branch
+`xras-sweep-open-ended-window`). The table it needs is designed in `XRAS_SUBMISSION.md` § 4.7,
+not here.
 
 ## 1. Goal
 
