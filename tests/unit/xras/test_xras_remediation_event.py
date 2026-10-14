@@ -21,6 +21,7 @@ import pytest
 from factories import make_xras_remediation_event
 
 from sam.integration.xras import (
+    TASK_WRITABLE_OPERATIONS,
     XRAS_REMEDIATION_OPERATIONS,
     XRAS_REMEDIATION_STATUSES,
     XrasRemediationEvent,
@@ -42,7 +43,9 @@ class TestTheVocabularies:
             # The metadata editors (Part B2a).
             'update_attributes', 'update_action',
             # The destructive lifecycle (Part C).
-            'delete_request', 'renew_request', 'add_action'}
+            'delete_request', 'renew_request', 'add_action',
+            # SAM's own rename after a New lands (XRAS_CLOSED_LOOP.md).
+            'rename_request'}
 
     def test_every_operation_fits_the_column(self):
         """``operation`` is VARCHAR(24) — a longer verb truncates or errors."""
@@ -69,7 +72,7 @@ class TestTheVocabularies:
 
 
 class TestNoTaskMayWriteOne:
-    """Nothing under ``src/scheduling/`` may write to XRAS.
+    """Nothing under ``src/scheduling/`` writes to XRAS but the rename.
 
     Asserted here because this is the table a task would have to write a row to
     in order to do it — the closest thing to a chokepoint the design has.
@@ -78,6 +81,18 @@ class TestNoTaskMayWriteOne:
     def test_a_task_operator_is_refused(self, session):
         with pytest.raises(ValueError, match='scheduled task'):
             make_xras_remediation_event(session, by='task:xras_sweep')
+
+    @pytest.mark.parametrize('operation', sorted(
+        set(XRAS_REMEDIATION_OPERATIONS) - {'rename_request'}))
+    def test_a_task_may_open_nothing_but_the_rename(self, session, operation):
+        with pytest.raises(ValueError, match='scheduled task'):
+            make_xras_remediation_event(session, operation=operation, by='task:xras_rename')
+
+    def test_the_rename_is_the_one_task_write(self, session):
+        assert TASK_WRITABLE_OPERATIONS == ('rename_request',)
+        event = make_xras_remediation_event(session, operation='rename_request',
+                                            by='task:xras_rename')
+        assert event.created_by == 'task:xras_rename'
 
     def test_a_human_operator_is_fine(self, session):
         assert make_xras_remediation_event(session, by='benkirk').created_by \

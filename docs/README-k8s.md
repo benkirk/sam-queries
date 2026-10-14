@@ -259,8 +259,8 @@ Scheduled tasks, by environment:
 |---|---|---|
 | Local Docker Compose (`samuel-dev`) | n/a — no chart | Run by hand: `sam-admin tasks --run-due` |
 | Local k8s (Docker Desktop) | `false` | Nothing should silently DELETE local data |
-| CIRRUS k8s (this chart) | `true`, kill-switched | Staged enable; the switch names what is not yet live. `SAM_TASKS_DISABLED=xras_notices,account_queue_digest` |
-| CIRRUS k8s dev (`samuel-dev-tasks`) | `true`, own ledger in `system_status_dev` | Mail tasks and the account-request tasks off; the sweep runs against XRAS's demo instance: `SAM_TASKS_DISABLED=expiration_notices,xras_notices,account_requests_reconcile,account_queue_digest` |
+| CIRRUS k8s (this chart) | `true`, kill-switched | Staged enable; the switch names what is not yet live. `SAM_TASKS_DISABLED=xras_notices,account_queue_digest,xras_rename` |
+| CIRRUS k8s dev (`samuel-dev-tasks`) | `true`, own ledger in `system_status_dev` | Mail tasks and the account-request tasks off; the sweep and `xras_rename` (its own `XRAS_WRITE_ENABLED` in `tasks.env`) run against XRAS's demo instance: `SAM_TASKS_DISABLED=expiration_notices,xras_notices,account_requests_reconcile,account_queue_digest` |
 
 When the per-environment Entra app strategy is adopted (separate `sam-production`
 and `sam-staging` Entra apps), only the OpenBao / SSM values change — the chart
@@ -344,10 +344,10 @@ until it has been reviewed on its own, so the dispatcher wakes as usual and the
 untried task writes a `skipped` row instead of running. Today
 `cleanup_status_snapshots`, `deactivate_expired_projects`, `xras_sweep`,
 `expiration_notices`, `refresh_allocation_state` and `account_requests_reconcile`
-are live; `xras_notices` and `account_queue_digest` are switched off (on
-`samuel-dev` the mail tasks, the sweep and the account-request tasks are off
-as well, in `values-dev.yaml`). Enabling one is a separate, reviewable
-one-line commit.
+are live; `xras_notices`, `account_queue_digest` and `xras_rename` are off (dev,
+in `values-dev.yaml`, also turns off the mail and account-request tasks and runs
+the sweep and `xras_rename`). Enabling one is a reviewable one-line commit;
+`xras_rename` also needs `XRAS_WRITE_ENABLED` in production's `tasks.env`.
 
 ⚠️ **It is an enumeration, and it is fail-OPEN.** `disabled_tasks()` in
 `src/scheduling/runner.py` is a case-sensitive exact match against registry
@@ -385,7 +385,7 @@ that needs no task to actually do anything:
 ```bash
 helm upgrade --install samuel ./helm -f helm/values.yaml -f helm/values-local.yaml \
   -n samuel-local --set tasks.enabled=true --set tasks.schedule='*/5 * * * *' \
-  --set 'tasks.env.SAM_TASKS_DISABLED=account_queue_digest\,account_requests_reconcile\,cleanup_status_snapshots\,deactivate_expired_projects\,expiration_notices\,refresh_allocation_state\,xras_notices\,xras_sweep'
+  --set 'tasks.env.SAM_TASKS_DISABLED=account_queue_digest\,account_requests_reconcile\,cleanup_status_snapshots\,deactivate_expired_projects\,expiration_notices\,refresh_allocation_state\,xras_notices\,xras_rename\,xras_sweep'
 ```
 
 ⚠️ `--set` **replaces** the list rather than adding to it, and the commas need

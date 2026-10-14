@@ -27,6 +27,7 @@ from sam.xras.dispatch import (
     dispatch_action,
     parse_enabled_action_types,
     register,
+    resolve_project,
     select_service,
 )
 from sam.xras.errors import ActionErrors, XrasActionRejected
@@ -660,3 +661,72 @@ class TestTransferIsDeliberatelyManual:
         assert e.transfer_requires_destination()
         assert e.transfer_source_has_no_allocation('P', 'R')
         assert e.transfer_credit_exceeds_debit(1.0, 2.0)
+
+
+class TestResolvingThroughTheLog:
+    """``XRAS_SUBMISSION.md`` § 4.6 item 2: an un-renamed NCAR#### finds its project in SAM's log."""
+
+    @pytest.fixture
+    def landed(self, session):
+        from factories import make_project, make_xras_action
+        project = make_project(session)
+        row = make_xras_action(session, status='processed', action_type='New',
+                               request_number='NCAR4087', projcode_result=project.projcode,
+                               service='add')
+        row.request_id = 1439543
+        session.flush()
+        return project
+
+    def _extend(self, clean_registry, seen):
+        register('extend', lambda s, a, *, validate_only=False: seen.append(a) or DispatchResult(
+            status='processed', service='extend', projcode=a['requestNumber']))
+
+    def test_rule_2_resolves_by_request_id(self, session, clean_registry, landed):
+        seen = []
+        self._extend(clean_registry, seen)
+        action = act('Extension', 'NCAR4087', requestId=1439543)
+        result = dispatch_action(session, action)
+        assert result.status == 'processed' and result.projcode == landed.projcode
+        assert seen[0]['requestNumber'] == landed.projcode
+        assert action['requestNumber'] == 'NCAR4087', 'the caller\'s action is not mutated'
+        assert any('by request_id' in w for w in result.warnings)
+
+    def test_rule_3_resolves_a_new_line_by_its_family_number(self, session, clean_registry,
+                                                             landed):
+        register('update', lambda s, a, *, validate_only=False: DispatchResult(
+            status='processed', service='update', projcode=a['requestNumber']))
+        result = dispatch_action(session, act('Renewal', 'NCAR4087', requestId=1449999))
+        assert result.service == 'update' and result.projcode == landed.projcode
+        assert any('by request_number' in w for w in result.warnings)
+
+    def test_a_new_is_never_resolved_through_the_log(self, session, clean_registry, landed):
+        """A repost of the New must mint (or be refused), never route to ``update``."""
+        assert resolve_project(session, act('New', 'NCAR4087', requestId=1439543))[1] is None
+        assert select_service(session, act('New', 'NCAR4087', requestId=1439543)) == 'add'
+
+    def test_a_projcode_wins_over_the_log(self, session, clean_registry, landed):
+        from factories import make_project
+        other = make_project(session)
+        resolved, note, unknown = resolve_project(
+            session, act('Extension', other.projcode, requestId=1439543))
+        assert resolved['requestNumber'] == other.projcode and note is None
+
+    def test_an_unresolved_number_names_itself_in_the_park_reason(self, session,
+                                                                 clean_registry):
+        result = dispatch_action(session, act('Extension', 'NCAR0000', requestId=1))
+        assert result.status == 'manual'
+        assert result.reason == "no SAM project for requestNumber='NCAR0000' (requestId=1)"
+
+    def test_only_a_processed_mapping_counts(self, session, clean_registry):
+        from factories import make_project, make_xras_action
+        project = make_project(session)
+        row = make_xras_action(session, status='failed', action_type='New',
+                               request_number='NCAR4088', projcode_result=project.projcode)
+        row.request_id = 1439539
+        session.flush()
+        assert resolve_project(session, act('Extension', 'NCAR4088',
+                                            requestId=1439539))[2] == 'NCAR4088'
+
+    def test_select_service_gives_the_same_answer(self, session, clean_registry, landed):
+        """The route labels a 422's `service` and preflight its verdict with this call."""
+        assert select_service(session, act('Extension', 'NCAR4087', requestId=1439543)) == 'extend'

@@ -5,8 +5,8 @@
 anything was pushed from XRAS-dev to samuel-dev. Claude made every API call; Ben made every
 approve and post click in the admin app. It answers the "no clean test loop" gap of
 [`XRAS_SUBMISSION.md`](../../plans/XRAS_SUBMISSION.md) § 5 and the experiments of
-[`XRAS_REQUEST_TICKETS.md`](../../plans/XRAS_REQUEST_TICKETS.md) § 7, except those that
-need a SAM-authored submit (§ 6).
+[`XRAS_REQUEST_TICKETS.md`](../../plans/XRAS_REQUEST_TICKETS.md) § 9, except those that
+need a SAM-authored submit (§ 7).
 
 Same method as [`XRAS_WRITE_PROBES.md`](XRAS_WRITE_PROBES.md) § 1: one attempt per write,
 then a re-read. Status codes, ids and field names are recorded; response bodies are not.
@@ -134,7 +134,43 @@ Simpson's (NCAR4401) did not, UHSS0001 never changed, and XRAS-dev never renames
 request master creates one, an existing one joins it (§ 3, § 4 at 23:4x). After the rename, a
 newly filed Extension applied normally (#12).
 
-## 6. Open, and what unblocks it
+## 6. SAMuel renames: the closed loop on `sha-726c77f` (2026-10-13/14)
+
+The first runs of `XRAS_CLOSED_LOOP.md` Track 1 (#819) on samuel-dev, `XRAS_RENAME_ENABLED=1`.
+Claude made every API call and admin-app click; Ben signed in (2FA). Nothing was notified.
+
+| Time (UTC) | Step | Observed |
+|---|---|---|
+| 10-14 03:22 | first `xras_rename` run | 2 candidates. NCAR4087 (1439543) already `UHSS0002`: no write. NCAR4086 (1439308, kyledavis's "TEST 8.17.26") renamed to **UCSG0004** as kyledavis, `xras_remediation_event` #1 `verified`. Ben: the rename is fine; mail to others is the concern, and none is sent |
+| 03:22-11:20 | hourly runs | each 2 reads, no write, no audit row |
+| 11:49 | Claude creates and submits a benkirk-only New on Exploratory (1439571 / 372884): PI, attributes, Derecho 1, dates, fos, EUA, Advisor Letter (`cupsfilter` PDF), validate | **NCAR4089**. No mail reached benkirk's XRAS address |
+| 12:45 | Claude approves in the admin app (requested dates, Derecho 1) | "Notifications Generated? No" |
+| 12:46 | `POST …/requests/1439571/renew` before posting | line 1439572, Renewal, Incomplete, **already under NCAR4089** |
+| 12:46:07 | Claude posts the New | sam_dev #13, `add`, processed → **UHSS0003**; reply 200 in 248 ms |
+| 12:46:09 | the route's after-reply rename | `NCAR4089 -> UHSS0003` `verified`, event #2, **1,770 ms**, after the reply. The admin app now titles it "New - UHSS0003"; `NCAR4089` holds only the renewal line |
+| 12:47 | Extension 372886 on 1439571 (validate first failed: "User Comments is a required field"); approved; posted | sam_dev #14, `extend`, processed under UHSS0003 (warning: project inactive). No rename: the number is the projcode |
+| 13:22 | `xras_rename` | sibling pass renames 1439572 onto the live family, event #3 `verified`. **UHSS0003 holds both lines; NCAR4089 answers nothing.** The `requestNumber` PUT joins an existing family, as the admin app's "Merge" does |
+
+**Where staff renamed by hand:** a request's Summary tab, "Request Number (Edit)" →
+`/requests/<requestId>/edit`, two forms. "Assign new request number" takes a number not in use
+(the first line); "Merge request with another" moves the line under an existing number (a
+sibling). Any admin can still use it, unseen by SAM (`UNPLANNED_CITY_LEDGER.md` entry 26).
+
+### 6.1 Track 2 on the same bed (2026-10-14, `XRAS_CLOSED_LOOP.md` § 4)
+
+Every request benkirk-only; no Notify pressed. Scenario 6 (the placeholder merge) not run.
+
+| # | Done | Observed |
+|---|---|---|
+| 7 | New 1439573 / 372887 created **into** family UHSS0003 (`requestType=New&requestNumber=UHSS0003`); submit keeps the number (no `NCAR` mint). Approved, then **double-clicked** Post | Both clicks post, 0.45 s apart: #15 and #16 `update`, `failed` 422, "Action end date before existing allocation end date for Derecho" (UHSS0003 ran to 2028-03-31), shown verbatim in the admin app. Reset, re-approved with dates to 2028-10-31, double-clicked again: **#17 `update` processed** (Derecho extended to 2028-10-31, supplemented +2 → 3; replay 1+2 = 3), **#18 `duplicate` 422** "already applied by an earlier post (SAM #17)" 0.4 s later. The first post took 66 ms, so the in-flight branch (a first post still running) was not reached |
+| 2 | Renewal line 1439572 (from § 6) completed | `/renew` copies roster, title, keywords, fos; not abstract, resources, dates, EUA, documents. Exploratory's renewal needs an Advisor Letter, no Progress Report; dates not required. Posted: **#19 `update`**, a new Derecho allocation 2028-11-01 → 2029-10-31 (4) after the current one; no rename (number = projcode) |
+| 8 | dashboard read after the posts | **A posted request leaves the admin queue without a notify**: none of UHSS0002, UHSS0003 (New, Extension, Renewal) or UCSG0004 is listed; Exploratory "pending" 3 → 2. NCAR4088 (approved, post refused) stays |
+| 3 | NCAR4090 (1439574 / 372888): Hold Off, Return for Corrections, Reject | **Hold Off** is admin-only ("Visible in XRAS Admin only"): status stays `Submitted`, only `states[]` gains `Hold Off`. **Return for Corrections**: request and action `Incomplete`, `returnedForCorrections: true`, the comment in `adminComments`, `Hold Off` kept. **Reject**: request `Rejected`, action `Declined`, `Hold Off` cleared |
+| 4 | on NCAR4090 after the return: resubmit; withdraw (`DELETE …/submit`); submit | resubmit → **`Submitted`** (not `Under Review`, as production probe P3's re-submit was); withdraw → `Incomplete`; submit → `Submitted`. `Hold Off` survives all three |
+| 1 | Supplement 372889 on UHSS0003, resource set, validate, then aborted (`DELETE`); fresh Supplement 372890, submitted, approved, posted | the aborted action is kept `isDeleted: true`; a Supplement validates without user comments (an Extension does not). **#20 `supplement`** processed, but onto the **renewal's future window** (2028-11 → 2029-10, 4 → 9), not the current one: `latest_allocation` is legacy's max-end-date rule. A Supplement filed after a Renewal posts lands there |
+| 5 | `PUT …/attributes` and `GET /v1/requests/1439571` as `samprobe-20261013` (no role on the line) | 401 on both; nothing changed |
+
+## 7. Open, and what unblocks it
 
 | Open | Blocked on |
 |---|---|
@@ -142,7 +178,7 @@ newly filed Extension applied normally (#12).
 | A phase-1 action on a family already numbered by its projcode | a demo family under a projcode on which benkirk holds a PI role |
 | An approval without a click | a `review`/`admin` demo key or an auto-approve rule (Steve) |
 
-## 7. Final state left on XRAS-dev
+## 8. Final state left on XRAS-dev
 
 | Object | State |
 |---|---|
@@ -150,6 +186,8 @@ newly filed Extension applied normally (#12).
 | 1439543 / **UHSS0002** (Draft B; minted as NCAR4087, renamed by Claude) | Approved and posted (UHSS0002); Extension 372862 and Supplement 372863 parked on SAM (#7, #8); Extension 372866 applied (#12); actions 372857–58 soft-deleted. Family UHSS0002 also holds soft-deleted 1439547 |
 | 1439538, 1439540–42, 1439544–48 | soft-deleted drafts (1439545 is the renewal line; 1439547 and 1439548 the `requestNumber` probes) |
 | person `samprobe-20261013` | `isReconciled: false`, no roles |
-| NCAR4086 (1439308) | Approved, posted, not notified; SAM project UCSG0004 (active) |
-| samuel-dev | UCSG0004 (active), UHSS0002 (inactive); `xras_action_log` #1–#12; NRAL0051 inflated by #4; UHSS0002 Derecho ends 2028-03-31 |
+| 1439308 / **UCSG0004** (minted as NCAR4086, renamed by `xras_rename` 2026-10-14) | Approved, posted, not notified; SAM project UCSG0004 (active) |
+| 1439571 + 1439572 + 1439573 / **UHSS0003** (minted as NCAR4089) | New 372884, Extension 372886, Supplement 372890 (372889 soft-deleted) on 1439571; Renewal 372885 on 1439572 (joined by `xras_rename`); New 372887 on 1439573; all approved and posted (#13, #14, #17, #19, #20), none notified |
+| 1439574 / NCAR4090 | Rejected (action Declined) after Hold Off, Return for Corrections, resubmit, withdraw |
+| samuel-dev | UCSG0004 (active), UHSS0002 and UHSS0003 (inactive); `xras_action_log` #1–#20; `xras_remediation_event` #1–#3 (renames); NRAL0051 inflated by #4; UHSS0002 Derecho ends 2028-03-31; UHSS0003 Derecho 3 to 2028-10-31 and 9 for 2028-11 → 2029-10 |
 | NRAL0051 (1436558) | Approved, posted, not notified; sam_dev allocations inflated by the repeat |

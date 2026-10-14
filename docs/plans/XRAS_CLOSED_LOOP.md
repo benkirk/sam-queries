@@ -1,6 +1,10 @@
 # XRAS closed loop: SAMuel renames requests, then the submission plan under load
 
-**Status: handoff, not started.** Written 2026-10-13 at the end of the session recorded in
+**Status: Track 1 built (#819) and proven on XRAS-dev 2026-10-14 (§ 3.4, record in
+`XRAS_DEV_PROBES.md` § 6), including the live-family join; production backfill (§ 3.3) and the
+`XRAS_RENAME_ENABLED` flip pending; Track 2 run 2026-10-14 except scenario 6 (§ 4).** What
+landed and what was decided: § 3.5. The wider goal this is phase A of:
+[`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md). Written 2026-10-13 at the end of the session recorded in
 [`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md). Two tracks on one test bed:
 **Track 1** builds the projcode rename in SAMuel and backfills production; **Track 2**
 stress-tests [`XRAS_SUBMISSION.md`](XRAS_SUBMISSION.md) on samuel-dev ↔ XRAS-dev. Track 1
@@ -35,7 +39,7 @@ projcode (item 3), because PIs see the number and XRAS's other number-keyed call
 
 Read first: `XRAS_DEV_PROBES.md` (§ 3 write ladder, § 4 timeline, § 5 rewrite, § 7 state left
 on demo); `XRAS_SUBMISSION.md` § 4.2 (the three identifiers), § 4.6 items 1–4, § 5;
-[`XRAS_REQUEST_TICKETS.md`](XRAS_REQUEST_TICKETS.md) § 6; `.claude/rules/notify-and-tasks.md`.
+[`XRAS_REQUEST_TICKETS.md`](XRAS_REQUEST_TICKETS.md) § 7; `.claude/rules/notify-and-tasks.md`.
 CLAUDE.md tripwire: `SAM_TASKS_DISABLED` is fail-OPEN, so a new task ships named in
 `helm/values.yaml`'s disabled list in the same change.
 
@@ -61,7 +65,7 @@ Ground rules, from what went right and wrong on 2026-10-13:
   production. Never carry a demo number into a production read.
 - Production database reads need Ben's say-so in the session (auto mode refused one).
 
-State to start from (details in `XRAS_DEV_PROBES.md` § 7): **UHSS0002** = request 1439543,
+State to start from (details in `XRAS_DEV_PROBES.md` § 8): **UHSS0002** = request 1439543,
 renamed, Extension 372866 applied; NCAR4086 → UCSG0004 (1439308, kyledavis's, not renamed);
 NCAR4088 (1439539, refused 422 for its roster); sam_dev `xras_action_log` #1–#12.
 
@@ -80,9 +84,8 @@ NCAR4088 (1439539, refused 422 for its roster); sam_dev `xras_action_log` #1–#
 ### 3.2 Decisions the build has to make
 
 1. **Before or after the reply.** XRAS waits on our answer to the post, and Steve has
-   reported connect timeouts. The webapp has no after-response hook today. Measure on demo: a
-   synchronous rename before replying (adds one PUT plus two reads), against a post-response
-   hook. Whichever is chosen, the task covers a failure.
+   reported connect timeouts. Decided: after the reply, from `response.call_on_close`
+   (§ 3.5); the task covers a failure.
 2. **Lifting the write lever into the CronJob.** `XRAS_WRITE_ENABLED` is webapp-only by
    design: `helm/values.yaml` (the lever block and the live-task list),
    `helm/templates/cronjob-tasks.yaml`, and the gate
@@ -101,20 +104,84 @@ NCAR4088 (1439539, refused 422 for its roster); sam_dev `xras_action_log` #1–#
 
 ### 3.3 Production backfill
 
+The `xras_rename` task with its window widened (Ben, 2026-10-13: no separate CLI). The runner
+skips a task named in `SAM_TASKS_DISABLED` even under `--force`, so each run clears it:
+
+```bash
+# 1. dry run: reads only, needs no write lever; detail lists each line and its state
+SAM_TASKS_XRAS_RENAME_SINCE=2026-08-24 SAM_TASKS_DISABLED= \
+  sam-admin tasks --run xras_rename --force --dry-run --format json
+# 2. Ben approves the list; Steve hears before the first production rename
+# 3. apply: the same, without --dry-run and with XRAS_WRITE_ENABLED=1 for that run only
+```
+
+Enabling the task on production afterwards is a values change: drop `xras_rename` from
+`SAM_TASKS_DISABLED`, add `XRAS_WRITE_ENABLED` to production's `tasks.env`, and edit
+`test_the_tasks_env_never_arms_writes`, which pins its absence. The route's after-reply rename
+is separate: flip `XRAS_RENAME_ENABLED` to `"1"` in `values.yaml` and edit
+`test_the_after_reply_rename_ships_off`, once the dev proof is done and Steve has heard.
+
 A dry-run report first: every production `processed` `New` since 2026-08-24 whose XRAS line
-still answers its placeholder. Candidates from award letters and the sweep, to confirm in the
-report: NCAR4212, NCAR4293, NCAR4300, NCAR4326, NCAR4354 (UHSS0001), NCAR4401. Ben approves the list, then apply. Tell Steve before the first
+still answers its placeholder. Ben approves the list, then apply. Tell Steve before the first
 production rename: PIs see the number in ARC, and the award letter for anything notified
 later will carry the projcode.
 
+**Census, 2026-10-14** (read-only: every `Approved` line in production XRAS against prod
+`xras_action_log`). 4,170 approved lines; 23 live ones still numbered `NCAR*`:
+
+| Group | Lines | Backfill |
+|---|---|---|
+| Posted to SAMuel, never renamed | NCAR4293 → NRAL0055, NCAR4212 → NRAL0056, NCAR4300 → NHAO0037 (posted 09-09), NCAR4354 → UHSS0001 (09-15), NCAR4432 → UWHO0029 (10-13) | **the five the dry run should list** |
+| Posted to SAMuel, already renamed by hand | 68 of the 73 processed News since the repoint, including NCAR4326 → UUSL0051 and NCAR4401 → UCGD0010 | none: one read each, `already_renamed` |
+| Approved, no projcode | NCAR4281, 4340, 4395 (refused, 422); NCAR4389, 4391, 4398 (never posted) | none: pending pushes, renamed after they land |
+| Legacy era (2015-2022), no SAMuel log row | NCAR0099, 0116, 0868, 0910, 2169-2174, 2178, 2179, 2181 | none: every title matches only inactive SAM projects (most expired 2018-2024), and the matches are ambiguous (five requests and five projects share one title). Left alone |
+
+NCAR4401 was posted on 10-06 and is renamed: NUSD still renames by hand in the admin app
+(Summary → Request Number (Edit), `XRAS_DEV_PROBES.md` § 6), after activating the project in
+SAM and copying its projcode (Travis Fair, 2026-10-14). He agreed to SAM taking the step over;
+tell NUSD when `XRAS_RENAME_ENABLED` goes on, and that the reloaded request page and XRAS's
+search show the projcode while the old number stops resolving. A window earlier than 2026-08-24 selects nothing more: the task reads
+only SAMuel's log, whose processed rows start at the repoint.
+
 ### 3.4 Proving it on the loop
+
+**Done 2026-10-14** (`XRAS_DEV_PROBES.md` § 6): steps 1-5 on NCAR4089 → UHSS0003, the route's
+rename 1.77 s after the reply, the task's on NCAR4086 and on the renewal sibling.
 
 1. Submit a benkirk-only `New` via the API; approve and post it through Playwright.
 2. See the rename land before any notify, and the old number stop resolving.
 3. File an Extension via the API, approve, post: `processed` under the projcode.
 4. Disable the immediate path, repeat 1–3, and see the task do the rename.
-5. Unit tests: the client verb against a fake transport; the trigger's conditions; the task's
+5. Rename onto a live family: the second line of a family still under `NCAR####` (a
+   Renewal filed before the rename). A `New` routed to `update` is not this case: it already
+   carries the projcode, so nothing is renamed. Submit and approve a benkirk-only `New`
+   (`NCARn`), spawn a renewal line on it (`POST …/requests/<rid>/renew`) **before** posting,
+   then post the `New`: the route renames line 1 to `P`, and the `xras_rename` task's sibling
+   pass renames the renewal line onto the now-live family `P`. Read
+   `reports/request_numbers/P` and the card's primary line. Proven 2026-10-14: UHSS0003 holds
+   both lines, `NCAR4089` answers nothing, and the primary line stays the New
+   (`XRAS_DEV_PROBES.md` § 6).
+6. Unit tests: the client verb against a fake transport; the trigger's conditions; the task's
    selection; the gate changes.
+
+### 3.5 What landed (branch `xras-closed-loop`)
+
+| Piece | Where |
+|---|---|
+| By-id read, the one key a rename does not move (probed: 1439543 answers `UHSS0002`) | `XrasApiClient.get_request_by_id` (`reports/requests/<rid>`) |
+| Client verb, verified by id | `XrasAdminClient.rename_request` |
+| Audited op: pre-read by id (already renamed = no write; a third number = left alone), PI else Allocation Manager, card row moved to the new number, overrides rekeyed | `sam.manage.xras_remediation.rename_request`, `rename_plan`; `XrasRequestOverride.rekey` |
+| The one task-writable operation | `TASK_WRITABLE_OPERATIONS = ('rename_request',)` in `sam/integration/xras.py` |
+| Immediate path, **after** the reply (decision 1) | `_rename_after_reply` in `webapp/api/xras/actions.py`, via `response.call_on_close`; logs status and ms. Behind `XRAS_RENAME_ENABLED` (review F1): `"1"` on dev, `"0"` in production, pinned by the gate |
+| Backstop task and backfill | `src/scheduling/tasks/xras_rename.py`; `rename_candidates` in `sam/queries/xras_actions.py` |
+| Log resolution, rules 2 and 3 (decision 4: the number-keyed routes `/roles`, `/dates/requests`, `/requests/request` do not get it; the rename covers their near-zero traffic) | `resolve_project` in `sam/xras/dispatch.py`; `logged_projcode` |
+| Sweep pending set | `live_pending_numbers` subtracts `pushed_request_numbers` |
+| Lever (decision 2) | the task: dev `tasks.env` only; production disables it by name and carries no lever. The route: `XRAS_RENAME_ENABLED` |
+
+Every processed post whose number differs from its projcode is renamed, not only a `New`: an
+action resolved by rules 2 and 3 names a line that still needs it, and the pre-read makes a
+repeat free. The identity census behind this (nothing else needed re-keying first) is
+`UNPLANNED_CITY_LEDGER.md` entry 26.
 
 ## 4. Track 2: stress-test the submission plan
 
@@ -126,7 +193,7 @@ Each scenario: what to file, what to click, what SAM should record. Findings go 
 | 1 | Supplement and Extension on a renamed family as a multi-step flow, with a failure mid-flow (abort = soft-delete the action) and a resume | § 4.3, phase 1 |
 | 2 | `/renew` on UHSS0002 → approve → post → the `update` handler; what `/renew` copies; the Progress Report rule | phase 1b |
 | 3 | Operator outcomes in the admin app: Hold Off, Return for Corrections, Reject | the state mapping, § 4.2 |
-| 4 | Withdraw after submit; resubmit lands `Under Review` | § 3.1 |
+| 4 | Withdraw after submit; resubmit (lands `Submitted` on XRAS-dev, § 6.1) | § 3.1 |
 | 5 | The SAM lead absent from the XRAS line: refused with a reason, never worked around | § 4.4 |
 | 6 | A request authored by `samprobe-20261013` → post → expected 422 → merge on arrival (demo only; a merge deletes the placeholder) → repost | phase 3 |
 | 7 | A `New` posted for an existing projcode (`update`, the NRAL0051 double-apply); two posts of one action in quick succession (the in-flight guard) | § 4.6 item 1 |
@@ -134,9 +201,34 @@ Each scenario: what to file, what to click, what SAM should record. Findings go 
 
 Out of scope on the loop: the form (§ 4.1, unprototyped) and limits (§ 4.5, SAM-side only).
 
+**Run 2026-10-14** (`XRAS_DEV_PROBES.md` § 6.1): 1-5, 7 and 8 done on UHSS0003 and NCAR4090;
+6 not run (it deletes the placeholder). Nothing found needs a change to #819. For the design:
+a resubmit lands `Submitted`, not `Under Review`; Hold Off is a `states[]` entry, not a status,
+and survives a return and a withdraw; a request leaves the admin queue at the post, without a
+notify; a Supplement filed after a Renewal posts lands on the renewal's future window (legacy's
+`getLatestAllocation`, `XRAS_INGEST_IMPROVEMENTS.md` candidate).
+
+**Resume here (fresh session).** Open: scenario 6, which merges `samprobe-20261013` into a real
+person on XRAS-dev and so deletes it; run only with Ben's say-so. After that, each phase of
+`XRAS_POST_AUTOMATION.md` gets its scenarios on this bed as it lands.
+
+- **Bed:** samuel-dev on the branch image (check `kubectl -n sam-queries-dev get pods` shows the
+  expected `sha-`; a staging merge re-pins `cirrus-dev` to staging, and
+  `gh workflow run "Publish Images and CIRRUS Deploy" --ref <branch>` restores it). State left
+  on XRAS-dev: `XRAS_DEV_PROBES.md` § 8.
+- **Writes:** a scratchpad helper as in § 2 (one call per invocation, demo host asserted, JSONL
+  log, no key written). The New recipe that validates on Exploratory: create, `roles/PI`,
+  attributes (title, abstract, keywords, `isSupportedByGrants=false`), Derecho resource, a
+  Requested date range, fos 500003, the EUA bulk PUT (attribute 539638, `attributeValue: null`),
+  an Advisor Letter (`cupsfilter` PDF, JSON base64), validate, submit. An Extension also needs
+  `userComments`.
+- **Clicks:** Ben signs in to `xras-admin-demo` (2FA); approve on `/actions/<aid>/show_process`
+  ("Approve the requested dates", "Fill Award With Requested", Save & Approve), then Post.
+- **Rules:** benkirk-only requests; Notify only when Ben is the sole recipient; never carry a demo
+  number into a production read; production reads need the session's say-so.
+
 ## 5. Questions for Ben
 
-- After measuring on demo: the rename before or after the reply.
-- Whether the backfill needs per-request sign-off or one approval of the list.
-- Whether Steve hears about the rename before or after the demo proof.
-- Whether scenario 6's merge on demo is wanted.
+- Decided 2026-10-13: the rename runs after the reply (§ 3.5).
+- The backfill: one approval of the census list (§ 3.3).
+- Whether scenario 6's merge on demo is wanted (open).

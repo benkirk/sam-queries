@@ -431,12 +431,19 @@ def live_lines(lines: Any) -> List[Dict[str, Any]]:
 
 
 def live_pending_numbers(session, payloads: Any) -> set:
-    """Request numbers with a live line and no SAM project: the pushes still owed."""
+    """Request numbers with a live line, no SAM project and no processed push: the pushes still owed.
+
+    The log check covers a pushed New that XRAS still names ``NCAR####`` until the rename.
+    """
     from sam.queries.projects import project_ids_by_code
+    from sam.queries.xras_actions import pushed_request_numbers
 
     numbers = {n for p in live_lines(payloads)
                if (n := str(p.get('requestNumber') or '').strip())}
-    return numbers - set(project_ids_by_code(session, numbers)) if numbers else set()
+    if not numbers:
+        return set()
+    pending = numbers - set(project_ids_by_code(session, numbers))
+    return pending - pushed_request_numbers(session, pending)
 
 
 def line_by_id(lines: Any, request_id: Any) -> Optional[Dict[str, Any]]:

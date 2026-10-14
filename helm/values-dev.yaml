@@ -56,6 +56,7 @@ webapp:
     XRAS_API_BASE: "https://xras-submit-api-demo.xsede.org"
     XRAS_OUTGOING_ENABLED: "1"
     XRAS_WRITE_ENABLED: "1"
+    XRAS_RENAME_ENABLED: "1"              # the after-reply rename (prod: "0")
     XRAS_ACTIONS_CAPTURE_ONLY: "0"
     TICKET_PROVIDER: ""                   # dev files no API ticket
     JIRA_ENABLED: "0"
@@ -100,3 +101,6 @@ tasks:
     SAM_API_BASE: "https://samuel-dev.k8s.ucar.edu"
     # xras_sweep runs: it and XRAS_OUTGOING_ENABLED are one decision.
     SAM_TASKS_DISABLED: "expiration_notices,xras_notices,account_requests_reconcile,account_queue_digest"
+    # Arms xras_rename against XRAS-dev, the one task write (values.yaml's
+    # XRAS_WRITE_ENABLED warning). Production's tasks env does not carry it.
+    XRAS_WRITE_ENABLED: "1"

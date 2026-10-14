@@ -886,6 +886,35 @@ class XrasAdminClient(_XrasTransport):
             extra={'request_number': request_number, 'fields': list(fields),
                    'context': context or XA_ADMIN_CONTEXT})
 
+    def rename_request(self, request_id: int, *, old_number: str, new_number: str,
+                       xa_user: str, context: Optional[str] = None) -> XrasWriteResult:
+        """Rename a request line's ``requestNumber`` in place (``NCAR####`` -> projcode).
+
+        Verified by **id** (``reports/requests/<rid>``): a re-read by either number
+        cannot tell a renamed line from a sibling, and the old number stops resolving.
+        """
+        path = f'/v1/requests/{int(request_id)}/attributes'
+        status, _, message, error = self._write(
+            'PUT', path, params={'requestNumber': str(new_number)},
+            xa_user=xa_user, context=context)
+
+        try:
+            line = self.reader.get_request_by_id(request_id)
+            now = (line or {}).get('requestNumber')
+            verified = now == new_number
+            after = {'requestNumber': now}
+            detail = f'requestId {int(request_id)} answers {now!r}'
+        except XrasSourceUnavailable as exc:
+            after, verified, detail = None, None, f'verify read failed: {exc}'
+
+        return XrasWriteResult(
+            operation='rename_request', method='PUT', path=path,
+            xa_user=xa_user, http_status=status, message=message,
+            before={'requestNumber': old_number}, after=after, verified=verified,
+            verify_detail=detail, write_error=error,
+            extra={'request_number': old_number, 'new_number': new_number,
+                   'context': context or XA_ADMIN_CONTEXT})
+
     def update_action(self, request_id: int, action_id: int, *,
                       request_number: str, xa_user: str,
                       context: Optional[str] = None,

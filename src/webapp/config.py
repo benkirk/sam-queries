@@ -546,6 +546,7 @@ class TestingConfig(SAMWebappConfig):
     # production XRAS. Pinned False so `write_configured` is False unless a test
     # says otherwise.
     XRAS_WRITE_ENABLED = False
+    XRAS_RENAME_ENABLED = False
     # Pinned for the same reason: tests opt into a destructive lever explicitly.
     LDAPSYNC_PURGE_ENABLED = False
     LDAPSYNC_LIFECYCLE_ENABLED = False

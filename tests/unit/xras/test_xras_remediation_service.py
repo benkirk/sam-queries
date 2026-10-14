@@ -806,3 +806,114 @@ class TestDeletedLinesAreNotTheRequest:
         result = service.recheck_readiness('EXAM0001', session=session, reader=reader)
         assert result['patched'] and checked == [900001]
         assert xras_cache.load_requests_index()['rows'][0]['request_id'] == 900001
+
+
+class TestTheRename:
+    """SAM's rename: pre-read by id, act as the PI, move the card row and the overrides."""
+
+    @pytest.fixture
+    def rekeyed(self, monkeypatch):
+        seen = []
+        monkeypatch.setattr(service, '_rekey_overrides',
+                            lambda f, old, new: seen.append((old, new)))
+        return seen
+
+    def _client(self, number):
+        client = MagicMock()
+        client.reader.get_request_by_id.return_value = _payload(number=number)
+        client.rename_request.return_value = _result(
+            'rename_request', before={'requestNumber': 'NCAR0001'},
+            after={'requestNumber': 'UXYZ0001'})
+        return client
+
+    def _rename(self, factory, client):
+        return service.rename_request(factory, request_id=900001, old_number='NCAR0001',
+                                      new_number='UXYZ0001', operator='task:xras_rename',
+                                      client=client)
+
+    def test_it_renames_as_the_pi_and_records_a_task_row(
+            self, factory, session, rekeyed, monkeypatch):
+        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        client = self._client('NCAR0001')
+        outcome = self._rename(factory, client)
+        assert outcome.status == 'verified'
+        assert client.rename_request.call_args.kwargs == {
+            'old_number': 'NCAR0001', 'new_number': 'UXYZ0001', 'xa_user': 'pi-user'}
+        event = session.get(XrasRemediationEvent, outcome.event_id)
+        assert (event.operation, event.created_by, event.request_number) == (
+            'rename_request', 'task:xras_rename', 'NCAR0001')
+        assert rekeyed == [('NCAR0001', 'UXYZ0001')]
+
+    def test_an_already_renamed_line_costs_no_write(self, factory, rekeyed):
+        client = self._client('UXYZ0001')
+        outcome = self._rename(factory, client)
+        assert outcome.status == 'already_renamed' and outcome.event_id is None
+        assert outcome.status in service.RENAME_DONE
+        client.rename_request.assert_not_called()
+        assert rekeyed == [('NCAR0001', 'UXYZ0001')]
+
+    def test_a_line_answering_a_third_number_is_left_alone(self, factory, rekeyed):
+        client = self._client('ZZZZ9999')
+        outcome = self._rename(factory, client)
+        assert outcome.status == 'skipped' and 'ZZZZ9999' in outcome.error
+        client.rename_request.assert_not_called()
+        assert rekeyed == []
+
+    def test_no_role_holder_means_no_write(self, factory, rekeyed):
+        client = self._client('NCAR0001')
+        client.reader.get_request_by_id.return_value['roles'] = []
+        assert self._rename(factory, client).status == 'no_role_holder'
+        client.rename_request.assert_not_called()
+
+    def test_the_allocation_manager_stands_in_for_a_missing_pi(self, factory, rekeyed,
+                                                                monkeypatch):
+        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        client = self._client('NCAR0001')
+        client.reader.get_request_by_id.return_value['roles'] = [
+            {'person': {'username': 'am-user'},
+             'roles': [{'roleId': 3, 'role': 'Allocation Manager', 'roleTypeId': 14}]}]
+        self._rename(factory, client)
+        assert client.rename_request.call_args.kwargs['xa_user'] == 'am-user'
+
+    def test_a_failed_pre_read_is_an_error_without_a_row(self, factory, rekeyed):
+        client = self._client('NCAR0001')
+        client.reader.get_request_by_id.side_effect = XrasSourceUnavailable('down')
+        outcome = self._rename(factory, client)
+        assert outcome.status == 'error' and outcome.event_id is None
+
+    def test_an_unverified_rename_moves_nothing(self, factory, rekeyed, monkeypatch):
+        refreshed = []
+        monkeypatch.setattr(service, '_refresh_index_entry',
+                            lambda n, **kw: refreshed.append(n) or True)
+        client = self._client('NCAR0001')
+        client.rename_request.return_value = _result('rename_request', verified=False)
+        assert self._rename(factory, client).status == 'unverified'
+        assert rekeyed == [] and refreshed == []
+
+    def test_the_card_row_moves_to_the_new_number(self, factory, rekeyed, monkeypatch):
+        """Read by the new number, patched into the row keyed by the old, no longer pending."""
+        entry = request_index_entry(_payload(number='NCAR0001'), pending_push=True)
+        xras_cache.store_requests_index({'generated_at': datetime.now(), 'rows': [entry]})
+        reader = MagicMock()
+        reader.get_request_family_by_number.side_effect = (
+            lambda n: [_payload(number='UXYZ0001')] if n == 'UXYZ0001' else [])
+        monkeypatch.setattr(
+            'sam.integration.xras_api.client.XrasApiClient.from_environment',
+            classmethod(lambda cls, *a, **k: reader))
+        outcome = self._rename(factory, self._client('NCAR0001'))
+        assert outcome.patched is True
+        rows = xras_cache.load_requests_index()['rows']
+        assert [r['request_number'] for r in rows] == ['UXYZ0001']
+        assert rows[0]['pending_push'] is False
+
+    @pytest.mark.parametrize('rename, write, armed', [
+        ('1', True, True), ('0', True, False), ('1', False, False), (None, True, False)])
+    def test_the_route_needs_its_own_lever_and_the_write_lever(self, monkeypatch, rename,
+                                                               write, armed):
+        if rename is None:
+            monkeypatch.delenv('XRAS_RENAME_ENABLED', raising=False)
+        else:
+            monkeypatch.setenv('XRAS_RENAME_ENABLED', rename)
+        monkeypatch.setattr('sam.integration.xras_api.config.xras_write_configured',
+                            lambda *a: write)
+        assert service.rename_armed() is armed

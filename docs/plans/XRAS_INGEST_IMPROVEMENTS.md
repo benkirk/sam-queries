@@ -321,6 +321,7 @@ is when each will be reached for:
 | Feed-A preflight on the CLI path | handlers register by import side effect, fired only by `webapp/api/xras/actions.py`; `sam-admin xras --accounts` never imports them, so every dispatch parks and `_validate` maps a parked result to **"would succeed"**. The playbook recommends that command. Fix + test in Phase 0 of [`XRAS_PUSH_READINESS.md`](implemented/XRAS_PUSH_READINESS.md) |
 | `manual` ≠ success | the same `_validate` discards the `DispatchResult`; a parked action shows green on the Accounts card too. Carry `preflight_status` on `ActionRef` and derive `would_succeed` from it |
 | Feed-B `ActionRef.action_type` | set from `requestType`, which `schemas/forms/xras.py` documents as not the action type; read the action's `actionType` |
+| Supplement after a Renewal | `latest_allocation` (legacy's `getLatestAllocation`, max end date) puts a Supplement filed on the old line after the Renewal posted onto the renewal's **future** window. Seen on XRAS-dev 2026-10-14 (`XRAS_DEV_PROBES.md` § 6.1, #20). Decide whether a Supplement should target the window its action dates cover; until then the operator moves it by hand |
 
 ---
 

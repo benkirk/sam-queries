@@ -224,6 +224,73 @@ def project_ids_for_actions(session: Session,
     return [next((ids[c] for c in codes if c in ids), None) for codes in candidates]
 
 
+#: Actions whose processed row maps a request token to the projcode it became.
+_MAPPING_ACTION_TYPES = ('New', 'Renewal')
+
+
+def _mapping_rows(session: Session):
+    return (session.query(XrasActionLog.projcode_result)
+            .filter(XrasActionLog.status == 'processed',
+                    XrasActionLog.action_type.in_(_MAPPING_ACTION_TYPES),
+                    XrasActionLog.projcode_result.isnot(None)))
+
+
+def logged_projcode(session: Session, *, request_id: Optional[int],
+                    request_number: Optional[str]) -> Optional[tuple]:
+    """``(projcode, 'request_id' | 'request_number')`` from SAM's own log, or ``None``.
+
+    ``XRAS_SUBMISSION.md`` § 4.6 item 2, rules 2 and 3: a processed New or Renewal on
+    the same line, then the same family, names the project before XRAS renames it.
+    """
+    for rule, column, value in (('request_id', XrasActionLog.request_id, request_id),
+                                ('request_number', XrasActionLog.request_number,
+                                 request_number)):
+        if value in (None, ''):
+            continue
+        row = _mapping_rows(session).filter(column == value).order_by(
+            *_LATEST_ACTION_ORDER).first()
+        if row is not None:
+            return row[0], rule
+    return None
+
+
+def pushed_request_numbers(session: Session, numbers: Iterable[str]) -> set:
+    """The *numbers* a processed New or Renewal was posted under: pushed, whatever XRAS calls them now."""
+    numbers = {n for n in numbers if n}
+    if not numbers:
+        return set()
+    return {n for (n,) in session.query(XrasActionLog.request_number)
+            .filter(XrasActionLog.status == 'processed',
+                    XrasActionLog.action_type.in_(_MAPPING_ACTION_TYPES),
+                    XrasActionLog.projcode_result.isnot(None),
+                    XrasActionLog.request_number.in_(numbers)).distinct()}
+
+
+def rename_candidates(session: Session, *, since: datetime) -> List[Dict[str, Any]]:
+    """Request lines a processed post landed on under a number other than its projcode.
+
+    One per ``request_id``, newest row first: the work of the ``xras_rename`` task.
+    """
+    rows = (session.query(XrasActionLog)
+            .filter(XrasActionLog.status == 'processed',
+                    XrasActionLog.request_id.isnot(None),
+                    XrasActionLog.projcode_result.isnot(None),
+                    XrasActionLog.request_number.isnot(None),
+                    XrasActionLog.request_number != XrasActionLog.projcode_result,
+                    XrasActionLog.received_time >= since)
+            .order_by(*_LATEST_ACTION_ORDER).all())
+    seen, out = set(), []
+    for row in rows:
+        if row.request_id in seen:
+            continue
+        seen.add(row.request_id)
+        out.append({'request_id': row.request_id, 'request_number': row.request_number,
+                    'projcode': row.projcode_result, 'action_type': row.action_type,
+                    'received_time': row.received_time,
+                    'action_log_id': row.xras_action_log_id})
+    return out
+
+
 def _split_errors(error_messages: Optional[str]) -> List[str]:
     """``error_messages`` is newline-joined; give callers the ordered list back.
 
