@@ -42,6 +42,7 @@ error, and a parked action is not one. Decision recorded at
 """
 
 import json
+import time
 from datetime import datetime, timedelta
 
 from flask import current_app, request
@@ -542,7 +543,9 @@ def _dispatch(log_id, action):
             log_id, result.service, result.projcode)
         # `message` stays the legacy 'OK'; the projcode goes in `result`, which
         # ACCESS confirmed is SAM's purview (like the 422 `errors` member).
-        return xras_response({'projcode': result.projcode}, message='OK')
+        response = xras_response({'projcode': result.projcode}, message='OK')
+        _rename_after_reply(response, action, result.projcode)
+        return response
 
     # `service` and `outcome_reason` are the whole reason this arm is worth
     # distinguishing: four causes park an action and, without them, the rows are
@@ -555,6 +558,43 @@ def _dispatch(log_id, action):
         'XRAS action parked for a human: id=%s service=%s projcode=%s reason=%s',
         log_id, result.service, result.projcode, result.reason)
     return xras_response(message=_MANUAL_MESSAGE)
+
+
+def _rename_after_reply(response, action, projcode) -> None:
+    """Rename the XRAS line to *projcode* once the reply has gone (docs/plans/XRAS_CLOSED_LOOP.md).
+
+    XRAS waits on the reply and has timed out connecting, so the rename runs from
+    ``call_on_close``; the ``xras_rename`` task covers a failure here.
+    """
+    from sam.integration.xras_api.config import xras_write_configured
+
+    old_number = (action.get('requestNumber') or '').strip()
+    request_id = _fit_int(action.get('requestId'))
+    if not projcode or request_id is None or old_number in ('', projcode):
+        return
+    if not xras_write_configured():
+        return
+    app = current_app._get_current_object()
+    operator = f'xras:{get_auth_actor() or "api"}'[:_PROCESSED_BY_WIDTH]
+
+    def rename():
+        from sam.manage.xras_remediation import rename_request
+        started = time.monotonic()
+        try:
+            with app.app_context():
+                outcome = rename_request(lambda: Session(db.engine), request_id=request_id,
+                                         old_number=old_number, new_number=projcode,
+                                         operator=operator)
+            app.logger.info('XRAS rename after reply: %s -> %s requestId=%s status=%s '
+                            'event=%s %dms%s', old_number, projcode, request_id,
+                            outcome.status, outcome.event_id,
+                            (time.monotonic() - started) * 1000,
+                            f' ({outcome.error})' if outcome.error else '')
+        except Exception:                               # noqa: BLE001
+            app.logger.exception('XRAS rename after reply failed: %s -> %s requestId=%s',
+                                 old_number, projcode, request_id)
+
+    response.call_on_close(rename)
 
 
 @bp.route('/actions', methods=['POST'])
