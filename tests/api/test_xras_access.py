@@ -1053,8 +1053,9 @@ class TestRenameAfterReply:
     dispatching = TestDispatchArms.dispatching
 
     @pytest.fixture
-    def renames(self, monkeypatch):
+    def renames(self, monkeypatch, app):
         from sam.manage import xras_remediation
+        monkeypatch.setitem(app.config, 'XRAS_RENAME_ENABLED', True)
         calls = []
         monkeypatch.setattr(xras_remediation, 'rename_request',
                             lambda factory, **kw: calls.append(kw) or
@@ -1096,9 +1097,18 @@ class TestRenameAfterReply:
         self._post_new(xras_client, dispatching, 'UXYZ0001')[0].close()
         assert renames == []
 
+    def test_the_rename_lever_off_means_no_rename(self, xras_client, action_log, dispatching,
+                                                  renames, monkeypatch, app):
+        """Production ships XRAS_RENAME_ENABLED=0 with both XRAS levers on."""
+        monkeypatch.setitem(app.config, 'XRAS_RENAME_ENABLED', False)
+        resp, _ = self._post_new(xras_client, dispatching, 'UXYZ0001')
+        resp.close()
+        assert renames == []
+
     def test_a_failing_rename_never_reaches_the_reply(self, xras_client, action_log,
-                                                      dispatching, monkeypatch):
+                                                      dispatching, monkeypatch, app):
         from sam.manage import xras_remediation
+        monkeypatch.setitem(app.config, 'XRAS_RENAME_ENABLED', True)
         monkeypatch.setattr('sam.integration.xras_api.config.xras_write_configured',
                             lambda *a: True)
         monkeypatch.setattr(xras_remediation, 'rename_request',

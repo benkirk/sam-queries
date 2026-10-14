@@ -99,6 +99,7 @@ check_dev() {
   grep -q 'api.xras.org' <<<"$xras_base" && { red "FAIL: dev XRAS_API_BASE must not name api.xras.org"; return 1; }
   same_on_both "$deploy" "$cron" XRAS_OUTGOING_ENABLED "1"
   [[ "$(env_value "$deploy" XRAS_WRITE_ENABLED)" == "1" ]] || { red "FAIL: XRAS_WRITE_ENABLED must be 1 on dev (the demo instance is the write test bed)"; return 1; }
+  [[ "$(env_value "$deploy" XRAS_RENAME_ENABLED)" == "1" ]] || { red "FAIL: XRAS_RENAME_ENABLED must be 1 on dev (the after-reply rename's test bed)"; return 1; }
   # xras_rename's lever reaches the task pod through dev's tasks.env alone.
   [[ "$(env_value "$cron" XRAS_WRITE_ENABLED)" == "1" ]] || { red "FAIL: dev tasks must carry XRAS_WRITE_ENABLED=1 (xras_rename's test bed)"; return 1; }
   [[ "$(env_value "$deploy" XRAS_ACTIONS_CAPTURE_ONLY)" == "0" ]] || { red "FAIL: XRAS_ACTIONS_CAPTURE_ONLY must be 0 on dev (demo posts dispatch)"; return 1; }
@@ -214,6 +215,8 @@ prod_keys=$(env_value_names "$prod_cron" '(SAM_DB|STATUS_DB)_' | tr '\n' ' ')
 [[ -z "$(env_value "$prod_cron" XRAS_WRITE_ENABLED)" ]] || {
   red "FAIL: the prod CronJob must not carry XRAS_WRITE_ENABLED (xras_rename stays unarmed)"; exit 1; }
 prod_deploy=$(render prod -s templates/deployment.yaml)
+[[ "$(env_value "$prod_deploy" XRAS_RENAME_ENABLED)" == "0" ]] || {
+  red "FAIL: prod must ship the after-reply rename off (XRAS_RENAME_ENABLED=0)"; exit 1; }
 [[ -z "$(env_value_names "$prod_deploy" 'RATELIMIT_(AUTHED|M2M|ANON|AUTH_LOGIN)')" ]] || {
   red "FAIL: prod must not carry a RATELIMIT_ tier override (only the dev overlay raises them)"; exit 1; }
 [[ "$(env_value "$prod_deploy" ACCOUNT_REGISTRATION_ENABLED)" == "0" ]] || {

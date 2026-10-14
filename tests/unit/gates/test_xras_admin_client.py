@@ -210,6 +210,11 @@ class TestHelmWriteLever:
             'the lever must be present and explicit, not merely absent'
         assert str(env['XRAS_WRITE_ENABLED']) == '1'
 
+    def test_the_after_reply_rename_ships_off(self):
+        """Production renames nothing until it is proven on XRAS-dev and Steve has heard
+        (XRAS_CLOSED_LOOP.md § 3.3). Arming it means editing this line too."""
+        assert str(self._values()['webapp']['env']['XRAS_RENAME_ENABLED']) == '0'
+
     def test_the_tasks_env_never_arms_writes(self):
         """No production task may write to XRAS.
 
@@ -247,6 +252,8 @@ class TestDev:
         prod = yaml.safe_load((REPO_ROOT / 'helm' / 'values.yaml').read_text())['tasks']['env']
         dev = yaml.safe_load((REPO_ROOT / 'helm' / 'values-dev.yaml').read_text())['tasks']['env']
         assert dev['XRAS_WRITE_ENABLED'] == '1'
+        assert yaml.safe_load((REPO_ROOT / 'helm' / 'values-dev.yaml').read_text())[
+            'webapp']['env']['XRAS_RENAME_ENABLED'] == '1'
         assert 'xras_rename' not in dev['SAM_TASKS_DISABLED'].split(',')
         assert 'xras_rename' in prod['SAM_TASKS_DISABLED'].split(',')
 

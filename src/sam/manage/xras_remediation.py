@@ -769,9 +769,13 @@ RENAME_DONE = ('verified', 'already_renamed')
 
 
 def rename_armed() -> bool:
-    """Whether a rename may be attempted: the XRAS write lever, outgoing switch and key."""
+    """Whether the webapp renames after a post: ``XRAS_RENAME_ENABLED`` and the write lever.
+
+    The task's own locks are ``SAM_TASKS_DISABLED`` and its env; this one is the route's.
+    """
+    from sam.integration._config import config_bool
     from sam.integration.xras_api.config import xras_write_configured
-    return xras_write_configured()
+    return config_bool('XRAS_RENAME_ENABLED', False) and xras_write_configured()
 
 
 def _rename_identity(line) -> Optional[str]:

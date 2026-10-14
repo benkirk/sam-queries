@@ -905,3 +905,15 @@ class TestTheRename:
         rows = xras_cache.load_requests_index()['rows']
         assert [r['request_number'] for r in rows] == ['UXYZ0001']
         assert rows[0]['pending_push'] is False
+
+    @pytest.mark.parametrize('rename, write, armed', [
+        ('1', True, True), ('0', True, False), ('1', False, False), (None, True, False)])
+    def test_the_route_needs_its_own_lever_and_the_write_lever(self, monkeypatch, rename,
+                                                               write, armed):
+        if rename is None:
+            monkeypatch.delenv('XRAS_RENAME_ENABLED', raising=False)
+        else:
+            monkeypatch.setenv('XRAS_RENAME_ENABLED', rename)
+        monkeypatch.setattr('sam.integration.xras_api.config.xras_write_configured',
+                            lambda *a: write)
+        assert service.rename_armed() is armed

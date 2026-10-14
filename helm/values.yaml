@@ -400,6 +400,11 @@ webapp:
     # the drift test in tests/unit/gates/test_xras_admin_client.py pins whichever value
     # ships, so a flip in either direction is a reviewed change to both files.
     XRAS_WRITE_ENABLED: "1"
+    # SAM's own rename of a request NCAR#### -> projcode right after its post lands
+    # (webapp/api/xras/actions.py; docs/plans/XRAS_CLOSED_LOOP.md). "0" until it is
+    # proven on XRAS-dev and Steve has heard; flipping it is a reviewed one-line change
+    # pinned in tests/unit/gates/test_xras_admin_client.py. Needs XRAS_WRITE_ENABLED.
+    XRAS_RENAME_ENABLED: "0"
     # Help-desk tickets (sam/integration/tickets, docs/plans/implemented/TICKET_PROVIDER.md).
     # Three fail-closed levers:
     #   JIRA_ENABLED        reads: the hourly learn/status pass and the card.
