@@ -115,7 +115,9 @@ SAM_TASKS_XRAS_RENAME_SINCE=2026-08-24 SAM_TASKS_DISABLED= \
 
 Enabling the task on production afterwards is a values change: drop `xras_rename` from
 `SAM_TASKS_DISABLED`, add `XRAS_WRITE_ENABLED` to production's `tasks.env`, and edit
-`test_the_tasks_env_never_arms_writes`, which pins its absence.
+`test_the_tasks_env_never_arms_writes`, which pins its absence. The route's after-reply rename
+is separate: flip `XRAS_RENAME_ENABLED` to `"1"` in `values.yaml` and edit
+`test_the_after_reply_rename_ships_off`, once the dev proof is done and Steve has heard.
 
 A dry-run report first: every production `processed` `New` since 2026-08-24 whose XRAS line
 still answers its placeholder. Candidates from award letters and the sweep, to confirm in the
@@ -129,11 +131,16 @@ later will carry the projcode.
 2. See the rename land before any notify, and the old number stop resolving.
 3. File an Extension via the API, approve, post: `processed` under the projcode.
 4. Disable the immediate path, repeat 1–3, and see the task do the rename.
-5. Rename onto a live family: post a `New` for a projcode XRAS already holds (routed to
-   `update`), let the rename join that family, and read what `reports/request_numbers/<projcode>`
-   and the card's primary line show for a two-New family. Unprobed: the 2026-10-13 evidence
+5. Rename onto a live family: the second line of a family still under `NCAR####` (a
+   Renewal filed before the rename). A `New` routed to `update` is not this case: it already
+   carries the projcode, so nothing is renamed. Submit and approve a benkirk-only `New`
+   (`NCARn`), spawn a renewal line on it (`POST …/requests/<rid>/renew`) **before** posting,
+   then post the `New`: the route renames line 1 to `P`, and the `xras_rename` task's sibling
+   pass renames the renewal line onto the now-live family `P`. Read
+   `reports/request_numbers/P` and the card's primary line. Unprobed: the 2026-10-13 evidence
    (`XRAS_DEV_PROBES.md` § 5) is creates that made new families and a rename onto a number
-   whose only line was soft-deleted. Run it before the production backfill (§ 3.3).
+   whose only line was soft-deleted. Production families with a renewal hit this in the
+   backfill, so run it first (§ 3.3).
 6. Unit tests: the client verb against a fake transport; the trigger's conditions; the task's
    selection; the gate changes.
 
@@ -145,11 +152,11 @@ later will carry the projcode.
 | Client verb, verified by id | `XrasAdminClient.rename_request` |
 | Audited op: pre-read by id (already renamed = no write; a third number = left alone), PI else Allocation Manager, card row moved to the new number, overrides rekeyed | `sam.manage.xras_remediation.rename_request`, `rename_plan`; `XrasRequestOverride.rekey` |
 | The one task-writable operation | `TASK_WRITABLE_OPERATIONS = ('rename_request',)` in `sam/integration/xras.py` |
-| Immediate path, **after** the reply (decision 1) | `_rename_after_reply` in `webapp/api/xras/actions.py`, via `response.call_on_close`; logs status and ms |
+| Immediate path, **after** the reply (decision 1) | `_rename_after_reply` in `webapp/api/xras/actions.py`, via `response.call_on_close`; logs status and ms. Behind `XRAS_RENAME_ENABLED` (review F1): `"1"` on dev, `"0"` in production, pinned by the gate |
 | Backstop task and backfill | `src/scheduling/tasks/xras_rename.py`; `rename_candidates` in `sam/queries/xras_actions.py` |
 | Log resolution, rules 2 and 3 (decision 4: the number-keyed routes `/roles`, `/dates/requests`, `/requests/request` do not get it; the rename covers their near-zero traffic) | `resolve_project` in `sam/xras/dispatch.py`; `logged_projcode` |
 | Sweep pending set | `live_pending_numbers` subtracts `pushed_request_numbers` |
-| Lever (decision 2) | dev `tasks.env` only; production disables the task by name and carries no lever |
+| Lever (decision 2) | the task: dev `tasks.env` only; production disables it by name and carries no lever. The route: `XRAS_RENAME_ENABLED` |
 
 Every processed post whose number differs from its projcode is renamed, not only a `New`: an
 action resolved by rules 2 and 3 names a line that still needs it, and the pre-read makes a

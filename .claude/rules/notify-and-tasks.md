@@ -104,6 +104,7 @@ named in `SAM_TASKS_DISABLED`** pending a soak.
 holds two locks: the name in `SAM_TASKS_DISABLED` and no `XRAS_WRITE_ENABLED` in
 `tasks.env` (pinned by `test_xras_admin_client.py`); dev arms it through `tasks.env`.
 `--dry-run` reads only; `SAM_TASKS_XRAS_RENAME_SINCE` widens the window for the backfill.
+The `/actions` route's own rename has a separate lever, `XRAS_RENAME_ENABLED` (`"0"` in prod).
 Record: `docs/plans/XRAS_CLOSED_LOOP.md` § 3.3, § 3.5.
 
 ### The account-request tasks

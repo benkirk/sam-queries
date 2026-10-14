@@ -447,9 +447,12 @@ Four changes to the handoff path, each small, in the order they land:
    backstop and the production backfill. Every processed post whose `request_number` differs
    from `projcode_result` is renamed through `XrasAdminClient` behind `XRAS_WRITE_ENABLED`,
    audited in `xras_remediation_event`, and verified by re-reading the line **by id**
-   (`reports/requests/<rid>`). When the projcode is already an XRAS family (a `New` routed to
-   `update`), the rename joins that family, which is the intended grouping. Rules 2 and 3 of
-   item 2 stay, for the window before the rename and for actions parked earlier.
+   (`reports/requests/<rid>`). A second line still under the `NCAR####` token (a Renewal
+   filed before the rename) is renamed onto the projcode's now-live family by the task, which
+   is the intended grouping, and is unprobed (`XRAS_CLOSED_LOOP.md` § 3.4 step 5). A `New`
+   routed to `update` already carries the projcode and is not renamed. The route's rename is
+   behind its own lever, `XRAS_RENAME_ENABLED`, off in production. Rules 2 and 3 of item 2
+   stay, for the window before the rename and for actions parked earlier.
 4. **The `New` handler's consult point** (phase 2): the top of `NewHandler.assemble`
    (`sam/xras/handlers/new.py`), keyed on the payload's `requestId`, pre-setting the
    mnemonic, allocation type, contracts and area of interest from the stored FKs with
