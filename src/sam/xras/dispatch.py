@@ -167,12 +167,14 @@ def parse_enabled_action_types(value: Optional[str]) -> FrozenSet[str]:
 def select_service(session, action) -> Optional[str]:
     """Which legacy service would handle this action, or ``None`` for no match.
 
-    Resolves ``requestNumber`` as a projcode against the **database** — never against
+    Resolves ``requestNumber`` as a projcode against the **database** (through
+    :func:`resolve_project`, so SAM's log maps an un-renamed token) — never against
     a prefix or shape rule, for the reason in the module docstring. The lookup does not
     filter on ``active``, and must not: XRAS-created projects arrive ``active = 0`` by
     design (``InactivateNewProject``), so an active-only existence check would route a
     re-posted New action to the Add handler and mint a second project.
     """
+    action, _, _ = resolve_project(session, action)
     action_type = canonical_action_type(get_field(action, 'actionType'))
     request_number = (get_field(action, 'requestNumber') or '').strip()
     exists = bool(request_number) and Project.get_by_projcode(

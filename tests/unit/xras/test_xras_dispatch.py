@@ -726,3 +726,7 @@ class TestResolvingThroughTheLog:
         session.flush()
         assert resolve_project(session, act('Extension', 'NCAR4088',
                                             requestId=1439539))[2] == 'NCAR4088'
+
+    def test_select_service_gives_the_same_answer(self, session, clean_registry, landed):
+        """The route labels a 422's `service` and preflight its verdict with this call."""
+        assert select_service(session, act('Extension', 'NCAR4087', requestId=1439543)) == 'extend'
