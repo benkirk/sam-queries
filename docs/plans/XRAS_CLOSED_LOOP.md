@@ -121,10 +121,24 @@ is separate: flip `XRAS_RENAME_ENABLED` to `"1"` in `values.yaml` and edit
 `test_the_after_reply_rename_ships_off`, once the dev proof is done and Steve has heard.
 
 A dry-run report first: every production `processed` `New` since 2026-08-24 whose XRAS line
-still answers its placeholder. Candidates from award letters and the sweep, to confirm in the
-report: NCAR4212, NCAR4293, NCAR4300, NCAR4326, NCAR4354 (UHSS0001), NCAR4401. Ben approves the list, then apply. Tell Steve before the first
+still answers its placeholder. Ben approves the list, then apply. Tell Steve before the first
 production rename: PIs see the number in ARC, and the award letter for anything notified
 later will carry the projcode.
+
+**Census, 2026-10-14** (read-only: every `Approved` line in production XRAS against prod
+`xras_action_log`). 4,170 approved lines; 23 live ones still numbered `NCAR*`:
+
+| Group | Lines | Backfill |
+|---|---|---|
+| Posted to SAMuel, never renamed | NCAR4293 → NRAL0055, NCAR4212 → NRAL0056, NCAR4300 → NHAO0037 (posted 09-09), NCAR4354 → UHSS0001 (09-15), NCAR4432 → UWHO0029 (10-13) | **the five the dry run should list** |
+| Posted to SAMuel, already renamed by hand | 68 of the 73 processed News since the repoint, including NCAR4326 → UUSL0051 and NCAR4401 → UCGD0010 | none: one read each, `already_renamed` |
+| Approved, no projcode | NCAR4281, 4340, 4395 (refused, 422); NCAR4389, 4391, 4398 (never posted) | none: pending pushes, renamed after they land |
+| Legacy era (2015-2022), no SAMuel log row | NCAR0099, 0116, 0868, 0910, 2169-2174, 2178, 2179, 2181 | none: every title matches only inactive SAM projects (most expired 2018-2024), and the matches are ambiguous (five requests and five projects share one title). Left alone |
+
+NCAR4401 was posted on 10-06 and is renamed, so someone still renames by hand in the admin app
+(Summary → Request Number (Edit), `XRAS_DEV_PROBES.md` § 6). Ask Steve who, before
+`XRAS_RENAME_ENABLED` goes on. A window earlier than 2026-08-24 selects nothing more: the task reads
+only SAMuel's log, whose processed rows start at the repoint.
 
 ### 3.4 Proving it on the loop
 
