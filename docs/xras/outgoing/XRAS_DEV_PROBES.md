@@ -171,6 +171,25 @@ Every request benkirk-only (6: the placeholder, then benkirk); no Notify pressed
 | 5 | `PUT …/attributes` and `GET /v1/requests/1439571` as `samprobe-20261013` (no role on the line) | 401 on both; nothing changed |
 | 6 | New 1439575 / 372891 authored by `samprobe-20261013` (PI and Allocation Manager), the New recipe of `XRAS_CLOSED_LOOP.md` § 4; validates and submits as the placeholder (**NCAR4091**). Approved 19:58Z; posted after the 20:07Z sweep; merged in SAMuel; reposted | **The sweep** at approval: `pending_push` NCAR4091, the placeholder counted absent, not `placeholder` (SAM's test is the name shape `^\S+-user-\S+$`, `sam/queries/xras_accounts.py`), so `account_request` #22 (`submission`, `task:xras_sweep`) and no merge button on Pending Users. **The post**: #21 `add` `failed` 422 with four errors for one missing person ("PI … is not in database", "Allocation Manager … is not in database: " with an empty tail, "Username … is missing", "Could not produce affiliation data for PI …"), shown verbatim in the admin app. **The merge**: the card's own form (`xras_merge_form`, loaded into `#xrasModal`), free-text target benkirk: `xras_remediation_event` #4 `merge_person` `verified`; the placeholder 404s; benkirk holds PI and Allocation Manager on 1439575. **The repost** 20:09:11Z: #22 `add` processed 200, UHSS0004 (inactive, lead benkirk, Derecho 1 to 2027-10-31); rename event #5 `verified` 0.7 s later. `account_request` #22 stays `submitted`: fulfillment matches by email and the merge does not close the source's rows |
 
+### 6.2 Writes to a soft-deleted action (2026-10-14)
+
+On UHSS0003 line 1439571, as benkirk (PI), under `submit`: a Supplement 372892 created, then
+`DELETE …/actions/372892` (soft: `isDeleted: true`, status `Incomplete`). Every write after
+that:
+
+| Call | Answer |
+|---|---|
+| `PUT …/actions/372892/resources/530902?amount=1` | 200; the Requested row sticks |
+| `PUT …/actions/372892?userComments=…` | 200; sticks |
+| `POST …/actions/372892/allocation_dates` | 200, `allocationDateId` 241071 |
+| `GET …/actions/372892/validate` | "validation successful" |
+| `POST …/actions/372892/submit` | 200: the action reads **`Submitted` with `isDeleted: true`**; the request stays `Approved` |
+| admin app, dashboard and `/actions/372892/show_process` | absent from the queue; the action page is a **404**, so nobody can process it |
+| `DELETE …/actions/372892/submit` (cleanup) | 200; back to `Incomplete`, still deleted |
+
+XRAS guards nothing on a deleted action, so SAM must: PR #823 (`live_actions`, and the
+editors refuse a deleted action before the write).
+
 ## 7. Open, and what unblocks it
 
 | Open | Blocked on |
@@ -188,7 +207,7 @@ Every request benkirk-only (6: the placeholder, then benkirk); no Notify pressed
 | 1439538, 1439540–42, 1439544–48 | soft-deleted drafts (1439545 is the renewal line; 1439547 and 1439548 the `requestNumber` probes) |
 | person `samprobe-20261013` | **deleted**: merged into benkirk (sam_dev remediation #4, scenario 6) |
 | 1439308 / **UCSG0004** (minted as NCAR4086, renamed by `xras_rename` 2026-10-14) | Approved, posted, not notified; SAM project UCSG0004 (active) |
-| 1439571 + 1439572 + 1439573 / **UHSS0003** (minted as NCAR4089) | New 372884, Extension 372886, Supplement 372890 (372889 soft-deleted) on 1439571; Renewal 372885 on 1439572 (joined by `xras_rename`); New 372887 on 1439573; all approved and posted (#13, #14, #17, #19, #20), none notified |
+| 1439571 + 1439572 + 1439573 / **UHSS0003** (minted as NCAR4089) | New 372884, Extension 372886, Supplement 372890 (372889 and 372892 soft-deleted; § 6.2) on 1439571; Renewal 372885 on 1439572 (joined by `xras_rename`); New 372887 on 1439573; all approved and posted (#13, #14, #17, #19, #20), none notified |
 | 1439575 / **UHSS0004** (minted as NCAR4091, authored by the placeholder) | Approved; posted 422 (#21), reposted after the merge (#22, processed), renamed by the after-reply hook (#5); not notified; PI and Allocation Manager benkirk |
 | 1439574 / NCAR4090 | Rejected (action Declined) after Hold Off, Return for Corrections, resubmit, withdraw |
 | samuel-dev | UCSG0004 (active), UHSS0002 and UHSS0003 (inactive); `xras_action_log` #1–#22; `xras_remediation_event` #1–#3 and #5 (renames), #4 (the merge); UHSS0004 (inactive); `account_request` #22 (Sam Probe, `submitted`, never fulfilled); NRAL0051 inflated by #4; UHSS0002 Derecho ends 2028-03-31; UHSS0003 Derecho 3 to 2028-10-31 and 9 for 2028-11 → 2029-10 |
