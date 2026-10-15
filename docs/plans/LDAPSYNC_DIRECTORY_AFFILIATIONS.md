@@ -219,7 +219,8 @@ than affiliations, because legacy already treats the directory as the truth for 
 - **D-C, an entry that is inactive with no end date (for stage 2).** The normal case, not an edge
   (§ 3.4: 80% of positions, 89% of collaborations). Recommended, in order: SAM's own end date; else
   the entry's `modifyTimestamp`; else report it and write nothing. Never "the time SAMuel first sees
-  it": on first run that stamps today on some 22,000 rows.
+  it": that date is arbitrary. (It would stamp only rows SAM holds open that the directory calls
+  finished, 58 positions and 1 collaboration in the census.)
 - **D-D, an upstream issue now for the end-date erasure.** Recommended: yes.
 - **D-E, a near-term guard so a POST cannot clear a planned end date.** Recommended: yes, as a
   recorded deviation until upstream fixes the erasure.
