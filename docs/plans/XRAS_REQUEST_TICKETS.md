@@ -237,7 +237,10 @@ account-queue digest. No ticket: the operator's next step is the post.
    30-day lookback opens a ticket for every refused New or Renewal that never applied,
    including ones NUSD handled without a re-post, and past 10 opens the cap raises. The kill
    switch outranks `--dry-run`, so clear it for that one run, in a task pod:
-   `SAM_TASKS_DISABLED= sam-admin tasks --run xras_request_tickets --dry-run`.
+   `SAM_TASKS_DISABLED= sam-admin tasks --run xras_request_tickets --dry-run`. Read 2026-10-15 from the branch
+   (prod runs no task yet; `hpc-reader`, read-only): 3 opens, NCAR4340, NCAR4395 (placeholders)
+   and NCAR4391 (mnemonic, person); 4 refused News later applied; NCAR4281 is past 30 days.
+   Ask NUSD whether the three are still live before arming.
 
 Probes on samuel-dev against XRAS-dev, 2026-10-13
 ([`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md) § 4): the push row carries
@@ -246,8 +249,6 @@ Probes on samuel-dev against XRAS-dev, 2026-10-13
 
 ## 10. Open questions for Ben
 
-- **Audience.** Reporter `rc-sam-bot`; on behalf of the PI? Does NUSD watch the Allocations
-  queue as closely as Add a user? (The type is decided: 18 "Allocations", 2026-10-15.)
 - **N for "approved, not posted".** Two business days?
 - **Comment cadence.** A floor on comments, for example at most one per day per ticket, beyond
   "only on change"?
@@ -266,5 +267,7 @@ Probes on samuel-dev against XRAS-dev, 2026-10-13
 | § 8, approved not posted | not built | deferred (Ben, 2026-10-14) |
 | Dev, a filing against RC | the `dry-run` provider, outside `PROVIDERS` and refused to the webapp | dev has no Jira |
 | Request type 20 "Add a user", or a new one | 18 "Allocations" on desk 3, label `sam-xras-request`, in prod `tasks.env` (inert until rollout); smoked as RC-40559 2026-10-15 | a blocked post is often not a person; 18 needs only summary and description |
+| Who sees it | the desk sets Component **NUSD** on type 18 (RC-40559), so the ticket lands in NUSD's queue; SAM sends no component | Ben, 2026-10-15 |
+| Reporter `rc-sam-bot`, or on behalf of the PI | the bot (no `raiseOnBehalfOf`) | Ben, 2026-10-15: keep the ticket an internal to-do for now. **Revisit:** filing on behalf of the PI (`TicketDraft.on_behalf_of`, already plumbed) makes them the ticket's customer, so they can follow it in the portal and get Jira's mail, but they would read an operator checklist ("merge the placeholder…") and any public reply. As the bot, NUSD contacts the PI its own way |
 | — | a linked ticket counts as open even after NUSD closes it: a later refusal comments on it and the 422 names it | edge, unbuilt: the hourly refresh already stamps `closed_at` on these rows in prod, so the fix is reading `ExternalTicket.is_active` |
 

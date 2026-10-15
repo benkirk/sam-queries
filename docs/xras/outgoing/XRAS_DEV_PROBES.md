@@ -211,6 +211,8 @@ from `sam_dev`, the body groups the four errors under the placeholder and names 
 in-window PI. **Real Jira**, from the laptop through the task's code (`file_once`, a comment):
 **RC-40559**, type 18 "Allocations" on desk 3, label `sam-xras-request`, both comments internal,
 `find('SAM-XR-900001')` returns it; Ben canceled it 08:48.
+The card's Activate on UHSS0004 (09:00), now through the shared `activate_project`:
+`xras_activation_event` #4 by benkirk, provenance #22.
 
 ## 7. Open, and what unblocks it
 
@@ -236,4 +238,4 @@ in-window PI. **Real Jira**, from the laptop through the task's code (`file_once
 | NRAL0051 (1436558) | Approved, posted, not notified; sam_dev allocations inflated by the repeat |
 | 1439604 / **UHSS0005** (minted as NCAR4092, authored by a placeholder) | Approved; posted 422 three times, then applied (#26) and renamed (#8); not notified; PI and Allocation Manager benkirk |
 | persons `smoke1015-user-pi`, `smoke1015-user-mem` | **deleted**: merged into benkirk (sam_dev remediation #6, #7) |
-| samuel-dev, 2026-10-15 | UHSS0005 (active, auto-activated); `xras_action_log` #23–#26; `xras_remediation_event` #6–#8; `account_request` #23, #24 dismissed; dry-run tickets `DRY-SAM-XR-1439539` (NCAR4088) and `-1439604` |
+| samuel-dev, 2026-10-15 | UHSS0005 (active, auto-activated); UHSS0004 activated by the card; `xras_action_log` #23–#26; `xras_remediation_event` #6–#8; `account_request` #23, #24 dismissed; dry-run tickets `DRY-SAM-XR-1439539` (NCAR4088) and `-1439604` |
