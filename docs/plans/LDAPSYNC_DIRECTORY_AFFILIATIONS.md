@@ -217,10 +217,11 @@ than affiliations, because legacy already treats the directory as the truth for 
 - **D-B, twins (for stage 2).** Recommended: one SAM row per pair, following the Workday entry.
   Alternatives: PeopleDB wins, or two rows.
 - **D-C, an entry that is inactive with no end date (for stage 2).** The normal case, not an edge
-  (§ 3.4: 80% of positions, 89% of collaborations). Recommended, in order: SAM's own end date; else
-  the entry's `modifyTimestamp`; else report it and write nothing. Never "the time SAMuel first sees
-  it": that date is arbitrary. (It would stamp only rows SAM holds open that the directory calls
-  finished, 58 positions and 1 collaboration in the census.)
+  (§ 3.4: 80% of positions, 89% of collaborations). Recommended: SAM's own end date; else report it
+  and write nothing. Not the entry's `modifyTimestamp`: on every undated inactive position (8,816)
+  and all but 8 of 13,384 collaborations it is the 2026-07-10 bulk load. Not "the time SAMuel first
+  sees it" either. Both are arbitrary dates. (A first-seen stamp would touch only rows SAM holds open
+  that the directory calls finished, 58 positions and 1 collaboration in the census.)
 - **D-D, an upstream issue now for the end-date erasure.** Recommended: yes.
 - **D-E, a near-term guard so a POST cannot clear a planned end date.** Recommended: yes, as a
   recorded deviation until upstream fixes the erasure.
