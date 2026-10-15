@@ -99,7 +99,8 @@ by CISL", and nothing names a notified address.
 - an award, through the awards picker;
 - resources bounded by the opportunity's `rules`, and amounts bounded by § 4.5;
 - the explicit PI role;
-- the EUA row;
+- acceptance of SAMuel's own NWSC end-user agreement, recorded on the row (§ 4.2); the XRAS
+  attribute row is written from it;
 - documents where the rule book demands them.
 
 Every phase is proven on samuel-dev ↔ XRAS-dev first, where an approval posts to `sam_dev`,
@@ -266,6 +267,10 @@ modal has the same gap: it creates a bare action and stops.
     #819, because `xras_rename` is the one task write; this lever stays on the webapp's alone;
   - asserted per manifest, like the write lever;
   - when off, the control renders disabled with its reason.
+- **The end-user agreement is SAMuel's gate** (Ben, 2026-10-14). The form shows the vendored
+  NWSC agreement and requires its acceptance on every New and Renewal, recorded on the
+  `xras_submission` row with the SHA and time (§ 4.2); XRAS's own acknowledgment row is written
+  from it.
 - **Most XRAS-side asks are settings we own.** Ben holds the admin role on
   `admin-ncar.xras.org`:
 
@@ -296,9 +301,9 @@ fields that choice requires, and nothing else.
 |---|---|---|
 | Extension | the new end date (a real date input, ISO) and comments. The floor is the end the handler will compare against: the account's **latest** allocation by end date (`latest_allocation`, `sam/xras/handlers/_allocations.py`), which after a Renewal posts is the renewal's future window, so an earlier date is refused at the handoff (`XRAS_DEV_PROBES.md` § 6.1, scenario 7) | rule book: end date and comments required; no amounts, no document |
 | Supplement | an amount per resource, pre-filled with the default and bounded by § 4.5, and comments | rule book: nothing required; the limits table. **Which window it lands on** is open: a Supplement filed after a Renewal posts applies to the renewal's future window (legacy's max-end-date rule, `XRAS_INGEST_IMPROVEMENTS.md` § 4). The form names the window it will reach, or the ingest rule changes first |
-| Renewal | `/renew` copies the roster, title, keywords and field of science; the form asks for the abstract, grants on Large and Small, and the Main Document or Progress Report the document rule names | the rule book and the document rules per allocation type |
+| Renewal | `/renew` copies the roster, title, keywords and field of science; the form asks for the abstract, grants on Large and Small, the agreement (below), and the Main Document or Progress Report the document rule names | the rule book and the document rules per allocation type |
 | New, page 1 — *Describe* | the opportunity (everything below keys on it); title, abstract, keywords; field of science; PI = `current_user`, pre-filled, with an optional admin; affiliation → the mnemonic suggestor, failing visibly when the `user_institution` row is end-dated; the award picker, revealed when the opportunity's rule book wants grants | the opportunity's `rules{}`, `required_fields` |
-| New, page 2 — *Request* | resources = `rules.resourceIdsAvailableForNewRequest` ∩ mapped, each showing its default, minimum and maximum; the EUA checkbox when the opportunity carries the attribute; the document upload when a document rule names the pair; the preflight readout; submit | `rules{}`, § 4.5, `opportunity_attributes`, `required_documents_status` |
+| New, page 2 — *Request* | resources = `rules.resourceIdsAvailableForNewRequest` ∩ mapped, each showing its default, minimum and maximum; **the NWSC end-user agreement**, SAMuel's own vendored text shown in full and accepted on every request SAM files (New and Renewal), the way the registration gate asks it (`webapp/register/eula.py`); the document upload when a document rule names the pair; the preflight readout; submit | `rules{}`, § 4.5, the agreement (always; the XRAS attribute row is written from it when the opportunity carries one), `required_documents_status` |
 
 What this fixes, against the baseline of § 3.2:
 - the lead is pre-filled, and the role vocabulary is XRAS's own;
@@ -339,6 +344,7 @@ as methods, a module-level lookup primitive.
 |---|---|
 | Keys | `xras_submission_id` (PK); `action_id` (unique, nullable until the first write); `request_id` (indexed); `request_number` (the family key, updated when observed); `project_id` (set from the start for an action on an existing project; set when a `New` applies) |
 | Resolved SAM state | `user_id` (PI), `admin_user_id`, `facility_id`, `mnemonic_code_id`, `allocation_type_id`, `contract_id` (nullable, link-only), `opportunity_id`, `registration_id` (nullable; `ACCOUNT_REGISTRATION.md` § 4) |
+| Agreement | `eula_sha`, `eula_accepted_at`: the git blob SHA of the vendored text and the moment the submitter accepted it, the pair `account_request` records at the registration gate. Required before submit on a New or Renewal; null on an action on an existing project |
 | Lifecycle | `state` ∈ `draft · created · populated · submitted · aborted · applied`; `created_by` (who clicked); `xa_user` (who SAM impersonated: the same person for a PI, a PI for an operator); timestamps |
 | Evidence | `payload` (what we sent); `xras_snapshot` (the create response, `rules{}` included); the `xras_remediation_event` ids of each step |
 
@@ -365,6 +371,12 @@ The per-request ticket of post automation phase D needs nothing from this table.
   two Fall-2026 opportunities carry none.
 - The acknowledgment stores **no value**: `attributeValue: null` on every production payload
   and on the one the probe wrote, so the row's presence is the answer.
+- **The agreement itself is SAM's.** SAMuel carries the NWSC end-user agreement verbatim
+  (`webapp/register/eula.md`, refreshed by `scripts/update_eula.py`) and the registration gate
+  records what the visitor accepted as `eula_sha` + `eula_accepted_at`. A request SAM files
+  shows the same text and records the same pair on its row (the Agreement group above); the
+  XRAS attribute row is the echo written from that acceptance, never the record of it. A
+  registration acceptance is per account and does not stand in for the request's.
 
 A `simpleString` "SAM reference" attribute would round-trip and be visible to reviewers, but
 the design must not need it. `userComments` also round-trips, and is the zero-ask fallback.

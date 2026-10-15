@@ -408,8 +408,8 @@ webapp:
     # Help-desk tickets (sam/integration/tickets, docs/plans/implemented/TICKET_PROVIDER.md).
     # Three fail-closed levers:
     #   JIRA_ENABLED        reads: the hourly learn/status pass and the card.
-    #   JIRA_WRITE_ENABLED  creates and comments. WEBAPP-ONLY, like XRAS_WRITE_ENABLED:
-    #                       cronjob-tasks.yaml never carries it.
+    #   JIRA_WRITE_ENABLED  creates and comments. Webapp-only until the request-ticket
+    #                       task (docs/plans/XRAS_REQUEST_TICKETS.md § 5) is its one task writer.
     #   TICKET_PROVIDER     the filing path: "" or "mail" = the NOTIFY_ACCOUNT_TICKET_TO
     #                       mail; "jira-servicedesk" = the JSM API, mail on any failure.
     #                       Also webapp-only; the hourly pass keys on JIRA_ENABLED.
