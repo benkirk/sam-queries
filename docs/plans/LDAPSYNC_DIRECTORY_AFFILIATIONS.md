@@ -195,9 +195,10 @@ than affiliations, because legacy already treats the directory as the truth for 
 - **Never touched by the reconcile:** the SAM-only columns `locked`, charging exempt, `deleted`,
   deactivate, primary gid, title, contact person and login type.
 - **The uid source is the person entry** (`uidNumber` under the upid), never a lookup by username,
-  and never `ou=unix`. Person `uidNumber` equals SAM `unix_uid` on all 28,546 shared upids. (The
-  review counted 198 accounts where `ou=unix` and the person entry disagree; a recount found 1 of
-  6,437 inside the directory, so the 198 likely came from a username join. The rule holds either way.)
+  and never `ou=unix`. Person `uidNumber` equals SAM `unix_uid` on all 28,546 shared upids.
+  `ou=unix` is keyed by username and carries 102 people's old accounts, each with its own
+  `uidNumber`: joined by upid it disagrees with the person entry on 151 people (245 accounts),
+  joined by username on 1, and 73 of its accounts match no person.
 - **How to run it:**
   - a `sam-admin` command;
   - an optional scheduled task that records the counts. A new task is named in `helm/values.yaml`
