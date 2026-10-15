@@ -242,6 +242,14 @@ account-queue digest. No ticket: the operator's next step is the post.
    and NCAR4391 (mnemonic, person); 4 refused News later applied; NCAR4281 is past 30 days.
    Ask NUSD whether the three are still live before arming.
 
+**What production runs on merge, levers off.** Writes: a placeholder merge dismisses the
+placeholder's open account requests; NUSD's account tickets file through the lifted `file_once`
+(the same writes); the disabled task records one `skipped` ledger row per 15-minute slot in the
+status DB (about 96 a day, pruned by `cleanup_status` at 60 days). Visible: a refused New or
+Renewal's 422 carries the "To fix a ..." pointer lines, no ticket-state line; the Configuration
+card lists the `xras_request` kind; the Templates editor shows its template. Not live:
+auto-activation, the 422's ticket promise, any ticket filing.
+
 Probes on samuel-dev against XRAS-dev, 2026-10-13
 ([`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md) § 4): the push row carries
 `request_number` as sent (`NCAR4086`), `request_id` and `projcode_result` (`UCSG0004`), and
