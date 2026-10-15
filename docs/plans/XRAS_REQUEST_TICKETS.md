@@ -1,6 +1,8 @@
 # One NUSD ticket per blocked XRAS post
 
-**Status: design, not built.** Phase D of [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md).
+**Status: built 2026-10-14, dev first** (`xras-post-automation-bd`). samuel-dev files through
+the `dry-run` provider; production ships the task disabled with no ticket lever. § 11 holds what
+differs from this design. Phase D of [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md).
 
 **The model** (Ben, 2026-10-14 and 2026-10-15):
 - Approvers approve and post in one sitting, and a post that applies is done: no ticket, no
@@ -221,13 +223,32 @@ account-queue digest. No ticket: the operator's next step is the post.
 
 ## 9. Rollout
 
-1. **Dev, shadow.** The task runs on samuel-dev with `XRAS_REQUEST_TICKETS_ENABLED` off. Its
-   detail records "would open / comment / applied" per request.
-2. **Dev, filing** against the RC project with a label and immediate cancel, the way
-   RC-40275/40276 were smoked. Work the blocked-New scenarios on the bed
+1. **Dev, dry-run filing.** samuel-dev has no Jira, so the task runs armed on
+   `TICKET_PROVIDER=dry-run`: real `external_ticket` and ledger rows, `DRY-SAM-XR-<id>` keys,
+   each body and comment in the task log, nothing posted. (Off, the task is a shadow: its detail
+   records "would open / comment / applied".)
+2. **Dev, the scenarios.** Work the blocked-New scenarios on the bed
    (`XRAS_CLOSED_LOOP.md` § 4). Scenario 6, the placeholder merge, ran 2026-10-14
    (`XRAS_DEV_PROBES.md` § 6.1): the four-error 422, the merge, the repost that applied.
-3. **Prod:** the switch on, the task out of `SAM_TASKS_DISABLED`, and the levers in `tasks.env`.
+3. **Prod:** (the request type and label are in `tasks.env`) `XRAS_REQUEST_TICKETS_ENABLED`
+   in both envs, `TICKET_PROVIDER` and `JIRA_WRITE_ENABLED` in
+   `tasks.env`, and the task out of `SAM_TASKS_DISABLED`. A first filing against the RC project
+   with immediate cancel, the way RC-40275/40276 were smoked. **First, read the plan:** the
+   30-day lookback opens a ticket for every refused New or Renewal that never applied,
+   including ones NUSD handled without a re-post, and past 10 opens the cap raises. The kill
+   switch outranks `--dry-run`, so clear it for that one run, in a task pod:
+   `SAM_TASKS_DISABLED= sam-admin tasks --run xras_request_tickets --dry-run`. Read 2026-10-15 from the branch
+   (prod runs no task yet; `hpc-reader`, read-only): 3 opens, NCAR4340, NCAR4395 (placeholders)
+   and NCAR4391 (mnemonic, person); 4 refused News later applied; NCAR4281 is past 30 days.
+   Ask NUSD whether the three are still live before arming.
+
+**What production runs on merge, levers off.** Writes: a placeholder merge dismisses the
+placeholder's open account requests; NUSD's account tickets file through the lifted `file_once`
+(the same writes); the disabled task records one `skipped` ledger row per 15-minute slot in the
+status DB (about 96 a day, pruned by `cleanup_status` at 60 days). Visible: a refused New or
+Renewal's 422 carries the "To fix a ..." pointer lines, no ticket-state line; the Configuration
+card lists the `xras_request` kind; the Templates editor shows its template. Not live:
+auto-activation, the 422's ticket promise, any ticket filing.
 
 Probes on samuel-dev against XRAS-dev, 2026-10-13
 ([`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md) § 4): the push row carries
@@ -236,10 +257,23 @@ Probes on samuel-dev against XRAS-dev, 2026-10-13
 
 ## 10. Open questions for Ben
 
-- **Ticket type and audience.** Request type 20 "Add a user", or a new one? Reporter
-  `rc-sam-bot`; on behalf of the PI?
 - **N for "approved, not posted".** Two business days?
-- **Comment cadence.** A floor on comments, for example at most one per day per ticket, beyond
-  "only on change"?
-- **Drop-out.** When XRAS deletes a request with an open ticket, does SAM cancel it? The sweep
-  sees the deletion; nothing acts on it today.
+
+## 11. As built (2026-10-14)
+
+| Design | Built | Why |
+|---|---|---|
+| Rename `handoff_mail.py` to `handoff.py` | the filer lifted to `sam/integration/tickets/filing.py`; `handoff_mail.py` keeps its name | it still holds the mail fallback; the rename is churn for later |
+| Four 422 states, one a mail fallback | three: no ticket yet, open under its key, last filing failed | this kind has no mail path |
+| The state line always | only with `XRAS_REQUEST_TICKETS_ENABLED`; the pointer lines always | a disabled task must not have the 422 promise a ticket |
+| Open keyed on the blocker digest | `xras_ticket:<id>:open`, then a `<digest>` row for the body it carried | the open is once-only even when the list changes before the link lands |
+| — | 30-day lookback; `SAM_TASKS_XRAS_TICKETS_MAX` (10 opens) raises before any filing | the first arming's blast radius |
+| § 8, approved not posted | not built | deferred (Ben, 2026-10-14) |
+| Dev, a filing against RC | the `dry-run` provider, outside `PROVIDERS` and refused to the webapp | dev has no Jira |
+| Request type 20 "Add a user", or a new one | 18 "Allocations" on desk 3, label `sam-xras-request`, in prod `tasks.env` (inert until rollout); smoked as RC-40559 2026-10-15 | a blocked post is often not a person; 18 needs only summary and description |
+| Who sees it | the desk sets Component **NUSD** on type 18 (RC-40559), so the ticket lands in NUSD's queue; SAM sends no component | Ben, 2026-10-15 |
+| A floor on comments (e.g. one a day) | none: a comment only when the blocker list changes, at most one a wake | Ben, 2026-10-15: each comment is progress, and only NUSD sees them. Revisit if NUSD finds the tickets noisy |
+| Cancel the ticket when XRAS deletes its request | **deferred on purpose**: the ticket stays open | Ben, 2026-10-15: the decision is to close it with a note, but it needs a deletion signal the task can read (an XRAS read per open ticket, or a mark from the sweep), a provider `close` with a Jira resolution, and its own Jira smoke; post-then-delete is rare. Build it if it shows up; carried as a follow-on in `UNPLANNED_CITY_LEDGER.md` (propagation candidates) |
+| Reporter `rc-sam-bot`, or on behalf of the PI | the bot (no `raiseOnBehalfOf`) | Ben, 2026-10-15: keep the ticket an internal to-do for now. **Revisit:** filing on behalf of the PI (`TicketDraft.on_behalf_of`, already plumbed) makes them the ticket's customer, so they can follow it in the portal and get Jira's mail, but they would read an operator checklist ("merge the placeholder…") and any public reply. As the bot, NUSD contacts the PI its own way |
+| — | a linked ticket counts as open even after NUSD closes it: a later refusal comments on it and the 422 names it | edge, unbuilt: the hourly refresh already stamps `closed_at` on these rows in prod, so the fix is reading `ExternalTicket.is_active` |
+

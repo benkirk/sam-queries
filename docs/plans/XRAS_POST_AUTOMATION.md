@@ -1,7 +1,8 @@
 # XRAS: "Post to accounting service" does everything SAMuel can
 
-**Status: roadmap, 2026-10-14.** Phase A (renames) is live in production (#819, #820); phases
-B-E are not started. This file sequences the work and points at the plans that hold the
+**Status: roadmap, 2026-10-14.** Phase A (renames) is live in production (#819, #820). B and D
+are built behind levers, on in samuel-dev and off in production (`xras-post-automation-bd`; D's
+item 2 deferred); C and E are not started. This file sequences the work and points at the plans that hold the
 detail; it holds the decisions, not the designs.
 
 ## 1. The goal
@@ -21,11 +22,11 @@ new projcode into XRAS's "Edit Request Number", and sending the notification fro
 |---|---|---|---|
 | Rename `NCAR####` → projcode | live in production 2026-10-14 (#819, #820): the route and the task | NUSD stops renaming by hand | A |
 | Project, accounts, memberships | automatic in the New handler (`sam/xras/handlers/new.py`) | the whole New answers 422 on any missing or inactive user, or unresolved contract | D |
-| Activate the project | manual: the card's Activate (`webapp/dashboards/allocations/xras/lifecycle_routes.py`); a New is created inactive on purpose | an unattended path past `can_edit_project_governance` | B |
+| Activate the project | built: after the reply, behind `XRAS_AUTO_ACTIVATE` (dev on, prod off; `sam/manage/xras_activation.py`); else the card's Activate | prod arming after the dev smoke | B |
 | Notify, New | manual Notify button; sent from XRAS today | must follow activation; XRAS's own notify mail | C |
 | Notify, extend/supplement/adjust/update | built: the `xras_notices` task (1-day delay), disabled in production | soak; XRAS's own notify mail | C |
 | Contracts | 422 with a seeded create form (Admin → Contracts), or the `ignore_contract` override | `contract.principal_investigator_user_id` is NOT NULL and SAM never creates a user; award lookup is NSF first, then USAspending (`resolve_award`, `sam/integration/awards`) | E |
-| Users absent or inactive, ARC placeholders | the sweep files `account_request` rows (live); no ticket for them | users come only from IGA and the LDAP sync; the request ticket is unbuilt | D |
+| Users absent or inactive, ARC placeholders | the sweep files `account_request` rows (live); the request ticket is built (`xras_request_tickets`, dev on dry-run, prod disabled) | users come only from IGA and the LDAP sync; the ticket's prod rollout | D |
 | XRAS's own notify mail | on | the Action Approved rules on the NCAR process's notification templates, which we own (§ 3, C) | C (cutover step) |
 
 ## 3. Phases

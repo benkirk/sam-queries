@@ -100,6 +100,7 @@ check_dev() {
   same_on_both "$deploy" "$cron" XRAS_OUTGOING_ENABLED "1"
   [[ "$(env_value "$deploy" XRAS_WRITE_ENABLED)" == "1" ]] || { red "FAIL: XRAS_WRITE_ENABLED must be 1 on dev (the demo instance is the write test bed)"; return 1; }
   [[ "$(env_value "$deploy" XRAS_RENAME_ENABLED)" == "1" ]] || { red "FAIL: XRAS_RENAME_ENABLED must be 1 on dev (the after-reply rename's test bed)"; return 1; }
+  [[ "$(env_value "$deploy" XRAS_AUTO_ACTIVATE)" == "1" ]] || { red "FAIL: XRAS_AUTO_ACTIVATE must be 1 on dev (phase B's test bed)"; return 1; }
   # xras_rename's lever reaches the task pod through dev's tasks.env alone.
   [[ "$(env_value "$cron" XRAS_WRITE_ENABLED)" == "1" ]] || { red "FAIL: dev tasks must carry XRAS_WRITE_ENABLED=1 (xras_rename's test bed)"; return 1; }
   [[ "$(env_value "$deploy" XRAS_ACTIONS_CAPTURE_ONLY)" == "0" ]] || { red "FAIL: XRAS_ACTIONS_CAPTURE_ONLY must be 0 on dev (demo posts dispatch)"; return 1; }
@@ -110,6 +111,10 @@ check_dev() {
   same_on_both "$deploy" "$cron" JIRA_ENABLED "0"
   [[ "$(env_value "$deploy" JIRA_WRITE_ENABLED)" == "0" ]] || { red "FAIL: JIRA_WRITE_ENABLED must be 0 on dev"; return 1; }
   [[ -z "$(env_value "$deploy" TICKET_PROVIDER)" ]] || { red "FAIL: dev must file no API ticket (TICKET_PROVIDER empty)"; return 1; }
+  # xras_request_tickets files end to end on dev through dry-run alone: no Jira write lever.
+  [[ "$(env_value "$cron" TICKET_PROVIDER)" == "dry-run" ]] || { red "FAIL: dev tasks must file through TICKET_PROVIDER=dry-run"; return 1; }
+  [[ -z "$(env_value "$cron" JIRA_WRITE_ENABLED)" ]] || { red "FAIL: dev tasks must not carry JIRA_WRITE_ENABLED"; return 1; }
+  same_on_both "$deploy" "$cron" XRAS_REQUEST_TICKETS_ENABLED "1"
   assert_not_contains "$whole" "name: JIRA_TOKEN" "dev must not hold the Jira token"
   assert_not_contains "$whole" "jira-credentials" "dev must not sync the Jira token from OpenBao"
 
@@ -227,6 +232,10 @@ prod_deploy=$(render prod -s templates/deployment.yaml)
   red "FAIL: prod files NUSD's ticket into Jira-by-email (NOTIFY_ACCOUNT_TICKET_TO=help@ucar.edu)"; exit 1; }
 [[ -z "$(env_value "$(render dev -s templates/deployment.yaml)" NOTIFY_ACCOUNT_TICKET_TO)" ]] || {
   red "FAIL: dev must never file a Jira ticket (NOTIFY_ACCOUNT_TICKET_TO empty)"; exit 1; }
+[[ "$(env_value "$prod_deploy" XRAS_AUTO_ACTIVATE)" == "0" ]] || {
+  red "FAIL: prod ships XRAS auto-activation off until dev proves it (XRAS_AUTO_ACTIVATE=0)"; exit 1; }
+[[ "$(env_value "$prod_deploy" XRAS_REQUEST_TICKETS_ENABLED)" == "0" ]] || {
+  red "FAIL: prod's 422 must not promise a ticket the disabled task never files"; exit 1; }
 [[ "$(env_value "$prod_deploy" COMPONENT_GALLERY_ENABLED)" == "0" ]] || {
   red "FAIL: the component gallery must ship dark in prod (COMPONENT_GALLERY_ENABLED=0)"; exit 1; }
 [[ "$(env_value "$prod_deploy" HUMAN_CHECK_PROVIDER)" == "turnstile" ]] || {
@@ -266,6 +275,8 @@ expect_reject --set tasks.env.SAM_TASKS_DISABLED=expiration_notices\\,xras_notic
 expect_reject --set webapp.env.JIRA_ENABLED=1
 expect_reject --set webapp.env.JIRA_WRITE_ENABLED=1
 expect_reject --set webapp.env.TICKET_PROVIDER=jira-servicedesk
+expect_reject --set tasks.env.TICKET_PROVIDER=jira-servicedesk
+expect_reject --set tasks.env.JIRA_WRITE_ENABLED=1
 expect_reject --set webapp.jiraCredentials.enabled=true
 expect_reject --set webapp.env.SAM_DB_NAME=sam
 expect_reject --set webapp.env.SAM_DB_NAME=null

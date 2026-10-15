@@ -252,6 +252,17 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
         facility_aware=False,
         family='account',
     ),
+    # NUSD's ticket for an XRAS New or Renewal still refused after the grace
+    # period, filed and commented by the `xras_request_tickets` task (never
+    # mailed). Text-only; its rows are keyed `xras_ticket:<requestId>:...`.
+    NotificationKind(
+        key='xras_request_ticket',
+        label='XRAS refused-request ticket (NUSD)',
+        template_base='xras_request_ticket',
+        default_subscribed=True,
+        facility_aware=False,
+        family='account',
+    ),
     # The `lifecycle` family: operator-initiated, tree-aware, onboarding-rich
     # project notices, distinct from the XRAS-driven xras_* kinds above. They
     # introduce the in-tree allocation-adjustment and member-management surfaces

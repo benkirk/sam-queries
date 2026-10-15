@@ -394,6 +394,8 @@ def merge_placeholder(session_factory, *, source_username, target_username,
         invalidate_person(target_username)
         patched = _patch_requests_naming(source_username,
                                          session_factory=session_factory)
+        _dismiss_merged_requests(session_factory, source_username, target_username,
+                                 operator)
         # Best-effort: the Pending Users card renders the cached pending half,
         # so a just-merged placeholder would keep its row until the next sweep.
         try:
@@ -404,6 +406,27 @@ def merge_placeholder(session_factory, *, source_username, target_username,
 
     return RemediationOutcome(event_id, result=result, status=result.status,
                               patched=patched)
+
+
+def _dismiss_merged_requests(session_factory, source_username, target_username,
+                             operator) -> int:
+    """Dismiss the placeholder's open account requests. Fulfillment matches by email,
+    so a target holding another address would leave them in NUSD's queue for good.
+    Best-effort: the merge already happened."""
+    from sam.core.account_requests import OPEN_STATES
+    from sam.queries.account_requests import requests_by_xras_username
+    try:
+        with session_factory() as session:
+            rows = [r for reqs in requests_by_xras_username(session, [source_username]).values()
+                    for r in reqs if r.state in OPEN_STATES]
+            for row in rows:
+                row.mark_merged(target_username, operator)
+            session.commit()
+            return len(rows)
+    except Exception:                                   # noqa: BLE001
+        logger.warning('merge_placeholder: could not dismiss the account requests for %s',
+                       source_username, exc_info=True)
+        return 0
 
 
 def _patch_requests_naming(username: str, *, session_factory=None) -> bool:

@@ -1976,3 +1976,8 @@ sunburst, which started on the allocations page and then moved to job history.
   exchange inside the residual reclaim and allocate-down already respect: FROM may not drop
   below its own carve-outs (NCGD0036 FY27 Derecho, 8M under NCGD0040's 8.9M), and a cousin
   exchange may not push TO's parent further over its amount.
+- [ ] A ticket close for `xras_request_tickets` (#828, `XRAS_REQUEST_TICKETS.md` § 11): when
+  XRAS deletes a request with an open ticket, close it with a note. Three parts, none built: a
+  deletion signal the task can read (an XRAS read per open ticket, or a mark the sweep leaves),
+  a `TicketProvider.close(key, resolution)` beside `comment`, and its own Jira smoke. Deferred
+  on purpose; post-then-delete is rare. Build it when one shows up.

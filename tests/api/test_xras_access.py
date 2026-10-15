@@ -924,13 +924,42 @@ class TestDispatchArms:
         assert resp.status_code == 422
         body = json.loads(resp.data)
         assert body['result']['errors'] == [
-            'Missing title', 'PI jdoe is not in database']
-        assert body['message'] == '2 errors processing action'
+            'Missing title', 'PI jdoe is not in database',
+            'To fix a person: create or reactivate the account, or drop the member '
+            'from the request in XRAS.']
+        assert body['message'] == '2 errors processing action', 'the pointer is not counted'
 
         row = action_log.one()
         assert row['status'] == 'failed'
         assert row['http_status'] == 422
         assert row['error_messages'] == 'Missing title\nPI jdoe is not in database'
+
+    @pytest.mark.parametrize('armed', [False, True])
+    def test_a_refused_new_says_where_its_ticket_stands_only_when_armed(
+            self, app, xras_client, action_log, dispatching, monkeypatch, armed):
+        """docs/plans/XRAS_REQUEST_TICKETS.md § 6: the state line leads, the stored row stays bare."""
+        from sam.xras.errors import ActionErrors
+
+        def rejecting(session, action, *, validate_only=False):
+            errs = ActionErrors()
+            errs.report('Cannot find contract for grant number "AGS-1" ("000001")')
+            errs.raise_if_any()
+
+        dispatching.register('add', rejecting)
+        monkeypatch.setitem(app.config, 'XRAS_REQUEST_TICKETS_ENABLED', armed)
+        resp = xras_client.post(
+            self.PATH, data=_payload('new_ncar4246_ok.json'),
+            content_type='application/json', headers=_auth())
+
+        assert resp.status_code == 422
+        errors = json.loads(resp.data)['result']['errors']
+        head = ['This action cannot yet succeed. If it is still refused in about '
+                '15 minutes, a ticket opens with NUSD.'] if armed else []
+        assert errors[:len(head) + 1] == head + [
+            'Cannot find contract for grant number "AGS-1" ("000001")']
+        assert errors[-1].startswith('To fix a contract:')
+        assert action_log.one()['error_messages'] == (
+            'Cannot find contract for grant number "AGS-1" ("000001")')
 
     def test_a_disabled_action_type_parks_as_manual_without_running_the_handler(
             self, app, xras_client, action_log, dispatching):
@@ -1099,7 +1128,7 @@ class TestRenameAfterReply:
 
     def test_the_rename_lever_off_means_no_rename(self, xras_client, action_log, dispatching,
                                                   renames, monkeypatch, app):
-        """Production ships XRAS_RENAME_ENABLED=0 with both XRAS levers on."""
+        """The rename has its own lever beside both XRAS levers."""
         monkeypatch.setitem(app.config, 'XRAS_RENAME_ENABLED', False)
         resp, _ = self._post_new(xras_client, dispatching, 'UXYZ0001')
         resp.close()
@@ -1115,6 +1144,62 @@ class TestRenameAfterReply:
                             lambda *a, **k: (_ for _ in ()).throw(RuntimeError('boom')))
         resp, _ = self._post_new(xras_client, dispatching, 'UXYZ0001')
         resp.close()
+        assert resp.status_code == 200 and action_log.one()['status'] == 'processed'
+
+
+class TestActivateAfterReply:
+    """XRAS_POST_AUTOMATION.md § 3 B: a New that created its project activates it
+    once the reply has gone, behind XRAS_AUTO_ACTIVATE."""
+
+    PATH = TestDispatchArms.PATH
+    dispatching = TestDispatchArms.dispatching
+
+    @pytest.fixture
+    def activations(self, monkeypatch, app):
+        from sam.manage import xras_activation
+        monkeypatch.setitem(app.config, 'XRAS_AUTO_ACTIVATE', True)
+        calls = []
+        monkeypatch.setattr(xras_activation, 'activate_posted_project',
+                            lambda session, projcode, **kw: calls.append((projcode, kw)))
+        return calls
+
+    def _post(self, xras_client, dispatching, service):
+        dispatching.register(service, lambda s, a, *, validate_only=False:
+                             dispatching.DispatchResult(status='processed', service=service,
+                                                        projcode='UXYZ0001'))
+        payload = json.loads(_payload('new_ncar4214_ok.json'))
+        payload['requestId'] = payload['actionId'] = int(next_seq('1449'))
+        resp = xras_client.post(self.PATH, data=json.dumps(payload),
+                                content_type='application/json', headers=_auth())
+        resp.close()
+        return resp
+
+    def test_a_new_that_created_its_project_activates_it(
+            self, xras_client, action_log, dispatching, activations):
+        self._post(xras_client, dispatching, 'add')
+        (project, kw), = activations
+        assert project == 'UXYZ0001' and kw['by'].startswith('xras:')
+        assert kw['xras_action_log_id'] == action_log.one()['id']
+
+    def test_a_new_that_dispatched_as_an_update_does_not(
+            self, xras_client, action_log, dispatching, activations, monkeypatch):
+        from sam.xras import dispatch
+        monkeypatch.setattr(dispatch, 'select_service', lambda *a, **k: 'update')
+        self._post(xras_client, dispatching, 'update')
+        assert activations == []
+
+    def test_the_lever_off_means_no_activation(
+            self, xras_client, action_log, dispatching, activations, monkeypatch, app):
+        monkeypatch.setitem(app.config, 'XRAS_AUTO_ACTIVATE', False)
+        self._post(xras_client, dispatching, 'add')
+        assert activations == []
+
+    def test_a_failing_activation_never_reaches_the_reply(
+            self, xras_client, action_log, dispatching, activations, monkeypatch):
+        from sam.manage import xras_activation
+        monkeypatch.setattr(xras_activation, 'activate_posted_project',
+                            lambda *a, **k: (_ for _ in ()).throw(RuntimeError('boom')))
+        resp = self._post(xras_client, dispatching, 'add')
         assert resp.status_code == 200 and action_log.one()['status'] == 'processed'
 
 

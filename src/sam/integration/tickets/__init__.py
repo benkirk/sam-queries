@@ -9,11 +9,13 @@ from sam.integration.tickets.base import (ACCOUNT_KIND, DEFAULT_AUTOMATION_NOTE,
                                           KINDS, TicketDraft,
                                           TicketNotConfigured, TicketProvider,
                                           TicketRef, TicketRejected,
-                                          TicketSourceUnavailable)
+                                          TicketSourceUnavailable,
+                                          XRAS_REQUEST_KIND)
 from sam.integration.tickets.models import ExternalTicket
 
 __all__ = [
     'ACCOUNT_KIND', 'DEFAULT_AUTOMATION_NOTE', 'ExternalTicket', 'KINDS', 'TicketDraft',
     'TicketNotConfigured',
     'TicketProvider', 'TicketRef', 'TicketRejected', 'TicketSourceUnavailable',
+    'XRAS_REQUEST_KIND',
 ]

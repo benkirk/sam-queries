@@ -269,7 +269,7 @@ class AccountRequest(Base, SessionMixin):
     fulfill_error = Column(String(255))
     #: When the operator-chosen rejection notice left.
     closure_notified_at = Column(DateTime)
-    #: Not written yet: the XRAS placeholder merge (phase 3).
+    #: When an XRAS merge of this placeholder dismissed the row (``mark_merged``).
     merged_at = Column(DateTime)
 
     # Invitation link and agreement acceptance.
@@ -426,6 +426,13 @@ class AccountRequest(Base, SessionMixin):
     def reject(self, by, reason, clock=None):
         """Refuse; the reason is recorded and, if the operator chose, mailed."""
         return self._close('rejected', 'reject', by, reason, clock)
+
+    def mark_merged(self, target_username, by, clock=None):
+        """Dismiss: XRAS merged this placeholder into ``target_username``."""
+        self._require_open('merge')
+        self.merged_at = clock or datetime.now()
+        return self._close('dismissed', 'dismiss', by,
+                           f'XRAS placeholder merged into {target_username}', clock)
 
     def mark_closure_notified(self, when=None):
         """The rejection notice reached the requester (send first, stamp second)."""

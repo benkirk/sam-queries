@@ -26,7 +26,8 @@ DEFAULT_AUTOMATION_NOTE = (
 #: The kinds of ticket SAM files. A provider keys its per-kind settings
 #: (request type, desk, labels) on these names, like ``sam.notify`` families.
 ACCOUNT_KIND = 'account'
-KINDS: Tuple[str, ...] = (ACCOUNT_KIND,)
+XRAS_REQUEST_KIND = 'xras_request'
+KINDS: Tuple[str, ...] = (ACCOUNT_KIND, XRAS_REQUEST_KIND)
 
 
 class TicketSourceUnavailable(Exception):
