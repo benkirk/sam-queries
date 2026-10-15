@@ -41,7 +41,7 @@ Notes:
 
 - **One record type at a time.** Affiliations go first, because that's where the damage is proven.
   User identity fields (names, emails, phones, active, academic status) follow, then organizations,
-  institutions and posix groups. Each type goes through the stages in § 4.
+  institutions and adhoc groups. Each type goes through the stages in § 4.
 - **For UCAR, SAMuel would ignore much of what the daemon sends.** That is deliberate. It is written
   here so nobody later fixes the daemon's content expecting it to matter.
 - **Access.** An anonymous read of `ou=allPeople` sees people, positions and collaborations.
