@@ -1,7 +1,7 @@
 # XRAS: "Post to accounting service" does everything SAMuel can
 
-**Status: roadmap, 2026-10-14.** Phase A (renames) is live in production (#819, #820). B is armed
-in production (built in #828, armed after the samuel-dev smoke); D is built and on in samuel-dev, off in production until
+**Status: roadmap, 2026-10-15.** Phase A (renames) is live in production (#819, #820). B is live
+in production (built in #828, armed by #831; first case NCAR4407 → UMMM0018, 2026-10-15); D is built and on in samuel-dev, off in production until
 `XRAS_REQUEST_TICKETS.md` § 9 (D's item 2 deferred); C and E are not started. This file sequences the work and points at the plans that hold the
 detail; it holds the decisions, not the designs.
 
@@ -42,9 +42,8 @@ NUSD stops renaming by hand (Travis agreed 2026-10-14). A race between the two i
 - SAM's pre-read skips a line already renamed;
 - the admin app's "Assign new request number" refuses a number in use.
 
-NUSD still activates in SAM and notifies from XRAS until B and C. The route's first rename in
-production waits for the next New that applies: the one New posted since go-live, NCAR4391,
-was refused (2026-10-14).
+NUSD still notifies from XRAS until C. The route's first rename in production was NCAR4407 →
+UMMM0018 on 2026-10-15 (`xras_remediation_event` #21, verified 1 s after the reply).
 
 **B. Activation on post.** Ben, 2026-10-14: yes, when nothing blocks it. Once the New
 applies cleanly, activate the project behind its own lever (`XRAS_AUTO_ACTIVATE`, default
@@ -53,7 +52,9 @@ off, dev on), in the handler or the after-reply hook beside the rename, recordin
 unattended exception to `can_edit_project_governance` (`implemented/XRAS_AUTO_NOTICES.md`,
 "Phase 2 (later)"). SAM holds no record of when NUSD activates today: since the repoint 7
 activations went through the card, while 39 of the last 40 applied News are active, so the rest
-were activated elsewhere. B's `xras_activation_event` is the first reliable record. A New that applied under an `ignore_contract` override activates too: the
+were activated elsewhere. B's `xras_activation_event` is the first reliable record. Live in production since 2026-10-15
+19:01Z; the first case, UMMM0018 (action log #307), was activated by `xras:XRAS` in the second
+of its post, and its rename followed. A New that applied under an `ignore_contract` override activates too: the
 waiver is the operator's decision (Ben, 2026-10-14). NUSD checks nothing before activating
 beyond what the handler checks (Travis, 2026-10-14), so a New that applies is ready to
 activate.
@@ -74,7 +75,8 @@ process's notification templates, sent at the operator's Notify step (read on `a
   carries one; production has no addressing rows), and one rule deleted on the demo to prove
   it silences Notify.
 
-**D. A refused post becomes one ticket.** `XRAS_REQUEST_TICKETS.md` (designed, not built).
+**D. A refused post becomes one ticket.** `XRAS_REQUEST_TICKETS.md` (built in #828; on in
+samuel-dev through the `dry-run` provider; production waits on its § 9).
 Ben, 2026-10-14, the #819 second-pass review: of the News approved since the 2026-08-24
 repoint, 73 have applied, 3 stand refused and 3 are unposted (`XRAS_CLOSED_LOOP.md` § 3.3),
 so a ticket per approval is churn; the ticket belongs to the request whose post is refused.

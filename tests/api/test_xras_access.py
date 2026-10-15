@@ -1114,6 +1114,18 @@ class TestRenameAfterReply:
             request_id, 'NCAR4214', 'UXYZ0001')
         assert call['operator'].startswith('xras:')
 
+    def test_the_rename_audits_as_its_operator_not_anonymous(
+            self, xras_client, action_log, dispatching, renames, monkeypatch):
+        from sam.manage import xras_remediation
+        from webapp.audit.events import responsible_user
+        seen = []
+        monkeypatch.setattr(xras_remediation, 'rename_request',
+                            lambda factory, **kw: seen.append((kw['operator'], responsible_user()))
+                            or xras_remediation.RemediationOutcome(None, status='verified'))
+        self._post_new(xras_client, dispatching, 'UXYZ0001')[0].close()
+        (operator, audited), = seen
+        assert audited == operator and operator.startswith('xras:')
+
     def test_a_number_that_is_already_the_projcode_is_left_alone(
             self, xras_client, action_log, dispatching, renames):
         self._post_new(xras_client, dispatching, 'NCAR4214')[0].close()
@@ -1180,6 +1192,17 @@ class TestActivateAfterReply:
         (project, kw), = activations
         assert project == 'UXYZ0001' and kw['by'].startswith('xras:')
         assert kw['xras_action_log_id'] == action_log.one()['id']
+
+    def test_the_activation_audits_as_its_actor_not_anonymous(
+            self, xras_client, action_log, dispatching, activations, monkeypatch):
+        from sam.manage import xras_activation
+        from webapp.audit.events import responsible_user
+        seen = []
+        monkeypatch.setattr(xras_activation, 'activate_posted_project',
+                            lambda session, projcode, **kw: seen.append((kw['by'], responsible_user())))
+        self._post(xras_client, dispatching, 'add')
+        (by, audited), = seen
+        assert audited == by and by.startswith('xras:')
 
     def test_a_new_that_dispatched_as_an_update_does_not(
             self, xras_client, action_log, dispatching, activations, monkeypatch):
