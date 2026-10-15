@@ -32,7 +32,7 @@ groups, collaborator end dates) stays with the daemon.
 | Who | Does | Today |
 |---|---|---|
 | Daemon | Notices directory changes and tells SAMuel which person, group, organization or institution changed | It already does: every user PUT is such a notice, so no daemon change is needed to start |
-| Daemon | Writes SAM → directory: project groups and collaborator end dates, through staging | Unchanged |
+| Daemon | Writes SAM → directory: project groups and collaborator end dates, through staging | Project groups work; the collaborator end-date pass has never run (§ 3.4) |
 | SAMuel | On a notice, reads that record from the directory and reconciles SAM to it | New. The POST's content is still applied first, so a site without our directory loses nothing |
 | SAMuel | Nightly, sweeps the whole directory the same way, to catch missed notices | New. Missed notices are real: the testbed's poller missed one claim this week, and the daemon has its own gaps |
 | SAMuel | Verifies any delete or purge against the directory before acting | New. The daemon turns a removed affiliation entry into a whole-user delete (N17) |
