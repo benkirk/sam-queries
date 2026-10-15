@@ -42,6 +42,7 @@ cli/
 │   ├── comp_ingest.py        # --comp            (CompIngestMixin)
 │   ├── disk_ingest.py        # --disk            (DiskIngestMixin)
 │   ├── quota_reconcile.py    # --reconcile-quotas (QuotaReconcileMixin)
+│   ├── fileset_resolver.py   # which project owns a fileset (--disk and --reconcile-quotas)
 │   └── dates.py, quota_readers/, disk_usage/, path_verifier.py
 ├── contracts/                # Contract search (sam-search) + data-hygiene audit (sam-admin)
 ├── awards/                   # Public award APIs (NSF, USAspending) — sam-search

@@ -11,6 +11,7 @@ from cli.accounting.display import (
     display_quota_reconcile_plan,
     display_quota_reconcile_summary,
 )
+from cli.accounting.fileset_resolver import FilesetResolver
 from cli.accounting.quota_readers import get_quota_reader, QuotaEntry
 from cli.accounting.path_verifier import (
     PathVerificationError, auto_detect_verifier,
@@ -165,46 +166,33 @@ class QuotaReconcileMixin:
         projects_by_code = {p.projcode: p for p in all_projects}
 
         # ---- 4. Map quota entries <-> projects (over ALL projects) --------------
-        dir_to_projcode: dict[str, str] = {}
-        dir_rows = (
+        # Active directories per project: context for the Orphaned display.
+        dirs_by_projcode: dict[str, list[str]] = {}
+        for pd, proj in (
             self.session.query(ProjectDirectory, Project)
             .join(Project, Project.project_id == ProjectDirectory.project_id)
             .filter(ProjectDirectory.is_currently_active)
-            .all()
-        )
-        for pd, proj in dir_rows:
-            dir_to_projcode.setdefault(pd.directory_name, proj.projcode)
-
-        # Also build a per-project list of active directory names — handy
-        # context for the Orphaned display (explains what a deactivated
-        # allocation used to map to on disk).
-        dirs_by_projcode: dict[str, list[str]] = {}
-        for pd, proj in dir_rows:
+        ):
             dirs_by_projcode.setdefault(proj.projcode, []).append(pd.directory_name)
 
-        # A project can own multiple filesets, so quotas are a list per projcode,
-        # summed at roll-up. Dedupe by fileset_name or a quota matching via both
-        # projcode AND ProjectDirectory path is counted twice.
+        # The disk ingest's rule decides which project owns each fileset. A project
+        # can own several filesets: quotas are a list per projcode, summed at roll-up.
+        resolver = FilesetResolver(self.session, resource)
+        labels = {id(qe): qe.fileset_name.upper() for qe in quota_entries}
+        resolver.learn_labels((qe.path, labels[id(qe)]) for qe in quota_entries)
         own_quota: dict[str, list[QuotaEntry]] = {}
-        seen_filesets: dict[str, set[str]] = {}
+        seen_filesets: set[str] = set()
         unmapped: list[QuotaEntry] = []
-
-        def _attach(projcode: str, qe: QuotaEntry) -> None:
-            seen = seen_filesets.setdefault(projcode, set())
-            if qe.fileset_name in seen:
-                return
-            seen.add(qe.fileset_name)
-            own_quota.setdefault(projcode, []).append(qe)
-
         for qe in quota_entries:
-            projcode = qe.fileset_name.upper()
-            if projcode in projects_by_code:
-                _attach(projcode, qe)
+            key = qe.path or qe.fileset_name
+            if key in seen_filesets:
                 continue
-            if qe.path and qe.path in dir_to_projcode:
-                _attach(dir_to_projcode[qe.path], qe)
-                continue
-            unmapped.append(qe)
+            seen_filesets.add(key)
+            res = resolver.resolve(qe.path, labels[id(qe)])
+            if res.project is None:
+                unmapped.append(qe)
+            else:
+                own_quota.setdefault(res.project.projcode, []).append(qe)
 
         # ---- 5. Subtree roll-up via MPPT containment --------------------------
         # NestedSetMixin: P's subtree is every Q sharing P.tree_root with

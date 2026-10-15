@@ -1,8 +1,6 @@
 """`sam-admin accounting --disk`: a disk-usage snapshot into disk_charge_summary and disk_activity."""
 from cli.core.utils import EXIT_ERROR, EXIT_SUCCESS
 from sam.summaries.disk_summaries import BYTES_PER_TIB
-from collections import defaultdict
-from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Optional
 
@@ -13,6 +11,7 @@ from cli.accounting.display import (
     display_disk_import_report,
 )
 from cli.accounting.disk_usage import get_disk_usage_reader, DiskUsageEntry
+from cli.accounting.fileset_resolver import DIRECTORY_AUTO_ACTIONS, FilesetResolver
 from sam.manage.summaries import (
     resolve_user,
     upsert_disk_charge_summary,
@@ -30,60 +29,12 @@ from sam.summaries.disk_summaries import (
 # gap-row convention, so user resolution and charging math succeed.
 _DISK_ROLLUP_USERNAMES = frozenset({'total'})
 
-# Fileset labels HSG reports that no SAM project owns (scratch, test and
-# hackathon areas). Rows under them with an unlinked path are skipped, not
-# charged and not errors. Grow it here; it is not config.
-KNOWN_UNOWNED_PROJCODES = frozenset({'ROOT', 'RISC', 'NGIC'})
-
 # Disk-import report categories. Only UNEXPECTED ones make the run exit 2;
 # the rest are reported and exit 0. See docs/plans/DISK_INGEST_TRIAGE.md.
 DISK_UNEXPECTED_CATEGORIES = ('no_project', 'no_account', 'unknown_user')
 DISK_REPORT_CATEGORIES = DISK_UNEXPECTED_CATEGORIES + (
     'known_unowned', 'unlinked_directory', 'expired_directory',
 )
-# --reconcile-directories writes these; 'review' (path owned by another project) never.
-DIRECTORY_AUTO_ACTIONS = ('reopen', 'rename', 'create')
-
-
-@dataclass(frozen=True)
-class _DiskResolution:
-    """How a disk row resolved; ``reason`` is None or a report category."""
-    project: Optional[object] = None
-    account: Optional[object] = None
-    via: Optional[str] = None       # 'path' | 'projcode' | 'label'
-    reason: Optional[str] = None
-    action: Optional[str] = None    # unlinked_directory only: DIRECTORY_AUTO_ACTIONS or 'review'
-    directory_id: Optional[int] = None   # the row a reopen/rename acts on
-
-    @property
-    def ok(self) -> bool:
-        return self.account is not None
-
-
-class _DirectoryIndex:
-    """Every project_directory row, ended ones included, to pick a reconcile action."""
-
-    def __init__(self, rows):
-        self.by_path = defaultdict(list)
-        self.by_case = defaultdict(list)
-        for pd in rows:
-            self.by_path[pd.directory_name].append(pd)
-            self.by_case[(pd.project_id, pd.directory_name.lower())].append(pd)
-
-    @staticmethod
-    def _latest(rows):
-        return max(rows, key=lambda r: (r.end_date is None, r.end_date or datetime.min))
-
-    def action_for(self, project_id: int, path: str) -> tuple[str, Optional[int]]:
-        same = [r for r in self.by_path.get(path, ()) if r.project_id == project_id]
-        if same:
-            return 'reopen', self._latest(same).project_directory_id
-        if self.by_path.get(path):
-            return 'review', None
-        variants = self.by_case.get((project_id, path.lower()))
-        if variants:
-            return 'rename', self._latest(variants).project_directory_id
-        return 'create', None
 
 
 def _build_disk_import_report(entries, resolve, known_usernames: set,
@@ -365,79 +316,13 @@ class DiskIngestMixin:
 
         # ---- 6b. Resolve projcode for normal rows ----------------------
         # acct.glade column 3 is a fileset label ('cesm', 'cgd'), not a SAM
-        # projcode. Resolve as legacy did, directory_path -> ProjectDirectory ->
-        # Project: path lookup first, then projcode-as-label, then the one project
-        # this file's linked rows give the same label (/quasar/rda_dr rides with
-        # /quasar/rda, as tier-3 grouping by label already charges it). A row that
-        # fails gets a report category (_DiskResolution.reason) instead of an error.
-        from sam.projects.projects import ProjectDirectory, Project
-        from sam.accounting.allocations import Allocation
-        pd_path_to_project: dict[str, "Project"] = {
-            pd.directory_name: proj
-            for pd, proj in (
-                self.session.query(ProjectDirectory, Project)
-                .join(Project, Project.project_id == ProjectDirectory.project_id)
-                .filter(ProjectDirectory.is_currently_active)
-                .all()
-            )
-        }
-        directory_index = _DirectoryIndex(self.session.query(ProjectDirectory).all())
-        funded_accounts = {
-            account_id for (account_id,) in (
-                self.session.query(Allocation.account_id)
-                .join(Account, Account.account_id == Allocation.account_id)
-                .filter(Account.resource_id == resource.resource_id, Allocation.is_active)
-                .distinct()
-            )
-        }
-        label_projects: dict[str, dict] = {}
-        for e in entries:
-            proj = pd_path_to_project.get(e.directory_path) if e.directory_path else None
-            if proj is not None:
-                label_projects.setdefault(e.projcode, {})[proj.project_id] = proj
-        resolution_cache: dict[tuple, _DiskResolution] = {}
-        account_cache: dict[int, Optional["Account"]] = {}
+        # projcode; FilesetResolver applies the legacy path-then-label rule.
+        resolver = FilesetResolver(self.session, resource,
+                                   include_deleted_accounts=include_deleted_accounts)
+        resolver.learn_labels((e.directory_path, e.projcode) for e in entries)
 
-        def _resolve_for_row(row) -> _DiskResolution:
-            """Resolve a normal row (gap rows carry overrides); memoized per (path, projcode)."""
-            key = (row.directory_path, row.projcode)
-            if key not in resolution_cache:
-                resolution_cache[key] = _resolve_uncached(row)
-            return resolution_cache[key]
-
-        def _resolve_uncached(row) -> _DiskResolution:
-            project = pd_path_to_project.get(row.directory_path) if row.directory_path else None
-            via = 'path'
-            if project is None:
-                if row.projcode in KNOWN_UNOWNED_PROJCODES:
-                    return _DiskResolution(reason='known_unowned')
-                project = Project.get_by_projcode(self.session, row.projcode)
-                via = 'projcode'
-            if project is None:
-                siblings = label_projects.get(row.projcode, {})
-                if len(siblings) != 1:
-                    return _DiskResolution(reason='no_project')
-                (project,) = siblings.values()
-                via = 'label'
-
-            if project.project_id not in account_cache:
-                account_cache[project.project_id] = Account.get_by_project_and_resource(
-                    self.session, project.project_id, resource.resource_id,
-                    exclude_deleted=not include_deleted_accounts,
-                )
-            acct = account_cache[project.project_id]
-            if acct is None:
-                return _DiskResolution(project=project, via=via, reason='no_account')
-            if via == 'path' or not row.directory_path:
-                return _DiskResolution(project=project, account=acct, via=via)
-            if acct.account_id not in funded_accounts:
-                return _DiskResolution(project=project, account=acct, via=via,
-                                       reason='expired_directory')
-            action, directory_id = directory_index.action_for(
-                project.project_id, row.directory_path)
-            return _DiskResolution(project=project, account=acct, via=via,
-                                   reason='unlinked_directory', action=action,
-                                   directory_id=directory_id)
+        def _resolve_for_row(row):
+            return resolver.resolve(row.directory_path, row.projcode)
 
         # ---- 6c. Classify every row before any write (reads only) ------
         known_usernames = self._known_usernames(entries)
