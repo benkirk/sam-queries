@@ -54,6 +54,13 @@ class TestTheCronJobWritesThroughOneTaskOnly:
         for key in WEBAPP_ONLY:
             assert key not in tasks_env, key
 
+    def test_the_ticket_task_files_on_the_allocations_type(self):
+        """Smoked as RC-40559 (2026-10-15). The CronJob forwards no JIRA_<KIND>_* by
+        name, so the kind's settings ride tasks.env, which it renders as-is."""
+        tasks_env = _values()['tasks']['env']
+        assert (tasks_env['JIRA_XRAS_REQUEST_REQUEST_TYPE_ID'],
+                tasks_env['JIRA_XRAS_REQUEST_LABELS']) == ('18', 'sam-xras-request')
+
     def test_the_task_ships_disabled_in_production(self):
         disabled = _values()['tasks']['env']['SAM_TASKS_DISABLED'].split(',')
         assert 'xras_request_tickets' in disabled

@@ -226,6 +226,8 @@ done
 assert_contains "$cron_out" 'name: samuel-jira-credentials' \
   "which must name the Secret the Jira ExternalSecret materialises"
 cron_code=$(grep -v '^[[:space:]]*#' <<<"$cron_out")
+assert_contains "$cron_out" 'name: JIRA_XRAS_REQUEST_REQUEST_TYPE_ID' \
+  "xras_request_tickets' request type reaches the task pod through tasks.env"
 assert_not_contains "$cron_code" 'JIRA_WRITE_ENABLED' \
   "no production task files or comments on a ticket yet"
 assert_not_contains "$cron_code" 'TICKET_PROVIDER' \

@@ -709,3 +709,8 @@ tasks:
     # Arms xras_rename, the one task write (the XRAS_WRITE_ENABLED warning in webapp.env).
     # Removing it disarms the task without a code change.
     XRAS_WRITE_ENABLED: "1"
+    # xras_request_tickets files on the RC desk's "Allocations" type (18; the list is beside
+    # webapp.env JIRA_REQUEST_TYPE_ID), smoked as RC-40559 2026-10-15. Inert until rollout adds
+    # TICKET_PROVIDER and JIRA_WRITE_ENABLED here (docs/plans/XRAS_REQUEST_TICKETS.md § 9).
+    JIRA_XRAS_REQUEST_REQUEST_TYPE_ID: "18"
+    JIRA_XRAS_REQUEST_LABELS: "sam-xras-request"
