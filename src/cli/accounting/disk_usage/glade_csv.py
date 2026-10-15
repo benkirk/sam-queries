@@ -61,7 +61,7 @@ QUOTA8 = 'quota8'    # ..., file quota, KiB, KiB quota (all feeds from 2026-10)
 _LEGACY8_TAIL = ['7', '0']
 
 
-def _detect_layout(rows: list[list[str]], path: str) -> str:
+def detect_layout(rows: list[list[str]], path: str) -> str:
     """One layout for the file's 8-column rows; raises on any width other than 6 or 8."""
     widths = {len(r) for r in rows}
     unknown = widths - {6, 8}
@@ -75,7 +75,7 @@ def _detect_layout(rows: list[list[str]], path: str) -> str:
     return QUOTA8
 
 
-def _lenient_int(value: Optional[str]) -> Optional[int]:
+def lenient_int(value: Optional[str]) -> Optional[int]:
     """Quota columns only: ``-`` or blank means no quota, and must never drop the usage row."""
     try:
         return int(value)
@@ -104,7 +104,7 @@ class GladeCsvReader(DiskUsageReader):
 
         # Decided per file, not per row: a quota8 row with 7 KiB on a zero-quota
         # fileset carries the legacy "7","0" tail.
-        eight_layout = _detect_layout(rows, self.path)
+        eight_layout = detect_layout(rows, self.path)
         layouts = {LEGACY6 if len(r) == 6 else eight_layout for r in rows}
         self.layout = '+'.join(sorted(layouts)) or None
 
@@ -137,7 +137,7 @@ class GladeCsvReader(DiskUsageReader):
                 continue
 
             snapshot_dates.add(activity_date)
-            q_kib = _lenient_int(quota_kib)
+            q_kib = lenient_int(quota_kib)
 
             entries.append(DiskUsageEntry(
                 activity_date=activity_date,
@@ -148,7 +148,7 @@ class GladeCsvReader(DiskUsageReader):
                 directory_path=dir_path.strip() or None,
                 reporting_interval=rep_int,
                 cos=cos_id,
-                file_quota=_lenient_int(file_quota),
+                file_quota=lenient_int(file_quota),
                 quota_bytes=None if q_kib is None else q_kib * self._KIB,
             ))
 

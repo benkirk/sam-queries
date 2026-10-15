@@ -15,6 +15,8 @@ class QuotaEntry:
     limit_bytes: int
     usage_bytes: int
     file_count: int
+    # Storage group or fileset label (acct column 3); None when the source has none.
+    label: Optional[str] = None
 
     @property
     def limit_tib(self) -> float:

@@ -41,7 +41,7 @@ cli/
 │   ├── commands.py           # AccountingAdminCommand dispatcher, Search, Jobs
 │   ├── comp_ingest.py        # --comp            (CompIngestMixin)
 │   ├── disk_ingest.py        # --disk            (DiskIngestMixin)
-│   ├── quota_reconcile.py    # --reconcile-quotas (QuotaReconcileMixin)
+│   ├── quota_reconcile.py    # --reconcile-quotas (QuotaReconcileMixin); --format json is report-only
 │   ├── fileset_resolver.py   # which project owns a fileset (--disk and --reconcile-quotas)
 │   └── dates.py, quota_readers/, disk_usage/, path_verifier.py
 ├── contracts/                # Contract search (sam-search) + data-hygiene audit (sam-admin)

@@ -14,7 +14,7 @@ import pytest
 from cli.accounting.commands import AccountingAdminCommand, QUOTA_TOLERANCE
 from cli.accounting import quota_readers as qr_mod
 from cli.accounting.quota_readers import (
-    GpfsQuotaReader, QuotaEntry, get_quota_reader,
+    AcctQuotaReader, GpfsQuotaReader, QuotaEntry, get_quota_reader,
 )
 from cli.accounting.path_verifier import (
     PathVerifier, PathVerificationError, auto_detect_verifier,
@@ -1451,3 +1451,150 @@ class TestUncoveredFilesets:
         assert rc == 0
         session.refresh(alloc)
         assert float(alloc.amount) == 9.0
+
+
+def _acct_row(path, label, user, nfiles, kib, quota_kib, day='2026-10-17'):
+    return f'"{day}","{path}","{label}","{user}","{nfiles}","0","{kib}","{quota_kib}"\n'
+
+
+def _write_acct(tmp_path, rows, name='acct.glade.2026-10-17'):
+    p = tmp_path / name
+    p.write_text(''.join(rows))
+    return str(p)
+
+
+class TestAcctQuotaReader:
+
+    def test_groups_rows_per_path_quota_once_usage_summed(self, tmp_path):
+        f = _write_acct(tmp_path, [
+            _acct_row('/gpfs/csfs1/mmm/parc', 'nmmm0049', 'alice', 3, 100, 5000),
+            _acct_row('/gpfs/csfs1/mmm/parc', 'nmmm0049', 'root', 2, 50, 5000),
+            _acct_row('/gpfs/csfs1/univ/zero', 'uzzz0001', 'bob', 1, 10, 0),
+        ])
+        reader = AcctQuotaReader(f)
+        [e] = reader.read()
+        assert (e.fileset_name, e.path, e.label) == ('parc', '/gpfs/csfs1/mmm/parc', 'nmmm0049')
+        assert e.limit_bytes == 5000 * 1024
+        assert e.usage_bytes == 150 * 1024
+        assert e.file_count == 5
+        assert reader.mount_root == '/gpfs/csfs1'
+        assert reader.snapshot_date == datetime(2026, 10, 17)
+
+    def test_mount_root_for_one_path_is_the_filesystem(self, tmp_path):
+        f = _write_acct(tmp_path, [_acct_row('/lustre/desc1/p/nral0032', 'nral0032', 'total',
+                                             1, 1, 9)], name='acct.desc1.2026-10-17')
+        reader = AcctQuotaReader(f)
+        reader.read()
+        assert reader.mount_root == '/lustre/desc1'
+
+    @pytest.mark.parametrize('row', [
+        '"2026-10-10","/gpfs/csfs1/cesm","cesm","gdicker","1","32","7","0"\n',
+        '"2026-10-10","/lustre/desc1/p/x","x","total","1","32"\n',
+    ])
+    def test_legacy_layouts_have_no_quotas(self, tmp_path, row):
+        with pytest.raises(ValueError, match='quota8'):
+            AcctQuotaReader(_write_acct(tmp_path, [row])).read()
+
+
+class TestAcctDispatch:
+
+    def test_csv_goes_to_the_acct_reader(self, tmp_path):
+        f = _write_acct(tmp_path, [_acct_row('/p', 'x', 'u', 1, 1, 1)])
+        assert isinstance(get_quota_reader('Campaign_Store', f), AcctQuotaReader)
+        assert isinstance(get_quota_reader('Destor', f), AcctQuotaReader)
+
+    def test_quasar_is_refused(self, tmp_path):
+        f = _write_acct(tmp_path, [_acct_row('/quasar/x', 'x', 'total', 1, 1, 1)])
+        with pytest.raises(NotImplementedError, match='acct CSV'):
+            get_quota_reader('Quasar', f)
+
+
+def _isolated_both_readers(session, monkeypatch):
+    resource = _isolated_disk_resource(session, monkeypatch)
+    monkeypatch.setitem(qr_mod._ACCT_READERS, resource.resource_name, AcctQuotaReader)
+    return resource
+
+
+class TestAcctReconcile:
+
+    def test_json_and_acct_give_the_same_report(self, session, tmp_path, monkeypatch):
+        resource = _isolated_both_readers(session, monkeypatch)
+        matched, short = make_project(session), make_project(session)
+        orphan, expired = make_project(session), make_project(session)
+        for proj, amount in ((matched, 2.0), (short, 1.0), (orphan, 4.0)):
+            make_allocation(session, account=make_account(
+                session, project=proj, resource=resource), amount=amount)
+        ended = datetime.now() - timedelta(days=120)
+        make_allocation(session, account=make_account(session, project=expired, resource=resource),
+                        amount=1.0, start_date=ended - timedelta(days=300), end_date=ended)
+        fs = {p.projcode.lower(): (f'/gpfs/csfs1/univ/{p.projcode.lower()}', tib)
+              for p, tib in ((matched, 2.0), (short, 3.0), (expired, 1.0))}
+        fs['zzunknown'] = ('/gpfs/csfs1/univ/zzunknown', 1.0)
+        json_path = _write_quota_file(
+            tmp_path,
+            {name: {'limit': str(_kib_for(tib)), 'usage': '1024', 'files': '1'}
+             for name, (_, tib) in fs.items()},
+            paths={name: path for name, (path, _) in fs.items()},
+        )
+        acct_path = _write_acct(tmp_path, [_acct_row(path, name, 'total', 1, 1024, _kib_for(tib))
+                                           for name, (path, tib) in fs.items()])
+
+        _, [from_json] = _json_reconcile(session, resource, json_path, monkeypatch)
+        _, [from_acct] = _json_reconcile(session, resource, acct_path, monkeypatch)
+
+        def shape(report):
+            return {cat: sorted((i['projcode'], i.get('quota_bytes'), i.get('path'))
+                                for i in items)
+                    for cat, items in report['categories'].items()}
+        assert shape(from_json) == shape(from_acct)
+        assert from_acct['counts']['matched'] == 1
+        assert from_acct['counts']['quota_mismatch'] == 1
+        assert from_acct['counts']['allocation_without_quota'] == 1
+        assert from_acct['counts']['quota_after_expiry'] == 1
+        assert from_acct['counts']['no_project'] == 1
+
+    def test_label_resolves_a_fileset_whose_name_is_not_a_projcode(
+        self, session, tmp_path, monkeypatch,
+    ):
+        resource = _isolated_both_readers(session, monkeypatch)
+        project = make_project(session)
+        make_allocation(session, account=make_account(session, project=project,
+                                                      resource=resource), amount=2.0)
+        path = f"/gpfs/csfs1/mmm/{next_seq('parc').lower()}"
+        f = _write_acct(tmp_path, [
+            _acct_row(path, project.projcode.lower(), 'u', 1, 1, _kib_for(2.0)),
+        ])
+        _, [report] = _json_reconcile(session, resource, f, monkeypatch)
+        [m] = report['categories']['matched']
+        assert m['projcode'] == project.projcode
+        assert report['categories']['unlinked_directory'][0]['path'] == path
+
+    def test_two_paths_sharing_a_basename_both_count(self, session, tmp_path, monkeypatch):
+        resource = _isolated_both_readers(session, monkeypatch)
+        project = make_project(session)
+        make_allocation(session, account=make_account(session, project=project,
+                                                      resource=resource), amount=3.0)
+        label = project.projcode.lower()
+        f = _write_acct(tmp_path, [
+            _acct_row(f'/gpfs/csfs1/{label}a/data', label, 'u', 1, 1, _kib_for(1.0)),
+            _acct_row(f'/gpfs/csfs1/{label}b/data', label, 'u', 1, 1, _kib_for(2.0)),
+        ])
+        _, [report] = _json_reconcile(session, resource, f, monkeypatch)
+        [m] = report['categories']['matched']
+        assert m['quota_tib'] == pytest.approx(3.0)
+        assert len(m['filesets']) == 2
+
+    def test_root_group_label_falls_back_to_the_fileset_name(
+        self, session, tmp_path, monkeypatch,
+    ):
+        resource = _isolated_both_readers(session, monkeypatch)
+        project = make_project(session)
+        make_allocation(session, account=make_account(session, project=project,
+                                                      resource=resource), amount=1.0)
+        f = _write_acct(tmp_path, [
+            _acct_row(f'/gpfs/csfs1/ral/{project.projcode.lower()}', 'root', 'u', 1, 1,
+                      _kib_for(1.0)),
+        ])
+        _, [report] = _json_reconcile(session, resource, f, monkeypatch)
+        assert report['counts']['known_unowned'] == 0
+        assert report['categories']['matched'][0]['projcode'] == project.projcode

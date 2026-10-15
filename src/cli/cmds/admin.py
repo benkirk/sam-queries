@@ -266,7 +266,9 @@ def contracts(ctx: Context, validate, audit_all, check_sources, limit,
               help='Mode: post disk charge summaries')
 @click.option('--reconcile-quotas', 'reconcile_quotas', type=click.Path(exists=True, dir_okay=False),
               default=None, metavar='PATH',
-              help='Mode: reconcile SAM allocations against a storage quota file (requires --resource)')
+              help='Mode: reconcile SAM allocations against a storage quota file (requires --resource): '
+                   'GPFS cs_usage.json (Campaign_Store) or an hdig acct.<fs>.YYYY-MM-DD '
+                   'report (Campaign_Store, Destor)')
 # --- Common ----------------------------------------------------------------
 @click.option('--resource', type=str, default=None,
               help='[disk/reconcile] Resource name (e.g. Campaign_Store)')

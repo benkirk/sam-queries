@@ -179,7 +179,7 @@ class QuotaReconcileMixin:
         # The disk ingest's rule decides which project owns each fileset. A project
         # can own several filesets: quotas are a list per projcode, summed at roll-up.
         resolver = FilesetResolver(self.session, resource)
-        labels = {id(qe): qe.fileset_name.upper() for qe in quota_entries}
+        labels = {id(qe): (qe.label or qe.fileset_name).upper() for qe in quota_entries}
         resolver.learn_labels((qe.path, labels[id(qe)]) for qe in quota_entries)
         own_quota: dict[str, list[QuotaEntry]] = {}
         seen_filesets: set[str] = set()
@@ -192,6 +192,11 @@ class QuotaReconcileMixin:
                 continue
             seen_filesets.add(key)
             res = resolver.resolve(qe.path, labels[id(qe)])
+            if res.project is None and qe.label:
+                # acct labels a fileset by its unix group, which can be root
+                # (/gpfs/csfs1/ral/nral0041): fall back to the fileset name.
+                by_name = resolver.resolve(qe.path, qe.fileset_name.upper())
+                res = by_name if by_name.project is not None else res
             if res.project is None:
                 (known_unowned if res.reason == 'known_unowned' else unmapped).append(qe)
                 continue
