@@ -51,6 +51,7 @@ Notes:
     field is named.
   - A full sweep is about 60,000 entries, a minute or less. One person is a single query.
   - The pods' route to ldap.ucar.edu is still to be verified.
+  - What each subtree holds, attribute by attribute, and how it maps to SAM: Appendix C.
 
 ## 3. Why the daemon's content cannot converge
 
@@ -371,3 +372,114 @@ if __name__ == '__main__':
 
 The twin figures in § 4 come from grouping `x-ucar-position` entries by person and organization
 and counting the PDB/FI pairs, their `x-ucar-active` values and start days, in the same counts-only way.
+
+## Appendix C. The directory as it is (inventory, 2026-10-15)
+
+From an anonymous read of every subtree, counts and attribute presence only. Numbers are the
+day's; the shapes are what the plan relies on.
+
+### C.1 Subtrees
+
+| Subtree | Class | Entries (active) | Key | Carries | SAM counterpart |
+|---|---|---|---|---|---|
+| `ou=allPeople` | `x-ucar-uniquePerson` | 28,605 (6,442) | `x-ucar-upid` | uid, uidNumber, cn/sn/givenName, preferredName, middleName, nameSuffix, one `mail`, one `forwardEmail`, active, source, academicStatus (53%), typedPhone (47%), authType (17%), adminFor (6%), githubUser, labeledURI; `o`/`ou`/`title` on ~4% only | `users` 28,683 |
+| └ position | `x-ucar-position` | 13,717 (2,748) | `x-ucar-positionId`, child of the person | organizationId (85%), positionNum, primary, position-type, positionTitle (73%), supervisor (72%), startDate (100%), endDate (18%), active, source | `user_organization` 24,957 |
+| └ collaboration | `x-ucar-collaboration` | 19,614 (4,512) | `x-ucar-externalOrgId`, child of the person; no id of its own | adminOrg (100%), affiliationOrg (83%), `l` (94%), startDate (98%), endDate (9%), title (2%), active, source | `user_institution` 21,860 |
+| `ou=allOrganizations` | `x-ucar-extendedOrganization` | 401 (171) | `x-ucar-organizationId`, SAM's `organization_id` | ou (acronym), o (name), parent DN, orgLevel and orgLevelCode (96%), leadPerson and authoritativePerson (73%), active | `organization` 402 (171) |
+| `ou=externalOrgs` | `x-ucar-externalOrganization` | 1,412 | `x-ucar-externalOrgId`, SAM's `institution_id` | o, shortOrgName, c (100%), st (99%), stateProvCode and stateProvCategory, `l` (75%), postalCode (46%), street (20%), nsfOrgCode (330), externalOrgType (93%, four values) | `institution` 1,410 |
+| `ou=allGroups` | `x-ucar-uniqueGroup` | 12,181 (5,413) | `gidNumber` | cn, groupName, tags (38 values), isOrg, isAlias, mail, uniqueMember (upid, group, org and service-account DNs), subMember, memberPolicy (17), adminFor (16) | `project.unix_gid` (5,920) and `adhoc_group` (310) |
+| `ou=serviceAccounts` | `x-ucar-serviceAccount` | 74 (70) | `uid`, no upid | uidNumber, forwardEmail, serviceAccountType, contactPerson (4 of 74), description | 112 role logins, matched by username |
+| `ou=usernames` | `x-ucar-username` | 40,156 (11,574) | `cn` | type (user 28,620, alias 10,226, mailmanlist, mailbox), owner DN, start, end, uidNumber | none; only 2 people ever held a second name |
+| `ou=unix` | `x-ucar-unixAccount`, `x-ucar-unixGroup` | 6,510 / 3,560 | `uid` / `gidNumber` | a generated view: every account `/bin/tcsh`, `localhost`, gid 1000 or 100; 102 people have a second account under an old username with its own uidNumber (§ 6) | none; `users.unix_uid` follows the person entry |
+| `ou=tags`, `ou=gidAllocations` | `x-ucar-groupTag`, `x-ucar-gidAllocation` | 41 / 1 | | tag names (5 are access branches), one gid block | `adhoc_group_tag`, `gid_allocation` |
+
+`ou=people`, `ou=organizations` and `ou=groups` are active-only or derived views (member lists,
+head counts) and carry nothing the full subtrees lack. `x-ucar-peid` and `eduPersonOrcid` are in
+the schema and on no entry. Every entry carries `modifyTimestamp`; `createTimestamp` is the
+2026-07-10 load on nearly all of them, so neither says since when.
+
+### C.2 Field map, directory to SAM
+
+| Record | Directory attribute | SAM column | Note |
+|---|---|---|---|
+| person | `x-ucar-upid` | `users.upid` | the key |
+| | `uid`, `uidNumber` | `username`, `unix_uid` | equal on all 28,546 shared upids; the person entry, never `ou=unix` |
+| | `givenName`, `sn`, `x-ucar-preferredName`, `x-ucar-middleName`, `x-ucar-nameSuffix` | `first_name`, `last_name`, `nickname`, `middle_name`, `name_suffix` | |
+| | `mail`, `x-ucar-forwardEmail` | `email_address` rows, primary and not | one of each per person; SAM holds 53,811 rows for 28,683 users, the rest is history the directory lacks |
+| | `x-ucar-typedPhone` ("Label: number") | `phone` + `phone_type` | the six labels equal SAM's six types |
+| | `x-ucar-academicStatus` | `academic_status_id` | PDB people carry the code, Workday people the description on ~870 entries; one label ("University Research Staff", 6 people) matches no SAM row |
+| | `x-ucar-authType` | `token_type` | |
+| | `x-ucar-active` | `active` | the person flag wins over an affiliation's (§ 3.4) |
+| position | `x-ucar-positionId` | `user_organization.idms_unique_name` | numeric PDB ids (12,023) and `P` + 17 or 23 digits from Workday (1,475); 12,207 SAM rows carry none |
+| | `x-ucar-organizationId` | `organization_id` | NOT NULL in SAM; 2,050 entries have none, 6 current |
+| | `x-ucar-startDate`, `x-ucar-endDate` | `start_date`, `end_date` | end compared by day: the directory has 23:59:59, midnight and 17:00 ends, SAM stores 23:59:59 |
+| collaboration | `x-ucar-externalOrgId` | `user_institution.institution_id` | with the person, the whole key; SAM's row id has no directory twin |
+| | `x-ucar-startDate`, `x-ucar-endDate` | `start_date`, `end_date` | 368 current entries have no start; ends carry the time of day they were set and are stored as sent |
+| organization | `x-ucar-organizationId` | `organization_id` | same number both sides; `organization.idms_unique_name` is NULL on every row |
+| | `ou`, `o` | `acronym`, `name` | |
+| | `x-ucar-orgLevel`, `x-ucar-orgLevelCode` | `level`, `level_code` | 16 without a level, both sides |
+| | `x-ucar-parent` (a DN) | `parent_org_id` | 184 entries have a parent under `ou=externalOrgs` (183 inactive, plus UCAR itself); SAM's parent is NULL for them |
+| institution | `x-ucar-externalOrgId` | `institution_id` | |
+| | `x-ucar-shortOrgName`, `o` | `acronym`, `name` | |
+| | `c` + `st` (or `x-ucar-stateProvCode`) | `state_prov_id` | SAM has no country column; country rides on the state row, so a state equal to the country has no SAM home (35 rows) |
+| | `x-ucar-externalOrgType` | `institution_type_id` | the four values are SAM's four rows |
+| | `x-ucar-nsfOrgCode`, `street`, `l`, `postalCode` | `nsf_org_code`, `address`, `city`, `zip` | 330 NSF codes both sides |
+| group | `gidNumber`, `cn` | `project.unix_gid` or `adhoc_group.unix_gid`, `group_name` | match by gid: 1,066 projcodes are not four letters and four digits |
+| | `x-ucar-tag` | `adhoc_group_tag` | SAM keeps only the access-branch tags (17 of 38) |
+| | `uniqueMember` | derived for projects; `adhoc_system_account_entry` | project membership flows SAM to directory |
+
+### C.3 Directory-only fields
+
+No SAM column, and none needed by the reconcile. Listed so nobody adds one by reflex:
+
+- person: `x-ucar-authType` beyond its token mirror, `x-ucar-githubUser`, `x-ucar-adminFor`,
+  `labeledURI`, office;
+- position: type, title, `x-ucar-supervisor`, `x-ucar-primary`, `x-ucar-positionNum`;
+- collaboration: `x-ucar-adminOrg` (the sponsoring NCAR org), `x-ucar-affiliationOrg`, `l`, `title`;
+- organization: `x-ucar-leadPerson`, `x-ucar-authoritativePerson`, `x-ucar-adminFor`;
+- institution: `x-ucar-stateProvCategory` (44 kinds);
+- group: `x-ucar-memberPolicy`, `x-ucar-isOrg`, `x-ucar-isAlias`, `mail`, `x-ucar-subMember`.
+
+### C.4 SAM-only columns
+
+The directory can never source these, so the reconcile never writes them: `users.locked`,
+`charging_exempt`, `deleted`, `deactivate`, `primary_gid`, `title` (for people), `contact_person_upid`
+(the directory has `x-ucar-contactPerson` on 4 of 74 service accounts; SAM has a contact on its
+role logins), `login_type_id`, `user_alias`, `institution.code`, `organization.description`.
+
+### C.5 Population facts
+
+- 409 active people hold no current position and no current collaboration; 25 hold both.
+- 847 active people hold more than one current position: the 892 PDB/FI twin pairs, of which
+  130 disagree on active and 758 on the start day.
+- 173 inactive people hold an active position and 49 an active collaboration; 50 positions are
+  active with a past end date.
+- 25 SAM users are absent from the directory and 59 directory people from SAM, on a snapshot a
+  few days old.
+- Service accounts: 70 active in the directory, 73 active role logins in SAM; the difference
+  is SAM's underscore ghosts and one directory account SAM lacks.
+
+## Appendix D. Directory reads beyond the reconcile (scoped 2026-10-15)
+
+The adapter stage 1 needs reads whole entries. These are the other consumers kept after a
+wider list was considered, and the shape that serves them all.
+
+- **Per-user view** (`sam-search user --directory`, and a panel on the user page): the current
+  positions (organization, type, start, planned end), the sponsor org on each collaboration
+  (`x-ucar-adminOrg`), and drift: the directory's active, uid, username, email and affiliations
+  against SAM's rows, differences only. This view is the stage-1 report for one person, the way
+  the host-provisioning check (`src/sam/provisioning.py`) is SAM against the host for one user.
+- **Per-group view** (project and adhoc): directory members against SAM's derived list, the tag
+  set against the allocations, and the group manager from `x-ucar-adminFor`, which SAM has no
+  column for.
+- **Wired, not shown:** supervisor, auth type, GitHub user, office and the rest of the person
+  attributes. The adapter returns the entry; each display picks.
+- **Out of scope, decided:** watching the upstream feeds through `modifiersName`, pre-flight
+  checks before SAM writes, a duplicate lookup on `/register`, service-account audits.
+- **Shape.** A `DirectoryReader` protocol with the card contract `TicketProvider` uses
+  (`src/sam/integration/tickets/base.py`: `from_environment`, `configured`, `summary`, `check`)
+  plus one `search`; a null reader when the directory URL is empty; one `UCARDirectory` adapter
+  that owns the schema (attribute names, DN shapes, the label-to-code map) and returns typed
+  records, so no consumer sees an attribute name. The CLI flag is the first consumer, because it
+  runs where the directory is already reachable; the nightly sweep is the same comparison in a
+  loop. Anonymous bind until a hidden field is named; names and emails are never cached, counts are.
