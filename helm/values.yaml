@@ -407,6 +407,10 @@ webapp:
     # after the production backfill; pinned in tests/unit/gates/test_xras_admin_client.py,
     # so a flip is a reviewed change to both files. Needs XRAS_WRITE_ENABLED.
     XRAS_RENAME_ENABLED: "1"
+    # Activate the project a New creates, right after its post applies (docs/plans/
+    # XRAS_POST_AUTOMATION.md § 3 B); "0" leaves it to the card's Activate. Pinned in
+    # tests/unit/gates/test_xras_admin_client.py.
+    XRAS_AUTO_ACTIVATE: "0"
     # The ticket-state first line on a refused New/Renewal's 422 (docs/plans/XRAS_REQUEST_TICKETS.md
     # § 6). "1" only together with the xras_request_tickets task, or the 422 promises a ticket.
     XRAS_REQUEST_TICKETS_ENABLED: "0"

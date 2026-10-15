@@ -546,6 +546,7 @@ def _dispatch(log_id, action):
         # `message` stays the legacy 'OK'; the projcode goes in `result`, which
         # ACCESS confirmed is SAM's purview (like the 422 `errors` member).
         response = xras_response({'projcode': result.projcode}, message='OK')
+        _activate_after_reply(response, result, log_id)
         _rename_after_reply(response, action, result.projcode)
         return response
 
@@ -579,6 +580,33 @@ def _refusal_reply(action, messages):
             current_app.logger.exception('XRAS 422: ticket state for requestId=%s failed',
                                          request_id)
     return tickets.reply_lines(messages, state=state)
+
+
+def _activate_after_reply(response, result, log_id) -> None:
+    """Activate the project a New just created, once the reply has gone
+    (docs/plans/XRAS_POST_AUTOMATION.md § 3 B). Only ``add`` creates one: a New
+    whose projcode exists dispatches as ``update``. A failure leaves the project
+    inactive for the card's Activate, as before."""
+    from sam.manage import xras_activation
+
+    if result.service != 'add' or not result.projcode:
+        return
+    if not xras_activation.auto_activate_armed():
+        return
+    app = current_app._get_current_object()
+    actor = f'xras:{get_auth_actor() or "api"}'[:_PROCESSED_BY_WIDTH]
+    projcode = result.projcode
+
+    def activate():
+        try:
+            with app.app_context(), Session(db.engine) as session:
+                outcome = xras_activation.activate_posted_project(
+                    session, projcode, by=actor, xras_action_log_id=log_id)
+            app.logger.info('XRAS activate after reply: %s %s', projcode, outcome)
+        except Exception:                               # noqa: BLE001
+            app.logger.exception('XRAS activate after reply failed: %s', projcode)
+
+    response.call_on_close(activate)
 
 
 def _rename_after_reply(response, action, projcode) -> None:

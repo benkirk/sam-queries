@@ -1128,7 +1128,7 @@ class TestRenameAfterReply:
 
     def test_the_rename_lever_off_means_no_rename(self, xras_client, action_log, dispatching,
                                                   renames, monkeypatch, app):
-        """Production ships XRAS_RENAME_ENABLED=0 with both XRAS levers on."""
+        """The rename has its own lever beside both XRAS levers."""
         monkeypatch.setitem(app.config, 'XRAS_RENAME_ENABLED', False)
         resp, _ = self._post_new(xras_client, dispatching, 'UXYZ0001')
         resp.close()
@@ -1144,6 +1144,62 @@ class TestRenameAfterReply:
                             lambda *a, **k: (_ for _ in ()).throw(RuntimeError('boom')))
         resp, _ = self._post_new(xras_client, dispatching, 'UXYZ0001')
         resp.close()
+        assert resp.status_code == 200 and action_log.one()['status'] == 'processed'
+
+
+class TestActivateAfterReply:
+    """XRAS_POST_AUTOMATION.md § 3 B: a New that created its project activates it
+    once the reply has gone, behind XRAS_AUTO_ACTIVATE."""
+
+    PATH = TestDispatchArms.PATH
+    dispatching = TestDispatchArms.dispatching
+
+    @pytest.fixture
+    def activations(self, monkeypatch, app):
+        from sam.manage import xras_activation
+        monkeypatch.setitem(app.config, 'XRAS_AUTO_ACTIVATE', True)
+        calls = []
+        monkeypatch.setattr(xras_activation, 'activate_posted_project',
+                            lambda session, projcode, **kw: calls.append((projcode, kw)))
+        return calls
+
+    def _post(self, xras_client, dispatching, service):
+        dispatching.register(service, lambda s, a, *, validate_only=False:
+                             dispatching.DispatchResult(status='processed', service=service,
+                                                        projcode='UXYZ0001'))
+        payload = json.loads(_payload('new_ncar4214_ok.json'))
+        payload['requestId'] = payload['actionId'] = int(next_seq('1449'))
+        resp = xras_client.post(self.PATH, data=json.dumps(payload),
+                                content_type='application/json', headers=_auth())
+        resp.close()
+        return resp
+
+    def test_a_new_that_created_its_project_activates_it(
+            self, xras_client, action_log, dispatching, activations):
+        self._post(xras_client, dispatching, 'add')
+        (project, kw), = activations
+        assert project == 'UXYZ0001' and kw['by'].startswith('xras:')
+        assert kw['xras_action_log_id'] == action_log.one()['id']
+
+    def test_a_new_that_dispatched_as_an_update_does_not(
+            self, xras_client, action_log, dispatching, activations, monkeypatch):
+        from sam.xras import dispatch
+        monkeypatch.setattr(dispatch, 'select_service', lambda *a, **k: 'update')
+        self._post(xras_client, dispatching, 'update')
+        assert activations == []
+
+    def test_the_lever_off_means_no_activation(
+            self, xras_client, action_log, dispatching, activations, monkeypatch, app):
+        monkeypatch.setitem(app.config, 'XRAS_AUTO_ACTIVATE', False)
+        self._post(xras_client, dispatching, 'add')
+        assert activations == []
+
+    def test_a_failing_activation_never_reaches_the_reply(
+            self, xras_client, action_log, dispatching, activations, monkeypatch):
+        from sam.manage import xras_activation
+        monkeypatch.setattr(xras_activation, 'activate_posted_project',
+                            lambda *a, **k: (_ for _ in ()).throw(RuntimeError('boom')))
+        resp = self._post(xras_client, dispatching, 'add')
         assert resp.status_code == 200 and action_log.one()['status'] == 'processed'
 
 

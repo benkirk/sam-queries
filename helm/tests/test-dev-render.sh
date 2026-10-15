@@ -100,6 +100,7 @@ check_dev() {
   same_on_both "$deploy" "$cron" XRAS_OUTGOING_ENABLED "1"
   [[ "$(env_value "$deploy" XRAS_WRITE_ENABLED)" == "1" ]] || { red "FAIL: XRAS_WRITE_ENABLED must be 1 on dev (the demo instance is the write test bed)"; return 1; }
   [[ "$(env_value "$deploy" XRAS_RENAME_ENABLED)" == "1" ]] || { red "FAIL: XRAS_RENAME_ENABLED must be 1 on dev (the after-reply rename's test bed)"; return 1; }
+  [[ "$(env_value "$deploy" XRAS_AUTO_ACTIVATE)" == "1" ]] || { red "FAIL: XRAS_AUTO_ACTIVATE must be 1 on dev (phase B's test bed)"; return 1; }
   # xras_rename's lever reaches the task pod through dev's tasks.env alone.
   [[ "$(env_value "$cron" XRAS_WRITE_ENABLED)" == "1" ]] || { red "FAIL: dev tasks must carry XRAS_WRITE_ENABLED=1 (xras_rename's test bed)"; return 1; }
   [[ "$(env_value "$deploy" XRAS_ACTIONS_CAPTURE_ONLY)" == "0" ]] || { red "FAIL: XRAS_ACTIONS_CAPTURE_ONLY must be 0 on dev (demo posts dispatch)"; return 1; }
@@ -231,6 +232,10 @@ prod_deploy=$(render prod -s templates/deployment.yaml)
   red "FAIL: prod files NUSD's ticket into Jira-by-email (NOTIFY_ACCOUNT_TICKET_TO=help@ucar.edu)"; exit 1; }
 [[ -z "$(env_value "$(render dev -s templates/deployment.yaml)" NOTIFY_ACCOUNT_TICKET_TO)" ]] || {
   red "FAIL: dev must never file a Jira ticket (NOTIFY_ACCOUNT_TICKET_TO empty)"; exit 1; }
+[[ "$(env_value "$prod_deploy" XRAS_AUTO_ACTIVATE)" == "0" ]] || {
+  red "FAIL: prod ships XRAS auto-activation off until dev proves it (XRAS_AUTO_ACTIVATE=0)"; exit 1; }
+[[ "$(env_value "$prod_deploy" XRAS_REQUEST_TICKETS_ENABLED)" == "0" ]] || {
+  red "FAIL: prod's 422 must not promise a ticket the disabled task never files"; exit 1; }
 [[ "$(env_value "$prod_deploy" COMPONENT_GALLERY_ENABLED)" == "0" ]] || {
   red "FAIL: the component gallery must ship dark in prod (COMPONENT_GALLERY_ENABLED=0)"; exit 1; }
 [[ "$(env_value "$prod_deploy" HUMAN_CHECK_PROVIDER)" == "turnstile" ]] || {

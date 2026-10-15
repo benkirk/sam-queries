@@ -86,8 +86,8 @@ class AutoNotice:
 #:   says "is now active", and the project is not, until somebody activates it.
 #:   The pre-deploy smoke measured a manual notice going out 64 seconds before
 #:   the activation it announced. An unattended sender has no operator to
-#:   correct that order, so automatic activation is a separate decision (with
-#:   a governance question attached) and stays unbuilt.
+#:   correct that order; the New's notice follows ``XRAS_AUTO_ACTIVATE``
+#:   (``sam/manage/xras_activation.py``) in phase C, not this task.
 #: * ``transfer`` has no notification kind at all — it parks as `manual` by
 #:   design and never completes, so it can never be selected even by mistake.
 #:
