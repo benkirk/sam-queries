@@ -25,7 +25,7 @@ new projcode into XRAS's "Edit Request Number", and sending the notification fro
 | Notify, New | manual Notify button; sent from XRAS today | must follow activation; XRAS's own notify mail | C |
 | Notify, extend/supplement/adjust/update | built: the `xras_notices` task (1-day delay), disabled in production | soak; XRAS's own notify mail | C |
 | Contracts | 422 with a seeded create form (Admin → Contracts), or the `ignore_contract` override | `contract.principal_investigator_user_id` is NOT NULL and SAM never creates a user; award lookup is NSF first, then USAspending (`resolve_award`, `sam/integration/awards`) | E |
-| Users absent or inactive, ARC placeholders | the sweep files `account_request` rows (live); no ticket for them | users come only from IGA and the LDAP sync; the ticket a blocked post opens is unbuilt | D |
+| Users absent or inactive, ARC placeholders | the sweep files `account_request` rows (live); no ticket for them | users come only from IGA and the LDAP sync; the request ticket is unbuilt | D |
 | XRAS's own notify mail | on | the Action Approved rules on the NCAR process's notification templates, which we own (§ 3, C) | C (cutover step) |
 
 ## 3. Phases
@@ -73,37 +73,44 @@ process's notification templates, sent at the operator's Notify step (read on `a
   carries one; production has no addressing rows), and one rule deleted on the demo to prove
   it silences Notify.
 
-**D. The failed post opens the ticket.** `XRAS_REQUEST_TICKETS.md` (designed, not built).
+**D. A refused post becomes one ticket.** `XRAS_REQUEST_TICKETS.md` (designed, not built).
 Ben, 2026-10-14, the #819 second-pass review: of the News approved since the 2026-08-24
 repoint, 73 have applied, 3 stand refused and 3 are unposted (`XRAS_CLOSED_LOOP.md` § 3.3),
-so a ticket per approval is churn; the ticket belongs to the post that fails.
+so a ticket per approval is churn; the ticket belongs to the request whose post is refused.
 
 - **Approve and post in one sitting.** A post that applies is done. The post stays
   all-or-nothing: a project is never created without its full roster.
-- **A blocked post answers 422 and opens the ticket.** The New handler already collects every
-  blocker into one list, so the 422 is the complete checklist and the ticket's body. NUSD works
-  the list by hand and posts again; the post that applies adds a last comment, and NUSD
-  closes the ticket. Travis, 2026-10-14: no auto-close at first, to see how the process feels.
-- **Nothing outbound before the reply.** The open or comment runs in the after-reply
-  hook beside the rename, so a slow JSM call never delays XRAS. The first 422 therefore reads
-  "a ticket is being opened"; later ones name the key, read from `external_ticket`. Every
-  provider state has truthful wording (Jira off means mail; a failed filing says so).
-- **The webapp files, the task never does.** Posts arrive at the webapp, which already holds
-  the Jira levers, so the CronJob's "reads only" gates stand.
+- **A blocked post answers 422 with what to fix.** The New handler already collects every
+  blocker into one list, so the 422 is the complete checklist, and each blocker kind gets a
+  line saying where it is fixed (contract form, mnemonic link or override, merge,
+  reactivation).
+- **A short grace period, then the ticket** (Ben, 2026-10-15). 7 of production's 22 refused
+  News were fixed at the console within 10 minutes. So the ticket opens only when the request is
+  still refused 10-15 minutes after its first refusal; after the cutover the approver posts and
+  NUSD fixes. NUSD works the list and posts again; the post that applies earns a last comment,
+  and NUSD closes the ticket. Travis, 2026-10-14: no auto-close at first, to see how the process
+  feels.
+- **A task does every Jira write.** The quarter-hourly `xras_request_tickets` task opens,
+  comments and records success, and the webapp only answers posts. The grace period needs a
+  clock, and no Jira call ever sits on the request XRAS is waiting on (its admin app times out
+  on a slow reply). The CronJob gains `JIRA_WRITE_ENABLED` and `TICKET_PROVIDER` for this one
+  writer, the way #820 gave it `XRAS_WRITE_ENABLED` for `xras_rename`. The task works behind
+  its own switch, and the chart's "reads only" gates become a pin of that grant.
 
 What the plan must hold (`XRAS_REQUEST_TICKETS.md` §§ 3, 4, 8):
 
 1. **Repeats are idempotent.** NUSD re-posts on purpose, and an impatient operator re-posts
    by accident (action 403317 arrived three times during a database stall, every one a
-   click). XRAS never retries a post on its own. A later failed post finds the request's
-   ticket and comments only when the blocker list changed (ledgered by digest), so a repeat
-   writes nothing.
+   click). XRAS never retries a post on its own. The task reads each request's state, finds
+   its ticket, and comments only when the blocker list changed (ledgered by digest), so a
+   repeat writes nothing.
 2. **An approval nobody posts.** No post means no ticket. The sweep, which sees every approval,
    puts "approved, not posted" past N days on the Remediations card and in the queue digest.
 3. **Link, do not restate, the sweep's rows.** The sweep still files `account_request` rows for
    absent and inactive people at approval, NUSD's head start; the ticket links to them.
-4. **The first 422 cannot name its ticket.** The key lands on the ticket and SAM's card once
-   it exists, and the next post's 422 names it.
+4. **The 422 says what happens next.** A first refusal says a ticket opens with NUSD if it is
+   still refused in about 15 minutes; once the ticket exists, every 422 and SAM's card name its
+   key.
 5. **One checklist line per person.** The handler answers several errors for one missing
    person: four for a placeholder who is PI and Allocation Manager (`XRAS_DEV_PROBES.md`
    § 6.1, scenario 6). The ticket groups them by username; the 422 to XRAS may stay verbatim.
@@ -119,8 +126,8 @@ item on the request's ticket.
 ## 4. Order and dependencies
 
 A is live. The order from here:
-1. **D**, before any change to the New's 422, because the blocked post's wording names the
-   ticket.
+1. **D**, before any other change to the New's 422, because D sets its wording: the ticket
+   state and where each blocker is fixed.
 2. **B**, beside or right after D.
 3. **C**, after B, since the New's notice follows activation. It needs nothing from XRAS's
    side beyond our own template rules, changed at its cutover.
@@ -134,7 +141,7 @@ bed and its rules).
 
 - `XRAS_CLOSED_LOOP.md`: the rename (phase A) and the test bed.
 - `XRAS_NOTICES_CUTOVER.md`: the award-mail cutover (phase C).
-- `XRAS_REQUEST_TICKETS.md`: the ticket a blocked post opens (phase D).
+- `XRAS_REQUEST_TICKETS.md`: the ticket for a request whose post is refused (phase D).
 - `XRAS_SUBMISSION.md` § 4.2, § 4.6: the request record and the incoming side; the outgoing
   work that follows phase D.
 - `implemented/XRAS_AUTO_NOTICES.md`: the notice task and its phase-2 activation stub.
