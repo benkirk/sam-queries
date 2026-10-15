@@ -82,3 +82,27 @@ class TestTicketState:
         state = tickets.request_ticket_state(session, self.RID)
         assert tickets.state_line(state) == (
             'This action cannot yet succeed, see DRY-SAM-XR-990001.')
+
+
+def test_the_ticket_names_only_the_people_on_the_request_at_its_action_date(session):
+    """new_ncar4214_ok.json carries two PI roles that ended before the action began
+    (one a placeholder); the ticket must name neither, as the handler does not."""
+    import json
+
+    from _paths import REPO_ROOT
+    from sam.core.account_requests import AccountRequest
+
+    payload = json.loads((REPO_ROOT / 'tests' / 'fixtures' / 'xras' / 'actions'
+                          / 'new_ncar4214_ok.json').read_text())
+    for username in ('placeholder34-user-00034', 'user_00000035'):
+        AccountRequest.create(session, email=f'{username}@example.invalid', first_name='A',
+                              last_name='B', purpose='submission',
+                              created_by='task:xras_sweep', xras_username=username)
+    episode = tickets.Episode(
+        request_id=1, request_number='NCAR4214', action_type='New',
+        first_refused=datetime(2026, 7, 30, 9), refusals=1, latest_log_id=1,
+        latest_refused=datetime(2026, 7, 30, 9),
+        messages=(errors.username_missing('user_00000035'),), payload=payload)
+    context = tickets.ticket_context(session, episode)
+    assert context['pi'] == 'Given33 Surname33 (user_00000033)'
+    assert [r['email'] for r in context['queued']] == ['user_00000035@example.invalid']

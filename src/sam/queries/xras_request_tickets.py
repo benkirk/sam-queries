@@ -220,19 +220,23 @@ def blocker_groups(messages: Sequence[str]) -> Tuple[List[dict], List[str]]:
 
 
 def _people(payload: Mapping[str, Any]) -> Dict[str, dict]:
-    """``username -> {'name', 'email', 'roles'}`` from the posted roster."""
-    from sam.xras.roster import normalize_username
-    out: Dict[str, dict] = {}
+    """``username -> {'name', 'email', 'pi'}`` for the people on the request at its
+    action date: the handler's roster plus both role-candidate lists, which take a
+    looser begin date (legacy defect 3), as ``xras_accounts._roster_from_action`` does."""
+    from sam.xras.roster import (ALLOCATION_MANAGER_ROLE, PI_ROLE, normalize_username,
+                                 role_candidates, roster_usernames)
+    pis = role_candidates(payload, PI_ROLE)
+    on_request = (*roster_usernames(payload), *pis,
+                  *role_candidates(payload, ALLOCATION_MANAGER_ROLE))
+    out: Dict[str, dict] = {u: {'name': '', 'email': '', 'pi': u in pis}
+                            for u in on_request if u}
     for role in payload.get('roles') or ():
-        username = normalize_username(role.get('username'))
-        if not username:
-            continue
+        entry = out.get(normalize_username(role.get('username')))
         person = role.get('person') or {}
-        entry = out.setdefault(username, {
-            'name': ' '.join(p for p in (person.get('firstName'), person.get('lastName')) if p),
-            'email': (person.get('email') or '').strip(), 'roles': []})
-        if role.get('roleType') and role['roleType'] not in entry['roles']:
-            entry['roles'].append(role['roleType'])
+        if entry is not None and not entry['name']:
+            entry['name'] = ' '.join(p for p in (person.get('firstName'),
+                                                 person.get('lastName')) if p)
+            entry['email'] = (person.get('email') or '').strip()
     return out
 
 
@@ -243,7 +247,7 @@ def ticket_context(session: Session, episode: Episode, *, card_url: str = '') ->
     from sam.queries.xras_accounts import is_placeholder, sam_merge_targets
 
     people = _people(episode.payload)
-    pis = [f"{p['name'] or u} ({u})" for u, p in people.items() if 'PI' in p['roles']]
+    pis = [f"{p['name'] or u} ({u})" for u, p in people.items() if p['pi']]
     groups, others = blocker_groups(episode.messages)
     blocked = [g['username'] for g in groups]
 

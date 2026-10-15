@@ -182,7 +182,7 @@ def xras_request_tickets(ctx) -> TaskResult:
                 note('failed', episode, None, error=str(filing.error))
                 continue
             if filing.status == 'suppressed':
-                # Filed earlier but never linked: logged, not refiled.
+                # Filed earlier but never linked: noted in the detail, not refiled.
                 note('unchanged', episode, None, filing='suppressed')
                 continue
             key = filing.ref.key if filing.ref else None
