@@ -518,17 +518,6 @@ def _reconcile_dry_run(session, resource, quota_path, *, verbose=False):
     return rc, ctx
 
 
-def _captured_plan_call(ctx):
-    """Return (matched, mismatched, orphaned, unmapped) args passed to
-    display_quota_reconcile_plan by sniffing AccountingAdminCommand's dispatch.
-
-    Rather than patch a moving target, the tests assert directly on the DB state
-    or the command-returned classification by re-running the bookkeeping. This
-    helper is a placeholder for future refactors; the tests below use DB asserts.
-    """
-    raise NotImplementedError  # intentionally — tests below assert via DB state
-
-
 class TestTreeRollup:
     """Verify subtree roll-up works correctly across parent/child projects."""
 
@@ -806,9 +795,8 @@ class TestTreeRollup:
         captured = {}
         import cli.accounting.quota_reconcile as cmd_mod
 
-        def _spy(ctx, resource_name, matched, mismatched, orphaned,
-                 unmapped, *, path_exists=None):
-            captured['orphaned'] = orphaned
+        def _spy(ctx, report):
+            captured['orphaned'] = report['categories']['allocation_without_quota']
 
         monkeypatch.setattr(cmd_mod, 'display_quota_reconcile_plan', _spy)
         # Stub summary so it doesn't fail on missing args either
@@ -821,11 +809,10 @@ class TestTreeRollup:
             quota_path=quota_path, update_accounting_system=False, deactivate_orphaned=False,
         )
         assert rc == 0
-        # One orphan — tuple shape is (projcode, sam_tib, directories)
         assert len(captured['orphaned']) == 1
-        projcode, sam_tib, directories = captured['orphaned'][0]
-        assert projcode == project.projcode
-        assert set(directories) == {
+        [orphan] = captured['orphaned']
+        assert orphan['projcode'] == project.projcode
+        assert {d['path'] for d in orphan['directories']} == {
             '/gpfs/csfs1/defunct/xyz', '/gpfs/csfs1/archived/old',
         }
 
@@ -1015,39 +1002,45 @@ class TestUtilSuffix:
 
     def test_high_util_above_threshold(self):
         from cli.accounting.display import _util_suffix
+        from cli.accounting.quota_reconcile import _fileset_item
         qe = QuotaEntry('fs', None, limit_bytes=1000, usage_bytes=970, file_count=1)
-        out = _util_suffix(qe)
+        out = _util_suffix(_fileset_item(qe))
         assert '⚠' in out and '97%' in out
 
     def test_high_util_just_below_threshold_no_marker(self):
         from cli.accounting.display import _util_suffix
+        from cli.accounting.quota_reconcile import _fileset_item
         qe = QuotaEntry('fs', None, limit_bytes=1000, usage_bytes=940, file_count=1)
-        assert _util_suffix(qe) == ''
+        assert _util_suffix(_fileset_item(qe)) == ''
 
     def test_low_util_below_threshold(self):
         from cli.accounting.display import _util_suffix
+        from cli.accounting.quota_reconcile import _fileset_item
         qe = QuotaEntry('fs', None, limit_bytes=1000, usage_bytes=30, file_count=1)
-        out = _util_suffix(qe)
+        out = _util_suffix(_fileset_item(qe))
         assert '↓' in out and '3%' in out
 
     def test_low_util_just_above_threshold_no_marker(self):
         from cli.accounting.display import _util_suffix
+        from cli.accounting.quota_reconcile import _fileset_item
         qe = QuotaEntry('fs', None, limit_bytes=1000, usage_bytes=60, file_count=1)
-        assert _util_suffix(qe) == ''
+        assert _util_suffix(_fileset_item(qe)) == ''
 
     def test_empty_fileset_with_limit_is_flagged_low(self):
         # 0% usage with a non-zero limit -> under-used; flag it.
         from cli.accounting.display import _util_suffix
+        from cli.accounting.quota_reconcile import _fileset_item
         qe = QuotaEntry('fs', None, limit_bytes=1000, usage_bytes=0, file_count=0)
-        out = _util_suffix(qe)
+        out = _util_suffix(_fileset_item(qe))
         assert '↓' in out and '0%' in out
 
     def test_zero_limit_skips_low_util(self):
         # limit==0 -> utilization clamps to 0.0, but we MUST NOT treat that
         # as "under-used" (an umbrella with no quota carries no meaning).
         from cli.accounting.display import _util_suffix
+        from cli.accounting.quota_reconcile import _fileset_item
         qe = QuotaEntry('fs', None, limit_bytes=0, usage_bytes=0, file_count=0)
-        assert _util_suffix(qe) == ''
+        assert _util_suffix(_fileset_item(qe)) == ''
 
 
 class TestPathVerifierLocal:
@@ -1324,3 +1317,69 @@ class TestVerifyPathsIntegration:
         session.refresh(alloc)
         # Path missing -> safe to deactivate even without --force
         assert alloc.end_date is not None
+
+
+def _json_reconcile(session, resource, quota_path, monkeypatch, **flags):
+    """Run the reconcile in JSON mode; return (rc, [payloads passed to output_json])."""
+    import cli.accounting.quota_reconcile as cmd_mod
+    out = []
+    monkeypatch.setattr(cmd_mod, 'output_json', out.append)
+    ctx = _ctx_with_session(session)
+    ctx.output_format = 'json'
+    rc = AccountingAdminCommand(ctx)._run_reconcile_quotas(
+        resource_name=resource.resource_name, quota_path=quota_path, **flags,
+    )
+    return rc, out
+
+
+class TestReconcileJson:
+    """The quota_reconcile envelope: one dict feeds both the rich display and JSON."""
+
+    def test_envelope_categories_and_counts(self, session, tmp_path, monkeypatch):
+        resource = _isolated_disk_resource(session, monkeypatch)
+        funded = make_project(session)
+        make_allocation(session, account=make_account(session, project=funded,
+                                                      resource=resource), amount=10.0)
+        orphan = make_project(session)
+        make_allocation(session, account=make_account(session, project=orphan,
+                                                      resource=resource), amount=3.0)
+        fs = funded.projcode.lower()
+        quota_path = _write_quota_file(tmp_path, {
+            fs: {'limit': str(_kib_for(10.0)), 'usage': str(_kib_for(1.0)), 'files': '7'},
+            'zz_nobody': {'limit': str(_kib_for(1.0)), 'usage': '0', 'files': '0'},
+        }, paths={fs: f'/gpfs/csfs1/univ/{fs}'})
+
+        rc, out = _json_reconcile(session, resource, quota_path, monkeypatch)
+        assert rc == 0
+        [report] = out
+        assert report['kind'] == 'quota_reconcile'
+        assert report['resource'] == resource.resource_name
+        assert report['verified_paths'] is False
+        assert report['counts'] == {
+            'matched': 1, 'quota_mismatch': 0,
+            'allocation_without_quota': 1, 'no_project': 1,
+        }
+        [m] = report['categories']['matched']
+        assert m['projcode'] == funded.projcode
+        assert m['sam_tib'] == pytest.approx(10.0)
+        assert m['quota_tib'] == pytest.approx(10.0)
+        [f] = m['filesets']
+        assert (f['fileset'], f['path'], f['projcode'], f['files']) == (
+            fs, f'/gpfs/csfs1/univ/{fs}', funded.projcode, 7)
+        assert report['categories']['allocation_without_quota'][0]['projcode'] == orphan.projcode
+        assert report['categories']['no_project'][0]['fileset'] == 'zz_nobody'
+        json.dumps(report, default=str)
+
+    def test_write_flags_are_refused(self, session, tmp_path, monkeypatch):
+        resource = _isolated_disk_resource(session, monkeypatch)
+        project = make_project(session)
+        alloc = make_allocation(session, account=make_account(
+            session, project=project, resource=resource), amount=3.0)
+        quota_path = _write_quota_file(tmp_path, {})
+
+        rc, out = _json_reconcile(session, resource, quota_path, monkeypatch,
+                                  deactivate_orphaned=True)
+        assert rc == 2
+        assert out[0]['error'] == 'json_unsupported_for_writes'
+        session.refresh(alloc)
+        assert alloc.end_date is None or alloc.end_date > datetime.now()

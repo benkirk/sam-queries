@@ -1,4 +1,5 @@
 """`sam-admin accounting --reconcile-quotas`: allocations against filesystem quota truth."""
+from cli.core.output import output_json
 from cli.core.utils import EXIT_ERROR, EXIT_SUCCESS
 from sam.summaries.disk_summaries import BYTES_PER_TIB
 import getpass
@@ -21,6 +22,20 @@ from sam.manage.allocations import update_allocation
 # Reconcile tolerance: allocations within this fraction of quota truth are
 # treated as matched (ignores rounding noise from prior TiB<->byte conversions).
 QUOTA_TOLERANCE = 0.01  # 1%
+
+
+def _delta_pct(sam_tib: float, quota_bytes: int) -> float:
+    quota_tib = quota_bytes / BYTES_PER_TIB
+    return (sam_tib - quota_tib) / quota_tib * 100.0 if quota_tib else 0.0
+
+
+def _fileset_item(qe: QuotaEntry, owner: Optional[str] = None) -> dict:
+    """One quota entry as a plain dict; ``owner`` is the projcode it attached to."""
+    return {
+        'fileset': qe.fileset_name, 'path': qe.path, 'projcode': owner,
+        'limit_bytes': qe.limit_bytes, 'usage_bytes': qe.usage_bytes,
+        'files': qe.file_count, 'utilization': qe.utilization, 'exists': None,
+    }
 
 
 class QuotaReconcileMixin:
@@ -46,6 +61,18 @@ class QuotaReconcileMixin:
         from sam.accounting.accounts import Account
         from sam.accounting.allocations import Allocation
         from sam.projects.projects import Project, ProjectDirectory
+
+        # JSON is report-only (src/cli/README.md); its messages go to stderr.
+        json_mode = self.ctx.output_format == 'json'
+        if json_mode:
+            if update_accounting_system or deactivate_orphaned:
+                output_json({
+                    'kind': 'quota_reconcile', 'error': 'json_unsupported_for_writes',
+                    'message': '--format json cannot be combined with '
+                               '--update-accounting-system or --deactivate-orphaned',
+                })
+                return EXIT_ERROR
+            self.console = self.ctx.stderr_console
 
         # ---- 1. Validate inputs ------------------------------------------------
         if not resource_name:
@@ -218,64 +245,79 @@ class QuotaReconcileMixin:
             return total, contributors
 
         # ---- 6. Classify each SAM allocation -----------------------------------
-        # Record shapes:
-        #   matched, mismatched: (projcode, sam_tib, expected_bytes, contributors)
-        #   orphaned:            (projcode, sam_tib, directories: list[str])
-        matched: list[tuple[str, float, int, list]] = []
-        mismatched: list[tuple[str, float, int, list]] = []
-        orphaned: list[tuple[str, float, list[str]]] = []
-
-        for projcode, (proj, alloc) in by_projcode.items():
+        def _project_item(proj, alloc, expected_bytes, contributors) -> dict:
             sam_tib = float(alloc.amount)
+            return {
+                'projcode': proj.projcode, 'allocation_id': alloc.allocation_id,
+                'sam_tib': sam_tib, 'quota_bytes': expected_bytes,
+                'quota_tib': expected_bytes / BYTES_PER_TIB,
+                'delta_pct': _delta_pct(sam_tib, expected_bytes),
+                'filesets': [_fileset_item(qe, owner) for owner, qe in contributors],
+            }
+
+        matched: list[dict] = []
+        mismatched: list[dict] = []
+        orphaned: list[dict] = []
+        for projcode, (proj, alloc) in by_projcode.items():
             expected_bytes, contributors = _rollup(proj)
             if expected_bytes == 0:
-                orphaned.append(
-                    (projcode, sam_tib, dirs_by_projcode.get(projcode, []))
-                )
+                orphaned.append({
+                    'projcode': projcode, 'allocation_id': alloc.allocation_id,
+                    'sam_tib': float(alloc.amount),
+                    'directories': [{'path': d, 'exists': None}
+                                    for d in dirs_by_projcode.get(projcode, [])],
+                })
                 continue
-            sam_bytes = sam_tib * BYTES_PER_TIB
+            sam_bytes = float(alloc.amount) * BYTES_PER_TIB
             delta_frac = abs(sam_bytes - expected_bytes) / expected_bytes
-            record = (projcode, sam_tib, expected_bytes, contributors)
-            if delta_frac > QUOTA_TOLERANCE:
-                mismatched.append(record)
-            else:
-                matched.append(record)
+            item = _project_item(proj, alloc, expected_bytes, contributors)
+            (mismatched if delta_frac > QUOTA_TOLERANCE else matched).append(item)
+
+        report = {
+            'kind': 'quota_reconcile',
+            'resource': resource_name,
+            'source': quota_path,
+            'snapshot_date': reader.snapshot_date,
+            'verified_paths': verifier is not None,
+            'verify_mode': verify_mode_banner,
+            'inheriting_skipped': n_inheriting_skipped,
+            'categories': {
+                'matched': matched,
+                'quota_mismatch': mismatched,
+                'allocation_without_quota': orphaned,
+                'no_project': [_fileset_item(qe) for qe in unmapped],
+            },
+        }
+        report['counts'] = {k: len(v) for k, v in report['categories'].items()}
 
         # ---- 6b. Path verification (optional) ---------------------------------
-        path_exists: dict[str, bool] = {}
         if verifier is not None:
-            paths_to_check: set[str] = set()
-            for _, _, dirs in orphaned:
-                paths_to_check.update(dirs)
-            for qe in unmapped:
-                if qe.path:
-                    paths_to_check.add(qe.path)
+            items = [d for o in orphaned for d in o['directories']]
+            items += [f for f in report['categories']['no_project'] if f['path']]
             try:
-                path_exists = verifier.check(sorted(paths_to_check))
+                path_exists = verifier.check(sorted({i['path'] for i in items}))
             except PathVerificationError as exc:
                 self.console.print(f"[bold red]{exc}[/bold red]")
                 return EXIT_ERROR
+            for i in items:
+                i['exists'] = path_exists.get(i['path'], False)
 
         # ---- 7. Report (always) -----------------------------------------------
-        display_quota_reconcile_plan(
-            self.ctx, resource_name,
-            matched, mismatched, orphaned, unmapped,
-            path_exists=path_exists if verifier is not None else None,
-        )
+        if json_mode:
+            output_json(report)
+            return EXIT_SUCCESS
+        display_quota_reconcile_plan(self.ctx, report)
 
         # ---- 8. Apply (only when explicitly opted in) -------------------------
         # The two write flags are independent: --update-accounting-system
         # applies mismatched amounts, --deactivate-orphaned deactivates orphan
         # allocations, neither means report-only, and --force (with the latter)
         # overrides the live-path gate.
+        counts = report['counts']
         if not update_accounting_system and not deactivate_orphaned:
             display_quota_reconcile_summary(
-                self.ctx,
-                matched=len(matched), mismatched=len(mismatched),
-                orphaned=len(orphaned), unmapped=len(unmapped),
-                report_only=True,
-                will_apply_updates=False,
-                will_deactivate_orphans=False,
+                self.ctx, counts, report_only=True,
+                will_apply_updates=False, will_deactivate_orphans=False,
             )
             self._print_action_hints(mismatched, orphaned, applied_updates=False,
                                      applied_deactivations=False)
@@ -292,10 +334,7 @@ class QuotaReconcileMixin:
                 "selected flags.[/green]"
             )
             display_quota_reconcile_summary(
-                self.ctx,
-                matched=len(matched), mismatched=len(mismatched),
-                orphaned=len(orphaned), unmapped=len(unmapped),
-                report_only=False,
+                self.ctx, counts, report_only=False,
                 will_apply_updates=update_accounting_system,
                 will_deactivate_orphans=deactivate_orphaned,
             )
@@ -328,16 +367,14 @@ class QuotaReconcileMixin:
         try:
             with management_transaction(self.session):
                 if update_accounting_system:
-                    for projcode, sam_tib, expected_bytes, contributors in mismatched:
-                        _, alloc = by_projcode[projcode]
-                        new_tib = expected_bytes / BYTES_PER_TIB
-                        n_contrib = len(contributors)
+                    for item in mismatched:
+                        n_contrib = len(item['filesets'])
                         try:
                             update_allocation(
                                 self.session,
-                                alloc.allocation_id,
+                                item['allocation_id'],
                                 admin_user_id,
-                                amount=new_tib,
+                                amount=item['quota_tib'],
                                 comment=(
                                     f"Reconciled with current fileset quota "
                                     f"from {quota_path} (subtree of {n_contrib} "
@@ -348,18 +385,16 @@ class QuotaReconcileMixin:
                         except Exception as exc:  # noqa: BLE001
                             n_errors += 1
                             self.console.print(
-                                f"[red]Failed to update {projcode}: {exc}[/red]"
+                                f"[red]Failed to update {item['projcode']}: {exc}[/red]"
                             )
 
                 if deactivate_orphaned:
-                    for projcode, sam_tib, dirs in orphaned:
-                        _, alloc = by_projcode[projcode]
+                    for item in orphaned:
+                        projcode, dirs = item['projcode'], item['directories']
                         # Safety gate: if path verification says every
                         # ProjectDirectory is still live on disk, don't
                         # silently deactivate — require --force.
-                        live = bool(dirs) and all(
-                            path_exists.get(d, False) for d in dirs
-                        ) if verifier is not None else False
+                        live = bool(dirs) and all(d['exists'] for d in dirs)
                         if live and not force:
                             self.console.print(
                                 f"[yellow]Skipping {projcode}: all "
@@ -374,7 +409,7 @@ class QuotaReconcileMixin:
                         try:
                             update_allocation(
                                 self.session,
-                                alloc.allocation_id,
+                                item['allocation_id'],
                                 admin_user_id,
                                 end_date=effective_end,
                                 comment=(
@@ -396,9 +431,7 @@ class QuotaReconcileMixin:
             return EXIT_ERROR
 
         display_quota_reconcile_summary(
-            self.ctx,
-            matched=len(matched), mismatched=len(mismatched),
-            orphaned=len(orphaned), unmapped=len(unmapped),
+            self.ctx, counts,
             updated=n_updated, deactivated=n_deactivated,
             errors=n_errors,
             report_only=False,
