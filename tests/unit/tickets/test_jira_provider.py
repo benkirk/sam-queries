@@ -76,7 +76,8 @@ class TestKinds:
     def test_the_account_kind_is_the_defaults_when_nothing_is_suffixed(self):
         cfg = JiraConfig.from_environment()
         assert cfg.for_kind('account') == JiraKind('3', '20', ('sam-account-request',))
-        assert set(cfg.kinds) == {'account'}
+        assert cfg.for_kind('xras_request') == cfg.for_kind('account')
+        assert set(cfg.kinds) == {'account', 'xras_request'}
 
     def test_a_suffixed_key_overrides_one_field_and_the_rest_fall_back(self, monkeypatch):
         monkeypatch.setenv('JIRA_ACCOUNT_REQUEST_TYPE_ID', '21')
@@ -93,9 +94,10 @@ class TestKinds:
             JiraConfig().for_kind('roster')
 
     def test_the_summary_carries_every_kind(self):
-        assert JiraConfig().summary()['kinds'] == {
-            'account': {'service_desk': '3', 'request_type': '20',
-                        'labels': 'sam-account-request'}}
+        defaults = {'service_desk': '3', 'request_type': '20',
+                    'labels': 'sam-account-request'}
+        assert JiraConfig().summary()['kinds'] == {'account': defaults,
+                                                   'xras_request': defaults}
 
 
 class TestAuth:
