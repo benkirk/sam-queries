@@ -42,17 +42,24 @@ class DryRunProvider(TicketProvider):
 
     def create(self, draft: TicketDraft) -> TicketRef:
         key = f'{KEY_PREFIX}{draft.handle}'
-        logger.info('dry-run: would file %s (%s) as %s\n%s\n%s',
-                    draft.handle, draft.kind, key, draft.summary, draft.body)
+        _log(f'would file {draft.handle} ({draft.kind}) as {key}',
+             f'{draft.summary}\n{draft.body}')
         self.post_automation_note(key, draft)
         return TicketRef(key, status='dry-run')
 
     def comment(self, key: str, text: str, *, internal: bool = True) -> None:
-        logger.info('dry-run: would comment on %s (%s)\n%s',
-                    key, 'internal' if internal else 'public', text)
+        _log(f'would comment on {key} ({"internal" if internal else "public"})', text)
 
     def get(self, key: str) -> Optional[TicketRef]:
         return None
 
     def browse_url(self, key: str) -> str:
         return ''
+
+
+def _log(headline: str, text: str) -> None:
+    """One record per line: the healthcheck strips "LEVEL name: msg" lines before
+    parsing the job's JSON envelope, and a bare continuation line would break it."""
+    logger.warning('dry-run: %s', headline)
+    for line in text.splitlines():
+        logger.warning('dry-run | %s', line)

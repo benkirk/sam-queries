@@ -98,9 +98,21 @@ class TestDryRun:
         monkeypatch.setenv('TICKET_PROVIDER', 'dry-run')
         provider = provider_from_environment()
         assert provider.write_configured
-        with caplog.at_level('INFO', logger='sam.integration.tickets.dry_run'):
+        with caplog.at_level('WARNING', logger='sam.integration.tickets.dry_run'):
             ref = provider.create(DRAFT)
             provider.comment(ref.key, 'changed')
         assert ref.key == 'DRY-SAM-AR-1' and len(ref.key) <= 32
         assert provider.find('SAM-AR-1') is None
         assert 'would file SAM-AR-1' in caplog.text and 'changed' in caplog.text
+
+
+def test_a_dry_run_body_logs_one_record_per_line(caplog):
+    """cirrus_healthcheck.sh keeps only non-"LEVEL name: msg" lines as the job's JSON
+    envelope, so a multi-line record would fail the dev check."""
+    from sam.integration.tickets.dry_run import DryRunProvider
+    with caplog.at_level('WARNING', logger='sam.integration.tickets.dry_run'):
+        DryRunProvider().create(TicketDraft(handle='SAM-XR-1', summary='s', body='a\nb\n\nc'))
+    assert all('\n' not in r.getMessage() for r in caplog.records)
+    assert [r.getMessage() for r in caplog.records][:5] == [
+        'dry-run: would file SAM-XR-1 (account) as DRY-SAM-XR-1', 'dry-run | s',
+        'dry-run | a', 'dry-run | b', 'dry-run | ']
