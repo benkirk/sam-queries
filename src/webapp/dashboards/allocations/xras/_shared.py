@@ -435,7 +435,8 @@ _READINESS = (
 )
 
 #: Blocker chip icons, matching the row indicators (the chip strip is their legend).
-_BLOCKER_ICONS = {'mnemonic': 'fa-link-slash text-danger-emphasis',
+_BLOCKER_ICONS = {'person': 'fa-user-xmark text-danger-emphasis',
+                  'mnemonic': 'fa-link-slash text-danger-emphasis',
                   'contract': 'fa-file-contract text-danger-emphasis',
                   'account': 'fa-user text-danger-emphasis'}
 

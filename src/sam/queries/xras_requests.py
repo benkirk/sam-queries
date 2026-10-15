@@ -36,7 +36,7 @@ from sam.integration.xras_api.vocabulary import (
     ADMIN_ROLE_TYPE_ID,
     PI_ROLE_TYPE_ID,
 )
-from sam.queries.xras_accounts import (is_placeholder, iter_roster_entries,
+from sam.queries.xras_accounts import (is_placeholder, iter_roster_entries, live_actions,
                                        report_activity_date,
                                        role_in_window)
 
@@ -163,9 +163,7 @@ def actions_from_payload(payload: Dict[str, Any],
     each action gains a ``preflight`` cell (``None`` for an action nobody checked).
     """
     rows: List[Dict[str, Any]] = []
-    for action in payload.get('actions') or ():
-        if not isinstance(action, dict):
-            continue
+    for action in live_actions(payload):
         if action.get('actionId') is None:
             # Same rule the entry itself follows for requestNumber/requestId:
             # every offer routes through url_for(..., action_id=<int>), so an
@@ -294,16 +292,35 @@ def latest_action_type(actions) -> Optional[str]:
 
 #: Blocker categories a swept request can be stuck on, in display order. The slug
 #: is what the facet filter round-trips; the label is the chip text.
-BLOCKER_LABELS = (('mnemonic', 'Mnemonic'), ('contract', 'Contract'),
+BLOCKER_LABELS = (('person', 'Person'), ('mnemonic', 'Mnemonic'), ('contract', 'Contract'),
                   ('account', 'Account'))
+
+
+def is_person_blocker(message: str) -> bool:
+    """A roster person missing or inactive in SAM, or no usable PI/Allocation Manager role.
+
+    Matched by role prefix: "is not in database" alone would also match the
+    field-of-science message.
+    """
+    from sam.xras.errors import missing_pi_role
+    m = message or ''
+    if m.startswith('PI '):
+        return ' is not in database' in m or ' is not an active user' in m
+    if m.startswith('Allocation Manager '):
+        return ' is not in database' in m or ' is not active' in m
+    if m.startswith('Username '):
+        return m.rstrip().endswith((' is missing', ' is inactive'))
+    if m.startswith('Multiple ') and ' roles are in range for this action' in m:
+        return True
+    return m == missing_pi_role() or m.startswith('Could not produce affiliation data for PI')
 
 
 def row_blockers(row: Mapping[str, Any]) -> set:
     """Which push-blocker categories a Remediations row is stuck on.
 
-    Derived, not stored: the same three signals the unblock reports pivot on —
-    the mnemonic 422 prefix, the structured unresolved-grant channel, and the
-    stuck-placeholder flag. Pure, so the card route and a unit test agree.
+    Derived, not stored, from four signals: a roster person missing or inactive
+    in SAM, the mnemonic 422 prefix, the structured unresolved-grant channel, and
+    the stuck-placeholder flag. Pure, so the card route and a unit test agree.
     """
     from sam.xras.errors import (MNEMONIC_EXTERNAL_PREFIX, MNEMONIC_INTERNAL_PREFIX,
                                  NO_AFFILIATION_MARKERS)
@@ -312,10 +329,12 @@ def row_blockers(row: Mapping[str, Any]) -> set:
         preflight = action.get('preflight') or {}
         for m in (preflight.get('messages') or []):
             m = m or ''
-            # A resolved-but-uncoded affiliation carries a MNEMONIC_*_PREFIX; a
-            # missing affiliation carries neither but is the same push blocker
-            # (no code can be minted) and the same override fixes it.
-            if (m.startswith((MNEMONIC_INTERNAL_PREFIX, MNEMONIC_EXTERNAL_PREFIX))
+            # A PI SAM holds but cannot affiliate is a mnemonic blocker a code
+            # override fixes; a PI SAM does not hold is a person blocker, even
+            # though it also reports "Could not produce affiliation data".
+            if is_person_blocker(m):
+                kinds.add('person')
+            elif (m.startswith((MNEMONIC_INTERNAL_PREFIX, MNEMONIC_EXTERNAL_PREFIX))
                     or any(marker in m for marker in NO_AFFILIATION_MARKERS)):
                 kinds.add('mnemonic')
         if (preflight.get('resolved') or {}).get('unresolved_grants'):
@@ -415,13 +434,16 @@ def primary_line(lines: Any) -> Optional[Dict[str, Any]]:
     A projcode can have several lines (a New plus Renewals, each its own
     ``requestId``); the one with the highest ``actionId`` is the current
     request. Never ``lines[0]``: XRAS pages by descending ``requestId``, which
-    is not the same order.
+    is not the same order. A soft-deleted line or action can hold the family's
+    highest ``actionId``, so both are skipped. An all-deleted family still
+    answers with one of its lines, so the card can say it is deleted.
     """
     def _max_action(line):
-        ids = [a.get('actionId') for a in (line.get('actions') or ())
+        ids = [a.get('actionId') for a in live_actions(line)
                if isinstance(a.get('actionId'), int)]
         return max(ids) if ids else -1
-    candidates = [ln for ln in (lines or ()) if isinstance(ln, dict)]
+    candidates = (live_lines(lines)
+                  or [ln for ln in (lines or ()) if isinstance(ln, dict)])
     return max(candidates, key=_max_action) if candidates else None
 
 

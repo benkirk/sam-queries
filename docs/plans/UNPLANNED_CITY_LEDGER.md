@@ -41,6 +41,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-12 | `726a0e0c` + sweep 23 (account queue / Pending Users), py only | 51 / 63 / 26 | 1 (2) | 16 / 52 | — | — | — | — | — | — | — | 6 |
 | 2026-10-13 | `172a5651` + sweep 25 (XRAS sweep windows, cadence, ticket groundwork) | 51 / 63 / 26 | 1 (2) | 16 / 52 | 20 (20), 2 kept | 5,245 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
 | 2026-10-13 | `1526d856` + sweep 26 (XRAS request identity) | 51 / 63 / 26 | 1 (2) | 16 / 52 | 20 (20), 2 kept | 5,245 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
+| 2026-10-14 | `50bda35a` + sweep 27 (XRAS soft-deleted records) | 51 / 63 / 26 | 1 (2) | 16 / 52 | 20 (20), 2 kept | 5,245 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -1865,6 +1866,54 @@ Three things broke under a rename, and each is fixed where SAM knows both number
   commits outside the savepoint, so two xdist workers can refuse each other as duplicates
   (the "11 failures as one selection"). `TestRenameAfterReply` mints ids via `next_seq`
   (`9539b336`); the rest of the file should follow.
+
+## 27. 2026-10-14: area sweep, XRAS soft-deleted records
+
+**Mode:** area, one concept, base `origin/staging` (`50bda35a`), branch
+`xras-primary-line-deleted`, PR #823. Started from review finding F6 on #822 (`primary_line` did
+not skip soft-deleted lines). Read every place SAM walks an XRAS family, line or `actions[]`, and
+whether it filters `isDeleted` at both levels.
+
+**Finding:** lines were filtered almost everywhere (`live_lines`); actions almost nowhere, and
+the rule had no helper. Measured on XRAS-dev (`XRAS_DEV_PROBES.md` § 6.2; probe action 372892): XRAS
+accepts resource, comment and date writes to a soft-deleted action, validates and submits it,
+and the admin app then 404s it. So SAM is the only guard.
+
+**Done, PR #823:**
+
+- [x] F6: `primary_line` ranks live lines by live actions; an all-deleted family still answers.
+- [x] Finding 1: `live_actions(line)` in `sam.queries.xras_accounts`, used by
+  `actions_from_payload` (the card stopped offering Resubmit on an aborted action),
+  `primary_line`, `report_activity_date`, `_report_action_type` and preflight.
+- [x] Finding 2: `_live_action` and `_editor_target(request_number, action_id)` refuse a write to
+  a deleted action before XRAS; the detail modal draws no editor on one.
+- [x] Finding 3: the withdraw modal's action count is live actions only.
+
+**Checked, no change:** the sweep's window and accounts feed (`overlaps_window` drops deleted
+requests before any `account_request`), the index and remediation ops (`live_lines`), the rename
+task's sibling pass, `_find_document`, and the verify-by-id reads (`admin_client._actions`,
+`comments.find_action`), which must see deleted actions to verify a delete.
+
+**Tried and dropped:** a `HELPER_BYPASS` pattern for raw `actions[]` walks. Most remaining walks
+are legitimate (by-id verifies, SAM-built rows), so it would ratchet noise.
+
+**Open:**
+
+- [ ] Finding 4, deferred on #823: `request_family` (the request modal's family tree and
+  `sam-admin xras --family`) shows deleted lines unmarked and, after finding 1, drops deleted
+  actions; a history view could show both with a muted "deleted" tag.
+- [ ] Finding 5: `rename_plan` (`sam/manage/xras_remediation.py`) reads a line by id without
+  checking `isDeleted`; a processed New whose line was later deleted would be renamed. Unseen.
+- [ ] `xras_action_form.html`: the resubmit copy says a resubmit lands "Under Review"; XRAS-dev
+  lands `Submitted` (`XRAS_DEV_PROBES.md` § 6.1); say "Submitted or Under Review".
+- [ ] Documents on a deleted action stay listed: `_family_documents` and `_find_document` filter
+  lines, not actions, while each action's `document_count` now counts live actions only, so the
+  two can disagree on a request with an aborted upload. Kept on purpose (the file is real);
+  cosmetic.
+- [ ] An action both submitted and deleted (the § 6.2 end state) cannot be withdrawn from SAM
+  any more, since the withdraw modal refuses deleted actions; the admin app 404s it, so it
+  blocks nothing. If one appears in production, clear it through the API as the PI:
+  `DELETE /v1/requests/<rid>/actions/<aid>/submit` under `submit`, as the probe was cleaned up.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

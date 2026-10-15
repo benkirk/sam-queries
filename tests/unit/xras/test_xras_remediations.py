@@ -1703,6 +1703,57 @@ class TestFosNameResolution:
 
 # the request editor (Part B)
 
+def _with_deleted_action():
+    """Action 7 soft-deleted (still listed, isDeleted) beside a live action 8, as XRAS keeps an abort."""
+    payload = _detail_payload()
+    payload['actions'][0]['isDeleted'] = True
+    payload['actions'][0]['actionStatus'] = 'Incomplete'
+    payload['actions'].append({'actionId': 8, 'actionType': 'New',
+                               'actionStatus': 'Approved'})
+    return payload
+
+
+class TestASoftDeletedActionIsNotWritable:
+    """XRAS-dev, 2026-10-14: a soft-deleted action takes resource, comment and date writes,
+    validates and submits, and the admin app then 404s it. SAM is the only guard."""
+
+    def test_the_detail_modal_offers_no_editor_on_it(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_with_deleted_action())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'xras_dates_form/EXAM0001/7' not in body
+        assert 'xras_resource_remove/EXAM0001/7/' not in body
+
+    @pytest.mark.parametrize('form', ['xras_withdraw_form', 'xras_resubmit_form'])
+    def test_the_action_modals_refuse_it(self, auth_client, armed, monkeypatch, form):
+        _reader(monkeypatch, payload=_with_deleted_action())
+        body = auth_client.get(f'/allocations/{form}/EXAM0001/7').get_data(as_text=True)
+        assert 'deleted in XRAS' in body
+
+    def test_the_withdraw_count_ignores_it(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_with_deleted_action())
+        body = auth_client.get(
+            '/allocations/xras_withdraw_form/EXAM0001/8').get_data(as_text=True)
+        assert "the request's only action" in body
+
+    @pytest.mark.parametrize('url, data', [
+        ('/allocations/xras_resource_edit/EXAM0001/7/530201',
+         {'amount': '20', 'stage': 'Requested'}),
+        ('/allocations/xras_dates_edit/EXAM0001/7',
+         {'begin_date': '2026-01-01', 'end_date': '2026-12-31'}),
+        ('/allocations/xras_action_fields_edit/EXAM0001/7', {'user_comments': 'x'}),
+    ])
+    def test_a_write_to_it_is_refused_before_xras(self, auth_client, armed, monkeypatch,
+                                                  url, data):
+        from sam.manage import xras_remediation
+        for op in ('update_resource_amount', 'set_action_dates', 'update_action'):
+            monkeypatch.setattr(xras_remediation, op, MagicMock(
+                side_effect=AssertionError(f'{op} reached for a deleted action')))
+        _reader(monkeypatch, payload=_with_deleted_action())
+        body = auth_client.post(url, data=data).get_data(as_text=True)
+        assert 'deleted in XRAS' in body
+
+
 class TestTheEditors:
     """The amount/date editors: forms render, validation bites, the lever and
     the admin-context ceiling both refuse. Write happy-paths live at the
@@ -2515,9 +2566,11 @@ class TestBlockerFacet:
 
     @staticmethod
     def _publish_blockers():
+        from sam.xras import errors as e
         from sam.xras.errors import MNEMONIC_INTERNAL_PREFIX
 
         mnem = _payload('MNEM0001', placeholder=False)
+        pers = _payload('PERS0001', placeholder=False)
         ctract = _payload('CTRL0001', placeholder=False)
         acct = _payload('ACCT0001')  # placeholder+reconciled -> account blocker
         preflights = {
@@ -2527,6 +2580,11 @@ class TestBlockerFacet:
             'CTRL0001': {7: {'status': 'failed', 'push_state': None,
                              'messages': ['grant not found'],
                              'resolved': {'unresolved_grants': [{'number': 'X-1'}]}}},
+            # A PI SAM does not hold also reports "no affiliation data": person, not mnemonic.
+            'PERS0001': {7: {'status': 'failed', 'push_state': None,
+                             'messages': [e.pi_not_in_database('p-user-1'),
+                                          e.no_affiliation_for_pi('p-user-1')],
+                             'resolved': {}}},
         }
         xras_cache.store_requests_index({
             'generated_at': datetime.now(),
@@ -2536,6 +2594,8 @@ class TestBlockerFacet:
                                          preflights=preflights['MNEM0001']),
                      request_index_entry(ctract, pending_push=True,
                                          preflights=preflights['CTRL0001']),
+                     request_index_entry(pers, pending_push=True,
+                                         preflights=preflights['PERS0001']),
                      request_index_entry(acct, pending_push=True)]})
 
     def test_the_chip_row_counts_each_category(self, auth_client, configured):
@@ -2543,7 +2603,7 @@ class TestBlockerFacet:
         body = auth_client.get(FRAGMENT + '?show_all=1').get_data(as_text=True)
         assert 'Blocker' in body
         # Each category is present exactly once across the three rows.
-        for field in ('Mnemonic', 'Contract', 'Account'):
+        for field in ('Person', 'Mnemonic', 'Contract', 'Account'):
             assert field in body
 
     @staticmethod
@@ -2565,16 +2625,23 @@ class TestBlockerFacet:
             FRAGMENT + '?show_all=1&blockers=mnemonic').get_data(as_text=True)
         assert self._table_rows(body) == {'MNEM0001'}
 
-    def test_unfiltered_shows_all_three(self, auth_client, configured):
+    def test_a_missing_pi_filters_as_person_not_mnemonic(self, auth_client, configured):
+        self._publish_blockers()
+        body = auth_client.get(
+            FRAGMENT + '?show_all=1&blockers=person').get_data(as_text=True)
+        assert self._table_rows(body) == {'PERS0001'}
+
+    def test_unfiltered_shows_all_four(self, auth_client, configured):
         self._publish_blockers()
         body = auth_client.get(FRAGMENT + '?show_all=1').get_data(as_text=True)
-        assert self._table_rows(body) == {'MNEM0001', 'CTRL0001', 'ACCT0001'}
+        assert self._table_rows(body) == {'MNEM0001', 'CTRL0001', 'PERS0001', 'ACCT0001'}
 
     def test_each_row_carries_its_blocker_icon(self, auth_client, configured):
         self._publish_blockers()
         body = auth_client.get(FRAGMENT + '?show_all=1').get_data(as_text=True)
         assert 'fa-link-slash' in body      # mnemonic
         assert 'fa-file-contract' in body   # contract
+        assert 'fa-user-xmark' in body      # person
         # The account icon replaces the old verbose "placeholder roster" badge.
         assert 'placeholder roster' not in body
 

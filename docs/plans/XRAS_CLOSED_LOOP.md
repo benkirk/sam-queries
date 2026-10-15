@@ -1,8 +1,7 @@
 # XRAS closed loop: SAMuel renames requests, then the submission plan under load
 
-**Status: Track 1 built (#819), proven on XRAS-dev and backfilled in production 2026-10-14
-(§ 3.3); the lever flip enabling it in production follows the backfill. Track 2 run 2026-10-14
-except scenario 6 (§ 4), which moves to phase D.** What
+**Status: Track 1 built (#819), proven on XRAS-dev, backfilled in production and enabled there
+2026-10-14 (#820; § 3.3). Track 2 run in full 2026-10-14 (§ 4).** What
 landed and what was decided: § 3.5. The wider goal this is phase A of:
 [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md). Written 2026-10-13 at the end of the session recorded in
 [`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md). Two tracks on one test bed:
@@ -120,16 +119,12 @@ below, and the apply verified all five (`xras_remediation_event` 13-17, `created
 `task:xras_rename`, each read back from XRAS); the other 68 read `already_renamed`. Ben judged
 five lines too small to need a heads-up to Steve.
 
-Enabling the task on production is then a values change: drop `xras_rename` from
-`SAM_TASKS_DISABLED`, add `XRAS_WRITE_ENABLED` to production's `tasks.env`, and flip
-`XRAS_RENAME_ENABLED` to `"1"` for the route's after-reply rename. The gates that pin each
-value (`test_xras_admin_client.py`, `test_task_xras_rename.py`, `test-dev-render.sh`) change
-with it.
-
-A dry-run report first: every production `processed` `New` since 2026-08-24 whose XRAS line
-still answers its placeholder. Ben approves the list, then apply. Tell Steve before the first
-production rename: PIs see the number in ARC, and the award letter for anything notified
-later will carry the projcode.
+**Enabled in production the same day (#820):** `xras_rename` dropped from `SAM_TASKS_DISABLED`,
+`XRAS_WRITE_ENABLED` in production's `tasks.env`, and `XRAS_RENAME_ENABLED` `"1"` for the
+route's after-reply rename. The gates (`test_xras_admin_client.py`, `test_task_xras_rename.py`,
+`test-dev-render.sh`) pin each value, so a flip in either direction is a reviewed change. The
+task's first production run found 20 candidates, all already renamed. PIs see the projcode in
+ARC, and the award letter for anything notified later carries it.
 
 **Census, 2026-10-14** (read-only: every `Approved` line in production XRAS against prod
 `xras_action_log`). 4,170 approved lines; 23 live ones still numbered `NCAR*`:
@@ -143,10 +138,10 @@ later will carry the projcode.
 
 NCAR4401 was posted on 10-06 and is renamed: NUSD still renames by hand in the admin app
 (Summary → Request Number (Edit), `XRAS_DEV_PROBES.md` § 6), after activating the project in
-SAM and copying its projcode (Travis Fair, 2026-10-14). He agreed to SAM taking the step over;
-tell NUSD when `XRAS_RENAME_ENABLED` goes on, and that the reloaded request page and XRAS's
-search show the projcode while the old number stops resolving. A window earlier than 2026-08-24 selects nothing more: the task reads
-only SAMuel's log, whose processed rows start at the repoint.
+SAM and copying its projcode (Travis Fair, 2026-10-14). He agreed to SAM taking the step over.
+With the rename on, the reloaded request page and XRAS's search show the projcode while the
+old number stops resolving. A window earlier than 2026-08-24 selects nothing more: the task
+reads only SAMuel's log, whose processed rows start at the repoint.
 
 ### 3.4 Proving it on the loop
 
@@ -177,11 +172,11 @@ rename 1.77 s after the reply, the task's on NCAR4086 and on the renewal sibling
 | Client verb, verified by id | `XrasAdminClient.rename_request` |
 | Audited op: pre-read by id (already renamed = no write; a third number = left alone), PI else Allocation Manager, card row moved to the new number, overrides rekeyed | `sam.manage.xras_remediation.rename_request`, `rename_plan`; `XrasRequestOverride.rekey` |
 | The one task-writable operation | `TASK_WRITABLE_OPERATIONS = ('rename_request',)` in `sam/integration/xras.py` |
-| Immediate path, **after** the reply (decision 1) | `_rename_after_reply` in `webapp/api/xras/actions.py`, via `response.call_on_close`; logs status and ms. Behind `XRAS_RENAME_ENABLED` (review F1): `"1"` on dev, `"0"` in production, pinned by the gate |
+| Immediate path, **after** the reply (decision 1) | `_rename_after_reply` in `webapp/api/xras/actions.py`, via `response.call_on_close`; logs status and ms. Behind `XRAS_RENAME_ENABLED` (review F1): `"1"` on dev and, since #820, in production; pinned by the gate |
 | Backstop task and backfill | `src/scheduling/tasks/xras_rename.py`; `rename_candidates` in `sam/queries/xras_actions.py` |
 | Log resolution, rules 2 and 3 (decision 4: the number-keyed routes `/roles`, `/dates/requests`, `/requests/request` do not get it; the rename covers their near-zero traffic) | `resolve_project` in `sam/xras/dispatch.py`; `logged_projcode` |
 | Sweep pending set | `live_pending_numbers` subtracts `pushed_request_numbers` |
-| Lever (decision 2) | the task: dev `tasks.env` only; production disables it by name and carries no lever. The route: `XRAS_RENAME_ENABLED` |
+| Lever (decision 2) | the task: `XRAS_WRITE_ENABLED` in each environment's `tasks.env`, the one task write; enabled by name on both. The route: `XRAS_RENAME_ENABLED` |
 
 Every processed post whose number differs from its projcode is renamed, not only a `New`: an
 action resolved by rules 2 and 3 names a line that still needs it, and the pre-read makes a
@@ -206,16 +201,17 @@ Each scenario: what to file, what to click, what SAM should record. Findings go 
 
 Out of scope on the loop: the form (§ 4.1, unprototyped) and limits (§ 4.5, SAM-side only).
 
-**Run 2026-10-14** (`XRAS_DEV_PROBES.md` § 6.1): 1-5, 7 and 8 done on UHSS0003 and NCAR4090;
-6 not run (it deletes the placeholder). Nothing found needs a change to #819. For the design:
+**Run 2026-10-14** (`XRAS_DEV_PROBES.md` § 6.1): 1-5, 7 and 8 on UHSS0003 and NCAR4090; 6 on
+NCAR4091 → UHSS0004 (post 422, merge in SAMuel, repost 200, renamed 0.7 s after the reply).
+Nothing found needs a change to #819. For the design:
 a resubmit lands `Submitted`, not `Under Review`; Hold Off is a `states[]` entry, not a status,
 and survives a return and a withdraw; a request leaves the admin queue at the post, without a
 notify; a Supplement filed after a Renewal posts lands on the renewal's future window (legacy's
 `getLatestAllocation`, `XRAS_INGEST_IMPROVEMENTS.md` candidate).
 
-**Resume here (fresh session).** Open: scenario 6, which merges `samprobe-20261013` into a real
-person on XRAS-dev and so deletes it; run only with Ben's say-so. After that, each phase of
-`XRAS_POST_AUTOMATION.md` gets its scenarios on this bed as it lands.
+**Resume here (fresh session).** Nothing open: each phase of `XRAS_POST_AUTOMATION.md` gets its
+scenarios on this bed as it lands. The placeholder `samprobe-20261013` is gone (scenario 6); a
+placeholder scenario needs a fresh person, named `<x>-user-<y>` so SAM classes it as one.
 
 - **Bed:** samuel-dev on the branch image (check `kubectl -n sam-queries-dev get pods` shows the
   expected `sha-`; a staging merge re-pins `cirrus-dev` to staging, and
@@ -236,4 +232,4 @@ person on XRAS-dev and so deletes it; run only with Ben's say-so. After that, ea
 
 - Decided 2026-10-13: the rename runs after the reply (§ 3.5).
 - The backfill: one approval of the census list (§ 3.3).
-- Whether scenario 6's merge on demo is wanted (open).
+- Scenario 6's merge on demo: approved and run 2026-10-14, into benkirk.
