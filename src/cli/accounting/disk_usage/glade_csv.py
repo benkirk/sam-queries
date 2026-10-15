@@ -75,6 +75,14 @@ def _detect_layout(rows: list[list[str]], path: str) -> str:
     return QUOTA8
 
 
+def _lenient_int(value: Optional[str]) -> Optional[int]:
+    """Quota columns only: ``-`` or blank means no quota, and must never drop the usage row."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 class GladeCsvReader(DiskUsageReader):
     """Parse the ``acct.<host>.YYYY-MM-DD`` per-(user, project) usage CSV for all three feeds.
 
@@ -123,14 +131,13 @@ class GladeCsvReader(DiskUsageReader):
                 b_kib = int(fsize_kib)
                 rep_int = int(interval)
                 cos_id = int(cos)
-                n_file_quota = None if file_quota is None else int(file_quota)
-                q_kib = None if quota_kib is None else int(quota_kib)
             except ValueError:
                 # Malformed row: skip silently. --skip-errors governs resolution
                 # failures, not parse errors.
                 continue
 
             snapshot_dates.add(activity_date)
+            q_kib = _lenient_int(quota_kib)
 
             entries.append(DiskUsageEntry(
                 activity_date=activity_date,
@@ -141,7 +148,7 @@ class GladeCsvReader(DiskUsageReader):
                 directory_path=dir_path.strip() or None,
                 reporting_interval=rep_int,
                 cos=cos_id,
-                file_quota=n_file_quota,
+                file_quota=_lenient_int(file_quota),
                 quota_bytes=None if q_kib is None else q_kib * self._KIB,
             ))
 

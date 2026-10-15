@@ -225,3 +225,14 @@ def test_unknown_width_refuses_the_file(tmp_path, row):
     f = _write(tmp_path, "acct.glade.2026-10-17", good + row)
     with pytest.raises(ValueError, match="column count"):
         GladeCsvReader(str(f)).read()
+
+
+def test_non_numeric_quota_keeps_the_usage_row(tmp_path):
+    # Joey may write "-" where a filesystem has no file-count quota.
+    csv = (
+        '"2026-10-14","/gpfs/csfs1/cesm","cesm","gdicker","4986","-","688092272",""\n'
+    )
+    f = _write(tmp_path, "acct.glade.2026-10-17", csv)
+    [e] = GladeCsvReader(str(f)).read()
+    assert e.bytes == 688092272 * 1024
+    assert e.file_quota is None and e.quota_bytes is None
