@@ -437,6 +437,10 @@ webapp:
     # sam/integration/tickets/base.py); JIRA_<KIND>_{SERVICE_DESK_ID,REQUEST_TYPE_ID,LABELS}
     # overrides one kind, e.g. JIRA_ACCOUNT_REQUEST_TYPE_ID. Webapp-only: kinds are write-side.
     JIRA_SERVICE_DESK_ID: "3"
+    # Desk 3 (RC) request types, read 2026-10-15 from /rest/servicedeskapi/servicedesk/3/requesttype:
+    #   18 Allocations, 19 Feedback, 20 Add a user, 22 Core-hours refund, 25 Scratch quota
+    #   increase, 28 Having a problem, 31 General help, 35 Report failed job, 36 System issue,
+    #   38 Install/update HPC software. 18 and 20 require only summary + description (what we send).
     JIRA_REQUEST_TYPE_ID: "20"            # "Add a user"
     JIRA_LABELS: "sam-account-request"
 
