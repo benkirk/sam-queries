@@ -41,47 +41,37 @@ NUSD stops renaming by hand (Travis agreed 2026-10-14). A race between the two i
 - SAM's pre-read skips a line already renamed;
 - the admin app's "Assign new request number" refuses a number in use.
 
-NUSD still activates in SAM and notifies from XRAS until B and C.
+NUSD still activates in SAM and notifies from XRAS until B and C. The route's first rename in
+production waits for the next New that applies: the one New posted since go-live, NCAR4391,
+was refused (2026-10-14).
 
 **B. Activation on post.** Ben, 2026-10-14: yes, when nothing blocks it. Once the New
 applies cleanly, activate the project behind its own lever (`XRAS_AUTO_ACTIVATE`, default
 off, dev on), in the handler or the after-reply hook beside the rename, recording
 `xras_activation_event` with the API actor as `created_by`. This is the one deliberate
 unattended exception to `can_edit_project_governance` (`implemented/XRAS_AUTO_NOTICES.md`,
-"Phase 2 (later)"). A New that applied under an `ignore_contract` override activates too: the
+"Phase 2 (later)"). SAM holds no record of when NUSD activates today: since the repoint 7
+activations went through the card, while 39 of the last 40 applied News are active, so the rest
+were activated elsewhere. B's `xras_activation_event` is the first reliable record. A New that applied under an `ignore_contract` override activates too: the
 waiver is the operator's decision (Ben, 2026-10-14). NUSD checks nothing before activating
 beyond what the handler checks (Travis, 2026-10-14), so a New that applies is ready to
 activate.
 
-**C. Notifications on post.** SAM sends the award notices:
-- The New's activation notice goes out right after activation (B), through
-  `build_xras_messages`. It uses the Notify button's dedup key, so nothing double-mails.
-- The extend, supplement, adjust and update notices either move to post time or keep the
-  `xras_notices` delay as a correction window (decide then).
-
-XRAS's own award mail would otherwise reach the PI twice. That mail is configuration of the
-NCAR process, held in the admin app under Notifications (`/notification_templates`), where Ben
-has the admin role:
-
-- **How XRAS decides to send.** A template has no on/off switch. It sends for each row of its
-  Rules table: allocation type × action type × event × recipient.
-- **The award mails** are the **Action Approved** rules, sent at the operator's Notify step:
-  - template 154: New and Renewal on Small, Educational, Exploratory, Data Analysis, CISL
-    Operations and NCAR Strategic Computing;
-  - 133: Large;
-  - 135: Extension, Appeal and Final Report;
-  - 149: Supplement and Transfer;
-  - 1803 and 417: External Projects and Strategic Computing.
-- **They copy more people than the PI:** `alloc@ucar.edu`, the allocation managers, the Co-PIs
-  and the program officers. 133 (Large) also copies two NSF addresses. SAM's notices must decide
-  each of these recipients before taking over.
-- **The cutover step** is deleting the Action Approved rules for exactly the action types SAM
-  then sends. A request leaves the admin queue at the post, without a notify
-  (`XRAS_DEV_PROBES.md` § 6.1, scenario 8), so the operator stops clicking Notify, and approve
-  and post are the whole job.
-- **XRAS keeps** the submit acknowledgments (128, 129) and the Declined mails (131, 134).
-- **Not yet confirmed:** that production carries the same rules (read on XRAS-dev, 2026-10-14),
-  and that a deleted rule silences the Notify step (one rule, one benkirk request, on the demo).
+**C. Notifications on post.** [`XRAS_NOTICES_CUTOVER.md`](XRAS_NOTICES_CUTOVER.md) holds the
+checklist: which XRAS rules to delete, the SAMuel notice that replaces each, and the gaps to close
+first. XRAS's award mail is configuration we own: the Action Approved rules on the NCAR
+process's notification templates, sent at the operator's Notify step (read on `admin-ncar`,
+2026-10-14; production and the demo match).
+- **SAM sends the award notices.** The New's notice goes out right after activation (B),
+  through `build_xras_messages` and the Notify button's dedup key, so nothing double-mails. The
+  extension, supplement, renewal and adjustment notices keep the `xras_notices` delay as a
+  correction window or move to post time (decide then).
+- **The cutover deletes those rules** for exactly the action types SAM then sends, and the
+  operator stops clicking Notify: a request leaves the admin queue at the post without it
+  (`XRAS_DEV_PROBES.md` § 6.1, scenario 8). Approve and post are the whole job.
+- **Before it:** template content at parity, a copy to `alloc@ucar.edu` (every XRAS award mail
+  carries one; production has no addressing rows), and one rule deleted on the demo to prove
+  it silences Notify.
 
 **D. The failed post opens the ticket.** `XRAS_REQUEST_TICKETS.md` (designed, not built).
 Ben, 2026-10-14, the #819 second-pass review: of the News approved since the 2026-08-24
@@ -141,6 +131,7 @@ bed and its rules).
 ## 5. Related plans
 
 - `XRAS_CLOSED_LOOP.md`: the rename (phase A) and the test bed.
+- `XRAS_NOTICES_CUTOVER.md`: the award-mail cutover (phase C).
 - `XRAS_REQUEST_TICKETS.md`: the ticket a blocked post opens (phase D).
 - `XRAS_SUBMISSION.md` § 4.2, § 4.6: the request record and the incoming side; the outgoing
   work that follows phase D.

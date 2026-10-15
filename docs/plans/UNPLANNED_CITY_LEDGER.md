@@ -1875,7 +1875,7 @@ not skip soft-deleted lines). Read every place SAM walks an XRAS family, line or
 whether it filters `isDeleted` at both levels.
 
 **Finding:** lines were filtered almost everywhere (`live_lines`); actions almost nowhere, and
-the rule had no helper. Measured on XRAS-dev (`XRAS_DEV_PROBES.md` § 6.2, landing with #822; probe action 372892): XRAS
+the rule had no helper. Measured on XRAS-dev (`XRAS_DEV_PROBES.md` § 6.2; probe action 372892): XRAS
 accepts resource, comment and date writes to a soft-deleted action, validates and submits it,
 and the admin app then 404s it. So SAM is the only guard.
 

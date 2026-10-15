@@ -404,15 +404,13 @@ def mnemonic_internal_failed(username=None, organization=None, lab=None) -> str:
             f'{where} has no mnemonic link')
 
 
-#: Stable substrings of the two no-affiliation messages below. A PI with no
-#: resolvable affiliation is mnemonic-unresolvable (no projcode can be minted),
-#: so ``row_blockers`` treats these as the mnemonic blocker a per-request code
-#: override fixes — even though they carry no MNEMONIC_*_PREFIX (they precede the
-#: org/institution resolution the prefixes name). Guarded by
-#: ``test_xras_row_blockers`` against the real builders below.
+#: A PI in SAM with no current affiliation: no projcode can be minted, so
+#: ``row_blockers`` counts it as the mnemonic blocker a per-request code override
+#: fixes, though it carries no MNEMONIC_*_PREFIX. ``no_affiliation_for_pi`` is not
+#: here: it fires only when the PI has no SAM user, so it is a person blocker
+#: (``sam.queries.xras_requests.is_person_blocker``). Guarded by ``test_xras_row_blockers``.
 NO_AFFILIATION_MARKERS = (
     'has no current institution or organization',
-    'Could not produce affiliation data for PI',
 )
 
 

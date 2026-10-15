@@ -49,6 +49,31 @@ So:
   or Extension that answers 422 is an operator problem on an existing project, and its 422
   text already says what is wrong.
 
+### 2.1 What production's refused News looked like (2026-08-24 to 2026-10-14)
+
+22 requests had a New or Renewal refused, out of about 90 that applied. Their blockers, as
+`row_blockers` classifies them (a request often carries more than one):
+
+| Requests | Blocker |
+|---|---|
+| 12 (7 with nothing else) | a person: a roster member missing or inactive in SAM, or two Allocation Manager roles in range |
+| 11 (6 with nothing else) | a mnemonic: a PI SAM holds whose affiliation has no code; the card's mnemonic override fixes it |
+| 5 | a contract |
+
+A PI SAM does not hold also reports "Could not produce affiliation data". That line is part of
+the person blocker, not a mnemonic one: an override clears it and leaves the 422.
+
+How they ended:
+
+- **7 applied within 10 minutes of the first refusal.** The operator fixed it on the spot and
+  posted again. A ticket filed on the first 422 would open and need closing by hand (no
+  auto-close, § 7) for a fix that took two minutes.
+- **2 within a day; 9 after more than a day** (up to 9 days).
+- **4 are still open** (NCAR4281, NCAR4340, NCAR4395, NCAR4391).
+- **6 applied under a different number.** NUSD created the project in SAM by hand, renamed the
+  request to its projcode, and posted again, so the New applied as an update. The `request_id`
+  stayed the same, so a ticket keyed on it (§ 4) resolves through that route too.
+
 ## 3. The ticket body
 
 | Section | Source |
@@ -156,6 +181,10 @@ Probes on samuel-dev against XRAS-dev, 2026-10-13
 
 ## 10. Open questions for Ben
 
+- **A grace period before filing.** A third of production's refused News applied within ten
+  minutes (§ 2.1). Open the ticket only when the request is still refused some minutes after
+  its first 422 (on the next post, or the next sweep pass), or open it at once and accept the
+  closing by hand?
 - **Ticket type and audience.** Request type 20 "Add a user", or a new one? Reporter
   `rc-sam-bot`; on behalf of the PI?
 - **N for "approved, not posted".** Two business days?
