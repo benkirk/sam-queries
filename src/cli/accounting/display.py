@@ -577,9 +577,76 @@ def display_quota_reconcile_plan(ctx: Context, report: dict) -> None:
             f"Reported only; no action taken.{extra}[/dim italic]\n"
         )
 
+    _uncovered_table(ctx, f"Quota after allocation expired ({resource_name})",
+                     cats['quota_after_expiry'], expired=True)
+    if cats['quota_after_expiry']:
+        ctx.console.print(
+            f"[dim italic]The project's last {resource_name} allocation has ended, "
+            "but its fileset still has a quota. Past the 90-day access window these "
+            "are cleanup candidates. Reported only.[/dim italic]\n"
+        )
+    _uncovered_table(ctx, f"Quota without any allocation ({resource_name})",
+                     cats['quota_without_allocation'], expired=False)
+    if cats['quota_without_allocation']:
+        ctx.console.print(
+            f"[dim italic]The fileset belongs to a SAM project with no {resource_name} "
+            "allocation, current or past. Reported only.[/dim italic]\n"
+        )
+
+    unlinked = cats['unlinked_directory']
+    if unlinked and ctx.verbose:
+        t = Table(title=f"Directory not linked in SAM ({resource_name})",
+                  box=box.SIMPLE_HEAD)
+        t.add_column("Project", style="green")
+        t.add_column("Fileset", style="dim")
+        t.add_column("Path", style="dim")
+        t.add_column("Fix", style="cyan")
+        for fs in unlinked:
+            t.add_row(fs['projcode'], fs['fileset'], fs['path'] or "—", fs['action'])
+        ctx.console.print(t)
+    if unlinked:
+        ctx.console.print(
+            f"[dim italic]Directory not linked in SAM: {fmt.number(len(unlinked))}. "
+            "The fileset resolves to a project by name or label, but SAM has no "
+            "project directory for its path; --disk --reconcile-directories fixes the link"
+            f"{'' if ctx.verbose else ' (--verbose lists them)'}.[/dim italic]\n"
+        )
+
+    if cats['known_unowned'] and ctx.verbose:
+        t = Table(title=f"Known unowned ({resource_name})", box=box.SIMPLE_HEAD)
+        t.add_column("Fileset", style="dim")
+        t.add_column("Path", style="dim")
+        t.add_column("Limit", justify="right")
+        for fs in cats['known_unowned']:
+            t.add_row(fs['fileset'], fs['path'] or "—", fmt.size(fs['limit_bytes']))
+        ctx.console.print(t)
+
     if cats['matched']:
         _project_table(ctx, f"Matched ({resource_name})", cats['matched'],
                        decimals=2, delta_style="dim", action=False)
+
+
+def _uncovered_table(ctx: Context, title: str, items: list, *, expired: bool) -> None:
+    if not items:
+        return
+    t = Table(title=title, box=box.SIMPLE_HEAD)
+    t.add_column("Project", style="green")
+    t.add_column("Active", justify="center")
+    if expired:
+        t.add_column("Ended", justify="right")
+        t.add_column("Days", justify="right", style="yellow")
+    t.add_column("Fileset", style="dim")
+    t.add_column("Path", style="dim")
+    t.add_column("Limit", justify="right")
+    t.add_column("Usage", justify="right")
+    for fs in items:
+        row = [fs['projcode'], "yes" if fs['project_active'] else "[dim]no[/dim]"]
+        if expired:
+            row += [fmt.date_str(fs['last_end_date']), fmt.number(fs['days_since_end'])]
+        row += [fs['fileset'], fs['path'] or "—",
+                fmt.size(fs['limit_bytes']), fmt.size(fs['usage_bytes'])]
+        t.add_row(*row)
+    ctx.console.print(t)
 
 
 def display_quota_reconcile_summary(
@@ -608,7 +675,11 @@ def display_quota_reconcile_summary(
     t.add_row("Matched", f"[green]{counts['matched']}[/green]")
     t.add_row("Mismatched", f"[yellow]{counts['quota_mismatch']}[/yellow]")
     t.add_row("Orphaned", f"[yellow]{counts['allocation_without_quota']}[/yellow]")
+    t.add_row("Quota, allocation expired", f"[yellow]{counts['quota_after_expiry']}[/yellow]")
+    t.add_row("Quota, never allocated", f"[yellow]{counts['quota_without_allocation']}[/yellow]")
+    t.add_row("Directory not linked in SAM", str(counts['unlinked_directory']))
     t.add_row("Unmapped quota entries", str(counts['no_project']))
+    t.add_row("Known unowned", str(counts['known_unowned']))
     if will_apply_updates:
         t.add_row("Allocations updated", f"[cyan]{updated}[/cyan]")
     if will_deactivate_orphans:

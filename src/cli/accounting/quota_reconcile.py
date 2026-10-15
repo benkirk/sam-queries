@@ -62,6 +62,7 @@ class QuotaReconcileMixin:
         from sam.accounting.accounts import Account
         from sam.accounting.allocations import Allocation
         from sam.projects.projects import Project, ProjectDirectory
+        from sqlalchemy import func
 
         # JSON is report-only (src/cli/README.md); its messages go to stderr.
         json_mode = self.ctx.output_format == 'json'
@@ -183,6 +184,8 @@ class QuotaReconcileMixin:
         own_quota: dict[str, list[QuotaEntry]] = {}
         seen_filesets: set[str] = set()
         unmapped: list[QuotaEntry] = []
+        known_unowned: list[QuotaEntry] = []
+        unlinked: list[dict] = []
         for qe in quota_entries:
             key = qe.path or qe.fileset_name
             if key in seen_filesets:
@@ -190,9 +193,12 @@ class QuotaReconcileMixin:
             seen_filesets.add(key)
             res = resolver.resolve(qe.path, labels[id(qe)])
             if res.project is None:
-                unmapped.append(qe)
-            else:
-                own_quota.setdefault(res.project.projcode, []).append(qe)
+                (known_unowned if res.reason == 'known_unowned' else unmapped).append(qe)
+                continue
+            own_quota.setdefault(res.project.projcode, []).append(qe)
+            if res.reason == 'unlinked_directory':
+                unlinked.append({**_fileset_item(qe, res.project.projcode),
+                                 'action': res.action})
 
         # ---- 5. Subtree roll-up via MPPT containment --------------------------
         # NestedSetMixin: P's subtree is every Q sharing P.tree_root with
@@ -261,6 +267,55 @@ class QuotaReconcileMixin:
             item = _project_item(proj, alloc, expected_bytes, contributors)
             (mismatched if delta_frac > QUOTA_TOLERANCE else matched).append(item)
 
+        # ---- 6a. Filesets no allocation covers --------------------------------
+        # A quota whose owner has no active allocation on itself or an ancestor
+        # is in no subtree above. Report it, split by whether the project ever
+        # had one here: retention lags removal, so expired filesets linger.
+        covered = set(by_projcode) | {
+            p.projcode for p in (
+                self.session.query(Project)
+                .join(Account, Account.project_id == Project.project_id)
+                .join(Allocation, Allocation.account_id == Account.account_id)
+                .filter(Account.resource_id == resource.resource_id)
+                .filter(Account.deleted == False)  # noqa: E712
+                .filter(Allocation.is_active)
+                .filter(Allocation.parent_allocation_id.isnot(None))
+            )
+        }
+        allocated_by_root: dict[int, list] = {}
+        for pc in by_projcode:
+            p = projects_by_code[pc]
+            if p.tree_root is not None:
+                allocated_by_root.setdefault(p.tree_root, []).append(p)
+        last_end = dict(
+            self.session.query(Account.project_id, func.max(Allocation.end_date))
+            .join(Allocation, Allocation.account_id == Account.account_id)
+            .filter(Account.resource_id == resource.resource_id)
+            .filter(Allocation.deleted == False)  # noqa: E712
+            .group_by(Account.project_id)
+        )
+        now = datetime.now()
+        after_expiry: list[dict] = []
+        never_allocated: list[dict] = []
+        for projcode, entries in own_quota.items():
+            proj = projects_by_code[projcode]
+            if projcode in covered or any(
+                a.is_ancestor_of(proj) for a in allocated_by_root.get(proj.tree_root, ())
+            ):
+                continue
+            ended = last_end.get(proj.project_id)
+            for qe in entries:
+                item = {**_fileset_item(qe, projcode), 'project_active': bool(proj.active),
+                        'last_end_date': ended}
+                if ended is not None and ended <= now:
+                    item['days_since_end'] = (now.date() - ended.date()).days
+                    after_expiry.append(item)
+                else:
+                    never_allocated.append(item)
+        after_expiry.sort(key=lambda i: (-i['days_since_end'], i['projcode']))
+        never_allocated.sort(key=lambda i: (-i['usage_bytes'], i['projcode']))
+        unlinked.sort(key=lambda i: (i['projcode'], i['path'] or ''))
+
         report = {
             'kind': 'quota_reconcile',
             'resource': resource_name,
@@ -273,7 +328,11 @@ class QuotaReconcileMixin:
                 'matched': matched,
                 'quota_mismatch': mismatched,
                 'allocation_without_quota': orphaned,
+                'quota_after_expiry': after_expiry,
+                'quota_without_allocation': never_allocated,
+                'unlinked_directory': unlinked,
                 'no_project': [_fileset_item(qe) for qe in unmapped],
+                'known_unowned': [_fileset_item(qe) for qe in known_unowned],
             },
         }
         report['counts'] = {k: len(v) for k, v in report['categories'].items()}

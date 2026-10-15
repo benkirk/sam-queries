@@ -1356,8 +1356,9 @@ class TestReconcileJson:
         assert report['resource'] == resource.resource_name
         assert report['verified_paths'] is False
         assert report['counts'] == {
-            'matched': 1, 'quota_mismatch': 0,
-            'allocation_without_quota': 1, 'no_project': 1,
+            'matched': 1, 'quota_mismatch': 0, 'allocation_without_quota': 1,
+            'quota_after_expiry': 0, 'quota_without_allocation': 0,
+            'unlinked_directory': 1, 'no_project': 1, 'known_unowned': 0,
         }
         [m] = report['categories']['matched']
         assert m['projcode'] == funded.projcode
@@ -1383,3 +1384,70 @@ class TestReconcileJson:
         assert out[0]['error'] == 'json_unsupported_for_writes'
         session.refresh(alloc)
         assert alloc.end_date is None or alloc.end_date > datetime.now()
+
+
+class TestUncoveredFilesets:
+    """Filesets whose owner has no active allocation are reported, never dropped."""
+
+    def _quota(self, tmp_path, *projects, extra=None):
+        entries = {p.projcode.lower(): {'limit': str(_kib_for(2.0)),
+                                        'usage': str(_kib_for(1.0)), 'files': '1'}
+                   for p in projects}
+        entries.update(extra or {})
+        return _write_quota_file(tmp_path, entries)
+
+    def test_expired_and_never_allocated(self, session, tmp_path, monkeypatch):
+        resource = _isolated_disk_resource(session, monkeypatch)
+        expired = make_project(session)
+        ended = datetime.now() - timedelta(days=200)
+        make_allocation(session, account=make_account(session, project=expired, resource=resource),
+                        amount=2.0, start_date=ended - timedelta(days=365), end_date=ended)
+        never = make_project(session)
+        quota_path = self._quota(tmp_path, expired, never)
+
+        rc, [report] = _json_reconcile(session, resource, quota_path, monkeypatch)
+        assert rc == 0
+        [e] = report['categories']['quota_after_expiry']
+        assert e['projcode'] == expired.projcode
+        assert e['days_since_end'] == 200
+        assert e['last_end_date'].date() == ended.date()
+        [n] = report['categories']['quota_without_allocation']
+        assert (n['projcode'], n['last_end_date']) == (never.projcode, None)
+        assert report['counts']['allocation_without_quota'] == 0
+
+    def test_child_under_an_allocated_parent_is_covered(self, session, tmp_path, monkeypatch):
+        resource = _isolated_disk_resource(session, monkeypatch)
+        parent = make_project(session)
+        child = make_project(session, parent=parent)
+        make_allocation(session, account=make_account(session, project=parent, resource=resource),
+                        amount=2.0)
+        rc, [report] = _json_reconcile(session, resource, self._quota(tmp_path, child),
+                                       monkeypatch)
+        assert report['counts']['quota_without_allocation'] == 0
+        assert report['counts']['matched'] == 1
+
+    def test_known_unowned_is_its_own_category(self, session, tmp_path, monkeypatch):
+        resource = _isolated_disk_resource(session, monkeypatch)
+        quota_path = _write_quota_file(tmp_path, {
+            'root': {'limit': str(_kib_for(1.0)), 'usage': '0', 'files': '0'},
+        })
+        rc, [report] = _json_reconcile(session, resource, quota_path, monkeypatch)
+        assert report['counts']['known_unowned'] == 1
+        assert report['counts']['no_project'] == 0
+
+    def test_write_flags_leave_uncovered_filesets_alone(self, session, tmp_path, monkeypatch):
+        resource = _isolated_disk_resource(session, monkeypatch)
+        expired = make_project(session)
+        ended = datetime.now() - timedelta(days=30)
+        alloc = make_allocation(session, account=make_account(
+            session, project=expired, resource=resource), amount=9.0,
+            start_date=ended - timedelta(days=365), end_date=ended)
+        monkeypatch.setenv('SAM_ADMIN_USER', expired.lead.username)
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name, quota_path=self._quota(tmp_path, expired),
+            update_accounting_system=True, deactivate_orphaned=True,
+        )
+        assert rc == 0
+        session.refresh(alloc)
+        assert float(alloc.amount) == 9.0
