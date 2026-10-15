@@ -125,11 +125,16 @@ Counts from the live directory, anonymous (`ou=allPeople` is 28,605 people, 13,7
   where SAM has no row, report it rather than create one with an invented date.
 - **Collaborations SAM sponsors are SAM's truth, derived (Ben, 2026-10-15).** Every collaboration
   names its sponsoring NCAR org: 77% `adminOrg` CISL or USS, which legacy SAM created for HPC users.
-  For those, the outbound path is the source: while a person is a member of an active project, SAM
-  keeps their collaboration end date about 90 days ahead, derived from project membership and
-  allocation dates, and writes it to the directory in a field of its own. The reconcile may read
-  that field back, but as SAM's own output, never as new information; the directory's own dates on a
-  SAM-sponsored collaboration are reported, not applied. SAM stores no sponsor column and gets none.
+  For those, the outbound path is meant to be the source: while a person is a member of an active
+  project, SAM will keep their collaboration end date about 90 days ahead, derived from project
+  membership and allocation dates, and the daemon will write it to the collaboration's own
+  `x-ucar-endDate` (`lib/StagingTransformers.pm:71`), the attribute the directory uses too.
+  **That keep-alive has never run** (no `collabexpiryupdates` GET in 57 days of logs; the cron child
+  dies, `LDAP_SYNC_API.md` § 2.4). Every collaboration today was last written by the bulk load or by
+  Fischer, so the 984 end dates on CISL/USS collaborations are PeopleDB's, not SAM's. Until the pass
+  runs, a date there is the directory's: reported, never applied. Once it runs, the entry's
+  `modifiersName` (the daemon's bind DN) tells a SAM-written date from the directory's; that is
+  stage 2's hook. SAM stores no sponsor column and gets none.
 - **Fields SAM does not keep.** Positions also carry type, title, supervisor, primary and number;
   none map to SAM and none are needed. 2,050 positions name no organization, 6 of them current.
 
