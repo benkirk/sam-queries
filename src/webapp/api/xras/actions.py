@@ -43,9 +43,10 @@ error, and a parked action is not one. Decision recorded at
 
 import json
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 
-from flask import current_app, request
+from flask import current_app, g, request
 from marshmallow import ValidationError
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
@@ -582,6 +583,14 @@ def _refusal_reply(action, messages):
     return tickets.reply_lines(messages, state=state)
 
 
+@contextmanager
+def _after_reply_context(app, actor):
+    """An app context whose audit rows name *actor*: the request that knew it is gone."""
+    with app.app_context():
+        g.audit_actor = actor
+        yield
+
+
 def _activate_after_reply(response, result, log_id) -> None:
     """Activate the project a New just created, once the reply has gone
     (docs/plans/XRAS_POST_AUTOMATION.md § 3 B). Only ``add`` creates one: a New
@@ -599,7 +608,7 @@ def _activate_after_reply(response, result, log_id) -> None:
 
     def activate():
         try:
-            with app.app_context(), Session(db.engine) as session:
+            with _after_reply_context(app, actor), Session(db.engine) as session:
                 outcome = xras_activation.activate_posted_project(
                     session, projcode, by=actor, xras_action_log_id=log_id)
             app.logger.info('XRAS activate after reply: %s %s', projcode, outcome)
@@ -630,7 +639,7 @@ def _rename_after_reply(response, action, projcode) -> None:
     def rename():
         started = time.monotonic()
         try:
-            with app.app_context():
+            with _after_reply_context(app, operator):
                 outcome = remediation.rename_request(
                     lambda: Session(db.engine), request_id=request_id,
                     old_number=old_number, new_number=projcode, operator=operator)
