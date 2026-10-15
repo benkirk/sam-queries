@@ -15,12 +15,15 @@ _AUDIT_EVENTS_REGISTERED = False
 
 
 def responsible_user():
-    """The request's actor: the API-key name (an XRAS push, a collector),
-    else the logged-in user, else "anonymous" (CLI, background job)."""
+    """The actor: ``g.audit_actor`` (work after the reply), else the API-key name
+    (an XRAS push, a collector), else the logged-in user, else "anonymous" (CLI)."""
     try:
         from flask import g
         from flask_login import current_user
 
+        explicit = g.get('audit_actor')
+        if explicit:
+            return explicit
         api_user = g.get('api_key_user')
         if api_user:
             return api_user
