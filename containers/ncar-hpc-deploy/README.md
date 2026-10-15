@@ -195,10 +195,11 @@ Gotchas:
   its interval for the previous ssh, then mails, so a hung remote run is reported
   even though it never reaches the lane's stale-lock check.
 - `accounting-disk` stamps a usage file once `sam-admin` has consumed it, even
-  on exit 2, which means an unexpected gap: no project, no account or an unknown
-  user (it still mails once). Known-unowned filesets, unlinked directories and
-  system accounts are reported and exit 0. Reloading the same file
-  would repeat the same rows; to rerun one, delete
+  on exit 2. Exit 2 means an unexpected gap (no project, no account or an unknown
+  user) or a file `sam-admin` could not read or refused, such as an unknown column
+  count; it still mails once and the log names the cause. Known-unowned
+  filesets, unlinked directories and system accounts are reported and exit 0.
+  Reloading the same file would repeat the same rows; to rerun one, delete
   `lanes/<lane>/state/disk-<key>.stamp`.
 - The `accounting-comp` smoke step runs the job's fallback ladder with
   `--dry-run`, and `--skip-errors` still exits 2 when rows were skipped. A bad
