@@ -1,6 +1,8 @@
 # One NUSD ticket per blocked XRAS post
 
-**Status: design, not built.** Phase D of [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md).
+**Status: built 2026-10-14, dev first** (`xras-post-automation-bd`). samuel-dev files through
+the `dry-run` provider; production ships the task disabled with no ticket lever. § 11 holds what
+differs from this design. Phase D of [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md).
 
 **The model** (Ben, 2026-10-14 and 2026-10-15):
 - Approvers approve and post in one sitting, and a post that applies is done: no ticket, no
@@ -221,13 +223,17 @@ account-queue digest. No ticket: the operator's next step is the post.
 
 ## 9. Rollout
 
-1. **Dev, shadow.** The task runs on samuel-dev with `XRAS_REQUEST_TICKETS_ENABLED` off. Its
-   detail records "would open / comment / applied" per request.
-2. **Dev, filing** against the RC project with a label and immediate cancel, the way
-   RC-40275/40276 were smoked. Work the blocked-New scenarios on the bed
+1. **Dev, dry-run filing.** samuel-dev has no Jira, so the task runs armed on
+   `TICKET_PROVIDER=dry-run`: real `external_ticket` and ledger rows, `DRY-SAM-XR-<id>` keys,
+   each body and comment in the task log, nothing posted. (Off, the task is a shadow: its detail
+   records "would open / comment / applied".)
+2. **Dev, the scenarios.** Work the blocked-New scenarios on the bed
    (`XRAS_CLOSED_LOOP.md` § 4). Scenario 6, the placeholder merge, ran 2026-10-14
    (`XRAS_DEV_PROBES.md` § 6.1): the four-error 422, the merge, the repost that applied.
-3. **Prod:** the switch on, the task out of `SAM_TASKS_DISABLED`, and the levers in `tasks.env`.
+3. **Prod:** the request type and labels (`JIRA_XRAS_REQUEST_*`), then
+   `XRAS_REQUEST_TICKETS_ENABLED` in both envs, `TICKET_PROVIDER` and `JIRA_WRITE_ENABLED` in
+   `tasks.env`, and the task out of `SAM_TASKS_DISABLED`. A first filing against the RC project
+   with immediate cancel, the way RC-40275/40276 were smoked.
 
 Probes on samuel-dev against XRAS-dev, 2026-10-13
 ([`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md) § 4): the push row carries
@@ -243,3 +249,16 @@ Probes on samuel-dev against XRAS-dev, 2026-10-13
   "only on change"?
 - **Drop-out.** When XRAS deletes a request with an open ticket, does SAM cancel it? The sweep
   sees the deletion; nothing acts on it today.
+
+## 11. As built (2026-10-14)
+
+| Design | Built | Why |
+|---|---|---|
+| Rename `handoff_mail.py` to `handoff.py` | the filer lifted to `sam/integration/tickets/filing.py`; `handoff_mail.py` keeps its name | it still holds the mail fallback; the rename is churn for later |
+| Four 422 states, one a mail fallback | three: no ticket yet, open under its key, last filing failed | this kind has no mail path |
+| The state line always | only with `XRAS_REQUEST_TICKETS_ENABLED`; the pointer lines always | a disabled task must not have the 422 promise a ticket |
+| Open keyed on the blocker digest | `xras_ticket:<id>:open`, then a `<digest>` row for the body it carried | the open is once-only even when the list changes before the link lands |
+| — | 30-day lookback; `SAM_TASKS_XRAS_TICKETS_MAX` (10 opens) raises before any filing | the first arming's blast radius |
+| § 8, approved not posted | not built | deferred (Ben, 2026-10-14) |
+| Dev, a filing against RC | the `dry-run` provider, outside `PROVIDERS` and refused to the webapp | dev has no Jira |
+

@@ -105,7 +105,20 @@ arm it through `XRAS_WRITE_ENABLED` in `tasks.env` (pinned by `test_xras_admin_c
 removing that key, or naming the task in `SAM_TASKS_DISABLED`, disarms it.
 `--dry-run` reads only; `SAM_TASKS_XRAS_RENAME_SINCE` widens the window for the backfill.
 The `/actions` route's own rename has a separate lever, `XRAS_RENAME_ENABLED` (`"1"` in both).
-Record: `docs/plans/XRAS_CLOSED_LOOP.md` § 3.3, § 3.5.
+Record: `docs/plans/XRAS_CLOSED_LOOP.md` § 3.3, § 3.5. Its after-reply hook also activates a New's
+project under `XRAS_AUTO_ACTIVATE` (dev `"1"`, prod `"0"`; `sam/manage/xras_activation.py`).
+
+### The `xras_request_tickets` task
+
+`src/scheduling/tasks/xras_request_tickets.py`, every 15 min: one NUSD ticket per XRAS New or
+Renewal still refused past the grace period (10 min), an internal comment when its blocker list
+changes and one when a post applies; NUSD closes it. Keys `xras_ticket:<requestId>:{open,<digest>,applied}`.
+⚠️ **The CronJob's one ticket writer**: `TICKET_PROVIDER` reaches it from `tasks.env` alone. Prod
+ships it in `SAM_TASKS_DISABLED` with no ticket lever; dev runs `TICKET_PROVIDER=dry-run` (logs,
+mints `DRY-<handle>`, outside `PROVIDERS` so nothing reads it, refused to the webapp).
+`XRAS_REQUEST_TICKETS_ENABLED` off, or `--dry-run`, reports only: the ledger and link rows commit
+on their own sessions. The webapp's 422 reads the state with no outbound call
+(`sam/queries/xras_request_tickets.py`). Record: `docs/plans/XRAS_REQUEST_TICKETS.md`.
 
 ### The account-request tasks
 
