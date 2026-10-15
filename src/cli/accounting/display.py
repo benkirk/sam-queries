@@ -189,6 +189,8 @@ def display_disk_import_report(ctx: Context, data: dict) -> None:
     if data['written']:
         table.add_row("Created", f"[green]{data['created']}[/green]")
         table.add_row("Updated", f"[cyan]{data['updated']}[/cyan]")
+    if data.get('layout'):
+        table.add_row("File layout", data['layout'])
     table.add_row("Skipped (system account)", str(counts['system_account_rows']))
     table.add_row("Skipped (known unowned)", str(counts['known_unowned']))
     table.add_row("Charged, directory not linked", str(counts['unlinked_directory']))

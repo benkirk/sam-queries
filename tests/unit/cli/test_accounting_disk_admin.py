@@ -186,6 +186,30 @@ class TestDiskAdminCli:
         ).all()
         assert any(r.activity_date == snap for r in currents)
 
+    def test_quota_layout_charges_the_usage_column(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        snap = DISK_CHARGING_TIB_EPOCH
+        f = tmp_path / f"acct.glade.{snap.isoformat()}"
+        # quota8: date, path, label, user, nfiles, file quota, KiB, KiB quota
+        f.write_text(
+            f'"{snap.isoformat()}","/gpfs/csfs1/{project.projcode.lower()}",'
+            f'"{project.projcode.lower()}","{lead.username}","100","0",'
+            f'"{1024 * 1024}","{5 * 1024 ** 3}"\n'
+        )
+        result = runner.invoke(cli, [
+            'accounting', '--disk', '--resource', resource.resource_name,
+            '--user-usage', str(f), '--date', snap.isoformat(),
+        ])
+        assert result.exit_code == 0, result.output
+        assert 'quota8' in result.output
+        [row] = session.query(DiskChargeSummary).filter(
+            DiskChargeSummary.activity_date == snap,
+            DiskChargeSummary.user_id == lead.user_id,
+        ).all()
+        assert row.bytes == 1024 ** 3                   # the KiB column, not the quota
+
     def test_gap_reconciliation_creates_unidentified_row(
         self, runner, mock_db_session, tmp_path, session, monkeypatch,
     ):
@@ -858,6 +882,7 @@ class TestDiskImportTriage:
         assert data['resource'] == resource.resource_name
         assert data['snapshot_date'] == snap.isoformat()
         assert data['dry_run'] is True and data['written'] is False
+        assert data['layout'] == 'legacy8'
         assert set(data['categories']) == {
             'no_project', 'no_account', 'unknown_user',
             'known_unowned', 'unlinked_directory', 'expired_directory',

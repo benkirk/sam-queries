@@ -447,7 +447,8 @@ class DiskIngestMixin:
         unexpected = report['counts']['unexpected']
         envelope = {
             'resource': resource_name, 'snapshot_date': snap_date,
-            'dry_run': dry_run, 'skip_errors': skip_errors, 'written': False,
+            'layout': reader.layout, 'dry_run': dry_run, 'skip_errors': skip_errors,
+            'written': False,
         }
 
         # ---- 7. Verbose dry-run table ----------------------------------
