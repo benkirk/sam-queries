@@ -5,7 +5,7 @@ first step is a read-only discrepancy report. No code yet.
 **Scope:** directory → SAM: people, then their positions (`user_organization`) and collaborations
 (`user_institution`), then organizations, institutions and adhoc groups. SAM → directory (project
 groups, collaborator end dates) stays with the daemon.
-**Related:** `LDAP_SYNC_API.md` (§ 10.3 deviations D1-D4, § 10.5 residuals, § 10.7 soak),
+**Related:** `LDAP_SYNC_API.md` (§ 10.3 deviations D1-D4, § 10.5 residuals; § 10.7 soak, in PR #777),
 `LDAPSYNC_DEV_SHADOW.md`, `SAM_LDAP_SYNCD_REFERENCE.md` (daemon bugs N17, N21, N24-N26, 1, 7; staging
 § 3.6-3.8).
 
@@ -73,7 +73,7 @@ collaborations (4,512 active).
 How to read the table:
 
 - **Planned end dates.** Prod keeps 181 only because legacy's stock daemon rarely delivers position
-  changes at all (§ 10.5). The shadow delivered them, and SAMuel applied the erasure. So a faithful
+  changes at all (`LDAP_SYNC_API.md` § 10.5). The shadow delivered them, and SAMuel applied the erasure. So a faithful
   SAM fed by this daemon gets worse.
 - **Collaborations are nearly right everywhere.** The trouble is in positions.
 - **The 113 positions current in the directory but ended in prod** are undelivered changes. The
@@ -170,10 +170,10 @@ than affiliations, because legacy already treats the directory as the truth for 
   the user's own rows is trusted, employer included, and the employer is updated in place. Today an
   id-less record can grab another row, and a moved collaboration is inserted again.
 - **Collaboration end dates stored as sent.** Today a midnight end is silently stored as 23:59:59
-  (`src/sam/base.py` around 53-71), so 22 collaboration PUTs never converge (§ 10.5).
+  (`src/sam/base.py` around 53-71), so 22 collaboration PUTs never converge (`LDAP_SYNC_API.md` § 10.5).
 - **A guard against end-date erasure (D-E):** a POST may not clear a planned end date SAM already
   holds, until upstream fixes the erasure.
-  - This deliberately departs from a faithful POST, so it would be recorded in § 10.3.
+  - This deliberately departs from a faithful POST, so it would be recorded in `LDAP_SYNC_API.md` § 10.3.
   - It protects prod after the `SAM_URL` flip: from then on, prod would take the shadow's erasures.
 
 **Upstream:** an issue for the end-date erasure (D-D).
@@ -369,5 +369,5 @@ if __name__ == '__main__':
     main()
 ```
 
-The twin figures in § 5.3 come from grouping `x-ucar-position` entries by person and organization
+The twin figures in § 4 come from grouping `x-ucar-position` entries by person and organization
 and counting the PDB/FI pairs, their `x-ucar-active` values and start days, in the same counts-only way.
