@@ -1,0 +1,337 @@
+From 6dc3e40dff366f8bf79824a5985f3edb537f8ada Mon Sep 17 00:00:00 2001
+From: Benjamin Kirk <benkirk@ucar.edu>
+Date: Thu, 15 Oct 2026 05:12:22 -0600
+Subject: [PATCH] Keep a record SAM rejects and re-send it until SAM takes it
+
+Restoring the old record on a rejection lost the rest of the update: on
+2026-10-14 IdM sent a user with a transient bad username and a
+reactivation, SAM rejected the record for the name, and the restore put
+back the inactive record. When IdM fixed the name a few minutes later the
+update was a no-op against the restored record, so the reactivation never
+reached SAM.
+
+Now a rejected addOrUpdate stays in the IMDB and the log, as IdM has it,
+and its key is marked owed in sam-owed.json beside the SAM data file. An
+owed record is sent whole the next time an update reaches it, a no-op
+included (a later change, or the next full dump), and leaves the set once
+SAM takes it. A rejected delete is still restored, so the next full dump
+sends it again.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01EgPyNLobhxFie7ZK1MJxqX
+---
+ lib/SamFileManager.pm      | 73 ++++++++++++++++++++++++++++++++++++++
+ lib/SamUpdatePropagator.pm | 61 ++++++++++++++++++++++++++++---
+ lib/SamUpdatePropagator.t  | 68 +++++++++++++++++++++++++++++------
+ 3 files changed, 187 insertions(+), 15 deletions(-)
+
+diff --git a/lib/SamFileManager.pm b/lib/SamFileManager.pm
+index aedc18e..6f9477a 100644
+--- a/lib/SamFileManager.pm
++++ b/lib/SamFileManager.pm
+@@ -115,6 +115,79 @@ sub samLogFile {
+ }
+ 
+ 
++=pod
++
++=head3 C<SamFileManager::owedFile()>
++
++    my $filename = $samFileMgr->owedFile();
++
++Return the name of the file listing records SAM rejected and is still owed:
++C<sam-owed.json> beside the SAM data file.
++
++=cut
++
++sub owedFile {
++    my $self = shift;
++    my $dir = $self->{'samData'};
++    $dir =~ s{[^/]*$}{};
++    return $dir . 'sam-owed.json';
++}
++
++
++=pod
++
++=head3 C<SamFileManager::readOwed()>
++
++    my $owed = $samFileMgr->readOwed();
++
++Return the owed set as a hash of "type:key" => 1; empty when there is no file.
++
++=cut
++
++sub readOwed {
++    my $self = shift;
++
++    my $owedFile = $self->owedFile();
++    return {} unless -s $owedFile;
++    open(my $infh, "<", $owedFile)
++        or throwSysError("readOwed: cannot open $owedFile: $!");
++    local $/;
++    my $json = <$infh>;
++    close($infh);
++    return decode_json($json);
++}
++
++
++=pod
++
++=head3 C<SamFileManager::writeOwed()>
++
++    $samFileMgr->writeOwed($owed);
++
++Replace the owed file with the given hash; an empty hash removes the file.
++
++=cut
++
++sub writeOwed {
++    my $self = shift;
++    my $owed = shift;
++
++    my $owedFile = $self->owedFile();
++    if (!%$owed) {
++        unlink($owedFile);
++        return;
++    }
++    my $wxHandle = FileUtil::WXHandle->new($owedFile,'w');
++    try {
++        $wxHandle->print(encode_json($owed));
++    } catch {
++        $wxHandle->abort();
++        die $_;
++    };
++    $wxHandle->commit();
++}
++
++
+ =pod
+ 
+ =head3 C<SamFileManager::writeSamDataDump()>
+diff --git a/lib/SamUpdatePropagator.pm b/lib/SamUpdatePropagator.pm
+index e59dbe6..dae0b70 100644
+--- a/lib/SamUpdatePropagator.pm
++++ b/lib/SamUpdatePropagator.pm
+@@ -56,12 +56,35 @@ sub new {
+     my $self = {
+         samClient  => $samClient,
+         samFileMgr => $samFileMgr,
++        owed       => undef,
+     };
+ 
+     bless $self,$class;
+     return $self;
+ }
+ 
++# The records SAM rejected and is still owed, "type:key" => 1, loaded on first use
++sub _owed {
++    my $self = shift;
++    $self->{'owed'} //= $self->{'samFileMgr'}->readOwed();
++    return $self->{'owed'};
++}
++
++sub _setOwed {
++    my $self = shift;
++    my $id = shift;
++    my $isOwed = shift;
++
++    my $owed = $self->_owed();
++    return if ($isOwed ? exists($owed->{$id}) : !exists($owed->{$id}));
++    if ($isOwed) {
++        $owed->{$id} = 1;
++    } else {
++        delete($owed->{$id});
++    }
++    $self->{'samFileMgr'}->writeOwed($owed);
++}
++
+ 
+ =pod
+ 
+@@ -126,8 +149,12 @@ sub propagate {
+ 
+     $samPropagator->propagateOrRestore($samUpdate,$oldRec);
+ 
+-Like propagate(), but when SAM rejects the record, put C<$oldRec> back in the
+-IMDB so a later pass sends it again, and continue.
++Like propagate(), but when SAM rejects the record, continue. A rejected
++addOrUpdate stays in the IMDB and the log, as IdM has it, and is marked owed;
++an owed record is sent whole the next time an update reaches it, even a no-op
++(any later change to the record, or the next full dump), until SAM takes it.
++A rejected delete puts C<$oldRec> back in the IMDB, so the next full dump
++sends the delete again.
+ 
+ =cut
+ 
+@@ -136,8 +163,26 @@ sub propagateOrRestore {
+     my $samUpdate = shift;
+     my $oldRec = shift;
+ 
++    my $type = SamUpdate::dataType($samUpdate);
++    my $key = SamUpdate::key($samUpdate);
++    my $id = "$type:$key";
++    if (SamUpdate::updateType($samUpdate) eq 'no-op' && $self->_owed()->{$id}) {
++        # A no-op carries no record; the IMDB holds IdM's current one
++        my $rec = SamDataManager::getManagerByType($type)->samData()->{$key};
++        if (defined($rec)) {
++            vprintf(INFO,"Re-sending owed %s %s\n",$type,$key);
++            $samUpdate = SamUpdate::create('addOrUpdate',$type,$key,$rec);
++        }
++    }
++    my $updType = SamUpdate::updateType($samUpdate);
++
+     try {
+         $self->propagate($samUpdate);
++        my $samDataMgr = SamDataManager::getManagerByType($type);
++        if ($updType ne 'no-op'
++            && !defined($samDataMgr->isPropagationDeferred(SamUpdate::data($samUpdate)))) {
++            $self->_setOwed($id,0);
++        }
+     } catch {
+         my $ex = $_;
+         die $ex unless Scalar::Util::blessed($ex) && $ex->isa('AppException')
+@@ -146,8 +191,16 @@ sub propagateOrRestore {
+         if ($status < 400 || $status == 401 || $status == 403) {
+             throwIMDBStateException($ex->message());
+         }
+-        my $type = SamUpdate::dataType($samUpdate);
+-        my $key = SamUpdate::key($samUpdate);
++        if ($updType eq 'addOrUpdate') {
++            # Keep IdM's record: restoring the old one would make a later
++            # update that undoes only the rejected field a no-op, and lose
++            # the rest of the record with it.
++            $self->{'samFileMgr'}->appendToSamLog($samUpdate);
++            $self->_setOwed($id,1);
++            vprintf(ERROR,"SAM rejected %s %s (%d), owed: %s\n",
++                    $type,$key,$status,$ex->message());
++            return;
++        }
+         my $samDataMgr = SamDataManager::getManagerByType($type);
+         if (defined($oldRec)) {
+             $samDataMgr->addOrUpdate($oldRec);
+diff --git a/lib/SamUpdatePropagator.t b/lib/SamUpdatePropagator.t
+index 9a00e07..892ae36 100755
+--- a/lib/SamUpdatePropagator.t
++++ b/lib/SamUpdatePropagator.t
+@@ -5,6 +5,7 @@ use Data::Dumper::Concise;
+ use Vprint;
+ use File::Temp qw( tempdir );
+ use Storable qw( dclone );
++use JSON;
+ 
+ use SamDataManager;
+ use IMDBCore;
+@@ -14,7 +15,7 @@ use SamFileManager;
+ use MockSamClient;
+ 
+ use TestData;
+-use Test::Most tests => 30;
++use Test::Most tests => 37;
+ 
+ 
+ require_ok('SamUpdatePropagator');
+@@ -172,45 +173,90 @@ ok(samLogLines() == 8,
+    'completed group is appended to the SAM log');
+ 
+ #
+-# A rejected record is put back in the IMDB and not logged; auth failures
++# A rejected update stays in the IMDB and the log, marked owed; auth failures
+ # invalidate the IMDB instead
+ #
+ my ($rejKey) = sort keys(%{$userMgr->samData()});
+ my $rejOld = dclone($userMgr->samData()->{$rejKey});
++$rejOld->{'active'} = JSON::false;
++$userMgr->addOrUpdate(dclone($rejOld));
+ my $rejNew = dclone($rejOld);
+-$rejNew->{'firstname'} = 'Rejected';
+-$userMgr->addOrUpdate($rejNew);
++$rejNew->{'userName'} = '72746';
++$rejNew->{'active'} = JSON::true;
++$userMgr->addOrUpdate(dclone($rejNew));
+ my $rejStatus = 400;
++my $origAddOrUpdate = \&MockSamClient::addOrUpdate;
+ {
+     no warnings 'redefine';
+     *MockSamClient::addOrUpdate = sub {
+-        AppException::throwError($rejStatus,"rejected");
++        AppException::throwError($rejStatus,"rejected") if $rejStatus;
++        return $origAddOrUpdate->(@_);
+     };
+ }
++sub userSent { return scalar(@{$updBuffer->{'user'}}); }
++sub owedNow { return SamFileManager->new($samData,$samLog)->readOwed(); }
+ my $nLog = samLogLines();
+-$samUpdate = SamUpdate::create('addOrUpdate','user',$rejKey,$rejNew);
++$samUpdate = SamUpdate::create('addOrUpdate','user',$rejKey,dclone($rejNew));
+ lives_ok { $propagator->propagateOrRestore($samUpdate,$rejOld) }
+    'propagateOrRestore() continues after a 400';
+-is_deeply([$userMgr->samData()->{$rejKey}, samLogLines()], [$rejOld, $nLog],
+-   'rejected record is restored in the IMDB and not logged');
++is_deeply([$userMgr->samData()->{$rejKey}, samLogLines()], [$rejNew, $nLog + 1],
++   'a rejected update stays in the IMDB and is logged');
++is_deeply(owedNow(), {"user:$rejKey" => 1},
++   'a rejected update is marked owed in the owed file');
+ $rejStatus = 401;
+ throws_ok { $propagator->propagateOrRestore($samUpdate,$rejOld) }
+    qr/IMDB should be re-initialized/,
+    'propagateOrRestore() raises IMDBStateException on a 401';
+ 
+ #
+-# A rejected new record has nothing to restore: it leaves the IMDB
++# IdM undoes only the rejected field: the update that follows is not a no-op,
++# and SAM gets the rest of the record (here, the activation) with it
++#
++$rejStatus = 0;
++my $fixed = dclone($rejNew);
++$fixed->{'userName'} = $rejOld->{'userName'};
++$userMgr->addOrUpdate(dclone($fixed));
++my $upd = $userMgr->makeSamUpdate('addOrUpdate',$rejNew,$fixed);
++is(SamUpdate::updateType($upd), 'addOrUpdate',
++   'the undo of the rejected field is a change against the kept record');
++my $nSent = userSent();
++$propagator->propagateOrRestore($upd,$rejNew);
++ok(userSent() == $nSent + 1 && $updBuffer->{'user'}->[-1]->{'active'},
++   'the activation reaches SAM with the corrected record');
++is_deeply(owedNow(), {}, 'an accepted record is no longer owed');
++
++#
++# An owed record is re-sent by a no-op (a full dump, or a change SAM does not
++# see), and only an owed one; the owed set survives a restart
++#
++$rejStatus = 400;
++$propagator->propagateOrRestore(
++    SamUpdate::create('addOrUpdate','user',$rejKey,dclone($rejNew)),$fixed);
++my $restarted = SamUpdatePropagator->new($samClient,$samFileMgr);
++$rejStatus = 0;
++$nSent = userSent();
++$restarted->propagateOrRestore(
++    SamUpdate::create('no-op','user',$rejKey),$rejNew);
++ok(userSent() == $nSent + 1, 'an owed record is re-sent by a no-op after a restart');
++is_deeply(owedNow(), {}, 'the re-sent record is no longer owed');
++$restarted->propagateOrRestore(
++    SamUpdate::create('no-op','user',$rejKey),$rejNew);
++ok(userSent() == $nSent + 1, 'a no-op for a record not owed is not sent');
++
++#
++# A rejected new record stays too, owed
+ #
+ $rejStatus = 400;
+ my $newRec = dclone($rejOld);
+ $newRec->{'userName'} = 'rejectednew';
++$newRec->{'unixUid'} = 999999;
+ my $newKey = $userMgr->getKey($newRec);
+ $userMgr->addOrUpdate($newRec);
+ $samUpdate = SamUpdate::create('addOrUpdate','user',$newKey,$newRec);
+ lives_ok { $propagator->propagateOrRestore($samUpdate,undef) }
+    'propagateOrRestore() continues after a rejected new record';
+-ok(!exists($userMgr->samData()->{$newKey}),
+-   'a rejected new record is removed from the IMDB');
++ok(exists($userMgr->samData()->{$newKey}) && owedNow()->{"user:$newKey"},
++   'a rejected new record stays in the IMDB, owed');
+ 
+ #
+ # A rejected delete (sent as a tombstone, purgePermit=0) is restored
+-- 
+2.55.0
+
