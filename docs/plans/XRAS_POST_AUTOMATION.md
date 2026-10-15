@@ -93,9 +93,11 @@ so a ticket per approval is churn; the ticket belongs to the post that fails.
 
 What the plan must hold (`XRAS_REQUEST_TICKETS.md` §§ 3, 4, 8):
 
-1. **Repeats are idempotent.** NUSD re-posts on purpose and XRAS retries on its own (action
-   403317 arrived three times). A later failed post finds the request's ticket and comments
-   only when the blocker list changed (ledgered by digest), so a retry writes nothing.
+1. **Repeats are idempotent.** NUSD re-posts on purpose, and an impatient operator re-posts
+   by accident (action 403317 arrived three times during a database stall, every one a
+   click). XRAS never retries a post on its own. A later failed post finds the request's
+   ticket and comments only when the blocker list changed (ledgered by digest), so a repeat
+   writes nothing.
 2. **An approval nobody posts.** No post means no ticket. The sweep, which sees every approval,
    puts "approved, not posted" past N days on the Remediations card and in the queue digest.
 3. **Link, do not restate, the sweep's rows.** The sweep still files `account_request` rows for

@@ -83,11 +83,13 @@ How they ended:
 | Placeholders to merge | `sam_merge_targets` hits for the roster: an operator step in XRAS, not NUSD's |
 | Request | request number as posted, `request_id`, PI, opportunity, the Remediations card link |
 
-## 4. Repeated posts and XRAS retries
+## 4. Repeated posts
 
 A request is posted more than once on purpose (NUSD re-posts after each fix) and by accident
-(XRAS retried action 403317 three times during a MySQL stall; `XRAS_ACTION_STATUSES`
-`duplicate` and #803 handle the apply side). The ticket side must be idempotent in the same way:
+(an operator clicked Post three times for action 403317 during a MySQL stall;
+`XRAS_ACTION_STATUSES` `duplicate` and #803 handle the apply side). XRAS never retries a post
+on its own: every post is a click in the admin app. The ticket side must be idempotent in the
+same way:
 
 - **One ticket per request.** Before opening, look up the request's `external_ticket`
   (`entity_type` for an XRAS request, `entity_id` = `request_id`) and then `provider.find(handle)`. Open only when both miss.
