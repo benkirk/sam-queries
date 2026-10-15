@@ -924,13 +924,42 @@ class TestDispatchArms:
         assert resp.status_code == 422
         body = json.loads(resp.data)
         assert body['result']['errors'] == [
-            'Missing title', 'PI jdoe is not in database']
-        assert body['message'] == '2 errors processing action'
+            'Missing title', 'PI jdoe is not in database',
+            'To fix a person: create or reactivate the account, or drop the member '
+            'from the request in XRAS.']
+        assert body['message'] == '2 errors processing action', 'the pointer is not counted'
 
         row = action_log.one()
         assert row['status'] == 'failed'
         assert row['http_status'] == 422
         assert row['error_messages'] == 'Missing title\nPI jdoe is not in database'
+
+    @pytest.mark.parametrize('armed', [False, True])
+    def test_a_refused_new_says_where_its_ticket_stands_only_when_armed(
+            self, app, xras_client, action_log, dispatching, monkeypatch, armed):
+        """docs/plans/XRAS_REQUEST_TICKETS.md § 6: the state line leads, the stored row stays bare."""
+        from sam.xras.errors import ActionErrors
+
+        def rejecting(session, action, *, validate_only=False):
+            errs = ActionErrors()
+            errs.report('Cannot find contract for grant number "AGS-1" ("000001")')
+            errs.raise_if_any()
+
+        dispatching.register('add', rejecting)
+        monkeypatch.setitem(app.config, 'XRAS_REQUEST_TICKETS_ENABLED', armed)
+        resp = xras_client.post(
+            self.PATH, data=_payload('new_ncar4246_ok.json'),
+            content_type='application/json', headers=_auth())
+
+        assert resp.status_code == 422
+        errors = json.loads(resp.data)['result']['errors']
+        head = ['This action cannot yet succeed. If it is still refused in about '
+                '15 minutes, a ticket opens with NUSD.'] if armed else []
+        assert errors[:len(head) + 1] == head + [
+            'Cannot find contract for grant number "AGS-1" ("000001")']
+        assert errors[-1].startswith('To fix a contract:')
+        assert action_log.one()['error_messages'] == (
+            'Cannot find contract for grant number "AGS-1" ("000001")')
 
     def test_a_disabled_action_type_parks_as_manual_without_running_the_handler(
             self, app, xras_client, action_log, dispatching):

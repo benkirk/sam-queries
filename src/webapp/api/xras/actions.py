@@ -331,9 +331,10 @@ def _finish(log_id, *, status, projcode_result=None, error_messages=None,
 
 
 
-def _errors(error_messages, status):
-    """The 422 body: an ordered list an XRAS admin can act on, in the envelope."""
-    count = len(error_messages)
+def _errors(error_messages, status, *, count=None):
+    """The 422 body: an ordered list an XRAS admin can act on, in the envelope.
+    ``count`` is the blockers alone when the list carries extra lines."""
+    count = len(error_messages) if count is None else count
     summary = f'{count} error{"" if count == 1 else "s"} processing action'
     return xras_response({'errors': error_messages}, message=summary, status=status)
 
@@ -492,7 +493,8 @@ def _dispatch(log_id, action):
         # repeatedly.
         _finish(log_id, status='failed', error_messages=exc.messages,
                 http_status=422, service=select_service(db.session, action))
-        return _errors(exc.messages, 422)
+        return _errors(_refusal_reply(action, exc.messages), 422,
+                       count=len(exc.messages))
     except Exception as exc:
         # A handler that RAISED is not the capture backlog — but without this arm the
         # row keeps `status='received'` / `http_status=200` / `processed_time IS NULL`,
@@ -558,6 +560,25 @@ def _dispatch(log_id, action):
         'XRAS action parked for a human: id=%s service=%s projcode=%s reason=%s',
         log_id, result.service, result.projcode, result.reason)
     return xras_response(message=_MANUAL_MESSAGE)
+
+
+def _refusal_reply(action, messages):
+    """The blockers verbatim, a pointer per blocker kind, and (when tickets are
+    armed, for a New or Renewal) a first line with the request's ticket state.
+    Stored rows keep the bare list; nothing here makes an outbound call."""
+    from sam.integration._config import config_bool
+    from sam.queries import xras_request_tickets as tickets
+
+    state = None
+    request_id = _fit_int(action.get('requestId'))
+    if (request_id is not None and action.get('actionType') in tickets.TICKET_ACTION_TYPES
+            and config_bool('XRAS_REQUEST_TICKETS_ENABLED', False)):
+        try:
+            state = tickets.request_ticket_state(db.session, request_id)
+        except Exception:                               # noqa: BLE001
+            current_app.logger.exception('XRAS 422: ticket state for requestId=%s failed',
+                                         request_id)
+    return tickets.reply_lines(messages, state=state)
 
 
 def _rename_after_reply(response, action, projcode) -> None:
