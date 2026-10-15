@@ -233,7 +233,11 @@ account-queue digest. No ticket: the operator's next step is the post.
 3. **Prod:** the request type and labels (`JIRA_XRAS_REQUEST_*`), then
    `XRAS_REQUEST_TICKETS_ENABLED` in both envs, `TICKET_PROVIDER` and `JIRA_WRITE_ENABLED` in
    `tasks.env`, and the task out of `SAM_TASKS_DISABLED`. A first filing against the RC project
-   with immediate cancel, the way RC-40275/40276 were smoked.
+   with immediate cancel, the way RC-40275/40276 were smoked. **First, read the plan:** the
+   30-day lookback opens a ticket for every refused New or Renewal that never applied,
+   including ones NUSD handled without a re-post, and past 10 opens the cap raises. The kill
+   switch outranks `--dry-run`, so clear it for that one run, in a task pod:
+   `SAM_TASKS_DISABLED= sam-admin tasks --run xras_request_tickets --dry-run`.
 
 Probes on samuel-dev against XRAS-dev, 2026-10-13
 ([`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md) § 4): the push row carries
@@ -261,4 +265,5 @@ Probes on samuel-dev against XRAS-dev, 2026-10-13
 | — | 30-day lookback; `SAM_TASKS_XRAS_TICKETS_MAX` (10 opens) raises before any filing | the first arming's blast radius |
 | § 8, approved not posted | not built | deferred (Ben, 2026-10-14) |
 | Dev, a filing against RC | the `dry-run` provider, outside `PROVIDERS` and refused to the webapp | dev has no Jira |
+| — | a linked ticket counts as open even after NUSD closes it: a later refusal comments on it and the 422 names it | edge, unbuilt: the hourly refresh already stamps `closed_at` on these rows in prod, so the fix is reading `ExternalTicket.is_active` |
 
