@@ -50,8 +50,9 @@ class TestEveryKindHasASample:
         assert sample_context('expiration')['facility'] == 'UNIV'
 
     def test_only_the_supplement_adds_and_only_the_adjustment_changes(self):
+        from sam.notify.kinds import get_kind
         for kind in KINDS:
-            if not kind.startswith('xras_'):
+            if get_kind(kind).family != 'xras':
                 continue
             context = sample_context(kind)
             assert bool(context['added']) == (kind == 'xras_supplement')

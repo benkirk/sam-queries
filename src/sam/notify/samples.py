@@ -38,6 +38,7 @@ _SUBJECTS = {
     'account_invite': 'You are invited to request an NCAR HPC account',
     'account_request_received': 'Your NCAR HPC account request has been received',
     'account_ticket': "New HPC User Request 'Ada Lovelace' for WRF-OCT-2026 [SAM-AR-41]",
+    'xras_request_ticket': 'XRAS request NCAR4391 cannot be posted [SAM-XR-1446100]',
     'project_renewal': 'Your NSF NCAR project SCSG0001 has been renewed',
     'project_activation': 'Your NSF NCAR project SCSG0001 is now active',
     'project_adjustment': 'Your NSF NCAR project SCSG0001 allocations have been updated',
@@ -294,6 +295,27 @@ def _account_ticket() -> Dict[str, Any]:
     }
 
 
+def _xras_request_ticket() -> Dict[str, Any]:
+    return {
+        'request_number': 'NCAR4391',
+        'xras_request_id': 1446100,
+        'action_type': 'New',
+        'title': 'Sample Project Title',
+        'pi': 'Jane Lead (jlead)',
+        'first_refused': '2026-10-14 09:12',
+        'refusals': 2,
+        'person_blockers': [{'username': 'jane-user-1a2b',
+                             'lines': ['Username jane-user-1a2b is missing']}],
+        'other_blockers': ['Cannot find contract for grant number "AGS-2146709" ("2146709")'],
+        'pointers': ['To fix a contract: create it from the seeded form (Admin > Contracts), '
+                     "or waive it with the request's contract override."],
+        'queued': [{'id': 41, 'name': 'Ada Lovelace', 'email': 'ada.lovelace@example.edu',
+                    'purpose': 'submission', 'state': 'submitted'}],
+        'merges': [{'placeholder': 'jane-user-1a2b', 'target': 'jlead'}],
+        'card_url': 'https://sam.hpc.ucar.edu/allocations/xras?view=remediations',
+    }
+
+
 def sample_context(kind: str, facility: Optional[str] = None) -> Dict[str, Any]:
     """A builder-shaped context for ``kind``; raises ValueError on an unknown kind."""
     key = get_kind(kind).key
@@ -313,6 +335,8 @@ def sample_context(kind: str, facility: Optional[str] = None) -> Dict[str, Any]:
         return _account_request_received()
     if key == 'account_ticket':
         return _account_ticket()
+    if key == 'xras_request_ticket':
+        return _xras_request_ticket()
     if key in _LIFECYCLE_ACTIONS:
         return _lifecycle(key)
     return _xras(key)
@@ -456,6 +480,27 @@ VARIABLE_NOTES: Dict[str, str] = {
     'middle_name': "The requester's middle name, or empty.",
     'note': "The requester's purpose note or the sponsor's comment, one line, or empty.",
     'request_id': 'The SAM account-request id.',
+    'request_number': 'The XRAS request number as last posted (NCAR#### or the projcode).',
+    'xras_request_id': "The XRAS requestId, stable across the request's rename.",
+    'title': 'The request title as XRAS posted it, or empty.',
+    'pi': "The posted PI, as 'Name (username)', or empty.",
+    'first_refused': 'When SAM first refused the request, formatted.',
+    'refusals': 'How many posts SAM has refused for it.',
+    'person_blockers': 'One entry per person the post is blocked on.',
+    'person_blockers.username': 'The XRAS username.',
+    'person_blockers.lines': "SAM's error strings about that person, verbatim.",
+    'other_blockers': "The post's other error strings, verbatim.",
+    'pointers': 'One line per blocker kind saying where it is fixed.',
+    'queued': "Open account requests for the roster in SAM's Accounts queue.",
+    'queued.id': 'The SAM account-request id.',
+    'queued.name': "The requester's name.",
+    'queued.email': "The requester's email address.",
+    'queued.purpose': "One of 'standalone', 'enrollment', 'submission', 'reactivation'.",
+    'queued.state': "'submitted' or 'claimed'.",
+    'merges': 'Placeholders on the roster, with the SAM account to merge each into.',
+    'merges.placeholder': 'The ARC placeholder username.',
+    'merges.target': 'The SAM username holding its email, or empty when none does.',
+    'card_url': "Link to SAM's XRAS Remediations card, or empty.",
 }
 
 

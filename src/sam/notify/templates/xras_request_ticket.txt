@@ -1,0 +1,22 @@
+SAM has refused the XRAS {{ action_type or 'request' }} post for {{ request_number }} since {{ first_refused }}{% if refusals and refusals > 1 %} ({{ refusals }} posts){% endif %}. Fix what is listed below, then post it again from the XRAS admin app.
+
+Request:   {{ request_number }} (requestId {{ xras_request_id }})
+Title:     {{ title or 'not given' }}
+PI:        {{ pi or 'not named' }}
+{% if card_url %}SAM card:  {{ card_url }}
+{% endif %}
+What blocks it:
+{% for group in person_blockers %}- {{ group.username }}:
+{% for line in group.lines %}    {{ line }}
+{% endfor %}{% endfor %}{% for line in other_blockers %}- {{ line }}
+{% endfor %}{% if pointers %}
+Where each is fixed:
+{% for line in pointers %}- {{ line }}
+{% endfor %}{% endif %}{% if queued %}
+Already in SAM's Accounts queue:
+{% for row in queued %}- #{{ row.id }} {{ row.name }} <{{ row.email }}>, {{ row.purpose }}, {{ row.state }}
+{% endfor %}{% endif %}{% if merges %}
+Placeholders to merge (Allocations > XRAS > Pending Users):
+{% for m in merges %}- {{ m.placeholder }}{% if m.target %} into {{ m.target }}{% else %}: no SAM account holds its email{% endif %}
+{% endfor %}{% endif %}
+Filed by the NSF NCAR Systems Accounting Manager. SAM comments here when the blockers change and when the request posts.

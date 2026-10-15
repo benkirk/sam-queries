@@ -215,9 +215,10 @@ assert_contains "$cron_out" 'name: XRAS_API_KEY' \
 assert_contains "$cron_out" 'name: samuel-xras-api-credentials' \
   "which must name the Secret the ExternalSecret materialises"
 # Help-desk tickets: the hourly learn reads Jira from the CronJob, so its read
-# keys and token are hand-listed there. The write lever and the filing selector
-# are webapp-only; asserted against the comment-stripped manifest, because the
-# template's own WARNING names both.
+# keys and token are hand-listed there. The webapp's write lever and filing
+# selector are never inherited, and production's tasks.env grants neither until
+# the xras_request_tickets rollout; asserted against the comment-stripped
+# manifest, because the template's own WARNING names both.
 for key in JIRA_ENABLED JIRA_BASE_URL JIRA_AUTH JIRA_PROJECT_KEY JIRA_SERVICE_DESK_ID \
            JIRA_REQUEST_TYPE_ID JIRA_TOKEN; do
   assert_contains "$cron_out" "name: ${key}" "the ticket learn needs ${key} in the CronJob"
@@ -226,9 +227,9 @@ assert_contains "$cron_out" 'name: samuel-jira-credentials' \
   "which must name the Secret the Jira ExternalSecret materialises"
 cron_code=$(grep -v '^[[:space:]]*#' <<<"$cron_out")
 assert_not_contains "$cron_code" 'JIRA_WRITE_ENABLED' \
-  "no scheduled task may file or comment on a ticket"
+  "no production task files or comments on a ticket yet"
 assert_not_contains "$cron_code" 'TICKET_PROVIDER' \
-  "the filing selector is webapp-only"
+  "production's task pod selects no filing path yet"
 
 assert_contains "$cron_out" 'name: SAM_TASKS_ACCOUNT_MAX' \
   "the account-queue digest's runaway guard"

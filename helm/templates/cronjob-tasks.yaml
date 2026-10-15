@@ -217,10 +217,10 @@ spec:
                     key: token
               {{- end }}
               # Help-desk tickets (account_requests_reconcile's hourly learn/refresh).
-              # READS ONLY. WARNING: JIRA_WRITE_ENABLED and TICKET_PROVIDER are
-              # webapp-only and must never be listed here, so no scheduled task can
-              # file or comment on a ticket. Asserted by test-cronjob-render.sh and
-              # tests/unit/gates/test_helm_jira_levers.py.
+              # READS ONLY. WARNING: never list the webapp's JIRA_WRITE_ENABLED or
+              # TICKET_PROVIDER here. The one task writer, xras_request_tickets, gets
+              # its own in tasks.env (dev: TICKET_PROVIDER=dry-run). Asserted by
+              # test-cronjob-render.sh and tests/unit/gates/test_helm_jira_levers.py.
               - name: JIRA_ENABLED
                 value: {{ .Values.webapp.env.JIRA_ENABLED | quote }}
               - name: JIRA_BASE_URL

@@ -241,6 +241,8 @@ webapp:
     # The "work the queue" link the digest carries (the Admin > Accounts page
     # on this deployment's public hostname); empty means no link.
     NOTIFY_ACCOUNT_QUEUE_URL: ""
+    # The Remediations card link an xras_request_tickets ticket carries; empty means none.
+    NOTIFY_XRAS_REQUESTS_URL: "https://sam.hpc.ucar.edu/allocations/xras?view=remediations"
     NOTIFY_ACCOUNT_CC: ""
     NOTIFY_ACCOUNT_BCC: ""
     NOTIFY_ACCOUNT_FROM: ""
@@ -405,14 +407,19 @@ webapp:
     # after the production backfill; pinned in tests/unit/gates/test_xras_admin_client.py,
     # so a flip is a reviewed change to both files. Needs XRAS_WRITE_ENABLED.
     XRAS_RENAME_ENABLED: "1"
+    # The ticket-state first line on a refused New/Renewal's 422 (docs/plans/XRAS_REQUEST_TICKETS.md
+    # § 6). "1" only together with the xras_request_tickets task, or the 422 promises a ticket.
+    XRAS_REQUEST_TICKETS_ENABLED: "0"
     # Help-desk tickets (sam/integration/tickets, docs/plans/implemented/TICKET_PROVIDER.md).
     # Three fail-closed levers:
     #   JIRA_ENABLED        reads: the hourly learn/status pass and the card.
-    #   JIRA_WRITE_ENABLED  creates and comments. Webapp-only until the request-ticket
-    #                       task (docs/plans/XRAS_REQUEST_TICKETS.md § 5) is its one task writer.
+    #   JIRA_WRITE_ENABLED  creates and comments. Never inherited by the CronJob; the
+    #                       xras_request_tickets task gets its own in tasks.env at rollout
+    #                       (docs/plans/XRAS_REQUEST_TICKETS.md § 5).
     #   TICKET_PROVIDER     the filing path: "" or "mail" = the NOTIFY_ACCOUNT_TICKET_TO
-    #                       mail; "jira-servicedesk" = the JSM API, mail on any failure.
-    #                       Also webapp-only; the hourly pass keys on JIRA_ENABLED.
+    #                       mail; "jira-servicedesk" = the JSM API, mail on any failure;
+    #                       "dry-run" files nowhere, tasks only. Not inherited either;
+    #                       the hourly pass keys on JIRA_ENABLED.
     # The token is not here: webapp.jiraCredentials below injects JIRA_TOKEN into
     # BOTH deployment.yaml and cronjob-tasks.yaml. Drift gate:
     # tests/unit/gates/test_helm_jira_levers.py.
@@ -673,6 +680,10 @@ tasks:
     #           account_queue_digest         (mails NUSD the open queue; Mon 08:00 MT.
     #                                         NUSD's handoff is the per-request
     #                                         ticket, NOTIFY_ACCOUNT_TICKET_TO)
+    #           xras_request_tickets         (files NUSD tickets for refused XRAS posts;
+    #                                         every 15 min. Needs XRAS_REQUEST_TICKETS_ENABLED,
+    #                                         TICKET_PROVIDER, JIRA_WRITE_ENABLED here.
+    #                                         XRAS_REQUEST_TICKETS.md)
     #
     # WARNING: this is an ENUMERATION and it is fail-OPEN. `disabled_tasks()` in
     # src/scheduling/runner.py is a case-sensitive exact match against registry
@@ -686,7 +697,7 @@ tasks:
     # so re-enabling one mid-slot does not backfill: the first real run is the next
     # occurrence. The switch is checked ahead of `only`/`force`, so
     # `sam-admin tasks --run X --force` cannot override it.
-    SAM_TASKS_DISABLED: "xras_notices,account_queue_digest"
+    SAM_TASKS_DISABLED: "xras_notices,account_queue_digest,xras_request_tickets"
     # Arms xras_rename, the one task write (the XRAS_WRITE_ENABLED warning in webapp.env).
     # Removing it disarms the task without a code change.
     XRAS_WRITE_ENABLED: "1"
