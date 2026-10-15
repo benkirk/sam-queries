@@ -232,8 +232,8 @@ prod_deploy=$(render prod -s templates/deployment.yaml)
   red "FAIL: prod files NUSD's ticket into Jira-by-email (NOTIFY_ACCOUNT_TICKET_TO=help@ucar.edu)"; exit 1; }
 [[ -z "$(env_value "$(render dev -s templates/deployment.yaml)" NOTIFY_ACCOUNT_TICKET_TO)" ]] || {
   red "FAIL: dev must never file a Jira ticket (NOTIFY_ACCOUNT_TICKET_TO empty)"; exit 1; }
-[[ "$(env_value "$prod_deploy" XRAS_AUTO_ACTIVATE)" == "0" ]] || {
-  red "FAIL: prod ships XRAS auto-activation off until dev proves it (XRAS_AUTO_ACTIVATE=0)"; exit 1; }
+[[ "$(env_value "$prod_deploy" XRAS_AUTO_ACTIVATE)" == "1" ]] || {
+  red "FAIL: prod activates a New on post (XRAS_AUTO_ACTIVATE=1, armed after the dev smoke)"; exit 1; }
 [[ "$(env_value "$prod_deploy" XRAS_REQUEST_TICKETS_ENABLED)" == "0" ]] || {
   red "FAIL: prod's 422 must not promise a ticket the disabled task never files"; exit 1; }
 [[ "$(env_value "$prod_deploy" COMPONENT_GALLERY_ENABLED)" == "0" ]] || {

@@ -1,8 +1,8 @@
 # XRAS: "Post to accounting service" does everything SAMuel can
 
-**Status: roadmap, 2026-10-14.** Phase A (renames) is live in production (#819, #820). B and D
-are built behind levers, on in samuel-dev and off in production (`xras-post-automation-bd`; D's
-item 2 deferred); C and E are not started. This file sequences the work and points at the plans that hold the
+**Status: roadmap, 2026-10-14.** Phase A (renames) is live in production (#819, #820). B is armed
+in production (built in #828, armed after the samuel-dev smoke); D is built and on in samuel-dev, off in production until
+`XRAS_REQUEST_TICKETS.md` § 9 (D's item 2 deferred); C and E are not started. This file sequences the work and points at the plans that hold the
 detail; it holds the decisions, not the designs.
 
 ## 1. The goal
@@ -22,7 +22,7 @@ new projcode into XRAS's "Edit Request Number", and sending the notification fro
 |---|---|---|---|
 | Rename `NCAR####` → projcode | live in production 2026-10-14 (#819, #820): the route and the task | NUSD stops renaming by hand | A |
 | Project, accounts, memberships | automatic in the New handler (`sam/xras/handlers/new.py`) | the whole New answers 422 on any missing or inactive user, or unresolved contract | D |
-| Activate the project | built: after the reply, behind `XRAS_AUTO_ACTIVATE` (dev on, prod off; `sam/manage/xras_activation.py`); else the card's Activate | prod arming after the dev smoke | B |
+| Activate the project | live: after the reply, behind `XRAS_AUTO_ACTIVATE` (on in both; `sam/manage/xras_activation.py`); NUSD no longer activates by hand | — | B |
 | Notify, New | manual Notify button; sent from XRAS today | must follow activation; XRAS's own notify mail | C |
 | Notify, extend/supplement/adjust/update | built: the `xras_notices` task (1-day delay), disabled in production | soak; XRAS's own notify mail | C |
 | Contracts | 422 with a seeded create form (Admin → Contracts), or the `ignore_contract` override | `contract.principal_investigator_user_id` is NOT NULL and SAM never creates a user; award lookup is NSF first, then USAspending (`resolve_award`, `sam/integration/awards`) | E |
