@@ -190,6 +190,28 @@ that:
 XRAS guards nothing on a deleted action, so SAM must: PR #823 (`live_actions`, and the
 editors refuse a deleted action before the write).
 
+### 6.3 Phases B and D on `sha-13f4577` (#828, 2026-10-15)
+
+samuel-dev armed `XRAS_AUTO_ACTIVATE` and `xras_request_tickets` on `TICKET_PROVIDER=dry-run`.
+New 1439604 / 372917 authored by a fresh placeholder `smoke1015-user-pi` (PI and Allocation
+Manager) with a second, `smoke1015-user-mem` (User); validated, submitted as **NCAR4092**,
+approved and posted from `xras-admin-demo`. Times Mountain.
+
+| Step | Observed |
+|---|---|
+| Post 06:48 | #23 `add` 422: first line "This action cannot yet succeed. If it is still refused in about 15 minutes, a ticket opens with NUSD.", the five legacy strings ("5 errors processing action"), then "To fix a placeholder: …" |
+| 07:07 wake | `DRY-SAM-XR-1439604` linked; ledger `open` and body rows. The same wake opened `DRY-SAM-XR-1439539` for NCAR4088 (refused 2026-10-13, never applied): the 30-day lookback at first arming. The sweep filed `account_request` #23 (mem) and #24 (pi) |
+| Repost 07:07 | #24: "This action cannot yet succeed, see DRY-SAM-XR-1439604."; the 07:22 wake planned `unchanged` and wrote nothing |
+| Merge pi into benkirk | card merge form with the typed target (its one candidate was the other placeholder, a name-only match on the shared surname): remediation #6; `account_request` #24 dismissed "XRAS placeholder merged into benkirk", `merged_at` set; #23 untouched |
+| Repost 07:24 | #25 422, the member's line alone; the 07:37 wake commented once (a new digest) |
+| Merge mem, repost 07:38 | remediation #7, #23 dismissed. #26 `add` processed → **UHSS0005**, **activated 90 ms later** by `xras:XRAS` (`xras_activation_event` #3, provenance #26), renamed 0.45 s after the reply (#8). The activation card offers Notify, not Activate. The 07:52 wake posted the `applied` comment |
+
+The dry-run text never reached the job log (the CLI logs at WARNING; fixed on #828). Rendered
+from `sam_dev`, the body groups the four errors under the placeholder and names only the
+in-window PI. **Real Jira**, from the laptop through the task's code (`file_once`, a comment):
+**RC-40559**, type 18 "Allocations" on desk 3, label `sam-xras-request`, both comments internal,
+`find('SAM-XR-900001')` returns it; Ben canceled it 08:48.
+
 ## 7. Open, and what unblocks it
 
 | Open | Blocked on |
@@ -212,3 +234,6 @@ editors refuse a deleted action before the write).
 | 1439574 / NCAR4090 | Rejected (action Declined) after Hold Off, Return for Corrections, resubmit, withdraw |
 | samuel-dev | UCSG0004 (active), UHSS0002 and UHSS0003 (inactive); `xras_action_log` #1–#22; `xras_remediation_event` #1–#3 and #5 (renames), #4 (the merge); UHSS0004 (inactive); `account_request` #22 (Sam Probe, `submitted`, never fulfilled); NRAL0051 inflated by #4; UHSS0002 Derecho ends 2028-03-31; UHSS0003 Derecho 3 to 2028-10-31 and 9 for 2028-11 → 2029-10 |
 | NRAL0051 (1436558) | Approved, posted, not notified; sam_dev allocations inflated by the repeat |
+| 1439604 / **UHSS0005** (minted as NCAR4092, authored by a placeholder) | Approved; posted 422 three times, then applied (#26) and renamed (#8); not notified; PI and Allocation Manager benkirk |
+| persons `smoke1015-user-pi`, `smoke1015-user-mem` | **deleted**: merged into benkirk (sam_dev remediation #6, #7) |
+| samuel-dev, 2026-10-15 | UHSS0005 (active, auto-activated); `xras_action_log` #23–#26; `xras_remediation_event` #6–#8; `account_request` #23, #24 dismissed; dry-run tickets `DRY-SAM-XR-1439539` (NCAR4088) and `-1439604` |

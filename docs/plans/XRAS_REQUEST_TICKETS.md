@@ -230,8 +230,8 @@ account-queue digest. No ticket: the operator's next step is the post.
 2. **Dev, the scenarios.** Work the blocked-New scenarios on the bed
    (`XRAS_CLOSED_LOOP.md` § 4). Scenario 6, the placeholder merge, ran 2026-10-14
    (`XRAS_DEV_PROBES.md` § 6.1): the four-error 422, the merge, the repost that applied.
-3. **Prod:** the request type and labels (`JIRA_XRAS_REQUEST_*`), then
-   `XRAS_REQUEST_TICKETS_ENABLED` in both envs, `TICKET_PROVIDER` and `JIRA_WRITE_ENABLED` in
+3. **Prod:** (the request type and label are in `tasks.env`) `XRAS_REQUEST_TICKETS_ENABLED`
+   in both envs, `TICKET_PROVIDER` and `JIRA_WRITE_ENABLED` in
    `tasks.env`, and the task out of `SAM_TASKS_DISABLED`. A first filing against the RC project
    with immediate cancel, the way RC-40275/40276 were smoked. **First, read the plan:** the
    30-day lookback opens a ticket for every refused New or Renewal that never applied,
@@ -246,8 +246,8 @@ Probes on samuel-dev against XRAS-dev, 2026-10-13
 
 ## 10. Open questions for Ben
 
-- **Ticket type and audience.** Request type 20 "Add a user", or a new one? Reporter
-  `rc-sam-bot`; on behalf of the PI?
+- **Audience.** Reporter `rc-sam-bot`; on behalf of the PI? Does NUSD watch the Allocations
+  queue as closely as Add a user? (The type is decided: 18 "Allocations", 2026-10-15.)
 - **N for "approved, not posted".** Two business days?
 - **Comment cadence.** A floor on comments, for example at most one per day per ticket, beyond
   "only on change"?
@@ -265,5 +265,6 @@ Probes on samuel-dev against XRAS-dev, 2026-10-13
 | — | 30-day lookback; `SAM_TASKS_XRAS_TICKETS_MAX` (10 opens) raises before any filing | the first arming's blast radius |
 | § 8, approved not posted | not built | deferred (Ben, 2026-10-14) |
 | Dev, a filing against RC | the `dry-run` provider, outside `PROVIDERS` and refused to the webapp | dev has no Jira |
+| Request type 20 "Add a user", or a new one | 18 "Allocations" on desk 3, label `sam-xras-request`, in prod `tasks.env` (inert until rollout); smoked as RC-40559 2026-10-15 | a blocked post is often not a person; 18 needs only summary and description |
 | — | a linked ticket counts as open even after NUSD closes it: a later refusal comments on it and the 422 names it | edge, unbuilt: the hourly refresh already stamps `closed_at` on these rows in prod, so the fix is reading `ExternalTicket.is_active` |
 
