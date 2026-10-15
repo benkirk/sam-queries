@@ -859,6 +859,13 @@ file-scoped. Misspelled or undeclared variables silently become package globals 
 | N13 | `numArrayNormalizer` shares a global `@outArr` | cosmetic (latent) | latent | `lib/SamDataUtil.pm:269` | harmless only because callers deep-copy | `my @outArr` |
 | N19 | tests not run before deploy | process | — | `IDMSDumpSynchronizer.t:202`; six "Synchronizer exception bug fix" commits on 2026-08-17 | a no-op assertion; typo fixes landed in production one at a time | run `./run-all-tests` in CI on every push |
 
+**To locate (the #830 review, 2026-10-15).** Three daemon behaviors, stated there and not yet traced
+to a file and line here:
+- the end-date erasure (`ACTIVE=TRUE` clears the end, `LDAPSYNC_DIRECTORY_AFFILIATIONS.md` § 3.3)
+  is total on every full dump, not only on a changed entry;
+- a full dump only ever adds group members, never removes one;
+- a latent mismatch in the institution-id lookup.
+
 ### 4.4 Candidates examined and set aside
 
 - **`filterTags` returning the manager object**: refuted. `lib/SamGroupData.pm:369-382`

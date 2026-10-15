@@ -3,8 +3,8 @@
 **Status:** direction agreed as the end goal (2026-10-15). The sync daemon stays as is for now. The
 first step is a read-only discrepancy report. No code yet.
 **Scope:** directory → SAM: people, then their positions (`user_organization`) and collaborations
-(`user_institution`), then organizations, institutions and groups. SAM → directory (project groups,
-collaborator end dates) stays with the daemon.
+(`user_institution`), then organizations, institutions and adhoc groups. SAM → directory (project
+groups, collaborator end dates) stays with the daemon.
 **Related:** `LDAP_SYNC_API.md` (§ 10.3 deviations D1-D4, § 10.5 residuals, § 10.7 soak),
 `LDAPSYNC_DEV_SHADOW.md`, `SAM_LDAP_SYNCD_REFERENCE.md` (daemon bugs N17, N21, 1, 7; staging § 3.6-3.8).
 
@@ -45,8 +45,9 @@ Notes:
 - **For UCAR, SAMuel would ignore much of what the daemon sends.** That is deliberate. It is written
   here so nobody later fixes the daemon's content expecting it to matter.
 - **Access.** An anonymous read of `ou=allPeople` sees people, positions and collaborations.
-  - It does not see everything: service accounts appear only under `ou=serviceAccounts`.
-  - Full fidelity may need a read-only service credential (D-F).
+  - Service accounts appear only under `ou=serviceAccounts`, also readable anonymously. Nothing
+    stage 1 needs is hidden from an anonymous read, so no credential is requested until a hidden
+    field is named.
   - A full sweep is about 60,000 entries, a minute or less. One person is a single query.
   - The pods' route to ldap.ucar.edu is still to be verified.
 
@@ -106,6 +107,32 @@ of which alter behavior legacy relies on. Even then, change-only delivery cannot
 directory does not touch. A reconcile that reads the source and compares it with SAM's actual rows
 holds no state of its own, so drift from any cause is corrected the next time that person is checked.
 
+### 3.4 What the directory's records are like (review of 2026-10-15)
+
+Counts from the live directory, anonymous (`ou=allPeople` is 28,605 people, 13,717 positions and
+19,614 collaborations). They change the plan's rules from edge cases to the normal case:
+
+- **Most finished records have no end date.** 8,816 of 10,969 inactive positions (80%) and 13,384
+  of 15,102 inactive collaborations (89%) carry none, where SAM has a date on most. So "inactive, no
+  end date" (D-C) is the usual shape, and a reconcile must never invent a date for it (§ 7).
+- **The directory disagrees with itself.** 173 inactive people hold an active position. Rule: **the
+  person's flag wins**, since account access keys on it; the position is reported, not applied.
+- **A collaboration is one entry per person per institution, ever.** Its name is
+  `x-ucar-externalOrgId=<inst>,x-ucar-upid=<person>`, so a second stint cannot be recorded. SAM holds
+  178 pairs with repeat stints. Rule: the entry maps to the **latest** SAM row for that pair; earlier
+  stints are SAM history and are never touched.
+- **368 active collaborations have no start date**, and SAM requires one. Rule: keep SAM's start;
+  where SAM has no row, report it rather than create one with an invented date.
+- **Collaborations SAM sponsors are SAM's truth, derived (Ben, 2026-10-15).** Every collaboration
+  names its sponsoring NCAR org: 77% `adminOrg` CISL or USS, which legacy SAM created for HPC users.
+  For those, the outbound path is the source: while a person is a member of an active project, SAM
+  keeps their collaboration end date about 90 days ahead, derived from project membership and
+  allocation dates, and writes it to the directory in a field of its own. The reconcile may read
+  that field back, but as SAM's own output, never as new information; the directory's own dates on a
+  SAM-sponsored collaboration are reported, not applied. SAM stores no sponsor column and gets none.
+- **Fields SAM does not keep.** Positions also carry type, title, supervisor, primary and number;
+  none map to SAM and none are needed. 2,050 positions name no organization, 6 of them current.
+
 ## 4. Which side is right: three trust stages
 
 The open question, as Ben put it (paraphrased): three months into the new system, we don't fully trust the
@@ -161,6 +188,16 @@ than affiliations, because legacy already treats the directory as the truth for 
     - directory entries with no SAM row;
     - twins;
     - SAM history rows still open.
+- **Academic status.** PDB people carry a code (`GS`, `PD`, `F`); Workday (`FI`) people mostly carry
+  a label ("Graduate Student", "University Research Staff (excluding postdoctorates)"). The daemon
+  translates, and SAMuel's POST path stores NULL for a value it does not know. The reconcile keeps
+  its own label-to-code map in one place, and the report has a category for an unmapped label.
+- **Never touched by the reconcile:** the SAM-only columns `locked`, charging exempt, `deleted`,
+  deactivate, primary gid, title, contact person and login type.
+- **The uid source is the person entry** (`uidNumber` under the upid), never a lookup by username,
+  and never `ou=unix`. Person `uidNumber` equals SAM `unix_uid` on all 28,546 shared upids. (The
+  review counted 198 accounts where `ou=unix` and the person entry disagree; a recount found 1 of
+  6,437 inside the directory, so the 198 likely came from a username join. The rule holds either way.)
 - **How to run it:**
   - a `sam-admin` command;
   - an optional scheduled task that records the counts. A new task is named in `helm/values.yaml`
@@ -173,14 +210,15 @@ than affiliations, because legacy already treats the directory as the truth for 
 - **D-A, history the directory never had.** Deferred to the epoch. Until then it is never touched.
 - **D-B, twins (for stage 2).** Recommended: one SAM row per pair, following the Workday entry.
   Alternatives: PeopleDB wins, or two rows.
-- **D-C, an entry that is inactive with no end date (for stage 2).** Recommended: keep SAM's end
-  date if it has one, else end at the time SAMuel first sees it inactive. Alternative: the entry's
-  `modifyTimestamp`.
+- **D-C, an entry that is inactive with no end date (for stage 2).** The normal case, not an edge
+  (§ 3.4: 80% of positions, 89% of collaborations). Recommended, in order: SAM's own end date; else
+  the entry's `modifyTimestamp`; else report it and write nothing. Never "the time SAMuel first sees
+  it": on first run that stamps today on some 22,000 rows.
 - **D-D, an upstream issue now for the end-date erasure.** Recommended: yes.
 - **D-E, a near-term guard so a POST cannot clear a planned end date.** Recommended: yes, as a
   recorded deviation until upstream fixes the erasure.
-- **D-F, a read-only directory credential for full fidelity.** Recommended: ask for one before stage 1
-  goes beyond people and affiliations.
+- **D-F, a read-only directory credential.** Dropped: an anonymous read covers stage 1 (§ 2). Ask
+  only when a hidden field is named.
 
 ## Appendix A. Soak friction for the same round
 
