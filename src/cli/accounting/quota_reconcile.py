@@ -310,7 +310,7 @@ class QuotaReconcileMixin:
                 continue
             ended = last_end.get(proj.project_id)
             for qe in entries:
-                item = {**_fileset_item(qe, projcode), 'project_active': bool(proj.active),
+                item = {**_fileset_item(qe, projcode), 'project_active': bool(proj.is_active),
                         'last_end_date': ended}
                 if ended is not None and ended <= now:
                     item['days_since_end'] = (now.date() - ended.date()).days
