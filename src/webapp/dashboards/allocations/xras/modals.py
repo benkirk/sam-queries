@@ -268,7 +268,8 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
         'payload': payload,
         'row': row,
         # Per-request operator overrides — same shared controls as the readiness
-        # modal (row_blockers already treats a no-affiliation failure as mnemonic).
+        # modal (row_blockers counts a PI SAM holds but cannot affiliate as mnemonic,
+        # and a PI SAM does not hold as person, which no mnemonic override fixes).
         'request_id': request_id,
         'blockers': row_blockers(row) if row else set(),
         'overrides': {kind: lookup_request_override(db.session, request_number, kind)

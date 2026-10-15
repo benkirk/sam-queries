@@ -315,6 +315,10 @@
                         <span class="xras-sam-cell">
                         {% if row.blockers %}
                         <span class="xras-blockers" aria-label="Blocked by: {{ row.blockers | join(', ') }}">
+                            {% if 'person' in row.blockers %}
+                            <i class="fa-solid fa-user-xmark text-danger-emphasis"
+                               title="A person on the roster is missing or inactive in SAM: filter by Blocker → Person"></i>
+                            {% endif %}
                             {% if 'mnemonic' in row.blockers %}
                             <i class="fa-solid fa-link-slash text-danger-emphasis"
                                title="Missing organization/institution mnemonic: filter by Blocker → Mnemonic"></i>

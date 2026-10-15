@@ -292,16 +292,35 @@ def latest_action_type(actions) -> Optional[str]:
 
 #: Blocker categories a swept request can be stuck on, in display order. The slug
 #: is what the facet filter round-trips; the label is the chip text.
-BLOCKER_LABELS = (('mnemonic', 'Mnemonic'), ('contract', 'Contract'),
+BLOCKER_LABELS = (('person', 'Person'), ('mnemonic', 'Mnemonic'), ('contract', 'Contract'),
                   ('account', 'Account'))
+
+
+def is_person_blocker(message: str) -> bool:
+    """A roster person missing or inactive in SAM, or no usable PI/Allocation Manager role.
+
+    Matched by role prefix: "is not in database" alone would also match the
+    field-of-science message.
+    """
+    from sam.xras.errors import missing_pi_role
+    m = message or ''
+    if m.startswith('PI '):
+        return ' is not in database' in m or ' is not an active user' in m
+    if m.startswith('Allocation Manager '):
+        return ' is not in database' in m or ' is not active' in m
+    if m.startswith('Username '):
+        return m.rstrip().endswith((' is missing', ' is inactive'))
+    if m.startswith('Multiple ') and ' roles are in range for this action' in m:
+        return True
+    return m == missing_pi_role() or m.startswith('Could not produce affiliation data for PI')
 
 
 def row_blockers(row: Mapping[str, Any]) -> set:
     """Which push-blocker categories a Remediations row is stuck on.
 
-    Derived, not stored: the same three signals the unblock reports pivot on —
-    the mnemonic 422 prefix, the structured unresolved-grant channel, and the
-    stuck-placeholder flag. Pure, so the card route and a unit test agree.
+    Derived, not stored, from four signals: a roster person missing or inactive
+    in SAM, the mnemonic 422 prefix, the structured unresolved-grant channel, and
+    the stuck-placeholder flag. Pure, so the card route and a unit test agree.
     """
     from sam.xras.errors import (MNEMONIC_EXTERNAL_PREFIX, MNEMONIC_INTERNAL_PREFIX,
                                  NO_AFFILIATION_MARKERS)
@@ -310,10 +329,12 @@ def row_blockers(row: Mapping[str, Any]) -> set:
         preflight = action.get('preflight') or {}
         for m in (preflight.get('messages') or []):
             m = m or ''
-            # A resolved-but-uncoded affiliation carries a MNEMONIC_*_PREFIX; a
-            # missing affiliation carries neither but is the same push blocker
-            # (no code can be minted) and the same override fixes it.
-            if (m.startswith((MNEMONIC_INTERNAL_PREFIX, MNEMONIC_EXTERNAL_PREFIX))
+            # A PI SAM holds but cannot affiliate is a mnemonic blocker a code
+            # override fixes; a PI SAM does not hold is a person blocker, even
+            # though it also reports "Could not produce affiliation data".
+            if is_person_blocker(m):
+                kinds.add('person')
+            elif (m.startswith((MNEMONIC_INTERNAL_PREFIX, MNEMONIC_EXTERNAL_PREFIX))
                     or any(marker in m for marker in NO_AFFILIATION_MARKERS)):
                 kinds.add('mnemonic')
         if (preflight.get('resolved') or {}).get('unresolved_grants'):

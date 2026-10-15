@@ -2566,9 +2566,11 @@ class TestBlockerFacet:
 
     @staticmethod
     def _publish_blockers():
+        from sam.xras import errors as e
         from sam.xras.errors import MNEMONIC_INTERNAL_PREFIX
 
         mnem = _payload('MNEM0001', placeholder=False)
+        pers = _payload('PERS0001', placeholder=False)
         ctract = _payload('CTRL0001', placeholder=False)
         acct = _payload('ACCT0001')  # placeholder+reconciled -> account blocker
         preflights = {
@@ -2578,6 +2580,11 @@ class TestBlockerFacet:
             'CTRL0001': {7: {'status': 'failed', 'push_state': None,
                              'messages': ['grant not found'],
                              'resolved': {'unresolved_grants': [{'number': 'X-1'}]}}},
+            # A PI SAM does not hold also reports "no affiliation data": person, not mnemonic.
+            'PERS0001': {7: {'status': 'failed', 'push_state': None,
+                             'messages': [e.pi_not_in_database('p-user-1'),
+                                          e.no_affiliation_for_pi('p-user-1')],
+                             'resolved': {}}},
         }
         xras_cache.store_requests_index({
             'generated_at': datetime.now(),
@@ -2587,6 +2594,8 @@ class TestBlockerFacet:
                                          preflights=preflights['MNEM0001']),
                      request_index_entry(ctract, pending_push=True,
                                          preflights=preflights['CTRL0001']),
+                     request_index_entry(pers, pending_push=True,
+                                         preflights=preflights['PERS0001']),
                      request_index_entry(acct, pending_push=True)]})
 
     def test_the_chip_row_counts_each_category(self, auth_client, configured):
@@ -2594,7 +2603,7 @@ class TestBlockerFacet:
         body = auth_client.get(FRAGMENT + '?show_all=1').get_data(as_text=True)
         assert 'Blocker' in body
         # Each category is present exactly once across the three rows.
-        for field in ('Mnemonic', 'Contract', 'Account'):
+        for field in ('Person', 'Mnemonic', 'Contract', 'Account'):
             assert field in body
 
     @staticmethod
@@ -2616,16 +2625,23 @@ class TestBlockerFacet:
             FRAGMENT + '?show_all=1&blockers=mnemonic').get_data(as_text=True)
         assert self._table_rows(body) == {'MNEM0001'}
 
-    def test_unfiltered_shows_all_three(self, auth_client, configured):
+    def test_a_missing_pi_filters_as_person_not_mnemonic(self, auth_client, configured):
+        self._publish_blockers()
+        body = auth_client.get(
+            FRAGMENT + '?show_all=1&blockers=person').get_data(as_text=True)
+        assert self._table_rows(body) == {'PERS0001'}
+
+    def test_unfiltered_shows_all_four(self, auth_client, configured):
         self._publish_blockers()
         body = auth_client.get(FRAGMENT + '?show_all=1').get_data(as_text=True)
-        assert self._table_rows(body) == {'MNEM0001', 'CTRL0001', 'ACCT0001'}
+        assert self._table_rows(body) == {'MNEM0001', 'CTRL0001', 'PERS0001', 'ACCT0001'}
 
     def test_each_row_carries_its_blocker_icon(self, auth_client, configured):
         self._publish_blockers()
         body = auth_client.get(FRAGMENT + '?show_all=1').get_data(as_text=True)
         assert 'fa-link-slash' in body      # mnemonic
         assert 'fa-file-contract' in body   # contract
+        assert 'fa-user-xmark' in body      # person
         # The account icon replaces the old verbose "placeholder roster" badge.
         assert 'placeholder roster' not in body
 

@@ -160,8 +160,12 @@ have nothing to link. The admin Institutions card already offers the create moda
 miss (the warning badge, pre-filled); the Organizations card does not yet. This would move
 `New`'s success rate more than any code change available to us.
 
-Two neighbors from the same resolution path:
-`Could not produce affiliation data for PI {username}`, and
+`Could not produce affiliation data for PI {username}` is not a mnemonic problem: SAM emits it
+only when the PI has no SAM user, beside `PI {username} is not in database` (§ 3). Fix the
+person; a mnemonic override clears this line and leaves the 422. The Remediations card files
+it under the Person blocker.
+
+A neighbor from the same resolution path:
 `Unable to determine allocation type from action data` / `No AllocationType for
 SelectionParms{panel='…', type='…'}` (the odd rendering is Java's `toString()`,
 reproduced because the operator sees it).

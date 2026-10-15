@@ -51,15 +51,17 @@ So:
 
 ### 2.1 What production's refused News looked like (2026-08-24 to 2026-10-14)
 
-22 requests had a New or Renewal refused, out of about 90 that applied. Their blockers, a request
-often carrying more than one:
+22 requests had a New or Renewal refused, out of about 90 that applied. Their blockers, as
+`row_blockers` classifies them (a request often carries more than one):
 
 | Requests | Blocker |
 |---|---|
-| 14 | affiliation or mnemonic (the operator's fix is the card's mnemonic override) |
-| 15 | a person missing or inactive in SAM |
+| 12 (7 with nothing else) | a person: a roster member missing or inactive in SAM, or two Allocation Manager roles in range |
+| 11 (6 with nothing else) | a mnemonic: a PI SAM holds whose affiliation has no code; the card's mnemonic override fixes it |
 | 5 | a contract |
-| 1 | two Allocation Manager roles in range |
+
+A PI SAM does not hold also reports "Could not produce affiliation data". That line is part of
+the person blocker, not a mnemonic one: an override clears it and leaves the 422.
 
 How they ended:
 
