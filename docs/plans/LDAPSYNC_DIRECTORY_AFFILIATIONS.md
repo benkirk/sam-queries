@@ -6,7 +6,8 @@ first step is a read-only discrepancy report. No code yet.
 (`user_institution`), then organizations, institutions and adhoc groups. SAM → directory (project
 groups, collaborator end dates) stays with the daemon.
 **Related:** `LDAP_SYNC_API.md` (§ 10.3 deviations D1-D4, § 10.5 residuals, § 10.7 soak),
-`LDAPSYNC_DEV_SHADOW.md`, `SAM_LDAP_SYNCD_REFERENCE.md` (daemon bugs N17, N21, 1, 7; staging § 3.6-3.8).
+`LDAPSYNC_DEV_SHADOW.md`, `SAM_LDAP_SYNCD_REFERENCE.md` (daemon bugs N17, N21, N24-N26, 1, 7; staging
+§ 3.6-3.8).
 
 ## 1. Summary
 
@@ -88,19 +89,19 @@ How to read the table:
 3. **Its identity model does not fit the directory.**
    - A collaboration has no id of its own, so moving it to another institution keeps the old one
      open and adds a new one (`transformer_rewrite.pl` around 498-500).
-   - The directory lists many jobs twice, and the daemon's de-duplication compares neighbors only
-     (`lib/SamPositionData.pm` around 379-527).
+   - The directory lists many jobs twice (§ 4); the daemon's de-duplication is a bug, § 3.3.
 4. **It delivers changes only.** Anything that diverged earlier stays wrong until the person's entry
    changes again.
 
 ### 3.3 Bugs, fixable but not sufficient
 
-- **End-date erasure:** an update carrying `ACTIVE=TRUE` deletes the end date
-  (`lib/SamUserEmploymentData.pm` around 388-420).
+- **End-date erasure (N24):** every active position or collaboration loses its end date, on any
+  modify and on every full dump.
 - **Dead read-back:** the daemon never learns SAM's id for a row SAM inserts (`lib/SamUserData.pm`
   292, 298; bugs 1 and 7; N21).
 - **N17:** a removed entry becomes a whole-user delete.
-- **Neighbor-only de-duplication.**
+- **Neighbor-only de-duplication:** twins are compared with their neighbors only
+  (`lib/SamPositionData.pm` around 379-527).
 
 Parity through the daemon needs at least six changes across five Perl modules owned upstream, several
 of which alter behavior legacy relies on. Even then, change-only delivery cannot repair a person the
