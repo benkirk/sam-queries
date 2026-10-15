@@ -171,7 +171,7 @@ def xras_remediations_fragment():
     facet_values = REMEDIATION_FACETS.strips(rows, selected)
 
     # The final in-view set — identical to what the batch re-check acts on.
-    rows = _filtered_rows(payload, request.args)
+    rows = _stamp_tickets(_filtered_rows(payload, request.args))
     # The "Check all" target: rows with no pending verdict yet (a re-check resolves
     # these; `incomplete` rows it cannot, so they are not counted).
     not_checked_count = sum(1 for r in rows if not r.get('preflight_rollup'))
@@ -525,6 +525,15 @@ def _stamp_blockers(rows):
     mutating them would leak this request's derivation into the next one.
     """
     return [{**r, 'blockers': sorted(row_blockers(r))} for r in rows]
+
+
+def _stamp_tickets(rows):
+    """Copy each row with ``ticket_key``, its NUSD ticket (``xras_request_tickets``), one query."""
+    from sam.integration.tickets.queries import tickets_for
+    from sam.queries.xras_request_tickets import ENTITY_TYPE
+    linked = tickets_for(db.session, ENTITY_TYPE, [r.get('request_id') for r in rows])
+    return [{**r, 'ticket_key': linked[r['request_id']][-1].ticket_key}
+            if r.get('request_id') in linked else r for r in rows]
 
 
 def _scope_rows(rows, args):

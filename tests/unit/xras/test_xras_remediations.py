@@ -2671,3 +2671,35 @@ class TestProjcodePreview:
                 'status': 'failed', 'would_succeed': False,
                 'messages': ['x'], 'resolved': {}}})
         assert 'created as' not in html
+
+
+class TestTheTicketKey:
+    """A refused request's NUSD ticket shows on its row (XRAS_REQUEST_TICKETS.md § 6)."""
+
+    def test_the_row_names_its_ticket(self, app, auth_client, configured):
+        from sqlalchemy.orm import Session
+
+        from sam import ExternalTicket
+        from webapp.extensions import db
+        _publish(_payload())
+        with app.app_context():
+            engine = db.engine
+        with Session(engine) as s:
+            ExternalTicket.create(s, provider='dry-run', ticket_key='DRY-SAM-XR-900001',
+                                  entity_type='xras_request', entity_id=900001,
+                                  origin='created', requested_by='task:xras_request_tickets')
+            s.commit()
+        try:
+            body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(
+                as_text=True)
+        finally:
+            with Session(engine) as s:
+                s.query(ExternalTicket).filter_by(entity_type='xras_request',
+                                                  entity_id=900001).delete()
+                s.commit()
+        assert 'DRY-SAM-XR-900001' in body
+
+    def test_a_row_without_one_shows_none(self, auth_client, configured):
+        _publish(_payload())
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'NUSD ticket for this refused post' not in body
