@@ -26,6 +26,7 @@ is fetched live inside a permission-gated route.
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
@@ -315,6 +316,39 @@ def is_person_blocker(message: str) -> bool:
     return m == missing_pi_role() or m.startswith('Could not produce affiliation data for PI')
 
 
+#: A person blocker's username: the PI / Allocation Manager / roster forms.
+_PERSON_USERNAME_RE = re.compile(
+    r'^(?:PI |Allocation Manager |Username |Could not produce affiliation data for PI )(\S+)')
+
+
+def person_username(message: str) -> Optional[str]:
+    """The username a person blocker names, or ``None`` (the role-level ones)."""
+    if not is_person_blocker(message):
+        return None
+    match = _PERSON_USERNAME_RE.match(message or '')
+    return match.group(1) if match else None
+
+
+def message_kind(message: str) -> Optional[str]:
+    """``person``, ``placeholder``, ``mnemonic``, ``contract`` or ``None`` for one
+    handler error string. A placeholder is a person blocker naming an ARC identity."""
+    from sam.xras.errors import (MNEMONIC_EXTERNAL_PREFIX, MNEMONIC_INTERNAL_PREFIX,
+                                 NO_AFFILIATION_MARKERS)
+    m = message or ''
+    # A PI SAM holds but cannot affiliate is a mnemonic blocker a code override
+    # fixes; a PI SAM does not hold is a person blocker, even though it also
+    # reports "Could not produce affiliation data".
+    if is_person_blocker(m):
+        return 'placeholder' if is_placeholder(person_username(m) or '') else 'person'
+    if (m.startswith((MNEMONIC_INTERNAL_PREFIX, MNEMONIC_EXTERNAL_PREFIX))
+            or any(marker in m for marker in NO_AFFILIATION_MARKERS)):
+        return 'mnemonic'
+    if m.startswith(('Cannot find contract for grant number ',
+                     'Ambiguous contract for grant number ')):
+        return 'contract'
+    return None
+
+
 def row_blockers(row: Mapping[str, Any]) -> set:
     """Which push-blocker categories a Remediations row is stuck on.
 
@@ -322,20 +356,14 @@ def row_blockers(row: Mapping[str, Any]) -> set:
     in SAM, the mnemonic 422 prefix, the structured unresolved-grant channel, and
     the stuck-placeholder flag. Pure, so the card route and a unit test agree.
     """
-    from sam.xras.errors import (MNEMONIC_EXTERNAL_PREFIX, MNEMONIC_INTERNAL_PREFIX,
-                                 NO_AFFILIATION_MARKERS)
     kinds = set()
     for action in row.get('actions') or []:
         preflight = action.get('preflight') or {}
         for m in (preflight.get('messages') or []):
-            m = m or ''
-            # A PI SAM holds but cannot affiliate is a mnemonic blocker a code
-            # override fixes; a PI SAM does not hold is a person blocker, even
-            # though it also reports "Could not produce affiliation data".
-            if is_person_blocker(m):
+            kind = message_kind(m)
+            if kind in ('person', 'placeholder'):
                 kinds.add('person')
-            elif (m.startswith((MNEMONIC_INTERNAL_PREFIX, MNEMONIC_EXTERNAL_PREFIX))
-                    or any(marker in m for marker in NO_AFFILIATION_MARKERS)):
+            elif kind == 'mnemonic':
                 kinds.add('mnemonic')
         if (preflight.get('resolved') or {}).get('unresolved_grants'):
             kinds.add('contract')

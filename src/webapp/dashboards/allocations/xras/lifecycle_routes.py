@@ -23,6 +23,7 @@ from webapp.utils.project_permissions import can_edit_project_governance
 from webapp.utils.rbac import Permission, has_permission, require_permission
 from sam.integration.xras import XrasActivationEvent
 from sam.manage.transaction import management_transaction
+from sam.manage.xras_activation import activate_project
 from sam.projects.projects import Project
 from sam.queries.xras_actions import get_recent_xras_actions
 from sam.queries.xras_activation import (
@@ -303,12 +304,7 @@ def xras_activate(project_id: int):
             f'{project.projcode} is already active.',
             detail='Nothing to do.')
 
-    with management_transaction(db.session):
-        # reactivate(), not update(active=True): the latter deliberately leaves
-        # inactivate_time alone (see the method docstring for why widening it
-        # would corrupt unrelated admin saves).
-        project.reactivate()
-        _record_activation_event(project, 'activated')
+    activate_project(db.session, project, by=current_user.username)
 
     return htmx_success_message(
         {'refreshXrasTab': {}},

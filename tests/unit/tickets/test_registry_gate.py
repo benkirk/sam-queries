@@ -78,3 +78,41 @@ class TestMinimalProvider:
 
     def test_a_provider_that_cannot_comment_still_creates(self):
         assert MinimalProvider().post_automation_note('MIN-1', DRAFT) is False
+
+
+class TestDryRun:
+    """Files nowhere, mints a local key, and only a task can select it."""
+
+    def test_it_is_never_read(self, monkeypatch):
+        from sam.integration.tickets.registry import read_providers
+        monkeypatch.setenv('TICKET_PROVIDER', 'dry-run')
+        assert 'dry-run' not in PROVIDERS
+        assert all(p.name != 'dry-run' for p in read_providers())
+
+    def test_the_webapp_cannot_select_it(self, monkeypatch):
+        monkeypatch.setenv('TICKET_PROVIDER', 'dry-run')
+        with pytest.raises(TicketNotConfigured, match='scheduled tasks only'):
+            provider_from_environment(interactive=True)
+
+    def test_a_task_files_and_comments_without_posting(self, monkeypatch, caplog):
+        monkeypatch.setenv('TICKET_PROVIDER', 'dry-run')
+        provider = provider_from_environment()
+        assert provider.write_configured
+        with caplog.at_level('WARNING', logger='sam.integration.tickets.dry_run'):
+            ref = provider.create(DRAFT)
+            provider.comment(ref.key, 'changed')
+        assert ref.key == 'DRY-SAM-AR-1' and len(ref.key) <= 32
+        assert provider.find('SAM-AR-1') is None
+        assert 'would file SAM-AR-1' in caplog.text and 'changed' in caplog.text
+
+
+def test_a_dry_run_body_logs_one_record_per_line(caplog):
+    """cirrus_healthcheck.sh keeps only non-"LEVEL name: msg" lines as the job's JSON
+    envelope, so a multi-line record would fail the dev check."""
+    from sam.integration.tickets.dry_run import DryRunProvider
+    with caplog.at_level('WARNING', logger='sam.integration.tickets.dry_run'):
+        DryRunProvider().create(TicketDraft(handle='SAM-XR-1', summary='s', body='a\nb\n\nc'))
+    assert all('\n' not in r.getMessage() for r in caplog.records)
+    assert [r.getMessage() for r in caplog.records][:5] == [
+        'dry-run: would file SAM-XR-1 (account) as DRY-SAM-XR-1', 'dry-run | s',
+        'dry-run | a', 'dry-run | b', 'dry-run | ']

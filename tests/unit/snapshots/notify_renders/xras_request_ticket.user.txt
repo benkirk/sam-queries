@@ -1,0 +1,22 @@
+SAM has refused the XRAS New post for NCAR4391 since 2026-10-14 09:12 (2 posts). Fix what is listed below, then post it again from the XRAS admin app.
+
+Request:   NCAR4391 (requestId 1446100)
+Title:     Sample Project Title
+PI:        Jane Lead (jlead)
+SAM card:  https://sam.hpc.ucar.edu/allocations/xras?view=remediations
+
+What blocks it:
+- jane-user-1a2b:
+    Username jane-user-1a2b is missing
+- Cannot find contract for grant number "AGS-2146709" ("2146709")
+
+Where each is fixed:
+- To fix a contract: create it from the seeded form (Admin > Contracts), or waive it with the request's contract override.
+
+Already in SAM's Accounts queue:
+- #41 Ada Lovelace <ada.lovelace@example.edu>, submission, submitted
+
+Placeholders to merge (Allocations > XRAS > Pending Users):
+- jane-user-1a2b into jlead
+
+Filed by the NSF NCAR Systems Accounting Manager. SAM comments here when the blockers change and when the request posts.

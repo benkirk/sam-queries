@@ -547,6 +547,8 @@ class TestingConfig(SAMWebappConfig):
     # says otherwise.
     XRAS_WRITE_ENABLED = False
     XRAS_RENAME_ENABLED = False
+    XRAS_AUTO_ACTIVATE = False
+    XRAS_REQUEST_TICKETS_ENABLED = False
     # Pinned for the same reason: tests opt into a destructive lever explicitly.
     LDAPSYNC_PURGE_ENABLED = False
     LDAPSYNC_LIFECYCLE_ENABLED = False

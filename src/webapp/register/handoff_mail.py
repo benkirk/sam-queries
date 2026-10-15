@@ -13,7 +13,6 @@ era, leaves. Calls run after the write commits, never inside
 import logging
 import os
 from dataclasses import replace
-from datetime import datetime
 from typing import Optional
 
 from flask import current_app, g
@@ -21,10 +20,9 @@ from sqlalchemy.orm import Session
 
 from sam.core.account_requests import CREATED_BY_SELF, AccountRequest
 from sam.integration.tickets import (ACCOUNT_KIND, DEFAULT_AUTOMATION_NOTE,
-                                     ExternalTicket, TicketDraft,
-                                     TicketNotConfigured, TicketProvider,
-                                     TicketRef, TicketRejected,
-                                     TicketSourceUnavailable)
+                                     TicketDraft, TicketNotConfigured, TicketProvider)
+from sam.integration.tickets.filing import LinkTarget, file_once
+from sam.integration.tickets.queries import ACCOUNT_REQUEST
 from sam.notify.base import Channel, DeliveryResult
 from sam.queries.account_notices import (build_receipt_message, build_ticket_message,
                                          ticket_handle)
@@ -106,67 +104,32 @@ def _file_ticket(provider: TicketProvider, row: AccountRequest,
                  requested_by: str) -> Optional[DeliveryResult]:
     """File through ``provider``; ``None`` sends the caller to the mail path."""
     rid = row.account_request_id
-    ledger = get_notifier().ledger
     link = _queue_link(row)
     # The link rides outside the body (the provider makes it clickable).
     message = build_ticket_message(row, view=_view(row), recipient=provider.destination,
                                    queue_url='', requested_by=requested_by)
     message = replace(message, recipient=replace(message.recipient, channel=Channel.TICKET))
-    if ledger.already_sent(message.dedup_key):
-        logger.info('request %s: ticket already filed under %s', rid, message.dedup_key)
+
+    def draft(rendered) -> TicketDraft:
+        return TicketDraft(
+            handle=ticket_handle(rid), kind=ACCOUNT_KIND, summary=message.subject,
+            body=rendered.text, link_url=link,
+            automation_note=f'{DEFAULT_AUTOMATION_NOTE} The request lives at {link}')
+
+    filing = file_once(
+        provider, get_notifier().ledger, message, handle=ticket_handle(rid),
+        render=lambda: get_notifier(read_only=True).preview(message), draft=draft,
+        target=LinkTarget(ACCOUNT_REQUEST, rid, requested_by),
+        session_factory=lambda: Session(db.engine), label=f'request {rid}')
+    if filing.status == 'suppressed':
         return DeliveryResult(ok=True, status='suppressed', message=message,
                               detail=f'already sent under {message.dedup_key}')
-    handle = ticket_handle(rid)
-    try:
-        found = provider.find(handle)
-        if found is not None:
-            # A mail from before the switch already filed it.
-            _link_ticket(provider, found, rid, 'learned', requested_by)
-            log_id = ledger.record(message, status='sent', transport=provider.name,
-                                   detail=f'found {found.key}')
-            logger.info('request %s: ticket %s already existed', rid, found.key)
-            return DeliveryResult(ok=True, status='sent', message=message,
-                                  detail=found.key, log_id=log_id)
-        rendered = get_notifier(read_only=True).preview(message)
-        log_id = ledger.record(message, status='queued', transport=provider.name,
-                               rendered=rendered)
-    except TicketSourceUnavailable as exc:
-        return _provider_down(rid, provider, exc)
-    except Exception:
-        logger.exception('request %s: %s filing could not start; mailing', rid, provider.name)
+    if filing.status == 'unavailable':
+        return _provider_down(rid, provider, filing.error)
+    if filing.status == 'error':
         return None
-
-    draft = TicketDraft(
-        handle=handle, kind=ACCOUNT_KIND, summary=message.subject, body=rendered.text,
-        link_url=link,
-        automation_note=f'{DEFAULT_AUTOMATION_NOTE} The request lives at {link}')
-    try:
-        ref = provider.create(draft)
-    except Exception as exc:        # TicketSourceUnavailable, or a provider bug
-        ref = _filed_anyway(provider, handle, exc)
-        if ref is None:
-            ledger.resolve(log_id, status='failed', detail=f'{type(exc).__name__}: {exc}')
-            return _provider_down(rid, provider, exc)
-        logger.warning('request %s: create failed (%s) but %s carries %s; not mailing',
-                       rid, exc, ref.key, handle)
-    ledger.resolve(log_id, status='sent', detail=ref.key)
-    _link_ticket(provider, ref, rid, 'created', requested_by)
-    logger.info('request %s: filed %s through %s', rid, ref.key, provider.name)
-    return DeliveryResult(ok=True, status='sent', message=message, detail=ref.key,
-                          log_id=log_id)
-
-
-def _filed_anyway(provider: TicketProvider, handle: str, exc: Exception
-                  ) -> Optional[TicketRef]:
-    """A create that timed out may have filed: the desk commits, then the 5 s
-    budget expires. Mailing on that would file a duplicate, so ask once. A 4xx
-    (``TicketRejected``) or a provider bug means nothing was filed."""
-    if not isinstance(exc, TicketSourceUnavailable) or isinstance(exc, TicketRejected):
-        return None
-    try:
-        return provider.find(handle)
-    except Exception:
-        return None
+    return DeliveryResult(ok=True, status='sent', message=message, detail=filing.ref.key,
+                          log_id=filing.log_id)
 
 
 def _provider_down(rid: int, provider: TicketProvider, exc: Exception) -> None:
@@ -175,22 +138,6 @@ def _provider_down(rid: int, provider: TicketProvider, exc: Exception) -> None:
                    rid, provider.name, exc)
     g.ticket_provider_down = True
     return None
-
-
-def _link_ticket(provider: TicketProvider, ref: TicketRef, request_id: int,
-                 origin: str, requested_by: str) -> None:
-    """Its own short session: a filed ticket must survive any later rollback.
-    A failure is logged; the hourly learn links it from the ledger row."""
-    try:
-        with Session(db.engine) as session:
-            ExternalTicket.create(session, provider=provider.name, ticket_key=ref.key,
-                                  entity_type='account_request', entity_id=request_id,
-                                  origin=origin, requested_by=requested_by,
-                                  status=ref.status, closed=ref.closed,
-                                  synced_at=datetime.now())
-            session.commit()
-    except Exception:
-        logger.exception('request %s: could not link %s', request_id, ref.key)
 
 
 def send_receipt(row: AccountRequest) -> DeliveryResult:

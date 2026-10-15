@@ -360,6 +360,40 @@ class TestMerge:
         assert outcome.status == 'verified'
 
 
+class TestMergeDismissesTheSweepRows:
+    """XRAS_POST_AUTOMATION.md D item 6: fulfillment matches by email, so a merge
+    into an account holding another address would leave the row open for good."""
+
+    def test_the_placeholders_open_rows_are_dismissed(self, factory, engine, monkeypatch):
+        from sqlalchemy.orm import Session
+
+        from sam.core.account_requests import AccountRequest
+        monkeypatch.setattr(service, '_patch_requests_naming', lambda _u, **kw: True)
+        monkeypatch.setattr(xras_cache, 'invalidate_person', lambda _u: None)
+        with Session(engine) as s:
+            row = AccountRequest.create(s, email='zz.merge.dismiss@example.invalid',
+                                        first_name='G', last_name='Host',
+                                        purpose='submission', created_by='task:xras_sweep',
+                                        xras_username='Ghost-User-Abcde')
+            s.commit()
+            rid = row.account_request_id
+        try:
+            client = MagicMock()
+            client.merge_person.return_value = _result('merge_person')
+            service.merge_placeholder(factory, source_username='ghost-user-abcde',
+                                      target_username='real', operator='benkirk',
+                                      client=client)
+            with Session(engine) as s:
+                row = s.get(AccountRequest, rid)
+                assert (row.state, row.closed_by) == ('dismissed', 'benkirk')
+                assert row.closed_reason == 'XRAS placeholder merged into real'
+                assert row.merged_at is not None
+        finally:
+            with Session(engine) as s:
+                s.query(AccountRequest).filter_by(account_request_id=rid).delete()
+                s.commit()
+
+
 class TestDropPendingWorklistRow:
     """The cache primitive behind the merge's coherence patch."""
 

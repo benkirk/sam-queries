@@ -215,6 +215,10 @@ class TestHelmWriteLever:
         means editing this line too."""
         assert str(self._values()['webapp']['env']['XRAS_RENAME_ENABLED']) == '1'
 
+    def test_auto_activation_ships_off(self):
+        """XRAS_POST_AUTOMATION.md § 3 B: proven on dev first. Arming means editing this line too."""
+        assert str(self._values()['webapp']['env']['XRAS_AUTO_ACTIVATE']) == '0'
+
     def test_only_the_tasks_env_arms_task_writes(self):
         """`xras_rename` is the one production task that writes to XRAS.
 
@@ -254,6 +258,10 @@ class TestDev:
         assert yaml.safe_load((REPO_ROOT / 'helm' / 'values-dev.yaml').read_text())[
             'webapp']['env']['XRAS_RENAME_ENABLED'] == '1'
         assert 'xras_rename' not in dev['SAM_TASKS_DISABLED'].split(',')
+
+    def test_dev_auto_activates(self):
+        dev = yaml.safe_load((REPO_ROOT / 'helm' / 'values-dev.yaml').read_text())
+        assert dev['webapp']['env']['XRAS_AUTO_ACTIVATE'] == '1'
 
 
 # structure

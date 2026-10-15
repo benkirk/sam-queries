@@ -1,8 +1,9 @@
 """Drift gates for the ticket-provider levers in the chart.
 
-Production ships armed (API create, mail fallback); the CronJob reads Jira but
-can never write to it or select a filing path; samuel-dev ships mute. Flipping
-any of these is a deliberate edit here as well as in the values file.
+Production ships armed (API create, mail fallback); the CronJob never inherits
+the webapp's write levers, and production's tasks env grants none yet; samuel-dev
+ships mute, its one task writer on the dry-run provider. Flipping any of these is
+a deliberate edit here as well as in the values file.
 """
 import yaml
 
@@ -46,13 +47,36 @@ class TestProduction:
         assert name in PROVIDERS or name in MAIL_NAMES
 
 
-class TestTheCronJobReadsOnly:
-    def test_the_tasks_env_never_carries_a_write_key(self):
+class TestTheCronJobWritesThroughOneTaskOnly:
+    def test_production_tasks_env_grants_no_write_yet(self):
+        """The xras_request_tickets rollout adds both here (XRAS_REQUEST_TICKETS.md § 9)."""
         tasks_env = (_values().get('tasks') or {}).get('env') or {}
         for key in WEBAPP_ONLY:
             assert key not in tasks_env, key
 
-    def test_the_manifest_never_carries_a_write_key(self):
+    def test_the_ticket_task_files_on_the_allocations_type(self):
+        """Smoked as RC-40559 (2026-10-15). The CronJob forwards no JIRA_<KIND>_* by
+        name, so the kind's settings ride tasks.env, which it renders as-is."""
+        tasks_env = _values()['tasks']['env']
+        assert (tasks_env['JIRA_XRAS_REQUEST_REQUEST_TYPE_ID'],
+                tasks_env['JIRA_XRAS_REQUEST_LABELS']) == ('18', 'sam-xras-request')
+
+    def test_the_task_ships_disabled_in_production(self):
+        disabled = _values()['tasks']['env']['SAM_TASKS_DISABLED'].split(',')
+        assert 'xras_request_tickets' in disabled
+
+    def test_dev_tasks_file_through_dry_run_alone(self):
+        tasks_env = _values('values-dev.yaml')['tasks']['env']
+        assert tasks_env['TICKET_PROVIDER'] == 'dry-run'
+        assert 'JIRA_WRITE_ENABLED' not in tasks_env
+        assert 'xras_request_tickets' not in tasks_env['SAM_TASKS_DISABLED'].split(',')
+
+    def test_dry_run_is_never_selected_in_production(self):
+        values = _values()
+        for env in (values['webapp']['env'], values['tasks']['env']):
+            assert env.get('TICKET_PROVIDER', '') != 'dry-run'
+
+    def test_the_manifest_never_names_a_write_key(self):
         body = _code('templates/cronjob-tasks.yaml')
         for key in WEBAPP_ONLY:
             assert key not in body, f'the task pod must never carry {key}'

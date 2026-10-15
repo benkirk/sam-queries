@@ -15,11 +15,15 @@ from typing import Dict, FrozenSet, List, Optional, Type
 
 from sam.integration._config import config_str
 from sam.integration.tickets.base import TicketNotConfigured, TicketProvider
+from sam.integration.tickets.dry_run import DryRunProvider
 from sam.integration.tickets.jira import JiraServiceDeskProvider
 
 PROVIDERS: Dict[str, Type[TicketProvider]] = {
     JiraServiceDeskProvider.name: JiraServiceDeskProvider,
 }
+
+#: Selectable by ``TICKET_PROVIDER`` but never read: kept out of :data:`PROVIDERS`.
+FILING_ONLY: Dict[str, Type[TicketProvider]] = {DryRunProvider.name: DryRunProvider}
 
 MAIL_NAMES: FrozenSet[str] = frozenset({'', 'mail', 'none'})
 
@@ -32,17 +36,17 @@ def build_provider(name: str, *, interactive: bool = False) -> Optional[TicketPr
     """The named provider, or ``None`` for a mail name.
 
     Raises:
-        TicketNotConfigured: an unknown name, listing the valid ones.
+        TicketNotConfigured: an unknown name, listing the valid ones, or
+            ``dry-run`` asked for by the webapp (``interactive``).
     """
     key = (name or '').strip().lower()
     if key in MAIL_NAMES:
         return None
-    try:
-        cls = PROVIDERS[key]
-    except KeyError:
+    cls = PROVIDERS.get(key) or FILING_ONLY.get(key)
+    if cls is None:
         raise TicketNotConfigured(
             f'unknown TICKET_PROVIDER {name!r}; expected one of '
-            f'{", ".join(sorted(MAIL_NAMES | set(PROVIDERS)))}') from None
+            f'{", ".join(sorted(MAIL_NAMES | set(PROVIDERS) | set(FILING_ONLY)))}')
     return cls.from_environment(interactive=interactive)
 
 
