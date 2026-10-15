@@ -215,9 +215,10 @@ class TestHelmWriteLever:
         means editing this line too."""
         assert str(self._values()['webapp']['env']['XRAS_RENAME_ENABLED']) == '1'
 
-    def test_auto_activation_ships_off(self):
-        """XRAS_POST_AUTOMATION.md § 3 B: proven on dev first. Arming means editing this line too."""
-        assert str(self._values()['webapp']['env']['XRAS_AUTO_ACTIVATE']) == '0'
+    def test_auto_activation_is_armed_on_purpose(self):
+        """XRAS_POST_AUTOMATION.md § 3 B, armed after the samuel-dev smoke (#828). Disarming
+        means editing this line too."""
+        assert str(self._values()['webapp']['env']['XRAS_AUTO_ACTIVATE']) == '1'
 
     def test_only_the_tasks_env_arms_task_writes(self):
         """`xras_rename` is the one production task that writes to XRAS.
