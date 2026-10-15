@@ -28,6 +28,9 @@ class DiskUsageEntry:
     directory_path: Optional[str] = None
     reporting_interval: int = 7
     cos: int = 0
+    # Per-fileset limits from the quota8 layout; None for older files.
+    file_quota: Optional[int] = None
+    quota_bytes: Optional[int] = None
 
     # Audit label written to act_username column. For normal rows we
     # leave this as ``None`` so the column is NULL (matching the legacy
@@ -54,6 +57,8 @@ class DiskUsageReader(ABC):
     """
 
     snapshot_date: Optional[date] = None
+    # Column layout read() found, for the import report.
+    layout: Optional[str] = None
 
     def __init__(self, path: str):
         self.path = path

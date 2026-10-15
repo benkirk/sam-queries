@@ -1,12 +1,12 @@
 """Reader for the ``acct.<host>.YYYY-MM-DD`` disk usage CSV format.
 
 Feeds: ``acct.glade.*`` (per-user rows), ``acct.quasar.*``, ``acct.desc1.*`` (per-project,
-username='total'). No header: activity_date, directory_path, projcode (lowercase),
-username (numeric-only rows rejected), number_of_files, file_size_total, then optional
-reporting_int and cos_id (default 7 and 0; both vestigial).
+username='total'). No header. Columns 1-5 are always activity_date, directory_path,
+projcode (lowercase label), username, number_of_files; the rest depends on the layout.
+WARNING: legacy8 and quota8 are both 8 columns; only the ``"7","0"`` tail tells them apart.
 
-WARNING: column 6 is **KiB**, not bytes (bytes = col6 * 1024; verified 2026-04-27
-against disk_charge_summary). It is physical occupancy, matching GPFS ``mmlsquota``.
+Usage and quota sizes are **KiB**, not bytes (verified 2026-04-27 against
+disk_charge_summary). Quotas are per fileset, repeated on each user row: never sum them.
 """
 
 import csv
@@ -54,20 +54,36 @@ def _parse_filename_date(path: str) -> Optional[date]:
         return None
 
 
-class GladeCsvReader(DiskUsageReader):
-    """Parse the ``acct.<host>.YYYY-MM-DD`` per-(user, project) usage CSV.
+LEGACY6 = 'legacy6'  # ..., KiB (desc1 before 2026-10)
+LEGACY8 = 'legacy8'  # ..., KiB, reporting_interval "7", cos "0" (glade, quasar before 2026-10)
+QUOTA8 = 'quota8'    # ..., file quota, KiB, KiB quota (all feeds from 2026-10)
 
-    Handles all three feeds (Campaign_Store, Quasar, Destor). The trailing
-    ``reporting_interval`` and ``cos_id`` columns are optional: the GPFS
-    feeds carry 8 columns, the Lustre/Destor feed carries 6. Rows with
-    fewer than 6 columns are skipped.
+_LEGACY8_TAIL = ['7', '0']
+
+
+def _detect_layout(rows: list[list[str]], path: str) -> str:
+    """One layout for the file's 8-column rows; raises on any width other than 6 or 8."""
+    widths = {len(r) for r in rows}
+    unknown = widths - {6, 8}
+    if unknown:
+        raise ValueError(
+            f"unrecognized column count(s) {sorted(unknown)} in {path}; expected 6 or 8"
+        )
+    eight = [r for r in rows if len(r) == 8]
+    if eight and all(r[6:8] == _LEGACY8_TAIL for r in eight):
+        return LEGACY8
+    return QUOTA8
+
+
+class GladeCsvReader(DiskUsageReader):
+    """Parse the ``acct.<host>.YYYY-MM-DD`` per-(user, project) usage CSV for all three feeds.
+
+    Rows with fewer than 6 columns are skipped. ``layout`` records what ``read()`` found.
     """
 
     # KiB -> bytes
     _KIB = 1024
 
-    # First 6 columns are mandatory; columns 7-8 (reporting_interval, cos)
-    # are optional and default to '7'/'0' when absent.
     _MIN_COLS = 6
 
     def read(self) -> list[DiskUsageEntry]:
@@ -76,47 +92,58 @@ class GladeCsvReader(DiskUsageReader):
         self.skipped_system = {}
 
         with open(self.path, newline='') as fh:
-            reader = csv.reader(fh)
-            for row in reader:
-                if not row or len(row) < self._MIN_COLS:
-                    continue
+            rows = [r for r in csv.reader(fh) if len(r) >= self._MIN_COLS]
 
-                date_s, dir_path, projcode, username, nfiles, fsize_kib = row[:6]
-                # Columns 7-8 are legacy/vestigial — default when missing.
-                interval = row[6] if len(row) > 6 else '7'
-                cos = row[7] if len(row) > 7 else '0'
+        # Decided per file, not per row: a quota8 row with 7 KiB on a zero-quota
+        # fileset carries the legacy "7","0" tail.
+        eight_layout = _detect_layout(rows, self.path)
+        layouts = {LEGACY6 if len(r) == 6 else eight_layout for r in rows}
+        self.layout = '+'.join(sorted(layouts)) or None
 
-                # Filter rows we cannot meaningfully attribute to a real user.
-                if is_system_account(username):
-                    self.skipped_system[username] = self.skipped_system.get(username, 0) + 1
-                    continue
-                if _NUMERIC_USERNAME_RE.match(username):
-                    continue
+        for row in rows:
+            date_s, dir_path, projcode, username, nfiles = row[:5]
+            interval, cos, file_quota, quota_kib = '7', '0', None, None
+            if len(row) == 6:
+                fsize_kib = row[5]
+            elif eight_layout == LEGACY8:
+                fsize_kib, interval, cos = row[5:8]
+            else:
+                file_quota, fsize_kib, quota_kib = row[5:8]
 
-                try:
-                    activity_date = date.fromisoformat(date_s)
-                    n_files = int(nfiles)
-                    b_kib = int(fsize_kib)
-                    rep_int = int(interval)
-                    cos_id = int(cos)
-                except ValueError:
-                    # Malformed row — skip silently; --skip-errors at the CLI
-                    # layer governs strictness for resolution failures, not
-                    # parse errors.
-                    continue
+            # Filter rows we cannot meaningfully attribute to a real user.
+            if is_system_account(username):
+                self.skipped_system[username] = self.skipped_system.get(username, 0) + 1
+                continue
+            if _NUMERIC_USERNAME_RE.match(username):
+                continue
 
-                snapshot_dates.add(activity_date)
+            try:
+                activity_date = date.fromisoformat(date_s)
+                n_files = int(nfiles)
+                b_kib = int(fsize_kib)
+                rep_int = int(interval)
+                cos_id = int(cos)
+                n_file_quota = None if file_quota is None else int(file_quota)
+                q_kib = None if quota_kib is None else int(quota_kib)
+            except ValueError:
+                # Malformed row: skip silently. --skip-errors governs resolution
+                # failures, not parse errors.
+                continue
 
-                entries.append(DiskUsageEntry(
-                    activity_date=activity_date,
-                    projcode=projcode.upper().strip(),
-                    username=username.strip(),
-                    number_of_files=n_files,
-                    bytes=b_kib * self._KIB,
-                    directory_path=dir_path.strip() or None,
-                    reporting_interval=rep_int,
-                    cos=cos_id,
-                ))
+            snapshot_dates.add(activity_date)
+
+            entries.append(DiskUsageEntry(
+                activity_date=activity_date,
+                projcode=projcode.upper().strip(),
+                username=username.strip(),
+                number_of_files=n_files,
+                bytes=b_kib * self._KIB,
+                directory_path=dir_path.strip() or None,
+                reporting_interval=rep_int,
+                cos=cos_id,
+                file_quota=n_file_quota,
+                quota_bytes=None if q_kib is None else q_kib * self._KIB,
+            ))
 
         # Snapshot date: prefer the date in the rows; fall back to filename.
         if len(snapshot_dates) == 1:
