@@ -1944,7 +1944,9 @@ registries. Small, and tests patch the registries.
 
 - [ ] The ingest skips `/gpfs/csfs1/ral/nral0041` (about 11 TiB) as known unowned, because its
   unix group is `root`. The reconcile now falls back to the fileset name; the ingest does not,
-  so NRAL0041 is not charged for it. Changing that changes charges: Ben's call.
+  so NRAL0041 is not charged for it. Changing that changes charges: Ben's call. When made,
+  move the fallback from the reconcile's call site into `FilesetResolver` behind a flag, so
+  the two callers cannot drift again (review F2 on #838).
 - [ ] acct reports list only filesets holding data, so from acct an allocation on an empty
   fileset reads `allocation_without_quota` (149 on 2026-10-14). Ask hdig for one zero-usage
   `total` row per empty fileset.
