@@ -153,7 +153,7 @@ without deciding it up front:
 2. **Apply only where the directory is unambiguously newer.** This covers rows tied to a directory
    entry: planned end dates, finished versus open, employer, and new entries.
    - SAM's own history (rows with no directory id) is never touched.
-   - Twins are reported, not added. 892 jobs are listed twice, once from the old PeopleDB (`PDB`) and
+   - Twins are reported, not added, until D-B is decided. 892 jobs are listed twice, once from the old PeopleDB (`PDB`) and
      once from Workday (`FI`); 758 pairs disagree on the start day and 130 on active (2026-10-15).
 3. **The epoch.** Before it, SAM's rows are frozen as SAM's record. After it, SAM mirrors the
    directory exactly. This is the same reconcile with one more rule.
