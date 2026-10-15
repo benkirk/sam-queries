@@ -1,257 +1,186 @@
-# Affiliations that match the directory
+# Reconciling SAM with the directory
 
-**Status:** proposal, for review (2026-10-15). No code yet.
-**Scope:** a person's positions (`user_organization`) and collaborations (`user_institution`) in SAM.
-**Related:** `LDAP_SYNC_API.md` (§ 10.3 deviations D1-D4, § 10.7 soak), `LDAPSYNC_DEV_SHADOW.md`,
-`SAM_LDAP_SYNCD_REFERENCE.md` (daemon bug numbers N17, N21, 1, 7).
+**Status:** direction agreed as the end goal (2026-10-15). The sync daemon stays as is for now. The
+first step is a read-only discrepancy report. No code yet.
+**Scope:** directory → SAM: people, then their positions (`user_organization`) and collaborations
+(`user_institution`), then organizations, institutions and groups. SAM → directory (project groups,
+collaborator end dates) stays with the daemon.
+**Related:** `LDAP_SYNC_API.md` (§ 10.3 deviations D1-D4, § 10.5 residuals, § 10.7 soak),
+`LDAPSYNC_DEV_SHADOW.md`, `SAM_LDAP_SYNCD_REFERENCE.md` (daemon bugs N17, N21, 1, 7; staging § 3.6-3.8).
 
-## 1. The question and the short answer
+## 1. Summary
 
-**Goal.** SAM should hold the same organizational and institutional information as the directory:
-the same current affiliations, the same employers and the same dates, end dates included, whether a
-change arrives through the daemon's full pass or as a single change.
+- **End goal.** The daemon keeps two jobs: noticing directory changes, and writing back upstream.
+  SAMuel takes over the rest: when told "something changed for person X", it reads X from the
+  directory itself and makes SAM agree, and a nightly sweep catches anything a notice missed.
+  SAMuel's POST API stays faithful and self-sufficient, so a site without our directory can still
+  run SAMuel from it alone.
+- **Why.** The daemon's view of a person is not the directory's, and no rule inside SAMuel can
+  recover what the daemon has already dropped.
+  - The plainest case is planned end dates. The directory has 316 current positions with a planned
+    end. The daemon's record carries none of them.
+  - Our dev shadow lost about 180 that dev still had at the baseline, because SAMuel applied what
+    the daemon sent.
+  - Fixing this inside the daemon is a redesign, not a bug fix (§ 3).
+- **Not yet.** This is a ways off; the synchronizer stays as it is for now.
+- **What is still open.** After three months of the new directory, SAM's own history may be the more
+  complete record. So nothing here decides which side is right. The first step only **reports
+  discrepancies**, and changes nothing. Applying fixes comes in stages that each need a decision (§ 4).
 
-**Short answer.**
+## 2. The end goal
 
-1. The daemon's lists are not a copy of the directory. The daemon keeps its own record of each
-   person, seeded from SAM, and edits it as directory changes arrive.
-   - It never removes a position or collaboration.
-   - It erases a position's end date whenever an update says the position is active. 314 of the 316
-     current positions with a planned end date have lost it in the daemon's record; the other 2 are
-     missing altogether.
-   - It never learns the ids of rows SAM creates.
-
-   No matching rule in SAMuel can recover information the daemon has already dropped. Fixing this
-   on the daemon's side means redesigning it, not fixing a bug. That is the whack-a-mole: each fix
-   leaves the design that produces the next mole.
-2. SAMuel's POST API should still stand on its own. A site without our directory has to be able to
-   run SAMuel from the API alone, and get a correct copy provided its sender is faithful. So the
-   first change is to SAMuel's core:
-   - treat the posted lists as the person's truth;
-   - reconcile SAM's rows to them properly, which means amending D2, applying end dates as sent,
-     and deciding what happens to rows the sender did not list.
-3. For UCAR, add an **optional directory checkup**. After a user PUT is applied, SAMuel reads that
-   person's entries from the directory and runs the same reconcile against them. A nightly pass
-   does the same for everyone.
-
-   This converges by construction: each run compares the directory with SAM's actual rows, so
-   anything that drifted for any reason is corrected the next time the person is touched, or
-   overnight. No daemon fix is needed.
-
-## 2. What "the same as the directory" means
-
-The directory (`ou=allPeople` on ldap.ucar.edu, readable anonymously) holds each affiliation as a
-child entry of the person:
-
-| Directory | Fields that matter | SAM |
+| Who | Does | Today |
 |---|---|---|
-| `x-ucar-position` (13,717 entries) | `x-ucar-positionId` (the entry's own id), `x-ucar-organizationId`, `x-ucar-startDate`, `x-ucar-endDate`, `x-ucar-active`, `x-ucar-source` (PDB or FI) | `user_organization`, with `idms_unique_name` = `x-ucar-positionId` |
-| `x-ucar-collaboration` (19,611 entries) | `x-ucar-externalOrgId` (the institution, also the entry's key), `x-ucar-startDate`, `x-ucar-endDate`, `x-ucar-active` | `user_institution` |
+| Daemon | Notices directory changes and tells SAMuel which person, group, organization or institution changed | It already does: every user PUT is such a notice, so no daemon change is needed to start |
+| Daemon | Writes SAM → directory: project groups and collaborator end dates, through staging | Unchanged |
+| SAMuel | On a notice, reads that record from the directory and reconciles SAM to it | New. The POST's content is still applied first, so a site without our directory loses nothing |
+| SAMuel | Nightly, sweeps the whole directory the same way, to catch missed notices | New. Missed notices are real: the testbed's poller missed one claim this week, and the daemon has its own gaps |
+| SAMuel | Verifies any delete or purge against the directory before acting | New. The daemon turns a removed affiliation entry into a whole-user delete (N17) |
 
-A finished entry is usually marked `x-ucar-active: FALSE` with **no** end date (10,969 of the 13,717
-positions are inactive; only 2,519 carry an end date). So "the same" has to be defined as rules:
+Notes:
 
-- **Current set.** An entry is current when it is active and its end date, if any, is in the future.
-  SAM's current rows for the person must be exactly the current entries.
-- **End dates.** When the directory gives an end date, SAM stores it, future ones included. Positions
-  keep the legacy end-of-day convention; collaborations are stored as sent. When an entry is inactive
-  with no end date, SAM's row must be ended. If SAM already holds an end date, it is kept; otherwise
-  the row is ended at the time SAMuel first sees the entry inactive.
-- **Employer and start.** These follow the directory, updated in place on the row that holds the entry.
-- **History the directory never had.** SAM holds about 11,700 positions with no directory id, mostly
-  finished jobs from before the directory existed. They feed the user card's "former" lists,
-  statistics and purge permits. Proposed: keep finished history, and end any such row that is still
-  open (45 on dev today). Decision D-A in § 7.
+- **One record type at a time.** Affiliations go first, because that's where the damage is proven.
+  User identity fields (names, emails, phones, active, academic status) follow, then organizations,
+  institutions and posix groups. Each type goes through the stages in § 4.
+- **For UCAR, SAMuel would ignore much of what the daemon sends.** That is deliberate. It is written
+  here so nobody later fixes the daemon's content expecting it to matter.
+- **Access.** An anonymous read of `ou=allPeople` sees people, positions and collaborations.
+  - It does not see everything: service accounts appear only under `ou=serviceAccounts`.
+  - Full fidelity may need a read-only service credential (D-F).
+  - A full sweep is about 60,000 entries, a minute or less. One person is a single query.
+  - The pods' route to ldap.ucar.edu is still to be verified.
 
-## 3. Evidence
+## 3. Why the daemon's content cannot converge
 
-Measured 2026-10-15 by the census in Appendix B. It reads the live directory anonymously and three
-syncd snapshots of the same morning. It prints counts only.
+### 3.1 Evidence
+
+Measured 2026-10-15 by the census in Appendix B: live directory, anonymous, counts only, against three
+syncd snapshots of that morning. The directory holds 13,717 positions (2,748 active) and 19,614
+collaborations (4,512 active).
 
 | | Directory | Daemon's record | Prod SAM (legacy) | Dev SAM (SAMuel shadow) |
 |---|---|---|---|---|
 | Current positions with a planned end date | **316** | 0 carry it (314 missing, 2 absent) | 181 carry it, 113 missing | **2 carry it, 309 missing** |
 | Positions finished in the directory, open here | | 58 | 55 | 57 |
 | Positions current in the directory, ended here | | 0 | 113 | 0 |
-| Directory positions with no row under their id (all have a twin, § 5.3) | | 753 | 977 | 750 |
-| Rows with no directory id (history), still open | | 45 | 81 | 45 |
-| Positions whose known organization differs (current) | | 7 | 15 | 14 |
+| Directory positions with no row under their id (each has a twin that is held, § 4) | | 753 | 977 | 750 |
+| Rows with no directory id (history) that are still open | | 45 | 81 | 45 |
+| Current positions whose known organization differs | | 7 | 15 | 14 |
 | Collaborations: no row for the institution / current-ness differs | | 2 / 1 | 11 / 1 | 2 / 1 |
 
-How to read it:
+How to read the table:
 
-- **Planned end dates are the clearest case.**
-  - The directory has 316 current positions with an end date, mostly term appointments.
-  - The daemon's record has none of them.
-  - Prod still shows 181 because legacy's stock daemon rarely delivers position changes at all (§ 10.5).
-  - Dev shows 2, because the shadow's reset sent everyone again and SAMuel applied what it was sent.
-  - So **a faithful SAM fed by this daemon gets worse, not better**: the soak erased about 180
-    correct end dates on dev.
-- **Collaborations are nearly right everywhere.** The trouble is concentrated in positions.
-- **The 113 positions current in the directory but ended in prod** are the undelivered changes
-  (§ 10.5). The shadow fixed them on dev, so the daemon *can* deliver; it just delivers its own
-  record, flaws included.
-- **Rows with no directory id are expected history.** Only the open ones (45 on dev) contradict the
-  directory.
+- **Planned end dates.** Prod keeps 181 only because legacy's stock daemon rarely delivers position
+  changes at all (§ 10.5). The shadow delivered them, and SAMuel applied the erasure. So a faithful
+  SAM fed by this daemon gets worse.
+- **Collaborations are nearly right everywhere.** The trouble is in positions.
+- **The 113 positions current in the directory but ended in prod** are undelivered changes. The
+  shadow fixed them on dev, so the daemon can deliver; it delivers its own record, flaws included.
 
-## 4. Why the daemon path cannot get there
+### 3.2 Design, not bugs (paths in NCAR/sam-ldap-syncd)
 
-The test for whack-a-mole is whether the defects are independent bugs, which can be fixed one by
-one and stay fixed, or consequences of a design, which keeps producing new ones. Paths below are in
-NCAR/sam-ldap-syncd.
-
-### 4.1 Design: these need a redesign, not a fix
-
-1. **It diffs the directory against its own record, never against SAM.**
-   - The daemon seeds its in-memory database from SAM at a reset (`lib/IMDB.pm`). From then on it
-     compares directory changes with that record (`lib/IDMSDumpSynchronizer.pm`, around
-     lines 109-188).
-   - Whatever SAM got wrong before the reset is echoed back as truth.
-   - A full pass compares the directory with the daemon's record, not with SAM, so SAM-side drift
-     is invisible to it.
-2. **It never removes a position or collaboration, on purpose.** `lib/IDMSUserEmployment.pm`
-   (around 254-269) says so in a comment: SAM's history is richer than the directory's. So a
-   directory removal can never reach SAM.
+1. **It compares the directory with its own record, seeded from SAM, never with SAM.** See
+   `lib/IMDB.pm` and `lib/IDMSDumpSynchronizer.pm` around 109-188. SAM's past errors come back as
+   truth, and a full pass cannot see drift on SAM's side.
+2. **It never removes a position or collaboration, by design.** See `lib/IDMSUserEmployment.pm`
+   around 254-269.
 3. **Its identity model does not fit the directory.**
-   - A collaboration has no id of its own; its key is the institution. So moving a collaboration
-     to another institution is "delete the old one" (kept, still open, by item 2) plus "add a new
-     one" (`transformer_rewrite.pl`, around 498-500).
-   - Positions are keyed by the directory id, but the directory holds twins for one job (§ 5.3).
-     The daemon's de-duplication compares neighbors only, and can drop the record that carries
-     SAM's row id (`lib/SamPositionData.pm`, around 379-527).
-4. **It delivers deltas only.** A person whose data diverged before is never corrected until their
-   directory entry changes again. That is how a difference like the 55 open-but-finished positions
-   in prod can persist indefinitely.
+   - A collaboration has no id of its own, so moving it to another institution keeps the old one
+     open and adds a new one (`transformer_rewrite.pl` around 498-500).
+   - The directory lists many jobs twice, and the daemon's de-duplication compares neighbors only
+     (`lib/SamPositionData.pm` around 379-527).
+4. **It delivers changes only.** Anything that diverged earlier stays wrong until the person's entry
+   changes again.
 
-### 4.2 Bugs: fixable, but fixing them leaves 4.1 in place
+### 3.3 Bugs, fixable but not sufficient
 
-- **End-date erasure.** Any update carrying `ACTIVE=TRUE` deletes the position's end date
-  (`lib/SamUserEmploymentData.pm`, around 388-420). This is the 316-row loss above.
-- **Dead read-back.** The daemon never learns the id of a row SAM inserts, so it re-sends that
-  record without an id until its next reset (`lib/SamUserData.pm` 292 and 298; bugs 1 and 7; N21).
-  About 250 records are in this state at any time.
-- **A removed entry becomes a whole-user delete** (N17).
-- **Neighbor-only de-duplication** (item 3 above).
+- **End-date erasure:** an update carrying `ACTIVE=TRUE` deletes the end date
+  (`lib/SamUserEmploymentData.pm` around 388-420).
+- **Dead read-back:** the daemon never learns SAM's id for a row SAM inserts (`lib/SamUserData.pm`
+  292, 298; bugs 1 and 7; N21).
+- **N17:** a removed entry becomes a whole-user delete.
+- **Neighbor-only de-duplication.**
 
-### 4.3 The count
+Parity through the daemon needs at least six changes across five Perl modules owned upstream, several
+of which alter behavior legacy relies on. Even then, change-only delivery cannot repair a person the
+directory does not touch. A reconcile that reads the source and compares it with SAM's actual rows
+holds no state of its own, so drift from any cause is corrected the next time that person is checked.
 
-Parity through the daemon needs at least six changes across at least five Perl modules owned
-upstream:
-- the four bugs;
-- removal semantics;
-- a collaboration identity;
-- a comparison against SAM rather than against its own record.
+## 4. Which side is right: three trust stages
 
-Several of these change behavior legacy relies on. Even then, delta delivery cannot repair a person
-the directory does not touch. A reconcile that reads the source and compares it with SAM's actual
-rows has none of these failure modes, because it holds no state of its own.
+The open question, as Ben put it (paraphrased): three months into the new system, we don't fully trust the
+directory yet, and where SAM has history the directory doesn't, SAM may have the more complete record.
+One answer later is an **epoch**: keep SAM's organization and institution data from before a chosen
+date, and mirror the directory after it. Not today. The stages let us build that trust from evidence,
+without deciding it up front:
 
-## 5. Options
+1. **Report only.** SAMuel computes what it would change, by category, and changes nothing. A few
+   weeks of reports show where SAM and the directory disagree, in which direction, and since when.
+   That is the evidence for or against the epoch.
+2. **Apply only where the directory is unambiguously newer.** This covers rows tied to a directory
+   entry: planned end dates, finished versus open, employer, and new entries.
+   - SAM's own history (rows with no directory id) is never touched.
+   - Twins are reported, not added. 892 jobs are listed twice, once from the old PeopleDB (`PDB`) and
+     once from Workday (`FI`); they often disagree on start date, and 120 pairs disagree on active.
+3. **The epoch.** Before it, SAM's rows are frozen as SAM's record. After it, SAM mirrors the
+   directory exactly. This is the same reconcile with one more rule.
 
-| Option | For | Against |
-|---|---|---|
-| (a) Fix the daemon | Keeps one sync path | § 4.3: a redesign of someone else's Perl, slow to land, still delta-only |
-| (b) Better matching in SAMuel on the posted lists | Needed anyway; correct for any site with a faithful sender | Bounded by its input: here the input has already lost end dates and removals |
-| (c) The daemon reads the whole person from the directory | The right idea | The wrong owner; still couples SAM's correctness to the daemon |
-| **(d) (b) as the core, plus an optional directory checkup** | POST API stands alone; UCAR converges; no daemon change needed | One more moving part: a directory read from the pods |
+Each record type moves through the stages separately. User identity fields may reach stage 2 sooner
+than affiliations, because legacy already treats the directory as the truth for them.
 
-### 5.1 Core: one reconcile engine for the POST path (site-neutral)
+## 5. Near term, while the synchronizer stays
 
-`reconcile_affiliations(session, user, targets)` would live in `src/sam/manage/`, beside
-`employment.match`. It replaces `_sync_affiliations` (`src/sam/manage/ldapsync.py`, around 268-314)
-and makes the user's rows equal the target list:
+**Stays as is:** the daemon, the POST path, and "never end or delete" for affiliations.
 
-- **Ids first.** Records that carry a SAM row id claim their rows before records without one are
-  matched by data. This fixes the swapped rows seen on 10-15, where an id-less record grabbed an
-  existing row and the record that owned it was inserted again.
-- **An id inside the user's own rows is trusted, employer included (amended D2).** If the employer
-  changed, the row's employer is updated in place. Legacy ignores the employer; SAMuel today inserts
-  a duplicate. A row is still matched at most once (D2's other half, kept).
-- **Dates applied exactly as sent.** Positions keep end-of-day. Collaborations are stored as sent:
-  today `DateRangeMixin` silently turns a midnight end into 23:59:59 (`src/sam/base.py`, around
-  53-71), so those collaborations never compare equal and § 10.5's 22 collaboration PUTs never converge.
-- **Rows the sender did not list** follow decision D-A: kept as finished history, ended if open.
-  "Never end or delete" stops being the rule; the change is recorded as a deviation in § 10.3.
-- **Nothing in the core names LDAP or `x-ucar`.** A site whose sender is faithful gets an exact copy
-  from the POST alone.
+**Safe to fix in the core regardless, each a decision (§ 7):**
+- **Amended D2.** Records with an id claim their own rows before records without one; an id inside
+  the user's own rows is trusted, employer included, and the employer is updated in place. Today an
+  id-less record can grab another row, and a moved collaboration is inserted again.
+- **Collaboration end dates stored as sent.** Today a midnight end is silently stored as 23:59:59
+  (`src/sam/base.py` around 53-71), so 22 collaboration PUTs never converge (§ 10.5).
+- **A guard against end-date erasure (D-E):** a POST may not clear a planned end date SAM already
+  holds, until upstream fixes the erasure.
+  - This deliberately departs from a faithful POST, so it would be recorded in § 10.3.
+  - It protects prod after the `SAM_URL` flip: from then on, prod would take the shadow's erasures.
 
-### 5.2 Optional directory checkup (UCAR)
+**Upstream:** an issue for the end-date erasure (D-D).
 
-A small module in the ldapsync package (not a plugin), behind a config lever:
-`LDAPSYNC_DIRECTORY_URL`, empty means off, and prod stays off until the `SAM_URL` flip.
+## 6. Stage 1: the discrepancy report
 
-- **After each user PUT,** once the POST's result is committed, read that person's entries by upid
-  (one anonymous search, a few entries), map them to the same target shape, and run the same engine.
-  - If the directory is slow or unreachable, the POST's result stands, with one log line.
-  - The PUT's response never waits for the checkup and never fails because of it: a bounded
-    timeout, and the work runs after the commit.
-- **Nightly,** the same code runs for everyone as a scheduled task. A new task must be named in
-  `helm/values.yaml` `SAM_TASKS_DISABLED` for prod in the same change, because that lever is
-  fail-open. A counts-only census command shares the code and becomes the soak's daily measure of
-  this goal.
-- **Mapping rules** live in this module only:
-  - current-ness and end dates per § 2;
-  - twins per § 5.3;
-  - an unknown employer is skipped and counted. 2,049 old inactive positions name organizations
-    SAM does not have;
-  - a person not in SAM is skipped.
-- **Privacy:** logs carry counts and row ids, never names.
-- **Rollback:** turn the lever off. The core keeps working from the POST.
-
-### 5.3 Twins in the directory
-
-The directory holds 892 jobs twice for the same person and organization: one entry from the old
-PeopleDB (`x-ucar-source: PDB`, a numeric id) and one from Workday (`FI`, a `P00…` id).
-
-- In 760 pairs both are active.
-- In 120 pairs the PeopleDB copy is active and the Workday copy is not.
-- Their start dates differ in 758 pairs.
-
-SAM holds one row per pair today, almost always the Workday one, and a literal copy would show two
-current positions. Proposed rule: one SAM row per pair, following the Workday entry (dates and
-active flag), keyed by the Workday id. The PeopleDB entry counts only when it has no Workday twin.
-Concurrent Workday positions in one organization (104 groups) are separate jobs and stay separate
-rows. Decision D-B in § 7.
-
-### 5.4 First run, coexistence, access
-
-- **First run on dev** (from § 3), roughly:
-  - restore 309 future end dates;
-  - end 57 finished positions and 45 open history rows;
-  - correct about 14 employers;
-  - add 2 collaborations.
-
-  The census before and after is the proof.
-- **Legacy coexistence:** during the shadow only samuel-dev runs this. Prod keeps legacy until the
-  flip; legacy would answer "unknown id" for a row SAMuel deleted, which is one more reason to end
-  rather than delete.
-- **Access:**
-  - an anonymous read of ldap.ucar.edu from the nwc1 pods (to verify before building);
-  - a new dependency, `ldap3`, which is pure Python.
-
-## 6. Plan if accepted
-
-1. **Core PR:** the reconcile engine, amended D2, end dates as sent, the history policy, and tests
-   built from the soak's real cases (moved collaboration, twin positions, planned end dates, id-less
-   resends, swapped rows). The § 10.3 table is updated.
-2. **Checkup PR:** the directory module, the lever (dev on, prod off), the nightly task (named in
-   `SAM_TASKS_DISABLED` for prod), and the census command.
-3. **Shadow:** re-baseline (`make refresh-dev`, ldap restarted first), census to zero, then five
-   clean weekdays counted again. The daily check gains the census.
-4. **Upstream:** an issue for the daemon's end-date erasure. Even with the checkup, a stock daemon
-   in prod would keep erasing end dates between nightly passes until fixed.
+- **What it is.** Read-only: no writes, so it can land without restarting the soak's clean-day count.
+- **What it reports:** counts by category, plus row ids for follow-up, never names in logs.
+  - **People:**
+    - in the directory but not in SAM, and the reverse;
+    - username, upid or uid that disagree;
+    - the active flag;
+    - later, names and emails.
+  - **Affiliations:** the census categories in § 3.1.
+    - planned end dates;
+    - finished versus open;
+    - employer;
+    - directory entries with no SAM row;
+    - twins;
+    - SAM history rows still open.
+- **How to run it:**
+  - a `sam-admin` command;
+  - an optional scheduled task that records the counts. A new task is named in `helm/values.yaml`
+    `SAM_TASKS_DISABLED` for prod in the same change, because that setting is fail-open.
+- **Configuration:** the directory URL, empty meaning off.
+- **The soak** uses it as its daily measure, alongside `compare-dumps`.
 
 ## 7. Decisions for Ben
 
-- **D-A, history the directory never had.** Recommended: keep finished rows, end the open ones.
-  Alternative: delete them, about 11,700 rows of the user card's history.
-- **D-B, twins.** Recommended: one row per pair, the Workday entry wins. Alternatives: PeopleDB
-  wins, or two rows.
-- **D-C, inactive with no end date.** Recommended: keep SAM's end date if it has one, else end at
-  the time SAMuel first sees the entry inactive. Alternative: use the entry's `modifyTimestamp`
-  (closer to the real date, but it moves with any edit of the entry).
-- **D-D, tell upstream now about the end-date erasure.** Recommended: yes, as an issue, separate
-  from this work.
+- **D-A, history the directory never had.** Deferred to the epoch. Until then it is never touched.
+- **D-B, twins (for stage 2).** Recommended: one SAM row per pair, following the Workday entry.
+  Alternatives: PeopleDB wins, or two rows.
+- **D-C, an entry that is inactive with no end date (for stage 2).** Recommended: keep SAM's end
+  date if it has one, else end at the time SAMuel first sees it inactive. Alternative: the entry's
+  `modifyTimestamp`.
+- **D-D, an upstream issue now for the end-date erasure.** Recommended: yes.
+- **D-E, a near-term guard so a POST cannot clear a planned end date.** Recommended: yes, as a
+  recorded deviation until upstream fixes the erasure.
+- **D-F, a read-only directory credential for full fidelity.** Recommended: ask for one before stage 1
+  goes beyond people and affiliations.
 
 ## Appendix A. Soak friction for the same round
 
@@ -260,7 +189,7 @@ rows. Decision D-B in § 7.
   - checks for a taken name and for a placeholder.
 
   The sync itself keeps refusing renames: three transient numeric usernames arrived on 10-14 alone.
-- **Collaboration end dates as sent** (§ 5.1), which settles § 10.5's non-converging PUTs.
+- **Collaboration end dates as sent** (§ 5).
 - **Shadow tooling:** `compare-dumps` ignores row ids, and the daily check adds the census.
 
 ## Appendix B. The census (read-only, counts only)
