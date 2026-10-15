@@ -156,3 +156,83 @@ def test_skips_system_accounts_and_counts_them(tmp_path):
     assert reader.skipped_system == {
         'sshd': 1, 'telegraf': 1, 'systemd-coredump': 1, 'systemd-network': 1,
     }
+
+
+# --- Quota layout (from 2026-10): date, path, label, user, nfiles, file quota, KiB, KiB quota
+
+
+def test_quota8_glade_row_reads_usage_and_quotas(tmp_path):
+    csv = (
+        '"2026-10-14","/gpfs/csfs1/univ/ucla0066","ucla0066","kezhou",'
+        '"283203","0","4390570688","5368709120"\n'
+    )
+    f = _write(tmp_path, "acct.glade.2026-10-17", csv)
+    reader = GladeCsvReader(str(f))
+    [e] = reader.read()
+    assert reader.layout == "quota8"
+    assert e.number_of_files == 283203
+    assert e.bytes == 4390570688 * 1024           # col 7, not the file quota
+    assert e.file_quota == 0
+    assert e.quota_bytes == 5368709120 * 1024
+    assert e.reporting_interval == 7 and e.cos == 0
+
+
+def test_quota8_desc1_and_quasar_total_rows(tmp_path):
+    csv = (
+        '"2026-10-14","/lustre/desc1/p/nral0032","nral0032","total",'
+        '"124505","104857600","7102398944","161061273600"\n'
+        '"2026-10-14","/quasar/cosmic","p59110021","total",'
+        '"19434","0","407472695388","646929448960"\n'
+    )
+    f = _write(tmp_path, "acct.mixed.2026-10-17", csv)
+    entries = GladeCsvReader(str(f)).read()
+    assert [e.bytes for e in entries] == [7102398944 * 1024, 407472695388 * 1024]
+    assert [e.file_quota for e in entries] == [104857600, 0]
+
+
+def test_legacy_layouts_carry_no_quotas(tmp_path):
+    csv = (
+        '"2026-06-06","/gpfs/csfs1/cesm","cesm","gdicker","4986","100","7","0"\n'
+        '"2026-06-06","/lustre/desc1/p/nral0032","nral0032","total","123843","200"\n'
+    )
+    f = _write(tmp_path, "acct.mixed.2026-06-06", csv)
+    reader = GladeCsvReader(str(f))
+    entries = reader.read()
+    assert reader.layout == "legacy6+legacy8"
+    assert all(e.file_quota is None and e.quota_bytes is None for e in entries)
+
+
+def test_quota8_row_with_legacy_tail_follows_the_file(tmp_path):
+    # 7 KiB on a zero-quota fileset looks like the legacy "7","0" tail.
+    csv = (
+        '"2026-10-14","/gpfs/csfs1/cesm","cesm","gdicker","4986","0","688092272","18801648205824"\n'
+        '"2026-10-14","/gpfs/csfs1/zero","zero","alice","3","0","7","0"\n'
+    )
+    f = _write(tmp_path, "acct.glade.2026-10-17", csv)
+    reader = GladeCsvReader(str(f))
+    entries = reader.read()
+    assert reader.layout == "quota8"
+    assert entries[1].bytes == 7 * 1024
+    assert entries[1].quota_bytes == 0
+
+
+@pytest.mark.parametrize("row", [
+    '"2026-10-14","/p","x","u","1","2","3"\n',                 # 7 columns
+    '"2026-10-14","/p","x","u","1","2","3","4","5"\n',         # 9 columns
+])
+def test_unknown_width_refuses_the_file(tmp_path, row):
+    good = '"2026-10-14","/gpfs/csfs1/cesm","cesm","gdicker","1","0","32","64"\n'
+    f = _write(tmp_path, "acct.glade.2026-10-17", good + row)
+    with pytest.raises(ValueError, match="column count"):
+        GladeCsvReader(str(f)).read()
+
+
+def test_non_numeric_quota_keeps_the_usage_row(tmp_path):
+    # Joey may write "-" where a filesystem has no file-count quota.
+    csv = (
+        '"2026-10-14","/gpfs/csfs1/cesm","cesm","gdicker","4986","-","688092272",""\n'
+    )
+    f = _write(tmp_path, "acct.glade.2026-10-17", csv)
+    [e] = GladeCsvReader(str(f)).read()
+    assert e.bytes == 688092272 * 1024
+    assert e.file_quota is None and e.quota_bytes is None
