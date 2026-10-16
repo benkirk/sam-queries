@@ -1,6 +1,7 @@
 """CliRunner tests for the directory views and apply: `sam-search user|project --directory`,
 `sam-admin user --directory-apply [--dry-run]`. A FakeDirectory stands in for the reader."""
 import json
+from datetime import datetime
 
 import pytest
 
@@ -94,6 +95,10 @@ class TestProjectDirectory:
         mock_db_session.flush()
         rich = runner.invoke(search, ['project', project.projcode, '--directory'])
         assert 'is not in the directory' in rich.output and '2026-07-10' in rich.output
+        project.creation_time = datetime(2026, 1, 1)
+        mock_db_session.flush()
+        rich = runner.invoke(search, ['project', project.projcode, '--directory'])
+        assert 'is not in the directory' in rich.output and '2026-07-10' not in rich.output
 
 
 class TestReport:

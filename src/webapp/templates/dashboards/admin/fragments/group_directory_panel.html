@@ -3,7 +3,7 @@
 {% from 'dashboards/fragments/user_rows.html' import user_link %}
 {% from 'dashboards/admin/fragments/_directory_state.html' import directory_state %}
 {{ directory_state(panel, 'The directory has no group for gid ' ~ panel.gid ~ '.'
-   ~ (" No project group has been created in the directory since 2026-07-10: the sync daemon's creates stopped (an upstream issue, not SAM's)." if panel.kind == 'project' else ''),
+   ~ (' ' ~ panel.absent_note if panel.absent_note else ''),
    'users-slash', unavailable=(panel.name ~ ' has no unix gid in SAM, so there is nothing to look up.') if panel.error == 'no gid' else '') }}
 {% if panel.found %}
 {% set rec = panel.record %}

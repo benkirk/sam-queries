@@ -285,10 +285,8 @@ def display_project_directory(ctx: Context, view: dict, projcode: str):
                           style='yellow')
         return
     if directory_unreadable(ctx, view, f'gid {view["gid"]}'):
-        if not view['available'] or view['kind'] != 'project':
-            return
-        ctx.console.print('   No project group has been created in the directory since 2026-07-10'
-                          ' (the sync daemon\'s creates; an upstream issue).', style='dim')
+        if view['available'] and view['absent_note']:
+            ctx.console.print(f"   {view['absent_note']}", style='dim')
         return
     rec = view['record']
     managers = ', '.join(f"{m['username'] or 'upid ' + str(m['upid'])}"

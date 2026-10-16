@@ -5,6 +5,7 @@ and the fail-open shapes; the write path is covered at the manage layer
 import json
 import os
 import re
+from datetime import datetime
 
 import pytest
 
@@ -134,9 +135,21 @@ class TestProjectPanel:
         assert 'manager_missing' not in html and 'would apply' not in html
         assert 'hx-post' not in html and 'Levers on' not in html
 
-    def test_absent_names_the_upstream_cause(self, auth_client, configured, active_project, url):
+    def test_absent_names_the_upstream_cause_for_a_project_created_after_it(
+            self, auth_client, configured, active_project, session, app, url):
+        from sam.manage.directory_panel import CREATES_STOPPED, project_group_panel
         html = auth_client.get(url).get_data(as_text=True)
-        assert f'no group for gid {active_project.unix_gid}' in html and '2026-07-10' in html
+        assert f'no group for gid {active_project.unix_gid}' in html
+        expected = active_project.creation_time.date() >= CREATES_STOPPED
+        assert ('2026-07-10' in html) is expected
+        recent = make_project(session, lead=make_user(session, upid=True))
+        recent.unix_gid, recent.creation_time = 77_777_778, datetime(2026, 7, 10)
+        older = make_project(session, lead=recent.lead)
+        older.unix_gid, older.creation_time = 77_777_780, datetime(2026, 7, 9, 23, 59, 59)
+        session.flush()
+        with app.app_context():
+            assert project_group_panel(session, recent)['absent_note'].startswith('No project group')
+            assert project_group_panel(session, older)['absent_note'] == ''
 
     def test_unavailable_is_an_alert_not_a_500(self, auth_client, configured, url):
         configured.raise_with = DirectoryUnavailable('timeout')

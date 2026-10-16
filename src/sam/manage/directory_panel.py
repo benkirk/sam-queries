@@ -9,7 +9,7 @@ Record: docs/plans/DIRECTORY_CLIENT.md step 3, DIRECTORY_CLIENT_NEXT.md section 
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 from sam.core.organizations import Institution, Organization
@@ -163,6 +163,13 @@ def institution_panel(session, inst, *, record=None,
     return _finish(state, result, lambda d: (d.sam_value, d.directory_value), applied)
 
 
+#: The sync daemon has created no project group in the directory since this day (an upstream
+#: issue; docs/plans/DIRECTORY_CLIENT_NEXT.md section 2). An absent group for a project created
+#: on or after it names that cause; an older project's absence has some other one.
+CREATES_STOPPED = date(2026, 7, 10)
+ABSENT_PROJECT_NOTE = ('No project group has been created in the directory since 2026-07-10: '
+                       "the sync daemon's creates stopped (an upstream issue, not SAM's).")
+
 #: Why a group panel applies nothing, per kind: the panel footer and the CLI print it.
 REPORT_NOTES = {
     'project': ('Report only: project groups flow from SAM to the directory through the sync daemon;'
@@ -174,11 +181,12 @@ REPORT_NOTES = {
 
 
 def _group_panel(session, gid: Optional[int], *, kind: str, key: str, roles: Dict[int, str],
-                 record=None, project=None, group=None) -> Dict[str, Any]:
+                 record=None, project=None, group=None, absent_note: str = '') -> Dict[str, Any]:
     """A unix group as the directory holds it (managers from the people side) and SAM's drift."""
     config = DirectoryConfig.from_environment()
     state = _base(config)
-    state.update(gid=gid, kind=kind, name=key, managers=[], report_note=REPORT_NOTES[kind])
+    state.update(gid=gid, kind=kind, name=key, managers=[], report_note=REPORT_NOTES[kind],
+                 absent_note=absent_note)
     if gid is None:
         state['available'] = False
         state['error'] = 'no gid'
@@ -220,8 +228,10 @@ def project_group_panel(session, project, *, record=None) -> Dict[str, Any]:
         upid = upid_of.get(ids[role])
         if upid is not None:
             roles.setdefault(upid, role)
+    created = project.creation_time.date() if project.creation_time else None
+    note = ABSENT_PROJECT_NOTE if created is not None and created >= CREATES_STOPPED else ''
     return _group_panel(session, project.unix_gid, kind='project', key=project.projcode,
-                        roles=roles, record=record, project=project)
+                        roles=roles, record=record, project=project, absent_note=note)
 
 
 def adhoc_group_panel(session, group, *, record=None) -> Dict[str, Any]:
