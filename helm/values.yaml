@@ -357,6 +357,15 @@ webapp:
     LDAPSYNC_LIFECYCLE_ENABLED: "0"
     LDAPSYNC_RESTORE_ON_REACTIVATE: "0"
     LDAPSYNC_RESTORE_WINDOW_DAYS: "90"
+    # The directory client (sam/integration/directory, docs/plans/DIRECTORY_CLIENT.md): SAMuel
+    # reading ldap.ucar.edu itself. PROVIDER "ucar" + URL turn it on; CHECK_ON_SYNC "1" reads
+    # each record the daemon PUTs and logs the differences, fail-open. The per-kind write
+    # levers DIRECTORY_APPLY_<KIND> (person, position, collaboration, organization,
+    # institution, group) are absent here on purpose: absent is off. Drift gate:
+    # tests/unit/gates/test_helm_directory_levers.py.
+    DIRECTORY_PROVIDER: ""
+    DIRECTORY_URL: ""
+    DIRECTORY_CHECK_ON_SYNC: "0"
     # XRAS Allocations API: SAM calling OUT to XRAS (docs/xras/outgoing/)
     # The opposite direction from the two levers above. Read-only and GET-only:
     # the client has no verb method but an internal _get, because the SAME key

@@ -139,6 +139,7 @@ rule file directly, and name it in any subagent prompt.**
 | `charts.md` | the chart package, `utils/charts.py`, `charts.css`, `chart_bits.html`, chart tests | Render axes, gotchas, fingerprint regen |
 | `account-requests.md` | the account-request model and manage layer, `/register`, event lifecycle | Account requests, events, invitations, the NUSD handoff |
 | `cli.md` | `src/cli/`, CLI tests | sam-search and sam-admin, the jobhist lockstep |
+| `directory.md` | `src/sam/integration/directory/`, `sam/queries/directory.py`, directory tests | The LDAP directory client: reader contract, per-kind levers, the fail-open sync hook, the Mountain-offset date rule |
 | `formatting.md` | `sam/fmt.py`, `src/cli/`, templates, dashboard Python | `sam.fmt` and its Jinja filters |
 | `testing.md` | `tests/`, `pytest.ini` | Markers, the two test-data tiers, the `system_status` tier, route-map parity |
 
@@ -148,13 +149,12 @@ rule file directly, and name it in any subagent prompt.**
 - ⚠️ `SAM_TASKS_DISABLED` is **fail-OPEN**: a task registered in
   `src/scheduling/tasks/` runs in production on the next wake unless
   `helm/values.yaml` names it in the same change.
-- ⚠️ Legacy-compat blueprints (`directory_access.py`, `project_access.py`,
-  `fstree_access.py`, `queue.py`, `wallclock_exemption.py`): additive changes
-  only; response bytes must not change.
+- ⚠️ Legacy-compat blueprints (`directory_access.py`, `project_access.py`, `fstree_access.py`,
+  `queue.py`, `wallclock_exemption.py`): additive changes only; response bytes must not change.
 - ⚠️ `sam/queries/__init__.py` stays empty and `sam/notify/__init__.py` stays
   lazy: import-graph gates (`test_layer_imports.py`, `test_notify_import_graph.py`).
-- ⚠️ Charts: an intentional visual change regenerates the fingerprint snapshot in
-  the same commit (`CHART_FINGERPRINT_REGEN=1`).
+- ⚠️ Charts: an intentional visual change regenerates the fingerprint snapshot in the same commit (`CHART_FINGERPRINT_REGEN=1`).
+- ⚠️ Directory client: the ldapsync hook is fail-open after commit; `DIRECTORY_APPLY_<KIND>` is per kind, absent is off; a `-0600`/`-0700` LDAP stamp is Mountain wall time as written.
 
 ---
 

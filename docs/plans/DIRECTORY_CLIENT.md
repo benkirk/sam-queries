@@ -1,6 +1,6 @@
 # Directory client: an optional, read-first integration with the UCAR LDAP directory
 
-**Status: planned 2026-10-15, no code yet** (`directory-client`, draft PR against `staging`).
+**Status: step 1 built 2026-10-15, on samuel-dev next** (`directory-client`, draft PR #841 against `staging`).
 Long-lived: each step lands as its own commit series and deploys to samuel-dev from the branch
 (`gh workflow run "Publish Images and CIRRUS Deploy" --ref directory-client`). The PR delivers
 steps 1 and 2; steps 3 and 4 are scoped here and land on the same PR or as follow-ups.
@@ -9,14 +9,15 @@ Implements stage 1 and stage 2 of
 
 ## Progress
 
-- [ ] Step 1a: package `sam.integration.directory` (protocol, records, config, registry, outage latch, UCAR adapter, compare), `ldap3` dependency, test pins and the LDAP socket guard, import-graph and helm gates
-- [ ] Step 1b: `sam/queries/directory.py` snapshots and `run_check`; the after-commit hook in `webapp/api/ldapsync/sync.py`; API hook tests
-- [ ] Step 1c: dev values (`ucar`, URL, check on); pod egress to `ldap.ucar.edu:389` confirmed; first `directory check` lines read on dev
+- [x] Step 1a: package `sam.integration.directory` (protocol, records, config, registry, outage latch, UCAR adapter, compare), `ldap3` dependency, test pins and the LDAP socket guard, import-graph and helm gates
+- [x] Step 1b: `sam/queries/directory.py` snapshots and `run_check`; the after-commit hook in `webapp/api/ldapsync/sync.py`; API hook tests
+- [x] Step 1c (part): dev values (`ucar`, URL, check on); pod egress to `ldap.ucar.edu:389` confirmed 2026-10-15 (anonymous bind from the webapp pod)
+- [ ] Step 1c: first `directory check` lines read on dev after the branch deploys
 - [ ] Step 2a: `sam/manage/directory.py` reconcile per kind behind `DIRECTORY_APPLY_<KIND>`, all off; reconcile tests
 - [ ] Step 2b: hook applies for enabled kinds in a second transaction; dev levers on one kind at a time after clean step-1 days
 - [ ] Step 3: Configuration card block; user-card Directory panel (check, apply); organization row action
 - [ ] Step 4: `sam-search user --directory`, `sam-admin user --directory-apply`, `sam-admin directory --report`, the `directory_report` task named in `SAM_TASKS_DISABLED`
-- [ ] Docs: `.claude/rules/directory.md` + `CLAUDE.md` row and tripwire; `.env.example`; `SYSTEMS_INTEGRATION_APIs.md` § 8; AFFILIATIONS status line and Appendix D order
+- [x] Docs: `.claude/rules/directory.md` + `CLAUDE.md` row and tripwire; `.env.example`; `SYSTEMS_INTEGRATION_APIs.md` § 8; AFFILIATIONS status line and Appendix D order
 
 ## 1. Context
 
@@ -325,8 +326,12 @@ still 200 and SAM unchanged beyond the PUT.
 - The hook runs on the request thread after commit: up to one timeout (5 s) on one PUT when the
   directory is down, then the latch. The daemon never retries, so the PUT's own commit precedes
   the hook.
-- Generalized Time is UTC; a midnight-UTC end lands on the previous Mountain day. Position ends
-  compare by day; `end_day` is a category, never a write.
+- Directory stamps carry an offset. PeopleDB's are correct Mountain offsets; Workday writes
+  every position date as midnight `-0600` year-round, wrong in winter for 580 of 2,551 (survey
+  2026-10-15). `sam.dates.from_generalized_time` takes a `-0600`/`-0700` stamp as Mountain wall
+  time as written and converts only `Z` stamps. The daemon converts strictly, so SAM holds
+  23:00 the day before on those rows: `start_day` reports it. Position ends compare by day;
+  `end_day` is a category, never a write.
 - Collaboration ends: SAM floors a midnight end to 23:59:59 (`src/sam/base.py`), so a
   compare-by-instant is noisy until AFFILIATIONS § 5 "stored as sent" lands. This kind's ends are
   report-only regardless.

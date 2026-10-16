@@ -105,6 +105,20 @@ class TestTheOrmDoesNotDragInTheMailer:
             f'importing sam pulled in {result.stdout.strip()}')
 
 
+    def test_importing_sam_does_not_import_the_directory_adapter(self):
+        """`ldap3` and the registry stay behind an import by path."""
+        result = _run("""
+            import sam, sam.queries
+            leaked = [m for m in ('ldap3', 'sam.integration.directory.ucar',
+                                  'sam.integration.directory.registry')
+                      if m in sys.modules]
+            print(','.join(leaked))
+        """)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == '', (
+            f'importing sam pulled in {result.stdout.strip()}')
+
+
 class TestTheLazySurfaceStillWorks:
 
     @pytest.mark.parametrize('name', [
