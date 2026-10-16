@@ -4,7 +4,7 @@ import logging
 from datetime import timedelta
 
 from cli.core.base import BaseUserCommand
-from cli.core.output import output_json
+from cli.core.output import output_json, refuse_json_write
 from cli.core.utils import EXIT_SUCCESS, EXIT_NOT_FOUND, EXIT_ERROR
 from cli.user.builders import (
     build_directory_apply,
@@ -235,12 +235,8 @@ class UserAdminCommand(UserSearchCommand):
         """Show, or undo, the membership closure of the user's last deactivation."""
         from sam.manage import management_transaction
         from sam.manage.lifecycle import restore_user_deactivation
-        json_mode = self.ctx.output_format == 'json'
-        if json_mode and not dry_run:
-            output_json({'kind': 'deactivation_restore', 'error': 'json_unsupported_for_writes',
-                         'message': '--format json cannot be combined with --restore-deactivation'
-                                    ' (add --dry-run)'})
-            return EXIT_ERROR
+        if self.ctx.output_format == 'json' and not dry_run:
+            return refuse_json_write('deactivation_restore', '--restore-deactivation (add --dry-run)')
         user = self.get_user(username)
         if user is None:
             return self.not_found('deactivation_restore', f"User not found: {username}",
@@ -263,12 +259,8 @@ class UserAdminCommand(UserSearchCommand):
         from sam.manage import management_transaction
         from sam.manage.directory import reconcile_from_directory
         from sam.manage.lifecycle import restore_on_reactivate
-        json_mode = self.ctx.output_format == 'json'
-        if json_mode and not dry_run:
-            output_json({'kind': 'directory_apply', 'error': 'json_unsupported_for_writes',
-                         'message': '--format json cannot be combined with --directory-apply'
-                                    ' (add --dry-run)'})
-            return EXIT_ERROR
+        if self.ctx.output_format == 'json' and not dry_run:
+            return refuse_json_write('directory_apply', '--directory-apply (add --dry-run)')
         config = DirectoryConfig.from_environment()
         if not config.configured:
             self.ctx.stderr_console.print('No directory is configured (DIRECTORY_URL is empty).',

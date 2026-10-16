@@ -11,6 +11,7 @@ import click
 from datetime import datetime
 
 from config import SAMConfig
+from cli.core.output import refuse_json_write
 from cli.core.context import Context
 from cli.core.options import directory_option, provisioning_option, usage_error, verbose_option
 from cli.core.utils import EXIT_SUCCESS, EXIT_ERROR, configure_logging
@@ -744,10 +745,7 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
     # and a machine-readable success receipt for a side-effecting command invites
     # scripting a write loop that no one reviewed. Same rule as src/cli/README.md.
     if recheck is not None and ctx.output_format == 'json':
-        import json
-        click.echo(json.dumps({'error': 'json_unsupported_for_writes'},
-                              indent=2, sort_keys=False))
-        sys.exit(EXIT_ERROR)
+        sys.exit(refuse_json_write('xras_recheck', '--recheck'))
 
     sys.exit(XrasCommand(ctx).execute(
         action_id=action_id,
