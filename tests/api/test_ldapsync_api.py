@@ -244,7 +244,7 @@ class TestLifecycleRoutes:
         assert resp.status_code == 200 and resp.data == b'""'
         assert calls == ['someone']
 
-    def testrestore_hook_follows_its_lever(self, app, monkeypatch):
+    def test_restore_hook_follows_its_lever(self, app, monkeypatch):
         from webapp.api.ldapsync.sync import restore_hook
         with app.app_context():
             assert restore_hook() is None
