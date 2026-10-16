@@ -5,7 +5,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 
 from cli.core.context import Context
-from cli.core.display_utils import issues_table, stamp
+from cli.core.display_utils import directory_drift, directory_unreadable, issues_table, stamp
 from cli.core.display_utils import progress as progress_bar
 from cli.project.builders import (
     build_project_core,
@@ -280,12 +280,11 @@ def display_project(ctx: Context, data: dict, extra_title_info: str = "",
 
 def display_project_directory(ctx: Context, view: dict, projcode: str):
     """The project's unix group as the directory holds it: facts, managers, then the drift."""
-    from cli.user.display import _directory_unreadable, display_drift
     if not view['available'] and view['error'] == 'no gid':
         ctx.console.print(f"⚠️  Directory: {projcode} has no unix gid in SAM, nothing to look up.",
                           style='yellow')
         return
-    if _directory_unreadable(ctx, view, f'gid {view["gid"]}'):
+    if directory_unreadable(ctx, view, f'gid {view["gid"]}'):
         if not view['available'] or view['kind'] != 'project':
             return
         ctx.console.print('   No project group has been created in the directory since 2026-07-10'
@@ -299,7 +298,7 @@ def display_project_directory(ctx: Context, view: dict, projcode: str):
                       f" · {len(rec['member_upids'])} members")
     ctx.console.print(f"  tags: {', '.join(rec['tags']) or 'none'}")
     ctx.console.print(f"  managers: {managers}")
-    display_drift(ctx, view, projcode, report_only=view['report_note'])
+    directory_drift(ctx, view, projcode, report_only=view['report_note'])
 
 
 def display_project_provisioning(ctx: Context, prov: dict, projcode: str):

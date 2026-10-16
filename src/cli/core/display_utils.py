@@ -83,3 +83,31 @@ def issues_table(ctx, subject: str, issues: list, *,
     for label, detail in issues:
         table.add_row(label, detail)
     ctx.console.print(table)
+
+def directory_unreadable(ctx: Context, view: dict, subject: str) -> bool:
+    """The two states before a record: unavailable, or absent. True when nothing more to show."""
+    if not view['available']:
+        ctx.console.print(f"⚠️  Directory: could not read {subject} ({view['error'] or 'unavailable'}).",
+                          style='yellow')
+        return True
+    if not view['found']:
+        ctx.console.print(f"⚠️  Directory: {subject} is not in the directory.", style='yellow')
+        return True
+    return False
+
+
+def directory_drift(ctx: Context, view: dict, subject: str, *, report_only: str = ''):
+    """The drift rows as an issues table, then the lever line (or ``report_only``, the note)."""
+    issues = [(f"{r['category']} {r['field'] or ''}".strip(),
+               f"SAM {r['sam'] or '—'} · directory {r['directory'] or '—'} ({r['disposition']})")
+              for r in view['rows']]
+    if issues:
+        issues_table(ctx, subject, issues, heading='Directory drift for')
+    else:
+        ctx.console.print('[green]✓[/] SAM matches the directory.', style='dim')
+    if report_only:
+        ctx.console.print(report_only, style='dim')
+    else:
+        ctx.console.print(f"Levers on: {', '.join(view['apply_kinds']) or 'none'}."
+                          f" {view['would_apply']} would apply, {view['withheld']} withheld.",
+                          style='dim')
