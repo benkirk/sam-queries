@@ -527,6 +527,22 @@ def _tickets_block(db) -> Dict[str, Any]:
     return block
 
 
+def _directory_block() -> Dict[str, Any]:
+    """The directory client's settings, mode and latch. No probe, no DB, nothing secret."""
+    from sam.integration.directory import KINDS, outage
+    from sam.integration.directory.config import DirectoryConfig
+    config = DirectoryConfig.from_environment()
+    block = config.summary()
+    on = [k for k in KINDS if config.apply_enabled(k)]
+    block['mode'] = ('off' if not config.configured
+                     else 'apply: ' + ', '.join(on) if on
+                     else 'report on sync' if config.check_on_sync
+                     else 'configured, panels only')
+    block['latched'] = outage.is_down()
+    block['misconfigured'] = bool(config.provider) != bool(config.url)
+    return block
+
+
 def _rbac_block(app, db) -> Dict[str, Any]:
     """The role catalog's source, snapshot TTL, counts, and the keys still
     holding no grant; ``unavailable`` while the tables are missing."""
@@ -739,6 +755,7 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
     # the card has no business paying.
     tickets_block = _tickets_block(db)
     rbac_block = _rbac_block(app, db)
+    directory_block = _directory_block()
 
     # Scheduled tasks: registry + SAM_TASKS_DISABLED + task_run counts. No
     # addresses and no PII. `runner_id` is a pod name and `detail` can hold a
@@ -813,5 +830,6 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         'scheduled_tasks': scheduled_tasks_block,
         'tickets':         tickets_block,
         'rbac':            rbac_block,
+        'directory':       directory_block,
         'server':          server,
     }

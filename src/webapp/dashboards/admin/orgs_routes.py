@@ -38,6 +38,7 @@ from webapp.utils.rbac import (
     require_permission, require_permission_any_facility, Permission,
 )
 from sam.manage import management_transaction
+from sam.integration.directory.config import directory_configured
 from sam.core.organizations import Institution, InstitutionType, Organization
 from sam.core.users import User
 from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
@@ -156,6 +157,7 @@ def htmx_organizations_card():
 
     return render_template(
         'dashboards/admin/fragments/organization_card.html',
+        directory=directory_configured(),
         organizations=organizations,
         org_tree=org_tree,
         aoi_groups=aoi_groups,

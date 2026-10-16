@@ -1,0 +1,60 @@
+{# The drift table and the apply banner shared by the user and organization Directory panels.
+   Context: panel (webapp.utils.directory_panel), apply_url, apply_target, can_apply. #}
+{% if panel.result %}
+<div class="alert {{ 'alert-success' if panel.result.applied else 'alert-secondary' }} py-2 px-3 small mb-3" role="status">
+    <i class="fa-solid fa-circle-check me-1" aria-hidden="true"></i>
+    Applied {{ panel.result.applied | length | fmt_number }}, withheld {{ panel.result.withheld | length | fmt_number }}.
+</div>
+{% endif %}
+{% if panel.rows %}
+<div class="table-responsive">
+    <table class="table table-sm table-hover mb-2">
+        <thead class="table-subtle">
+            <tr>
+                <th class="col-shrink">Kind</th>
+                <th class="col-shrink">Category</th>
+                <th class="col-shrink">Field</th>
+                <th class="col-shrink">SAM</th>
+                <th>Directory</th>
+                <th class="col-shrink"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in panel.rows %}
+            <tr>
+                <td class="col-shrink">{{ row.kind }}</td>
+                <td class="col-shrink"><code class="text-reset">{{ row.category }}</code></td>
+                <td class="col-shrink">{{ row.field or '' }}</td>
+                <td class="col-shrink">{{ row.sam or '—' }}</td>
+                <td class="cell-truncate" title="{{ row.directory }}">{{ row.directory or '—' }}</td>
+                <td class="col-shrink text-end">
+                    {% if row.disposition == 'would apply' %}
+                    <span class="badge bg-success-subtle text-success">would apply</span>
+                    {% else %}
+                    <span class="badge bg-secondary">withheld</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="text-muted small mb-2"><i class="fa-solid fa-check me-1" aria-hidden="true"></i>SAM matches the directory.</p>
+{% endif %}
+<div class="d-flex flex-wrap align-items-center gap-2 small">
+    <span class="text-muted">
+        Levers on: {{ panel.apply_kinds | join(', ') or 'none' }}.
+        {% if panel.rows %}{{ panel.would_apply | fmt_number }} would apply, {{ panel.withheld | fmt_number }} withheld.{% endif %}
+    </span>
+    {% if can_apply and panel.apply_kinds %}
+    <button type="button" class="btn btn-sm btn-primary ms-auto"
+            hx-post="{{ apply_url }}" hx-target="{{ apply_target }}" hx-swap="innerHTML"
+            hx-confirm="Write the directory's values for {{ panel.apply_kinds | join(', ') }}?"
+            hx-indicator="#directoryApplySpinner"
+            {% if not panel.would_apply %}disabled title="Nothing to apply"{% endif %}>
+        <i class="fa-solid fa-download" aria-hidden="true"></i> Apply
+        <span id="directoryApplySpinner" class="htmx-indicator spinner-border spinner-border-sm ms-1" role="status" aria-hidden="true"></span>
+    </button>
+    {% endif %}
+</div>

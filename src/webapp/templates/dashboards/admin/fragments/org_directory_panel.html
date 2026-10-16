@@ -1,0 +1,22 @@
+{# The Directory dialog body for one organization (#orgDirectoryModalBody). Context: org, panel. #}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{{ modal_title('orgDirectoryModalLabel', org.acronym, 'address-book', meta=org.organization_id) }}
+<div class="modal-body">
+{% if not panel.configured %}
+<ul class="modal-facts mb-0"><li><i class="fa-solid fa-plug-circle-xmark" aria-hidden="true"></i>No directory is configured (DIRECTORY_URL is empty).</li></ul>
+{% elif not panel.available %}
+<ul class="modal-facts mb-0"><li><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>The directory could not be read{% if panel.error %} ({{ panel.error }}){% endif %}. Try again in a minute.</li></ul>
+{% elif not panel.found %}
+<ul class="modal-facts mb-0"><li><i class="fa-solid fa-building-circle-xmark" aria-hidden="true"></i>Organization {{ org.organization_id }} is not in the directory.</li></ul>
+{% else %}
+{% set rec = panel.record %}
+<ul class="modal-facts mb-3">
+    <li><i class="fa-solid fa-sitemap" aria-hidden="true"></i><strong>{{ rec.acronym }}</strong> {{ rec.name }} · {{ 'active' if rec.active else 'inactive' }} · source {{ rec.source or '—' }}</li>
+    <li><i class="fa-solid fa-layer-group" aria-hidden="true"></i>{{ rec.level or '—' }}{% if rec.level_code %} ({{ rec.level_code }}){% endif %} · parent {{ panel.parent or '—' }}</li>
+</ul>
+{% set can_apply = has_permission(Permission.EDIT_ORG_METADATA) %}
+{% set apply_url = url_for('admin_dashboard.htmx_organization_directory_apply', org_id=org.organization_id) %}
+{% set apply_target = '#orgDirectoryModalBody' %}
+{% include 'dashboards/admin/fragments/_directory_drift.html' %}
+{% endif %}
+</div>

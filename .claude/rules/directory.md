@@ -36,6 +36,11 @@ Appendix C.
   write cannot drift; each kind's rules are the table in `DIRECTORY_CLIENT.md` section 5.
   Identity columns (`User.SYNC_FIELDS` excludes them), twins, undated-inactive entries,
   reopens and SAM-only history are withheld whatever the lever says. `dry_run` touches nothing.
+- **Panels** (`webapp/utils/directory_panel.py`, `dashboards/admin/directory_routes.py`) are
+  operator-initiated reads: a card view never dials the directory. The GET is
+  `reconcile_*(dry_run=True)`, so "would apply" / "withheld" comes from the same rules as the
+  write. The Organizations card is cached per user: a config flip shows after
+  `sam-admin cache --refresh`.
 - **Logs** carry usernames and row ids, like the rest of the ldapsync logger; personal names,
   email addresses and phone numbers are counted in a `Discrepancy`, never valued.
 - **Tests** never open a socket: `tests/conftest.py::_no_outbound_ldap` guards

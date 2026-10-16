@@ -4,7 +4,7 @@
 {% macro render_user_card(sam_user, is_admin=False, user_groups=None, primary_group_name=None,
                           current_shell=None, allowable_shells=None, can_edit_shell=False,
                           available_groups=None, can_edit_primary_gid=False,
-                          is_self=False, last_seen=False) %}
+                          is_self=False, last_seen=False, directory=False) %}
 {# user_groups: optional dict[branch_name] -> list of {'group_name', 'unix_gid'}
    primary_group_name: optional str — name of the adhoc group matching
                        sam_user.primary_gid, when one exists
@@ -17,7 +17,9 @@
             yourself, so the Former Institution/Organization blocks show on
             the self view as well as to operators.
    last_seen: False (not supplied: no section), None (ledger unreadable), or
-              get_last_seen() rows plus an `age` timedelta; the admin card only. #}
+              get_last_seen() rows plus an `age` timedelta; the admin card only.
+   directory: True when a directory is configured; the admin card only (the panel
+              fetches on demand, so a card view never reads the directory). #}
 <div class="card mb-3">
     <div class="card-header">
         <h5 class="mb-0">
@@ -455,6 +457,25 @@
         {% else %}
         <p class="text-muted mb-0"><small>No wallclock exemptions.</small></p>
         {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Directory (docs/plans/DIRECTORY_CLIENT.md step 3): operator-initiated, never on load -->
+    {% if is_admin and directory %}
+    <div class="card-body border-top pt-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong><i class="fa-solid fa-address-book"></i> Directory</strong>
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    hx-get="{{ url_for('admin_dashboard.htmx_user_directory', username=sam_user.username) }}"
+                    hx-target="#userDirectoryPanel" hx-swap="innerHTML"
+                    hx-indicator="#userDirectorySpinner">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Check directory
+                <span id="userDirectorySpinner" class="htmx-indicator spinner-border spinner-border-sm ms-1" role="status" aria-hidden="true"></span>
+            </button>
+        </div>
+        <div id="userDirectoryPanel">
+            <p class="text-muted mb-0"><small>Reads this person from the directory and lists the differences against SAM.</small></p>
+        </div>
     </div>
     {% endif %}
 

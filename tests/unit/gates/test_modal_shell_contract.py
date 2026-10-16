@@ -238,7 +238,8 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'createAoiFormContainer', 'createAoiGroupFormContainer', 'createAoiGroupModal',
         'createAoiModal', 'createMnemonicCodeFormContainer', 'createMnemonicCodeModal',
         'createNsfProgramFormContainer', 'createNsfProgramModal',
-        'createOrganizationFormContainer', 'createOrganizationModal'],
+        'createOrganizationFormContainer', 'createOrganizationModal',
+        'orgDirectoryModal', 'orgDirectoryModalBody'],
     # Only ever loaded by dashboards/admin/scheduled_tasks.html, which includes
     # partials/audit_details_modal.html itself — same arrangement as the
     # notification delivery log above, the page this one is modeled on.

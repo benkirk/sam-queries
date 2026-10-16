@@ -1,0 +1,96 @@
+{# The Directory panel inside the admin user card (#userDirectoryPanel). Context: sam_user, panel. #}
+{% from 'dashboards/fragments/table_bits.html' import state_tag %}
+{% if not panel.configured %}
+<div class="alert alert-secondary py-2 px-3 small mb-0">No directory is configured (DIRECTORY_URL is empty).</div>
+{% elif not panel.available %}
+<div class="alert alert-warning py-2 px-3 small mb-0">
+    <i class="fa-solid fa-triangle-exclamation me-1" aria-hidden="true"></i>
+    The directory could not be read{% if panel.error %} ({{ panel.error }}){% endif %}. Try again in a minute.
+</div>
+{% elif not panel.found %}
+<div class="alert alert-warning py-2 px-3 small mb-0">
+    <i class="fa-solid fa-user-slash me-1" aria-hidden="true"></i>
+    upid {{ panel.upid }} is not in the directory.
+</div>
+{% else %}
+{% set rec = panel.record %}
+<ul class="modal-facts mb-3">
+    <li><i class="fa-solid fa-user" aria-hidden="true"></i>{{ rec.username }} · uid {{ rec.unix_uid }} · {{ 'active' if rec.active else 'inactive' }} · source {{ rec.source or '—' }}</li>
+    <li><i class="fa-solid fa-key" aria-hidden="true"></i>auth {{ rec.token_type or '—' }}{% if rec.academic_status %} · academic status {{ rec.academic_status }}{% if rec.academic_status_code %} ({{ rec.academic_status_code }}){% endif %}{% endif %}{% if rec.extra and rec.extra.office %} · office {{ rec.extra.office }}{% endif %}</li>
+    {% if rec.modified %}<li><i class="fa-solid fa-clock" aria-hidden="true"></i>modified {{ rec.modified | fmt_date }}</li>{% endif %}
+</ul>
+{% if panel.positions %}
+<div class="table-responsive">
+    <table class="table table-sm table-hover mb-3">
+        <thead class="table-subtle">
+            <tr>
+                <th>Position</th>
+                <th class="col-shrink">Source</th>
+                <th class="col-shrink">Start</th>
+                <th class="col-shrink">End</th>
+                <th class="col-shrink">Row</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in panel.positions %}
+            <tr class="{% if not p.active %}row-inactive{% endif %}">
+                <td class="cell-truncate" title="{{ p.name or p.position_id }}">
+                    {% if p.acronym %}<strong>{{ p.acronym }}</strong> {{ p.name }}{% else %}<span class="text-muted">organization {{ p.organization_id or '—' }}</span>{% endif %}
+                    {% if not p.active %}{{ state_tag('finished') }}{% endif %}
+                </td>
+                <td class="col-shrink">{{ p.source or '—' }}</td>
+                <td class="col-shrink">{{ p.start | fmt_date if p.start else '—' }}</td>
+                <td class="col-shrink">{{ p.end | fmt_date if p.end else '—' }}</td>
+                <td class="col-shrink">{% if p.sam_row_id %}<code class="text-reset">{{ p.sam_row_id }}</code>{% else %}<span class="text-muted">none</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% if panel.collaborations %}
+<div class="table-responsive">
+    <table class="table table-sm table-hover mb-3">
+        <thead class="table-subtle">
+            <tr>
+                <th>Collaboration</th>
+                <th class="col-shrink">Sponsor</th>
+                <th class="col-shrink">Source</th>
+                <th class="col-shrink">Start</th>
+                <th class="col-shrink">End</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in panel.collaborations %}
+            <tr class="{% if not c.active %}row-inactive{% endif %}">
+                <td class="cell-truncate" title="{{ c.name or c.institution_id }}">
+                    {% if c.acronym %}<strong>{{ c.acronym }}</strong> {{ c.name }}{% else %}<span class="text-muted">institution {{ c.institution_id }}</span>{% endif %}
+                    {% if not c.active %}{{ state_tag('finished') }}{% endif %}
+                </td>
+                <td class="col-shrink">{{ c.sponsor or '—' }}</td>
+                <td class="col-shrink">{{ c.source or '—' }}</td>
+                <td class="col-shrink">{{ c.start | fmt_date if c.start else '—' }}</td>
+                <td class="col-shrink">{{ c.end | fmt_date if c.end else '—' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% if not panel.positions and not panel.collaborations %}
+<p class="text-muted small">No positions or collaborations in the directory.</p>
+{% endif %}
+{% set can_apply = has_permission(Permission.EDIT_USERS) %}
+{% set apply_url = url_for('admin_dashboard.htmx_user_directory_apply', username=sam_user.username) %}
+{% set apply_target = '#userDirectoryPanel' %}
+{% include 'dashboards/admin/fragments/_directory_drift.html' %}
+{% if panel.result %}
+<div class="mt-2 small">
+    <button type="button" class="btn btn-sm btn-outline-secondary"
+            hx-get="{{ url_for('admin_dashboard.user_card', username=sam_user.username) }}"
+            hx-target="#userCardContainer" hx-swap="innerHTML">
+        <i class="fa-solid fa-rotate" aria-hidden="true"></i> Refresh card
+    </button>
+</div>
+{% endif %}
+{% endif %}

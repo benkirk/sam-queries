@@ -111,7 +111,7 @@ def _directory_check(kind, data, key):
         with management_transaction(db.session):
             applied = reconcile_record(db.session, kind, data.get(_SYNC_KEYS[kind]),
                                        result.record, config=config,
-                                       on_reactivate=_restore_hook())
+                                       on_reactivate=restore_hook())
         if applied is not None:
             log_result(applied, key)
     except Exception as exc:
@@ -148,7 +148,7 @@ def put_gid_allocation():
     return _apply(GidAllocationSyncInput, sync.sync_gid_allocation)
 
 
-def _restore_hook():
+def restore_hook():
     """The undo of a finished deactivation, when ``LDAPSYNC_RESTORE_ON_REACTIVATE`` is on."""
     if not current_app.config.get('LDAPSYNC_RESTORE_ON_REACTIVATE'):
         return None
@@ -163,7 +163,7 @@ def _restore_hook():
 def put_user():
     data = UserSyncInput().load(read_json_body())
     with management_transaction(db.session):
-        key = sync.sync_user(db.session, data, on_reactivate=_restore_hook())
+        key = sync.sync_user(db.session, data, on_reactivate=restore_hook())
     _directory_check('person', data, key)
     return json_response(key)
 

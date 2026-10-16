@@ -1093,6 +1093,20 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_organization_directory",
+    "/admin/htmx/organization/<int:org_id>/directory",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_organization_directory_apply",
+    "/admin/htmx/organization/<int:org_id>/directory/apply",
+    [
+      "POST"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_organization_edit",
     "/admin/htmx/organization-edit/<int:org_id>",
     [
@@ -1510,6 +1524,20 @@
     "/admin/htmx/server",
     [
       "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_user_directory",
+    "/admin/htmx/user/<username>/directory",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_user_directory_apply",
+    "/admin/htmx/user/<username>/directory/apply",
+    [
+      "POST"
     ]
   ],
   [

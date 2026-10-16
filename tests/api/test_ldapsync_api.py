@@ -244,12 +244,12 @@ class TestLifecycleRoutes:
         assert resp.status_code == 200 and resp.data == b'""'
         assert calls == ['someone']
 
-    def test_restore_hook_follows_its_lever(self, app, monkeypatch):
-        from webapp.api.ldapsync.sync import _restore_hook
+    def testrestore_hook_follows_its_lever(self, app, monkeypatch):
+        from webapp.api.ldapsync.sync import restore_hook
         with app.app_context():
-            assert _restore_hook() is None
+            assert restore_hook() is None
             monkeypatch.setitem(app.config, 'LDAPSYNC_RESTORE_ON_REACTIVATE', True)
-            assert callable(_restore_hook())
+            assert callable(restore_hook())
 
 
 def test_nested_validation_error_names_its_path(ldapsync_client):

@@ -433,9 +433,12 @@ def user_card(username):
     available_groups = _available_primary_groups(db.session, sam_user.username)
     can_edit_primary_gid = has_permission(current_user, Permission.EDIT_USERS)
 
+    from sam.integration.directory.config import directory_configured
+
     return render_template(
         'dashboards/admin/fragments/user_card_wrapper.html',
         last_seen=last_seen,
+        directory=directory_configured(),
         sam_user=sam_user,
         user_groups=user_groups,
         primary_group_name=primary_group_name,
@@ -1309,4 +1312,4 @@ def htmx_queues_for_resource():
 # Domain route modules — must be imported AFTER bp is defined
 # ============================================================================
 
-from . import resources_routes, facilities_routes, orgs_routes, contracts_routes, projects_routes, configuration_routes, rate_limits_routes, notifications_routes, tasks_routes, last_seen_routes, account_requests_routes, events_routes, roles_routes  # noqa: E402, F401
+from . import resources_routes, facilities_routes, orgs_routes, contracts_routes, projects_routes, configuration_routes, rate_limits_routes, notifications_routes, tasks_routes, last_seen_routes, account_requests_routes, events_routes, roles_routes, directory_routes  # noqa: E402, F401

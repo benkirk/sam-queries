@@ -1,6 +1,6 @@
 # Directory client: an optional, read-first integration with the UCAR LDAP directory
 
-**Status: steps 1 and 2 built 2026-10-15, on samuel-dev next** (`directory-client`, draft PR #841 against `staging`).
+**Status: steps 1 to 3 built 2026-10-16, on samuel-dev next** (`directory-client`, draft PR #841 against `staging`).
 Long-lived: each step lands as its own commit series and deploys to samuel-dev from the branch
 (`gh workflow run "Publish Images and CIRRUS Deploy" --ref directory-client`). The PR delivers
 steps 1 and 2; steps 3 and 4 are scoped here and land on the same PR or as follow-ups.
@@ -16,7 +16,7 @@ Implements stage 1 and stage 2 of
 - [x] Step 2a: `sam/manage/directory.py` reconcile per kind behind `DIRECTORY_APPLY_<KIND>`, all off; reconcile tests
 - [x] Step 2b (code): the hook applies the enabled kinds in a second transaction
 - [ ] Step 2b (dev): levers on one kind at a time after clean step-1 days
-- [ ] Step 3: Configuration card block; user-card Directory panel (check, apply); organization row action
+- [x] Step 3: Configuration card block; user-card Directory panel (check, apply); organization row action (`webapp/utils/directory_panel.py`, `dashboards/admin/directory_routes.py`)
 - [ ] Step 4: `sam-search user --directory`, `sam-admin user --directory-apply`, `sam-admin directory --report`, the `directory_report` task named in `SAM_TASKS_DISABLED`
 - [x] Docs: `.claude/rules/directory.md` + `CLAUDE.md` row and tripwire; `.env.example`; `SYSTEMS_INTEGRATION_APIs.md` § 8; AFFILIATIONS status line and Appendix D order
 
@@ -258,19 +258,27 @@ still 200 and SAM unchanged beyond the PUT.
   `config_inspect.py` next to `_tickets_block`: `config.summary()`, mode (`off` / `report on
   sync` / `apply: <kinds>`), latch state, no live probe. A "Directory" sub-card after Help-desk
   tickets in `configuration_card.html`; rows hidden when the provider is empty.
-- **User card** (`dashboards/user/partials/user_card.html`, admin wrapper): a "Directory" section
-  rendered only when `directory_configured()`. "Check directory" (`VIEW_USERS`) ->
-  `GET /htmx/user/<username>/directory` -> `fragments/user_directory_panel.html`: current
-  positions (organization, start, planned end), the sponsor org on each collaboration, and the
-  drift list (differences only, both values shown). Operator-initiated, so a card view never pays
-  an LDAP read. "Apply" (`EDIT_USERS`, shown only for kinds whose lever is on) ->
-  `POST /htmx/user/<username>/directory/apply` -> `reconcile_from_directory` inside
-  `management_transaction` -> the panel re-rendered plus `reloadUserCard`. An unavailable
-  directory is the panel's alert, 200.
+- **User card** (`dashboards/user/partials/user_card.html`, admin wrapper passes `directory`):
+  a "Directory" section rendered only when `directory_configured()`, inline in the card (the
+  card is also loaded into `#userDetailsModal` on the user dashboard, so a nested modal would
+  add a host-shell dependency everywhere). "Check directory" (`VIEW_USERS`) ->
+  `GET /htmx/user/<username>/directory` -> `fragments/user_directory_panel.html`: the person's
+  facts, current positions and collaborations as the directory holds them (sponsor org on each
+  collaboration), and the drift table with both values shown; each row is marked "would apply"
+  or "withheld" from `reconcile_person(dry_run=True)`, one derivation for the report and the
+  write. Operator-initiated, so a card view never pays an LDAP read. "Apply" (`EDIT_USERS`,
+  shown only with a lever on) -> `POST /htmx/user/<username>/directory/apply` ->
+  `reconcile_person` inside `management_transaction` with the sync's restore hook -> the panel
+  re-rendered with a result banner and a "Refresh card" button (a `reloadUserCard` would wipe
+  the panel). An unavailable directory is the panel's alert, 200.
 - **Organizations card**: a per-row "Directory" action (a bespoke route, not a `CrudSpec`
-  field): `GET /htmx/organization/<id>/directory` (`VIEW_ORG_METADATA`) into a modal body,
-  `POST .../apply` (`EDIT_ORG_METADATA`). Institutions and groups follow later in the same shape
-  (Appendix D's per-group view).
+  field) shown when a directory is configured (the card is cached per user, so a config flip
+  shows after `sam-admin cache --refresh`): `GET /htmx/organization/<id>/directory`
+  (`VIEW_ORG_METADATA`) into `#orgDirectoryModal` (shell in `organization_modals.html`;
+  facts in `.modal-facts`, never alerts, per the modal ratchet), `POST .../apply`
+  (`EDIT_ORG_METADATA`) re-renders the dialog and fires `reloadOrganizationsCard` when
+  something applied. Institutions and groups follow later in the same shape (Appendix D's
+  per-group view).
 - Gates: regenerate `tests/unit/snapshots/dashboard_route_map.json` (`ROUTE_MAP_REGEN=1`);
   `HTMX_FRAGMENT_SHELL_DEPS` if a fragment names a host id; the `wire-dashboard-feature` skill
   checklist; CSP (no inline scripts). Tests in `tests/unit/webapp/test_directory_panels.py`
