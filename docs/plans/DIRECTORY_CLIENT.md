@@ -42,8 +42,8 @@ unconfigured) with one concrete adapter (`UCARDirectory`), switched on in steps:
    D-B, D-C).
 3. **UX.** A Directory block on Admin > Configuration; a per-user drift panel with a
    "Check directory" button and, when a kind's lever is on, "Apply"; the same per organization.
-4. **CLI and the nightly report.** `sam-search user --directory`, `sam-admin user --directory-apply`,
-   `sam-admin directory --report`, and a `directory_report` task named in `SAM_TASKS_DISABLED`.
+4. **CLI and the nightly report.** `sam-search user|project --directory`, `sam-admin user --directory-apply`,
+   `sam-admin directory report` (a verb group), and a `directory_report` task named in prod's `SAM_TASKS_DISABLED`.
 
 Decisions (Ben, 2026-10-15): step 2 covers identity fields and id-linked affiliations; `ldap3`
 is a core dependency; the incoming-API check is the first consumer and the CLI the last.
@@ -279,8 +279,8 @@ still 200 and SAM unchanged beyond the PUT.
   facts in `.modal-facts`, never alerts, per the modal ratchet), `POST .../apply`
   (`EDIT_ORG_METADATA`) re-renders the dialog and fires `reloadOrganizationsCard` when
   something applied. The Institutions tab has the same action into `#instDirectoryModal`.
-  Groups follow later (Appendix D's per-group view) once the SAM-side member rule matches the
-  sync's `project_groups` query; today `snapshot_from_group` derives members from `Project.users`.
+  Groups (the admin project card and the adhoc group card) are report-only panels whose SAM side
+  is the sync's own `project_group` / `groups` row: `DIRECTORY_CLIENT_NEXT.md` section 3.
 - Gates: regenerate `tests/unit/snapshots/dashboard_route_map.json` (`ROUTE_MAP_REGEN=1`);
   `HTMX_FRAGMENT_SHELL_DEPS` if a fragment names a host id; the `wire-dashboard-feature` skill
   checklist; CSP (no inline scripts). Tests in `tests/unit/webapp/test_directory_panels.py`
@@ -296,7 +296,7 @@ still 200 and SAM unchanged beyond the PUT.
 - `sam-admin user <u> --directory-apply [--dry-run]`: `UserAdminCommand._directory_apply`, JSON
   refused for a live write (`json_unsupported_for_writes`), `management_transaction` around
   `reconcile_from_directory`.
-- `sam-admin directory --report [--kind K]`: the stage-1 sweep (AFFILIATIONS § 6): one
+- `sam-admin directory report [--kind K] [--limit N]`: the stage-1 sweep (AFFILIATIONS § 6): one
   `reader.session()`, paged subtree reads, bulk SAM projections (one query per table keyed by
   upid, not one per person), counts by category plus capped id lists; `--format json` supported.
   New command package `src/cli/directory/` (`commands`, `builders`, `display`), wired in

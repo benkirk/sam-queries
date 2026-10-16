@@ -155,7 +155,7 @@ refusal), `src/cli/user/builders.py::build_user_provisioning` L91 and
 - `sam-search project <p> --directory`: the group view from `project_panel` (after § 3).
 - `sam-admin user <u> --directory-apply [--dry-run]`: `reconcile_from_directory` inside
   `management_transaction`; JSON refused for a live write.
-- `sam-admin directory --report [--kind K] [--limit N]`: the stage-1 sweep (AFFILIATIONS § 6).
+- `sam-admin directory report [--kind K] [--limit N]` (a verb group): the stage-1 sweep (AFFILIATIONS § 6).
   One `reader.session()`; `ldap3` paged search (`paged_size=1000`, the cookie loop) per subtree;
   bulk SAM projections (one query per table keyed by upid, organization id, institution id, gid;
   never one per record); counts by category with capped id lists; the 146 absent project groups
@@ -190,7 +190,7 @@ history, the Workday winter shift), all withheld.
 ## 5. Verification
 
 1. `pytest tests/unit/directory tests/unit/queries/test_directory_snapshots.py tests/unit/manage/test_directory_reconcile.py tests/unit/webapp/test_directory_panels.py tests/unit/cli tests/unit/tasks -n 4`, the structural gates (modal shell contract, CSP lint, action cells, route map, docs, Font Awesome names), then the full suite.
-2. Worktree server on 5051 (§ 1 recipe): the project card for SCSG0001 and a project created after 2026-07-10 (absent line), an adhoc group card; `sam-search project SCSG0001 --directory`; `sam-admin directory --report --limit 200` against the live directory (counts should reproduce § 2 within the day's drift).
+2. Worktree server on 5051 (§ 1 recipe): the project card for SCSG0001 and a project created after 2026-07-10 (absent line), an adhoc group card; `sam-search project SCSG0001 --directory`; `sam-admin directory report --limit 200` against the live directory (counts should reproduce § 2 within the day's drift).
 3. Dev after deploy: the same panels, `sam-admin tasks --run directory_report --dry-run` from a pod.
 
 ## 6. Out of scope here
