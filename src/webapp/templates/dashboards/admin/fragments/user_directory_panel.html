@@ -1,18 +1,8 @@
 {# The Directory panel inside the admin user card (#userDirectoryPanel-<user_id>). Context: sam_user, panel. #}
 {% from 'dashboards/fragments/table_bits.html' import state_tag %}
-{% if not panel.configured %}
-<div class="alert alert-secondary py-2 px-3 small mb-0">No directory is configured (DIRECTORY_URL is empty).</div>
-{% elif not panel.available %}
-<div class="alert alert-warning py-2 px-3 small mb-0">
-    <i class="fa-solid fa-triangle-exclamation me-1" aria-hidden="true"></i>
-    The directory could not be read{% if panel.error %} ({{ panel.error }}){% endif %}. Try again in a minute.
-</div>
-{% elif not panel.found %}
-<div class="alert alert-warning py-2 px-3 small mb-0">
-    <i class="fa-solid fa-user-slash me-1" aria-hidden="true"></i>
-    upid {{ panel.upid }} is not in the directory.
-</div>
-{% else %}
+{% from 'dashboards/admin/fragments/_directory_state.html' import directory_state %}
+{{ directory_state(panel, 'upid ' ~ panel.upid ~ ' is not in the directory.', 'user-slash') }}
+{% if panel.found %}
 {% set rec = panel.record %}
 <ul class="modal-facts mb-3">
     <li><i class="fa-solid fa-user" aria-hidden="true"></i>{{ rec.username }} · uid {{ rec.unix_uid }} · {{ 'active' if rec.active else 'inactive' }} · source {{ rec.source or '—' }}</li>
