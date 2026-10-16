@@ -4,6 +4,7 @@
 ``entry(**attrs)`` builds ldap3's ``attributes`` shape (every value a list) for the parsers.
 """
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
 
 from sam.integration.directory.base import (CollaborationRecord, DirectoryReader,
@@ -63,23 +64,44 @@ class FakeDirectory(DirectoryReader):
     def group(self, gid: int) -> Optional[GroupRecord]:
         return self._read('group', gid, self.groups)
 
+    def _store(self, kind: str) -> dict:
+        return {'person': self.people, 'organization': self.organizations,
+                'institution': self.institutions, 'group': self.groups}[kind]
+
     def records(self, kind: str, *, limit: int = 0) -> List[Any]:
         self.guard_read()
         self.calls.append(('records', kind))
         if self.raise_with is not None:
             raise self.raise_with
-        store = {'person': self.people, 'organization': self.organizations,
-                 'institution': self.institutions, 'group': self.groups}[kind]
-        values = list(store.values())
+        values = list(self._store(kind).values())
         return values[:limit] if limit else values
 
     def search(self, kind: str, query: str, *, limit: int = 20) -> List[Any]:
         self.guard_read()
         self.calls.append(('search', (kind, query)))
-        store = {'person': self.people, 'organization': self.organizations,
-                 'institution': self.institutions, 'group': self.groups}[kind]
         q = query.lower()
-        return [r for r in store.values() if q in str(r).lower()][:limit]
+        return [r for r in self._store(kind).values() if q in str(r).lower()][:limit]
+
+
+class FakeConnection:
+    """An ldap3 connection double for ``UCARDirectory`` (set it as ``reader._shared``): ``search``
+    and ``extend.standard.paged_search`` answer ``(dn, attrs)`` pages from a queue, in order;
+    ``calls`` records ``(base, filter, scope)``."""
+
+    def __init__(self, answers):
+        self.answers = [[{'type': 'searchResEntry', 'dn': dn, 'attributes': attrs} for dn, attrs in a]
+                        for a in answers]
+        self.calls: List[Tuple[str, str, Any]] = []
+        self.response: list = []
+        self.extend = SimpleNamespace(standard=SimpleNamespace(paged_search=self._paged))
+
+    def search(self, base, flt, **kw):
+        self.calls.append((base, flt, kw.get('search_scope')))
+        self.response = self.answers.pop(0)
+
+    def _paged(self, base, flt, **kw):
+        self.calls.append((base, flt, kw.get('search_scope')))
+        return iter(self.answers.pop(0))
 
 
 def make_person_record(upid: int = 35399, **overrides) -> PersonRecord:

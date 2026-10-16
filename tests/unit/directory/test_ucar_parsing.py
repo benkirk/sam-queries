@@ -3,10 +3,11 @@ from datetime import datetime
 
 import pytest
 
-from factories.directory import entry
+from factories.directory import FakeConnection, entry
 from sam.dates import from_generalized_time
 from sam.integration.directory.config import DirectoryConfig
-from sam.integration.directory.ucar import (ACADEMIC_STATUS_LABELS, UCARDirectory,
+from sam.integration.directory.ucar import (ACADEMIC_STATUS_LABELS, COLLABORATION_CLASS,
+                                            PERSON_CLASS, POSITION_CLASS, UCARDirectory,
                                             academic_status_code, parse_collaboration,
                                             parse_group, parse_institution,
                                             parse_organization, parse_person,
@@ -166,19 +167,6 @@ class TestOtherRecords:
         assert parse_group(entry(cn='x')) is None
 
 
-class _Conn:
-    """A connection whose ``search`` answers from a queue; ``calls`` records base, filter, scope."""
-    def __init__(self, answers):
-        self.answers = [[{'type': 'searchResEntry', 'dn': dn, 'attributes': attrs} for dn, attrs in a]
-                        for a in answers]
-        self.calls = []
-        self.response = []
-
-    def search(self, base, flt, **kw):
-        self.calls.append((base, flt, kw.get('search_scope')))
-        self.response = self.answers.pop(0)
-
-
 class TestAdapterWithoutASocket:
     def test_group_reads_its_managers_from_the_people_side(self):
         """One connection, two searches: the group, then the people whose adminFor names it."""
@@ -188,12 +176,12 @@ class TestAdapterWithoutASocket:
                              'uniqueMember': ['x-ucar-upid=35399,ou=allPeople,dc=ucar,dc=edu']})
         people = [('x-ucar-upid=7,ou=allPeople,dc=ucar,dc=edu', entry(attrs={'x-ucar-upid': '7'})),
                   ('x-ucar-upid=35399,ou=allPeople,dc=ucar,dc=edu', entry(attrs={'x-ucar-upid': '35399'}))]
-        reader._shared = conn = _Conn([[('gidNumber=68283,ou=allGroups,dc=ucar,dc=edu', group)], people])
+        reader._shared = conn = FakeConnection([[('gidNumber=68283,ou=allGroups,dc=ucar,dc=edu', group)], people])
         record = reader.group(68283)
         assert (record.name, record.member_upids, record.managers) == ('SCSG0001', (35399,), (7, 35399))
         assert [c[0] for c in conn.calls] == ['ou=allGroups,dc=ucar,dc=edu', 'ou=allPeople,dc=ucar,dc=edu']
         assert conn.calls[1][1] == '(x-ucar-adminFor=gidNumber=68283,ou=allGroups,dc=ucar,dc=edu)'
-        reader._shared = _Conn([[]])
+        reader._shared = FakeConnection([[]])
         assert reader.group(1) is None
 
     def test_an_empty_url_is_not_configured_and_refuses(self):
@@ -223,3 +211,65 @@ class TestAdapterWithoutASocket:
         reader = UCARDirectory(DirectoryConfig(provider='ucar', url='ldap://ldap.example.invalid'))
         assert reader.summary()['provider'] == 'ucar'
         assert reader.summary()['configured'] is True
+
+
+class TestSweepReads:
+    """``records`` pages one subtree per kind on one connection; the nightly task's real path."""
+
+    def _reader(self, answers):
+        reader = UCARDirectory(DirectoryConfig(provider='ucar', url='ldap://ldap.example.invalid'))
+        reader._shared = conn = FakeConnection(answers)
+        return reader, conn
+
+    def test_groups_page_once_and_take_their_managers_from_one_inverted_search(self):
+        groups = [('gidNumber=1,ou=allGroups,dc=ucar,dc=edu', entry(attrs={'gidNumber': '1', 'x-ucar-groupName': 'a'})),
+                  ('gidNumber=2,ou=allGroups,dc=ucar,dc=edu', entry(attrs={'gidNumber': '2', 'x-ucar-groupName': 'b'}))]
+        people = [('x-ucar-upid=7,ou=allPeople,dc=ucar,dc=edu', entry(attrs={
+                      'x-ucar-upid': '7', 'x-ucar-adminFor': ['gidNumber=1,ou=allGroups,dc=ucar,dc=edu',
+                                                              'gidNumber=2,ou=allGroups,dc=ucar,dc=edu']})),
+                  ('x-ucar-upid=9,ou=allPeople,dc=ucar,dc=edu', entry(attrs={
+                      'x-ucar-upid': '9', 'x-ucar-adminFor': ['gidNumber=2,ou=allGroups,dc=ucar,dc=edu']}))]
+        reader, conn = self._reader([groups, people])
+        records = reader.records('group')
+        assert [(r.gid, r.name, r.managers) for r in records] == [(1, 'a', (7,)), (2, 'b', (7, 9))]
+        assert [(c[0], c[1]) for c in conn.calls] == [
+            ('ou=allGroups,dc=ucar,dc=edu', '(objectClass=x-ucar-uniqueGroup)'),
+            ('ou=allPeople,dc=ucar,dc=edu', '(x-ucar-adminFor=*)')]
+
+    def test_people_join_their_children_by_upid_from_two_class_pages(self):
+        persons = [(f'x-ucar-upid={u},ou=allPeople,dc=ucar,dc=edu',
+                    entry(attrs={'x-ucar-upid': str(u), 'uid': f'u{u}', 'objectClass': PERSON_CLASS}))
+                   for u in (7, 8)]
+        positions = [('x-ucar-positionId=P1,x-ucar-upid=7,ou=allPeople,dc=ucar,dc=edu',
+                      entry(attrs={'x-ucar-upid': '7', 'x-ucar-positionId': 'P1', 'x-ucar-organizationId': '375',
+                                   'objectClass': POSITION_CLASS}))]
+        collaborations = [('x-ucar-externalOrgId=1,x-ucar-upid=8,ou=allPeople,dc=ucar,dc=edu',
+                           entry(attrs={'x-ucar-upid': '8', 'x-ucar-externalOrgId': '1',
+                                        'objectClass': COLLABORATION_CLASS}))]
+        reader, conn = self._reader([persons, positions, collaborations])
+        records = reader.records('person')
+        assert [(r.upid, [p.position_id for p in r.positions], [c.institution_id for c in r.collaborations])
+                for r in records] == [(7, ['P1'], []), (8, [], [1])]
+        assert [c[1] for c in conn.calls] == ['(objectClass=x-ucar-uniquePerson)',
+                                              '(objectClass=x-ucar-position)',
+                                              '(objectClass=x-ucar-collaboration)']
+
+    def test_a_limited_people_read_stops_the_page_and_reads_each_persons_subtree(self):
+        persons = [(f'x-ucar-upid={u},ou=allPeople,dc=ucar,dc=edu',
+                    entry(attrs={'x-ucar-upid': str(u), 'uid': f'u{u}', 'objectClass': PERSON_CLASS}))
+                   for u in (7, 8, 9)]
+        subtree = [persons[0], ('x-ucar-positionId=P1,x-ucar-upid=7,ou=allPeople,dc=ucar,dc=edu',
+                                entry(attrs={'x-ucar-upid': '7', 'x-ucar-positionId': 'P1',
+                                             'objectClass': POSITION_CLASS}))]
+        reader, conn = self._reader([persons, subtree])
+        records = reader.records('person', limit=1)
+        assert [(r.upid, len(r.positions)) for r in records] == [(7, 1)]
+        assert conn.calls[1][1] == '(x-ucar-upid=7)' and conn.answers == []
+
+    def test_limit_stops_a_flat_page_early_and_unknown_kinds_are_refused(self):
+        orgs = [(f'x-ucar-organizationId={i},ou=allOrganizations,dc=ucar,dc=edu',
+                 entry(attrs={'x-ucar-organizationId': str(i), 'ou': f'O{i}'})) for i in (1, 2, 3)]
+        reader, _conn = self._reader([orgs])
+        assert [r.organization_id for r in reader.records('organization', limit=2)] == [1, 2]
+        with pytest.raises(ValueError):
+            reader.records('planet')
