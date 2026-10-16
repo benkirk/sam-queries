@@ -3,7 +3,7 @@
 from flask import current_app, request
 
 from sam.manage import ldapsync as sync
-from sam.manage.lifecycle import restore_user_deactivation
+from sam.manage.lifecycle import restore_on_reactivate
 from sam.manage.transaction import management_transaction
 from sam.queries import ldapsync as q
 from sam.schemas import ldapsync as s
@@ -150,11 +150,9 @@ def put_gid_allocation():
 
 def restore_hook():
     """The undo of a finished deactivation, when ``LDAPSYNC_RESTORE_ON_REACTIVATE`` is on."""
-    if not current_app.config.get('LDAPSYNC_RESTORE_ON_REACTIVATE'):
-        return None
-    window = current_app.config.get('LDAPSYNC_RESTORE_WINDOW_DAYS', 90)
-    return lambda user, closed_at: restore_user_deactivation(
-        db.session, user, closed_at=closed_at, within_days=window)
+    return restore_on_reactivate(
+        db.session, enabled=bool(current_app.config.get('LDAPSYNC_RESTORE_ON_REACTIVATE')),
+        within_days=current_app.config.get('LDAPSYNC_RESTORE_WINDOW_DAYS', 90))
 
 
 @_put('user')

@@ -12,7 +12,7 @@ from datetime import datetime
 
 from config import SAMConfig
 from cli.core.context import Context
-from cli.core.options import provisioning_option, usage_error, verbose_option
+from cli.core.options import directory_option, provisioning_option, usage_error, verbose_option
 from cli.core.utils import EXIT_SUCCESS, EXIT_ERROR, configure_logging
 from cli.user.commands import UserAdminCommand
 from cli.project.commands import (
@@ -72,15 +72,24 @@ def cli(ctx: Context, verbose: bool, output_format: str):
               help="Show the memberships the user's last deactivation closed (read-only)")
 @click.option('--restore-deactivation', 'restore_deactivation', is_flag=True,
               help='Reopen the memberships the last deactivation closed')
-@click.option('--dry-run', is_flag=True, help='With --restore-deactivation: report only')
+@directory_option
+@click.option('--directory-apply', 'directory_apply', is_flag=True,
+              help='Patch the user from the directory record, per the DIRECTORY_APPLY_<KIND> levers')
+@click.option('--dry-run', is_flag=True,
+              help='With --restore-deactivation or --directory-apply: report only')
 @pass_context
 def user(ctx: Context, username, validate, list_projects, verbose,
-         deactivation, restore_deactivation, dry_run):
+         deactivation, restore_deactivation, directory, directory_apply, dry_run):
     """Administrative user commands."""
+    if dry_run and not (deactivation or restore_deactivation or directory_apply):
+        usage_error(ctx, 'Error: --dry-run needs --restore-deactivation or --directory-apply')
+    if directory_apply and (deactivation or restore_deactivation):
+        usage_error(ctx, 'Error: --directory-apply and --restore-deactivation are separate writes')
     command = UserAdminCommand(ctx)
     exit_code = command.execute(username, validate=validate, list_projects=list_projects,
                                 deactivation=deactivation,
-                                restore_deactivation=restore_deactivation, dry_run=dry_run)
+                                restore_deactivation=restore_deactivation, dry_run=dry_run,
+                                directory=directory, directory_apply=directory_apply)
     sys.exit(exit_code)
 
 

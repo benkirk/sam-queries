@@ -274,6 +274,34 @@ def display_project(ctx: Context, data: dict, extra_title_info: str = "",
     if data.get('provisioning') is not None:
         display_project_provisioning(ctx, data['provisioning'], data['projcode'])
 
+    if data.get('directory') is not None:
+        display_project_directory(ctx, data['directory'], data['projcode'])
+
+
+def display_project_directory(ctx: Context, view: dict, projcode: str):
+    """The project's unix group as the directory holds it: facts, managers, then the drift."""
+    from cli.user.display import _directory_unreadable, display_drift
+    if not view['available'] and view['error'] == 'no gid':
+        ctx.console.print(f"⚠️  Directory: {projcode} has no unix gid in SAM, nothing to look up.",
+                          style='yellow')
+        return
+    if _directory_unreadable(ctx, view, f'gid {view["gid"]}'):
+        if not view['available'] or view['kind'] != 'project':
+            return
+        ctx.console.print('   No project group has been created in the directory since 2026-07-10'
+                          ' (the sync daemon\'s creates; an upstream issue).', style='dim')
+        return
+    rec = view['record']
+    managers = ', '.join(f"{m['username'] or 'upid ' + str(m['upid'])}"
+                         + (f" ({m['role']})" if m['role'] else '') for m in view['managers']) or 'none'
+    ctx.console.print(f"\n[bold]Directory:[/] {rec['name']} · gid {rec['gid']} · "
+                      f"{'active' if rec['active'] else 'inactive'} · source {rec['source'] or '—'}"
+                      f" · {len(rec['member_upids'])} members")
+    ctx.console.print(f"  tags: {', '.join(rec['tags']) or 'none'}")
+    ctx.console.print(f"  managers: {managers}")
+    display_drift(ctx, view, projcode, report_only='Report only: project groups flow from SAM to the'
+                  ' directory through the sync daemon; DIRECTORY_APPLY_GROUP has no effect.')
+
 
 def display_project_provisioning(ctx: Context, prov: dict, projcode: str):
     """Render the host provisioning cross-check for a project.

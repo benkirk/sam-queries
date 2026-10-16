@@ -16,6 +16,13 @@ def _user_brief(u) -> dict:
     }
 
 
+def build_project_directory(session, project: Project):
+    """The project's unix group as the directory holds it and SAM's drift; ``None`` without a directory."""
+    from cli.core.directory import directory_view
+    from sam.manage.directory_panel import project_group_panel
+    return directory_view(project_group_panel(session, project))
+
+
 def build_project_core(project: Project) -> dict:
     """Always-cheap project fields."""
     panel = project.allocation_type.panel if project.allocation_type else None

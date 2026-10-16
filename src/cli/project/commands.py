@@ -8,6 +8,7 @@ from cli.core.utils import EXIT_SUCCESS, EXIT_NOT_FOUND, EXIT_ERROR
 from cli.project.builders import (
     build_project_core,
     build_project_detail,
+    build_project_directory,
     build_project_allocations,
     build_project_rolling,
     build_project_tree,
@@ -47,7 +48,7 @@ from rich.progress import track
 class ProjectSearchCommand(BaseProjectCommand):
     """Exact project search by projcode."""
 
-    def execute(self, projcode: str, list_users: bool = False) -> int:
+    def execute(self, projcode: str, list_users: bool = False, directory: bool = False) -> int:
         try:
             project = self.get_project(projcode)
 
@@ -70,6 +71,13 @@ class ProjectSearchCommand(BaseProjectCommand):
                 data['users'] = build_project_users(project)
             if self.ctx.check_provisioning:
                 data['provisioning'] = build_project_provisioning(project)
+            if directory:
+                view = build_project_directory(self.session, project)
+                if view is None:
+                    self.ctx.message_console.print(
+                        'No directory is configured (DIRECTORY_URL is empty).', style='dim')
+                else:
+                    data['directory'] = view
 
             return self.emit(data, display_project, list_users=list_users)
 

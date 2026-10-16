@@ -72,10 +72,11 @@ def stamp(value, seconds: bool = True) -> str:
     return fmt.date_str(value or None, fmt='%Y-%m-%d %H:%M:%S' if seconds else '%Y-%m-%d %H:%M')
 
 
-def issues_table(ctx, subject: str, issues: list) -> None:
-    """The host-provisioning findings for ``subject``: (check, detail) rows under a heading."""
+def issues_table(ctx, subject: str, issues: list, *,
+                 heading: str = 'Host provisioning issues for') -> None:
+    """Findings for ``subject``: (check, detail) rows under ``heading``."""
     from rich.table import Table
-    ctx.console.print(f"\n[bold yellow]Host provisioning issues for {subject}:[/]")
+    ctx.console.print(f"\n[bold yellow]{heading} {subject}:[/]")
     table = Table(box=box.SIMPLE, show_header=False)
     table.add_column("Check", style="cyan")
     table.add_column("Detail", style="yellow")

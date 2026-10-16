@@ -9,7 +9,7 @@ the absent-group count stays in the report and the CLI, not the Configuration bl
 - [x] § 3.1 read model: `GroupRecord.managers` (a second search in the same connection),
   `project_group` = `project_groups(session, project_id=...)` (the SQL scoped, the loop shared),
   `GroupSnapshot.managers` (`None` for adhoc groups: not compared), the two manager categories
-- [ ] § 3.2 panels
+- [x] § 3.2 panels: one template for both cards, ids per entity, the report-only note per kind
 - [ ] § 4 CLI and the nightly report
 
 ## 1. Where things stand

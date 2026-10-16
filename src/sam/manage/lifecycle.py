@@ -85,6 +85,15 @@ class RestoreReport:
         return sum(1 for _, outcome in self.outcomes if outcome == RESTORED)
 
 
+def restore_on_reactivate(session, *, enabled: bool, within_days: Optional[int]):
+    """The ``on_reactivate`` hook the sync and the directory apply share: the undo of a
+    finished deactivation, or ``None`` when the lever is off."""
+    if not enabled:
+        return None
+    return lambda user, closed_at: restore_user_deactivation(
+        session, user, closed_at=closed_at, within_days=within_days)
+
+
 def restore_user_deactivation(session, user: User, now: Optional[datetime] = None, *,
                               closed_at: Optional[datetime] = None,
                               dry_run: bool = False,

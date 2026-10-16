@@ -6,6 +6,7 @@ from cli.core.context import Context
 from cli.core.display_utils import date_cell, issues_table, stamp
 from sam import fmt
 from rich.table import Table
+from rich.markup import escape
 from rich.panel import Panel
 from rich.text import Text
 from rich import box
@@ -90,6 +91,9 @@ def display_user(ctx: Context, data: dict, list_projects: bool = False):
     if data.get('provisioning') is not None:
         display_user_provisioning(ctx, data['provisioning'], data['username'])
 
+    if data.get('directory') is not None:
+        display_user_directory(ctx, data['directory'], data['username'])
+
 
 def _via(kind, system) -> str:
     if not kind:
@@ -108,6 +112,78 @@ def _last_seen_summary(sources):
     when = 'now' if newest.get('current') else f"{fmt.ago(utcnow_naive() - newest['last_seen'])} ago"
     return (f"{stamp(newest['last_seen'], seconds=False)} UTC  "
             f"{_via(newest['kind'], newest['system'])}  ({when})")
+
+
+def _directory_unreadable(ctx: Context, view: dict, subject: str) -> bool:
+    """The two states before a record: unavailable, or absent. True when nothing more to show."""
+    if not view['available']:
+        ctx.console.print(f"⚠️  Directory: could not read {subject} ({view['error'] or 'unavailable'}).",
+                          style='yellow')
+        return True
+    if not view['found']:
+        ctx.console.print(f"⚠️  Directory: {subject} is not in the directory.", style='yellow')
+        return True
+    return False
+
+
+def display_drift(ctx: Context, view: dict, subject: str, *, report_only: str = ''):
+    """The drift rows as an issues table, then the lever line (or ``report_only``, the note)."""
+    issues = [(f"{r['category']} {r['field'] or ''}".strip(),
+               f"SAM {r['sam'] or '—'} · directory {r['directory'] or '—'} ({r['disposition']})")
+              for r in view['rows']]
+    if issues:
+        issues_table(ctx, subject, issues, heading='Directory drift for')
+    else:
+        ctx.console.print('[green]✓[/] SAM matches the directory.', style='dim')
+    if report_only:
+        ctx.console.print(report_only, style='dim')
+    else:
+        ctx.console.print(f"Levers on: {', '.join(view['apply_kinds']) or 'none'}."
+                          f" {view['would_apply']} would apply, {view['withheld']} withheld.",
+                          style='dim')
+
+
+def display_user_directory(ctx: Context, view: dict, username: str):
+    """The person as the directory holds them: facts, affiliations, then the drift."""
+    if _directory_unreadable(ctx, view, f'upid {view.get("upid")}'):
+        return
+    rec = view['record']
+    ctx.console.print(f"\n[bold]Directory:[/] {rec['username']} · uid {rec['unix_uid']} · "
+                      f"{'active' if rec['active'] else 'inactive'} · source {rec['source'] or '—'}"
+                      f" · auth {rec['token_type'] or '—'}"
+                      + (f" · modified {stamp(rec['modified'], seconds=False)}" if rec['modified'] else ''))
+    for title, rows, key, extra in (('Positions', view['positions'], 'position_id', 'sam_row_id'),
+                                    ('Collaborations', view['collaborations'], 'institution_id', 'sponsor')):
+        if not rows:
+            continue
+        table = Table(title=title, box=box.SIMPLE, title_justify='left')
+        for col in (key, 'Organization', 'Start', 'End', 'State', 'Source', extra):
+            table.add_column(str(col))
+        for r in rows:
+            table.add_row(str(r[key]), f"{r['acronym']} {r['name']}".strip() or str(r.get('organization_id', '')),
+                          date_cell(r['start']), date_cell(r['end']),
+                          'active' if r['active'] else 'finished', r['source'] or '—',
+                          str(r.get(extra) or '—'))
+        ctx.console.print(table)
+    display_drift(ctx, view, username)
+
+
+def display_directory_apply(ctx: Context, data: dict):
+    """What the apply wrote (or would write) and what it withheld."""
+    verb = 'would apply' if data['dry_run'] else 'applied'
+    if not data['found']:
+        ctx.console.print(f"⚠️  Directory: upid {data['upid']} is not in the directory.", style='yellow')
+        return
+    ctx.console.print(f"\n[bold]{data['username']}[/]: {escape(data['fragment'])}")
+    rows = [(f"{verb}: {c['category']} {c['field'] or ''}".strip(), str(c['value'] or c['directory_id'] or '—'))
+            for c in data['applied']]
+    rows += [(f"withheld: {d['category']} {d['field'] or ''}".strip(),
+              f"SAM {d['sam_value'] or '—'} · directory {d['directory_value'] or d['directory_id'] or '—'}")
+             for d in data['withheld']]
+    if rows:
+        issues_table(ctx, data['username'], rows, heading='Directory apply for')
+    else:
+        ctx.console.print('[green]✓[/] SAM matches the directory.', style='dim')
 
 
 def display_user_provisioning(ctx: Context, prov: dict, username: str):
