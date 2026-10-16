@@ -63,6 +63,16 @@ class FakeDirectory(DirectoryReader):
     def group(self, gid: int) -> Optional[GroupRecord]:
         return self._read('group', gid, self.groups)
 
+    def records(self, kind: str, *, limit: int = 0) -> List[Any]:
+        self.guard_read()
+        self.calls.append(('records', kind))
+        if self.raise_with is not None:
+            raise self.raise_with
+        store = {'person': self.people, 'organization': self.organizations,
+                 'institution': self.institutions, 'group': self.groups}[kind]
+        values = list(store.values())
+        return values[:limit] if limit else values
+
     def search(self, kind: str, query: str, *, limit: int = 20) -> List[Any]:
         self.guard_read()
         self.calls.append(('search', (kind, query)))

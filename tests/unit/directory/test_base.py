@@ -55,6 +55,20 @@ def test_the_default_session_reuses_nothing_and_still_reads():
     assert fake.calls == [('person', 7)]
 
 
+def test_the_sweep_read_is_opt_in_and_the_null_reader_refuses_it():
+    class Bare(FakeDirectory):
+        records = DirectoryReader.records
+    with pytest.raises(NotImplementedError):
+        Bare().records('group')
+    with pytest.raises(DirectoryNotConfigured):
+        NullDirectory().records('group')
+    fake = FakeDirectory()
+    fake.add(make_person_record(upid=7))
+    fake.add(make_person_record(upid=8))
+    assert [r.upid for r in fake.records('person', limit=1)] == [7]
+    assert fake.calls == [('records', 'person')]
+
+
 def test_an_unconfigured_fake_refuses_like_the_null_reader():
     with pytest.raises(DirectoryNotConfigured):
         FakeDirectory(configured=False).person(1)

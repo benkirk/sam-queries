@@ -96,6 +96,38 @@ class TestProjectDirectory:
         assert 'is not in the directory' in rich.output and '2026-07-10' in rich.output
 
 
+class TestReport:
+    def test_the_group_lists_its_verbs(self, runner):
+        result = runner.invoke(admin, ['directory'])
+        assert 'report' in result.output
+
+    def test_unconfigured_is_an_error(self, runner, mock_db_session):
+        result = runner.invoke(admin, ['directory', 'report', '--kind', 'group'])
+        assert result.exit_code == 2 and 'No directory is configured' in result.output
+
+    def test_report(self, runner, configured, mock_db_session):
+        lead = make_user(mock_db_session, upid=True)
+        project = make_project(mock_db_session, lead=lead)
+        project.unix_gid = 77_777_703
+        mock_db_session.flush()
+        configured.add(make_group_record(gid=project.unix_gid, name=project.projcode, tags=(),
+                                         member_upids=(lead.upid,), managers=(lead.upid,)))
+        result = runner.invoke(admin, ['--format', 'json', 'directory', 'report', '--kind', 'group',
+                                       '--limit', '5'])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.stdout)
+        assert data['kind'] == 'directory_report' and list(data['kinds']) == ['group']
+        assert data['kinds']['group']['counts'] == {'tags': 1} and data['limit'] == 5
+        rich = runner.invoke(admin, ['directory', 'report', '--kind', 'group', '--limit', '5'])
+        assert rich.exit_code == 0, rich.output
+        assert 'Directory report' in rich.output and 'group: 1 read' in rich.output
+
+    def test_unavailable_is_an_error(self, runner, configured, mock_db_session):
+        configured.raise_with = DirectoryUnavailable('timeout')
+        result = runner.invoke(admin, ['directory', 'report', '--kind', 'group', '--limit', '1'])
+        assert result.exit_code == 2 and 'could not be read' in result.output
+
+
 class TestDirectoryApply:
     def test_json_refuses_the_write(self, runner, configured, user):
         result = runner.invoke(admin, ['--format', 'json', 'user', user.username, '--directory-apply'])

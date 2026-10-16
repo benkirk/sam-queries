@@ -1,6 +1,6 @@
 # Directory client: an optional, read-first integration with the UCAR LDAP directory
 
-**Status: steps 1 to 3 built 2026-10-16, on samuel-dev next** (`directory-client`, draft PR #841 against `staging`).
+**Status: steps 1 to 4 built 2026-10-16; steps 1 to 3 on samuel-dev** (`directory-client`, draft PR #841 against `staging`). Groups and step 4: [`DIRECTORY_CLIENT_NEXT.md`](DIRECTORY_CLIENT_NEXT.md).
 Long-lived: each step lands as its own commit series and deploys to samuel-dev from the branch
 (`gh workflow run "Publish Images and CIRRUS Deploy" --ref directory-client`). The PR delivers
 steps 1 and 2; steps 3 and 4 are scoped here and land on the same PR or as follow-ups.
@@ -17,7 +17,7 @@ Implements stage 1 and stage 2 of
 - [x] Step 2b (code): the hook applies the enabled kinds in a second transaction
 - [ ] Step 2b (dev): levers on one kind at a time after clean step-1 days
 - [x] Step 3: Configuration card block; user-card Directory panel (check, apply); organization and institution row actions (`webapp/utils/directory_panel.py`, `dashboards/admin/directory_routes.py`)
-- [ ] Step 4: `sam-search user --directory`, `sam-admin user --directory-apply`, `sam-admin directory --report`, the `directory_report` task named in `SAM_TASKS_DISABLED`
+- [x] Step 4: `sam-search user|project --directory`, `sam-admin user --directory-apply`, `sam-admin directory report` (a verb group), the `directory_report` task named in prod's `SAM_TASKS_DISABLED`
 - [x] Docs: `.claude/rules/directory.md` + `CLAUDE.md` row and tripwire; `.env.example`; `SYSTEMS_INTEGRATION_APIs.md` § 8; AFFILIATIONS status line and Appendix D order
 
 ## 1. Context

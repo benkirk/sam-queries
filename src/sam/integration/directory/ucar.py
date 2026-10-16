@@ -9,6 +9,7 @@ and ``ou=allGroups``. Field map: docs/plans/LDAPSYNC_DIRECTORY_AFFILIATIONS.md A
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import replace
 from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple
@@ -365,8 +366,11 @@ class UCARDirectory(DirectoryReader):
 
     def person(self, upid: int) -> Optional[PersonRecord]:
         with self._connection() as conn:
-            entries = self._search(conn, PEOPLE, f'(x-ucar-upid={_escape(int(upid))})',
-                                   PERSON_ATTRS)
+            return self._person_in(conn, upid)
+
+    def _person_in(self, conn, upid: int) -> Optional[PersonRecord]:
+        """One subtree search: the person and its position and collaboration children."""
+        entries = self._search(conn, PEOPLE, f'(x-ucar-upid={_escape(int(upid))})', PERSON_ATTRS)
         person, positions, collaborations = split_person_entries(entries)
         return parse_person(person, positions, collaborations) if person is not None else None
 
@@ -402,6 +406,80 @@ class UCARDirectory(DirectoryReader):
         entries = self._search(conn, PEOPLE, f'(x-ucar-adminFor={_escape(dn)})',
                                ('x-ucar-upid',), scope='level')
         return tuple(sorted(u for u in (_int(a, 'x-ucar-upid') for _, a in entries) if u is not None))
+
+    # --- the sweep ------------------------------------------------------------
+
+    def records(self, kind: str, *, limit: int = 0) -> List[Any]:
+        """Every record of ``kind`` through paged searches on one connection (the nightly sweep)."""
+        plans = {
+            'organization': (ORGANIZATIONS, ORGANIZATION_CLASS, ORGANIZATION_ATTRS, parse_organization),
+            'institution': (INSTITUTIONS, INSTITUTION_CLASS, INSTITUTION_ATTRS, parse_institution),
+            'group': (GROUPS, GROUP_CLASS, GROUP_ATTRS, parse_group),
+        }
+        if kind != 'person' and kind not in plans:
+            raise ValueError(f'cannot sweep the directory for {kind!r}')
+        with self._connection() as conn:
+            if kind == 'person':
+                return self._people(conn, limit)
+            subtree, cls, attrs, parse = plans[kind]
+            entries = self._paged(conn, subtree, f'(objectClass={cls})', attrs, limit=limit)
+            records = [r for r in (parse(a) for _dn, a in entries) if r is not None]
+            if kind == 'group':
+                managers = self._all_managers(conn)
+                records = [replace(r, managers=managers.get(r.gid, ())) for r in records]
+            return records
+
+    def _paged(self, conn, subtree: str, flt: str, attrs: Sequence[str], *,
+               scope: str = 'level', limit: int = 0) -> List[Tuple[str, Attrs]]:
+        """ldap3's simple paged results, 1,000 per page; ``limit`` stops after that many entries."""
+        import ldap3
+        scopes = {'subtree': ldap3.SUBTREE, 'level': ldap3.LEVEL}
+        out = []
+        for e in conn.extend.standard.paged_search(
+                f'{subtree},{self.config.base_dn}', flt, search_scope=scopes[scope],
+                attributes=list(attrs), paged_size=1000, generator=True):
+            if e.get('type') != 'searchResEntry':
+                continue
+            out.append((e['dn'], e['attributes']))
+            if limit and len(out) >= limit:
+                break
+        return out
+
+    def _people(self, conn, limit: int) -> List[PersonRecord]:
+        """Persons at one level. A limited read fetches each person's children by its own
+        search; a full one pages the position and collaboration classes once and joins by upid."""
+        persons = self._paged(conn, PEOPLE, f'(objectClass={PERSON_CLASS})', PERSON_ATTRS, limit=limit)
+        if limit:
+            upids = (_int(a, 'x-ucar-upid') for _dn, a in persons)
+            records = (self._person_in(conn, u) for u in upids if u is not None)
+            return [r for r in records if r is not None]
+        children = {POSITION_CLASS: defaultdict(list), COLLABORATION_CLASS: defaultdict(list)}
+        for cls, by_upid in children.items():
+            for _dn, a in self._paged(conn, PEOPLE, f'(objectClass={cls})', PERSON_ATTRS, scope='subtree'):
+                upid = _int(a, 'x-ucar-upid')
+                if upid is not None:
+                    by_upid[upid].append(a)
+        out = []
+        for _dn, a in persons:
+            upid = _int(a, 'x-ucar-upid')
+            record = parse_person(a, children[POSITION_CLASS].get(upid, ()),
+                                  children[COLLABORATION_CLASS].get(upid, ()))
+            if record is not None:
+                out.append(record)
+        return out
+
+    def _all_managers(self, conn) -> Dict[int, Tuple[int, ...]]:
+        """gid -> upids of the people whose ``x-ucar-adminFor`` names it: one search for the sweep."""
+        managers = defaultdict(set)
+        for _dn, a in self._paged(conn, PEOPLE, '(x-ucar-adminFor=*)', ('x-ucar-upid', 'x-ucar-adminFor')):
+            upid = _int(a, 'x-ucar-upid')
+            if upid is None:
+                continue
+            for dn in _values(a, 'x-ucar-adminFor'):
+                gid = _dn_id(dn, 'gidNumber')
+                if gid is not None:
+                    managers[gid].add(upid)
+        return {gid: tuple(sorted(upids)) for gid, upids in managers.items()}
 
     def search(self, kind: str, query: str, *, limit: int = 20) -> List[Any]:
         q = _escape(query.strip())

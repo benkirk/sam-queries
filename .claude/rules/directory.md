@@ -48,6 +48,16 @@ Appendix C.
   the directory, a path that is not live yet. Panel ids carry the entity id because the user
   and project cards also open inside a modal. The Organizations card is cached per user: a
   config flip shows after `sam-admin cache --refresh`.
+- **CLI and the nightly report.** `sam-search user|project <k> --directory` render the same
+  views as the panels (`cli/core/directory.py` flattens them; the envelope key is absent when
+  unconfigured, `available: false` when down); `sam-admin user <u> --directory-apply [--dry-run]`
+  is `reconcile_from_directory` in `management_transaction`, JSON refused for the live write.
+  `sam-admin directory report [--kind K] [--limit N]` and the `directory_report` task (03:00
+  Mountain, `needs=('sam',)`) run `sam/queries/directory_sweep.py`: `reader.records(kind)` pages
+  a whole subtree, SAM's side is one query per table (the sync's own group lists), counts by
+  category with capped keys. ⚠️ The task is named in prod's `SAM_TASKS_DISABLED` (fail-open
+  list) and the CronJob forwards the four `DIRECTORY_*` read keys by name; never a
+  `DIRECTORY_APPLY_<KIND>` (`helm/tests/test-cronjob-render.sh`).
 - **Logs** carry usernames and row ids, like the rest of the ldapsync logger; personal names,
   email addresses and phone numbers are counted in a `Discrepancy`, never valued.
 - **Tests** never open a socket: `tests/conftest.py::_no_outbound_ldap` guards

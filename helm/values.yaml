@@ -716,7 +716,9 @@ tasks:
     # so re-enabling one mid-slot does not backfill: the first real run is the next
     # occurrence. The switch is checked ahead of `only`/`force`, so
     # `sam-admin tasks --run X --force` cannot override it.
-    SAM_TASKS_DISABLED: "xras_notices,account_queue_digest,xras_request_tickets"
+    # directory_report: the nightly read-only sweep of ldap.ucar.edu against SAM (counts only);
+    # named here until its first weeks on dev are read (docs/plans/DIRECTORY_CLIENT_NEXT.md).
+    SAM_TASKS_DISABLED: "xras_notices,account_queue_digest,xras_request_tickets,directory_report"
     # Arms xras_rename, the one task write (the XRAS_WRITE_ENABLED warning in webapp.env).
     # Removing it disarms the task without a code change.
     XRAS_WRITE_ENABLED: "1"

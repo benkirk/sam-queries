@@ -10,7 +10,16 @@ the absent-group count stays in the report and the CLI, not the Configuration bl
   `project_group` = `project_groups(session, project_id=...)` (the SQL scoped, the loop shared),
   `GroupSnapshot.managers` (`None` for adhoc groups: not compared), the two manager categories
 - [x] § 3.2 panels: one template for both cards, ids per entity, the report-only note per kind
-- [ ] § 4 CLI and the nightly report
+- [x] § 4 CLI and the nightly report: `sam-admin directory report` is the CLI's first verb group
+  (`CLI_VERBS.md` plans the rest); the task is named in prod's `SAM_TASKS_DISABLED`, dev runs it
+
+Deviations from the plan below, and why: the panel module moved to `sam/manage/directory_panel.py`
+(Flask-free, so the CLI shares it); `project_group` is `project_groups(session, project_id=...)`
+with the SQL scoped rather than a lifted loop body; `GroupSnapshot.managers` is `None` for an
+adhoc group (not compared); one panel template serves both cards; the report-only note is per
+kind (a project group flows SAM to directory, an adhoc group Google to directory to SAM); the
+report exits 0 with findings (a report, not an audit); `--limit` narrows SAM's side to the
+sample; `sam-admin directory report` nests (Ben, 2026-10-16) instead of `--report`.
 
 ## 1. Where things stand
 

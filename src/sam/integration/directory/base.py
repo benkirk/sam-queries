@@ -178,6 +178,10 @@ class DirectoryReader(ABC):
         """Reuse one connection across many reads (sweeps); the default opens none."""
         yield self
 
+    def records(self, kind: str, *, limit: int = 0) -> List[Any]:
+        """Every record of ``kind`` for the nightly sweep (``limit`` caps it); readers opt in."""
+        raise NotImplementedError(f'{self.name}: no sweep')
+
     def guard_read(self) -> None:
         if not self.configured:
             raise DirectoryNotConfigured(f'{self.name}: no directory is configured')
@@ -216,5 +220,9 @@ class NullDirectory(DirectoryReader):
         return None
 
     def search(self, kind: str, query: str, *, limit: int = 20) -> List[Any]:
+        self.guard_read()
+        return []
+
+    def records(self, kind: str, *, limit: int = 0) -> List[Any]:
         self.guard_read()
         return []

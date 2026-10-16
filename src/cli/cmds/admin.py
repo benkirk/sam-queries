@@ -26,6 +26,7 @@ from cli.accounting.dates import validate_accounting_dates, resolve_accounting_d
 from cli.contracts.commands import ContractsAuditCommand
 from cli.last_seen.commands import LastSeenCommand
 from cli.security.commands import RbacCommand
+from cli.directory.commands import DirectoryReportCommand
 from cli.tasks.commands import TasksCommand
 from cli.xras.commands import XrasCommand
 from sam.queries.xras_actions import XRAS_ACTION_STATUSES
@@ -853,6 +854,25 @@ def last_seen(ctx: Context, username, backfill, dry_run):
     if dry_run and not backfill:
         usage_error(ctx, 'Error: --dry-run requires --backfill')
     sys.exit(LastSeenCommand(ctx).execute(username=username, backfill=backfill, dry_run=dry_run))
+
+
+# The CLI's first verb group (Ben, 2026-10-16): a new multi-verb command nests its verbs
+# instead of adding mode flags; the flat commands convert in docs/plans/CLI_VERBS.md.
+@cli.group()
+def directory():
+    """The UCAR directory beside SAM (docs/plans/DIRECTORY_CLIENT_NEXT.md)."""
+
+
+@directory.command('report')
+@click.option('--kind', type=click.Choice(['person', 'organization', 'institution', 'group']),
+              help='One kind instead of all four')
+@click.option('--limit', type=int, default=0, metavar='N',
+              help='Read at most N records per kind (a quick smoke; SAM rows the sample lacks are then not counted)')
+@verbose_option()
+@pass_context
+def directory_report(ctx: Context, kind, limit, verbose):
+    """Compare every directory record with SAM: counts by kind and category, sample keys."""
+    sys.exit(DirectoryReportCommand(ctx).execute(kind=kind, limit=limit))
 
 
 @cli.command()
