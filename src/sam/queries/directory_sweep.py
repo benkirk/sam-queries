@@ -19,11 +19,10 @@ from sqlalchemy.orm import selectinload
 
 from sam.core.organizations import Institution, Organization
 from sam.core.users import Phone, User
-from sam.integration.directory.compare import (
-    GroupSnapshot, compare_group, compare_institution, compare_organization, compare_person,
-)
-from sam.queries.directory import (snapshot_from_institution, snapshot_from_organization,
-                                   snapshot_from_user)
+from sam.integration.directory.compare import (compare_group, compare_institution,
+                                                compare_organization, compare_person)
+from sam.queries.directory import (group_snapshot_from_row, snapshot_from_institution,
+                                   snapshot_from_organization, snapshot_from_user)
 from sam.queries.ldapsync import groups, project_groups
 
 SWEPT_KINDS: Tuple[str, ...] = ('person', 'organization', 'institution', 'group')
@@ -102,15 +101,11 @@ def _groups(session, keys=None) -> dict:
     out = {}
     for row in groups(session):
         if row['posix_gid'] is not None:
-            out[row['posix_gid']] = None if not row['active'] else GroupSnapshot(
-                gid=row['posix_gid'], name=row['name'], active=row['active'],
-                tags=frozenset(row['tags']), member_upids=frozenset(row['upids']))
+            out[row['posix_gid']] = group_snapshot_from_row(row) if row['active'] else None
     for row in project_groups(session):
         if row['posix_gid'] is not None:
-            out.setdefault(row['posix_gid'], None if not row['active'] else GroupSnapshot(
-                gid=row['posix_gid'], name=row['name'], active=row['active'],
-                tags=frozenset(row['tags']), member_upids=frozenset(row['upids']),
-                managers=frozenset(row['managers'])))
+            out.setdefault(row['posix_gid'], group_snapshot_from_row(
+                row, managers=frozenset(row['managers'])) if row['active'] else None)
     return out if keys is None else {k: v for k, v in out.items() if k in keys}
 
 

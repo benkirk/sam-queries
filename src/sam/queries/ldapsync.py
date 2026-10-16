@@ -202,16 +202,18 @@ def _login_identities(session: Session) -> dict:
     return {r.username.lower(): (r.upid, r.contact_person_upid) for r in rows}
 
 
-def groups(session: Session) -> list:
-    """Every adhoc group; tags are the branches its entries name, not ``adhoc_group_tag``."""
+def groups(session: Session, *, group_id: Optional[int] = None) -> list:
+    """Every adhoc group (or one); tags are the branches its entries name, not ``adhoc_group_tag``."""
+    scope = {'group_id': group_id} if group_id else {}
+    where = 'WHERE group_id = :group_id' if group_id else ''
     group_rows = session.execute(text("""
-        SELECT group_id, group_name, unix_gid, active FROM adhoc_group ORDER BY group_name
-    """)).all()
+        SELECT group_id, group_name, unix_gid, active FROM adhoc_group {where} ORDER BY group_name
+    """.format(where=where)), scope).all()
     entries = defaultdict(list)
     for e in session.execute(text("""
         SELECT group_id, username, access_branch_name FROM adhoc_system_account_entry
-         ORDER BY entry_id
-    """)):
+         {where} ORDER BY entry_id
+    """.format(where=where)), scope):
         entries[e.group_id].append(e)
     ident = _login_identities(session)
 

@@ -27,7 +27,7 @@ from sam.integration.directory.compare import (
 from sam.integration.directory.config import DirectoryConfig
 from sam.integration.directory.ucar import academic_status_code
 from sam.projects.projects import Project
-from sam.queries.ldapsync import project_group
+from sam.queries.ldapsync import groups, project_group
 
 logger = logging.getLogger(__name__)
 
@@ -96,18 +96,20 @@ def snapshot_from_group(session, gid: int, *, group=None, project=None) -> Optio
     if group is None and project is None:
         group = session.query(AdhocGroup).filter(AdhocGroup.unix_gid == gid).first()
     if group is not None:
-        entries = list(group.system_accounts)
-        return GroupSnapshot(gid=gid, name=group.group_name, active=bool(group.active),
-                             tags=frozenset(e.access_branch_name for e in entries),
-                             member_upids=_upids_for(session, {e.username for e in entries}))
+        return group_snapshot_from_row(groups(session, group_id=group.group_id)[0])
     if project is None:
         project = session.query(Project).filter(Project.unix_gid == gid).first()
     if project is None:
         return None
-    row = project_group(session, project)   # the sync's own rule: one derivation, two consumers
-    return GroupSnapshot(gid=gid, name=row['name'], active=row['active'],
+    row = project_group(session, project)
+    return group_snapshot_from_row(row, managers=frozenset(row['managers']))
+
+
+def group_snapshot_from_row(row: dict, *, managers=None) -> GroupSnapshot:
+    """SAM's side of a group from the sync's own row (``groups`` / ``project_groups``): one derivation."""
+    return GroupSnapshot(gid=row['posix_gid'], name=row['name'], active=bool(row['active']),
                          tags=frozenset(row['tags']), member_upids=frozenset(row['upids']),
-                         managers=frozenset(row['managers']))
+                         managers=managers)
 
 
 # --- increment snapshots (the ``*SyncInput.load()`` dicts) -------------------------------
