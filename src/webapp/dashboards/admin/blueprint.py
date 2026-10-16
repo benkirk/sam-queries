@@ -361,6 +361,8 @@ def project_card(projcode):
         if project is None or project.facility_name not in allowed:
             abort(403)
 
+    from sam.integration.directory.config import directory_configured
+
     # Render a wrapper template that calls the macro
     return render_template(
         'dashboards/admin/fragments/project_card_wrapper.html',
@@ -368,6 +370,7 @@ def project_card(projcode):
         user=current_user,
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
         usage_critical_threshold=USAGE_CRITICAL_THRESHOLD,
+        directory=directory_configured(),
     )
 
 
@@ -480,6 +483,8 @@ def group_card(group_name):
         .all()
     )
 
+    from sam.integration.directory.config import directory_configured
+
     return render_template(
         'dashboards/admin/fragments/group_card_wrapper.html',
         group=group,
@@ -487,6 +492,7 @@ def group_card(group_name):
         primary_gid_users=primary_gid_users,
         # Same gate as the user_card route the member rows target.
         can_view_users=has_permission_any_facility(current_user, Permission.VIEW_USERS),
+        directory=directory_configured(),
     )
 
 

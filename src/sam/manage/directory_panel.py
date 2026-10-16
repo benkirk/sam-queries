@@ -1,8 +1,10 @@
-"""Context for the Directory panels: the record as the directory holds it, and SAM's drift.
+"""The Directory views: the record as the directory holds it, and SAM's drift beside it.
 
-Read-only. The panel is a dry run of the apply, so each drift row says whether it would
-apply under today's levers; personal values (names, emails, phones) are filled here from
-the record and the ORM row, never from a log line. Record: docs/plans/DIRECTORY_CLIENT.md step 3.
+Read-only and Flask-free: the admin panels and the CLI ``--directory`` views render these
+dicts. A view is a dry run of the apply, so each drift row says whether it would apply under
+today's levers; personal values (names, emails, phones) are filled here from the record and
+the ORM row, never from a log line. Groups are report-only (``reconcile_group`` withholds all).
+Record: docs/plans/DIRECTORY_CLIENT.md step 3, DIRECTORY_CLIENT_NEXT.md section 3.
 """
 
 from __future__ import annotations
@@ -11,10 +13,12 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from sam.core.organizations import Institution, Organization
+from sam.core.users import User
 from sam.integration.directory import KINDS, DirectoryUnavailable
 from sam.integration.directory.config import DirectoryConfig
-from sam.manage.directory import (ReconcileResult, reconcile_institution,
+from sam.manage.directory import (ReconcileResult, reconcile_group, reconcile_institution,
                                   reconcile_organization, reconcile_person)
+from sam.queries.directory import snapshot_from_group
 
 DISPOSITIONS = ('would apply', 'withheld', 'applied')
 
@@ -162,6 +166,63 @@ def institution_panel(session, inst, *, record=None,
         return state
     result = reconcile_institution(session, inst, record, config=config, dry_run=True)
     return _finish(state, result, lambda d: (d.sam_value, d.directory_value), applied)
+
+
+def _group_panel(session, gid: Optional[int], *, kind: str, key: str, roles: Dict[int, str],
+                 record=None) -> Dict[str, Any]:
+    """A unix group as the directory holds it (managers from the people side) and SAM's drift."""
+    config = DirectoryConfig.from_environment()
+    state = _base(config)
+    state.update(gid=gid, kind=kind, name=key, managers=[], report_only=True)
+    if gid is None:
+        state['available'] = False
+        state['error'] = 'no gid'
+        return state
+    if record is None:
+        record = _read(state, _reader().group, gid)
+    else:
+        state['found'] = True
+        state['record'] = record
+    if record is None:
+        return state
+    snap = snapshot_from_group(session, gid)
+    upids = set(record.member_upids) | set(record.managers) | set(roles)
+    if snap is not None:
+        upids |= snap.member_upids | (snap.managers or frozenset())
+    names = {upid: username for upid, username in session.query(User.upid, User.username)
+             .filter(User.upid.in_(upids))} if upids else {}
+
+    def label(upid: str) -> str:
+        n = int(upid)
+        return f'{names[n]} ({n})' if n in names else f'upid {n}'
+
+    state['managers'] = [{'upid': u, 'username': names.get(u, ''), 'role': roles.get(u, '')}
+                         for u in record.managers]
+    result = reconcile_group(session, gid, record, config=config, key=key, dry_run=True, snap=snap)
+
+    def values(d):
+        if d.field in ('member', 'manager'):
+            return (label(d.sam_value) if d.sam_value else '',
+                    label(d.directory_id) if d.directory_id else '')
+        return d.sam_value, d.directory_value
+    return _finish(state, result, values, None)
+
+
+def project_group_panel(session, project, *, record=None) -> Dict[str, Any]:
+    """The project's unix group; the lead and admin are SAM's managers."""
+    roles = {}
+    for role in ('lead', 'admin'):
+        person = getattr(project, role)
+        if person is not None and person.upid is not None:
+            roles.setdefault(person.upid, role)
+    return _group_panel(session, project.unix_gid, kind='project', key=project.projcode,
+                        roles=roles, record=record)
+
+
+def adhoc_group_panel(session, group, *, record=None) -> Dict[str, Any]:
+    """An adhoc group; SAM holds no managers for it, so the directory's are shown, not compared."""
+    return _group_panel(session, group.unix_gid, kind='adhoc', key=group.group_name, roles={},
+                        record=record)
 
 
 def apply_kind_labels(kinds) -> str:

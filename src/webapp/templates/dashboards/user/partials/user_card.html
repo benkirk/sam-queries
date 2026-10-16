@@ -460,20 +460,21 @@
     </div>
     {% endif %}
 
-    <!-- Directory (docs/plans/DIRECTORY_CLIENT.md step 3): operator-initiated, never on load -->
+    <!-- Directory (docs/plans/DIRECTORY_CLIENT.md step 3): operator-initiated, never on load.
+         Ids carry the user id: the card also opens in #userDetailsModal. -->
     {% if is_admin and directory %}
     <div class="card-body border-top pt-3">
         <div class="d-flex justify-content-between align-items-center mb-2">
             <strong><i class="fa-solid fa-address-book"></i> Directory</strong>
             <button type="button" class="btn btn-sm btn-outline-secondary"
                     hx-get="{{ url_for('admin_dashboard.htmx_user_directory', username=sam_user.username) }}"
-                    hx-target="#userDirectoryPanel" hx-swap="innerHTML"
-                    hx-indicator="#userDirectorySpinner">
+                    hx-target="#userDirectoryPanel-{{ sam_user.user_id }}" hx-swap="innerHTML"
+                    hx-indicator="#userDirectorySpinner-{{ sam_user.user_id }}">
                 <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Check directory
-                <span id="userDirectorySpinner" class="htmx-indicator spinner-border spinner-border-sm ms-1" role="status" aria-hidden="true"></span>
+                <span id="userDirectorySpinner-{{ sam_user.user_id }}" class="htmx-indicator spinner-border spinner-border-sm ms-1" role="status" aria-hidden="true"></span>
             </button>
         </div>
-        <div id="userDirectoryPanel">
+        <div id="userDirectoryPanel-{{ sam_user.user_id }}">
             <p class="text-muted mb-0"><small>Reads this person from the directory and lists the differences against SAM.</small></p>
         </div>
     </div>

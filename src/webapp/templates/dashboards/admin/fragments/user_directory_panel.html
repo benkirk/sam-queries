@@ -1,4 +1,4 @@
-{# The Directory panel inside the admin user card (#userDirectoryPanel). Context: sam_user, panel. #}
+{# The Directory panel inside the admin user card (#userDirectoryPanel-<user_id>). Context: sam_user, panel. #}
 {% from 'dashboards/fragments/table_bits.html' import state_tag %}
 {% if not panel.configured %}
 <div class="alert alert-secondary py-2 px-3 small mb-0">No directory is configured (DIRECTORY_URL is empty).</div>
@@ -82,7 +82,7 @@
 {% endif %}
 {% set can_apply = has_permission(Permission.EDIT_USERS) %}
 {% set apply_url = url_for('admin_dashboard.htmx_user_directory_apply', username=sam_user.username) %}
-{% set apply_target = '#userDirectoryPanel' %}
+{% set apply_target = '#userDirectoryPanel-' ~ sam_user.user_id %}
 {% include 'dashboards/admin/fragments/_directory_drift.html' %}
 {% if panel.result %}
 <div class="mt-2 small">

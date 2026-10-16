@@ -10,8 +10,9 @@
      primary_gid_users: list of User ORM objects whose primary_gid == group.unix_gid
      is_admin:          bool (admin-only UI gate)
      can_view_users:    bool — user rows open the user-details modal
+     directory:         bool — a directory is configured; the admin card's Directory section
 #}
-{% macro render_group_card(group, members_by_branch=None, primary_gid_users=None, is_admin=False, can_view_users=False) %}
+{% macro render_group_card(group, members_by_branch=None, primary_gid_users=None, is_admin=False, can_view_users=False, directory=False) %}
 {% set members_by_branch = members_by_branch or {} %}
 {% set primary_gid_users = primary_gid_users or [] %}
 {% set branches = members_by_branch.keys() | list %}
@@ -156,5 +157,24 @@
         {% endif %}
 
     </div>{# /.card-body #}
+
+    {# Directory (docs/plans/DIRECTORY_CLIENT_NEXT.md): operator-initiated, never on load #}
+    {% if is_admin and directory %}
+    <div class="card-body border-top pt-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong><i class="fa-solid fa-address-book"></i> Directory</strong>
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    hx-get="{{ url_for('admin_dashboard.htmx_group_directory', group_name=group.group_name) }}"
+                    hx-target="#groupDirectoryPanel-{{ group.group_id }}" hx-swap="innerHTML"
+                    hx-indicator="#groupDirectorySpinner-{{ group.group_id }}">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Check directory
+                <span id="groupDirectorySpinner-{{ group.group_id }}" class="htmx-indicator spinner-border spinner-border-sm ms-1" role="status" aria-hidden="true"></span>
+            </button>
+        </div>
+        <div id="groupDirectoryPanel-{{ group.group_id }}">
+            <p class="text-muted mb-0"><small>Reads this group from the directory and lists the differences against SAM's entries.</small></p>
+        </div>
+    </div>
+    {% endif %}
 </div>{# /.card #}
 {% endmacro %}

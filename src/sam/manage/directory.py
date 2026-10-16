@@ -327,9 +327,10 @@ def reconcile_institution(session, inst: Optional[Institution],
 
 
 def reconcile_group(session, gid: int, record: Optional[GroupRecord], *, config: DirectoryConfig,
-                    key: str = '', dry_run: bool = False) -> ReconcileResult:
+                    key: str = '', dry_run: bool = False, snap=None) -> ReconcileResult:
     """Groups are reported only: project membership flows SAM to directory, adhoc entries are SAM's."""
-    snap = snapshot_from_group(session, gid)
+    if snap is None:
+        snap = snapshot_from_group(session, gid)
     key = key or (snap.name if snap else str(gid))
     report = compare_group(record, snap, key=key, side='sam')
     r = _Reconciler('group', config, dry_run)

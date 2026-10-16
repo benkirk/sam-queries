@@ -1,13 +1,17 @@
 """The Directory panels: the Configuration block, the user-card section and panel, the
-organization dialog. Auth, render smoke and the fail-open shapes; the write path is covered
-at the manage layer (tests/unit/manage/test_directory_reconcile.py)."""
+organization and institution dialogs, the project and adhoc group panels. Auth, render smoke
+and the fail-open shapes; the write path is covered at the manage layer
+(tests/unit/manage/test_directory_reconcile.py)."""
 import json
 import os
 import re
 
 import pytest
 
-from factories.directory import FakeDirectory, make_person_record, make_position_record
+from factories import make_project, make_user
+from factories.directory import (FakeDirectory, make_group_record, make_person_record,
+                                 make_position_record)
+from sam.core.groups import AdhocGroup
 from sam.core.users import User
 from sam.integration.directory import (DirectoryUnavailable, InstitutionRecord,
                                        OrganizationRecord, outage)
@@ -17,6 +21,8 @@ from sam.manage.directory import Change, ReconcileResult
 CARD = '/admin/user/benkirk'
 PANEL = '/admin/htmx/user/benkirk/directory'
 APPLY = '/admin/htmx/user/benkirk/directory/apply'
+GROUP_CARD = '/admin/group/csg'
+GROUP_PANEL = '/admin/htmx/group/csg/directory'
 
 
 @pytest.fixture
@@ -77,10 +83,120 @@ class TestUserCardSection:
         html = auth_client.get(CARD).get_data(as_text=True)
         assert 'Check directory' not in html
 
-    def test_shown_when_configured_and_reads_nothing(self, auth_client, configured):
+    def test_shown_when_configured_and_reads_nothing(self, auth_client, configured, benkirk):
         html = auth_client.get(CARD).get_data(as_text=True)
-        assert 'Check directory' in html and 'userDirectoryPanel' in html
+        assert 'Check directory' in html and f'userDirectoryPanel-{benkirk.user_id}' in html
         assert configured.calls == []
+
+
+class TestProjectPanel:
+    """Routes read committed rows, so the HTTP tests seed the fake against ``active_project``."""
+
+    @pytest.fixture
+    def url(self, active_project):
+        return f'/admin/htmx/project/{active_project.projcode}/directory'
+
+    def test_card_section_hidden_without_a_directory(self, auth_client, active_project):
+        html = auth_client.get(f'/admin/project/{active_project.projcode}').get_data(as_text=True)
+        assert 'Check directory' not in html
+
+    def test_card_section_reads_nothing(self, auth_client, configured, active_project):
+        html = auth_client.get(f'/admin/project/{active_project.projcode}').get_data(as_text=True)
+        assert 'Check directory' in html
+        assert f'projectDirectoryPanel-{active_project.project_id}' in html
+        assert configured.calls == []
+
+    def test_non_admin_denied(self, non_admin_client, url):
+        assert non_admin_client.get(url).status_code == 403
+
+    def test_unknown_project(self, auth_client, configured):
+        assert auth_client.get('/admin/htmx/project/NOPE9999/directory').status_code == 404
+
+    def test_unconfigured_is_a_quiet_alert(self, auth_client, url):
+        resp = auth_client.get(url)
+        assert resp.status_code == 200 and b'No directory is configured' in resp.data
+
+    def test_the_panel_is_report_only_with_managers_marked(self, auth_client, configured,
+                                                           active_project, session, url):
+        from sam.queries.ldapsync import project_group
+        row = project_group(session, active_project)
+        lead = active_project.lead
+        configured.add(make_group_record(
+            gid=active_project.unix_gid, name=active_project.projcode,
+            tags=tuple(row['tags']), member_upids=tuple(row['upids']) + (999_999_999,),
+            managers=tuple(row['managers'])))
+        html = auth_client.get(url).get_data(as_text=True)
+        assert configured.calls == [('group', active_project.unix_gid)]
+        assert f'gid {active_project.unix_gid}' in html and 'Report only' in html
+        assert f'>{lead.username}<' in html and '>lead</span>' in html
+        assert 'member_missing_in_sam' in html and 'upid 999999999' in html
+        assert 'manager_missing' not in html and 'would apply' not in html
+        assert 'hx-post' not in html and 'Levers on' not in html
+
+    def test_absent_names_the_upstream_cause(self, auth_client, configured, active_project, url):
+        html = auth_client.get(url).get_data(as_text=True)
+        assert f'no group for gid {active_project.unix_gid}' in html and '2026-07-10' in html
+
+    def test_unavailable_is_an_alert_not_a_500(self, auth_client, configured, url):
+        configured.raise_with = DirectoryUnavailable('timeout')
+        resp = auth_client.get(url)
+        assert resp.status_code == 200 and b'could not be read' in resp.data
+        outage.reset()
+
+    def test_a_project_without_a_gid_has_nothing_to_look_up(self, session, configured, app):
+        from sam.manage.directory_panel import project_group_panel
+        project = make_project(session, lead=make_user(session, upid=True))
+        with app.app_context():
+            panel = project_group_panel(session, project)
+        assert (panel['available'], panel['error'], panel['managers']) == (False, 'no gid', [])
+        assert configured.calls == []
+
+    def test_managers_absent_from_sam_are_drift(self, session, configured, app):
+        from sam.manage.directory_panel import project_group_panel
+        project = make_project(session, lead=make_user(session, upid=True))
+        project.unix_gid = 77_777_777
+        session.flush()
+        record = make_group_record(gid=77_777_777, name=project.projcode, member_upids=(project.lead.upid,),
+                                   managers=(project.lead.upid, 999_999_998))
+        with app.app_context():
+            panel = project_group_panel(session, project, record=record)
+        assert [(r['category'], r['directory'], r['disposition']) for r in panel['rows']] == [
+            ('manager_missing_in_sam', 'upid 999999998', 'withheld')]
+        assert [(m['username'], m['role']) for m in panel['managers']] == [
+            (project.lead.username, 'lead'), ('', '')]
+
+
+class TestGroupPanel:
+    @pytest.fixture
+    def csg(self, session):
+        return AdhocGroup.get_by_name(session, 'csg')
+
+    def test_card_section(self, auth_client, configured, csg):
+        html = auth_client.get(GROUP_CARD).get_data(as_text=True)
+        assert 'Check directory' in html and f'groupDirectoryPanel-{csg.group_id}' in html
+        assert configured.calls == []
+
+    def test_card_section_hidden_without_a_directory(self, auth_client):
+        assert 'Check directory' not in auth_client.get(GROUP_CARD).get_data(as_text=True)
+
+    def test_non_admin_denied(self, non_admin_client):
+        assert non_admin_client.get(GROUP_PANEL).status_code == 403
+
+    def test_unknown_group(self, auth_client, configured):
+        resp = auth_client.get('/admin/htmx/group/no-such-group-xyz/directory')
+        assert resp.status_code == 404 and b'Group not found' in resp.data
+
+    def test_managers_are_shown_not_compared(self, auth_client, configured, csg, benkirk):
+        configured.add(make_group_record(gid=csg.unix_gid, name='csg', tags=('hpc',),
+                                         member_upids=(benkirk.upid,), managers=(benkirk.upid,)))
+        html = auth_client.get(GROUP_PANEL).get_data(as_text=True)
+        assert configured.calls == [('group', csg.unix_gid)]
+        assert f'>{benkirk.username}<' in html and '>lead</span>' not in html
+        assert 'manager_missing' not in html and 'Report only' in html
+
+    def test_absent_has_no_project_note(self, auth_client, configured, csg):
+        html = auth_client.get(GROUP_PANEL).get_data(as_text=True)
+        assert f'no group for gid {csg.unix_gid}' in html and '2026-07-10' not in html
 
 
 class TestUserPanel:

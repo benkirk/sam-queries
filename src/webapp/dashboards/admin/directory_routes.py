@@ -1,9 +1,9 @@
-"""Admin dashboard: the Directory panels (docs/plans/DIRECTORY_CLIENT.md step 3).
+"""Admin dashboard: the Directory panels (docs/plans/DIRECTORY_CLIENT.md step 3, _NEXT.md section 3).
 
-A panel is an operator-initiated read of one person or organization from the directory
-with SAM's drift beside it; Apply writes the kinds whose ``DIRECTORY_APPLY_<KIND>`` lever
-is on, inside ``management_transaction``. The directory being down is a 200 with an alert,
-never a 500.
+A panel is an operator-initiated read of one person, organization, institution or group
+from the directory with SAM's drift beside it; Apply writes the kinds whose
+``DIRECTORY_APPLY_<KIND>`` lever is on, inside ``management_transaction``. Groups are
+report-only. The directory being down is a 200 with an alert, never a 500.
 """
 
 import json
@@ -11,6 +11,7 @@ import json
 from flask import make_response, render_template
 from flask_login import login_required
 
+from sam.core.groups import AdhocGroup
 from sam.core.organizations import Institution, Organization
 from sam.core.users import User
 from sam.integration.directory import DirectoryUnavailable
@@ -18,10 +19,12 @@ from sam.integration.directory.config import DirectoryConfig
 from sam.manage import management_transaction
 from sam.manage.directory import (reconcile_institution, reconcile_organization,
                                   reconcile_person)
+from sam.manage.directory_panel import (adhoc_group_panel, institution_panel,
+                                        organization_panel, person_panel,
+                                        project_group_panel)
+from webapp.api.access_control import require_project_facility_permission
 from webapp.api.ldapsync.sync import restore_hook
 from webapp.extensions import db
-from webapp.utils.directory_panel import (institution_panel, organization_panel,
-                                          person_panel)
 from webapp.utils.htmx import htmx_not_found
 from webapp.utils.rbac import (Permission, require_permission,
                                require_permission_any_facility)
@@ -31,6 +34,7 @@ from .blueprint import bp
 USER_PANEL = 'dashboards/admin/fragments/user_directory_panel.html'
 ORG_PANEL = 'dashboards/admin/fragments/org_directory_panel.html'
 INST_PANEL = 'dashboards/admin/fragments/inst_directory_panel.html'
+GROUP_PANEL = 'dashboards/admin/fragments/group_directory_panel.html'
 
 
 def _reader():
@@ -69,6 +73,25 @@ def htmx_user_directory_apply(username):
         db.session.refresh(sam_user)
     panel = person_panel(db.session, sam_user, record=record, applied=result)
     return render_template(USER_PANEL, sam_user=sam_user, panel=panel)
+
+
+# Report-only, so no apply routes. Named 'group directory', not 'project directory': the
+# project_directory_* family is the filesystem directories.
+@bp.route('/htmx/project/<projcode>/directory', methods=['GET'])
+@login_required
+@require_project_facility_permission(Permission.VIEW_PROJECTS)
+def htmx_project_group_directory(project):
+    return render_template(GROUP_PANEL, panel=project_group_panel(db.session, project))
+
+
+@bp.route('/htmx/group/<group_name>/directory', methods=['GET'])
+@login_required
+@require_permission_any_facility(Permission.VIEW_GROUPS)
+def htmx_group_directory(group_name):
+    group = AdhocGroup.get_by_name(db.session, group_name)
+    if group is None:
+        return htmx_not_found('Group')
+    return render_template(GROUP_PANEL, panel=adhoc_group_panel(db.session, group))
 
 
 @bp.route('/htmx/organization/<int:org_id>/directory', methods=['GET'])

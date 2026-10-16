@@ -3,6 +3,8 @@ paths:
   - "src/sam/integration/directory/**/*"
   - "src/sam/queries/directory.py"
   - "src/sam/manage/directory.py"
+  - "src/sam/manage/directory_panel.py"
+  - "src/webapp/dashboards/admin/directory_routes.py"
   - "tests/unit/directory/**/*"
   - "tests/factories/directory.py"
 ---
@@ -36,11 +38,14 @@ Appendix C.
   write cannot drift; each kind's rules are the table in `DIRECTORY_CLIENT.md` section 5.
   Identity columns (`User.SYNC_FIELDS` excludes them), twins, undated-inactive entries,
   reopens and SAM-only history are withheld whatever the lever says. `dry_run` touches nothing.
-- **Panels** (`webapp/utils/directory_panel.py`, `dashboards/admin/directory_routes.py`) are
-  operator-initiated reads: a card view never dials the directory. The GET is
-  `reconcile_*(dry_run=True)`, so "would apply" / "withheld" comes from the same rules as the
-  write. The Organizations card is cached per user: a config flip shows after
-  `sam-admin cache --refresh`.
+- **Panels** (`sam/manage/directory_panel.py`, Flask-free so the CLI `--directory` views share
+  it; routes in `dashboards/admin/directory_routes.py`) are operator-initiated reads: a card
+  view never dials the directory. The GET is `reconcile_*(dry_run=True)`, so "would apply" /
+  "withheld" comes from the same rules as the write. Groups (the admin project card, the adhoc
+  group card) are report-only: SAM to directory is the sync daemon's path, and a project's SAM
+  side is the sync's own `project_group` row. Panel ids carry the entity id because the user
+  and project cards also open inside a modal. The Organizations card is cached per user: a
+  config flip shows after `sam-admin cache --refresh`.
 - **Logs** carry usernames and row ids, like the rest of the ldapsync logger; personal names,
   email addresses and phone numbers are counted in a `Discrepancy`, never valued.
 - **Tests** never open a socket: `tests/conftest.py::_no_outbound_ldap` guards

@@ -834,6 +834,13 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_group_directory",
+    "/admin/htmx/group/<group_name>/directory",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_institution_create",
     "/admin/htmx/institution-create",
     [
@@ -1207,6 +1214,13 @@
   [
     "admin_dashboard.htmx_project_create_form",
     "/admin/htmx/project-create-form",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_project_group_directory",
+    "/admin/htmx/project/<projcode>/directory",
     [
       "GET"
     ]

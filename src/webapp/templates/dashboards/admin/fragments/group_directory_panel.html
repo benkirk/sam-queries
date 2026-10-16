@@ -1,0 +1,34 @@
+{# The Directory panel for a unix group: the admin project card and the adhoc group card.
+   Context: panel (sam.manage.directory_panel.project_group_panel / adhoc_group_panel). Report-only. #}
+{% from 'dashboards/fragments/user_rows.html' import user_link %}
+{% if not panel.configured %}
+<div class="alert alert-secondary py-2 px-3 small mb-0">No directory is configured (DIRECTORY_URL is empty).</div>
+{% elif not panel.available %}
+<div class="alert alert-warning py-2 px-3 small mb-0">
+    <i class="fa-solid fa-triangle-exclamation me-1" aria-hidden="true"></i>
+    {% if panel.error == 'no gid' %}{{ panel.name }} has no unix gid in SAM, so there is nothing to look up.
+    {% else %}The directory could not be read{% if panel.error %} ({{ panel.error }}){% endif %}. Try again in a minute.{% endif %}
+</div>
+{% elif not panel.found %}
+<div class="alert alert-warning py-2 px-3 small mb-0">
+    <i class="fa-solid fa-users-slash me-1" aria-hidden="true"></i>
+    The directory has no group for gid {{ panel.gid }}.
+    {% if panel.kind == 'project' %}No project group has been created in the directory since 2026-07-10: the sync daemon's creates stopped (an upstream issue, not SAM's).{% endif %}
+</div>
+{% else %}
+{% set rec = panel.record %}
+<ul class="modal-facts mb-3">
+    <li><i class="fa-solid fa-users" aria-hidden="true"></i>{{ rec.name }} · gid {{ rec.gid }} · {{ 'active' if rec.active else 'inactive' }} · source {{ rec.source or '—' }} · {{ rec.member_upids | length | fmt_number }} members</li>
+    <li><i class="fa-solid fa-tags" aria-hidden="true"></i>{% if rec.tags %}{{ rec.tags | join(', ') }}{% else %}no tags{% endif %}</li>
+    <li><i class="fa-solid fa-user-shield" aria-hidden="true"></i>
+        {% if panel.managers %}managers
+        {% for m in panel.managers %}
+        <span class="ms-1">{% if m.username %}{{ user_link(m.username, has_permission(Permission.VIEW_USERS)) }}{% else %}upid {{ m.upid }}{% endif %}{% if m.role %} <span class="badge bg-primary-subtle text-primary">{{ m.role }}</span>{% endif %}</span>{% if not loop.last %},{% endif %}
+        {% endfor %}
+        {% else %}no managers in the directory{% endif %}
+    </li>
+</ul>
+{% set can_apply = false %}
+{% set report_only = true %}
+{% include 'dashboards/admin/fragments/_directory_drift.html' %}
+{% endif %}
