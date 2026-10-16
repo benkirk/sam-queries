@@ -16,7 +16,7 @@ Implements stage 1 and stage 2 of
 - [x] Step 2a: `sam/manage/directory.py` reconcile per kind behind `DIRECTORY_APPLY_<KIND>`, all off; reconcile tests
 - [x] Step 2b (code): the hook applies the enabled kinds in a second transaction
 - [ ] Step 2b (dev): levers on one kind at a time after clean step-1 days
-- [x] Step 3: Configuration card block; user-card Directory panel (check, apply); organization and institution row actions (`webapp/utils/directory_panel.py`, `dashboards/admin/directory_routes.py`)
+- [x] Step 3: Configuration card block; user-card Directory panel (check, apply); organization and institution row actions (`sam/manage/directory_panel.py`, `dashboards/admin/directory_routes.py`)
 - [x] Step 4: `sam-search user|project --directory`, `sam-admin user --directory-apply`, `sam-admin directory report` (a verb group), the `directory_report` task named in prod's `SAM_TASKS_DISABLED`
 - [x] Docs: `.claude/rules/directory.md` + `CLAUDE.md` row and tripwire; `.env.example`; `SYSTEMS_INTEGRATION_APIs.md` § 8; AFFILIATIONS status line and Appendix D order
 

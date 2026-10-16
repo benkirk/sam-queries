@@ -28,7 +28,7 @@ sample; `sam-admin directory report` nests (Ben, 2026-10-16) instead of `--repor
   PUT (`sam/queries/directory.py::run_check`, hook in `webapp/api/ldapsync/sync.py`), the
   per-kind apply levers all off (`sam/manage/directory.py`), and the operator's view: the
   Configuration block, the user-card panel, the organization and institution dialogs
-  (`webapp/utils/directory_panel.py`, `dashboards/admin/directory_routes.py`). Prod reads too
+  (`sam/manage/directory_panel.py`, `dashboards/admin/directory_routes.py`). Prod reads too
   from the next prod deploy (`helm/values.yaml`, commit `21fec670`); its check is armed and fires
   only once the daemon's `SAM_URL` flips.
 - **Review of `fde9df23`:** F1 (the check holds the PUT reply) is recorded as a soak-gated
