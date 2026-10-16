@@ -1,4 +1,5 @@
 """`sam-admin accounting --reconcile-quotas`: allocations against filesystem quota truth."""
+from cli.core.output import output_json
 from cli.core.utils import EXIT_ERROR, EXIT_SUCCESS
 from sam.summaries.disk_summaries import BYTES_PER_TIB
 import getpass
@@ -10,6 +11,7 @@ from cli.accounting.display import (
     display_quota_reconcile_plan,
     display_quota_reconcile_summary,
 )
+from cli.accounting.fileset_resolver import FilesetResolver
 from cli.accounting.quota_readers import get_quota_reader, QuotaEntry
 from cli.accounting.path_verifier import (
     PathVerificationError, auto_detect_verifier,
@@ -21,6 +23,20 @@ from sam.manage.allocations import update_allocation
 # Reconcile tolerance: allocations within this fraction of quota truth are
 # treated as matched (ignores rounding noise from prior TiB<->byte conversions).
 QUOTA_TOLERANCE = 0.01  # 1%
+
+
+def _delta_pct(sam_tib: float, quota_bytes: int) -> float:
+    quota_tib = quota_bytes / BYTES_PER_TIB
+    return (sam_tib - quota_tib) / quota_tib * 100.0 if quota_tib else 0.0
+
+
+def _fileset_item(qe: QuotaEntry, owner: Optional[str] = None) -> dict:
+    """One quota entry as a plain dict; ``owner`` is the projcode it attached to."""
+    return {
+        'fileset': qe.fileset_name, 'path': qe.path, 'projcode': owner,
+        'limit_bytes': qe.limit_bytes, 'usage_bytes': qe.usage_bytes,
+        'files': qe.file_count, 'utilization': qe.utilization, 'exists': None,
+    }
 
 
 class QuotaReconcileMixin:
@@ -46,6 +62,19 @@ class QuotaReconcileMixin:
         from sam.accounting.accounts import Account
         from sam.accounting.allocations import Allocation
         from sam.projects.projects import Project, ProjectDirectory
+        from sqlalchemy import func
+
+        # JSON is report-only (src/cli/README.md); its messages go to stderr.
+        json_mode = self.ctx.output_format == 'json'
+        if json_mode:
+            if update_accounting_system or deactivate_orphaned:
+                output_json({
+                    'kind': 'quota_reconcile', 'error': 'json_unsupported_for_writes',
+                    'message': '--format json cannot be combined with '
+                               '--update-accounting-system or --deactivate-orphaned',
+                })
+                return EXIT_ERROR
+            self.console = self.ctx.stderr_console
 
         # ---- 1. Validate inputs ------------------------------------------------
         if not resource_name:
@@ -138,46 +167,43 @@ class QuotaReconcileMixin:
         projects_by_code = {p.projcode: p for p in all_projects}
 
         # ---- 4. Map quota entries <-> projects (over ALL projects) --------------
-        dir_to_projcode: dict[str, str] = {}
-        dir_rows = (
+        # Active directories per project: context for the Orphaned display.
+        dirs_by_projcode: dict[str, list[str]] = {}
+        for pd, proj in (
             self.session.query(ProjectDirectory, Project)
             .join(Project, Project.project_id == ProjectDirectory.project_id)
             .filter(ProjectDirectory.is_currently_active)
-            .all()
-        )
-        for pd, proj in dir_rows:
-            dir_to_projcode.setdefault(pd.directory_name, proj.projcode)
-
-        # Also build a per-project list of active directory names — handy
-        # context for the Orphaned display (explains what a deactivated
-        # allocation used to map to on disk).
-        dirs_by_projcode: dict[str, list[str]] = {}
-        for pd, proj in dir_rows:
+        ):
             dirs_by_projcode.setdefault(proj.projcode, []).append(pd.directory_name)
 
-        # A project can own multiple filesets, so quotas are a list per projcode,
-        # summed at roll-up. Dedupe by fileset_name or a quota matching via both
-        # projcode AND ProjectDirectory path is counted twice.
+        # The disk ingest's rule decides which project owns each fileset. A project
+        # can own several filesets: quotas are a list per projcode, summed at roll-up.
+        resolver = FilesetResolver(self.session, resource)
+        labels = {id(qe): (qe.label or qe.fileset_name).upper() for qe in quota_entries}
+        resolver.learn_labels((qe.path, labels[id(qe)]) for qe in quota_entries)
         own_quota: dict[str, list[QuotaEntry]] = {}
-        seen_filesets: dict[str, set[str]] = {}
+        seen_filesets: set[str] = set()
         unmapped: list[QuotaEntry] = []
-
-        def _attach(projcode: str, qe: QuotaEntry) -> None:
-            seen = seen_filesets.setdefault(projcode, set())
-            if qe.fileset_name in seen:
-                return
-            seen.add(qe.fileset_name)
-            own_quota.setdefault(projcode, []).append(qe)
-
+        known_unowned: list[QuotaEntry] = []
+        unlinked: list[dict] = []
         for qe in quota_entries:
-            projcode = qe.fileset_name.upper()
-            if projcode in projects_by_code:
-                _attach(projcode, qe)
+            key = qe.path or qe.fileset_name
+            if key in seen_filesets:
                 continue
-            if qe.path and qe.path in dir_to_projcode:
-                _attach(dir_to_projcode[qe.path], qe)
+            seen_filesets.add(key)
+            res = resolver.resolve(qe.path, labels[id(qe)])
+            if res.project is None and qe.label:
+                # acct labels a fileset by its unix group, which can be root
+                # (/gpfs/csfs1/ral/nral0041): fall back to the fileset name.
+                by_name = resolver.resolve(qe.path, qe.fileset_name.upper())
+                res = by_name if by_name.project is not None else res
+            if res.project is None:
+                (known_unowned if res.reason == 'known_unowned' else unmapped).append(qe)
                 continue
-            unmapped.append(qe)
+            own_quota.setdefault(res.project.projcode, []).append(qe)
+            if res.reason == 'unlinked_directory':
+                unlinked.append({**_fileset_item(qe, res.project.projcode),
+                                 'action': res.action})
 
         # ---- 5. Subtree roll-up via MPPT containment --------------------------
         # NestedSetMixin: P's subtree is every Q sharing P.tree_root with
@@ -218,64 +244,132 @@ class QuotaReconcileMixin:
             return total, contributors
 
         # ---- 6. Classify each SAM allocation -----------------------------------
-        # Record shapes:
-        #   matched, mismatched: (projcode, sam_tib, expected_bytes, contributors)
-        #   orphaned:            (projcode, sam_tib, directories: list[str])
-        matched: list[tuple[str, float, int, list]] = []
-        mismatched: list[tuple[str, float, int, list]] = []
-        orphaned: list[tuple[str, float, list[str]]] = []
-
-        for projcode, (proj, alloc) in by_projcode.items():
+        def _project_item(proj, alloc, expected_bytes, contributors) -> dict:
             sam_tib = float(alloc.amount)
+            return {
+                'projcode': proj.projcode, 'allocation_id': alloc.allocation_id,
+                'sam_tib': sam_tib, 'quota_bytes': expected_bytes,
+                'quota_tib': expected_bytes / BYTES_PER_TIB,
+                'delta_pct': _delta_pct(sam_tib, expected_bytes),
+                'filesets': [_fileset_item(qe, owner) for owner, qe in contributors],
+            }
+
+        matched: list[dict] = []
+        mismatched: list[dict] = []
+        orphaned: list[dict] = []
+        for projcode, (proj, alloc) in by_projcode.items():
             expected_bytes, contributors = _rollup(proj)
             if expected_bytes == 0:
-                orphaned.append(
-                    (projcode, sam_tib, dirs_by_projcode.get(projcode, []))
-                )
+                orphaned.append({
+                    'projcode': projcode, 'allocation_id': alloc.allocation_id,
+                    'sam_tib': float(alloc.amount),
+                    'directories': [{'path': d, 'exists': None}
+                                    for d in dirs_by_projcode.get(projcode, [])],
+                })
                 continue
-            sam_bytes = sam_tib * BYTES_PER_TIB
+            sam_bytes = float(alloc.amount) * BYTES_PER_TIB
             delta_frac = abs(sam_bytes - expected_bytes) / expected_bytes
-            record = (projcode, sam_tib, expected_bytes, contributors)
-            if delta_frac > QUOTA_TOLERANCE:
-                mismatched.append(record)
-            else:
-                matched.append(record)
+            item = _project_item(proj, alloc, expected_bytes, contributors)
+            (mismatched if delta_frac > QUOTA_TOLERANCE else matched).append(item)
+
+        # ---- 6a. Filesets no allocation covers --------------------------------
+        # A quota whose owner has no active allocation on itself or an ancestor
+        # is in no subtree above. Report it, split by whether the project ever
+        # had one here: retention lags removal, so expired filesets linger.
+        covered = set(by_projcode) | {
+            p.projcode for p in (
+                self.session.query(Project)
+                .join(Account, Account.project_id == Project.project_id)
+                .join(Allocation, Allocation.account_id == Account.account_id)
+                .filter(Account.resource_id == resource.resource_id)
+                .filter(Account.deleted == False)  # noqa: E712
+                .filter(Allocation.is_active)
+                .filter(Allocation.parent_allocation_id.isnot(None))
+            )
+        }
+        allocated_by_root: dict[int, list] = {}
+        for pc in by_projcode:
+            p = projects_by_code[pc]
+            if p.tree_root is not None:
+                allocated_by_root.setdefault(p.tree_root, []).append(p)
+        last_end = dict(
+            self.session.query(Account.project_id, func.max(Allocation.end_date))
+            .join(Allocation, Allocation.account_id == Account.account_id)
+            .filter(Account.resource_id == resource.resource_id)
+            .filter(Allocation.deleted == False)  # noqa: E712
+            .group_by(Account.project_id)
+        )
+        now = datetime.now()
+        after_expiry: list[dict] = []
+        never_allocated: list[dict] = []
+        for projcode, entries in own_quota.items():
+            proj = projects_by_code[projcode]
+            if projcode in covered or any(
+                a.is_ancestor_of(proj) for a in allocated_by_root.get(proj.tree_root, ())
+            ):
+                continue
+            ended = last_end.get(proj.project_id)
+            for qe in entries:
+                item = {**_fileset_item(qe, projcode), 'project_active': bool(proj.is_active),
+                        'last_end_date': ended}
+                if ended is not None and ended <= now:
+                    item['days_since_end'] = (now.date() - ended.date()).days
+                    after_expiry.append(item)
+                else:
+                    never_allocated.append(item)
+        after_expiry.sort(key=lambda i: (-i['days_since_end'], i['projcode']))
+        never_allocated.sort(key=lambda i: (-i['usage_bytes'], i['projcode']))
+        unlinked.sort(key=lambda i: (i['projcode'], i['path'] or ''))
+
+        report = {
+            'kind': 'quota_reconcile',
+            'resource': resource_name,
+            'source': quota_path,
+            'snapshot_date': reader.snapshot_date,
+            'verified_paths': verifier is not None,
+            'verify_mode': verify_mode_banner,
+            'inheriting_skipped': n_inheriting_skipped,
+            'categories': {
+                'matched': matched,
+                'quota_mismatch': mismatched,
+                'allocation_without_quota': orphaned,
+                'quota_after_expiry': after_expiry,
+                'quota_without_allocation': never_allocated,
+                'unlinked_directory': unlinked,
+                'no_project': [_fileset_item(qe) for qe in unmapped],
+                'known_unowned': [_fileset_item(qe) for qe in known_unowned],
+            },
+        }
+        report['counts'] = {k: len(v) for k, v in report['categories'].items()}
 
         # ---- 6b. Path verification (optional) ---------------------------------
-        path_exists: dict[str, bool] = {}
         if verifier is not None:
-            paths_to_check: set[str] = set()
-            for _, _, dirs in orphaned:
-                paths_to_check.update(dirs)
-            for qe in unmapped:
-                if qe.path:
-                    paths_to_check.add(qe.path)
+            items = [d for o in orphaned for d in o['directories']]
+            items += [f for f in report['categories']['no_project'] if f['path']]
             try:
-                path_exists = verifier.check(sorted(paths_to_check))
+                path_exists = verifier.check(sorted({i['path'] for i in items}))
             except PathVerificationError as exc:
                 self.console.print(f"[bold red]{exc}[/bold red]")
                 return EXIT_ERROR
+            for i in items:
+                i['exists'] = path_exists.get(i['path'], False)
 
         # ---- 7. Report (always) -----------------------------------------------
-        display_quota_reconcile_plan(
-            self.ctx, resource_name,
-            matched, mismatched, orphaned, unmapped,
-            path_exists=path_exists if verifier is not None else None,
-        )
+        if json_mode:
+            output_json(report)
+            return EXIT_SUCCESS
+        display_quota_reconcile_plan(self.ctx, report)
 
         # ---- 8. Apply (only when explicitly opted in) -------------------------
         # The two write flags are independent: --update-accounting-system
         # applies mismatched amounts, --deactivate-orphaned deactivates orphan
         # allocations, neither means report-only, and --force (with the latter)
         # overrides the live-path gate.
+        counts = report['counts']
         if not update_accounting_system and not deactivate_orphaned:
             display_quota_reconcile_summary(
-                self.ctx,
-                matched=len(matched), mismatched=len(mismatched),
-                orphaned=len(orphaned), unmapped=len(unmapped),
-                report_only=True,
-                will_apply_updates=False,
-                will_deactivate_orphans=False,
+                self.ctx, counts, report_only=True,
+                will_apply_updates=False, will_deactivate_orphans=False,
             )
             self._print_action_hints(mismatched, orphaned, applied_updates=False,
                                      applied_deactivations=False)
@@ -292,10 +386,7 @@ class QuotaReconcileMixin:
                 "selected flags.[/green]"
             )
             display_quota_reconcile_summary(
-                self.ctx,
-                matched=len(matched), mismatched=len(mismatched),
-                orphaned=len(orphaned), unmapped=len(unmapped),
-                report_only=False,
+                self.ctx, counts, report_only=False,
                 will_apply_updates=update_accounting_system,
                 will_deactivate_orphans=deactivate_orphaned,
             )
@@ -328,16 +419,14 @@ class QuotaReconcileMixin:
         try:
             with management_transaction(self.session):
                 if update_accounting_system:
-                    for projcode, sam_tib, expected_bytes, contributors in mismatched:
-                        _, alloc = by_projcode[projcode]
-                        new_tib = expected_bytes / BYTES_PER_TIB
-                        n_contrib = len(contributors)
+                    for item in mismatched:
+                        n_contrib = len(item['filesets'])
                         try:
                             update_allocation(
                                 self.session,
-                                alloc.allocation_id,
+                                item['allocation_id'],
                                 admin_user_id,
-                                amount=new_tib,
+                                amount=item['quota_tib'],
                                 comment=(
                                     f"Reconciled with current fileset quota "
                                     f"from {quota_path} (subtree of {n_contrib} "
@@ -348,18 +437,16 @@ class QuotaReconcileMixin:
                         except Exception as exc:  # noqa: BLE001
                             n_errors += 1
                             self.console.print(
-                                f"[red]Failed to update {projcode}: {exc}[/red]"
+                                f"[red]Failed to update {item['projcode']}: {exc}[/red]"
                             )
 
                 if deactivate_orphaned:
-                    for projcode, sam_tib, dirs in orphaned:
-                        _, alloc = by_projcode[projcode]
+                    for item in orphaned:
+                        projcode, dirs = item['projcode'], item['directories']
                         # Safety gate: if path verification says every
                         # ProjectDirectory is still live on disk, don't
                         # silently deactivate — require --force.
-                        live = bool(dirs) and all(
-                            path_exists.get(d, False) for d in dirs
-                        ) if verifier is not None else False
+                        live = bool(dirs) and all(d['exists'] for d in dirs)
                         if live and not force:
                             self.console.print(
                                 f"[yellow]Skipping {projcode}: all "
@@ -374,7 +461,7 @@ class QuotaReconcileMixin:
                         try:
                             update_allocation(
                                 self.session,
-                                alloc.allocation_id,
+                                item['allocation_id'],
                                 admin_user_id,
                                 end_date=effective_end,
                                 comment=(
@@ -396,9 +483,7 @@ class QuotaReconcileMixin:
             return EXIT_ERROR
 
         display_quota_reconcile_summary(
-            self.ctx,
-            matched=len(matched), mismatched=len(mismatched),
-            orphaned=len(orphaned), unmapped=len(unmapped),
+            self.ctx, counts,
             updated=n_updated, deactivated=n_deactivated,
             errors=n_errors,
             report_only=False,

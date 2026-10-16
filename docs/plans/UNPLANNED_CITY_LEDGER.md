@@ -42,6 +42,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-13 | `172a5651` + sweep 25 (XRAS sweep windows, cadence, ticket groundwork) | 51 / 63 / 26 | 1 (2) | 16 / 52 | 20 (20), 2 kept | 5,245 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
 | 2026-10-13 | `1526d856` + sweep 26 (XRAS request identity) | 51 / 63 / 26 | 1 (2) | 16 / 52 | 20 (20), 2 kept | 5,245 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
 | 2026-10-14 | `50bda35a` + sweep 27 (XRAS soft-deleted records) | 51 / 63 / 26 | 1 (2) | 16 / 52 | 20 (20), 2 kept | 5,245 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
+| 2026-10-15 | `034fff4a` + sweep 28 (quota reconcile), py only | 52 / 64 / 26 | 1 (2) | 16 / 52 | — | — | — | — | — | — | — | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -1914,6 +1915,43 @@ are legitimate (by-id verifies, SAM-built rows), so it would ratchet noise.
   any more, since the withdraw modal refuses deleted actions; the admin app 404s it, so it
   blocks nothing. If one appears in production, clear it through the API as the PI:
   `DELETE /v1/requests/<rid>/actions/<aid>/submit` under `submit`, as the probe was cleaned up.
+
+## 28. 2026-10-15: area sweep, the quota reconcile's output and fileset ownership
+
+**Mode:** area, one command, base `origin/staging` (`034fff4a`) via `acct-quota-columns` (#836),
+branch `acct-quota-reconcile`. Started from Ben's question while wiring hdig's new quota columns
+into `sam-admin accounting --reconcile-quotas`: why does this command have no JSON?
+
+**Findings and done** (one commit each on the branch):
+
+- [x] S1, drift: the reconcile classified into tuples of `QuotaEntry` and called the rich
+  display directly, against `src/cli/README.md` principles 2-3. It now builds one
+  `quota_reconcile` dict that the display, the writes and `--format json` all read. JSON with
+  a write flag is refused. Rich output byte-identical on the real `cs_usage.json`.
+- [x] S3, consolidate: two rules decided which project owns a fileset (the ingest's path, label,
+  sibling chain; the reconcile's name, then path). One `FilesetResolver`
+  (`src/cli/accounting/fileset_resolver.py`) now serves both. Ingest dry runs byte-identical on six
+  real acct files; the reconcile moved no row on real data.
+- [x] S2, gap: the reconcile walked allocations, so a fileset whose project has no active
+  allocation appeared nowhere: 148 of 683 Campaign_Store quota filesets, about 4 PiB. New
+  categories `quota_after_expiry` (end date and days since), `quota_without_allocation`,
+  `unlinked_directory` and `known_unowned`, all report-only.
+
+**Tried and dropped:** merging the two `_KIB` constants and the two resource-keyed reader
+registries. Small, and tests patch the registries.
+
+**Open:**
+
+- [ ] The ingest skips `/gpfs/csfs1/ral/nral0041` (about 11 TiB) as known unowned, because its
+  unix group is `root`. The reconcile now falls back to the fileset name; the ingest does not,
+  so NRAL0041 is not charged for it. Changing that changes charges: Ben's call. When made,
+  move the fallback from the reconcile's call site into `FilesetResolver` behind a flag, so
+  the two callers cannot drift again (review F2 on #838).
+- [ ] acct reports list only filesets holding data, so from acct an allocation on an empty
+  fileset reads `allocation_without_quota` (149 on 2026-10-14). Ask hdig for one zero-usage
+  `total` row per empty fileset.
+- [ ] The rich titles still say Mismatched, Orphaned and Unmapped while JSON says
+  `quota_mismatch`, `allocation_without_quota` and `no_project`.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

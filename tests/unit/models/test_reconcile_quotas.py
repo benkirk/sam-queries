@@ -14,7 +14,7 @@ import pytest
 from cli.accounting.commands import AccountingAdminCommand, QUOTA_TOLERANCE
 from cli.accounting import quota_readers as qr_mod
 from cli.accounting.quota_readers import (
-    GpfsQuotaReader, QuotaEntry, get_quota_reader,
+    AcctQuotaReader, GpfsQuotaReader, QuotaEntry, get_quota_reader,
 )
 from cli.accounting.path_verifier import (
     PathVerifier, PathVerificationError, auto_detect_verifier,
@@ -518,17 +518,6 @@ def _reconcile_dry_run(session, resource, quota_path, *, verbose=False):
     return rc, ctx
 
 
-def _captured_plan_call(ctx):
-    """Return (matched, mismatched, orphaned, unmapped) args passed to
-    display_quota_reconcile_plan by sniffing AccountingAdminCommand's dispatch.
-
-    Rather than patch a moving target, the tests assert directly on the DB state
-    or the command-returned classification by re-running the bookkeeping. This
-    helper is a placeholder for future refactors; the tests below use DB asserts.
-    """
-    raise NotImplementedError  # intentionally — tests below assert via DB state
-
-
 class TestTreeRollup:
     """Verify subtree roll-up works correctly across parent/child projects."""
 
@@ -806,9 +795,8 @@ class TestTreeRollup:
         captured = {}
         import cli.accounting.quota_reconcile as cmd_mod
 
-        def _spy(ctx, resource_name, matched, mismatched, orphaned,
-                 unmapped, *, path_exists=None):
-            captured['orphaned'] = orphaned
+        def _spy(ctx, report):
+            captured['orphaned'] = report['categories']['allocation_without_quota']
 
         monkeypatch.setattr(cmd_mod, 'display_quota_reconcile_plan', _spy)
         # Stub summary so it doesn't fail on missing args either
@@ -821,11 +809,10 @@ class TestTreeRollup:
             quota_path=quota_path, update_accounting_system=False, deactivate_orphaned=False,
         )
         assert rc == 0
-        # One orphan — tuple shape is (projcode, sam_tib, directories)
         assert len(captured['orphaned']) == 1
-        projcode, sam_tib, directories = captured['orphaned'][0]
-        assert projcode == project.projcode
-        assert set(directories) == {
+        [orphan] = captured['orphaned']
+        assert orphan['projcode'] == project.projcode
+        assert {d['path'] for d in orphan['directories']} == {
             '/gpfs/csfs1/defunct/xyz', '/gpfs/csfs1/archived/old',
         }
 
@@ -1015,39 +1002,45 @@ class TestUtilSuffix:
 
     def test_high_util_above_threshold(self):
         from cli.accounting.display import _util_suffix
+        from cli.accounting.quota_reconcile import _fileset_item
         qe = QuotaEntry('fs', None, limit_bytes=1000, usage_bytes=970, file_count=1)
-        out = _util_suffix(qe)
+        out = _util_suffix(_fileset_item(qe))
         assert '⚠' in out and '97%' in out
 
     def test_high_util_just_below_threshold_no_marker(self):
         from cli.accounting.display import _util_suffix
+        from cli.accounting.quota_reconcile import _fileset_item
         qe = QuotaEntry('fs', None, limit_bytes=1000, usage_bytes=940, file_count=1)
-        assert _util_suffix(qe) == ''
+        assert _util_suffix(_fileset_item(qe)) == ''
 
     def test_low_util_below_threshold(self):
         from cli.accounting.display import _util_suffix
+        from cli.accounting.quota_reconcile import _fileset_item
         qe = QuotaEntry('fs', None, limit_bytes=1000, usage_bytes=30, file_count=1)
-        out = _util_suffix(qe)
+        out = _util_suffix(_fileset_item(qe))
         assert '↓' in out and '3%' in out
 
     def test_low_util_just_above_threshold_no_marker(self):
         from cli.accounting.display import _util_suffix
+        from cli.accounting.quota_reconcile import _fileset_item
         qe = QuotaEntry('fs', None, limit_bytes=1000, usage_bytes=60, file_count=1)
-        assert _util_suffix(qe) == ''
+        assert _util_suffix(_fileset_item(qe)) == ''
 
     def test_empty_fileset_with_limit_is_flagged_low(self):
         # 0% usage with a non-zero limit -> under-used; flag it.
         from cli.accounting.display import _util_suffix
+        from cli.accounting.quota_reconcile import _fileset_item
         qe = QuotaEntry('fs', None, limit_bytes=1000, usage_bytes=0, file_count=0)
-        out = _util_suffix(qe)
+        out = _util_suffix(_fileset_item(qe))
         assert '↓' in out and '0%' in out
 
     def test_zero_limit_skips_low_util(self):
         # limit==0 -> utilization clamps to 0.0, but we MUST NOT treat that
         # as "under-used" (an umbrella with no quota carries no meaning).
         from cli.accounting.display import _util_suffix
+        from cli.accounting.quota_reconcile import _fileset_item
         qe = QuotaEntry('fs', None, limit_bytes=0, usage_bytes=0, file_count=0)
-        assert _util_suffix(qe) == ''
+        assert _util_suffix(_fileset_item(qe)) == ''
 
 
 class TestPathVerifierLocal:
@@ -1324,3 +1317,284 @@ class TestVerifyPathsIntegration:
         session.refresh(alloc)
         # Path missing -> safe to deactivate even without --force
         assert alloc.end_date is not None
+
+
+def _json_reconcile(session, resource, quota_path, monkeypatch, **flags):
+    """Run the reconcile in JSON mode; return (rc, [payloads passed to output_json])."""
+    import cli.accounting.quota_reconcile as cmd_mod
+    out = []
+    monkeypatch.setattr(cmd_mod, 'output_json', out.append)
+    ctx = _ctx_with_session(session)
+    ctx.output_format = 'json'
+    rc = AccountingAdminCommand(ctx)._run_reconcile_quotas(
+        resource_name=resource.resource_name, quota_path=quota_path, **flags,
+    )
+    return rc, out
+
+
+class TestReconcileJson:
+    """The quota_reconcile envelope: one dict feeds both the rich display and JSON."""
+
+    def test_envelope_categories_and_counts(self, session, tmp_path, monkeypatch):
+        resource = _isolated_disk_resource(session, monkeypatch)
+        funded = make_project(session)
+        make_allocation(session, account=make_account(session, project=funded,
+                                                      resource=resource), amount=10.0)
+        orphan = make_project(session)
+        make_allocation(session, account=make_account(session, project=orphan,
+                                                      resource=resource), amount=3.0)
+        fs = funded.projcode.lower()
+        quota_path = _write_quota_file(tmp_path, {
+            fs: {'limit': str(_kib_for(10.0)), 'usage': str(_kib_for(1.0)), 'files': '7'},
+            'zz_nobody': {'limit': str(_kib_for(1.0)), 'usage': '0', 'files': '0'},
+        }, paths={fs: f'/gpfs/csfs1/univ/{fs}'})
+
+        rc, out = _json_reconcile(session, resource, quota_path, monkeypatch)
+        assert rc == 0
+        [report] = out
+        assert report['kind'] == 'quota_reconcile'
+        assert report['resource'] == resource.resource_name
+        assert report['verified_paths'] is False
+        assert report['counts'] == {
+            'matched': 1, 'quota_mismatch': 0, 'allocation_without_quota': 1,
+            'quota_after_expiry': 0, 'quota_without_allocation': 0,
+            'unlinked_directory': 1, 'no_project': 1, 'known_unowned': 0,
+        }
+        [m] = report['categories']['matched']
+        assert m['projcode'] == funded.projcode
+        assert m['sam_tib'] == pytest.approx(10.0)
+        assert m['quota_tib'] == pytest.approx(10.0)
+        [f] = m['filesets']
+        assert (f['fileset'], f['path'], f['projcode'], f['files']) == (
+            fs, f'/gpfs/csfs1/univ/{fs}', funded.projcode, 7)
+        assert report['categories']['allocation_without_quota'][0]['projcode'] == orphan.projcode
+        assert report['categories']['no_project'][0]['fileset'] == 'zz_nobody'
+        json.dumps(report, default=str)
+
+    def test_write_flags_are_refused(self, session, tmp_path, monkeypatch):
+        resource = _isolated_disk_resource(session, monkeypatch)
+        project = make_project(session)
+        alloc = make_allocation(session, account=make_account(
+            session, project=project, resource=resource), amount=3.0)
+        quota_path = _write_quota_file(tmp_path, {})
+
+        rc, out = _json_reconcile(session, resource, quota_path, monkeypatch,
+                                  deactivate_orphaned=True)
+        assert rc == 2
+        assert out[0]['error'] == 'json_unsupported_for_writes'
+        session.refresh(alloc)
+        assert alloc.end_date is None or alloc.end_date > datetime.now()
+
+
+class TestUncoveredFilesets:
+    """Filesets whose owner has no active allocation are reported, never dropped."""
+
+    def _quota(self, tmp_path, *projects, extra=None):
+        entries = {p.projcode.lower(): {'limit': str(_kib_for(2.0)),
+                                        'usage': str(_kib_for(1.0)), 'files': '1'}
+                   for p in projects}
+        entries.update(extra or {})
+        return _write_quota_file(tmp_path, entries)
+
+    def test_expired_and_never_allocated(self, session, tmp_path, monkeypatch):
+        resource = _isolated_disk_resource(session, monkeypatch)
+        expired = make_project(session)
+        ended = datetime.now() - timedelta(days=200)
+        make_allocation(session, account=make_account(session, project=expired, resource=resource),
+                        amount=2.0, start_date=ended - timedelta(days=365), end_date=ended)
+        never = make_project(session)
+        quota_path = self._quota(tmp_path, expired, never)
+
+        rc, [report] = _json_reconcile(session, resource, quota_path, monkeypatch)
+        assert rc == 0
+        [e] = report['categories']['quota_after_expiry']
+        assert e['projcode'] == expired.projcode
+        assert e['days_since_end'] == 200
+        assert e['last_end_date'].date() == ended.date()
+        [n] = report['categories']['quota_without_allocation']
+        assert (n['projcode'], n['last_end_date']) == (never.projcode, None)
+        assert report['counts']['allocation_without_quota'] == 0
+
+    def test_child_under_an_allocated_parent_is_covered(self, session, tmp_path, monkeypatch):
+        resource = _isolated_disk_resource(session, monkeypatch)
+        parent = make_project(session)
+        child = make_project(session, parent=parent)
+        make_allocation(session, account=make_account(session, project=parent, resource=resource),
+                        amount=2.0)
+        rc, [report] = _json_reconcile(session, resource, self._quota(tmp_path, child),
+                                       monkeypatch)
+        assert report['counts']['quota_without_allocation'] == 0
+        assert report['counts']['matched'] == 1
+
+    def test_known_unowned_is_its_own_category(self, session, tmp_path, monkeypatch):
+        resource = _isolated_disk_resource(session, monkeypatch)
+        quota_path = _write_quota_file(tmp_path, {
+            'root': {'limit': str(_kib_for(1.0)), 'usage': '0', 'files': '0'},
+        })
+        rc, [report] = _json_reconcile(session, resource, quota_path, monkeypatch)
+        assert report['counts']['known_unowned'] == 1
+        assert report['counts']['no_project'] == 0
+
+    def test_write_flags_leave_uncovered_filesets_alone(self, session, tmp_path, monkeypatch):
+        resource = _isolated_disk_resource(session, monkeypatch)
+        expired = make_project(session)
+        ended = datetime.now() - timedelta(days=30)
+        alloc = make_allocation(session, account=make_account(
+            session, project=expired, resource=resource), amount=9.0,
+            start_date=ended - timedelta(days=365), end_date=ended)
+        monkeypatch.setenv('SAM_ADMIN_USER', expired.lead.username)
+        cmd = AccountingAdminCommand(_ctx_with_session(session))
+        rc = cmd._run_reconcile_quotas(
+            resource_name=resource.resource_name, quota_path=self._quota(tmp_path, expired),
+            update_accounting_system=True, deactivate_orphaned=True,
+        )
+        assert rc == 0
+        session.refresh(alloc)
+        assert float(alloc.amount) == 9.0
+
+
+def _acct_row(path, label, user, nfiles, kib, quota_kib, day='2026-10-17'):
+    return f'"{day}","{path}","{label}","{user}","{nfiles}","0","{kib}","{quota_kib}"\n'
+
+
+def _write_acct(tmp_path, rows, name='acct.glade.2026-10-17'):
+    p = tmp_path / name
+    p.write_text(''.join(rows))
+    return str(p)
+
+
+class TestAcctQuotaReader:
+
+    def test_groups_rows_per_path_quota_once_usage_summed(self, tmp_path):
+        f = _write_acct(tmp_path, [
+            _acct_row('/gpfs/csfs1/mmm/parc', 'nmmm0049', 'alice', 3, 100, 5000),
+            _acct_row('/gpfs/csfs1/mmm/parc', 'nmmm0049', 'root', 2, 50, 5000),
+            _acct_row('/gpfs/csfs1/univ/zero', 'uzzz0001', 'bob', 1, 10, 0),
+        ])
+        reader = AcctQuotaReader(f)
+        [e] = reader.read()
+        assert (e.fileset_name, e.path, e.label) == ('parc', '/gpfs/csfs1/mmm/parc', 'nmmm0049')
+        assert e.limit_bytes == 5000 * 1024
+        assert e.usage_bytes == 150 * 1024
+        assert e.file_count == 5
+        assert reader.mount_root == '/gpfs/csfs1'
+        assert reader.snapshot_date == datetime(2026, 10, 17)
+
+    def test_mount_root_for_one_path_is_the_filesystem(self, tmp_path):
+        f = _write_acct(tmp_path, [_acct_row('/lustre/desc1/p/nral0032', 'nral0032', 'total',
+                                             1, 1, 9)], name='acct.desc1.2026-10-17')
+        reader = AcctQuotaReader(f)
+        reader.read()
+        assert reader.mount_root == '/lustre/desc1'
+
+    @pytest.mark.parametrize('row', [
+        '"2026-10-10","/gpfs/csfs1/cesm","cesm","gdicker","1","32","7","0"\n',
+        '"2026-10-10","/lustre/desc1/p/x","x","total","1","32"\n',
+    ])
+    def test_legacy_layouts_have_no_quotas(self, tmp_path, row):
+        with pytest.raises(ValueError, match='quota8'):
+            AcctQuotaReader(_write_acct(tmp_path, [row])).read()
+
+
+class TestAcctDispatch:
+
+    def test_csv_goes_to_the_acct_reader(self, tmp_path):
+        f = _write_acct(tmp_path, [_acct_row('/p', 'x', 'u', 1, 1, 1)])
+        assert isinstance(get_quota_reader('Campaign_Store', f), AcctQuotaReader)
+        assert isinstance(get_quota_reader('Destor', f), AcctQuotaReader)
+
+    def test_quasar_is_refused(self, tmp_path):
+        f = _write_acct(tmp_path, [_acct_row('/quasar/x', 'x', 'total', 1, 1, 1)])
+        with pytest.raises(NotImplementedError, match='acct CSV'):
+            get_quota_reader('Quasar', f)
+
+
+def _isolated_both_readers(session, monkeypatch):
+    resource = _isolated_disk_resource(session, monkeypatch)
+    monkeypatch.setitem(qr_mod._ACCT_READERS, resource.resource_name, AcctQuotaReader)
+    return resource
+
+
+class TestAcctReconcile:
+
+    def test_json_and_acct_give_the_same_report(self, session, tmp_path, monkeypatch):
+        resource = _isolated_both_readers(session, monkeypatch)
+        matched, short = make_project(session), make_project(session)
+        orphan, expired = make_project(session), make_project(session)
+        for proj, amount in ((matched, 2.0), (short, 1.0), (orphan, 4.0)):
+            make_allocation(session, account=make_account(
+                session, project=proj, resource=resource), amount=amount)
+        ended = datetime.now() - timedelta(days=120)
+        make_allocation(session, account=make_account(session, project=expired, resource=resource),
+                        amount=1.0, start_date=ended - timedelta(days=300), end_date=ended)
+        fs = {p.projcode.lower(): (f'/gpfs/csfs1/univ/{p.projcode.lower()}', tib)
+              for p, tib in ((matched, 2.0), (short, 3.0), (expired, 1.0))}
+        fs['zzunknown'] = ('/gpfs/csfs1/univ/zzunknown', 1.0)
+        json_path = _write_quota_file(
+            tmp_path,
+            {name: {'limit': str(_kib_for(tib)), 'usage': '1024', 'files': '1'}
+             for name, (_, tib) in fs.items()},
+            paths={name: path for name, (path, _) in fs.items()},
+        )
+        acct_path = _write_acct(tmp_path, [_acct_row(path, name, 'total', 1, 1024, _kib_for(tib))
+                                           for name, (path, tib) in fs.items()])
+
+        _, [from_json] = _json_reconcile(session, resource, json_path, monkeypatch)
+        _, [from_acct] = _json_reconcile(session, resource, acct_path, monkeypatch)
+
+        def shape(report):
+            return {cat: sorted((i['projcode'], i.get('quota_bytes'), i.get('path'))
+                                for i in items)
+                    for cat, items in report['categories'].items()}
+        assert shape(from_json) == shape(from_acct)
+        assert from_acct['counts']['matched'] == 1
+        assert from_acct['counts']['quota_mismatch'] == 1
+        assert from_acct['counts']['allocation_without_quota'] == 1
+        assert from_acct['counts']['quota_after_expiry'] == 1
+        assert from_acct['counts']['no_project'] == 1
+
+    def test_label_resolves_a_fileset_whose_name_is_not_a_projcode(
+        self, session, tmp_path, monkeypatch,
+    ):
+        resource = _isolated_both_readers(session, monkeypatch)
+        project = make_project(session)
+        make_allocation(session, account=make_account(session, project=project,
+                                                      resource=resource), amount=2.0)
+        path = f"/gpfs/csfs1/mmm/{next_seq('parc').lower()}"
+        f = _write_acct(tmp_path, [
+            _acct_row(path, project.projcode.lower(), 'u', 1, 1, _kib_for(2.0)),
+        ])
+        _, [report] = _json_reconcile(session, resource, f, monkeypatch)
+        [m] = report['categories']['matched']
+        assert m['projcode'] == project.projcode
+        assert report['categories']['unlinked_directory'][0]['path'] == path
+
+    def test_two_paths_sharing_a_basename_both_count(self, session, tmp_path, monkeypatch):
+        resource = _isolated_both_readers(session, monkeypatch)
+        project = make_project(session)
+        make_allocation(session, account=make_account(session, project=project,
+                                                      resource=resource), amount=3.0)
+        label = project.projcode.lower()
+        f = _write_acct(tmp_path, [
+            _acct_row(f'/gpfs/csfs1/{label}a/data', label, 'u', 1, 1, _kib_for(1.0)),
+            _acct_row(f'/gpfs/csfs1/{label}b/data', label, 'u', 1, 1, _kib_for(2.0)),
+        ])
+        _, [report] = _json_reconcile(session, resource, f, monkeypatch)
+        [m] = report['categories']['matched']
+        assert m['quota_tib'] == pytest.approx(3.0)
+        assert len(m['filesets']) == 2
+
+    def test_root_group_label_falls_back_to_the_fileset_name(
+        self, session, tmp_path, monkeypatch,
+    ):
+        resource = _isolated_both_readers(session, monkeypatch)
+        project = make_project(session)
+        make_allocation(session, account=make_account(session, project=project,
+                                                      resource=resource), amount=1.0)
+        f = _write_acct(tmp_path, [
+            _acct_row(f'/gpfs/csfs1/ral/{project.projcode.lower()}', 'root', 'u', 1, 1,
+                      _kib_for(1.0)),
+        ])
+        _, [report] = _json_reconcile(session, resource, f, monkeypatch)
+        assert report['counts']['known_unowned'] == 0
+        assert report['categories']['matched'][0]['projcode'] == project.projcode
