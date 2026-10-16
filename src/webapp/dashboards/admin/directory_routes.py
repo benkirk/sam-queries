@@ -38,6 +38,26 @@ INST_PANEL = 'dashboards/admin/fragments/inst_directory_panel.html'
 GROUP_PANEL = 'dashboards/admin/fragments/group_directory_panel.html'
 
 
+def _apply(template, obj, key, read, reconcile, context, *, trigger=None, **kwargs):
+    """The Apply POSTs: read the record, reconcile inside ``management_transaction``, re-render
+    the panel with the result; the directory being down re-renders the plain panel (200)."""
+    config = DirectoryConfig.from_environment()
+    reader = directory_reader()
+    try:
+        record = read(reader)(key) if reader.configured and key is not None else None
+    except DirectoryUnavailable:
+        return render_template(template, **context(None, None))
+    result = None
+    if record is not None:
+        with management_transaction(db.session):
+            result = reconcile(db.session, obj, record, config=config, **kwargs)
+        db.session.refresh(obj)
+    resp = make_response(render_template(template, **context(record, result)))
+    if trigger and result is not None and result.applied:
+        resp.headers['HX-Trigger'] = json.dumps({trigger: {}})
+    return resp
+
+
 @bp.route('/htmx/user/<username>/directory', methods=['GET'])
 @login_required
 @require_permission_any_facility(Permission.VIEW_USERS)
@@ -55,20 +75,10 @@ def htmx_user_directory_apply(username):
     sam_user = User.get_by_username(db.session, username)
     if sam_user is None:
         return htmx_not_found('User')
-    config = DirectoryConfig.from_environment()
-    reader = directory_reader()
-    try:
-        record = reader.person(sam_user.upid) if reader.configured and sam_user.upid else None
-    except DirectoryUnavailable:
-        return render_template(USER_PANEL, sam_user=sam_user, panel=person_panel(db.session, sam_user))
-    result = None
-    if record is not None:
-        with management_transaction(db.session):
-            result = reconcile_person(db.session, sam_user, record, config=config,
-                                      on_reactivate=restore_hook())
-        db.session.refresh(sam_user)
-    panel = person_panel(db.session, sam_user, record=record, applied=result)
-    return render_template(USER_PANEL, sam_user=sam_user, panel=panel)
+    return _apply(USER_PANEL, sam_user, sam_user.upid, lambda r: r.person, reconcile_person,
+                  lambda record, result: dict(sam_user=sam_user, panel=person_panel(
+                      db.session, sam_user, record=record, applied=result)),
+                  on_reactivate=restore_hook())
 
 
 # Report-only, so no apply routes. Named 'group directory', not 'project directory': the
@@ -107,22 +117,10 @@ def htmx_organization_directory_apply(org_id):
     org = db.session.get(Organization, org_id)
     if org is None:
         return htmx_not_found('Organization')
-    config = DirectoryConfig.from_environment()
-    reader = directory_reader()
-    try:
-        record = reader.organization(org_id) if reader.configured else None
-    except DirectoryUnavailable:
-        return render_template(ORG_PANEL, org=org, panel=organization_panel(db.session, org))
-    result = None
-    if record is not None:
-        with management_transaction(db.session):
-            result = reconcile_organization(db.session, org, record, config=config)
-        db.session.refresh(org)
-    panel = organization_panel(db.session, org, record=record, applied=result)
-    resp = make_response(render_template(ORG_PANEL, org=org, panel=panel))
-    if result is not None and result.applied:
-        resp.headers['HX-Trigger'] = json.dumps({'reloadOrganizationsCard': {}})
-    return resp
+    return _apply(ORG_PANEL, org, org_id, lambda r: r.organization, reconcile_organization,
+                  lambda record, result: dict(org=org, panel=organization_panel(
+                      db.session, org, record=record, applied=result)),
+                  trigger='reloadOrganizationsCard')
 
 
 @bp.route('/htmx/institution/<int:inst_id>/directory', methods=['GET'])
@@ -142,19 +140,7 @@ def htmx_institution_directory_apply(inst_id):
     inst = db.session.get(Institution, inst_id)
     if inst is None:
         return htmx_not_found('Institution')
-    config = DirectoryConfig.from_environment()
-    reader = directory_reader()
-    try:
-        record = reader.institution(inst_id) if reader.configured else None
-    except DirectoryUnavailable:
-        return render_template(INST_PANEL, inst=inst, panel=institution_panel(db.session, inst))
-    result = None
-    if record is not None:
-        with management_transaction(db.session):
-            result = reconcile_institution(db.session, inst, record, config=config)
-        db.session.refresh(inst)
-    panel = institution_panel(db.session, inst, record=record, applied=result)
-    resp = make_response(render_template(INST_PANEL, inst=inst, panel=panel))
-    if result is not None and result.applied:
-        resp.headers['HX-Trigger'] = json.dumps({'reloadOrganizationsCard': {}})
-    return resp
+    return _apply(INST_PANEL, inst, inst_id, lambda r: r.institution, reconcile_institution,
+                  lambda record, result: dict(inst=inst, panel=institution_panel(
+                      db.session, inst, record=record, applied=result)),
+                  trigger='reloadOrganizationsCard')
