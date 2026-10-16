@@ -127,7 +127,8 @@ class TestProjectPanel:
             managers=tuple(row['managers'])))
         html = auth_client.get(url).get_data(as_text=True)
         assert configured.calls == [('group', active_project.unix_gid)]
-        assert f'gid {active_project.unix_gid}' in html and 'Report only' in html
+        assert f'gid {active_project.unix_gid}' in html
+        assert 'Report only: project groups flow from SAM to the directory' in html
         assert f'>{lead.username}<' in html and '>lead</span>' in html
         assert 'member_missing_in_sam' in html and 'upid 999999999' in html
         assert 'manager_missing' not in html and 'would apply' not in html
@@ -192,7 +193,9 @@ class TestGroupPanel:
         html = auth_client.get(GROUP_PANEL).get_data(as_text=True)
         assert configured.calls == [('group', csg.unix_gid)]
         assert f'>{benkirk.username}<' in html and '>lead</span>' not in html
-        assert 'manager_missing' not in html and 'Report only' in html
+        assert 'manager_missing' not in html
+        assert 'Report only: adhoc groups are authored in Google Groups' in html
+        assert 'through the sync daemon' not in html
 
     def test_absent_has_no_project_note(self, auth_client, configured, csg):
         html = auth_client.get(GROUP_PANEL).get_data(as_text=True)

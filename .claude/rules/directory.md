@@ -42,8 +42,10 @@ Appendix C.
   it; routes in `dashboards/admin/directory_routes.py`) are operator-initiated reads: a card
   view never dials the directory. The GET is `reconcile_*(dry_run=True)`, so "would apply" /
   "withheld" comes from the same rules as the write. Groups (the admin project card, the adhoc
-  group card) are report-only: SAM to directory is the sync daemon's path, and a project's SAM
-  side is the sync's own `project_group` row. Panel ids carry the entity id because the user
+  group card) are report-only for different reasons, and the panel note says which: a project
+  group flows SAM to directory through the sync daemon (its SAM side is the sync's own
+  `project_group` row); an adhoc group is authored in Google Groups and reaches SAM through
+  the directory, a path that is not live yet. Panel ids carry the entity id because the user
   and project cards also open inside a modal. The Organizations card is cached per user: a
   config flip shows after `sam-admin cache --refresh`.
 - **Logs** carry usernames and row ids, like the rest of the ldapsync logger; personal names,

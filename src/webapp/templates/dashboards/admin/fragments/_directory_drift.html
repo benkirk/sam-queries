@@ -1,5 +1,6 @@
 {# The drift table and the apply banner shared by the user and organization Directory panels.
-   Context: panel (sam.manage.directory_panel), apply_url, apply_target, can_apply, report_only. #}
+   Context: panel (sam.manage.directory_panel), apply_url, apply_target, can_apply,
+   report_only (the note that replaces the lever line; a group's says which way it flows). #}
 {% if panel.result %}
 <div class="alert {{ 'alert-success' if panel.result.applied else 'alert-secondary' }} py-2 px-3 small mb-3" role="status">
     <i class="fa-solid fa-circle-check me-1" aria-hidden="true"></i>
@@ -45,7 +46,7 @@
 <div class="d-flex flex-wrap align-items-center gap-2 small">
     <span class="text-muted">
         {% if report_only %}
-        Report only: group membership flows from SAM to the directory through the sync daemon; DIRECTORY_APPLY_GROUP has no effect.
+        {{ report_only }}
         {% else %}
         Levers on: {{ panel.apply_kinds | join(', ') or 'none' }}.
         {% if panel.rows %}{{ panel.would_apply | fmt_number }} would apply, {{ panel.withheld | fmt_number }} withheld.{% endif %}
