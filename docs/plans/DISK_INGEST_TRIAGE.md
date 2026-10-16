@@ -35,7 +35,7 @@ the project `/quasar/rda` is linked to. Tier 3 already charged it that way by
 grouping on the label; the report now agrees. A label that is linked to two
 projects is not borrowed, so `no_project` is reported.
 
-`KNOWN_UNOWNED_PROJCODES` is a code constant in `src/cli/accounting/commands.py`.
+`KNOWN_UNOWNED_PROJCODES` is a code constant in `src/cli/accounting/fileset_resolver.py`.
 It moves to config only if HSG starts adding labels often.
 
 ## `--reconcile-directories`

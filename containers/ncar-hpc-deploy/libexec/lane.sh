@@ -84,8 +84,9 @@ nhd_exec() {
 
     local binds=(-B /glade)
     local d
-    # PBS accounting logs (jobhist-sync) exist on one host each; bind whichever is here.
-    for d in /ssg/pbs/casper/accounting /ncar/pbs/accounting /local_scratch; do
+    # Host filesystems bound when present: PBS accounting logs (jobhist-sync, one host each),
+    # and the Campaign Store and Destor mounts quota-reconcile --verify-paths checks.
+    for d in /ssg/pbs/casper/accounting /ncar/pbs/accounting /local_scratch /gpfs/csfs1 /lustre/desc1; do
         [[ -d "${d}" ]] && binds+=(-B "${d}")
     done
     if [[ -n "${NCAR_HPC_DEPLOY_SRC}" ]]; then
