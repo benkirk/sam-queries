@@ -361,6 +361,8 @@ def project_card(projcode):
         if project is None or project.facility_name not in allowed:
             abort(403)
 
+    from sam.integration.directory.config import directory_configured
+
     # Render a wrapper template that calls the macro
     return render_template(
         'dashboards/admin/fragments/project_card_wrapper.html',
@@ -368,6 +370,7 @@ def project_card(projcode):
         user=current_user,
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
         usage_critical_threshold=USAGE_CRITICAL_THRESHOLD,
+        directory=directory_configured(),
     )
 
 
@@ -433,9 +436,12 @@ def user_card(username):
     available_groups = _available_primary_groups(db.session, sam_user.username)
     can_edit_primary_gid = has_permission(current_user, Permission.EDIT_USERS)
 
+    from sam.integration.directory.config import directory_configured
+
     return render_template(
         'dashboards/admin/fragments/user_card_wrapper.html',
         last_seen=last_seen,
+        directory=directory_configured(),
         sam_user=sam_user,
         user_groups=user_groups,
         primary_group_name=primary_group_name,
@@ -477,6 +483,8 @@ def group_card(group_name):
         .all()
     )
 
+    from sam.integration.directory.config import directory_configured
+
     return render_template(
         'dashboards/admin/fragments/group_card_wrapper.html',
         group=group,
@@ -484,6 +492,7 @@ def group_card(group_name):
         primary_gid_users=primary_gid_users,
         # Same gate as the user_card route the member rows target.
         can_view_users=has_permission_any_facility(current_user, Permission.VIEW_USERS),
+        directory=directory_configured(),
     )
 
 
@@ -1309,4 +1318,4 @@ def htmx_queues_for_resource():
 # Domain route modules — must be imported AFTER bp is defined
 # ============================================================================
 
-from . import resources_routes, facilities_routes, orgs_routes, contracts_routes, projects_routes, configuration_routes, rate_limits_routes, notifications_routes, tasks_routes, last_seen_routes, account_requests_routes, events_routes, roles_routes  # noqa: E402, F401
+from . import resources_routes, facilities_routes, orgs_routes, contracts_routes, projects_routes, configuration_routes, rate_limits_routes, notifications_routes, tasks_routes, last_seen_routes, account_requests_routes, events_routes, roles_routes, directory_routes  # noqa: E402, F401

@@ -140,6 +140,17 @@ class SAMWebappConfig(SAMConfig):
     # Only a closure this recent is undone automatically; older is a real departure.
     LDAPSYNC_RESTORE_WINDOW_DAYS = int(os.getenv('LDAPSYNC_RESTORE_WINDOW_DAYS', '90'))
 
+    # The directory client (sam/integration/directory, docs/plans/DIRECTORY_CLIENT.md).
+    # PROVIDER "" or "ucar"; URL empty = off whatever the provider says.
+    DIRECTORY_PROVIDER = os.getenv('DIRECTORY_PROVIDER', '')
+    DIRECTORY_URL = os.getenv('DIRECTORY_URL', '')
+    DIRECTORY_BASE_DN = os.getenv('DIRECTORY_BASE_DN', 'dc=ucar,dc=edu')
+    DIRECTORY_TIMEOUT_SECONDS = os.getenv('DIRECTORY_TIMEOUT_SECONDS', '5')
+    # CHECK_ON_SYNC on: after each ldapsync PUT commits, read that record from the
+    # directory and log the differences; fail-open, never a failed PUT. The per-kind
+    # write levers DIRECTORY_APPLY_<KIND> are read from the environment directly.
+    DIRECTORY_CHECK_ON_SYNC = os.getenv('DIRECTORY_CHECK_ON_SYNC', '0').lower() in ('1', 'true', 'yes')
+
     # Per-type triage lever for POST /api/xras/v1/actions: 'all' (the default),
     # 'none', or a comma-separated list of action types ('Extension,Supplement').
     # NOT a rollout mechanism — XRAS repoints its base URL once, so all six
@@ -553,6 +564,10 @@ class TestingConfig(SAMWebappConfig):
     LDAPSYNC_PURGE_ENABLED = False
     LDAPSYNC_LIFECYCLE_ENABLED = False
     LDAPSYNC_RESTORE_ON_REACTIVATE = False
+    # The directory is pinned off; a test that wants a reader installs a fake.
+    DIRECTORY_PROVIDER = ''
+    DIRECTORY_URL = ''
+    DIRECTORY_CHECK_ON_SYNC = False
 
 
 _configs = {

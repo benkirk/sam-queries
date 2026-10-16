@@ -88,6 +88,19 @@ def build_user_projects(user: User, inactive: bool) -> list:
     return out
 
 
+def build_user_directory(session, user: User):
+    """The person as the directory holds them and SAM's drift; ``None`` without a directory."""
+    from cli.core.directory import directory_view
+    from sam.manage.directory_panel import person_panel
+    return directory_view(person_panel(session, user))
+
+
+def build_directory_apply(user: User, result, dry_run: bool) -> dict:
+    from cli.core.directory import reconcile_view
+    return {'kind': 'directory_apply', 'username': user.username, 'upid': user.upid,
+            **reconcile_view(result, dry_run)}
+
+
 def build_user_provisioning(user: User) -> dict:
     """Host provisioning cross-check for a user.
 

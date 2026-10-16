@@ -358,6 +358,42 @@
             </div>
         </div>
 
+        {# The directory client (sam.integration.directory). No probe: the latch says whether
+           the last read failed; the panels on the user and organization cards do the reads. #}
+        <div class="col-12 col-xl-6">
+            <div class="card inner-card h-100">
+                <div class="card-header mb-4">
+                    <h5><i class="fa-solid fa-address-book me-1"></i> Directory</h5>
+                </div>
+                <div class="card-body">
+                    {% set dr = state.directory %}
+                    {% if dr.misconfigured %}
+                    <div class="alert alert-warning py-2 px-3 small mb-3">
+                        <i class="fa-solid fa-triangle-exclamation me-1"></i>DIRECTORY_PROVIDER and DIRECTORY_URL must both be set — the directory is off.
+                    </div>
+                    {% endif %}
+                    {% if dr.latched %}
+                    <div class="alert alert-danger py-2 px-3 small mb-3">
+                        <i class="fa-solid fa-triangle-exclamation me-1"></i>The last read failed; sync checks are paused for a minute.
+                    </div>
+                    {% endif %}
+                    <dl class="config-stats mb-0 small">
+                        {{ stat('DIRECTORY_PROVIDER', dr.provider) }}
+                        {{ stat('Mode', dr.mode) }}
+                        {% if dr.configured %}
+                        {{ stat('URL', dr.url) }}
+                        {{ stat('Base DN', dr.base_dn) }}
+                        {{ stat('Timeout (s)', dr.timeout | fmt_number) }}
+                        {{ stat('Check on sync', 'Yes' if dr.check_on_sync else 'No') }}
+                        {% for kind, enabled in dr.apply.items() %}
+                        {{ stat('Apply ' ~ kind, 'Yes' if enabled else 'No') }}
+                        {% endfor %}
+                        {% endif %}
+                    </dl>
+                </div>
+            </div>
+        </div>
+
         {# Scheduled tasks (scheduling registry + task_run counts)
              No PII on this tile or the table behind it — task names, states,
              pod names. The per-row detail modal IS SYSTEM_ADMIN, because

@@ -1324,6 +1324,7 @@ def _json_reconcile(session, resource, quota_path, monkeypatch, **flags):
     import cli.accounting.quota_reconcile as cmd_mod
     out = []
     monkeypatch.setattr(cmd_mod, 'output_json', out.append)
+    monkeypatch.setattr('cli.core.output.output_json', out.append)   # refuse_json_write's
     ctx = _ctx_with_session(session)
     ctx.output_format = 'json'
     rc = AccountingAdminCommand(ctx)._run_reconcile_quotas(

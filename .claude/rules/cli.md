@@ -38,6 +38,7 @@ stateless; admin commands extend search commands via inheritance. Exit codes:
 ```bash
 # Search
 sam-search user benkirk --list-projects --verbose
+sam-search user benkirk --directory ; sam-search project SCSG0001 --directory   # the UCAR directory's record + SAM's drift (key absent when unconfigured)
 sam-search user --search "ben%" ; sam-search user --abandoned [--not-seen-since 1y --source pbs]
 sam-search project SCSG0001 --list-users --verbose
 sam-search project --upcoming-expirations --list-users
@@ -53,6 +54,8 @@ sam-search --format json project SCSG0001 | jq          # JSON envelopes everywh
 
 # Admin (superset of search)
 sam-admin user benkirk --validate ; sam-admin user <u> --deactivation | --restore-deactivation [--dry-run]   # the identity sync's closure undo
+sam-admin user <u> --directory-apply [--dry-run]        # patch from the directory per DIRECTORY_APPLY_<KIND>; JSON refused for the live write
+sam-admin directory report [--kind K] [--limit N]       # the directory sweep: counts by kind and category (a verb group, see below)
 sam-admin project SCSG0001 --validate ; sam-admin project SCSG0001 --reconcile   # reconcile = everyone on every resource
 sam-admin project --reconcile-lead-admin --all --dry-run   # bulk, active resources only; drop --dry-run to write
 sam-admin accounting --disk --dry-run                   # summary rebuild/reconcile ops
@@ -66,3 +69,5 @@ sam-admin cache --refresh [--category flask|chart|usage|scans|jobs|awards|xras_a
 `--job-id` matching: digits match the scalar job and every array element; a partial array form prefix-matches across hosts; a full id with host is exact. `sam-search user --has-active-project` is the inverse of `--abandoned`: active users with at least one active project.
 
 ✅ **DO** use proper exit codes (0, 1, 2, 130)
+✅ **DO** give a new multi-verb command a click group with verbs (`sam-admin directory report`),
+   not mode flags; jobhist already nests. The flat commands convert later: `docs/plans/CLI_VERBS.md`.

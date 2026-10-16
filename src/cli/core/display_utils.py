@@ -9,6 +9,7 @@ from datetime import date, datetime
 from rich import box
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 
+from cli.core.context import Context
 from sam import fmt
 
 #: What every formatter here renders for "nothing to show". Matches
@@ -72,13 +73,42 @@ def stamp(value, seconds: bool = True) -> str:
     return fmt.date_str(value or None, fmt='%Y-%m-%d %H:%M:%S' if seconds else '%Y-%m-%d %H:%M')
 
 
-def issues_table(ctx, subject: str, issues: list) -> None:
-    """The host-provisioning findings for ``subject``: (check, detail) rows under a heading."""
+def issues_table(ctx, subject: str, issues: list, *,
+                 heading: str = 'Host provisioning issues for') -> None:
+    """Findings for ``subject``: (check, detail) rows under ``heading``."""
     from rich.table import Table
-    ctx.console.print(f"\n[bold yellow]Host provisioning issues for {subject}:[/]")
+    ctx.console.print(f"\n[bold yellow]{heading} {subject}:[/]")
     table = Table(box=box.SIMPLE, show_header=False)
     table.add_column("Check", style="cyan")
     table.add_column("Detail", style="yellow")
     for label, detail in issues:
         table.add_row(label, detail)
     ctx.console.print(table)
+
+def directory_unreadable(ctx: Context, view: dict, subject: str) -> bool:
+    """The two states before a record: unavailable, or absent. True when nothing more to show."""
+    if not view['available']:
+        ctx.console.print(f"⚠️  Directory: could not read {subject} ({view['error'] or 'unavailable'}).",
+                          style='yellow')
+        return True
+    if not view['found']:
+        ctx.console.print(f"⚠️  Directory: {subject} is not in the directory.", style='yellow')
+        return True
+    return False
+
+
+def directory_drift(ctx: Context, view: dict, subject: str, *, report_only: str = ''):
+    """The drift rows as an issues table, then the lever line (or ``report_only``, the note)."""
+    issues = [(f"{r['category']} {r['field'] or ''}".strip(),
+               f"SAM {r['sam'] or '—'} · directory {r['directory'] or '—'} ({r['disposition']})")
+              for r in view['rows']]
+    if issues:
+        issues_table(ctx, subject, issues, heading='Directory drift for')
+    else:
+        ctx.console.print('[green]✓[/] SAM matches the directory.', style='dim')
+    if report_only:
+        ctx.console.print(report_only, style='dim')
+    else:
+        ctx.console.print(f"Levers on: {', '.join(view['apply_kinds']) or 'none'}."
+                          f" {view['would_apply']} would apply, {view['withheld']} withheld.",
+                          style='dim')

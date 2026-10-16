@@ -225,7 +225,15 @@ for key in JIRA_ENABLED JIRA_BASE_URL JIRA_AUTH JIRA_PROJECT_KEY JIRA_SERVICE_DE
 done
 assert_contains "$cron_out" 'name: samuel-jira-credentials' \
   "which must name the Secret the Jira ExternalSecret materialises"
+# The directory client: directory_report reads ldap.ucar.edu from the CronJob, so the four
+# read keys are hand-listed there (empty renders as "" and the client takes its defaults);
+# a DIRECTORY_APPLY_<KIND> must never reach the task pod, which only reads.
+for key in DIRECTORY_PROVIDER DIRECTORY_URL DIRECTORY_BASE_DN DIRECTORY_TIMEOUT_SECONDS; do
+  assert_contains "$cron_out" "name: ${key}" "directory_report needs ${key} in the CronJob"
+done
 cron_code=$(grep -v '^[[:space:]]*#' <<<"$cron_out")
+assert_not_contains "$cron_code" 'DIRECTORY_APPLY' \
+  "the task pod reads the directory and never writes from it"
 assert_contains "$cron_out" 'name: JIRA_XRAS_REQUEST_REQUEST_TYPE_ID' \
   "xras_request_tickets' request type reaches the task pod through tasks.env"
 assert_not_contains "$cron_code" 'JIRA_WRITE_ENABLED' \

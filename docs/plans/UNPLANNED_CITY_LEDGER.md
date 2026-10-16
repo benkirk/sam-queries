@@ -38,6 +38,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-09 | `2af64319` + sweep 20 (`src/cli`) | 49 / 58 / 24 | 1 (2) | 14 / 46 | 20 (20), 2 kept | 4,822 / 51 / 7 | 165 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-10 | `bd428a14` + sweep 21 (HEUV port, #786) | 49 / 58 / 24 | 1 (2) | 14 / 46 | 20 (20), 2 kept | 4,822 / 51 / 7 | 165 (68) | 0 / 0 | 0 | 5 / 4 | 33 (23) | 6 |
 | 2026-10-11 | `c25a7cb8` + sweep 22 (XRAS cards and dialogs) | 49 / 58 / 24 | 1 (2) | 14 / 46 | 20 (20), 2 kept | 5,224 / 51 / 7 | 127 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
+| 2026-10-16 | `78742660` + sweep 29 (the directory client, #841) | 52 / 64 / 26 | 1 (2) | 21 / 67 | 20 (20), 2 kept | 5,245 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
 | 2026-10-12 | `726a0e0c` + sweep 23 (account queue / Pending Users), py only | 51 / 63 / 26 | 1 (2) | 16 / 52 | — | — | — | — | — | — | — | 6 |
 | 2026-10-13 | `172a5651` + sweep 25 (XRAS sweep windows, cadence, ticket groundwork) | 51 / 63 / 26 | 1 (2) | 16 / 52 | 20 (20), 2 kept | 5,245 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
 | 2026-10-13 | `1526d856` + sweep 26 (XRAS request identity) | 51 / 63 / 26 | 1 (2) | 16 / 52 | 20 (20), 2 kept | 5,245 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
@@ -1952,6 +1953,49 @@ registries. Small, and tests patch the registries.
   `total` row per empty fileset.
 - [ ] The rich titles still say Mismatched, Orphaned and Unmapped while JSON says
   `quota_mismatch`, `allocation_without_quota` and `no_project`.
+
+## 29. 2026-10-16: area sweep, the directory client (PR #841, from the air)
+
+**Mode:** area, one PR read as one design: the directory client's groups, panels, CLI views
+and nightly report, built that morning in seven commits on `directory-client` (base
+`origin/staging` `78742660`). Ben asked for the sweep before his own review of the PR, with
+"anything that's not a pedantic nit" landed on the same branch.
+
+**Findings and done** (one commit each, `4c1ad359`..`b098173c`):
+
+- [x] S1, round trips: the project view loaded the lead and the admin `User` objects to read
+  two upids, 11 of its 20 statements (their selectin collections). One id-to-upid query, and
+  the panel hands the project or group it holds to `snapshot_from_group`. Pinned at <= 8.
+- [x] S2, consolidate: `GroupSnapshot` was assembled four ways; the adhoc panel path resolved
+  upids itself while the sweep used the sync's `groups()`. `groups(session, group_id=)` is
+  scoped like `project_groups(project_id=)` and `group_snapshot_from_row` serves every site.
+- [x] S3, test: `UCARDirectory.records` and its paged helpers, the nightly task's real path,
+  were proven only by live runs. `FakeConnection` (now in the factories, answering
+  `paged_search`) pins paging, the limit, the person join and the inverted managers search.
+- [x] S4, lift: `_apply_active_transition` and `_state_prov_id` imported across modules are
+  public names in `sam.manage.ldapsync`.
+- [x] S5, lift + delete: one record-load prelude in `directory_panel.py` (was four), one
+  reader accessor shared with the routes, two dead names gone.
+- [x] S6, consolidate: one `_apply` body for the three Apply POSTs.
+- [x] S7, legibility: `directory_state` macro for the unconfigured / unreadable / absent
+  states in both shapes (alerts inline, facts rows in the dialogs), was four copies.
+- [x] S8, consolidate: the group panel's report-only note authored once (`REPORT_NOTES`).
+- [x] S9, lift: `directory_unreadable` / `directory_drift` into `cli/core/display_utils.py`.
+- [x] S10, lift + bypass: `refuse_json_write` for the write-under-JSON envelope (five sites);
+  `HELPER_BYPASS` learns the literal.
+- [x] S11, prose: the two plans say `sam-admin directory report` and the landed group panels.
+- [x] S12 (with S3): the fake reader's kind-to-store map once.
+
+**Tried and dropped:** nothing; every finding was cheap enough to land.
+
+**Open:**
+
+- [ ] A generic `DirectoryReader.read(kind, key)` would remove the per-kind `reads` dict in
+  `reconcile_from_directory`; the sweep's own kind tables are SAM-side and stay.
+- [ ] `_flag` is defined in both `compare.py` (a bool to text) and `ucar.py` (an attribute to
+  bool); different jobs under one name.
+- [ ] The inline `style=""` attributes the inventory lists on `user_card.html` and
+  `group_card.html` predate the PR and sit outside its sections.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

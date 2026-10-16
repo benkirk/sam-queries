@@ -26,6 +26,13 @@ def provisioning_option(f):
                         help='Cross-check host provisioning (auto-on on a provisioned host)')(f)
 
 
+def directory_option(f):
+    """``--directory``: the record as the UCAR directory holds it, and SAM's drift beside it."""
+    return click.option('--directory', is_flag=True,
+                        help='Read the record from the UCAR directory and show the drift against SAM'
+                             ' (the key is absent when no directory is configured)')(f)
+
+
 def usage_error(ctx: Context, message: str, show_help: bool = False):
     """Reject a bad flag combination: ``message`` (and the help) on stderr, exit EXIT_ERROR."""
     import sys

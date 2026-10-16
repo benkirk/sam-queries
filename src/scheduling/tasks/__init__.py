@@ -13,6 +13,7 @@ from scheduling.tasks import account_queue_digest       # noqa: F401
 from scheduling.tasks import account_requests_reconcile  # noqa: F401
 from scheduling.tasks import cleanup_status       # noqa: F401
 from scheduling.tasks import deactivate_expired   # noqa: F401
+from scheduling.tasks import directory_report     # noqa: F401
 from scheduling.tasks import expiration_notices   # noqa: F401
 from scheduling.tasks import refresh_allocation_state  # noqa: F401
 from scheduling.tasks import xras_notices         # noqa: F401
@@ -21,6 +22,6 @@ from scheduling.tasks import xras_request_tickets  # noqa: F401
 from scheduling.tasks import xras_sweep           # noqa: F401
 
 __all__ = ['account_queue_digest', 'account_requests_reconcile',
-           'cleanup_status', 'deactivate_expired', 'expiration_notices',
+           'cleanup_status', 'deactivate_expired', 'directory_report', 'expiration_notices',
            'refresh_allocation_state', 'xras_notices', 'xras_rename',
            'xras_request_tickets', 'xras_sweep']

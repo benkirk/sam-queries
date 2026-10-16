@@ -4,11 +4,13 @@ import logging
 from datetime import timedelta
 
 from cli.core.base import BaseUserCommand
-from cli.core.output import output_json
+from cli.core.output import output_json, refuse_json_write
 from cli.core.utils import EXIT_SUCCESS, EXIT_NOT_FOUND, EXIT_ERROR
 from cli.user.builders import (
+    build_directory_apply,
     build_user_core,
     build_user_detail,
+    build_user_directory,
     build_user_projects,
     build_user_provisioning,
     build_user_search_results,
@@ -18,6 +20,7 @@ from cli.user.builders import (
     build_deactivation_restore,
 )
 from cli.user.display import (
+    display_directory_apply,
     display_user,
     display_user_search_results,
     display_abandoned_users,
@@ -57,7 +60,7 @@ def _last_seen(username: str):
 class UserSearchCommand(BaseUserCommand):
     """Exact user search by username."""
 
-    def execute(self, username: str, list_projects: bool = False) -> int:
+    def execute(self, username: str, list_projects: bool = False, directory: bool = False) -> int:
         try:
             user = self.get_user(username)
             if not user:
@@ -78,6 +81,13 @@ class UserSearchCommand(BaseUserCommand):
             last_seen = _last_seen(user.username)
             if last_seen is not _UNCONFIGURED:
                 data['last_seen'] = last_seen
+            if directory:
+                view = build_user_directory(self.session, user)
+                if view is None:
+                    self.ctx.message_console.print(
+                        'No directory is configured (DIRECTORY_URL is empty).', style='dim')
+                else:
+                    data['directory'] = view
 
             return self.emit(data, display_user, list_projects)
         except Exception as e:
@@ -203,10 +213,13 @@ class UserAdminCommand(UserSearchCommand):
     """Admin command for users - extends search with validation."""
 
     def execute(self, username: str, validate: bool = False, deactivation: bool = False,
-                restore_deactivation: bool = False, dry_run: bool = False, **kwargs) -> int:
+                restore_deactivation: bool = False, dry_run: bool = False,
+                directory_apply: bool = False, **kwargs) -> int:
         if deactivation or restore_deactivation:
             return self._restore_deactivation(
                 username, dry_run=dry_run or not restore_deactivation)
+        if directory_apply:
+            return self._directory_apply(username, dry_run=dry_run)
         # First run base search
         exit_code = super().execute(username, **kwargs)
         if exit_code != EXIT_SUCCESS:
@@ -222,12 +235,8 @@ class UserAdminCommand(UserSearchCommand):
         """Show, or undo, the membership closure of the user's last deactivation."""
         from sam.manage import management_transaction
         from sam.manage.lifecycle import restore_user_deactivation
-        json_mode = self.ctx.output_format == 'json'
-        if json_mode and not dry_run:
-            output_json({'kind': 'deactivation_restore', 'error': 'json_unsupported_for_writes',
-                         'message': '--format json cannot be combined with --restore-deactivation'
-                                    ' (add --dry-run)'})
-            return EXIT_ERROR
+        if self.ctx.output_format == 'json' and not dry_run:
+            return refuse_json_write('deactivation_restore', '--restore-deactivation (add --dry-run)')
         user = self.get_user(username)
         if user is None:
             return self.not_found('deactivation_restore', f"User not found: {username}",
@@ -240,6 +249,43 @@ class UserAdminCommand(UserSearchCommand):
         data = build_deactivation_restore(report, dry_run)
         self.emit(data, display_deactivation_restore)
         return EXIT_SUCCESS if report.instant is not None else EXIT_NOT_FOUND
+
+    def _directory_apply(self, username: str, dry_run: bool) -> int:
+        """Patch the user from the directory record, per the ``DIRECTORY_APPLY_<KIND>`` levers."""
+        from sam.integration._config import config_bool, config_int
+        from sam.integration.directory import DirectoryUnavailable
+        from sam.integration.directory.config import DirectoryConfig
+        from sam.integration.directory.registry import reader_from_environment
+        from sam.manage import management_transaction
+        from sam.manage.directory import reconcile_from_directory
+        from sam.manage.lifecycle import restore_on_reactivate
+        if self.ctx.output_format == 'json' and not dry_run:
+            return refuse_json_write('directory_apply', '--directory-apply (add --dry-run)')
+        config = DirectoryConfig.from_environment()
+        if not config.configured:
+            self.ctx.stderr_console.print('No directory is configured (DIRECTORY_URL is empty).',
+                                          style='bold red')
+            return EXIT_ERROR
+        user = self.get_user(username)
+        if user is None:
+            return self.not_found('directory_apply', f"User not found: {username}", username=username)
+        if user.upid is None:
+            return self.not_found('directory_apply', f"{username} has no upid", username=username)
+        hook = restore_on_reactivate(
+            self.session, enabled=config_bool('LDAPSYNC_RESTORE_ON_REACTIVATE', False),
+            within_days=config_int('LDAPSYNC_RESTORE_WINDOW_DAYS', 90))
+        kwargs = dict(reader=reader_from_environment(), config=config, on_reactivate=hook)
+        try:
+            if dry_run:
+                result = reconcile_from_directory(self.session, 'person', user.upid, dry_run=True, **kwargs)
+            else:
+                with management_transaction(self.session):
+                    result = reconcile_from_directory(self.session, 'person', user.upid, **kwargs)
+        except DirectoryUnavailable as exc:
+            self.ctx.stderr_console.print(
+                f'The directory could not be read ({type(exc).__name__}).', style='bold red')
+            return EXIT_ERROR
+        return self.emit(build_directory_apply(user, result, dry_run), display_directory_apply)
 
     def _validate_user(self, username: str) -> int:
         """Admin-only: validate user data integrity."""

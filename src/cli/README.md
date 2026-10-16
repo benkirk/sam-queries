@@ -27,7 +27,8 @@ cli/
 ├── core/                     # Shared infrastructure
 │   ├── context.py            # Context class (session, consoles, flags, output_format)
 │   ├── base.py               # BaseCommand: emit(), not_found(), require_plugin()
-│   ├── options.py            # verbose_option, provisioning_option, usage_error
+│   ├── options.py            # verbose_option, provisioning_option, directory_option, usage_error
+│   ├── directory.py          # The CLI shape of a Directory view (JSON-safe; key absent when unconfigured)
 │   ├── display_utils.py      # Shared cell formatters, stamp, styled, progress, issues_table
 │   ├── output.py             # output_json() + _SAMEncoder
 │   └── utils.py              # Exit codes, configure_logging, parse_duration_days
@@ -36,6 +37,7 @@ cli/
 │   ├── commands.py           # UserSearchCommand, UserAdminCommand, ...
 │   └── display.py            # display_user(), ... — dict input only
 ├── project/                  # Project commands (same builders/commands/display split)
+├── directory/                # `sam-admin directory <verb>`: the first verb group (report)
 ├── allocations/              # Allocation commands
 ├── accounting/               # Charge rollups, per-job queries, summary ingest
 │   ├── commands.py           # AccountingAdminCommand dispatcher, Search, Jobs
@@ -201,6 +203,20 @@ in `core/base.py`; daily-rollup queries work without it.
    @pass_context
    def new_command(ctx: Context, flag, verbose):
        sys.exit(NewUserCommand(ctx).execute(flag=flag))
+   ```
+   A command with several verbs is a **group**, not a set of mode flags (the shape
+   jobhist uses; `sam-admin directory report` is the first here, and the flat commands
+   convert per `docs/plans/CLI_VERBS.md`):
+   ```python
+   @cli.group()
+   def directory():
+       """The UCAR directory beside SAM."""
+
+   @directory.command('report')
+   @click.option('--kind', type=click.Choice([...]))
+   @pass_context
+   def directory_report(ctx: Context, kind):
+       sys.exit(DirectoryReportCommand(ctx).execute(kind=kind))
    ```
 
 4. **Write tests** following `tests/unit/cli/test_sam_search_cli.py`

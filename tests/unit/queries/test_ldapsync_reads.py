@@ -104,6 +104,16 @@ class TestGroups:
         assert row['key'] == row['name'] == group.group_name
 
 
+    def test_one_group_is_the_same_row_as_the_full_list(self, session):
+        """The directory client's adhoc snapshot reads this row, so it cannot drift from the sync's."""
+        person = make_user(session, upid=True)
+        group = make_adhoc_group(session)
+        make_adhoc_system_account_entry(session, group, person.username)
+        row, = q.groups(session, group_id=group.group_id)
+        assert row == next(g for g in q.groups(session) if g['posix_gid'] == group.unix_gid)
+        assert row['upids'] == [person.upid]
+
+
 @pytest.fixture
 def hpc_branch(session):
     return session.query(AccessBranch).filter_by(name='hpc').one()
@@ -161,6 +171,15 @@ class TestProjectGroups:
         future = datetime.now() + timedelta(days=1)
         assert all(p['name'] != project.projcode
                    for p in q.project_groups(session, since=future))
+
+    def test_one_project_is_the_same_row_as_the_full_list(self, session, hpc_branch):
+        """The directory client's SAM side reads this row, so it cannot drift from the sync's."""
+        project, lead = _branch_project(session, hpc_branch, lead_active=False)
+        other, _ = _branch_project(session, hpc_branch)
+        row = q.project_group(session, project)
+        assert row == _project_row(session, project)
+        assert row['managers'] == row['upids'] == [lead.upid]
+        assert [r['name'] for r in q.project_groups(session, project_id=other.project_id)] == [other.projcode]
 
 
 class TestReadSince:

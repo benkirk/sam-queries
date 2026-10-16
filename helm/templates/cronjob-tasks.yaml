@@ -242,6 +242,17 @@ spec:
                     name: {{ .Values.webapp.name }}-jira-credentials
                     key: token
               {{- end }}
+              # The directory client (directory_report's nightly sweep): the read keys only.
+              # WARNING: never list a DIRECTORY_APPLY_<KIND> here; the task reads, it never
+              # writes. Asserted by test-cronjob-render.sh.
+              - name: DIRECTORY_PROVIDER
+                value: {{ .Values.webapp.env.DIRECTORY_PROVIDER | default "" | quote }}
+              - name: DIRECTORY_URL
+                value: {{ .Values.webapp.env.DIRECTORY_URL | default "" | quote }}
+              - name: DIRECTORY_BASE_DN
+                value: {{ .Values.webapp.env.DIRECTORY_BASE_DN | default "" | quote }}
+              - name: DIRECTORY_TIMEOUT_SECONDS
+                value: {{ .Values.webapp.env.DIRECTORY_TIMEOUT_SECONDS | default "" | quote }}
               {{- if .Values.webapp.dbCredentials.enabled }}
               - name: STATUS_DB_USERNAME
                 valueFrom:

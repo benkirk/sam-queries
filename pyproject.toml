@@ -38,6 +38,9 @@ dependencies = [
     # flask-less `sam` install (the CLI is not a Flask app) an ImportError
     # waiting for someone to try it.
     "jinja2",
+    # Pure Python; the optional directory client (sam.integration.directory) reads
+    # ldap.ucar.edu anonymously. Off until DIRECTORY_URL is set.
+    "ldap3>=2.9.1,<3",
     "limits[redis]",
     # Renders the vendored NWSC end-user agreement (webapp/register/eula.py);
     # mkdocs uses the same engine, so the site's markdown reproduces here.

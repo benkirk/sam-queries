@@ -10,7 +10,7 @@ import click
 
 from config import SAMConfig
 from cli.core.context import Context
-from cli.core.options import provisioning_option, usage_error, verbose_option
+from cli.core.options import directory_option, provisioning_option, usage_error, verbose_option
 from cli.core.utils import EXIT_ERROR, configure_logging, parse_duration_days
 from cli.user.commands import (
     UserSearchCommand,
@@ -84,9 +84,10 @@ def cli(ctx: Context, verbose: bool, inactive_projects: bool, inactive_users: bo
 @verbose_option()
 @click.option('--very-verbose', '-vv', is_flag=True, help='Show full information (allocation end dates, timestamps)')
 @provisioning_option
+@directory_option
 @pass_context
 def user(ctx: Context, username, search, abandoned, has_active_project, not_seen_since, source,
-         list_projects, limit, verbose, very_verbose):
+         list_projects, limit, verbose, very_verbose, directory):
     """
     Search for users.
 
@@ -99,6 +100,8 @@ def user(ctx: Context, username, search, abandoned, has_active_project, not_seen
         usage_error(ctx, "Error: Please provide exactly one of: username, --search, --abandoned "
                          "and/or --not-seen-since, or --has-active-project "
                          "(--source needs --not-seen-since)", show_help=True)
+    if directory and not username:
+        usage_error(ctx, 'Error: --directory needs a username')
     days = parse_duration_days(not_seen_since, '--not-seen-since') if not_seen_since else None
 
     if very_verbose:
@@ -108,7 +111,7 @@ def user(ctx: Context, username, search, abandoned, has_active_project, not_seen
     if username:
         # Exact Search
         command = UserSearchCommand(ctx)
-        exit_code = command.execute(username, list_projects)
+        exit_code = command.execute(username, list_projects, directory=directory)
         sys.exit(exit_code)
 
     elif search:
@@ -151,8 +154,9 @@ def user(ctx: Context, username, search, abandoned, has_active_project, not_seen
 @verbose_option('Show detailed information (truncated abstract, hierarchy)')
 @click.option('--very-verbose', '-vv', is_flag=True, help='Show full information (full abstract, timestamps, IDs, charge breakdown)')
 @provisioning_option
+@directory_option
 @pass_context
-def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirations, since, list_users, limit, facilities, verbose, very_verbose):
+def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirations, since, list_users, limit, facilities, verbose, very_verbose, directory):
     """
     Search for projects.
 
@@ -161,6 +165,8 @@ def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirat
     inputs = [bool(projcode), bool(search), upcoming_expirations, recent_expirations]
     if sum(inputs) != 1:
         usage_error(ctx, "Error: Please provide exactly one of: projcode, --search, --upcoming-expirations, or --recent-expirations", show_help=True)
+    if directory and not projcode:
+        usage_error(ctx, 'Error: --directory needs a project code')
 
     if very_verbose:
         ctx.very_verbose = ctx.verbose = True
@@ -184,7 +190,7 @@ def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirat
     elif projcode:
         # Exact Search
         command = ProjectSearchCommand(ctx)
-        exit_code = command.execute(projcode, list_users=list_users)
+        exit_code = command.execute(projcode, list_users=list_users, directory=directory)
         sys.exit(exit_code)
 
     else:
