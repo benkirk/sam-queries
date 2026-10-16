@@ -109,7 +109,8 @@ class TestChecks:
         fake = FakeDirectory()
         fake.add(self._record(user, emails=make_person_record().emails,
                               phones=make_person_record().phones))
-        increment, sam = check_person(session, fake, self._increment(user), now=NOW)
+        record, increment, sam = check_person(session, fake, self._increment(user), now=NOW)
+        assert record.upid == user.upid
         assert fake.calls == [('person', user.upid)]
         assert (increment.side, sam.side) == ('increment', 'sam')
         assert increment.key == sam.key == user.username
@@ -131,7 +132,7 @@ class TestChecks:
         data = OrganizationSyncInput().load({'organizationId': org.organization_id,
                                              'name': org.name, 'acronym': org.acronym,
                                              'active': True})
-        increment, sam = check_organization(session, fake, data)
+        _record, increment, sam = check_organization(session, fake, data)
         assert sam.counts() == {'name': 1}
         assert increment.counts() == {'name': 1}
 
@@ -145,7 +146,7 @@ class TestRunCheck:
         with caplog.at_level(logging.INFO, logger='sam.queries.directory'):
             reports = run_check(session, 'person', TestChecks()._increment(user), user.unix_uid,
                                 reader=fake, now=NOW)
-        assert reports is not None
+        assert reports is not None and reports.record.upid == user.upid
         line = next(r.message for r in caplog.records if 'directory check' in r.message)
         assert line.startswith(f'ldapsync: directory check person {user.username} key={user.unix_uid} found=True')
         assert 'name:1' in line and 'Janet' not in line and '@' not in line

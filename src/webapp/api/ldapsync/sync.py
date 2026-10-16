@@ -91,13 +91,29 @@ def _put(rule):
     return bp.route(f'/ldapsync/{rule}', methods=['PUT'], strict_slashes=False)
 
 
+_SYNC_KEYS = {'person': 'upid', 'organization': 'organization_id',
+              'institution': 'institution_id', 'group': 'posix_gid'}
+
+
 def _directory_check(kind, data, key):
-    """Report-only, after the commit, fail-open: a failure is one warning, never a failed PUT."""
+    """After the commit, fail-open: read the record, log the drift, apply the kinds whose
+    lever is on in a second transaction. A failure is one warning, never a failed PUT."""
     if kind is None or not current_app.config.get('DIRECTORY_CHECK_ON_SYNC'):
         return
     try:
+        from sam.integration.directory.config import DirectoryConfig
         from sam.queries.directory import run_check
-        run_check(db.session, kind, data, key)
+        config = DirectoryConfig.from_environment()
+        result = run_check(db.session, kind, data, key, config=config)
+        if result is None or result.record is None or not config.apply_kinds:
+            return
+        from sam.manage.directory import log_result, reconcile_record
+        with management_transaction(db.session):
+            applied = reconcile_record(db.session, kind, data.get(_SYNC_KEYS[kind]),
+                                       result.record, config=config,
+                                       on_reactivate=_restore_hook())
+        if applied is not None:
+            log_result(applied, key)
     except Exception as exc:
         current_app.logger.warning('ldapsync: directory check %s key=%s failed: %s',
                                    kind, key, type(exc).__name__)

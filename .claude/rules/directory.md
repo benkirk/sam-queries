@@ -2,6 +2,7 @@
 paths:
   - "src/sam/integration/directory/**/*"
   - "src/sam/queries/directory.py"
+  - "src/sam/manage/directory.py"
   - "tests/unit/directory/**/*"
   - "tests/factories/directory.py"
 ---
@@ -31,6 +32,10 @@ Appendix C.
   time as written, never converted. Workday writes every position date as midnight `-0600`
   year-round; a strict conversion moves the winter ones to 23:00 the day before (580 of
   2,551 on 2026-10-15). Only `Z` stamps convert. Position ends compare by day.
+- **Apply** (`sam.manage.directory`) consumes the compare categories, so the report and the
+  write cannot drift; each kind's rules are the table in `DIRECTORY_CLIENT.md` section 5.
+  Identity columns (`User.SYNC_FIELDS` excludes them), twins, undated-inactive entries,
+  reopens and SAM-only history are withheld whatever the lever says. `dry_run` touches nothing.
 - **Logs** carry usernames and row ids, like the rest of the ldapsync logger; personal names,
   email addresses and phone numbers are counted in a `Discrepancy`, never valued.
 - **Tests** never open a socket: `tests/conftest.py::_no_outbound_ldap` guards

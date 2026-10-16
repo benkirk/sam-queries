@@ -1,6 +1,6 @@
 # Directory client: an optional, read-first integration with the UCAR LDAP directory
 
-**Status: step 1 built 2026-10-15, on samuel-dev next** (`directory-client`, draft PR #841 against `staging`).
+**Status: steps 1 and 2 built 2026-10-15, on samuel-dev next** (`directory-client`, draft PR #841 against `staging`).
 Long-lived: each step lands as its own commit series and deploys to samuel-dev from the branch
 (`gh workflow run "Publish Images and CIRRUS Deploy" --ref directory-client`). The PR delivers
 steps 1 and 2; steps 3 and 4 are scoped here and land on the same PR or as follow-ups.
@@ -13,8 +13,9 @@ Implements stage 1 and stage 2 of
 - [x] Step 1b: `sam/queries/directory.py` snapshots and `run_check`; the after-commit hook in `webapp/api/ldapsync/sync.py`; API hook tests
 - [x] Step 1c (part): dev values (`ucar`, URL, check on); pod egress to `ldap.ucar.edu:389` confirmed 2026-10-15 (anonymous bind from the webapp pod)
 - [ ] Step 1c: first `directory check` lines read on dev after the branch deploys
-- [ ] Step 2a: `sam/manage/directory.py` reconcile per kind behind `DIRECTORY_APPLY_<KIND>`, all off; reconcile tests
-- [ ] Step 2b: hook applies for enabled kinds in a second transaction; dev levers on one kind at a time after clean step-1 days
+- [x] Step 2a: `sam/manage/directory.py` reconcile per kind behind `DIRECTORY_APPLY_<KIND>`, all off; reconcile tests
+- [x] Step 2b (code): the hook applies the enabled kinds in a second transaction
+- [ ] Step 2b (dev): levers on one kind at a time after clean step-1 days
 - [ ] Step 3: Configuration card block; user-card Directory panel (check, apply); organization row action
 - [ ] Step 4: `sam-search user --directory`, `sam-admin user --directory-apply`, `sam-admin directory --report`, the `directory_report` task named in `SAM_TASKS_DISABLED`
 - [x] Docs: `.claude/rules/directory.md` + `CLAUDE.md` row and tripwire; `.env.example`; `SYSTEMS_INTEGRATION_APIs.md` § 8; AFFILIATIONS status line and Appendix D order
@@ -208,23 +209,26 @@ passes `None`) and in `put_user` (`'person'`). `sync_user` keeps returning `unix
 
 ### 5.1 `src/sam/manage/directory.py`
 
-`reconcile_from_directory(session, kind, key, *, reader, config, now=None, dry_run=False) ->
-ReconcileResult` dispatches to per-kind workers. `ReconcileResult(report: DriftReport, applied:
-tuple[Change, ...], withheld: tuple[Discrepancy, ...], dry_run)`, `Change(kind, category, sam_id,
-directory_id, field)`, `fragment()` in the shape of the check line. Every write path runs inside
-the caller's `management_transaction` (hook: a second transaction after the PUT's commit; UX: the
-handler; CLI: the command). `dry_run` computes `applied` and flushes nothing. A kind whose lever
-is off contributes to `withheld`, never to `applied`.
+`reconcile_person` / `reconcile_organization` / `reconcile_institution` / `reconcile_group` take
+SAM's object and the record; `reconcile_record(session, kind, key, record, ...)` loads SAM's side
+by key (the hook, which already holds the record from the check) and
+`reconcile_from_directory(session, kind, key, *, reader, ...)` reads first (the panel and the
+CLI). The rules consume the compare categories, so the report and the apply cannot drift.
+`ReconcileResult(kind, key, report, applied: tuple[Change, ...], withheld: tuple[Discrepancy, ...],
+dry_run)` with `fragment()` (`applied=2[name:1,planned_end:1] withheld=1[twin:1]`). Every write
+path runs inside the caller's `management_transaction` (hook: a second transaction after the
+PUT's commit; UX: the handler; CLI: the command). `dry_run` decides the same changes and touches
+nothing. A kind whose lever is off contributes to `withheld`, never to `applied`.
 
 What each kind may write (AFFILIATIONS stage 2: rows the directory ties to by id; SAM-only
 history never touched):
 
 | Kind | Applied | Reported only |
 |---|---|---|
-| person | names, nickname, middle, suffix; `unix_uid`; `academic_status_id` via the label map; `token_type`; emails: a missing address is added, primary follows `mail`, nothing is deleted; phones mirrored (as the sync does); `active` through `_apply_active_transition` (the sync's own path, so the lifecycle levers apply) | username (renames stay the sync's D26 policy), unmapped academic label, `missing_in_sam` (SAM never originates users here) |
-| position | planned end set when SAM's row has none; finished-vs-open closed to the directory's end when it carries one; employer updated in place (AFFILIATIONS § 5 "Amended D2"); a new row for `no_sam_row` when the organization is known to SAM, a start exists and it is not a twin | `twin` (D-B), inactive with no end (D-C: never invent a date), `history_open` (D-A), `end_day` |
-| collaboration | finished-vs-open closed to the directory's end when it carries one; a new row when a start exists | any end date (PeopleDB's until the keep-alive runs; the `modifier` hook decides later), `no_directory_start` |
-| organization, institution | through the existing `Organization.upsert_from_sync` / `Institution.upsert_from_sync` field sets | parent under `ou=externalOrgs` |
+| person | names, nickname, middle, suffix; `academic_status_id` via the label map; `token_type`; emails: a missing address is added, primary follows `mail`, nothing is deleted; phones mirrored (as the sync does, a label SAM lacks withholds); `active` through `_apply_active_transition` (the sync's own path, so the lifecycle levers and the restore hook apply) | username and `unix_uid` (identity columns are set once, at create: `User.SYNC_FIELDS`), unmapped academic label, `missing_in_sam` (SAM never originates users here) |
+| position | planned end set when SAM's row has none; finished-vs-open closed to the directory's end when it carries one; employer updated in place (AFFILIATIONS § 5 "Amended D2") when SAM knows the organization; a new row for `no_sam_row` when the organization is known, a start exists and it is not a twin | `twin` (D-B), inactive with no end (D-C: never invent a date), a reopen (the directory current, SAM ended), `history_open` (D-A), `end_day`, `start_day` (the Workday winter shift; a candidate once the directory's day is trusted) |
+| collaboration | finished-vs-open closed to the directory's end when it carries one; a new row when a start exists and SAM knows the institution | any planned end (PeopleDB's until the keep-alive runs; the `modifier` hook decides later), `no_directory_start`, `history_open`, `start_day` |
+| organization, institution | all differing fields at once through `Organization.upsert_from_sync` / `Institution.upsert_from_sync`; a record SAM lacks is created | a parent SAM lacks; an institution type SAM lacks |
 | group | nothing in this PR | members, tags, manager |
 
 Never touched (Appendix C.4): `locked`, `charging_exempt`, `deleted`, `deactivate`,
@@ -233,11 +237,11 @@ affiliation's.
 
 ### 5.2 Hook extension
 
-`_directory_check` becomes `_directory_sync(kind, data, key)`: `run_check` as before; when
+`_directory_check(kind, data, key)`: `run_check` as before (it returns the record it read); when
 `config.apply_kinds` is non-empty, `with management_transaction(db.session):
-reconcile_from_directory(...)` inside the same fail-open `try`; a failure rolls back that second
-transaction and logs one warning, and the PUT's own commit is already durable. The log line gains
-`applied=%s withheld=%s`.
+reconcile_record(...)` with the sync's restore hook, inside the same fail-open `try`; a failure
+rolls back that second transaction and logs one warning, and the PUT's own commit is already
+durable. A second log line, `ldapsync: directory apply <kind> <key> ... applied=… withheld=…`.
 
 ### 5.3 Tests
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Dict, Optional, Tuple
+from typing import NamedTuple, Optional
 
 from sqlalchemy import func
 
@@ -30,7 +30,12 @@ from sam.projects.projects import Project
 
 logger = logging.getLogger(__name__)
 
-Reports = Tuple[DriftReport, DriftReport]
+
+class CheckResult(NamedTuple):
+    """One read; the increment and SAM each compared with it."""
+    record: object
+    increment: DriftReport
+    sam: DriftReport
 
 
 # --- SAM snapshots ------------------------------------------------------------------
@@ -160,7 +165,7 @@ def group_snapshot_from_increment(session, data: dict) -> GroupSnapshot:
 # --- the checks -----------------------------------------------------------------------
 
 def check_person(session, reader: DirectoryReader, data: dict, *,
-                 now: Optional[datetime] = None) -> Optional[Reports]:
+                 now: Optional[datetime] = None) -> Optional[CheckResult]:
     """Both sides against one read; ``None`` for a record with no upid (a role login)."""
     upid = data.get('upid')
     if upid is None:
@@ -169,43 +174,51 @@ def check_person(session, reader: DirectoryReader, data: dict, *,
     key = data.get('user_name') or str(upid)
     user = User.get_by_upid(session, upid)
     sam = snapshot_from_user(user) if user is not None else None
-    return (compare_person(record, snapshot_from_increment(data), key=key, side='increment', now=now),
-            compare_person(record, sam, key=key, side='sam', now=now))
+    return CheckResult(
+        record,
+        compare_person(record, snapshot_from_increment(data), key=key, side='increment', now=now),
+        compare_person(record, sam, key=key, side='sam', now=now))
 
 
-def check_organization(session, reader: DirectoryReader, data: dict) -> Optional[Reports]:
+def check_organization(session, reader: DirectoryReader, data: dict) -> Optional[CheckResult]:
     oid = data.get('organization_id')
     if oid is None:
         return None
     record = reader.organization(oid)
     org = session.get(Organization, oid)
-    return (compare_organization(record, organization_snapshot_from_increment(session, data),
-                                 key=str(oid), side='increment'),
-            compare_organization(record, snapshot_from_organization(org) if org else None,
-                                 key=str(oid), side='sam'))
+    return CheckResult(
+        record,
+        compare_organization(record, organization_snapshot_from_increment(session, data),
+                             key=str(oid), side='increment'),
+        compare_organization(record, snapshot_from_organization(org) if org else None,
+                             key=str(oid), side='sam'))
 
 
-def check_institution(session, reader: DirectoryReader, data: dict) -> Optional[Reports]:
+def check_institution(session, reader: DirectoryReader, data: dict) -> Optional[CheckResult]:
     iid = data.get('institution_id')
     if iid is None:
         return None
     record = reader.institution(iid)
     inst = session.get(Institution, iid)
-    return (compare_institution(record, institution_snapshot_from_increment(data),
-                                key=str(iid), side='increment'),
-            compare_institution(record, snapshot_from_institution(inst) if inst else None,
-                                key=str(iid), side='sam'))
+    return CheckResult(
+        record,
+        compare_institution(record, institution_snapshot_from_increment(data),
+                            key=str(iid), side='increment'),
+        compare_institution(record, snapshot_from_institution(inst) if inst else None,
+                            key=str(iid), side='sam'))
 
 
-def check_group(session, reader: DirectoryReader, data: dict) -> Optional[Reports]:
+def check_group(session, reader: DirectoryReader, data: dict) -> Optional[CheckResult]:
     gid = data.get('posix_gid')
     if gid is None:
         return None
     record = reader.group(gid)
     key = data.get('key') or str(gid)
-    return (compare_group(record, group_snapshot_from_increment(session, data),
-                          key=key, side='increment'),
-            compare_group(record, snapshot_from_group(session, gid), key=key, side='sam'))
+    return CheckResult(
+        record,
+        compare_group(record, group_snapshot_from_increment(session, data),
+                      key=key, side='increment'),
+        compare_group(record, snapshot_from_group(session, gid), key=key, side='sam'))
 
 
 CHECKS = {'person': check_person, 'organization': check_organization,
@@ -214,7 +227,7 @@ CHECKS = {'person': check_person, 'organization': check_organization,
 
 def run_check(session, kind: str, data: dict, key, *, reader: Optional[DirectoryReader] = None,
               config: Optional[DirectoryConfig] = None,
-              now: Optional[datetime] = None) -> Optional[Reports]:
+              now: Optional[datetime] = None) -> Optional[CheckResult]:
     """The hook body: skip while the latch is down or nothing is configured, else read, compare, log."""
     check = CHECKS.get(kind)
     if check is None or outage.is_down():
@@ -225,17 +238,16 @@ def run_check(session, kind: str, data: dict, key, *, reader: Optional[Directory
     if not reader.configured:
         return None
     try:
-        reports = check(session, reader, data, now=now) if kind == 'person' \
+        result = check(session, reader, data, now=now) if kind == 'person' \
             else check(session, reader, data)
     except DirectoryUnavailable as exc:
         outage.mark_down()
         logger.warning('ldapsync: directory unavailable (%s); checks paused %ds',
                        type(exc).__name__, int(outage.BACKOFF_SECONDS))
         return None
-    if reports is None:
+    if result is None:
         return None
-    increment, sam = reports
     logger.info('ldapsync: directory check %s %s key=%s found=%s increment=%s sam=%s',
-                kind, increment.key, key, sam.found_in_directory, increment.fragment(),
-                sam.fragment())
-    return reports
+                kind, result.increment.key, key, result.sam.found_in_directory,
+                result.increment.fragment(), result.sam.fragment())
+    return result

@@ -91,3 +91,47 @@ def test_with_the_real_check_and_a_fake_reader(ldapsync_client, app, monkeypatch
     assert fake.calls == [('person', 4242)]
     assert any('directory check person hookuser key=4242 found=True' in r.message
                for r in caplog.records)
+
+
+class TestApplyOnSync:
+    """With a kind's lever on, the hook reconciles in a second transaction, still fail-open."""
+
+    @pytest.fixture
+    def armed(self, app, monkeypatch, no_commit):
+        from factories.directory import FakeDirectory, make_person_record
+        import sam.integration.directory.registry as registry
+        fake = FakeDirectory()
+        fake.add(make_person_record(upid=4242, username='hookuser', unix_uid=4242, emails=(),
+                                    phones=(), first_name='Hooked'))
+        monkeypatch.setattr(registry, 'reader_from_environment', lambda: fake)
+        monkeypatch.setitem(app.config, 'DIRECTORY_CHECK_ON_SYNC', True)
+        monkeypatch.setenv('DIRECTORY_APPLY_PERSON', '1')
+        return fake
+
+    def test_the_reconcile_runs_with_the_record_already_read(self, ldapsync_client, armed, monkeypatch, caplog):
+        import sam.manage.directory as manage
+        seen = []
+        monkeypatch.setattr(manage, 'reconcile_record',
+                            lambda session, kind, key, record, **kw: seen.append((kind, key, record.upid)) or None)
+        with caplog.at_level(logging.INFO):
+            assert _put(ldapsync_client, 'user', USER).status_code == 200
+        assert seen == [('person', 4242, 4242)]
+        assert armed.calls == [('person', 4242)]
+
+    def test_a_failing_reconcile_never_fails_the_put(self, ldapsync_client, armed, monkeypatch, caplog):
+        import sam.manage.directory as manage
+
+        def boom(*args, **kwargs):
+            raise RuntimeError('apply exploded')
+        monkeypatch.setattr(manage, 'reconcile_record', boom)
+        with caplog.at_level(logging.WARNING):
+            resp = _put(ldapsync_client, 'user', USER)
+        assert resp.status_code == 200 and resp.get_json() == 4242
+        assert any('directory check person key=4242 failed: RuntimeError' in r.message
+                   for r in caplog.records)
+
+    def test_no_lever_means_no_reconcile_call(self, ldapsync_client, armed, monkeypatch):
+        import sam.manage.directory as manage
+        monkeypatch.delenv('DIRECTORY_APPLY_PERSON')
+        monkeypatch.setattr(manage, 'reconcile_record', lambda *a, **k: pytest.fail('must not run'))
+        assert _put(ldapsync_client, 'user', USER).status_code == 200

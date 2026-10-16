@@ -139,7 +139,7 @@ rule file directly, and name it in any subagent prompt.**
 | `charts.md` | the chart package, `utils/charts.py`, `charts.css`, `chart_bits.html`, chart tests | Render axes, gotchas, fingerprint regen |
 | `account-requests.md` | the account-request model and manage layer, `/register`, event lifecycle | Account requests, events, invitations, the NUSD handoff |
 | `cli.md` | `src/cli/`, CLI tests | sam-search and sam-admin, the jobhist lockstep |
-| `directory.md` | `src/sam/integration/directory/`, `sam/queries/directory.py`, directory tests | The LDAP directory client: reader contract, per-kind levers, the fail-open sync hook, the Mountain-offset date rule |
+| `directory.md` | `src/sam/integration/directory/`, `sam/queries/directory.py`, `sam/manage/directory.py`, directory tests | The LDAP directory client: reader contract, per-kind levers, the fail-open sync hook, the Mountain-offset date rule |
 | `formatting.md` | `sam/fmt.py`, `src/cli/`, templates, dashboard Python | `sam.fmt` and its Jinja filters |
 | `testing.md` | `tests/`, `pytest.ini` | Markers, the two test-data tiers, the `system_status` tier, route-map parity |
 
