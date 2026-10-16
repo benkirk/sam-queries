@@ -1,8 +1,8 @@
 """Drift gates for the directory-client levers in the chart.
 
-Production ships with no directory at all; samuel-dev reads ldap.ucar.edu after each
-shadow PUT and writes nothing. A DIRECTORY_APPLY_<KIND> key appears in neither file until
-step 2 of docs/plans/DIRECTORY_CLIENT.md soaks.
+Both environments read ldap.ucar.edu (the panels, and the check after each sync PUT) and
+write nothing. A DIRECTORY_APPLY_<KIND> key appears in neither file until step 2 of
+docs/plans/DIRECTORY_CLIENT.md soaks on dev.
 """
 import yaml
 
@@ -21,9 +21,9 @@ def _text(name):
 
 
 class TestProduction:
-    def test_the_directory_is_off(self):
+    def test_production_reads_and_reports(self):
         env = _values()['webapp']['env']
-        assert tuple(env[k] for k in DECLARED) == ('', '', '0')
+        assert tuple(env[k] for k in DECLARED) == ('ucar', 'ldap://ldap.ucar.edu', '1')
 
     def test_no_apply_lever_anywhere(self):
         for name in ('values.yaml', 'values-dev.yaml'):

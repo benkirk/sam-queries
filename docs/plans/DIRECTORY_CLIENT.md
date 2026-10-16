@@ -75,11 +75,11 @@ URL empty and the check lever False.
 
 | Name | Values | Prod `values.yaml` | Dev `values-dev.yaml` |
 |---|---|---|---|
-| `DIRECTORY_PROVIDER` | `''` (off) or `ucar` | `""` | `ucar` |
-| `DIRECTORY_URL` | `''` = off | `""` | `ldap://ldap.ucar.edu` |
+| `DIRECTORY_PROVIDER` | `''` (off) or `ucar` | `ucar` | `ucar` |
+| `DIRECTORY_URL` | `''` = off | `ldap://ldap.ucar.edu` | `ldap://ldap.ucar.edu` |
 | `DIRECTORY_BASE_DN` | default `dc=ucar,dc=edu` | | |
 | `DIRECTORY_TIMEOUT_SECONDS` | connect and receive, default `5` | | |
-| `DIRECTORY_CHECK_ON_SYNC` | `0`/`1`: the after-commit hook | `"0"` | `"1"` |
+| `DIRECTORY_CHECK_ON_SYNC` | `0`/`1`: the after-commit hook | `"1"` (armed; nothing PUTs to prod until the daemon's `SAM_URL` flips) | `"1"` |
 | `DIRECTORY_APPLY_<KIND>` | `0`/`1` per `KINDS` entry: the trust stage for that kind, whichever path triggers the write | absent | absent until step 2 soaks |
 
 `KINDS = ('person', 'position', 'collaboration', 'organization', 'institution', 'group')`.
@@ -202,8 +202,9 @@ passes `None`) and in `put_user` (`'person'`). `sync_user` keeps returning `unix
   `('person', upid)` call; `run_check` raising -> still 200 and one WARNING;
   `DirectoryUnavailable` -> latch set and the second PUT makes no call; an organization PUT reaches
   the hook with kind `organization`).
-- Dev pre-flight (Ben): a samuel-dev pod reaches `ldap.ucar.edu:389`. The chart has no egress
-  policy; the first signal otherwise is the `directory unavailable` warning and the latch.
+- Dev pre-flight: a samuel-dev pod reaches `ldap.ucar.edu:389` (confirmed 2026-10-16; the
+  chart has no egress policy). Prod is the same cluster; the Configuration block's latch line
+  is the first signal if its route differs.
 
 ## 5. Step 2: apply on sync, per kind
 
@@ -330,7 +331,7 @@ still 200 and SAM unchanged beyond the PUT.
 3. Dev: deploy the branch; Ben confirms pod egress to 389; dev values turn the check on; the
    shadow soak's daily check reads the new lines alongside `compare-dumps`. Step 2 levers go on
    in dev only after a few days of clean step-1 logs, one kind at a time.
-4. Prod values stay empty and off throughout this PR.
+4. Prod reads too (Ben, 2026-10-16): the panels and the block work there on deploy; the check is armed and fires from the daemon's first PUT after the `SAM_URL` flip. No apply lever in either values file.
 
 ## 10. Risks
 
