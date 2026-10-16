@@ -172,6 +172,21 @@ refusal), `src/cli/user/builders.py::build_user_provisioning` L91 and
 - `.claude/rules/directory.md` gains the CLI and task lines; `cli.md`'s command list gains the
   three commands.
 
+## 4.1 The first full report (2026-10-16, local prod snapshot against the live directory, 34 s)
+
+| Kind | Directory | SAM | Drift, largest first |
+|---|---|---|---|
+| person | 28,605 | 28,571 | twin 974, history_open 601, phone 385, start_day 365, no_directory_start 317, finished_vs_open 173, end_day 162, planned_end 105, active 61, missing_in_sam 59, name 36, employer 35, academic_status 33, email 25, missing_in_directory 25, no_sam_row 21, token_type 19, username 2 |
+| organization | 401 | 402 | parent 15, missing_in_directory 1 |
+| institution | 1,412 | 1,410 | state 34, name 28, address 20, acronym 12, missing_in_sam 2 |
+| group (SAM-active only) | 12,181 | 1,670 | adhoc: member_missing_in_directory 791, member_missing_in_sam 115, name 95 (case); active projects: member_missing_in_directory 898, member_missing_in_sam 222, manager_missing_in_directory 205, manager_missing_in_sam 20, tags 27, **missing_in_directory 146** (the census's number); missing_in_sam 6,101 (Google-sourced and retired groups) |
+
+The sweep skips SAM's inactive groups: the directory strips a retired project's members while
+the sync keeps its lead and admin, so the 4,410 retired projects produced 6,430 manager and
+4,681 member rows that are not drift anyone will act on. The panel still compares any group on
+request. The person categories are the AFFILIATIONS § 3.4 shapes at full scale (twins, open
+history, the Workday winter shift), all withheld.
+
 ## 5. Verification
 
 1. `pytest tests/unit/directory tests/unit/queries/test_directory_snapshots.py tests/unit/manage/test_directory_reconcile.py tests/unit/webapp/test_directory_panels.py tests/unit/cli tests/unit/tasks -n 4`, the structural gates (modal shell contract, CSP lint, action cells, route map, docs, Font Awesome names), then the full suite.

@@ -95,15 +95,17 @@ def _institutions(session, keys=None) -> dict:
 
 
 def _groups(session, keys=None) -> dict:
-    """Adhoc groups first (no managers to compare), then every project with a gid: the sync's lists."""
+    """SAM's active groups from the sync's own lists: adhoc first (no managers to compare), then
+    projects. Inactive ones are skipped: the directory strips an inactive group's members while
+    the sync keeps its lead and admin, so 4,400 retired projects would drown the live drift."""
     out = {}
     for row in groups(session):
-        if row['posix_gid'] is not None:
+        if row['posix_gid'] is not None and row['active']:
             out[row['posix_gid']] = GroupSnapshot(
                 gid=row['posix_gid'], name=row['name'], active=row['active'],
                 tags=frozenset(row['tags']), member_upids=frozenset(row['upids']))
     for row in project_groups(session):
-        if row['posix_gid'] is not None:
+        if row['posix_gid'] is not None and row['active']:
             out.setdefault(row['posix_gid'], GroupSnapshot(
                 gid=row['posix_gid'], name=row['name'], active=row['active'],
                 tags=frozenset(row['tags']), member_upids=frozenset(row['upids']),
