@@ -9,6 +9,7 @@ from datetime import date, datetime
 from rich import box
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 
+from cli.core.context import Context
 from sam import fmt
 
 #: What every formatter here renders for "nothing to show". Matches
