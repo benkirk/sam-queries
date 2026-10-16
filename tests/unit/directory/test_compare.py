@@ -271,3 +271,14 @@ class TestOrganizationsInstitutionsGroups:
                                                      frozenset({7, 35399})), key='csg', side='sam')
         assert categories(tagged) == ['active', 'tags']
         assert compare_group(None, snap, key='csg', side='sam').fragment() == 'absent'
+
+    def test_group_managers_compare_only_when_sam_holds_them(self):
+        record = GroupRecord(68283, 'SCSG0001', ('hpc',), (7, 35399), True, managers=(7, 35399))
+        project = GroupSnapshot(68283, 'SCSG0001', True, frozenset({'hpc'}), frozenset({7, 35399}),
+                                managers=frozenset({35399, 8}))
+        report = compare_group(record, project, key='SCSG0001', side='sam')
+        assert categories(report) == ['manager_missing_in_directory', 'manager_missing_in_sam']
+        assert one(report, 'manager_missing_in_sam').directory_id == '7'
+        assert one(report, 'manager_missing_in_directory').sam_value == '8'
+        adhoc = GroupSnapshot(68283, 'SCSG0001', True, frozenset({'hpc'}), frozenset({7, 35399}))
+        assert compare_group(record, adhoc, key='SCSG0001', side='sam').discrepancies == ()

@@ -162,6 +162,15 @@ class TestProjectGroups:
         assert all(p['name'] != project.projcode
                    for p in q.project_groups(session, since=future))
 
+    def test_one_project_is_the_same_row_as_the_full_list(self, session, hpc_branch):
+        """The directory client's SAM side reads this row, so it cannot drift from the sync's."""
+        project, lead = _branch_project(session, hpc_branch, lead_active=False)
+        other, _ = _branch_project(session, hpc_branch)
+        row = q.project_group(session, project)
+        assert row == _project_row(session, project)
+        assert row['managers'] == row['upids'] == [lead.upid]
+        assert [r['name'] for r in q.project_groups(session, project_id=other.project_id)] == [other.projcode]
+
 
 class TestReadSince:
 

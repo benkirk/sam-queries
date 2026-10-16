@@ -34,7 +34,8 @@ INSTITUTION_CATEGORIES: Tuple[str, ...] = (
     'nsf_org_code', 'address')
 GROUP_CATEGORIES: Tuple[str, ...] = (
     'missing_in_sam', 'missing_in_directory', 'name', 'active', 'tags',
-    'member_missing_in_sam', 'member_missing_in_directory')
+    'member_missing_in_sam', 'member_missing_in_directory',
+    'manager_missing_in_sam', 'manager_missing_in_directory')
 
 SIDES = ('increment', 'sam')
 NAME_FIELDS = ('first_name', 'last_name', 'middle_name', 'nickname', 'name_suffix')
@@ -105,6 +106,8 @@ class GroupSnapshot:
     active: bool = False
     tags: FrozenSet[str] = frozenset()
     member_upids: FrozenSet[int] = frozenset()
+    #: None when SAM holds no manager notion (adhoc groups): managers are then not compared.
+    managers: Optional[FrozenSet[int]] = None
 
 
 # --- the result ---------------------------------------------------------------
@@ -400,8 +403,6 @@ def compare_group(record: Optional[GroupRecord], snap: Optional[GroupSnapshot], 
                                    ('active', 'active', _flag(snap.active), _flag(record.active))),
                          snap.gid)
     record_tags = set(record.tags)
-    if sam_tags_only:
-        record_tags &= set(snap.tags) | record_tags
     if set(snap.tags) - record_tags or (record_tags - set(snap.tags) and not sam_tags_only):
         found.append(Discrepancy('group', 'tags', 'tags', sam_id=snap.gid,
                                  sam_value=','.join(sorted(snap.tags)),
@@ -412,4 +413,11 @@ def compare_group(record: Optional[GroupRecord], snap: Optional[GroupSnapshot], 
     for upid in sorted(set(snap.member_upids) - set(record.member_upids)):
         found.append(Discrepancy('group', 'member_missing_in_directory', 'member',
                                  sam_value=str(upid)))
+    if snap.managers is not None:
+        for upid in sorted(set(record.managers) - snap.managers):
+            found.append(Discrepancy('group', 'manager_missing_in_sam', 'manager',
+                                     directory_id=str(upid), directory_value=str(upid)))
+        for upid in sorted(snap.managers - set(record.managers)):
+            found.append(Discrepancy('group', 'manager_missing_in_directory', 'manager',
+                                     sam_value=str(upid)))
     return DriftReport('group', key, side, True, tuple(found))

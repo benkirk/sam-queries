@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from contextlib import contextmanager
+from dataclasses import replace
 from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple
 
 from sam.dates import from_generalized_time
@@ -390,7 +391,17 @@ class UCARDirectory(DirectoryReader):
             entries = self._search(
                 conn, GROUPS, f'(&(objectClass={GROUP_CLASS})(gidNumber={_escape(int(gid))}))',
                 GROUP_ATTRS, scope='level', limit=1)
-        return parse_group(entries[0][1]) if entries else None
+            record = parse_group(entries[0][1]) if entries else None
+            if record is None:
+                return None
+            return replace(record, managers=self._managers(conn, record.gid))
+
+    def _managers(self, conn, gid: int) -> Tuple[int, ...]:
+        """upids of the people whose ``x-ucar-adminFor`` names the group (the person-side attribute)."""
+        dn = f'gidNumber={gid},{GROUPS},{self.config.base_dn}'
+        entries = self._search(conn, PEOPLE, f'(x-ucar-adminFor={_escape(dn)})',
+                               ('x-ucar-upid',), scope='level')
+        return tuple(sorted(u for u in (_int(a, 'x-ucar-upid') for _, a in entries) if u is not None))
 
     def search(self, kind: str, query: str, *, limit: int = 20) -> List[Any]:
         q = _escape(query.strip())

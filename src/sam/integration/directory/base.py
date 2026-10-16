@@ -126,6 +126,7 @@ class GroupRecord:
     active: bool = False
     manager_gids: Tuple[int, ...] = ()
     source: str = ''
+    managers: Tuple[int, ...] = ()
 
 
 class DirectoryReader(ABC):

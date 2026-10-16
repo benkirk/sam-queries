@@ -166,7 +166,36 @@ class TestOtherRecords:
         assert parse_group(entry(cn='x')) is None
 
 
+class _Conn:
+    """A connection whose ``search`` answers from a queue; ``calls`` records base, filter, scope."""
+    def __init__(self, answers):
+        self.answers = [[{'type': 'searchResEntry', 'dn': dn, 'attributes': attrs} for dn, attrs in a]
+                        for a in answers]
+        self.calls = []
+        self.response = []
+
+    def search(self, base, flt, **kw):
+        self.calls.append((base, flt, kw.get('search_scope')))
+        self.response = self.answers.pop(0)
+
+
 class TestAdapterWithoutASocket:
+    def test_group_reads_its_managers_from_the_people_side(self):
+        """One connection, two searches: the group, then the people whose adminFor names it."""
+        reader = UCARDirectory(DirectoryConfig(provider='ucar', url='ldap://ldap.example.invalid'))
+        group = entry(attrs={'gidNumber': '68283', 'x-ucar-groupName': 'SCSG0001', 'cn': 'scsg0001',
+                             'x-ucar-active': 'TRUE', 'x-ucar-source': 'PDB',
+                             'uniqueMember': ['x-ucar-upid=35399,ou=allPeople,dc=ucar,dc=edu']})
+        people = [('x-ucar-upid=7,ou=allPeople,dc=ucar,dc=edu', entry(attrs={'x-ucar-upid': '7'})),
+                  ('x-ucar-upid=35399,ou=allPeople,dc=ucar,dc=edu', entry(attrs={'x-ucar-upid': '35399'}))]
+        reader._shared = conn = _Conn([[('gidNumber=68283,ou=allGroups,dc=ucar,dc=edu', group)], people])
+        record = reader.group(68283)
+        assert (record.name, record.member_upids, record.managers) == ('SCSG0001', (35399,), (7, 35399))
+        assert [c[0] for c in conn.calls] == ['ou=allGroups,dc=ucar,dc=edu', 'ou=allPeople,dc=ucar,dc=edu']
+        assert conn.calls[1][1] == '(x-ucar-adminFor=gidNumber=68283,ou=allGroups,dc=ucar,dc=edu)'
+        reader._shared = _Conn([[]])
+        assert reader.group(1) is None
+
     def test_an_empty_url_is_not_configured_and_refuses(self):
         from sam.integration.directory import DirectoryNotConfigured
         reader = UCARDirectory(DirectoryConfig(provider='ucar', url=''))

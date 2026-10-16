@@ -5,13 +5,15 @@ from datetime import datetime
 
 import pytest
 
-from factories import (make_email_address, make_institution, make_organization, make_phone,
-                       make_user, make_user_institution, make_user_organization, next_int)
+from factories import (make_adhoc_group, make_adhoc_system_account_entry, make_email_address,
+                       make_institution, make_organization, make_phone, make_project, make_user,
+                       make_user_institution, make_user_organization, next_int)
 from factories.directory import FakeDirectory, make_person_record, make_position_record
 from sam.integration.directory import DirectoryUnavailable, OrganizationRecord, outage
 from sam.queries.directory import (check_organization, check_person, run_check,
-                                   snapshot_from_increment, snapshot_from_organization,
-                                   snapshot_from_user)
+                                   snapshot_from_group, snapshot_from_increment,
+                                   snapshot_from_organization, snapshot_from_user)
+from sam.queries.ldapsync import project_group
 from sam.schemas.forms.ldapsync import OrganizationSyncInput, UserSyncInput
 
 NOW = datetime(2026, 10, 15, 12, 0, 0)
@@ -35,6 +37,28 @@ def user(session):
                           start_date=datetime(2020, 7, 1))
     session.refresh(u)
     return u
+
+
+class TestGroupSnapshots:
+    def test_a_project_group_is_the_sync_row(self, session):
+        """An inactive lead stays a member and a manager; the tags carry the sync's constants."""
+        lead = make_user(session, upid=_upid(), active=False)
+        project = make_project(session, lead=lead)
+        project.unix_gid = 70_000_000 + _WORKER * 100_000 + next_int('directory_gid')
+        session.flush()
+        snap = snapshot_from_group(session, project.unix_gid)
+        row = project_group(session, project)
+        assert (snap.name, snap.active, snap.member_upids, snap.managers) == (
+            project.projcode, True, frozenset({lead.upid}), frozenset({lead.upid}))
+        assert snap.tags == frozenset(row['tags']) and 'exclude-from-google' in snap.tags
+
+    def test_an_adhoc_group_holds_no_managers(self, session):
+        person = make_user(session, upid=_upid())
+        group = make_adhoc_group(session)
+        make_adhoc_system_account_entry(session, group, person.username)
+        snap = snapshot_from_group(session, group.unix_gid)
+        assert (snap.name, snap.member_upids, snap.managers) == (
+            group.group_name, frozenset({person.upid}), None)
 
 
 class TestSnapshots:

@@ -246,10 +246,10 @@ def groups(session: Session) -> list:
 
 #: Active members on a live allocation of a configurable resource (legacy jdbcQuery.xml:394).
 #: Deviation: a NULL allocation end counts as live (legacy's NULL arithmetic dropped it).
-_SQL_PROJECT_MEMBERS = text("""
+_SQL_PROJECT_MEMBERS = """
     SELECT DISTINCT a.project_id, u.upid, u.username, lt.type AS login_type
       FROM account a
-      JOIN project p ON (a.project_id = p.project_id AND p.active IS TRUE)
+      JOIN project p ON (a.project_id = p.project_id AND p.active IS TRUE {scope})
       JOIN resources r ON (a.resource_id = r.resource_id AND r.configurable IS TRUE)
       JOIN allocation al ON (a.account_id = al.account_id
            AND (al.end_date IS NULL OR al.end_date > :grace_cutoff))
@@ -258,22 +258,22 @@ _SQL_PROJECT_MEMBERS = text("""
            AND (au.end_date IS NULL OR au.end_date > :now))
       JOIN users u ON (au.user_id = u.user_id AND u.active IS TRUE)
       JOIN login_type lt ON (u.login_type_id = lt.login_type_id)
-""")
+"""
 
 #: Access branches of each active project's live allocations. Deviation: legacy also
 #: required an active member, so a project held only by its lead got no branch tag.
-_SQL_PROJECT_BRANCHES = text("""
+_SQL_PROJECT_BRANCHES = """
     SELECT DISTINCT a.project_id, ab.name AS branch
       FROM account a
-      JOIN project p ON (a.project_id = p.project_id AND p.active IS TRUE)
+      JOIN project p ON (a.project_id = p.project_id AND p.active IS TRUE {scope})
       JOIN resources r ON (a.resource_id = r.resource_id AND r.configurable IS TRUE)
       JOIN access_branch_resource abr ON abr.resource_id = r.resource_id
       JOIN access_branch ab ON ab.access_branch_id = abr.access_branch_id
       JOIN allocation al ON (a.account_id = al.account_id
            AND (al.end_date IS NULL OR al.end_date > :grace_cutoff))
-""")
+"""
 
-_SQL_PROJECTS = text("""
+_SQL_PROJECTS = """
     SELECT p.project_id, p.projcode, p.unix_gid, p.active, p.modified_time,
            p.creation_time, p.project_lead_user_id, p.project_admin_user_id,
            f.code AS facility_code
@@ -281,16 +281,25 @@ _SQL_PROJECTS = text("""
       LEFT JOIN allocation_type aty ON aty.allocation_type_id = p.allocation_type_id
       LEFT JOIN panel pn ON pn.panel_id = aty.panel_id
       LEFT JOIN facility f ON f.facility_id = pn.facility_id
+     {where}
      ORDER BY p.projcode
-""")
+"""
 
-_SQL_MEMBERSHIP_TIMES = text("""
+_SQL_MEMBERSHIP_TIMES = """
     SELECT a.project_id, MAX(au.modified_time) AS max_modified,
            MAX(au.creation_time) AS max_created
       FROM account a
       JOIN account_user au ON au.account_id = a.account_id
+     {where}
      GROUP BY a.project_id
-""")
+"""
+
+
+def _scoped(sql: str, project_id: Optional[int], column: str = 'p.project_id'):
+    """The statement over every project, or over one: ``{scope}`` (an AND) or ``{where}``."""
+    cond = f'{column} = :project_id'
+    return text(sql.format(scope=f'AND {cond}' if project_id else '',
+                           where=f'WHERE {cond}' if project_id else ''))
 
 
 def read_since(value) -> Optional[datetime]:
@@ -309,13 +318,15 @@ def _member_key(login_type, upid, username):
     return ('upid', upid) if upid is not None else None
 
 
-def project_groups(session: Session, since: Optional[datetime] = None) -> list:
+def project_groups(session: Session, since: Optional[datetime] = None, *,
+                   project_id: Optional[int] = None) -> list:
     """Every project as a unix group with SAM's membership; lead and admin always members."""
     now = datetime.now()
-    params = {'grace_cutoff': grace_cutoff(ACCESS_GRACE_PERIOD), 'now': now}
+    scope = {'project_id': project_id} if project_id else {}
+    params = {'grace_cutoff': grace_cutoff(ACCESS_GRACE_PERIOD), 'now': now, **scope}
 
     members = defaultdict(set)
-    for r in session.execute(_SQL_PROJECT_MEMBERS, params):
+    for r in session.execute(_scoped(_SQL_PROJECT_MEMBERS, project_id), params):
         key = _member_key(r.login_type, r.upid, r.username)
         if key is None:
             logger.warning('projectGroup: project_id=%s member %s has no upid; skipped',
@@ -324,11 +335,12 @@ def project_groups(session: Session, since: Optional[datetime] = None) -> list:
         members[r.project_id].add(key)
 
     branches = defaultdict(set)
-    for r in session.execute(_SQL_PROJECT_BRANCHES, params):
+    for r in session.execute(_scoped(_SQL_PROJECT_BRANCHES, project_id), params):
         branches[r.project_id].add(r.branch)
 
-    times = {r.project_id: r for r in session.execute(_SQL_MEMBERSHIP_TIMES)}
-    projects = session.execute(_SQL_PROJECTS).all()
+    times = {r.project_id: r for r in session.execute(
+        _scoped(_SQL_MEMBERSHIP_TIMES, project_id, 'a.project_id'), scope)}
+    projects = session.execute(_scoped(_SQL_PROJECTS, project_id), scope).all()
 
     lead_admin_ids = {uid for p in projects
                       for uid in (p.project_lead_user_id, p.project_admin_user_id) if uid}
@@ -351,6 +363,7 @@ def project_groups(session: Session, since: Optional[datetime] = None) -> list:
             continue
 
         keys = set(members.get(p.project_id, ()))
+        managers = set()
         for uid in (p.project_lead_user_id, p.project_admin_user_id):
             person = people.get(uid)
             if person is None:
@@ -361,6 +374,8 @@ def project_groups(session: Session, since: Optional[datetime] = None) -> list:
                                p.projcode, person.username)
                 continue
             keys.add(key)
+            if key[0] == 'upid':
+                managers.add(key[1])
 
         tags = sorted(branches.get(p.project_id, ()), key=str.lower)
         tags.append(EXCLUDE_FROM_GOOGLE_TAG)
@@ -373,9 +388,16 @@ def project_groups(session: Session, since: Optional[datetime] = None) -> list:
             'upids': sorted(v for k, v in keys if k == 'upid'),
             'rolenames': ci_unique((v for k, v in keys if k == 'role'), sort=True),
             'tags': tags,
+            'managers': sorted(managers),
             'last_modified': last_modified,
         })
     return out
+
+
+def project_group(session: Session, project) -> Optional[dict]:
+    """``project_groups`` scoped to one project: the row the sync sends (``managers`` = lead and admin upids)."""
+    rows = project_groups(session, project_id=project.project_id)
+    return rows[0] if rows else None
 
 
 # ---------------------------------------------------------------------------
@@ -409,5 +431,5 @@ __all__ = [
     'USER_LOGIN', 'ROLE_LOGIN', 'EXCLUDE_FROM_GOOGLE_TAG', 'AUTO_RENEWED_PROJECT_TAG',
     'institutions', 'organizations', 'gid_allocations', 'group_tags',
     'access_branch_names', 'users', 'user_by_unix_uid', 'groups',
-    'read_since', 'project_groups', 'sync_status',
+    'read_since', 'project_groups', 'project_group', 'sync_status',
 ]

@@ -97,6 +97,13 @@ def make_collaboration_record(institution_id: int = 1, **overrides) -> Collabora
     return CollaborationRecord(**values)
 
 
+def make_group_record(gid: int = 68283, name: str = 'SCSG0001', **overrides) -> GroupRecord:
+    values = dict(gid=gid, name=name, tags=('exclude-from-google', 'hpc'), member_upids=(35399,),
+                  active=True, manager_gids=(), source='PDB', managers=())
+    values.update(overrides)
+    return GroupRecord(**values)
+
+
 def entry(**attrs) -> Dict[str, List[str]]:
     """ldap3's ``attributes`` dict: a list per attribute, hyphenated names via ``attrs={...}``."""
     raw = attrs.pop('attrs', {})

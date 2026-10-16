@@ -27,6 +27,7 @@ from sam.integration.directory.compare import (
 from sam.integration.directory.config import DirectoryConfig
 from sam.integration.directory.ucar import academic_status_code
 from sam.projects.projects import Project
+from sam.queries.ldapsync import project_group
 
 logger = logging.getLogger(__name__)
 
@@ -100,9 +101,10 @@ def snapshot_from_group(session, gid: int) -> Optional[GroupSnapshot]:
     project = session.query(Project).filter(Project.unix_gid == gid).first()
     if project is None:
         return None
-    return GroupSnapshot(gid=gid, name=project.projcode, active=bool(project.active),
-                         member_upids=frozenset(u.upid for u in project.users
-                                                if u.upid is not None and u.is_active))
+    row = project_group(session, project)   # the sync's own rule: one derivation, two consumers
+    return GroupSnapshot(gid=gid, name=row['name'], active=row['active'],
+                         tags=frozenset(row['tags']), member_upids=frozenset(row['upids']),
+                         managers=frozenset(row['managers']))
 
 
 # --- increment snapshots (the ``*SyncInput.load()`` dicts) -------------------------------
