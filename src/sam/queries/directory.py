@@ -90,15 +90,18 @@ def _upids_for(session, usernames) -> frozenset:
     return frozenset(upid for (upid,) in rows)
 
 
-def snapshot_from_group(session, gid: int) -> Optional[GroupSnapshot]:
-    """An adhoc group by gid (members and branch tags from its entries), else the project holding it."""
-    group = session.query(AdhocGroup).filter(AdhocGroup.unix_gid == gid).first()
+def snapshot_from_group(session, gid: int, *, group=None, project=None) -> Optional[GroupSnapshot]:
+    """An adhoc group by gid (members and branch tags from its entries), else the project holding it;
+    a caller that holds the row passes it and saves the lookup."""
+    if group is None and project is None:
+        group = session.query(AdhocGroup).filter(AdhocGroup.unix_gid == gid).first()
     if group is not None:
         entries = list(group.system_accounts)
         return GroupSnapshot(gid=gid, name=group.group_name, active=bool(group.active),
                              tags=frozenset(e.access_branch_name for e in entries),
                              member_upids=_upids_for(session, {e.username for e in entries}))
-    project = session.query(Project).filter(Project.unix_gid == gid).first()
+    if project is None:
+        project = session.query(Project).filter(Project.unix_gid == gid).first()
     if project is None:
         return None
     row = project_group(session, project)   # the sync's own rule: one derivation, two consumers

@@ -164,7 +164,7 @@ def institution_panel(session, inst, *, record=None,
 
 
 def _group_panel(session, gid: Optional[int], *, kind: str, key: str, roles: Dict[int, str],
-                 record=None) -> Dict[str, Any]:
+                 record=None, project=None, group=None) -> Dict[str, Any]:
     """A unix group as the directory holds it (managers from the people side) and SAM's drift."""
     config = DirectoryConfig.from_environment()
     state = _base(config)
@@ -176,7 +176,7 @@ def _group_panel(session, gid: Optional[int], *, kind: str, key: str, roles: Dic
     record = _load(state, directory_reader().group, gid, record)
     if record is None:
         return state
-    snap = snapshot_from_group(session, gid)
+    snap = snapshot_from_group(session, gid, project=project, group=group)
     upids = set(record.member_upids) | set(record.managers) | set(roles)
     if snap is not None:
         upids |= snap.member_upids | (snap.managers or frozenset())
@@ -201,17 +201,21 @@ def _group_panel(session, gid: Optional[int], *, kind: str, key: str, roles: Dic
 
 def project_group_panel(session, project, *, record=None) -> Dict[str, Any]:
     """The project's unix group; the lead and admin are SAM's managers."""
+    # One id-to-upid query: loading the two User objects pulls their selectin collections too.
+    ids = {role: getattr(project, f'project_{role}_user_id') for role in ('lead', 'admin')}
+    wanted = {i for i in ids.values() if i is not None}
+    upid_of = dict(session.query(User.user_id, User.upid).filter(User.user_id.in_(wanted))) if wanted else {}
     roles = {}
     for role in ('lead', 'admin'):
-        person = getattr(project, role)
-        if person is not None and person.upid is not None:
-            roles.setdefault(person.upid, role)
+        upid = upid_of.get(ids[role])
+        if upid is not None:
+            roles.setdefault(upid, role)
     return _group_panel(session, project.unix_gid, kind='project', key=project.projcode,
-                        roles=roles, record=record)
+                        roles=roles, record=record, project=project)
 
 
 def adhoc_group_panel(session, group, *, record=None) -> Dict[str, Any]:
     """An adhoc group; SAM holds no managers for it, so the directory's are shown, not compared."""
     return _group_panel(session, group.unix_gid, kind='adhoc', key=group.group_name, roles={},
-                        record=record)
+                        record=record, group=group)
 

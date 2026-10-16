@@ -167,6 +167,30 @@ class TestProjectPanel:
             (project.lead.username, 'lead'), ('', '')]
 
 
+    def test_the_project_view_is_a_handful_of_statements(self, session, configured, app):
+        """Sweep 29: loading the lead and admin User objects cost 11 statements (their selectin
+        collections) to read two upids; one id-to-upid query reads them. Pinned."""
+        from sqlalchemy import event
+        from sam.manage.directory_panel import project_group_panel
+        lead = make_user(session, upid=True)
+        project = make_project(session, lead=lead)
+        project.unix_gid = 77_777_779
+        session.flush()
+        record = make_group_record(gid=project.unix_gid, name=project.projcode,
+                                   member_upids=(lead.upid,), managers=(lead.upid,))
+        seen = []
+        listen = lambda conn, cursor, statement, *a: seen.append(statement)
+        engine = session.get_bind()
+        event.listen(engine, 'before_cursor_execute', listen)
+        try:
+            with app.app_context():
+                panel = project_group_panel(session, project, record=record)
+        finally:
+            event.remove(engine, 'before_cursor_execute', listen)
+        assert panel['managers'][0]['role'] == 'lead'
+        assert len(seen) <= 8, seen
+
+
 class TestGroupPanel:
     @pytest.fixture
     def csg(self, session):
