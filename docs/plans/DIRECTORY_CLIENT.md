@@ -16,7 +16,7 @@ Implements stage 1 and stage 2 of
 - [x] Step 2a: `sam/manage/directory.py` reconcile per kind behind `DIRECTORY_APPLY_<KIND>`, all off; reconcile tests
 - [x] Step 2b (code): the hook applies the enabled kinds in a second transaction
 - [ ] Step 2b (dev): levers on one kind at a time after clean step-1 days
-- [x] Step 3: Configuration card block; user-card Directory panel (check, apply); organization row action (`webapp/utils/directory_panel.py`, `dashboards/admin/directory_routes.py`)
+- [x] Step 3: Configuration card block; user-card Directory panel (check, apply); organization and institution row actions (`webapp/utils/directory_panel.py`, `dashboards/admin/directory_routes.py`)
 - [ ] Step 4: `sam-search user --directory`, `sam-admin user --directory-apply`, `sam-admin directory --report`, the `directory_report` task named in `SAM_TASKS_DISABLED`
 - [x] Docs: `.claude/rules/directory.md` + `CLAUDE.md` row and tripwire; `.env.example`; `SYSTEMS_INTEGRATION_APIs.md` § 8; AFFILIATIONS status line and Appendix D order
 
@@ -277,8 +277,9 @@ still 200 and SAM unchanged beyond the PUT.
   (`VIEW_ORG_METADATA`) into `#orgDirectoryModal` (shell in `organization_modals.html`;
   facts in `.modal-facts`, never alerts, per the modal ratchet), `POST .../apply`
   (`EDIT_ORG_METADATA`) re-renders the dialog and fires `reloadOrganizationsCard` when
-  something applied. Institutions and groups follow later in the same shape (Appendix D's
-  per-group view).
+  something applied. The Institutions tab has the same action into `#instDirectoryModal`.
+  Groups follow later (Appendix D's per-group view) once the SAM-side member rule matches the
+  sync's `project_groups` query; today `snapshot_from_group` derives members from `Project.users`.
 - Gates: regenerate `tests/unit/snapshots/dashboard_route_map.json` (`ROUTE_MAP_REGEN=1`);
   `HTMX_FRAGMENT_SHELL_DEPS` if a fragment names a host id; the `wire-dashboard-feature` skill
   checklist; CSP (no inline scripts). Tests in `tests/unit/webapp/test_directory_panels.py`

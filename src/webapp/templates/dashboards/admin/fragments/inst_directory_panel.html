@@ -1,0 +1,22 @@
+{# The Directory dialog body for one institution (#instDirectoryModalBody). Context: inst, panel. #}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{{ modal_title('instDirectoryModalLabel', inst.acronym, 'building-columns', meta=inst.institution_id) }}
+<div class="modal-body">
+{% if not panel.configured %}
+<ul class="modal-facts mb-0"><li><i class="fa-solid fa-plug-circle-xmark" aria-hidden="true"></i>No directory is configured (DIRECTORY_URL is empty).</li></ul>
+{% elif not panel.available %}
+<ul class="modal-facts mb-0"><li><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>The directory could not be read{% if panel.error %} ({{ panel.error }}){% endif %}. Try again in a minute.</li></ul>
+{% elif not panel.found %}
+<ul class="modal-facts mb-0"><li><i class="fa-solid fa-building-circle-xmark" aria-hidden="true"></i>Institution {{ inst.institution_id }} is not in the directory.</li></ul>
+{% else %}
+{% set rec = panel.record %}
+<ul class="modal-facts mb-3">
+    <li><i class="fa-solid fa-building-columns" aria-hidden="true"></i><strong>{{ rec.acronym }}</strong> {{ rec.name }} · {{ rec.org_type or '—' }} · source {{ rec.source or '—' }}</li>
+    <li><i class="fa-solid fa-location-dot" aria-hidden="true"></i>{{ rec.city or '—' }}{% if rec.state_code and rec.state_code != rec.country %}, {{ rec.state_code }}{% endif %}{% if rec.country %}, {{ rec.country }}{% endif %}{% if rec.postal_code %} {{ rec.postal_code }}{% endif %}{% if rec.nsf_org_code %} · NSF {{ rec.nsf_org_code }}{% endif %}</li>
+</ul>
+{% set can_apply = has_permission(Permission.EDIT_ORG_METADATA) %}
+{% set apply_url = url_for('admin_dashboard.htmx_institution_directory_apply', inst_id=inst.institution_id) %}
+{% set apply_target = '#instDirectoryModalBody' %}
+{% include 'dashboards/admin/fragments/_directory_drift.html' %}
+{% endif %}
+</div>

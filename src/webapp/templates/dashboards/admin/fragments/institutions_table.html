@@ -165,6 +165,15 @@
                         target_id='editInstitutionFormContainer',
                         title='Edit institution',
                         permission=Permission.EDIT_ORG_METADATA) }}
+                    {% if directory %}
+                    <button type="button" class="btn btn-row"
+                            data-bs-toggle="modal" data-bs-target="#instDirectoryModal"
+                            hx-get="{{ url_for('admin_dashboard.htmx_institution_directory', inst_id=inst.institution_id) }}"
+                            hx-target="#instDirectoryModalBody" hx-trigger="click"
+                            title="Directory" aria-label="Compare {{ inst.acronym }} with the directory">
+                        <i class="fa-solid fa-address-book" aria-hidden="true"></i>
+                    </button>
+                    {% endif %}
                     </span>
                 </td>
             </tr>

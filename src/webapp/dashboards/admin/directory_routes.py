@@ -11,15 +11,17 @@ import json
 from flask import make_response, render_template
 from flask_login import login_required
 
-from sam.core.organizations import Organization
+from sam.core.organizations import Institution, Organization
 from sam.core.users import User
 from sam.integration.directory import DirectoryUnavailable
 from sam.integration.directory.config import DirectoryConfig
 from sam.manage import management_transaction
-from sam.manage.directory import reconcile_organization, reconcile_person
+from sam.manage.directory import (reconcile_institution, reconcile_organization,
+                                  reconcile_person)
 from webapp.api.ldapsync.sync import restore_hook
 from webapp.extensions import db
-from webapp.utils.directory_panel import organization_panel, person_panel
+from webapp.utils.directory_panel import (institution_panel, organization_panel,
+                                          person_panel)
 from webapp.utils.htmx import htmx_not_found
 from webapp.utils.rbac import (Permission, require_permission,
                                require_permission_any_facility)
@@ -28,6 +30,7 @@ from .blueprint import bp
 
 USER_PANEL = 'dashboards/admin/fragments/user_directory_panel.html'
 ORG_PANEL = 'dashboards/admin/fragments/org_directory_panel.html'
+INST_PANEL = 'dashboards/admin/fragments/inst_directory_panel.html'
 
 
 def _reader():
@@ -98,6 +101,41 @@ def htmx_organization_directory_apply(org_id):
         db.session.refresh(org)
     panel = organization_panel(db.session, org, record=record, applied=result)
     resp = make_response(render_template(ORG_PANEL, org=org, panel=panel))
+    if result is not None and result.applied:
+        resp.headers['HX-Trigger'] = json.dumps({'reloadOrganizationsCard': {}})
+    return resp
+
+
+@bp.route('/htmx/institution/<int:inst_id>/directory', methods=['GET'])
+@login_required
+@require_permission_any_facility(Permission.VIEW_ORG_METADATA)
+def htmx_institution_directory(inst_id):
+    inst = db.session.get(Institution, inst_id)
+    if inst is None:
+        return htmx_not_found('Institution')
+    return render_template(INST_PANEL, inst=inst, panel=institution_panel(db.session, inst))
+
+
+@bp.route('/htmx/institution/<int:inst_id>/directory/apply', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_ORG_METADATA)
+def htmx_institution_directory_apply(inst_id):
+    inst = db.session.get(Institution, inst_id)
+    if inst is None:
+        return htmx_not_found('Institution')
+    config = DirectoryConfig.from_environment()
+    reader = _reader()
+    try:
+        record = reader.institution(inst_id) if reader.configured else None
+    except DirectoryUnavailable:
+        return render_template(INST_PANEL, inst=inst, panel=institution_panel(db.session, inst))
+    result = None
+    if record is not None:
+        with management_transaction(db.session):
+            result = reconcile_institution(db.session, inst, record, config=config)
+        db.session.refresh(inst)
+    panel = institution_panel(db.session, inst, record=record, applied=result)
+    resp = make_response(render_template(INST_PANEL, inst=inst, panel=panel))
     if result is not None and result.applied:
         resp.headers['HX-Trigger'] = json.dumps({'reloadOrganizationsCard': {}})
     return resp

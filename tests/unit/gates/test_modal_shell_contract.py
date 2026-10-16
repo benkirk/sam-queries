@@ -217,6 +217,7 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'createInstitutionFormContainer', 'createInstitutionModal',
         'createInstitutionTypeFormContainer', 'createInstitutionTypeModal',
         'createMnemonicCodeFormContainer', 'createMnemonicCodeModal',
+        'instDirectoryModal', 'instDirectoryModalBody',
         'projectDetailsModal', 'projectDetailsModalBody',
         'userDetailsModal', 'userDetailsModalBody'],
     # The Mnemonic Codes console table (loaded only into organizations_mnemonics.html,

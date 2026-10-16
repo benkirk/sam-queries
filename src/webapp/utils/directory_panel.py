@@ -13,7 +13,8 @@ from typing import Any, Dict, List, Optional
 from sam.core.organizations import Institution, Organization
 from sam.integration.directory import KINDS, DirectoryUnavailable
 from sam.integration.directory.config import DirectoryConfig
-from sam.manage.directory import ReconcileResult, reconcile_organization, reconcile_person
+from sam.manage.directory import (ReconcileResult, reconcile_institution,
+                                  reconcile_organization, reconcile_person)
 
 DISPOSITIONS = ('would apply', 'withheld', 'applied')
 
@@ -144,6 +145,22 @@ def organization_panel(session, org, *, record=None,
     parent = session.get(Organization, record.parent_org_id) if record.parent_org_id else None
     state['parent'] = parent.acronym if parent else ''
     result = reconcile_organization(session, org, record, config=config, dry_run=True)
+    return _finish(state, result, lambda d: (d.sam_value, d.directory_value), applied)
+
+
+def institution_panel(session, inst, *, record=None,
+                      applied: Optional[ReconcileResult] = None) -> Dict[str, Any]:
+    """The institution as the directory holds it, and SAM's drift."""
+    config = DirectoryConfig.from_environment()
+    state = _base(config)
+    if record is None:
+        record = _read(state, _reader().institution, inst.institution_id)
+    else:
+        state['found'] = True
+        state['record'] = record
+    if record is None:
+        return state
+    result = reconcile_institution(session, inst, record, config=config, dry_run=True)
     return _finish(state, result, lambda d: (d.sam_value, d.directory_value), applied)
 
 

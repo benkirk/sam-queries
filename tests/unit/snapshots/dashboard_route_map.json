@@ -848,6 +848,20 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_institution_directory",
+    "/admin/htmx/institution/<int:inst_id>/directory",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_institution_directory_apply",
+    "/admin/htmx/institution/<int:inst_id>/directory/apply",
+    [
+      "POST"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_institution_edit",
     "/admin/htmx/institution-edit/<int:inst_id>",
     [

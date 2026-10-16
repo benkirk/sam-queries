@@ -9,7 +9,8 @@ import pytest
 
 from factories.directory import FakeDirectory, make_person_record, make_position_record
 from sam.core.users import User
-from sam.integration.directory import DirectoryUnavailable, OrganizationRecord, outage
+from sam.integration.directory import (DirectoryUnavailable, InstitutionRecord,
+                                       OrganizationRecord, outage)
 from sam.integration.directory.compare import DriftReport
 from sam.manage.directory import Change, ReconcileResult
 
@@ -192,6 +193,43 @@ class TestOrganizationDialog:
                                             DriftReport('organization', '', 'sam', True, ()),
                                             applied=(Change('organization', 'name', 'name'),)))
         resp = auth_client.post(f'/admin/htmx/organization/{org.organization_id}/directory/apply')
+        assert resp.status_code == 200
+        assert json.loads(resp.headers['HX-Trigger']) == {'reloadOrganizationsCard': {}}
+        assert b'Applied 1' in resp.data
+
+
+class TestInstitutionDialog:
+    def test_the_row_action_appears_only_with_a_directory(self, auth_client, configured):
+        html = auth_client.get('/admin/htmx/institutions-fragment?fresh=1').get_data(as_text=True)
+        assert 'instDirectoryModal' in html
+
+    def test_non_admin_denied(self, non_admin_client, any_institution):
+        iid = any_institution.institution_id
+        assert non_admin_client.get(f'/admin/htmx/institution/{iid}/directory').status_code == 403
+        assert non_admin_client.post(f'/admin/htmx/institution/{iid}/directory/apply').status_code == 403
+
+    def test_unknown_institution(self, auth_client, configured):
+        resp = auth_client.get('/admin/htmx/institution/999999999/directory')
+        assert resp.status_code == 404 and b'Institution not found' in resp.data
+
+    def test_the_dialog(self, auth_client, configured, any_institution):
+        inst = any_institution
+        configured.add(InstitutionRecord(inst.institution_id, inst.acronym, 'Renamed in the directory',
+                                         country='US', state_code='AK', org_type='University'))
+        html = auth_client.get(f'/admin/htmx/institution/{inst.institution_id}/directory').get_data(as_text=True)
+        assert 'instDirectoryModalLabel' in html and 'Renamed in the directory' in html
+        assert 'withheld' in html and 'hx-post' not in html
+
+    def test_apply_reloads_the_card_when_something_applied(self, auth_client, configured,
+                                                           any_institution, monkeypatch):
+        import webapp.dashboards.admin.directory_routes as routes
+        inst = any_institution
+        configured.add(InstitutionRecord(inst.institution_id, inst.acronym, 'Renamed'))
+        monkeypatch.setattr(routes, 'reconcile_institution', lambda session, i, record, *, config, **kw:
+                            ReconcileResult('institution', str(i.institution_id),
+                                            DriftReport('institution', '', 'sam', True, ()),
+                                            applied=(Change('institution', 'name', 'name'),)))
+        resp = auth_client.post(f'/admin/htmx/institution/{inst.institution_id}/directory/apply')
         assert resp.status_code == 200
         assert json.loads(resp.headers['HX-Trigger']) == {'reloadOrganizationsCard': {}}
         assert b'Applied 1' in resp.data

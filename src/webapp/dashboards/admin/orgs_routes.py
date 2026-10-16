@@ -285,6 +285,7 @@ def htmx_institutions_fragment():
     return render_template(
         'dashboards/admin/fragments/institutions_table.html',
         institution_types_grouped=institution_types_grouped,
+        directory=directory_configured(),
         total_institutions=len(institutions),
         inst_to_mnemonic=inst_to_mnemonic,
         user_chips=user_chips,
