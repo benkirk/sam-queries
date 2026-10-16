@@ -31,7 +31,7 @@ from sam.integration.directory.compare import (
     compare_person,
 )
 from sam.integration.directory.config import DirectoryConfig
-from sam.manage.ldapsync import _apply_active_transition, _state_prov_id
+from sam.manage.ldapsync import apply_active_transition, state_prov_id
 from sam.queries.directory import (snapshot_from_group, snapshot_from_institution,
                                    snapshot_from_organization, snapshot_from_user)
 
@@ -119,7 +119,7 @@ def _person_field(r: _Reconciler, session, user: User, record: PersonRecord, d: 
                   now: datetime, on_reactivate) -> None:
     if d.category == 'active':
         def flip():
-            closed_at = _apply_active_transition(user, record.active, now)
+            closed_at = apply_active_transition(user, record.active, now)
             if closed_at is not None and on_reactivate is not None:
                 on_reactivate(user, closed_at)
         r.apply(d, flip)
@@ -308,7 +308,7 @@ def reconcile_institution(session, inst: Optional[Institution],
     fields = {'name': record.name or None, 'acronym': record.acronym or None,
               'nsf_org_code': record.nsf_org_code or None, 'address': record.street or None,
               'city': record.city or None, 'zip': record.postal_code or None,
-              'state_prov_id': _state_prov_id(session, record.country, record.state_code,
+              'state_prov_id': state_prov_id(session, record.country, record.state_code,
                                               record.acronym)}
     if type_id is not None:
         fields['institution_type_id'] = type_id
