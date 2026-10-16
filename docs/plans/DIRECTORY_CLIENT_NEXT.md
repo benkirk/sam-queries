@@ -179,12 +179,12 @@ refusal), `src/cli/user/builders.py::build_user_provisioning` L91 and
 | person | 28,605 | 28,571 | twin 974, history_open 601, phone 385, start_day 365, no_directory_start 317, finished_vs_open 173, end_day 162, planned_end 105, active 61, missing_in_sam 59, name 36, employer 35, academic_status 33, email 25, missing_in_directory 25, no_sam_row 21, token_type 19, username 2 |
 | organization | 401 | 402 | parent 15, missing_in_directory 1 |
 | institution | 1,412 | 1,410 | state 34, name 28, address 20, acronym 12, missing_in_sam 2 |
-| group (SAM-active only) | 12,181 | 1,670 | adhoc: member_missing_in_directory 791, member_missing_in_sam 115, name 95 (case); active projects: member_missing_in_directory 898, member_missing_in_sam 222, manager_missing_in_directory 205, manager_missing_in_sam 20, tags 27, **missing_in_directory 146** (the census's number); missing_in_sam 6,101 (Google-sourced and retired groups) |
+| group (SAM's active ones compared) | 12,181 | 1,777 | missing_in_sam 6,101 (Google-sourced and groups SAM never had), member_missing_in_directory 1,689 (adhoc 791, projects 898), member_missing_in_sam 309, manager_missing_in_directory 205, **missing_in_directory 146** (the census's number), name 76 (case), tags 27, manager_missing_in_sam 20, active 1 |
 
-The sweep skips SAM's inactive groups: the directory strips a retired project's members while
-the sync keeps its lead and admin, so the 4,410 retired projects produced 6,430 manager and
-4,681 member rows that are not drift anyone will act on. The panel still compares any group on
-request. The person categories are the AFFILIATIONS § 3.4 shapes at full scale (twins, open
+The sweep compares SAM's active groups only; an inactive one is known (not `missing_in_sam`)
+but not compared: the directory strips a retired project's members while the sync keeps its
+lead and admin, so the 4,410 retired projects produced 6,430 manager and 4,681 member rows that
+are not drift anyone will act on. The panel still compares any group on request. The person categories are the AFFILIATIONS § 3.4 shapes at full scale (twins, open
 history, the Workday winter shift), all withheld.
 
 ## 5. Verification

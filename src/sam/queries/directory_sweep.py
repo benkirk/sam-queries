@@ -35,7 +35,7 @@ MAX_IDS = 50
 class KindReport:
     kind: str
     directory: int                      # records read
-    sam: int                            # SAM rows with a directory key
+    sam: int                            # SAM rows compared (a known-but-inactive group is not one)
     compared: int                       # keys found on both sides
     counts: Dict[str, int]              # category -> discrepancies
     ids: Dict[str, Tuple[str, ...]]     # category -> the first MAX_IDS keys carrying it
@@ -95,18 +95,19 @@ def _institutions(session, keys=None) -> dict:
 
 
 def _groups(session, keys=None) -> dict:
-    """SAM's active groups from the sync's own lists: adhoc first (no managers to compare), then
-    projects. Inactive ones are skipped: the directory strips an inactive group's members while
-    the sync keeps its lead and admin, so 4,400 retired projects would drown the live drift."""
+    """SAM's groups from the sync's own lists: adhoc first (no managers to compare), then
+    projects. An inactive one maps to ``None``: known to SAM, so not ``missing_in_sam``, but
+    not compared, because the directory strips a retired group's members while the sync keeps
+    its lead and admin, and 4,400 retired projects would drown the live drift."""
     out = {}
     for row in groups(session):
-        if row['posix_gid'] is not None and row['active']:
-            out[row['posix_gid']] = GroupSnapshot(
+        if row['posix_gid'] is not None:
+            out[row['posix_gid']] = None if not row['active'] else GroupSnapshot(
                 gid=row['posix_gid'], name=row['name'], active=row['active'],
                 tags=frozenset(row['tags']), member_upids=frozenset(row['upids']))
     for row in project_groups(session):
-        if row['posix_gid'] is not None and row['active']:
-            out.setdefault(row['posix_gid'], GroupSnapshot(
+        if row['posix_gid'] is not None:
+            out.setdefault(row['posix_gid'], None if not row['active'] else GroupSnapshot(
                 gid=row['posix_gid'], name=row['name'], active=row['active'],
                 tags=frozenset(row['tags']), member_upids=frozenset(row['upids']),
                 managers=frozenset(row['managers'])))
@@ -151,6 +152,8 @@ def sweep(session, reader, *, kinds: Tuple[str, ...] = SWEPT_KINDS, limit: int =
             sam = _SAM_SIDE[kind](session, keys=set(by_key) if limit else None)
             counts, ids, compared = Counter(), defaultdict(list), 0
             for key, snap in sam.items():
+                if snap is None:        # known to SAM, not compared (an inactive group)
+                    continue
                 record = by_key.get(key)
                 compared += record is not None
                 report = _compare(kind, record, snap, _label(kind, snap), now)
@@ -163,7 +166,8 @@ def sweep(session, reader, *, kinds: Tuple[str, ...] = SWEPT_KINDS, limit: int =
                     counts['missing_in_sam'] += 1
                     if len(ids['missing_in_sam']) < MAX_IDS:
                         ids['missing_in_sam'].append(_label(kind, record))
-            out[kind] = KindReport(kind, len(records), len(sam), compared, dict(counts),
+            out[kind] = KindReport(kind, len(records), sum(s is not None for s in sam.values()),
+                                   compared, dict(counts),
                                    {c: tuple(v) for c, v in ids.items()},
                                    round(time.monotonic() - started, 1))
     return SweepReport(generated=now, kinds=out, limit=limit)

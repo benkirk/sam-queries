@@ -53,7 +53,8 @@ class TestGroups:
         assert r.line() == f'group: 1 read, 1 in SAM, 0 drift'
 
     def test_inactive_groups_are_not_compared(self, session):
-        """The directory strips a retired group's members; the sync keeps its lead. Not drift."""
+        """The directory strips a retired group's members; the sync keeps its lead. Not drift,
+        and not missing_in_sam either: SAM knows the group."""
         retired, lead = _project(session)
         retired.active = False
         session.flush()
@@ -62,7 +63,7 @@ class TestGroups:
                                    active=False))
         r = sweep(session, fake, kinds=('group',), limit=1).kinds['group']
         assert (r.directory, r.sam, r.compared) == (1, 0, 0)
-        assert r.counts == {'missing_in_sam': 1}
+        assert r.counts == {}
 
     def test_an_adhoc_group_compares_members_not_managers(self, session):
         person = make_user(session, upid=True)
