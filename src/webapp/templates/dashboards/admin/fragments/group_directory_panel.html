@@ -19,12 +19,6 @@
     </li>
 </ul>
 {% set can_apply = false %}
-{# Project groups flow SAM -> daemon -> directory; adhoc groups are authored in Google Groups and
-   reach SAM through the directory (that path is not live yet). Report-only either way. #}
-{% if panel.kind == 'project' %}
-{% set report_only = 'Report only: project groups flow from SAM to the directory through the sync daemon; DIRECTORY_APPLY_GROUP has no effect.' %}
-{% else %}
-{% set report_only = 'Report only: adhoc groups are authored in Google Groups and reach SAM through the directory; nothing is applied until that path is live (DIRECTORY_APPLY_GROUP has no effect).' %}
-{% endif %}
+{% set report_only = panel.report_note %}
 {% include 'dashboards/admin/fragments/_directory_drift.html' %}
 {% endif %}

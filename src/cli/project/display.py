@@ -299,8 +299,7 @@ def display_project_directory(ctx: Context, view: dict, projcode: str):
                       f" · {len(rec['member_upids'])} members")
     ctx.console.print(f"  tags: {', '.join(rec['tags']) or 'none'}")
     ctx.console.print(f"  managers: {managers}")
-    display_drift(ctx, view, projcode, report_only='Report only: project groups flow from SAM to the'
-                  ' directory through the sync daemon; DIRECTORY_APPLY_GROUP has no effect.')
+    display_drift(ctx, view, projcode, report_only=view['report_note'])
 
 
 def display_project_provisioning(ctx: Context, prov: dict, projcode: str):

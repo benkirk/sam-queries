@@ -163,12 +163,22 @@ def institution_panel(session, inst, *, record=None,
     return _finish(state, result, lambda d: (d.sam_value, d.directory_value), applied)
 
 
+#: Why a group panel applies nothing, per kind: the panel footer and the CLI print it.
+REPORT_NOTES = {
+    'project': ('Report only: project groups flow from SAM to the directory through the sync daemon;'
+                ' DIRECTORY_APPLY_GROUP has no effect.'),
+    'adhoc': ('Report only: adhoc groups are authored in Google Groups and reach SAM through the'
+              ' directory; nothing is applied until that path is live (DIRECTORY_APPLY_GROUP has'
+              ' no effect).'),
+}
+
+
 def _group_panel(session, gid: Optional[int], *, kind: str, key: str, roles: Dict[int, str],
                  record=None, project=None, group=None) -> Dict[str, Any]:
     """A unix group as the directory holds it (managers from the people side) and SAM's drift."""
     config = DirectoryConfig.from_environment()
     state = _base(config)
-    state.update(gid=gid, kind=kind, name=key, managers=[], report_only=True)
+    state.update(gid=gid, kind=kind, name=key, managers=[], report_note=REPORT_NOTES[kind])
     if gid is None:
         state['available'] = False
         state['error'] = 'no gid'
