@@ -336,9 +336,14 @@ still 200 and SAM unchanged beyond the PUT.
 
 - Pod egress to `ldap.ucar.edu:389` is unverified; the latch keeps a blocked route to one
   warning per worker per minute.
-- The hook runs on the request thread after commit: up to one timeout (5 s) on one PUT when the
-  directory is down, then the latch. The daemon never retries, so the PUT's own commit precedes
-  the hook.
+- The hook runs on the request thread after commit and before the reply, so the daemon's PUT
+  waits for one directory read plus SAM's snapshot queries (~40-100 ms), and up to one timeout
+  (5 s) per worker per minute when the directory is down, then the latch. The daemon never
+  retries, so the PUT's own commit precedes the hook. **Follow-up (review of `fde9df23`, F1):**
+  if the soak's PUT timings show it, move the check after the reply. Not the few lines it
+  looks: `response.call_on_close` runs after Flask has popped the app and request contexts, so
+  the check needs its own `app.app_context()` and a fresh session; under gunicorn's sync
+  workers the worker stays busy for the same time, only the daemon's perceived latency changes.
 - Directory stamps carry an offset. PeopleDB's are correct Mountain offsets; Workday writes
   every position date as midnight `-0600` year-round, wrong in winter for 580 of 2,551 (survey
   2026-10-15). `sam.dates.from_generalized_time` takes a `-0600`/`-0700` stamp as Mountain wall
