@@ -10,4 +10,5 @@ hourly     casper,derecho  prod,dev  accounting-comp --last 2d
 daily      casper,derecho  prod      jobhist-sync daily
 daily      casper,derecho  prod,dev  accounting-comp --last 7d
 daily      casper          prod,dev  accounting-disk
+daily      casper          prod,dev  quota-reconcile
 weekly     casper,derecho  prod      jobhist-sync weekly

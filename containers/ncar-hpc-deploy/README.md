@@ -32,7 +32,7 @@ lanes/<lane>/
   state/              locks, last-run.<job>.<host>, last-tick.<cadence>.<host>, last-digest,
                       last-update (every update run), update-history (each bless, with
                       git_sha=), disk stamps, extract/<image>/ (host-side files cached
-                      from the image), spool/<host>/
+                      from the image), spool/<host>/, quota-reconcile/ (reports)
   logs/<job>/<host>-YYYY-MM-DD.log   one per job; logs/tick/ holds one line per tick,
                                      logs/update/<lane>-DATE.log each update run;
                                      pruned after NCAR_HPC_DEPLOY_LOG_DAYS (90)
@@ -89,7 +89,7 @@ takes schedule rows plus one cron line per host.
 |---|---|---|
 | `rapid` (*/5) | collectors, `jobhist-sync rapid` | collectors |
 | `hourly` | `accounting-comp --last 2d` | same |
-| `daily` (01:07) | `jobhist-sync daily`, `accounting-comp --last 7d`, `accounting-disk` | the last two |
+| `daily` (01:07) | `jobhist-sync daily`, `accounting-comp --last 7d`, `accounting-disk`, `quota-reconcile` | the last three |
 | `weekly` (Sat) | `jobhist-sync weekly` | none |
 
 - A failed step does not stop the tick. The tick exits with the worst step's
@@ -109,14 +109,15 @@ takes schedule rows plus one cron line per host.
 
 `jobs/<job>.sh` runs **inside** the image, so a swap moves code and job logic
 together. The host side (`libexec/`) only chooses the image, the binds
-(`/glade`, plus whichever PBS accounting directory exists on this host) and
-the env.
+(`/glade`, plus whichever PBS accounting directory and the `/gpfs/csfs1` and
+`/lustre/desc1` mounts exist on this host) and the env.
 
 | job | replaces |
 |---|---|
 | `jobhist-sync rapid\|daily\|weekly` | hpc-usage-queries `job_history/cron_scripts/*.sh` |
 | `accounting-comp [args]` | `scripts/cron/accounting/jobs/run_ncar_accounting.sh` |
 | `accounting-disk [args]` | `scripts/cron/accounting/disk/Makefile` |
+| `quota-reconcile [--dry-run]` | `reconcile-cs` in that Makefile (now Campaign_Store and Destor) |
 | `collectors [args]` (host scrape, then container parse) | `collectors/cron_scripts/run_ncar_collectors.sh` |
 
 The collectors job has a host half. The container can't ssh between hosts
@@ -201,6 +202,19 @@ Gotchas:
   filesets, unlinked directories and system accounts are reported and exit 0.
   Reloading the same file would repeat the same rows; to rerun one, delete
   `lanes/<lane>/state/disk-<key>.stamp`.
+- `quota-reconcile` runs right after `accounting-disk` and is report-only. It reconciles
+  SAM's disk allocations against Campaign_Store's `cs_usage.json` and the newest
+  `acct.glade` and `acct.desc1` files. Each source writes
+  `state/quota-reconcile/<resource>.<key>.<date>.json` plus a `.latest.json` link, and
+  the log shows each category count with its change since the previous report.
+  - A source reruns only when its file is newer than its last report: daily for the
+    JSON, weekly for the acct files.
+  - Writes are blocked three ways. The job takes no argument but `--dry-run`, JSON mode
+    refuses the write flags, and with no `env.quota-reconcile` overlay it runs on the
+    read-only role. Do not add that overlay.
+  - `--verify-paths` is added when the filesystem mount is bound.
+  - Reports are pruned after `QUOTA_REPORT_DAYS` (90). To rerun a source, delete its
+    `.latest.json`.
 - The `accounting-comp` smoke step runs the job's fallback ladder with
   `--dry-run`, and `--skip-errors` still exits 2 when rows were skipped. A bad
   data day therefore fails every candidate, but the same data is already
