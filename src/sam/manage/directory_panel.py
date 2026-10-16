@@ -14,16 +14,14 @@ from typing import Any, Dict, List, Optional
 
 from sam.core.organizations import Institution, Organization
 from sam.core.users import User
-from sam.integration.directory import KINDS, DirectoryUnavailable
+from sam.integration.directory import DirectoryUnavailable
 from sam.integration.directory.config import DirectoryConfig
 from sam.manage.directory import (ReconcileResult, reconcile_group, reconcile_institution,
                                   reconcile_organization, reconcile_person)
 from sam.queries.directory import snapshot_from_group
 
-DISPOSITIONS = ('would apply', 'withheld', 'applied')
-
-
-def _reader():
+def directory_reader():
+    """The configured reader, imported by path so ``ldap3`` stays out of the import graph."""
     from sam.integration.directory.registry import reader_from_environment
     return reader_from_environment()
 
@@ -46,6 +44,15 @@ def _read(state: Dict[str, Any], read, key):
         state['error'] = type(exc).__name__
         return None
     state['found'] = record is not None
+    state['record'] = record
+    return record
+
+
+def _load(state: Dict[str, Any], read, key, record):
+    """The caller's record, else one read into ``state``; ``None`` when there is nothing to compare."""
+    if record is None:
+        return _read(state, read, key)
+    state['found'] = True
     state['record'] = record
     return record
 
@@ -103,11 +110,7 @@ def person_panel(session, user, *, record=None, applied: Optional[ReconcileResul
         state['available'] = False
         state['error'] = 'no upid'
         return state
-    if record is None:
-        record = _read(state, _reader().person, user.upid)
-    else:
-        state['found'] = True
-        state['record'] = record
+    record = _load(state, directory_reader().person, user.upid, record)
     if record is None:
         return state
     org_ids = {p.organization_id for p in record.positions if p.organization_id is not None}
@@ -139,11 +142,7 @@ def organization_panel(session, org, *, record=None,
     """The organization as the directory holds it, and SAM's drift."""
     config = DirectoryConfig.from_environment()
     state = _base(config)
-    if record is None:
-        record = _read(state, _reader().organization, org.organization_id)
-    else:
-        state['found'] = True
-        state['record'] = record
+    record = _load(state, directory_reader().organization, org.organization_id, record)
     if record is None:
         return state
     parent = session.get(Organization, record.parent_org_id) if record.parent_org_id else None
@@ -157,11 +156,7 @@ def institution_panel(session, inst, *, record=None,
     """The institution as the directory holds it, and SAM's drift."""
     config = DirectoryConfig.from_environment()
     state = _base(config)
-    if record is None:
-        record = _read(state, _reader().institution, inst.institution_id)
-    else:
-        state['found'] = True
-        state['record'] = record
+    record = _load(state, directory_reader().institution, inst.institution_id, record)
     if record is None:
         return state
     result = reconcile_institution(session, inst, record, config=config, dry_run=True)
@@ -178,11 +173,7 @@ def _group_panel(session, gid: Optional[int], *, kind: str, key: str, roles: Dic
         state['available'] = False
         state['error'] = 'no gid'
         return state
-    if record is None:
-        record = _read(state, _reader().group, gid)
-    else:
-        state['found'] = True
-        state['record'] = record
+    record = _load(state, directory_reader().group, gid, record)
     if record is None:
         return state
     snap = snapshot_from_group(session, gid)
@@ -224,6 +215,3 @@ def adhoc_group_panel(session, group, *, record=None) -> Dict[str, Any]:
     return _group_panel(session, group.unix_gid, kind='adhoc', key=group.group_name, roles={},
                         record=record)
 
-
-def apply_kind_labels(kinds) -> str:
-    return ', '.join(k for k in KINDS if k in set(kinds)) or 'nothing'

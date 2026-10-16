@@ -19,7 +19,8 @@ from sam.integration.directory.config import DirectoryConfig
 from sam.manage import management_transaction
 from sam.manage.directory import (reconcile_institution, reconcile_organization,
                                   reconcile_person)
-from sam.manage.directory_panel import (adhoc_group_panel, institution_panel,
+from sam.manage.directory_panel import (adhoc_group_panel, directory_reader,
+                                        institution_panel,
                                         organization_panel, person_panel,
                                         project_group_panel)
 from webapp.api.access_control import require_project_facility_permission
@@ -35,11 +36,6 @@ USER_PANEL = 'dashboards/admin/fragments/user_directory_panel.html'
 ORG_PANEL = 'dashboards/admin/fragments/org_directory_panel.html'
 INST_PANEL = 'dashboards/admin/fragments/inst_directory_panel.html'
 GROUP_PANEL = 'dashboards/admin/fragments/group_directory_panel.html'
-
-
-def _reader():
-    from sam.integration.directory.registry import reader_from_environment
-    return reader_from_environment()
 
 
 @bp.route('/htmx/user/<username>/directory', methods=['GET'])
@@ -60,7 +56,7 @@ def htmx_user_directory_apply(username):
     if sam_user is None:
         return htmx_not_found('User')
     config = DirectoryConfig.from_environment()
-    reader = _reader()
+    reader = directory_reader()
     try:
         record = reader.person(sam_user.upid) if reader.configured and sam_user.upid else None
     except DirectoryUnavailable:
@@ -112,7 +108,7 @@ def htmx_organization_directory_apply(org_id):
     if org is None:
         return htmx_not_found('Organization')
     config = DirectoryConfig.from_environment()
-    reader = _reader()
+    reader = directory_reader()
     try:
         record = reader.organization(org_id) if reader.configured else None
     except DirectoryUnavailable:
@@ -147,7 +143,7 @@ def htmx_institution_directory_apply(inst_id):
     if inst is None:
         return htmx_not_found('Institution')
     config = DirectoryConfig.from_environment()
-    reader = _reader()
+    reader = directory_reader()
     try:
         record = reader.institution(inst_id) if reader.configured else None
     except DirectoryUnavailable:
