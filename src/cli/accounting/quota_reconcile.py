@@ -1,5 +1,5 @@
 """`sam-admin accounting --reconcile-quotas`: allocations against filesystem quota truth."""
-from cli.core.output import output_json
+from cli.core.output import output_json, refuse_json_write
 from cli.core.utils import EXIT_ERROR, EXIT_SUCCESS
 from sam.summaries.disk_summaries import BYTES_PER_TIB
 import getpass
@@ -68,12 +68,8 @@ class QuotaReconcileMixin:
         json_mode = self.ctx.output_format == 'json'
         if json_mode:
             if update_accounting_system or deactivate_orphaned:
-                output_json({
-                    'kind': 'quota_reconcile', 'error': 'json_unsupported_for_writes',
-                    'message': '--format json cannot be combined with '
-                               '--update-accounting-system or --deactivate-orphaned',
-                })
-                return EXIT_ERROR
+                return refuse_json_write('quota_reconcile',
+                                         '--update-accounting-system or --deactivate-orphaned')
             self.console = self.ctx.stderr_console
 
         # ---- 1. Validate inputs ------------------------------------------------

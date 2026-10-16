@@ -1,0 +1,24 @@
+{# The Directory panel for a unix group: the admin project card and the adhoc group card.
+   Context: panel (sam.manage.directory_panel.project_group_panel / adhoc_group_panel). Report-only. #}
+{% from 'dashboards/fragments/user_rows.html' import user_link %}
+{% from 'dashboards/admin/fragments/_directory_state.html' import directory_state %}
+{{ directory_state(panel, 'The directory has no group for gid ' ~ panel.gid ~ '.'
+   ~ (' ' ~ panel.absent_note if panel.absent_note else ''),
+   'users-slash', unavailable=(panel.name ~ ' has no unix gid in SAM, so there is nothing to look up.') if panel.error == 'no gid' else '') }}
+{% if panel.found %}
+{% set rec = panel.record %}
+<ul class="modal-facts mb-3">
+    <li><i class="fa-solid fa-users" aria-hidden="true"></i>{{ rec.name }} · gid {{ rec.gid }} · {{ 'active' if rec.active else 'inactive' }} · source {{ rec.source or '—' }} · {{ rec.member_upids | length | fmt_number }} members</li>
+    <li><i class="fa-solid fa-tags" aria-hidden="true"></i>{% if rec.tags %}{{ rec.tags | join(', ') }}{% else %}no tags{% endif %}</li>
+    <li><i class="fa-solid fa-user-shield" aria-hidden="true"></i>
+        {% if panel.managers %}managers
+        {% for m in panel.managers %}
+        <span class="ms-1">{% if m.username %}{{ user_link(m.username, has_permission(Permission.VIEW_USERS)) }}{% else %}upid {{ m.upid }}{% endif %}{% if m.role %} <span class="badge bg-primary-subtle text-primary">{{ m.role }}</span>{% endif %}</span>{% if not loop.last %},{% endif %}
+        {% endfor %}
+        {% else %}no managers in the directory{% endif %}
+    </li>
+</ul>
+{% set can_apply = false %}
+{% set report_only = panel.report_note %}
+{% include 'dashboards/admin/fragments/_directory_drift.html' %}
+{% endif %}

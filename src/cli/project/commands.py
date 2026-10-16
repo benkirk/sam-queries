@@ -3,11 +3,12 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
 from cli.core.base import BaseProjectCommand
-from cli.core.output import output_json
+from cli.core.output import output_json, refuse_json_write
 from cli.core.utils import EXIT_SUCCESS, EXIT_NOT_FOUND, EXIT_ERROR
 from cli.project.builders import (
     build_project_core,
     build_project_detail,
+    build_project_directory,
     build_project_allocations,
     build_project_rolling,
     build_project_tree,
@@ -47,7 +48,7 @@ from rich.progress import track
 class ProjectSearchCommand(BaseProjectCommand):
     """Exact project search by projcode."""
 
-    def execute(self, projcode: str, list_users: bool = False) -> int:
+    def execute(self, projcode: str, list_users: bool = False, directory: bool = False) -> int:
         try:
             project = self.get_project(projcode)
 
@@ -70,6 +71,13 @@ class ProjectSearchCommand(BaseProjectCommand):
                 data['users'] = build_project_users(project)
             if self.ctx.check_provisioning:
                 data['provisioning'] = build_project_provisioning(project)
+            if directory:
+                view = build_project_directory(self.session, project)
+                if view is None:
+                    self.ctx.message_console.print(
+                        'No directory is configured (DIRECTORY_URL is empty).', style='dim')
+                else:
+                    data['directory'] = view
 
             return self.emit(data, display_project, list_users=list_users)
 
@@ -119,13 +127,8 @@ class ProjectExpirationCommand(BaseProjectCommand):
 
             # JSON output is read-only; reject combinations with side effects.
             if json_mode and (notify or deactivate):
-                output_json({
-                    'kind': ('expiring_projects' if upcoming
-                             else 'recently_expired_projects'),
-                    'error': 'json_unsupported_for_writes',
-                    'message': '--format json cannot be combined with --notify or --deactivate',
-                })
-                return EXIT_ERROR
+                return refuse_json_write('expiring_projects' if upcoming else 'recently_expired_projects',
+                                         '--notify or --deactivate')
 
             if self.ctx.verbose:
                 self.console.print(f"[dim]Facilities: {'ALL' if facility_filter is None else ', '.join(facility_filter)}[/]")

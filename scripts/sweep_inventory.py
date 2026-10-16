@@ -50,7 +50,7 @@ MIN_NAME_MODULES = 3      # py-dup-names: a helper name defined at module level 
 # Receivers are request mappings only, so os.environ and header reads stay out. Add a pattern here
 # in the PR that lifts a reader, so its remaining call sites show.
 WEBAPP_ROOT = Path("src/webapp")
-HELPER_HOMES = ("src/webapp/utils/htmx.py",)
+HELPER_HOMES = ("src/webapp/utils/htmx.py", "src/cli/core/output.py")
 _ARGS = r"(?:request\.(?:args|form|values)|\bargs|\brequest_args|\bform)"
 HELPER_BYPASS = (
     ("read_multi", re.compile(rf"for \w+ in {_ARGS}\.getlist\([^)]*\) if \w+\s*[\])]")),
@@ -58,6 +58,7 @@ HELPER_BYPASS = (
     ("read_flag", re.compile(rf"""{_ARGS}\.get\([^()]*\)(?:\.lower\(\))?\s*"""
                              r"""(?:==\s*['"](?:1|true|on)['"]|in \(\s*['"]1['"])""")),
     ("read_page", re.compile(rf"""{_ARGS}\.get\(\s*['"]page['"],\s*type=int\)""")),
+    ("refuse_json_write", re.compile(r"""['"]json_unsupported_for_writes['"]""")),
 )
 GENERIC_NAMES = {"main", "register", "get", "create", "update", "run", "handle", "index", "validate", "setup",
                  "init_app"}

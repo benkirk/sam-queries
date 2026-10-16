@@ -78,7 +78,7 @@ def _institution_type_id(session, type_name):
     return row.institution_type_id
 
 
-def _state_prov_id(session, country, state, acronym):
+def state_prov_id(session, country, state, acronym):
     """By country + state code, then by name; a state equal to the country code is no state."""
     if _blank(country) or _blank(state) or state.strip().upper() == country.strip().upper():
         return None
@@ -104,7 +104,7 @@ def sync_institution(session, data: dict) -> int:
         address=data['address'], city=data['city'], zip=data['zip'],
         deleted=data['deleted'],
         institution_type_id=_institution_type_id(session, data['institution_type']),
-        state_prov_id=_state_prov_id(session, data['country'], data['state'], data['acronym']),
+        state_prov_id=state_prov_id(session, data['country'], data['state'], data['acronym']),
     )
     return data['institution_id']
 
@@ -182,7 +182,7 @@ def user_by_username(session, username: str) -> Optional[User]:
     return User.get_by_username(session, username)
 
 
-def _apply_active_transition(user: User, idm_active: bool, now: datetime) -> Optional[datetime]:
+def apply_active_transition(user: User, idm_active: bool, now: datetime) -> Optional[datetime]:
     """Legacy's rule; returns the closure stamp when a finished user comes back (the undo trigger)."""
     sam_active = bool(user.active) and user.deactivate is None
     if idm_active == sam_active:
@@ -344,7 +344,7 @@ def sync_user(session, data: dict, *, now: Optional[datetime] = None,
         user = User.create(session, username=data['user_name'], unix_uid=data['unix_uid'],
                            upid=upid, active=data['active'])
     else:
-        closed_at = _apply_active_transition(user, data['active'], now)
+        closed_at = apply_active_transition(user, data['active'], now)
 
     fields = {name: data[name] for name in _BASIC_USER_FIELDS}
     fields.update(_role_login_names(session, data, user.login_type_id))

@@ -30,3 +30,11 @@ def output_json(data: Any) -> None:
     """Write `data` as indented JSON to stdout with a trailing newline."""
     json.dump(data, sys.stdout, cls=_SAMEncoder, indent=2, sort_keys=False)
     sys.stdout.write('\n')
+
+
+def refuse_json_write(kind: str, flags: str) -> int:
+    """The one envelope for a write asked under ``--format json`` (src/cli/README.md, Exit Codes)."""
+    from cli.core.utils import EXIT_ERROR
+    output_json({'kind': kind, 'error': 'json_unsupported_for_writes',
+                 'message': f'--format json cannot be combined with {flags}'})
+    return EXIT_ERROR

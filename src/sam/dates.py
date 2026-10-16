@@ -2,6 +2,7 @@
 
 Not in ``sam.fmt``: that module imports ``config``, which the webapp boot order cannot take here.
 """
+import re
 from datetime import date, datetime, timezone
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
@@ -11,6 +12,7 @@ YMD = '%Y-%m-%d'
 #: SAM's naive datetimes are Mountain; legacy's JVM ran in this zone, so its epoch
 #: milliseconds are Mountain wall time. A fixed offset would drift an hour across DST.
 SERVER_TZ = ZoneInfo('America/Denver')
+MOUNTAIN_OFFSETS = ('-0600', '-0700')
 
 
 def parse_ymd(s: str) -> datetime:
@@ -71,3 +73,26 @@ def from_epoch_millis(ms) -> datetime:
     """Epoch milliseconds as a naive-Mountain ``datetime``, truncated to the second."""
     utc = datetime.fromtimestamp(int(ms) // 1000, tz=timezone.utc)
     return utc.astimezone(SERVER_TZ).replace(tzinfo=None)
+
+
+def from_generalized_time(value) -> Optional[datetime]:
+    """LDAP Generalized Time (``YYYYMMDDHHMMSS[.f][Z|+hhmm]``) as a naive-Mountain ``datetime``; ``None`` when empty or malformed.
+
+    WARNING: a ``-0600``/``-0700`` stamp is taken as Mountain wall time as written, never
+    converted. Workday writes every position date as midnight ``-0600`` year-round (wrong in
+    winter), and a strict conversion would move 580 of them to 23:00 the day before.
+    """
+    text = re.sub(r'\.\d+', '', str(value or '').strip())
+    if not text:
+        return None
+    match = re.fullmatch(r'(\d{14})(Z|z|[+-]\d{4})?', text)
+    if match is None:
+        return None
+    digits, offset = match.group(1), (match.group(2) or 'Z').upper()
+    try:
+        if offset in MOUNTAIN_OFFSETS:
+            return datetime.strptime(digits, '%Y%m%d%H%M%S')
+        aware = datetime.strptime(digits + offset, '%Y%m%d%H%M%S%z')
+    except ValueError:
+        return None
+    return aware.astimezone(SERVER_TZ).replace(tzinfo=None)

@@ -118,6 +118,56 @@ class TestNoRealOutboundHttp:
         assert client.get_person('somebody') == {'x': 1}
 
 
+class TestTheDirectoryIsPinnedOff:
+    """The third pin: a developer `.env` may point at ldap.ucar.edu."""
+
+    @pytest.mark.parametrize('name,value', [('DIRECTORY_PROVIDER', ''), ('DIRECTORY_URL', ''),
+                                            ('DIRECTORY_CHECK_ON_SYNC', '0')])
+    def test_the_directory_settings_are_pinned(self, name, value):
+        assert os.environ.get(name) == value
+
+    def test_no_reader_is_armed(self):
+        from sam.integration.directory import NullDirectory
+        from sam.integration.directory.config import directory_configured
+        from sam.integration.directory.registry import reader_from_environment
+        assert directory_configured() is False
+        assert isinstance(reader_from_environment(), NullDirectory)
+
+    def test_a_test_can_still_opt_into_the_configured_path(self, monkeypatch):
+        from sam.integration.directory.config import directory_configured
+        monkeypatch.setenv('DIRECTORY_PROVIDER', 'ucar')
+        monkeypatch.setenv('DIRECTORY_URL', 'ldap://ldap.example.invalid')
+        assert directory_configured() is True
+
+
+class TestNoRealLdap:
+    """The socket, for the directory: `ldap3` never goes through `requests`."""
+
+    def test_a_remote_directory_is_refused(self):
+        import ldap3
+        server = ldap3.Server('ldap://ldap.ucar.edu', connect_timeout=1, get_info=ldap3.NONE)
+        with pytest.raises(RuntimeError) as caught:
+            ldap3.Connection(server, auto_bind=ldap3.AUTO_BIND_NO_TLS, raise_exceptions=True)
+        assert 'LDAP connection to ldap.ucar.edu' in str(caught.value)
+        assert 'FakeDirectory' in str(caught.value), 'it must name the way out'
+
+    def test_the_adapter_reports_the_guard_as_unavailable(self):
+        from sam.integration.directory import DirectoryUnavailable
+        from sam.integration.directory.config import DirectoryConfig
+        from sam.integration.directory.ucar import UCARDirectory
+        reader = UCARDirectory(DirectoryConfig(provider='ucar', url='ldap://ldap.ucar.edu'))
+        with pytest.raises(DirectoryUnavailable, match='LDAP connection'):
+            reader.person(1)
+
+    def test_localhost_is_left_alone(self):
+        """The connection then fails on its own merits with ldap3's error, not the guard's."""
+        import ldap3
+        from ldap3.core.exceptions import LDAPException
+        server = ldap3.Server('ldap://127.0.0.1:9', connect_timeout=1, get_info=ldap3.NONE)
+        with pytest.raises(LDAPException):
+            ldap3.Connection(server, auto_bind=ldap3.AUTO_BIND_NO_TLS, raise_exceptions=True)
+
+
 class TestNoRealSmtp:
     """The older sibling, asserted here so both guards have one home."""
 

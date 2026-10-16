@@ -68,11 +68,14 @@ def test_helper_bypass_finds_hand_rolled_request_reads_only(tmp_path):
         "page = max(1, args.get('page', type=int) or 1)\n"
         "ok = read_multi(request.args, 'kind')\n"
         "env = os.environ.get('DISABLE_AUTH') == '1'\n"
-        "hdr = request.headers.get('X-Fresh') == '1'\n"))
-    home = _write(tmp_path, 'home.py', "return [v for v in args.getlist(name) if v]\n")
+        "hdr = request.headers.get('X-Fresh') == '1'\n"
+        "output_json({'error': 'json_unsupported_for_writes'})\n"))
+    home = _write(tmp_path, 'home.py', "return [v for v in args.getlist(name) if v]\n"
+                                       "{'error': 'json_unsupported_for_writes'}\n")
     rows = inv.helper_bypass([route, home], homes=(home.as_posix(),))
     assert [(r['helper'], r['line']) for r in rows] == [
-        ('read_flag', 3), ('read_flag', 4), ('read_multi', 1), ('read_multi', 2), ('read_page', 5)]
+        ('read_flag', 3), ('read_flag', 4), ('read_multi', 1), ('read_multi', 2), ('read_page', 5),
+        ('refuse_json_write', 9)]
 
 
 def test_css_dead_marks_dynamic_stems(tmp_path):

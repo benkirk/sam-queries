@@ -11,8 +11,9 @@ import click
 from datetime import datetime
 
 from config import SAMConfig
+from cli.core.output import refuse_json_write
 from cli.core.context import Context
-from cli.core.options import provisioning_option, usage_error, verbose_option
+from cli.core.options import directory_option, provisioning_option, usage_error, verbose_option
 from cli.core.utils import EXIT_SUCCESS, EXIT_ERROR, configure_logging
 from cli.user.commands import UserAdminCommand
 from cli.project.commands import (
@@ -26,6 +27,7 @@ from cli.accounting.dates import validate_accounting_dates, resolve_accounting_d
 from cli.contracts.commands import ContractsAuditCommand
 from cli.last_seen.commands import LastSeenCommand
 from cli.security.commands import RbacCommand
+from cli.directory.commands import DirectoryReportCommand
 from cli.tasks.commands import TasksCommand
 from cli.xras.commands import XrasCommand
 from sam.queries.xras_actions import XRAS_ACTION_STATUSES
@@ -72,15 +74,24 @@ def cli(ctx: Context, verbose: bool, output_format: str):
               help="Show the memberships the user's last deactivation closed (read-only)")
 @click.option('--restore-deactivation', 'restore_deactivation', is_flag=True,
               help='Reopen the memberships the last deactivation closed')
-@click.option('--dry-run', is_flag=True, help='With --restore-deactivation: report only')
+@directory_option
+@click.option('--directory-apply', 'directory_apply', is_flag=True,
+              help='Patch the user from the directory record, per the DIRECTORY_APPLY_<KIND> levers')
+@click.option('--dry-run', is_flag=True,
+              help='With --restore-deactivation or --directory-apply: report only')
 @pass_context
 def user(ctx: Context, username, validate, list_projects, verbose,
-         deactivation, restore_deactivation, dry_run):
+         deactivation, restore_deactivation, directory, directory_apply, dry_run):
     """Administrative user commands."""
+    if dry_run and not (deactivation or restore_deactivation or directory_apply):
+        usage_error(ctx, 'Error: --dry-run needs --restore-deactivation or --directory-apply')
+    if directory_apply and (deactivation or restore_deactivation):
+        usage_error(ctx, 'Error: --directory-apply and --restore-deactivation are separate writes')
     command = UserAdminCommand(ctx)
     exit_code = command.execute(username, validate=validate, list_projects=list_projects,
                                 deactivation=deactivation,
-                                restore_deactivation=restore_deactivation, dry_run=dry_run)
+                                restore_deactivation=restore_deactivation, dry_run=dry_run,
+                                directory=directory, directory_apply=directory_apply)
     sys.exit(exit_code)
 
 
@@ -734,10 +745,7 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
     # and a machine-readable success receipt for a side-effecting command invites
     # scripting a write loop that no one reviewed. Same rule as src/cli/README.md.
     if recheck is not None and ctx.output_format == 'json':
-        import json
-        click.echo(json.dumps({'error': 'json_unsupported_for_writes'},
-                              indent=2, sort_keys=False))
-        sys.exit(EXIT_ERROR)
+        sys.exit(refuse_json_write('xras_recheck', '--recheck'))
 
     sys.exit(XrasCommand(ctx).execute(
         action_id=action_id,
@@ -844,6 +852,25 @@ def last_seen(ctx: Context, username, backfill, dry_run):
     if dry_run and not backfill:
         usage_error(ctx, 'Error: --dry-run requires --backfill')
     sys.exit(LastSeenCommand(ctx).execute(username=username, backfill=backfill, dry_run=dry_run))
+
+
+# The CLI's first verb group (Ben, 2026-10-16): a new multi-verb command nests its verbs
+# instead of adding mode flags; the flat commands convert in docs/plans/CLI_VERBS.md.
+@cli.group()
+def directory():
+    """The UCAR directory beside SAM (docs/plans/DIRECTORY_CLIENT_NEXT.md)."""
+
+
+@directory.command('report')
+@click.option('--kind', type=click.Choice(['person', 'organization', 'institution', 'group']),
+              help='One kind instead of all four')
+@click.option('--limit', type=int, default=0, metavar='N',
+              help='Read at most N records per kind (a quick smoke; SAM rows the sample lacks are then not counted)')
+@verbose_option()
+@pass_context
+def directory_report(ctx: Context, kind, limit, verbose):
+    """Compare every directory record with SAM: counts by kind and category, sample keys."""
+    sys.exit(DirectoryReportCommand(ctx).execute(kind=kind, limit=limit))
 
 
 @cli.command()

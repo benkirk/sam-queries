@@ -120,6 +120,16 @@ mints `DRY-<handle>`, outside `PROVIDERS` so nothing reads it, refused to the we
 on their own sessions. The webapp's 422 reads the state with no outbound call
 (`sam/queries/xras_request_tickets.py`). Record: `docs/plans/XRAS_REQUEST_TICKETS.md`.
 
+### The `directory_report` task
+
+`src/scheduling/tasks/directory_report.py`, nightly 03:00 Mountain, `needs=('sam',)`: the
+read-only sweep of ldap.ucar.edu against SAM (`sam/queries/directory_sweep.py`), counts by
+kind and category in `detail`, the headline in `message`; `--dry-run` is the same run. **Ships
+named in prod's `SAM_TASKS_DISABLED`**; dev runs it. The CronJob forwards `DIRECTORY_PROVIDER`,
+`DIRECTORY_URL`, `DIRECTORY_BASE_DN` and `DIRECTORY_TIMEOUT_SECONDS` by name and never a
+`DIRECTORY_APPLY_<KIND>` (asserted per manifest). Unconfigured succeeds with nothing to compare;
+an unreadable directory fails the run. Rule: `.claude/rules/directory.md`.
+
 ### The account-request tasks
 
 `account_requests_reconcile` (every 15 min, DB-only, **live in prod**: stamps fulfilled

@@ -875,6 +875,9 @@ expiry back. Contract rules, levers and every deviation from legacy:
 Levers `LDAPSYNC_PURGE_ENABLED`, `LDAPSYNC_LIFECYCLE_ENABLED` and
 `LDAPSYNC_RESTORE_ON_REACTIVATE` ship off in `helm/values.yaml`. Operator undo:
 `sam-admin user <u> --deactivation`.
+With `DIRECTORY_CHECK_ON_SYNC` on and a directory configured, each user, organization,
+institution and group PUT is followed, after its commit, by one read of that record from the
+directory and one log line of the differences; fail-open (`docs/plans/DIRECTORY_CLIENT.md`).
 
 The researcher portal's feed, `/api/protected/heuv/v1`, has its own page: [`HEUV_API.md`](HEUV_API.md).
 

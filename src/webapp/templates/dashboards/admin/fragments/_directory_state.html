@@ -1,0 +1,19 @@
+{# The three states before a Directory panel holds a record: unconfigured, unreadable, absent.
+   `modal` renders facts rows (the dialogs), else alerts (the inline card panels). The caller
+   renders its body under `{% if panel.found %}`. #}
+{% macro directory_state(panel, absent, absent_icon, modal=False, unavailable='') %}
+{% set unavailable = unavailable or ('The directory could not be read' ~ (' (' ~ panel.error ~ ')' if panel.error else '') ~ '. Try again in a minute.') %}
+{% if not panel.configured %}
+{% if modal %}<ul class="modal-facts mb-0"><li><i class="fa-solid fa-plug-circle-xmark" aria-hidden="true"></i>No directory is configured (DIRECTORY_URL is empty).</li></ul>
+{% else %}<div class="alert alert-secondary py-2 px-3 small mb-0">No directory is configured (DIRECTORY_URL is empty).</div>
+{% endif %}
+{% elif not panel.available %}
+{% if modal %}<ul class="modal-facts mb-0"><li><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>{{ unavailable }}</li></ul>
+{% else %}<div class="alert alert-warning py-2 px-3 small mb-0"><i class="fa-solid fa-triangle-exclamation me-1" aria-hidden="true"></i>{{ unavailable }}</div>
+{% endif %}
+{% elif not panel.found %}
+{% if modal %}<ul class="modal-facts mb-0"><li><i class="fa-solid fa-{{ absent_icon }}" aria-hidden="true"></i>{{ absent }}</li></ul>
+{% else %}<div class="alert alert-warning py-2 px-3 small mb-0"><i class="fa-solid fa-{{ absent_icon }} me-1" aria-hidden="true"></i>{{ absent }}</div>
+{% endif %}
+{% endif %}
+{% endmacro %}

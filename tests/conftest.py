@@ -146,6 +146,11 @@ def pytest_configure(config):
     os.environ["JIRA_ENABLED"] = "0"
     os.environ["JIRA_WRITE_ENABLED"] = "0"
     os.environ["TICKET_PROVIDER"] = ""
+    # The directory client: a developer .env may point at ldap.ucar.edu, and the
+    # ldapsync route tests would then dial out after every PUT.
+    os.environ["DIRECTORY_PROVIDER"] = ""
+    os.environ["DIRECTORY_URL"] = ""
+    os.environ["DIRECTORY_CHECK_ON_SYNC"] = "0"
 
     # ---- Per-worker Redis keyspace under xdist ---------------------------
     #
@@ -219,6 +224,7 @@ _UNIT_DOMAIN_MARKERS = {
     "queries": "queries",
     "manage": "manage",
     "tickets": "tickets",
+    "directory": "directory",
 }
 
 
@@ -387,6 +393,43 @@ def _no_outbound_http(monkeypatch):
         return real_request(self, method, url, *args, **kwargs)
 
     monkeypatch.setattr(requests.sessions.Session, 'request', _guarded)
+
+
+# ---- No test may open a real LDAP connection ------------------------------
+#
+# The third sibling. `ldap3` never goes through `requests`, so the HTTP guard
+# above cannot see it; the directory pins in `pytest_configure` are, again, a
+# value a test can override. Patched at the socket-opening method so a fake
+# reader (tests/factories/directory.py) stays the only way to the configured path.
+
+class _OutboundLdapBlockedInTests(RuntimeError):
+    """Raised when a test tries to reach a real LDAP server."""
+
+
+@pytest.fixture(autouse=True)
+def _no_outbound_ldap(monkeypatch):
+    """Make every real LDAP connection attempt fail loudly."""
+    try:
+        from ldap3.strategy.base import BaseStrategy
+    except ImportError:          # pragma: no cover - ldap3 is a core dependency
+        return
+
+    real_open = BaseStrategy.open
+
+    def _guarded(self, *args, **kwargs):
+        server = getattr(self.connection, 'server', None)
+        host = (getattr(server, 'host', '') or '').lower()
+        if host and host not in _ALLOWED_HTTP_HOSTS:
+            raise _OutboundLdapBlockedInTests(
+                f"A test tried to open an LDAP connection to {host}. "
+                "The unit suite must never reach the directory: it would depend "
+                "on that host being up and tell it which people the suite tests. "
+                "Use FakeDirectory (tests/factories/directory.py) and monkeypatch "
+                "'sam.integration.directory.registry.reader_from_environment'."
+            )
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(BaseStrategy, 'open', _guarded)
 
 
 @pytest.fixture(scope="session", autouse=True)
