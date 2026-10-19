@@ -100,6 +100,15 @@ gh api /repos/benkirk/sam-queries/rulesets/<id> \
 
 **Caveat**: repo admins can still edit or disable the ruleset from Settings → Rules. This is not a guard against a determined admin — it blocks accidental direct pushes, *other* workflows that might try to write to the branches, and non-admins, with a clear audit trail.
 
+### `main` and `staging`
+
+Two more rulesets cover the release branches (2026-10-19):
+
+- **"protect main"** (no bypass): no deletion or force-push, linear history, changes only by squash-merged PR, and seven required checks from the GitHub Actions app (id 15368), not strict: `Run Test Suite (Docker)`, `Test Suite (MySQL, coverage)`, `Test Suite (Postgres)`, `Perf Tier (MySQL)`, `API demo smoke`, `Browser console sweep`, `test-piped-install`.
+  - A promotion that touches only docs runs none of them (their `paths-ignore`) and waits. Dispatch them on `staging` and the results count: `gh workflow run <file> --ref staging` for `sam-ci-docker.yaml`, `sam-ci-conda_make.yaml`, `test-install.yaml` and `browser-smoke.yaml`.
+  - A skip-ci token in the PR **title** still passes: the guarded jobs report *skipped*, which satisfies a required check. A token in the **commit message** creates no runs, so the merge blocks until a clean commit lands (`CLAUDE.md`, Skipping CI).
+- **"protect staging"** (no bypass): no deletion. Force-push stays allowed because `sync-staging-to-main.yaml` resets `staging` with `GITHUB_TOKEN`, and a personal-account repo cannot list the GitHub Actions app as a bypass actor. Blocking force-push would mean resetting with the cirrus App token instead, whose push *does* trigger the `staging` push workflows (a redundant dev build per promotion) unless they learn to skip it.
+
 ## Operating it
 
 ### Deploy a feature branch to dev
