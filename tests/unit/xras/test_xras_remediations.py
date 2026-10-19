@@ -1062,6 +1062,56 @@ class TestTheSamBadgeLinksWhenTheProjectExists:
         assert 'no project' in body
         assert 'projectDetailsModal' not in body
 
+    def test_the_project_link_reads_the_code(self, auth_client, armed):
+        _publish(_payload('EXAM0001'), pending=False)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert '<strong>EXAM0001</strong>' in body
+        assert '<strong>project</strong>' not in body
+
+    @staticmethod
+    def _publish_new(series, *, status='rechecked', messages=()):
+        payload = _payload('NCAR4407')
+        payload['actions'][0]['actionType'] = 'New'
+        verdict = {'status': status, 'would_succeed': status == 'rechecked',
+                   'messages': list(messages), 'gaps': [], 'service': 'new', 'stage': 'Approved',
+                   'push_state': 'pending', 'push_detail': None,
+                   'resolved': {'series': series} if series else None,
+                   'checked_at': '2026-10-19T09:00:00'}
+        xras_cache.store_requests_index({
+            'generated_at': datetime.now(), 'statuses': ['Approved'],
+            'extra_statuses': {},
+            'rows': [request_index_entry(payload, pending_push=True,
+                                         preflights={7: verdict})]})
+
+    @pytest.mark.parametrize('status', ['rechecked', 'failed'])
+    def test_a_pending_new_shows_the_series_it_would_mint(self, auth_client, armed,
+                                                          status):
+        """Whatever the verdict: a row failing on a person still names its mnemonic match."""
+        self._publish_new('UCSG', status=status)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert '<span class="font-monospace">UCSG####</span>' in body
+        assert 'no project' not in body
+        assert 'projectDetailsModal' not in body
+
+    def test_a_mnemonic_blocked_new_says_no_match(self, auth_client, armed):
+        from sam.xras.errors import MNEMONIC_EXTERNAL_PREFIX
+        self._publish_new(None, status='failed',
+                          messages=[MNEMONIC_EXTERNAL_PREFIX + ': Some University'])
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'no match' in body
+        assert 'no project' not in body
+        assert '####' not in body
+
+    @pytest.mark.parametrize('status,messages', [('failed', ['PI pi-user is not in database']),
+                                                 ('incomplete', [])])
+    def test_no_series_without_a_mnemonic_blocker_says_no_project(self, auth_client, armed,
+                                                                  status, messages):
+        """A missing PI leaves no series too, and an incomplete check never tried: neither is `no match`."""
+        self._publish_new(None, status=status, messages=messages)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'no project' in body
+        assert 'no match' not in body
+
     def test_the_request_column_opens_the_detail_modal(self, auth_client, armed):
         """The request number IS the XRAS request, so it opens the read-only
         detail modal — even when a SAM project by that name exists (the SAM
@@ -2660,7 +2710,7 @@ class TestProjcodePreview:
                 'status': 'rechecked', 'would_succeed': True,
                 'resolved': {'series': 'NRAL', 'allocation_type': 'University'}}})
         assert 'Would be created as' in html
-        assert 'NRAL' in html and 'opacity-50">xxxx' in html
+        assert 'NRAL####' in html
         assert '· University' in html          # keeps the allocation-type suffix
 
     def test_a_would_fail_action_shows_no_projcode(self, app):
