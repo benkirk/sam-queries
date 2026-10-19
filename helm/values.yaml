@@ -427,7 +427,10 @@ webapp:
     # samuel-dev smoke (#828), NUSD told; pinned in tests/unit/gates/test_xras_admin_client.py.
     XRAS_AUTO_ACTIVATE: "1"
     # The New's award mail right after that activation (phase C); xras_notices backstops it.
+    # Neither sends before the cutover floor, which MUST equal tasks.env's (pinned by
+    # helm/tests/test-dev-render.sh): SAMuel mails from 08:00 MT 2026-10-20 (Ben).
     XRAS_AUTO_NOTIFY: "1"
+    SAM_TASKS_XRAS_NOTICES_SINCE: "2026-10-20T08:00"
     # The ticket-state first line on a refused New/Renewal's 422 (docs/plans/XRAS_REQUEST_TICKETS.md
     # § 6). "1" only together with the xras_request_tickets task, or the 422 promises a ticket.
     # Armed with the task (docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 4). The floor MUST equal
@@ -746,7 +749,7 @@ tasks:
     TICKET_PROVIDER: "jira-servicedesk"
     JIRA_WRITE_ENABLED: "1"
     SAM_TASKS_XRAS_TICKETS_SINCE: "2026-10-19"
-    # xras_notices' cutover floor: an action received before it was XRAS's to mail.
-    # WARNING: set it to the promotion that deletes XRAS's Action Approved rules
-    # (docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 6), or the first run repeats XRAS's mail.
-    SAM_TASKS_XRAS_NOTICES_SINCE: "2026-10-20"
+    # The phase C cutover floor, naive Mountain: an action received before it was XRAS's to
+    # mail, so neither xras_notices nor the New's notice after activation sends it. Equal to
+    # webapp.env's (docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 6).
+    SAM_TASKS_XRAS_NOTICES_SINCE: "2026-10-20T08:00"

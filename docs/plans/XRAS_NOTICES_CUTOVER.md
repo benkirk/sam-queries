@@ -102,13 +102,19 @@ notices move to post time; either is within the timing XRAS has today.
    approved and posted New (NCAR4094 → UHSS0006) left Recent submissions and showed no Notify
    button ("Notifications Generated? N/A"). Existing posted News lost the button at once, and
    re-adding the rule brought it back.
-3. Record production's rules (the tables above are the record; re-adding them is the rollback).
-4. One day: enable `xras_notices` in production (and phase B's activation notice), then delete
-   the rules of § 2 in `admin-ncar`.
-5. NUSD stops clicking Notify: a request leaves the admin queue at the post without it
-   (`XRAS_DEV_PROBES.md` § 6.1, scenario 8).
-6. Watch the first week: every applied action has a SAMuel `notification_log` row and no XRAS
-   Action Approved row.
+3. Record production's rules. **Done 2026-10-19** (§ 7; re-adding them is the rollback).
+4. Promote #848 the evening of 2026-10-19 (Ben). SAMuel mails nothing before the cutover floor,
+   `SAM_TASKS_XRAS_NOTICES_SINCE=2026-10-20T08:00` in both `webapp.env` and `tasks.env`:
+   neither `xras_notices` nor the New's notice after activation sends an action received earlier.
+5. From 08:00 MT 2026-10-20 SAMuel sends. **NUSD stops clicking Notify then**: until the rules
+   go, a click on an action SAMuel already mailed sends the PI a second letter.
+6. Once the first SAMuel award mail is confirmed (`notification_log`, From cislhelp@, alloc@ on
+   the cc), delete the 29 rules of § 7 in `admin-ncar` (Ben's decision, 2026-10-19). The Notify
+   button then disappears at once, including from actions already posted (§ 8).
+7. Watch the first week: every applied action has a SAMuel `notification_log` row and no XRAS
+   Action Approved row. Also watch for a New whose projcode already exists: it routes as
+   `update`, so it gets the Renewal letter and subject. That is how News landed when NUSD
+   hand-made the projcode, and phase D's tickets should retire it.
 
 ## 7. Production rules, recorded 2026-10-19 (the rollback)
 

@@ -90,3 +90,14 @@ class TestTheNoticeAfterActivation:
 def test_the_notify_lever_is_off_under_the_suite(app):
     with app.app_context():
         assert xras_activation.auto_notify_armed() is False
+
+
+def test_the_news_notice_waits_for_the_cutover_floor(monkeypatch):
+    """SAMuel mails from the cutover on; before it the award is XRAS's to send."""
+    from datetime import datetime
+    monkeypatch.setenv('XRAS_AUTO_NOTIFY', '1')
+    monkeypatch.setenv('SAM_TASKS_XRAS_NOTICES_SINCE', '2033-11-16T08:00')
+    assert xras_activation.auto_notify_armed(datetime(2033, 11, 16, 7, 59)) is False
+    assert xras_activation.auto_notify_armed(datetime(2033, 11, 16, 8, 0)) is True
+    monkeypatch.setenv('SAM_TASKS_XRAS_NOTICES_SINCE', '')
+    assert xras_activation.auto_notify_armed(datetime(2000, 1, 1)) is True

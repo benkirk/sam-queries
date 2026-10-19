@@ -7,6 +7,7 @@ Behind ``XRAS_AUTO_NOTIFY`` the route then sends the New's award mail (phase C).
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from sam.integration.xras import XrasActivationEvent
@@ -18,9 +19,13 @@ def auto_activate_armed() -> bool:
     return config_bool('XRAS_AUTO_ACTIVATE', False)
 
 
-def auto_notify_armed() -> bool:
-    from sam.integration._config import config_bool
-    return config_bool('XRAS_AUTO_NOTIFY', False)
+def auto_notify_armed(now: Optional[datetime] = None) -> bool:
+    """``XRAS_AUTO_NOTIFY``, and not before the cutover floor ``xras_notices`` reads too."""
+    from sam.integration._config import config_bool, config_str
+    if not config_bool('XRAS_AUTO_NOTIFY', False):
+        return False
+    raw = config_str('SAM_TASKS_XRAS_NOTICES_SINCE', '').strip()
+    return not raw or (now or datetime.now()) >= datetime.fromisoformat(raw)
 
 
 def notify_activated_project(session, projcode: str, notifier, *, by: str,
