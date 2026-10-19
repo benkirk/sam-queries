@@ -1,6 +1,7 @@
 # XRAS award mail: SAMuel takes over from XRAS (post automation phase C)
 
-**Status: checklist, not started. Read from production 2026-10-14.** Phase C of
+**Status: checklist, read from production 2026-10-14; carried out by
+[`XRAS_PHASE_C_AND_TICKETS.md`](XRAS_PHASE_C_AND_TICKETS.md) (planned 2026-10-19).** Phase C of
 [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md). The goal: XRAS stops mailing award
 notices and SAMuel sends them, with no PI missing a notice and none receiving two. Every item
 below is either an XRAS rule to delete, paired with the SAMuel notice that replaces it, or a

@@ -2,7 +2,8 @@
 
 **Status: built 2026-10-14, dev first** (`xras-post-automation-bd`). samuel-dev files through
 the `dry-run` provider; production ships the task disabled with no ticket lever. § 11 holds what
-differs from this design. Phase D of [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md).
+differs from this design. Production arming, with a since-floor, is planned in
+[`XRAS_PHASE_C_AND_TICKETS.md`](XRAS_PHASE_C_AND_TICKETS.md) § 4 (2026-10-19). Phase D of [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md).
 
 **The model** (Ben, 2026-10-14 and 2026-10-15):
 - Approvers approve and post in one sitting, and a post that applies is done: no ticket, no

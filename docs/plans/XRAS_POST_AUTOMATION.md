@@ -2,7 +2,8 @@
 
 **Status: roadmap, 2026-10-15.** Phase A (renames) is live in production (#819, #820). B is live
 in production (built in #828, armed by #831; first case NCAR4407 → UMMM0018, 2026-10-15); D is built and on in samuel-dev, off in production until
-`XRAS_REQUEST_TICKETS.md` § 9 (D's item 2 deferred); C and E are not started. This file sequences the work and points at the plans that hold the
+`XRAS_REQUEST_TICKETS.md` § 9 (D's item 2 deferred); C is planned, with D's production arming, in
+[`XRAS_PHASE_C_AND_TICKETS.md`](XRAS_PHASE_C_AND_TICKETS.md) (2026-10-19); E is not started. This file sequences the work and points at the plans that hold the
 detail; it holds the decisions, not the designs.
 
 ## 1. The goal
