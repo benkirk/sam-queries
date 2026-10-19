@@ -1,12 +1,31 @@
 {% extends "_email_base.html" %}
 
 {% block content %}
-    <p>Dear {{ recipient_name }},</p>
+    <p>Dear {{ addressees | join(' and ') if addressees else recipient_name }},</p>
 
     <div class="callout good">
-        Your project <strong>{{ project_code }}</strong> - "{{ project_title }}"
-        is now active on NSF NCAR computing resources.
+        Your {% if opportunity_name %}{{ opportunity_name }} {% endif %}request{% if request_title %}
+        "{{ request_title }}"{% endif %} has been approved, and project
+        <strong>{{ project_code }}</strong> is now active on NSF NCAR computing resources.
     </div>
+
+    {% if approver_comment %}
+    <div class="callout note">
+        <strong>Note from the reviewer</strong>
+        <p>{{ approver_comment }}</p>
+    </div>
+    {% endif %}
+
+    <h3>Project</h3>
+    <table class="data">
+        <tr><th>Project code</th><td>{{ project_code }}</td></tr>
+        <tr><th>Title</th><td>{{ project_title }}</td></tr>
+        <tr><th>Project lead</th><td>{{ project_lead }}{% if pi_organization %}, {{ pi_organization }}{% endif %}</td></tr>
+        {% for g in grants %}
+        <tr><th>Funding award</th><td>{{ g.number }}{% if g.agency or g.pi_name %}
+            ({{ [g.agency, g.pi_name and 'PI ' ~ g.pi_name] | select | join(', ') }}){% endif %}</td></tr>
+        {% endfor %}
+    </table>
 
     {% if resources %}
     <h3>Allocations</h3>
@@ -22,38 +41,33 @@
     </table>
     {% endif %}
 
-    {% if approver_comment %}
-    <div class="callout note">
-        <strong>Note from the reviewer</strong>
-        <p>{{ approver_comment }}</p>
-    </div>
-    {% endif %}
-
     <h3>Getting started</h3>
     <ul>
-        <li>Documentation:
-            <a href="https://ncar-hpc-docs.readthedocs.io/">ncar-hpc-docs.readthedocs.io</a></li>
-        <li>See your allocations and usage, and manage who is on your project:
-            <a href="{{ manage_url or 'https://sam.hpc.ucar.edu/' }}">open {{ project_code }} in SAM</a></li>
+        <li><a href="{{ manage_url or 'https://sam.hpc.ucar.edu/' }}">Open {{ project_code }} in SAM</a>:
+            allocations, usage and members</li>
+        <li><a href="https://ncar-hpc-docs.readthedocs.io/en/latest/getting-started/">New users</a></li>
+        <li><a href="https://ncar-hpc-docs.readthedocs.io/en/latest/user-support/">Getting help</a></li>
     </ul>
 
-    {% if recipient_role == 'lead' %}
+    <h3>Members and accounts</h3>
     <p>
-        As project lead you can add and remove project members, and designate
-        a project administrator (who can also manage members), in SAM. Request
-        extensions or supplements through ARC, at
-        <a href="https://arc.ucar.edu/">arc.ucar.edu</a>.
+        The project lead and the project administrator add and remove members in SAM.
+        Anyone on the project without an NCAR user account will receive a separate
+        email from our help system about creating one; new accounts can take up to
+        five days. Request extensions and supplements through
+        <a href="https://arc.ucar.edu/">ARC</a>.
     </p>
-    {% else %}
+
+    <h3>Acknowledging NCAR and CISL</h3>
     <p>
-        Your project lead ({{ project_lead }}{% if project_lead_email %} /
-        {{ project_lead_email }}{% endif %}) and the project administrator
-        manage membership and any future extension or supplement requests.
+        This allocation requires acknowledging NSF NCAR and CISL support in publications
+        that use these resources
+        (<a href="https://ncar-hpc-docs.readthedocs.io/en/latest/getting-started/acknowledging-ncar-and-cisl/">how to acknowledge</a>).
+        A project lead's later allocations may be delayed until this is met.
     </p>
-    {% endif %}
+
+    <p>For questions about this allocation, user accounts or passwords, contact
+        <a href="mailto:cislhelp@ucar.edu">cislhelp@ucar.edu</a> or 303-497-2000.</p>
 {% endblock %}
 
-{% block footer_extra %}
-        <p>If you believe you received this message in error, please contact
-            <a href="mailto:help@ucar.edu">help@ucar.edu</a>.</p>
-{% endblock %}
+{% block footer %}{% include "_xras_footer.html" %}{% endblock %}

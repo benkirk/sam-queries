@@ -31,7 +31,7 @@ from sam.enums import ResourceTypeName
 from sam.integration.xras import XrasActionLog, XrasResourceRepositoryKeyResource
 from sam.notify import Message, to_recipients
 
-from .notice_links import manage_project_url, resource_details_url
+from .notice_links import manage_project_url, resource_details_url, terms_url
 from .xras_activation import (
     XRAS_SERVICE_KINDS,
     get_latest_xras_action_id,
@@ -260,6 +260,7 @@ def build_xras_messages(session: Session, project,
         'project_lead_email': lead_email,
         'resources': resources,
         'manage_url': manage_project_url(site_url, project.projcode),
+        'terms_url': terms_url(site_url),
         # Only one template reads each of these, but every kind carries both —
         # a template that renders an undefined name renders nothing, silently,
         # so the cheapest guard is for the key to always exist.

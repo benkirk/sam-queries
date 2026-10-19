@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from sam.queries.notice_links import (
-    MANAGE_PROJECT_PATH, ONBOARDING_PATHS, RESOURCE_DETAILS_PATH)
+    MANAGE_PROJECT_PATH, ONBOARDING_PATHS, RESOURCE_DETAILS_PATH, TERMS_PATH)
 
 SNAPSHOT = Path(__file__).parents[1] / 'snapshots' / 'dashboard_route_map.json'
 
@@ -16,3 +16,4 @@ def test_every_linked_path_is_a_route():
         assert f'/{path}' in rules, path
     assert f'/{RESOURCE_DETAILS_PATH}/<projcode>' in rules
     assert '/' + MANAGE_PROJECT_PATH.format(projcode='<projcode>') in rules
+    assert f'/{TERMS_PATH}' in rules
