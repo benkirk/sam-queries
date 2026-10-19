@@ -12,7 +12,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -128,14 +128,30 @@ class Episode:
     projcode: Optional[str] = None
 
 
+def _refused():
+    return (XrasActionLog.status == 'failed',
+            XrasActionLog.http_status == 422,
+            XrasActionLog.action_type.in_(TICKET_ACTION_TYPES),
+            XrasActionLog.request_id.is_not(None))
+
+
+def refused_before(session: Session, request_ids: Iterable[int], floor: datetime) -> Set[int]:
+    """The requests among *request_ids* with a refused New/Renewal before *floor*."""
+    ids = sorted(set(request_ids))
+    if not ids:
+        return set()
+    rows = (session.query(XrasActionLog.request_id).distinct()
+            .filter(*_refused(), XrasActionLog.request_id.in_(ids),
+                    XrasActionLog.received_time < floor)
+            .all())
+    return {r.request_id for r in rows}
+
+
 def ticket_episodes(session: Session, *, since: datetime, until: datetime) -> List[Episode]:
     """Refused New/Renewal posts received in ``[since, until]``, one per
     ``requestId``. Refusals after the post that applied are not part of it."""
     refusals = (session.query(XrasActionLog)
-                .filter(XrasActionLog.status == 'failed',
-                        XrasActionLog.http_status == 422,
-                        XrasActionLog.action_type.in_(TICKET_ACTION_TYPES),
-                        XrasActionLog.request_id.is_not(None),
+                .filter(*_refused(),
                         XrasActionLog.received_time >= since,
                         XrasActionLog.received_time <= until)
                 .order_by(XrasActionLog.received_time, XrasActionLog.xras_action_log_id)

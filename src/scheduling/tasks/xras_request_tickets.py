@@ -10,7 +10,9 @@ Comments are internal and NUSD closes the ticket. The webapp only answers posts.
 ``XRAS_REQUEST_TICKETS_ENABLED`` off, or ``--dry-run``: report, write nothing (the
 ledger and link rows commit on their own sessions, so the runner's rollback cannot
 undo them). On: file through ``TICKET_PROVIDER``, raising when it cannot write;
-samuel-dev runs ``dry-run``. WARNING: the CronJob's one ticket writer.
+samuel-dev runs ``dry-run``. ``SAM_TASKS_XRAS_TICKETS_SINCE`` (an ISO date) is the
+arming floor: a request refused before it never gets a ticket opened.
+WARNING: the CronJob's one ticket writer.
 Design: docs/plans/XRAS_REQUEST_TICKETS.md.
 """
 
@@ -34,6 +36,7 @@ LOOKBACK_DAYS = 30
 OPERATOR = 'task:xras_request_tickets'
 ENABLED_ENV = 'XRAS_REQUEST_TICKETS_ENABLED'
 GRACE_ENV = 'SAM_TASKS_XRAS_TICKETS_GRACE_MINUTES'
+SINCE_ENV = 'SAM_TASKS_XRAS_TICKETS_SINCE'
 MAX_ENV = 'SAM_TASKS_XRAS_TICKETS_MAX'
 #: Opens per wake; past it the run raises before any write.
 DEFAULT_MAX = 10
@@ -58,6 +61,12 @@ class TicketCapExceeded(RuntimeError):
 def armed() -> bool:
     from sam.integration._config import config_bool
     return config_bool(ENABLED_ENV, False)
+
+
+def opening_floor(env: Optional[dict] = None) -> Optional[datetime]:
+    """Naive-Mountain arming floor, or ``None``; a malformed value raises, visibly."""
+    raw = ((env if env is not None else os.environ).get(SINCE_ENV) or '').strip()
+    return datetime.fromisoformat(raw) if raw else None
 
 
 def plan(episode, ticket_key: Optional[str], ledger, *, until: datetime,
@@ -91,6 +100,7 @@ def xras_request_tickets(ctx) -> TaskResult:
     until = to_local_naive(ctx.occurrence, _TZ)
     since = until - timedelta(days=LOOKBACK_DAYS)
     grace = timedelta(minutes=positive_int_env(GRACE_ENV, q.GRACE_MINUTES))
+    floor = opening_floor()
     writing = armed() and not ctx.dry_run
 
     def factory():
@@ -101,14 +111,20 @@ def xras_request_tickets(ctx) -> TaskResult:
     linked = tickets_for(ctx.sam_session, q.ENTITY_TYPE, [e.request_id for e in episodes])
     plans = [(e, linked[e.request_id][-1].ticket_key if e.request_id in linked else None)
              for e in episodes]
-    plans = [(e, key, plan(e, key, ledger, until=until, grace=grace)) for e, key in plans]
+    # The floor gates opens only: a linked ticket keeps its comments.
+    predates = (q.refused_before(ctx.sam_session,
+                                 [e.request_id for e, key in plans if key is None], floor)
+                if floor else set())
+    plans = [(e, key, 'predates_floor' if key is None and e.request_id in predates
+              else plan(e, key, ledger, until=until, grace=grace)) for e, key in plans]
 
     detail: Dict[str, Any] = {
         'since': since.isoformat(), 'until': until.isoformat(),
+        'floor': floor.isoformat() if floor else None,
         'grace_minutes': int(grace.total_seconds() // 60), 'armed': armed(),
         'writing': writing, 'provider': None, 'episodes': len(episodes),
         'open': 0, 'comment': 0, 'applied': 0, 'waiting': 0, 'unchanged': 0,
-        'done': 0, 'fixed': 0, 'failed': 0, 'sample': [],
+        'done': 0, 'fixed': 0, 'predates_floor': 0, 'failed': 0, 'sample': [],
     }
 
     def note(state: str, episode, key: Optional[str], **extra) -> None:

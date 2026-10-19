@@ -155,6 +155,35 @@ class TestTheSelection:
         assert episode.projcode == 'UCSG0099'
 
 
+class TestTheArmingFloor:
+
+    def test_unset_is_no_floor_and_a_malformed_value_raises(self):
+        assert mod.opening_floor({}) is None
+        assert mod.opening_floor({mod.SINCE_ENV: '2033-11-16'}) == datetime(2033, 11, 16)
+        with pytest.raises(ValueError):
+            mod.opening_floor({mod.SINCE_ENV: 'soon'})
+
+    def test_a_request_first_refused_before_the_floor_never_opens(self, ctx, session,
+                                                                  monkeypatch):
+        """Its first refusal sits outside the episode once the floor is mid-history."""
+        monkeypatch.setenv(mod.SINCE_ENV, (SLOT - timedelta(hours=2)).isoformat())
+        _refused(session, when=SLOT - timedelta(hours=3))
+        _refused(session, when=SLOT - timedelta(hours=1))
+        _refused(session, when=SLOT - timedelta(hours=1), request_id=RID + 1)
+        detail = mod.xras_request_tickets(ctx()).detail
+        states = {s['request_id']: s['state'] for s in detail['sample']}
+        assert states == {RID: 'predates_floor', RID + 1: 'open'}
+        assert detail['floor'] == (SLOT - timedelta(hours=2)).isoformat()
+
+    def test_the_floor_never_silences_a_linked_ticket(self, ctx, session, provider,
+                                                      monkeypatch):
+        _refused(session, when=SLOT - timedelta(hours=3))
+        mod.xras_request_tickets(ctx())
+        monkeypatch.setenv(mod.SINCE_ENV, (SLOT - timedelta(hours=2)).isoformat())
+        _refused(session, when=SLOT - timedelta(hours=1), errors=('later',))
+        assert mod.xras_request_tickets(ctx()).detail['comment'] == 1
+
+
 class TestTheLevers:
 
     def test_off_is_a_shadow_that_writes_nothing(self, ctx, session, monkeypatch):
