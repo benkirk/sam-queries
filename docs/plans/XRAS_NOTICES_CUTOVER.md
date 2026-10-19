@@ -107,3 +107,67 @@ notices move to post time; either is within the timing XRAS has today.
    (`XRAS_DEV_PROBES.md` § 6.1, scenario 8).
 6. Watch the first week: every applied action has a SAMuel `notification_log` row and no XRAS
    Action Approved row.
+
+## 7. Production rules, recorded 2026-10-19 (the rollback)
+
+Read from `admin-ncar.xras.org` (Admin -> Notifications, each template's edit page) on
+2026-10-19: 15 templates, 206 rules. The cutover deletes the 29 rows marked **delete**;
+re-adding them is the rollback. Every rule here is a row of allocation type x action x
+event x recipient; a cell lists the allocation types of one action, event and recipient.
+
+| Template | Event -> recipient | Action | Allocation types | Cutover |
+|---|---|---|---|---|
+| 154 | Action Approved -> PI | New | CISL Operations, Data Analysis, Educational, Exploratory, NCAR Strategic Computing, Small | **delete** |
+| 154 | Action Approved -> PI | Renewal | CISL Operations, Data Analysis, Educational, Exploratory, Small | **delete** |
+| 133 | Action Approved -> PI | New | Large | **delete** |
+| 133 | Action Approved -> PI | Renewal | Large | **delete** |
+| 1803 | Action Approved -> PI | New | NCAR External Projects | **delete** |
+| 417 | Action Approved -> PI | New | NCAR Strategic Computing | **delete** |
+| 417 | Action Approved -> PI | Renewal | NCAR Strategic Computing | **delete** |
+| 135 | Action Approved -> PI | Appeal | Educational, Large, Small | keep |
+| 135 | Action Approved -> PI | Extension | Data Analysis, Educational, Exploratory, Large, NCAR External Projects, NCAR Strategic Computing, Small | **delete** |
+| 135 | Action Approved -> PI | Final Report | Educational, Large, Small | keep |
+| 149 | Action Approved -> PI | Supplement | Data Analysis, Educational, Exploratory, Large, NCAR Strategic Computing, Small | **delete** |
+| 149 | Action Approved -> PI | Transfer | Data Analysis, Educational, Exploratory, Large, NCAR Strategic Computing, Small | keep |
+| 142 | Action Approved -> PI | Advance | Large | keep |
+| 128 | Action Finalized/Submitted -> PI | Advance | Data Analysis, Educational, Exploratory, Large, NCAR Strategic Computing, Small | keep |
+| 128 | Action Finalized/Submitted -> PI | Appeal | Educational, Large, NCAR Strategic Computing, Small | keep |
+| 128 | Action Finalized/Submitted -> PI | Extension | Data Analysis, Educational, Exploratory, Large, NCAR External Projects, NCAR Strategic Computing, Small | keep |
+| 128 | Action Finalized/Submitted -> PI | Final Report | Educational, Exploratory, Large, Small | keep |
+| 128 | Action Finalized/Submitted -> PI | New | Data Analysis, Educational, Exploratory, NCAR External Projects, Small | keep |
+| 128 | Action Finalized/Submitted -> PI | Renewal | Data Analysis, Educational, Exploratory, NCAR External Projects, Small | keep |
+| 128 | Action Finalized/Submitted -> PI | Supplement | Educational, Exploratory, Large, NCAR External Projects, NCAR Strategic Computing, Small | keep |
+| 128 | Action Finalized/Submitted -> PI | Transfer | Educational, Exploratory, Large, NCAR External Projects, Small | keep |
+| 2562 | Action Finalized/Submitted -> PI | New | Large, NCAR Strategic Computing | keep |
+| 2562 | Action Finalized/Submitted -> PI | Renewal | Large, NCAR Strategic Computing | keep |
+| 129 | Action Finalized/Submitted -> Allocations Process Manager | Advance | Exploratory, NCAR Strategic Computing | keep |
+| 129 | Action Finalized/Submitted -> Allocations Process Manager | Appeal | Educational, Large, Small | keep |
+| 129 | Action Finalized/Submitted -> Allocations Process Manager | Extension | Data Analysis, Educational, Exploratory, Large, NCAR External Projects, NCAR Strategic Computing, Small | keep |
+| 129 | Action Finalized/Submitted -> Allocations Process Manager | Final Report | Educational, Large, Small | keep |
+| 129 | Action Finalized/Submitted -> Allocations Process Manager | New | Data Analysis, Educational, Exploratory, Large, NCAR External Projects, NCAR Strategic Computing, Small | keep |
+| 129 | Action Finalized/Submitted -> Allocations Process Manager | Renewal | Data Analysis, Educational, Exploratory, Large, NCAR External Projects, NCAR Strategic Computing, Small | keep |
+| 129 | Action Finalized/Submitted -> Allocations Process Manager | Supplement | Data Analysis, Educational, Exploratory, Large, NCAR External Projects, NCAR Strategic Computing, Small | keep |
+| 129 | Action Finalized/Submitted -> Allocations Process Manager | Transfer | Educational, Exploratory, Large, NCAR External Projects, Small | keep |
+| 131 | Action Rejected -> PI | Appeal | Large | keep |
+| 131 | Action Rejected -> PI | Extension | Data Analysis, Educational, Exploratory, Large, NCAR External Projects, NCAR Strategic Computing, Small | keep |
+| 131 | Action Rejected -> PI | Final Report | Large | keep |
+| 131 | Action Rejected -> PI | New | CISL Operations, Data Analysis, Educational, Exploratory, NCAR External Projects, Small | keep |
+| 131 | Action Rejected -> PI | Renewal | CISL Operations, Educational, Small | keep |
+| 131 | Action Rejected -> PI | Supplement | Data Analysis, Educational, Exploratory, Large, NCAR External Projects, NCAR Strategic Computing, Small | keep |
+| 131 | Action Rejected -> PI | Transfer | Large | keep |
+| 134 | Action Rejected -> PI | New | Large, NCAR Strategic Computing | keep |
+| 134 | Action Rejected -> PI | Renewal | Large, NCAR Strategic Computing | keep |
+| 143 | Action Rejected -> PI | Advance | Large | keep |
+| 132 | Reviews Completed -> Allocations Process Manager | Appeal | Large | keep |
+| 132 | Reviews Completed -> Allocations Process Manager | Extension | Educational, Large, Small | keep |
+| 132 | Reviews Completed -> Allocations Process Manager | Final Report | Educational, Large, Small | keep |
+| 132 | Reviews Completed -> Allocations Process Manager | New | Educational, Large, NCAR Strategic Computing, Small | keep |
+| 132 | Reviews Completed -> Allocations Process Manager | Renewal | Educational, Large, NCAR Strategic Computing, Small | keep |
+| 132 | Reviews Completed -> Allocations Process Manager | Supplement | Educational, Large, Small | keep |
+| 132 | Reviews Completed -> Allocations Process Manager | Transfer | Educational, Large, Small | keep |
+| 140 | COI Reported -> Allocations Process Manager | Advance | CISL Operations, Educational, Large, Small, TRAC | keep |
+| 140 | COI Reported -> Allocations Process Manager | Appeal | CISL Operations, Educational, Large, Small | keep |
+| 140 | COI Reported -> Allocations Process Manager | New | CISL Operations, Educational, Large, Small | keep |
+| 140 | COI Reported -> Allocations Process Manager | Renewal | CISL Operations, Educational, Large, Small | keep |
+| 140 | COI Reported -> Allocations Process Manager | Supplement | CISL Operations, Educational, Large, Small | keep |
+| 140 | COI Reported -> Allocations Process Manager | Transfer | CISL Operations, Educational, Large, Small | keep |
