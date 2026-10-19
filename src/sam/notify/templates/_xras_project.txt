@@ -1,0 +1,7 @@
+PROJECT
+  Project code:   {{ project_code }}
+  Title:          {{ project_title }}
+  Project lead:   {{ project_lead }}{% if pi_organization %}, {{ pi_organization }}{% endif %}
+{%- for g in grants %}
+  Funding award:  {{ g.number }}{% if g.agency or g.pi_name %} ({{ [g.agency, g.pi_name and 'PI ' ~ g.pi_name] | select | join(', ') }}){% endif %}
+{%- endfor %}

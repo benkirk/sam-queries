@@ -6,13 +6,7 @@ Note from the reviewer:
 
 {{ approver_comment }}
 {% endif %}
-PROJECT
-  Project code:   {{ project_code }}
-  Title:          {{ project_title }}
-  Project lead:   {{ project_lead }}{% if pi_organization %}, {{ pi_organization }}{% endif %}
-{%- for g in grants %}
-  Funding award:  {{ g.number }}{% if g.agency or g.pi_name %} ({{ [g.agency, g.pi_name and 'PI ' ~ g.pi_name] | select | join(', ') }}){% endif %}
-{%- endfor %}
+{% include "_xras_project.txt" %}
 {% if resources %}
 ALLOCATIONS
 {%- for r in resources %}
@@ -39,6 +33,5 @@ publications that use these resources:
 https://ncar-hpc-docs.readthedocs.io/en/latest/getting-started/acknowledging-ncar-and-cisl/
 A project lead's later allocations may be delayed until this is met.
 
-For questions about this allocation, user accounts or passwords, contact cislhelp@ucar.edu
-or 303-497-2000.
+{% include "_xras_questions.txt" %}
 {% include "_xras_footer.txt" %}
