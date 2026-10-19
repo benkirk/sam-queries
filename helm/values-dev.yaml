@@ -61,6 +61,7 @@ webapp:
     XRAS_ACTIONS_CAPTURE_ONLY: "0"
     TICKET_PROVIDER: ""                   # dev files no API ticket
     XRAS_REQUEST_TICKETS_ENABLED: "1"     # the 422's ticket line, beside the task's dry-run filing
+    SAM_TASKS_XRAS_TICKETS_SINCE: ""      # no floor on dev, as in its tasks.env
     NOTIFY_XRAS_REQUESTS_URL: "https://samuel-dev.k8s.ucar.edu/allocations/xras?view=remediations"
     JIRA_ENABLED: "0"
     JIRA_WRITE_ENABLED: "0"
@@ -114,6 +115,9 @@ tasks:
     # XRAS_WRITE_ENABLED warning).
     XRAS_WRITE_ENABLED: "1"
     # xras_request_tickets runs end to end but posts nothing: dry-run logs each ticket
-    # and comment and mints DRY-<handle> keys. No Jira write lever, no token.
+    # and comment and mints DRY-<handle> keys. No Jira write lever, no token, no floor
+    # (values.yaml's tasks.env carries all three for production).
     XRAS_REQUEST_TICKETS_ENABLED: "1"
     TICKET_PROVIDER: "dry-run"
+    JIRA_WRITE_ENABLED: "0"
+    SAM_TASKS_XRAS_TICKETS_SINCE: ""

@@ -113,7 +113,9 @@ check_dev() {
   [[ -z "$(env_value "$deploy" TICKET_PROVIDER)" ]] || { red "FAIL: dev must file no API ticket (TICKET_PROVIDER empty)"; return 1; }
   # xras_request_tickets files end to end on dev through dry-run alone: no Jira write lever.
   [[ "$(env_value "$cron" TICKET_PROVIDER)" == "dry-run" ]] || { red "FAIL: dev tasks must file through TICKET_PROVIDER=dry-run"; return 1; }
-  [[ -z "$(env_value "$cron" JIRA_WRITE_ENABLED)" ]] || { red "FAIL: dev tasks must not carry JIRA_WRITE_ENABLED"; return 1; }
+  [[ "$(env_value "$cron" JIRA_WRITE_ENABLED)" == "0" ]] || { red "FAIL: dev tasks must override prod's JIRA_WRITE_ENABLED to 0"; return 1; }
+  [[ -z "$(env_value "$cron" SAM_TASKS_XRAS_TICKETS_SINCE)" ]] || { red "FAIL: dev tasks carry no ticket floor"; return 1; }
+  [[ -z "$(env_value "$deploy" SAM_TASKS_XRAS_TICKETS_SINCE)" ]] || { red "FAIL: dev's 422 reads no ticket floor"; return 1; }
   same_on_both "$deploy" "$cron" XRAS_REQUEST_TICKETS_ENABLED "1"
   assert_not_contains "$whole" "name: JIRA_TOKEN" "dev must not hold the Jira token"
   assert_not_contains "$whole" "jira-credentials" "dev must not sync the Jira token from OpenBao"
@@ -234,8 +236,13 @@ prod_deploy=$(render prod -s templates/deployment.yaml)
   red "FAIL: dev must never file a Jira ticket (NOTIFY_ACCOUNT_TICKET_TO empty)"; exit 1; }
 [[ "$(env_value "$prod_deploy" XRAS_AUTO_ACTIVATE)" == "1" ]] || {
   red "FAIL: prod activates a New on post (XRAS_AUTO_ACTIVATE=1, armed after the dev smoke)"; exit 1; }
-[[ "$(env_value "$prod_deploy" XRAS_REQUEST_TICKETS_ENABLED)" == "0" ]] || {
-  red "FAIL: prod's 422 must not promise a ticket the disabled task never files"; exit 1; }
+[[ "$(env_value "$prod_deploy" XRAS_REQUEST_TICKETS_ENABLED)" == "1" ]] || {
+  red "FAIL: prod's 422 names the ticket the armed task files (XRAS_REQUEST_TICKETS_ENABLED=1)"; exit 1; }
+[[ "$(env_value "$prod_cron" XRAS_REQUEST_TICKETS_ENABLED)" == "1" ]] || {
+  red "FAIL: the 422's promise and the task's lever move together (prod tasks.env)"; exit 1; }
+prod_floor=$(env_value "$prod_deploy" SAM_TASKS_XRAS_TICKETS_SINCE)
+[[ -n "$prod_floor" && "$prod_floor" == "$(env_value "$prod_cron" SAM_TASKS_XRAS_TICKETS_SINCE)" ]] || {
+  red "FAIL: the 422 and the task must read one floor (SAM_TASKS_XRAS_TICKETS_SINCE in both envs)"; exit 1; }
 [[ "$(env_value "$prod_deploy" COMPONENT_GALLERY_ENABLED)" == "0" ]] || {
   red "FAIL: the component gallery must ship dark in prod (COMPONENT_GALLERY_ENABLED=0)"; exit 1; }
 [[ "$(env_value "$prod_deploy" HUMAN_CHECK_PROVIDER)" == "turnstile" ]] || {

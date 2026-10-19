@@ -68,6 +68,20 @@ class TestTicketState:
         assert tickets.state_line(state).endswith(
             'still refused in about 15 minutes, a ticket opens with NUSD.')
 
+    def test_a_request_refused_before_the_floor_promises_nothing(self, session):
+        """The task never opens one for it, so the 422 must not say it will."""
+        from factories.xras import make_xras_action
+        when = datetime.now() - timedelta(days=2)
+        row = make_xras_action(session, status='failed', http_status=422, action_type='New',
+                               received_time=when)
+        row.request_id = self.RID
+        session.flush()
+        floored = tickets.request_ticket_state(session, self.RID, floor=when + timedelta(days=1))
+        assert floored == tickets.TicketState('floored')
+        assert tickets.state_line(floored) == 'This action cannot yet succeed.'
+        assert tickets.request_ticket_state(
+            session, self.RID, floor=when - timedelta(days=1)).status == 'pending'
+
     def test_a_failed_last_attempt_says_so(self, session):
         now = datetime.now()
         self._ledger(session, 'sent', now - timedelta(hours=1))

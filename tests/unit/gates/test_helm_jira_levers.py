@@ -1,8 +1,8 @@
 """Drift gates for the ticket-provider levers in the chart.
 
 Production ships armed (API create, mail fallback); the CronJob never inherits
-the webapp's write levers, and production's tasks env grants none yet; samuel-dev
-ships mute, its one task writer on the dry-run provider. Flipping any of these is
+the webapp's write levers, and production's tasks env grants them to the one
+writer, xras_request_tickets; samuel-dev ships mute, that writer on the dry-run provider. Flipping any of these is
 a deliberate edit here as well as in the values file.
 """
 import yaml
@@ -48,11 +48,20 @@ class TestProduction:
 
 
 class TestTheCronJobWritesThroughOneTaskOnly:
-    def test_production_tasks_env_grants_no_write_yet(self):
-        """The xras_request_tickets rollout adds both here (XRAS_REQUEST_TICKETS.md § 9)."""
-        tasks_env = (_values().get('tasks') or {}).get('env') or {}
-        for key in WEBAPP_ONLY:
-            assert key not in tasks_env, key
+    def test_production_tasks_env_grants_the_one_writer(self):
+        """Armed with a floor, so the first run opens no backlog (XRAS_PHASE_C_AND_TICKETS.md § 4)."""
+        tasks_env = _values()['tasks']['env']
+        assert (tasks_env['TICKET_PROVIDER'], tasks_env['JIRA_WRITE_ENABLED'],
+                tasks_env['XRAS_REQUEST_TICKETS_ENABLED']) == ('jira-servicedesk', '1', '1')
+        from datetime import date
+        assert date.fromisoformat(tasks_env['SAM_TASKS_XRAS_TICKETS_SINCE'])
+
+    def test_no_other_task_reaches_a_ticket_writer(self):
+        """The grant is safe only while xras_request_tickets is the one task that files."""
+        tasks = REPO_ROOT / 'src' / 'scheduling' / 'tasks'
+        writers = sorted(p.name for p in tasks.glob('*.py')
+                         if 'provider_from_environment' in p.read_text())
+        assert writers == ['xras_request_tickets.py']
 
     def test_the_ticket_task_files_on_the_allocations_type(self):
         """Smoked as RC-40559 (2026-10-15). The CronJob forwards no JIRA_<KIND>_* by
@@ -61,14 +70,14 @@ class TestTheCronJobWritesThroughOneTaskOnly:
         assert (tasks_env['JIRA_XRAS_REQUEST_REQUEST_TYPE_ID'],
                 tasks_env['JIRA_XRAS_REQUEST_LABELS']) == ('18', 'sam-xras-request')
 
-    def test_the_task_ships_disabled_in_production(self):
+    def test_the_task_runs_in_production(self):
         disabled = _values()['tasks']['env']['SAM_TASKS_DISABLED'].split(',')
-        assert 'xras_request_tickets' in disabled
+        assert 'xras_request_tickets' not in disabled
 
     def test_dev_tasks_file_through_dry_run_alone(self):
         tasks_env = _values('values-dev.yaml')['tasks']['env']
         assert tasks_env['TICKET_PROVIDER'] == 'dry-run'
-        assert 'JIRA_WRITE_ENABLED' not in tasks_env
+        assert tasks_env['JIRA_WRITE_ENABLED'] == '0'
         assert 'xras_request_tickets' not in tasks_env['SAM_TASKS_DISABLED'].split(',')
 
     def test_dry_run_is_never_selected_in_production(self):

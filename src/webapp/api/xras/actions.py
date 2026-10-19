@@ -576,7 +576,8 @@ def _refusal_reply(action, messages):
     if (request_id is not None and action.get('actionType') in tickets.TICKET_ACTION_TYPES
             and config_bool('XRAS_REQUEST_TICKETS_ENABLED', False)):
         try:
-            state = tickets.request_ticket_state(db.session, request_id)
+            state = tickets.request_ticket_state(db.session, request_id,
+                                                 floor=tickets.ticket_floor())
         except Exception:                               # noqa: BLE001
             current_app.logger.exception('XRAS 422: ticket state for requestId=%s failed',
                                          request_id)

@@ -216,9 +216,8 @@ assert_contains "$cron_out" 'name: samuel-xras-api-credentials' \
   "which must name the Secret the ExternalSecret materialises"
 # Help-desk tickets: the hourly learn reads Jira from the CronJob, so its read
 # keys and token are hand-listed there. The webapp's write lever and filing
-# selector are never inherited, and production's tasks.env grants neither until
-# the xras_request_tickets rollout; asserted against the comment-stripped
-# manifest, because the template's own WARNING names both.
+# selector are never inherited; production's tasks.env grants both to the one
+# writer, xras_request_tickets (the template never names them: test_helm_jira_levers.py).
 for key in JIRA_ENABLED JIRA_BASE_URL JIRA_AUTH JIRA_PROJECT_KEY JIRA_SERVICE_DESK_ID \
            JIRA_REQUEST_TYPE_ID JIRA_TOKEN; do
   assert_contains "$cron_out" "name: ${key}" "the ticket learn needs ${key} in the CronJob"
@@ -236,10 +235,13 @@ assert_not_contains "$cron_code" 'DIRECTORY_APPLY' \
   "the task pod reads the directory and never writes from it"
 assert_contains "$cron_out" 'name: JIRA_XRAS_REQUEST_REQUEST_TYPE_ID' \
   "xras_request_tickets' request type reaches the task pod through tasks.env"
-assert_not_contains "$cron_code" 'JIRA_WRITE_ENABLED' \
-  "no production task files or comments on a ticket yet"
-assert_not_contains "$cron_code" 'TICKET_PROVIDER' \
-  "production's task pod selects no filing path yet"
+for key in TICKET_PROVIDER JIRA_WRITE_ENABLED XRAS_REQUEST_TICKETS_ENABLED \
+           SAM_TASKS_XRAS_TICKETS_SINCE; do
+  [[ $(grep -c "name: ${key}\$" <<<"$cron_code") == 1 ]] || {
+    red "FAIL: xras_request_tickets is armed through tasks.env: exactly one ${key}"; exit 1; }
+done
+assert_contains "$cron_code" 'value: "jira-servicedesk"' \
+  "production's task pod files through the JSM API, never dry-run"
 
 assert_contains "$cron_out" 'name: SAM_TASKS_ACCOUNT_MAX' \
   "the account-queue digest's runaway guard"
