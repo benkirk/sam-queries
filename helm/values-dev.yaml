@@ -58,6 +58,7 @@ webapp:
     XRAS_WRITE_ENABLED: "1"
     XRAS_RENAME_ENABLED: "1"              # the after-reply rename (prod: "1" too; both gated)
     XRAS_AUTO_ACTIVATE: "1"               # a New that applies activates its project (prod: "1" too)
+    XRAS_AUTO_NOTIFY: "1"                 # then mails it; NOTIFY_ENABLED=0 keeps that a no-send
     XRAS_ACTIONS_CAPTURE_ONLY: "0"
     TICKET_PROVIDER: ""                   # dev files no API ticket
     XRAS_REQUEST_TICKETS_ENABLED: "1"     # the 422's ticket line, beside the task's dry-run filing

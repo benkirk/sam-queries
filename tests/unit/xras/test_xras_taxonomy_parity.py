@@ -38,10 +38,16 @@ def test_every_auto_sent_service_has_a_kind():
     assert _AUTO <= set(XRAS_SERVICE_KINDS), _AUTO - set(XRAS_SERVICE_KINDS)
 
 
-def test_add_is_never_auto_sent():
+def test_add_is_auto_sent_only_as_the_activations_backstop():
     """A New is two writes — active=True AND the notice — so "is now active" must
-    not fire before an operator activates. A policy, not an accident of the tuple."""
-    assert 'add' not in _AUTO
+    not fire first: `select` takes `add` only once the project is active."""
+    from datetime import datetime, timedelta
+    from scheduling.tasks.xras_notices import select
+    row = {'service': 'add', 'notifiable': True, 'received_time': datetime(2033, 1, 1)}
+    slot, delays = datetime(2033, 1, 2), {'add': timedelta(0)}
+    assert 'add' in _AUTO
+    assert select([row], slot=slot, delays=delays) == []
+    assert select([{**row, 'project_active': True}], slot=slot, delays=delays)
 
 
 def test_transfer_notifies_nowhere():

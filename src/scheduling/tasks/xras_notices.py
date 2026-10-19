@@ -17,20 +17,15 @@ is naive **Mountain** — stamped from the app clock precisely because MySQL's
 ``sam/integration/xras.py``). Comparing them raw is a 6-7 hour skew in the
 one predicate that decides whether a PI gets mailed today or tomorrow.
 
-**Why a delay at all.** An operator who is about to activate, correct or
-dismiss an action needs a window in which the machine has not already spoken
-for them. One day is long enough for that and short enough that nobody is
-waiting on us.
+**No delay since phase C** (docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 5.5): an
+action goes out at the next business-hour slot, as XRAS's own award mail did at
+Notify. A New is sent by the ``/actions`` route right after its activation; this
+task only backstops it, an hour on, once the project is active.
 
 **Why business hours.** A notice sent at 03:00 is read at 09:00 anyway, and
 any reply lands while nobody is watching. `BusinessHourly` removes the
-overnight case structurally rather than by a quiet-hours check here.
-
-WARNING: **The effective delay is longer than the nominal one**, and `detail`
-reports the real age of what went out so this never reads as a stuck queue::
-
-    received Tue 09:15, after=1d  ->  eligible Wed 09:15  ->  sends Wed 10:00
-    received Fri 16:30, after=1d  ->  eligible Sat 16:30  ->  sends Mon 08:00
+overnight case structurally rather than by a quiet-hours check here, so a
+Friday 17:30 arrival sends Monday 08:00; `detail` reports the real age.
 
 **Why it cannot double-mail.** The manual button and this task mint
 *identical* dedup keys (``{kind}:{projcode}:{action_id}:{address}``) because
@@ -82,12 +77,10 @@ class AutoNotice:
 
 #: **Fail-closed: a service absent here is NEVER auto-sent.**
 #:
-#: * ``add`` is absent on purpose. A New is *two* writes, not one — the notice
-#:   says "is now active", and the project is not, until somebody activates it.
-#:   The pre-deploy smoke measured a manual notice going out 64 seconds before
-#:   the activation it announced. An unattended sender has no operator to
-#:   correct that order; the New's notice follows ``XRAS_AUTO_ACTIVATE``
-#:   (``sam/manage/xras_activation.py``) in phase C, not this task.
+#: * ``add`` is the backstop for the route's notice after activation, selected
+#:   only once the project is active (``select``): the notice says "is now
+#:   active", and a manual notice once went out 64 s before its activation.
+#:   The hour lets the route's own send land first.
 #: * ``transfer`` has no notification kind at all — it parks as `manual` by
 #:   design and never completes, so it can never be selected even by mistake.
 #:
@@ -97,11 +90,16 @@ class AutoNotice:
 #: ambiguity in the ledger `detail`, and there is no both-set/neither-set
 #: validator to write.
 AUTO_NOTICES: Tuple[AutoNotice, ...] = (
-    AutoNotice('update',     after=timedelta(days=1)),
-    AutoNotice('extend',     after=timedelta(days=1)),
-    AutoNotice('supplement', after=timedelta(days=1)),
-    AutoNotice('adjust',     after=timedelta(days=1)),
+    AutoNotice('add',        after=timedelta(hours=1)),
+    AutoNotice('update',     after=timedelta(0)),
+    AutoNotice('extend',     after=timedelta(0)),
+    AutoNotice('supplement', after=timedelta(0)),
+    AutoNotice('adjust',     after=timedelta(0)),
 )
+
+#: The cutover floor (an ISO date or datetime, naive Mountain): an action received
+#: before it was XRAS's to mail, so the first run never repeats XRAS's notices.
+SINCE_ENV = 'SAM_TASKS_XRAS_NOTICES_SINCE'
 
 #: How far back the cohort may reach. An action older than this is never
 #: auto-sent; it stays manual.
@@ -163,6 +161,12 @@ def xras_email_max(env: Optional[dict] = None) -> int:
     return positive_int_env('SAM_TASKS_XRAS_MAX', DEFAULT_XRAS_MAX, env)
 
 
+def notices_floor(env: Optional[dict] = None) -> Optional[datetime]:
+    """The cutover floor, or ``None``; a malformed value raises, visibly."""
+    raw = ((env if env is not None else os.environ).get(SINCE_ENV) or '').strip()
+    return datetime.fromisoformat(raw) if raw else None
+
+
 def policy(env: Optional[dict] = None) -> Dict[str, timedelta]:
     """``{service: after}`` for this run, with the env override applied."""
     override = notify_after(env)
@@ -170,7 +174,8 @@ def policy(env: Optional[dict] = None) -> Dict[str, timedelta]:
             for rule in AUTO_NOTICES}
 
 
-def select(rows, *, slot: datetime, delays: Dict[str, timedelta]) -> List[dict]:
+def select(rows, *, slot: datetime, delays: Dict[str, timedelta],
+           floor: Optional[datetime] = None) -> List[dict]:
     """The rows this slot may notify, from ``get_xras_activity`` output.
 
     WARNING: **Keyed on ``service``, never on ``action_type``.** The card's badge
@@ -199,8 +204,12 @@ def select(rows, *, slot: datetime, delays: Dict[str, timedelta]) -> List[dict]:
             continue
         if not row.get('notifiable') or row.get('notified') or row.get('dismissed'):
             continue
+        if row.get('service') == 'add' and not row.get('project_active'):
+            continue
         received = row.get('received_time')
         if received is None or received > slot - after:
+            continue
+        if floor is not None and received < floor:
             continue
         selected.append(row)
     return selected
@@ -254,7 +263,8 @@ def xras_notices(ctx) -> TaskResult:
     # select the cohort ITS slot would have, not a wider one. Without it a late
     # dispatch and a punctual one disagree about the same occurrence key.
     rows = get_xras_activity(session, since=slot - LOOKBACK, until=slot)
-    candidates = select(rows, slot=slot, delays=delays)
+    floor = notices_floor()
+    candidates = select(rows, slot=slot, delays=delays, floor=floor)
 
     ctx.logger.info('as of %s: %d action(s) in [%s, %s] -> %d eligible',
                     slot.isoformat(), len(rows),
@@ -311,6 +321,7 @@ def xras_notices(ctx) -> TaskResult:
 
     detail = {
         'window_start': (slot - LOOKBACK).isoformat(),
+        'floor': floor.isoformat() if floor else None,
         'window_end': slot.isoformat(),
         'delays_hours': {service: after.total_seconds() / 3600
                          for service, after in sorted(delays.items())},

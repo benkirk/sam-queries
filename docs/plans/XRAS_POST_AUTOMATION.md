@@ -72,9 +72,8 @@ process's notification templates, sent at the operator's Notify step (read on `a
 - **The cutover deletes those rules** for exactly the action types SAM then sends, and the
   operator stops clicking Notify: a request leaves the admin queue at the post without it
   (`XRAS_DEV_PROBES.md` § 6.1, scenario 8). Approve and post are the whole job.
-- **Before it:** template content at parity, a copy to `alloc@ucar.edu` (every XRAS award mail
-  carries one; production has no addressing rows), and one rule deleted on the demo to prove
-  it silences Notify.
+- **Before it:** template content at parity and one rule deleted on the demo to prove it
+  silences Notify. The copy to `alloc@ucar.edu` already comes from `NOTIFY_XRAS_CC`.
 
 **D. A refused post becomes one ticket.** `XRAS_REQUEST_TICKETS.md` (built in #828; on in
 samuel-dev through the `dry-run` provider; production waits on its § 9).

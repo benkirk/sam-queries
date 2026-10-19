@@ -63,7 +63,7 @@ gap to close before that rule is deleted.
 | PI (To) | the project lead (PI → lead in `sam/xras/roster.py`) | covered |
 | Allocation Managers (cc) | the project admin (Allocation Manager → admin), mailed directly | covered |
 | Co-PIs (cc) | — | none: NCAR's wire carries only PI, Allocation Manager and User roles, so the list is empty |
-| `alloc@ucar.edu` (cc on every award mail) | nothing: production has no `notification_addressing` rows | add a cc or bcc row on scope `xras` (Admin → Configuration → Notification Addressing) |
+| `alloc@ucar.edu` (cc on every award mail) | `NOTIFY_XRAS_CC` (since #480), once per letter since #848 | covered |
 | program officers (cc) | — | confirm the tag is empty at NCAR (no program officer on the wire); otherwise decide |
 | `bgrant@nsf.gov`, `mwomack@nsf.gov` (cc, Large New and Renewal only) | — | addressing scopes are family, kind and facility, not allocation type: add an allocation-type scope, or drop the copy (Large News are rare; none since the repoint) |
 | PI email again (417, Strategic Computing) | — | none: a duplicate of the To |

@@ -259,7 +259,7 @@ Scheduled tasks, by environment:
 |---|---|---|
 | Local Docker Compose (`samuel-dev`) | n/a — no chart | Run by hand: `sam-admin tasks --run-due` |
 | Local k8s (Docker Desktop) | `false` | Nothing should silently DELETE local data |
-| CIRRUS k8s (this chart) | `true`, kill-switched | Staged enable; the switch names what is not yet live. `SAM_TASKS_DISABLED=xras_notices,account_queue_digest,directory_report` |
+| CIRRUS k8s (this chart) | `true`, kill-switched | Staged enable; the switch names what is not yet live. `SAM_TASKS_DISABLED=account_queue_digest,directory_report` |
 | CIRRUS k8s dev (`samuel-dev-tasks`) | `true`, own ledger in `system_status_dev` | Mail tasks and the account-request tasks off; the sweep and `xras_rename` (its own `XRAS_WRITE_ENABLED` in `tasks.env`) run against XRAS's demo instance, and `xras_request_tickets` files through `TICKET_PROVIDER=dry-run`: `SAM_TASKS_DISABLED=expiration_notices,xras_notices,account_requests_reconcile,account_queue_digest` |
 
 When the per-environment Entra app strategy is adopted (separate `sam-production`
@@ -344,7 +344,7 @@ until it has been reviewed on its own, so the dispatcher wakes as usual and the
 untried task writes a `skipped` row instead of running. Today
 `cleanup_status_snapshots`, `deactivate_expired_projects`, `xras_sweep`,
 `expiration_notices`, `refresh_allocation_state`, `account_requests_reconcile`,
-`xras_rename` and `xras_request_tickets` are live; `xras_notices`, `account_queue_digest` and
+`xras_rename`, `xras_request_tickets` and `xras_notices` are live; `account_queue_digest` and
 `directory_report` (dev runs it) are off (dev also turns off the mail and account-request tasks). Enabling one is a
 reviewable one-line commit; `xras_rename` also needs `XRAS_WRITE_ENABLED` in `tasks.env`,
 and `xras_request_tickets` its ticket levers and floor there (`XRAS_PHASE_C_AND_TICKETS.md` § 4).

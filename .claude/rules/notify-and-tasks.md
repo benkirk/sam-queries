@@ -80,12 +80,14 @@ first task with `needs=('sam',)`.
 ### The `xras_notices` task
 
 `src/scheduling/tasks/xras_notices.py`, hourly 08:00–17:00 Mon–Fri Mountain
-(`BusinessHourly`). Mails the XRAS handoff notices nobody clicked. **Ships
-named in `SAM_TASKS_DISABLED`** pending a soak.
+(`BusinessHourly`). Mails the XRAS award notices (phase C): **live in prod** since the
+phase C cutover, floored by `SAM_TASKS_XRAS_NOTICES_SINCE` so its first run never repeats
+XRAS's own mail. The New's notice is the `/actions` route's, right after activation
+(`XRAS_AUTO_NOTIFY`, `sam/manage/xras_activation.py`); this task backstops it.
 
 | | |
 |---|---|
-| **Policy** | `AUTO_NOTICES` — `update`, `extend`, `supplement`, `adjust`, each with a `timedelta` delay (1 day). **Fail-closed**: a service not in that tuple is never auto-sent. `add` is out because a New is *two* writes (`active=True` **and** the notice, in that order); `transfer` has no kind at all. |
+| **Policy** | `AUTO_NOTICES` — `update`, `extend`, `supplement`, `adjust` with no delay (the next slot), `add` after an hour and **only once the project is active** (a New is *two* writes, `active=True` then the notice). **Fail-closed**: a service not in that tuple is never auto-sent; `transfer` has no kind at all. |
 | ⚠️ **Key on `service`, never `action_type`** | a card row badged **New** *can* auto-send: `dispatch.select_service` routes a New whose projcode already exists to `update`. `action_type` is also nullable, aliased (`Adjust`/`Adjustment`), unconstrained, and includes `'Date Adjustment'`, which no service handles. |
 | **Threshold** | from `ctx.occurrence` via `to_local_naive`, **not** truncated to midnight (unlike `expiration_notices`): this is a rolling threshold, not a band. `received_time` is naive-Mountain from the app clock. |
 | **Window** | `[slot − LOOKBACK, slot]`, 14 days. The lower bound is a blast-radius bound — without it the first run after the switch clears mails every never-notified action in the table. The **upper** bound is determinism: a run reclaimed an hour late must select *its* slot's cohort. |

@@ -220,6 +220,11 @@ class TestHelmWriteLever:
         means editing this line too."""
         assert str(self._values()['webapp']['env']['XRAS_AUTO_ACTIVATE']) == '1'
 
+    def test_the_news_award_mail_is_armed_on_purpose(self):
+        """XRAS_PHASE_C_AND_TICKETS.md § 5.4: the route mails the New after activating it.
+        Disarming means editing this line too; xras_notices backstops it either way."""
+        assert str(self._values()['webapp']['env']['XRAS_AUTO_NOTIFY']) == '1'
+
     def test_only_the_tasks_env_arms_task_writes(self):
         """`xras_rename` is the one production task that writes to XRAS.
 
