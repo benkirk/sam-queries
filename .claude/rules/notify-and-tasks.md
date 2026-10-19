@@ -113,9 +113,12 @@ project under `XRAS_AUTO_ACTIVATE` (`"1"` in both; `sam/manage/xras_activation.p
 `src/scheduling/tasks/xras_request_tickets.py`, every 15 min: one NUSD ticket per XRAS New or
 Renewal still refused past the grace period (10 min), an internal comment when its blocker list
 changes and one when a post applies; NUSD closes it. Keys `xras_ticket:<requestId>:{open,<digest>,applied}`.
-⚠️ **The CronJob's one ticket writer**: `TICKET_PROVIDER` reaches it from `tasks.env` alone. Prod
-ships it in `SAM_TASKS_DISABLED` with no ticket lever; dev runs `TICKET_PROVIDER=dry-run` (logs,
-mints `DRY-<handle>`, outside `PROVIDERS` so nothing reads it, refused to the webapp).
+⚠️ **The CronJob's one ticket writer**: `TICKET_PROVIDER` and `JIRA_WRITE_ENABLED` reach the task
+pod from `tasks.env` alone, so no other task may call `provider_from_environment`
+(`test_helm_jira_levers.py`). Prod files to Jira, armed with the floor
+`SAM_TASKS_XRAS_TICKETS_SINCE` (a request first refused before it is `predates_floor`, never
+opened); dev runs `TICKET_PROVIDER=dry-run` (logs, mints `DRY-<handle>`, outside `PROVIDERS` so
+nothing reads it, refused to the webapp) and overrides the write lever and floor off.
 `XRAS_REQUEST_TICKETS_ENABLED` off, or `--dry-run`, reports only: the ledger and link rows commit
 on their own sessions. The webapp's 422 reads the state with no outbound call
 (`sam/queries/xras_request_tickets.py`). Record: `docs/plans/XRAS_REQUEST_TICKETS.md`.

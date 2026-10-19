@@ -114,6 +114,9 @@ tasks:
     # XRAS_WRITE_ENABLED warning).
     XRAS_WRITE_ENABLED: "1"
     # xras_request_tickets runs end to end but posts nothing: dry-run logs each ticket
-    # and comment and mints DRY-<handle> keys. No Jira write lever, no token.
+    # and comment and mints DRY-<handle> keys. No Jira write lever, no token, no floor
+    # (values.yaml's tasks.env carries all three for production).
     XRAS_REQUEST_TICKETS_ENABLED: "1"
     TICKET_PROVIDER: "dry-run"
+    JIRA_WRITE_ENABLED: "0"
+    SAM_TASKS_XRAS_TICKETS_SINCE: ""

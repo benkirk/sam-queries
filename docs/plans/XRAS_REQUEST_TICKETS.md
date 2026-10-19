@@ -1,9 +1,8 @@
 # One NUSD ticket per blocked XRAS post
 
-**Status: built 2026-10-14, dev first** (`xras-post-automation-bd`). samuel-dev files through
-the `dry-run` provider; production ships the task disabled with no ticket lever. § 11 holds what
-differs from this design. Production arming, with a since-floor, is planned in
-[`XRAS_PHASE_C_AND_TICKETS.md`](XRAS_PHASE_C_AND_TICKETS.md) § 4 (2026-10-19). Phase D of [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md).
+**Status: built 2026-10-14; armed for production 2026-10-19** (PR #845, with the floor
+`SAM_TASKS_XRAS_TICKETS_SINCE`, [`XRAS_PHASE_C_AND_TICKETS.md`](XRAS_PHASE_C_AND_TICKETS.md) § 4).
+samuel-dev files through the `dry-run` provider. § 11 holds what differs from this design. Phase D of [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md).
 
 **The model** (Ben, 2026-10-14 and 2026-10-15):
 - Approvers approve and post in one sitting, and a post that applies is done: no ticket, no
@@ -223,6 +222,12 @@ hours. A request approved for more than N days with no post (no `xras_action_log
 account-queue digest. No ticket: the operator's next step is the post.
 
 ## 9. Rollout
+
+**As armed (2026-10-19, PR #845):** step 3 below with one change. Instead of asking NUSD about
+the open backlog, `SAM_TASKS_XRAS_TICKETS_SINCE` in `tasks.env` keeps every request first
+refused before the floor from ever opening (`predates_floor` in the run detail); a request
+with a linked ticket keeps its comments. The plan read is still taken before the merge, and it
+should report 0 opens.
 
 1. **Dev, dry-run filing.** samuel-dev has no Jira, so the task runs armed on
    `TICKET_PROVIDER=dry-run`: real `external_ticket` and ledger rows, `DRY-SAM-XR-<id>` keys,

@@ -87,11 +87,11 @@ class TestTheRegistration:
         assert TASKS[NAME].needs == ('sam',)
         assert lease_for(TASKS[NAME].expected_runtime).total_seconds() > int(deadline.group(1))
 
-    def test_it_ships_disabled_in_production_and_runs_on_dev(self):
-        """`SAM_TASKS_DISABLED` is fail-OPEN: enabling it in production edits this test too."""
-        for name, expected in (('values.yaml', True), ('values-dev.yaml', False)):
+    def test_it_runs_in_both_envs(self):
+        """`SAM_TASKS_DISABLED` is fail-OPEN: disabling it again edits this test too."""
+        for name in ('values.yaml', 'values-dev.yaml'):
             env = yaml.safe_load((REPO_ROOT / 'helm' / name).read_text())['tasks']['env']
-            assert (NAME in env['SAM_TASKS_DISABLED'].split(',')) is expected, name
+            assert NAME not in env['SAM_TASKS_DISABLED'].split(','), name
 
 
 class TestThePlan:
