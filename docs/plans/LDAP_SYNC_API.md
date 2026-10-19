@@ -677,18 +677,46 @@ an existing row (`docs/apis/SYSTEMS_INTEGRATION_APIs.md` § 8).
 
   The replay wrote the local clone (`make clone` restores it).
 
-### 10.6 Still to do before cutover
+### 10.6 Cutover status (2026-10-19)
 
-1. syncd patches we carry (`SAM_LDAP_SYNCD_REFERENCE.md` N5, bug 15, N23, N22): proven on
-   the testbed 2026-10-09 (PR #774; with them the daemon delivers its own full stream and the
-   acronym institution is accepted, leaving one legacy-known 400). File them upstream; until
-   then prod runs without them.
-2. ~~Confirm the prod `admin` `api_credentials` row with `ROLE_API_ADMIN`.~~ Confirmed
-   2026-10-09: samuel-dev holds prod's rows raw from `make refresh-dev`, and `admin` with
-   prod's secret answers 200 there through the legacy role link alone (§ 10.7).
-3. samuel-dev rehearsal, then flip `SAM_URL`; rollback is the same variable.
-4. For George: the cron configuration (bug 13) and, before `LDAPSYNC_LIFECYCLE_ENABLED`,
-   the `deactivation` key name and the `$samClient` bug (the `/?24` path is handled here).
+The dev shadow met its exit bar on 2026-10-19: five clean weekdays (10-13 to 10-19) after the
+T1 re-baseline, every difference classified and none SAMuel's (§ 10.7). SAMuel answers the
+stock daemon as legacy does, so prod after the `SAM_URL` flip takes the same pushes it takes
+today; the deliberate deviations are § 10.3's.
+
+1. **Syncd patches** (`SAM_LDAP_SYNCD_REFERENCE.md` N5, bug 15, N23, N22, plus 0005-0007):
+   proven on the testbed. Upstream: NCAR/sam-ldap-syncd#7 (acronym widths) merged;
+   #8 (pass resilience, now five commits with 0007: a refused record is kept and re-sent
+   until SAM takes it) open. Prod runs the stock daemon until they land; the flip does not
+   depend on them.
+2. ~~Confirm the prod `admin` `api_credentials` row with `ROLE_API_ADMIN`.~~ Confirmed on
+   samuel-dev's raw copy 2026-10-09 and read-only on prod itself 2026-10-15 (enabled, linked
+   to `ROLE_API_ADMIN` and `ROLE_API_HEUV`).
+3. **The flip:** this PR's levers reach prod (purge and restore on, lifecycle off); then, on
+   sam-app, `syncdTest` against SAMuel prod's URL (TLS and handshake), then `SAM_URL`.
+   Rollback is the same variable. Legacy and SAMuel share the prod database, so no reset and
+   no data move. After it: legacy's `ldapsync/sam-app` family falls to zero
+   (`tomcat_watch`), SAMuel prod's request log carries the PUTs.
+4. **Lifecycle stays off in prod** (on in samuel-dev, where the daemon's job still cannot call
+   it and a finish is driven by hand). Prod 2026-10-19, read-only: 245 users pending
+   (stamped since 08-10; 59 in August, 73 in September, 113 so far in October) hold 1,221 live
+   memberships; 137 of them sit on an active project, 77 are collaborators with no current
+   position on an active project. Those 77 are who the collaborator keep-alive
+   (`collabexpiryupdates`, § 2.4) exists to extend, and it has never run. Legacy has never
+   finished a deactivation (D19, and the daemon's job dies before calling), so off is
+   today's behavior. Turn it on only when all three hold: the keep-alive has run, George
+   has fixed the lifecycle client (bug 13 cron, the `deactivation` key name, the
+   `$samClient` bug), and a dry run of the first batch has been reviewed. Until then the
+   lever is the guard against that first run closing every pending user's memberships in
+   one unattended night.
+5. **What the shadow showed about the daemon's content** (direction in
+   `LDAPSYNC_DIRECTORY_AFFILIATIONS.md`): it sends changes only, against its own record, so
+   a change it loses is never repaired. Two collaborations moved on 10-14 (uid 32957 to
+   institution 66917, uid 38478 to 326) arrived with a transient bad username, were refused
+   by both SAMs, and are still missing in both: dev lost them to 0002's restore (0007 now
+   keeps them owed), prod has no institution 66917 and legacy ignores an employer change on
+   an id match. #841's directory check (report only, on samuel-dev since 10-16) flags such
+   rows when the person next changes.
 
 ### 10.7 Soaks
 

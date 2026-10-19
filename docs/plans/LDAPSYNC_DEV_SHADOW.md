@@ -1,6 +1,6 @@
 # LDAP sync API: shadowing production on samuel-dev
 
-**Status:** plan, 2026-10-09. #773 (`08794fbb`), #774 (`b9fc3efd`) and the levers PR #776
+**Status:** exit bar met 2026-10-19 (five clean weekdays after T1; `LDAP_SYNC_API.md` § 10.6, § 10.7). Plan of 2026-10-09: #773 (`08794fbb`), #774 (`b9fc3efd`) and the levers PR #776
 (`4ee06e00`) are on `staging`; this branch carries the testbed changes. **Read first:** `LDAP_SYNC_API.md` § 10,
 `LDAPSYNC_TESTBED_VERIFICATION.md` (safety rules), `containers/ldap-pipeline/README.md`,
 and the #774 comment on the lifecycle job
