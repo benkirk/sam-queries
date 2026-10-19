@@ -36,7 +36,6 @@ LOOKBACK_DAYS = 30
 OPERATOR = 'task:xras_request_tickets'
 ENABLED_ENV = 'XRAS_REQUEST_TICKETS_ENABLED'
 GRACE_ENV = 'SAM_TASKS_XRAS_TICKETS_GRACE_MINUTES'
-SINCE_ENV = 'SAM_TASKS_XRAS_TICKETS_SINCE'
 MAX_ENV = 'SAM_TASKS_XRAS_TICKETS_MAX'
 #: Opens per wake; past it the run raises before any write.
 DEFAULT_MAX = 10
@@ -61,12 +60,6 @@ class TicketCapExceeded(RuntimeError):
 def armed() -> bool:
     from sam.integration._config import config_bool
     return config_bool(ENABLED_ENV, False)
-
-
-def opening_floor(env: Optional[dict] = None) -> Optional[datetime]:
-    """Naive-Mountain arming floor, or ``None``; a malformed value raises, visibly."""
-    raw = ((env if env is not None else os.environ).get(SINCE_ENV) or '').strip()
-    return datetime.fromisoformat(raw) if raw else None
 
 
 def plan(episode, ticket_key: Optional[str], ledger, *, until: datetime,
@@ -100,7 +93,7 @@ def xras_request_tickets(ctx) -> TaskResult:
     until = to_local_naive(ctx.occurrence, _TZ)
     since = until - timedelta(days=LOOKBACK_DAYS)
     grace = timedelta(minutes=positive_int_env(GRACE_ENV, q.GRACE_MINUTES))
-    floor = opening_floor()
+    floor = q.ticket_floor()
     writing = armed() and not ctx.dry_run
 
     def factory():

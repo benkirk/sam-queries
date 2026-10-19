@@ -426,8 +426,11 @@ webapp:
     XRAS_AUTO_ACTIVATE: "1"
     # The ticket-state first line on a refused New/Renewal's 422 (docs/plans/XRAS_REQUEST_TICKETS.md
     # § 6). "1" only together with the xras_request_tickets task, or the 422 promises a ticket.
-    # Armed with the task (docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 4).
+    # Armed with the task (docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 4). The floor MUST equal
+    # tasks.env's: a request first refused before it gets no ticket, so its 422 promises none
+    # (pinned equal by helm/tests/test-dev-render.sh).
     XRAS_REQUEST_TICKETS_ENABLED: "1"
+    SAM_TASKS_XRAS_TICKETS_SINCE: "2026-10-19"
     # Help-desk tickets (sam/integration/tickets, docs/plans/implemented/TICKET_PROVIDER.md).
     # Three fail-closed levers:
     #   JIRA_ENABLED        reads: the hourly learn/status pass and the card.

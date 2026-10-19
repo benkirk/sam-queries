@@ -117,7 +117,7 @@ changes and one when a post applies; NUSD closes it. Keys `xras_ticket:<requestI
 pod from `tasks.env` alone, so no other task may call `provider_from_environment`
 (`test_helm_jira_levers.py`). Prod files to Jira, armed with the floor
 `SAM_TASKS_XRAS_TICKETS_SINCE` (a request first refused before it is `predates_floor`, never
-opened); dev runs `TICKET_PROVIDER=dry-run` (logs, mints `DRY-<handle>`, outside `PROVIDERS` so
+opened; `webapp.env` carries the same value so its 422 promises no ticket, state `floored`); dev runs `TICKET_PROVIDER=dry-run` (logs, mints `DRY-<handle>`, outside `PROVIDERS` so
 nothing reads it, refused to the webapp) and overrides the write lever and floor off.
 `XRAS_REQUEST_TICKETS_ENABLED` off, or `--dry-run`, reports only: the ledger and link rows commit
 on their own sessions. The webapp's 422 reads the state with no outbound call

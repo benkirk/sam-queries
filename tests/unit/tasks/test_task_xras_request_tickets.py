@@ -157,16 +157,19 @@ class TestTheSelection:
 
 class TestTheArmingFloor:
 
-    def test_unset_is_no_floor_and_a_malformed_value_raises(self):
-        assert mod.opening_floor({}) is None
-        assert mod.opening_floor({mod.SINCE_ENV: '2033-11-16'}) == datetime(2033, 11, 16)
+    def test_unset_is_no_floor_and_a_malformed_value_raises(self, monkeypatch):
+        monkeypatch.delenv(q.FLOOR_KEY, raising=False)
+        assert q.ticket_floor() is None
+        monkeypatch.setenv(q.FLOOR_KEY, '2033-11-16')
+        assert q.ticket_floor() == datetime(2033, 11, 16)
+        monkeypatch.setenv(q.FLOOR_KEY, 'soon')
         with pytest.raises(ValueError):
-            mod.opening_floor({mod.SINCE_ENV: 'soon'})
+            q.ticket_floor()
 
     def test_a_request_first_refused_before_the_floor_never_opens(self, ctx, session,
                                                                   monkeypatch):
         """Its first refusal sits outside the episode once the floor is mid-history."""
-        monkeypatch.setenv(mod.SINCE_ENV, (SLOT - timedelta(hours=2)).isoformat())
+        monkeypatch.setenv(q.FLOOR_KEY, (SLOT - timedelta(hours=2)).isoformat())
         _refused(session, when=SLOT - timedelta(hours=3))
         _refused(session, when=SLOT - timedelta(hours=1))
         _refused(session, when=SLOT - timedelta(hours=1), request_id=RID + 1)
@@ -179,7 +182,7 @@ class TestTheArmingFloor:
                                                       monkeypatch):
         _refused(session, when=SLOT - timedelta(hours=3))
         mod.xras_request_tickets(ctx())
-        monkeypatch.setenv(mod.SINCE_ENV, (SLOT - timedelta(hours=2)).isoformat())
+        monkeypatch.setenv(q.FLOOR_KEY, (SLOT - timedelta(hours=2)).isoformat())
         _refused(session, when=SLOT - timedelta(hours=1), errors=('later',))
         assert mod.xras_request_tickets(ctx()).detail['comment'] == 1
 

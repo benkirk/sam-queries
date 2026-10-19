@@ -226,7 +226,8 @@ account-queue digest. No ticket: the operator's next step is the post.
 **As armed (2026-10-19, PR #845):** step 3 below with one change. Instead of asking NUSD about
 the open backlog, `SAM_TASKS_XRAS_TICKETS_SINCE` in `tasks.env` keeps every request first
 refused before the floor from ever opening (`predates_floor` in the run detail); a request
-with a linked ticket keeps its comments. The plan read is still taken before the merge, and it
+with a linked ticket keeps its comments. `webapp.env` carries the same floor, so such a
+request's 422 is the bare refusal line (state `floored`) and promises no ticket. The plan read is still taken before the merge, and it
 should report 0 opens.
 
 1. **Dev, dry-run filing.** samuel-dev has no Jira, so the task runs armed on

@@ -33,6 +33,9 @@ TICKET_ACTION_TYPES = ('New', 'Renewal')
 #: ``SAM_TASKS_XRAS_TICKETS_GRACE_MINUTES`` overrides it. The CronJob's
 #: quarter-hourly wake adds up to 15 more.
 GRACE_MINUTES = 10
+#: The arming floor (an ISO date or datetime, naive Mountain): a request first refused
+#: before it never gets a ticket. The task and the 422 read the same key.
+FLOOR_KEY = 'SAM_TASKS_XRAS_TICKETS_SINCE'
 
 #: One line per blocker kind present, in this order. Extra lines after the
 #: legacy strings, which stay byte-identical.
@@ -60,16 +63,25 @@ def pointer_lines(messages: Sequence[str]) -> List[str]:
     return [line for kind, line in POINTERS if kind in kinds]
 
 
+def ticket_floor() -> Optional[datetime]:
+    """The arming floor, or ``None``; a malformed value raises, visibly."""
+    from sam.integration._config import config_str
+    raw = config_str(FLOOR_KEY, '').strip()
+    return datetime.fromisoformat(raw) if raw else None
+
+
 @dataclass(frozen=True)
 class TicketState:
-    """``pending`` (no ticket yet), ``open`` (``key`` set) or ``failed`` (the
-    task's last attempt to open one failed)."""
+    """``pending`` (no ticket yet), ``open`` (``key`` set), ``failed`` (the
+    task's last attempt to open one failed) or ``floored`` (first refused before
+    the arming floor, so none will open)."""
 
     status: str
     key: str = ''
 
 
-def request_ticket_state(session: Session, request_id: int) -> TicketState:
+def request_ticket_state(session: Session, request_id: int, *,
+                         floor: Optional[datetime] = None) -> TicketState:
     ticket = (session.query(ExternalTicket)
               .filter(ExternalTicket.entity_type == ENTITY_TYPE,
                       ExternalTicket.entity_id == request_id)
@@ -78,6 +90,8 @@ def request_ticket_state(session: Session, request_id: int) -> TicketState:
               .first())
     if ticket is not None:
         return TicketState('open', ticket.ticket_key)
+    if floor is not None and refused_before(session, [request_id], floor):
+        return TicketState('floored')
     last = (session.query(NotificationLog.status)
             .filter(NotificationLog.kind == LEDGER_KIND,
                     NotificationLog.entity_type == ENTITY_TYPE,
@@ -95,6 +109,8 @@ def state_line(state: TicketState, *, grace_minutes: int = GRACE_MINUTES) -> str
         return f'{_REFUSED}, see {state.key}.'
     if state.status == 'failed':
         return f'{_REFUSED}. Opening a ticket failed; NUSD has not been notified.'
+    if state.status == 'floored':
+        return f'{_REFUSED}.'
     return (f'{_REFUSED}. If it is still refused in about {grace_minutes + 5} minutes, '
             'a ticket opens with NUSD.')
 
