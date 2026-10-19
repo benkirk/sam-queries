@@ -1069,11 +1069,11 @@ class TestTheSamBadgeLinksWhenTheProjectExists:
         assert '<strong>project</strong>' not in body
 
     @staticmethod
-    def _publish_new(series, *, status='rechecked'):
+    def _publish_new(series, *, status='rechecked', messages=()):
         payload = _payload('NCAR4407')
         payload['actions'][0]['actionType'] = 'New'
         verdict = {'status': status, 'would_succeed': status == 'rechecked',
-                   'messages': [], 'gaps': [], 'service': 'new', 'stage': 'Approved',
+                   'messages': list(messages), 'gaps': [], 'service': 'new', 'stage': 'Approved',
                    'push_state': 'pending', 'push_detail': None,
                    'resolved': {'series': series} if series else None,
                    'checked_at': '2026-10-19T09:00:00'}
@@ -1093,11 +1093,24 @@ class TestTheSamBadgeLinksWhenTheProjectExists:
         assert 'no project' not in body
         assert 'projectDetailsModal' not in body
 
-    def test_a_pending_new_with_no_series_says_no_project(self, auth_client, armed):
-        self._publish_new(None, status='failed')
+    def test_a_mnemonic_blocked_new_says_no_match(self, auth_client, armed):
+        from sam.xras.errors import MNEMONIC_EXTERNAL_PREFIX
+        self._publish_new(None, status='failed',
+                          messages=[MNEMONIC_EXTERNAL_PREFIX + ': Some University'])
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'no match' in body
+        assert 'no project' not in body
+        assert '####' not in body
+
+    @pytest.mark.parametrize('status,messages', [('failed', ['PI pi-user is not in database']),
+                                                 ('incomplete', [])])
+    def test_no_series_without_a_mnemonic_blocker_says_no_project(self, auth_client, armed,
+                                                                  status, messages):
+        """A missing PI leaves no series too, and an incomplete check never tried: neither is `no match`."""
+        self._publish_new(None, status=status, messages=messages)
         body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'no project' in body
-        assert '####' not in body
+        assert 'no match' not in body
 
     def test_the_request_column_opens_the_detail_modal(self, auth_client, armed):
         """The request number IS the XRAS request, so it opens the read-only

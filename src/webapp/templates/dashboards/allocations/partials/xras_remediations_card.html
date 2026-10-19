@@ -359,9 +359,12 @@
                         {# WARNING: two states, never three: `pending_push` is the sweep's
                            set difference against Project.projcode, so a stale row can
                            withhold a link but never offer one to a missing project. A
-                           pending row's series is the pre-flight's prediction, not a project. #}
+                           pending row's series is the pre-flight's prediction, not a project.
+                           `no match` only on a mnemonic blocker: a missing PI also leaves no series. #}
                         {% if row.pending_push and row.series %}
                         <span class="badge state-tag" title="No SAM project yet. The pre-flight resolves this series (facility letter and the PI's organization mnemonic); the number is assigned when the project is created.">{{ projcode_series(row.series) }}</span>
+                        {% elif row.pending_push and 'mnemonic' in row.blockers %}
+                        {{ tag('no match', title="No SAM project yet, and the pre-flight resolved no series: no organization mnemonic matched the PI's affiliation.") }}
                         {% elif row.pending_push %}
                         {{ tag('no project') }}
                         {% else %}
