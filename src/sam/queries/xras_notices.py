@@ -41,25 +41,64 @@ from .xras_activation import (
 __all__ = [
     'XRAS_KIND_SUBJECTS',
     'action_increments',
+    'award_context',
     'build_xras_messages',
     'load_xras_action',
     'notified_to',
+    'xras_subject',
 ]
 
 
-#: kind -> subject template.
+#: kind -> the request word in the subject, the shape XRAS's award mail used.
 #: The subject lives here rather than in the Jinja file because it is also the
 #: `notification_log.subject` column an operator reads back in the admin log,
 #: and a subject assembled inside a template cannot be searched from SQL.
 XRAS_KIND_SUBJECTS: Mapping[str, str] = {
-    'xras_activation': 'NSF NCAR Project {projcode} is now active',
-    'xras_supplement': 'NSF NCAR Project {projcode} has received additional allocation',
-    'xras_extension': 'NSF NCAR Project {projcode} allocation has been extended',
-    'xras_update': 'NSF NCAR Project {projcode} allocation has been renewed',
-    # Deliberately directionless: an Adjustment can subtract, and a subject
-    # line promising good news is read long before the body corrects it.
-    'xras_adjustment': 'NSF NCAR Project {projcode} allocation has been adjusted',
+    'xras_activation': 'New',
+    'xras_supplement': 'Supplement',
+    'xras_extension': 'Extension',
+    'xras_update': 'Renewal',
+    # An Adjustment can subtract; "approved" still reads true for either direction.
+    'xras_adjustment': 'Adjustment',
 }
+
+
+def xras_subject(kind: str, projcode: str, *, pi_last_name: Optional[str] = None,
+                 opportunity: Optional[str] = None) -> str:
+    """``<PI last> NSF NCAR <Opportunity> <Action> Request Approved: <projcode>``."""
+    words = [pi_last_name, 'NSF NCAR', opportunity,
+             XRAS_KIND_SUBJECTS.get(kind, XRAS_KIND_SUBJECTS['xras_activation']),
+             'Request Approved']
+    return f"{' '.join(w for w in words if w)}: {projcode}"
+
+
+def _payload(action) -> Mapping[str, Any]:
+    try:
+        payload = json.loads(action.raw_payload) if action and action.raw_payload else {}
+    except (ValueError, TypeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def award_context(payload: Mapping[str, Any], lead_username: Optional[str]) -> Dict[str, Any]:
+    """The award facts XRAS's letter carried, from the stored post; absent is ``None``/``[]``."""
+    pis = [r for r in payload.get('roles') or () if isinstance(r, dict)
+           and r.get('roleType') == 'PI']
+    pi = next((r for r in pis if r.get('username') == lead_username), pis[0] if pis else {})
+    person = pi.get('person') or {}
+    grants = [{'number': str(g.get('grantNumber')).strip(),
+               'agency': g.get('fundingAgency') or None,
+               'pi_name': g.get('piName') or None}
+              for g in payload.get('grants') or () if isinstance(g, dict)
+              and any(ch.isdigit() for ch in str(g.get('grantNumber') or ''))]
+    return {
+        'request_title': payload.get('requestTitle') or None,
+        'opportunity_name': payload.get('opportunityName') or None,
+        'allocation_type': payload.get('allocationType') or None,
+        'pi_last_name': person.get('lastName') or None,
+        'pi_organization': person.get('organization') or None,
+        'grants': grants,
+    }
 
 
 def load_xras_action(session: Session,
@@ -209,7 +248,12 @@ def build_xras_messages(session: Session, project,
     } for name, info in sorted(usage.items())]
 
     lead_email = project.lead.primary_email if project.lead else None
+    award = award_context(_payload(action),
+                          project.lead.username if project.lead else None)
+    pi_last_name = (project.lead.last_name if project.lead else None) or award['pi_last_name']
     context = {
+        **award,
+        'pi_last_name': pi_last_name,
         'project_code': project.projcode,
         'project_title': project.title,
         'project_lead': project.lead.display_name if project.lead else 'Project Lead',
@@ -229,9 +273,8 @@ def build_xras_messages(session: Session, project,
         'action_type': action.action_type if action else None,
         'approver_comment': approver_comment,
     }
-    subject = XRAS_KIND_SUBJECTS.get(
-        kind, XRAS_KIND_SUBJECTS['xras_activation']
-    ).format(projcode=project.projcode)
+    subject = xras_subject(kind, project.projcode, pi_last_name=pi_last_name,
+                           opportunity=award['opportunity_name'])
 
     recipients = to_recipients(people)
     if not recipients:

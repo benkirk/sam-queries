@@ -22,6 +22,8 @@ from sam.core.users import EmailAddress
 from sam.queries.xras_activation import xras_dedup_key
 from sam.queries.xras_notices import (
     XRAS_KIND_SUBJECTS,
+    award_context,
+    xras_subject,
     action_increments,
     build_xras_messages,
 )
@@ -194,15 +196,50 @@ class TestTheSubjectPerKind:
         _action, (message,) = _built(session, project, service=service,
                                      action_type=action_type)
         assert message.kind == kind
-        assert message.subject == XRAS_KIND_SUBJECTS[kind].format(
-            projcode=project.projcode)
+        assert message.subject.endswith(
+            f'NSF NCAR {XRAS_KIND_SUBJECTS[kind]} Request Approved: {project.projcode}')
 
     def test_the_adjustment_subject_promises_no_direction(self):
         """An Adjustment can subtract, and a subject line promising good news
         is read long before the body corrects it."""
-        subject = XRAS_KIND_SUBJECTS['xras_adjustment']
+        subject = xras_subject('xras_adjustment', 'SCSG0001')
         for word in ('additional', 'extended', 'increase', 'more'):
             assert word not in subject.lower()
+
+    def test_the_subject_names_the_pi_and_the_opportunity(self):
+        assert xras_subject('xras_activation', 'UMMM0018', pi_last_name='Doe',
+                            opportunity='Exploratory Allocation (University)') == (
+            'Doe NSF NCAR Exploratory Allocation (University) New Request Approved: UMMM0018')
+
+
+class TestTheAwardContext:
+    """The award facts XRAS's letter carried, read off the stored post."""
+
+    PAYLOAD = {
+        'requestTitle': 'Clouds', 'opportunityName': 'Exploratory Allocation (University)',
+        'allocationType': 'Exploratory',
+        'roles': [
+            {'roleType': 'Allocation Manager', 'username': 'am',
+             'person': {'lastName': 'Mgr', 'organization': 'Elsewhere'}},
+            {'roleType': 'PI', 'username': 'old', 'person': {'lastName': 'Old'}},
+            {'roleType': 'PI', 'username': 'jdoe',
+             'person': {'lastName': 'Doe', 'organization': 'CU Boulder'}}],
+        'grants': [{'grantNumber': 'AGS-2146709', 'fundingAgency': 'NSF', 'piName': 'J. Doe'},
+                   {'grantNumber': 'NSF Graduate Fellowship'}],
+    }
+
+    def test_the_lead_picks_the_pi_and_digit_free_grants_drop(self):
+        award = award_context(self.PAYLOAD, 'jdoe')
+        assert (award['pi_last_name'], award['pi_organization']) == ('Doe', 'CU Boulder')
+        assert award['grants'] == [{'number': 'AGS-2146709', 'agency': 'NSF',
+                                    'pi_name': 'J. Doe'}]
+        assert (award['request_title'], award['opportunity_name'], award['allocation_type']) == (
+            'Clouds', 'Exploratory Allocation (University)', 'Exploratory')
+
+    def test_an_empty_payload_is_all_absent(self):
+        assert award_context({}, None) == {
+            'request_title': None, 'opportunity_name': None, 'allocation_type': None,
+            'pi_last_name': None, 'pi_organization': None, 'grants': []}
 
     def test_an_unmapped_service_falls_back_rather_than_raising(self, session,
                                                                 project):
