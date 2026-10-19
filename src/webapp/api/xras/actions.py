@@ -594,9 +594,10 @@ def _after_reply_context(app, actor):
 
 def _activate_after_reply(response, result, log_id) -> None:
     """Activate the project a New just created, once the reply has gone
-    (docs/plans/XRAS_POST_AUTOMATION.md § 3 B). Only ``add`` creates one: a New
-    whose projcode exists dispatches as ``update``. A failure leaves the project
-    inactive for the card's Activate, as before."""
+    (docs/plans/XRAS_POST_AUTOMATION.md § 3 B), then, behind ``XRAS_AUTO_NOTIFY``,
+    send its award mail (phase C). Only ``add`` creates one: a New whose projcode
+    exists dispatches as ``update``. A failure leaves the project inactive for the
+    card's Activate, or the notice for the ``xras_notices`` task."""
     from sam.manage import xras_activation
 
     if result.service != 'add' or not result.projcode:
@@ -612,9 +613,15 @@ def _activate_after_reply(response, result, log_id) -> None:
             with _after_reply_context(app, actor), Session(db.engine) as session:
                 outcome = xras_activation.activate_posted_project(
                     session, projcode, by=actor, xras_action_log_id=log_id)
-            app.logger.info('XRAS activate after reply: %s %s', projcode, outcome)
+                app.logger.info('XRAS activate after reply: %s %s', projcode, outcome)
+                if outcome == 'activated' and xras_activation.auto_notify_armed():
+                    from webapp.utils.notify import get_notifier
+                    sent = xras_activation.notify_activated_project(
+                        session, projcode, get_notifier(), by=actor, xras_action_log_id=log_id,
+                        site_url=app.config.get('PUBLIC_BASE_URL') or None)
+                    app.logger.info('XRAS notify after activation: %s %s', projcode, sent)
         except Exception:                               # noqa: BLE001
-            app.logger.exception('XRAS activate after reply failed: %s', projcode)
+            app.logger.exception('XRAS activate/notify after reply failed: %s', projcode)
 
     response.call_on_close(activate)
 

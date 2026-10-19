@@ -71,12 +71,19 @@ def approver_comment_for_action(action: Any, *, client: Optional[XrasApiClient] 
     """
     if action is None:
         return None
-    projcode = (getattr(action, 'projcode_result', None)
-                or getattr(action, 'request_number', None))
+    # A New is looked up by its projcode, then by the NCAR#### it posted under:
+    # sent right after the post, the rename may not have landed yet.
+    numbers = list(dict.fromkeys(n for n in (getattr(action, 'projcode_result', None),
+                                             getattr(action, 'request_number', None)) if n))
+    projcode = numbers[0] if numbers else None
     action_id = getattr(action, 'action_id', None)
     try:
         resolved = client or XrasApiClient.from_environment()
-        return approver_comment(resolved, projcode, action_id)
+        for number in numbers:
+            comment = approver_comment(resolved, number, action_id)
+            if comment:
+                return comment
+        return None
     except XrasSourceUnavailable as exc:
         logger.warning('approver comment for %s action %s skipped: %s',
                        projcode, action_id, exc)
