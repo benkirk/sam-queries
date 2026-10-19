@@ -97,9 +97,11 @@ notices move to post time; either is within the timing XRAS has today.
 
 1. SAMuel ready on samuel-dev: templates at parity (§ 4), the `alloc@` row (§ 3), the
    decisions of § 2 and § 5.
-2. Prove on the demo that a deleted rule silences Notify: delete one rule (Exploratory · New ·
-   Action Approved · PI), approve, post and Notify a benkirk-only request, and read its
-   Notifications view.
+2. Prove on the demo that a deleted rule silences Notify. **Done 2026-10-19**
+   (§ 8; `XRAS_DEV_PROBES.md` § 6.4): with Exploratory · New · Action Approved · PI deleted, an
+   approved and posted New (NCAR4094 → UHSS0006) left Recent submissions and showed no Notify
+   button ("Notifications Generated? N/A"). Existing posted News lost the button at once, and
+   re-adding the rule brought it back.
 3. Record production's rules (the tables above are the record; re-adding them is the rollback).
 4. One day: enable `xras_notices` in production (and phase B's activation notice), then delete
    the rules of § 2 in `admin-ncar`.
@@ -171,3 +173,27 @@ event x recipient; a cell lists the allocation types of one action, event and re
 | 140 | COI Reported -> Allocations Process Manager | Renewal | CISL Operations, Educational, Large, Small | keep |
 | 140 | COI Reported -> Allocations Process Manager | Supplement | CISL Operations, Educational, Large, Small | keep |
 | 140 | COI Reported -> Allocations Process Manager | Transfer | CISL Operations, Educational, Large, Small | keep |
+
+## 8. The demo proof: a deleted rule removes the Notify step (2026-10-19)
+
+The cutover question (§ 6, step 2): once SAMuel sends the award mail
+and XRAS's Action Approved rules are gone, does an approve and post leave nothing behind? On
+`xras-admin-demo` (Ben's 2FA, Playwright, the demo host asserted before every write), one
+rule deleted from template 154: **Exploratory · New · Action Approved · PI**; the other ten
+kept. No Notify was pressed. The field to read is `view_notify_button` on
+`/actions/<aid>.json` (production's NCAR4412, posted the same day: `true`, with
+`notifications_generated: false`).
+
+| Step | Observed |
+|---|---|
+| Baseline, rule present | every posted, never-notified benkirk action shows Notify: News 372884, 372891, 372917; Extensions 372866, 372886; Supplement 372890 (`view_notify_button: true`) |
+| Rule deleted (Save) | **the three Exploratory News lose the button at once** (`view_notify_button` null; Finalize and Post reads "Notifications Generated? N/A", only Save and Repost); the Extensions and the Supplement, whose rules on 135 and 149 stand, keep it. XRAS computes the button from the rules **at read time**, not at the post |
+| NCAR4094 (1439637 / 372951) | a fresh benkirk-only Exploratory New, PI and Allocation Manager, authored through the demo API from inside the samuel-dev pod (§ 4's recipe; validate successful); submitted 16:33 MDT, listed in Recent submissions, Exploratory "3 pending" |
+| Ben approves and posts | sam_dev **#29** `add` processed 200 → **UHSS0006**; activated 0.16 s later by `xras:XRAS` (`xras_activation_event` #5); renamed (`xras_remediation_event` #9, verified) |
+| After the post | **gone from Recent submissions**, Exploratory "2 pending"; the action reads "Notifications Generated? N/A", **no Notify button**; its notifications are the two submit acknowledgments only |
+| Rule re-added (Add Rules, Save) | template 154 back to its 11 rules; UHSS0006's Notify button **returns** ("No"). Re-adding the rules is a complete rollback |
+
+A post already removes a request from Recent submissions with the rules in place (scenario 8;
+production NCAR4412). Approved-but-unposted requests stay. What the rules decide is whether a
+Notify step waits on the action. The production deletion also clears that step from every
+posted, never-notified action at once.
