@@ -64,11 +64,12 @@ webapp:
     NOTIFY_XRAS_REQUESTS_URL: "https://samuel-dev.k8s.ucar.edu/allocations/xras?view=remediations"
     JIRA_ENABLED: "0"
     JIRA_WRITE_ENABLED: "0"
-    # The LDAP sync shadow (docs/plans/LDAPSYNC_DEV_SHADOW.md): purge and restore live,
-    # lifecycle off (the daemon cannot call it; the #774 comment). Prod keeps all three off.
+    # The LDAP sync shadow (docs/plans/LDAPSYNC_DEV_SHADOW.md): all three live. The daemon
+    # cannot call lifecycle yet (the #774 comment), so a finish here is driven by hand.
+    # Prod keeps lifecycle off until the conditions in LDAP_SYNC_API.md § 10.6 hold.
     LDAPSYNC_PURGE_ENABLED: "1"
     LDAPSYNC_RESTORE_ON_REACTIVATE: "1"
-    LDAPSYNC_LIFECYCLE_ENABLED: "0"
+    LDAPSYNC_LIFECYCLE_ENABLED: "1"
     # The directory client reads ldap.ucar.edu after each shadow PUT and logs the drift
     # (report only; no DIRECTORY_APPLY_<KIND> here until step 2 soaks). Prod: all empty.
     DIRECTORY_PROVIDER: "ucar"

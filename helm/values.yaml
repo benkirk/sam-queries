@@ -349,13 +349,15 @@ webapp:
     # e.g. "Extension,Supplement". Narrow this to park a misbehaving payload class as
     # manual without a revert; an unknown token leaves that type disabled.
     XRAS_ACTIONS_ENABLED: "all"
-    # sam-ldap-syncd at /api/protected/admin (docs/plans/LDAP_SYNC_API.md). All off at
-    # cutover. PURGE "1": hard-delete on the daemon's request. LIFECYCLE "1": finish
-    # stamped deactivations (closes memberships). RESTORE_ON_REACTIVATE "1": an IdM
-    # reactivation reopens what the last deactivation closed, within WINDOW_DAYS.
-    LDAPSYNC_PURGE_ENABLED: "0"
+    # sam-ldap-syncd at /api/protected/admin (docs/plans/LDAP_SYNC_API.md). Purge and
+    # restore on, as the dev shadow soaked them. LIFECYCLE stays "0" until § 10.6's
+    # conditions hold: the first run would close every pending user's memberships at once.
+    # PURGE "1": hard-delete on the daemon's request. LIFECYCLE "1": finish stamped
+    # deactivations (closes memberships). RESTORE_ON_REACTIVATE "1": an IdM reactivation
+    # reopens what the last deactivation closed, within WINDOW_DAYS.
+    LDAPSYNC_PURGE_ENABLED: "1"
     LDAPSYNC_LIFECYCLE_ENABLED: "0"
-    LDAPSYNC_RESTORE_ON_REACTIVATE: "0"
+    LDAPSYNC_RESTORE_ON_REACTIVATE: "1"
     LDAPSYNC_RESTORE_WINDOW_DAYS: "90"
     # The directory client (sam/integration/directory, docs/plans/DIRECTORY_CLIENT.md): SAMuel
     # reading ldap.ucar.edu itself, anonymously. PROVIDER + URL turn the read features on (the

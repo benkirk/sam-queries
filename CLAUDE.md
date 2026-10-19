@@ -400,7 +400,7 @@ head commit message is unchanged.
 
 ## Git Workflow
 
-- PRs default to `--base staging`; `open-staging-promotion.yaml` opens the promotion PR.
+- PRs default to `--base staging`; `open-staging-promotion.yaml` opens the promotion PR, which needs seven required checks (`docs/CIRRUS_PUBLISHING.md`, `main` and `staging`).
 - Detailed commit messages with markdown: "## Summary", "### Test Results" when
   relevant, ending with:
 ```

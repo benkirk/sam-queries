@@ -677,14 +677,97 @@ an existing row (`docs/apis/SYSTEMS_INTEGRATION_APIs.md` § 8).
 
   The replay wrote the local clone (`make clone` restores it).
 
-### 10.6 Still to do before cutover
+### 10.6 Cutover status (2026-10-19)
 
-1. syncd patches we carry (`SAM_LDAP_SYNCD_REFERENCE.md` N5, bug 15, N23, N22): proven on
-   the testbed 2026-10-09 (PR #774; with them the daemon delivers its own full stream and the
-   acronym institution is accepted, leaving one legacy-known 400). File them upstream; until
-   then prod runs without them.
-2. Confirm the prod `admin` `api_credentials` row with `ROLE_API_ADMIN`.
-3. samuel-dev rehearsal, then flip `SAM_URL`; rollback is the same variable.
-4. For George: the cron configuration (bug 13) and, before `LDAPSYNC_LIFECYCLE_ENABLED`,
-   the `deactivation` key name and the `$samClient` bug (the `/?24` path is handled here).
+The dev shadow met its exit bar on 2026-10-19: five clean weekdays (10-13 to 10-19) after the
+T1 re-baseline, every difference classified and none SAMuel's (§ 10.7). SAMuel answers the
+stock daemon as legacy does, so prod after the `SAM_URL` flip takes the same pushes it takes
+today; the deliberate deviations are § 10.3's.
 
+1. **Syncd patches** (`SAM_LDAP_SYNCD_REFERENCE.md` N5, bug 15, N23, N22, plus 0005-0007):
+   proven on the testbed. Upstream: NCAR/sam-ldap-syncd#7 (acronym widths) merged;
+   #8 (pass resilience, now five commits with 0007: a refused record is kept and re-sent
+   until SAM takes it) open. Prod runs the stock daemon until they land; the flip does not
+   depend on them.
+2. ~~Confirm the prod `admin` `api_credentials` row with `ROLE_API_ADMIN`.~~ Confirmed on
+   samuel-dev's raw copy 2026-10-09 and read-only on prod itself 2026-10-15 (enabled, linked
+   to `ROLE_API_ADMIN` and `ROLE_API_HEUV`).
+3. **The flip:** this PR's levers reach prod (purge and restore on, lifecycle off); then, on
+   sam-app, `syncdTest` against SAMuel prod's URL (TLS and handshake), then `SAM_URL`.
+   Rollback is the same variable. Legacy and SAMuel share the prod database, so no reset and
+   no data move. After it: legacy's `ldapsync/sam-app` family falls to zero
+   (`tomcat_watch`), SAMuel prod's request log carries the PUTs.
+4. **Lifecycle stays off in prod** (on in samuel-dev, where the daemon's job still cannot call
+   it and a finish is driven by hand). Prod 2026-10-19, read-only: 245 users pending
+   (stamped since 08-10; 59 in August, 73 in September, 113 so far in October) hold 1,221 live
+   memberships; 137 of them sit on an active project, 77 are collaborators with no current
+   position on an active project. Those 77 are who the collaborator keep-alive
+   (`collabexpiryupdates`, § 2.4) exists to extend, and it has never run. Legacy has never
+   finished a deactivation (D19, and the daemon's job dies before calling), so off is
+   today's behavior. Turn it on only when all three hold: the keep-alive has run, George
+   has fixed the lifecycle client (bug 13 cron, the `deactivation` key name, the
+   `$samClient` bug), and a dry run of the first batch has been reviewed. Until then the
+   lever is the guard against that first run closing every pending user's memberships in
+   one unattended night.
+5. **What the shadow showed about the daemon's content** (direction in
+   `LDAPSYNC_DIRECTORY_AFFILIATIONS.md`): it sends changes only, against its own record, so
+   a change it loses is never repaired. Two collaborations moved on 10-14 (uid 32957 to
+   institution 66917, uid 38478 to 326) arrived with a transient bad username, were refused
+   by both SAMs, and are still missing in both: dev lost them to 0002's restore (0007 now
+   keeps them owed), prod has no institution 66917 and legacy ignores an employer change on
+   an id match. #841's directory check (report only, on samuel-dev since 10-16) flags such
+   rows when the person next changes.
+
+### 10.7 Soaks
+
+**Local soak, 2026-10-09 12:06-14:41 MDT.** The #774 daemon (all six patches) against the
+branch served on :5051 with all four levers on, the hybrid replica fed by `ldap-poll`, the
+laptop clone refreshed from prod at 12:00. Counts from the server log; the testbed's `out/`
+holds the rest (PII).
+
+| | Result |
+|---|---|
+| Pass 1 (reset 12:06) | 1,348 PUTs, one legacy-known 400 restored and skipped by patch 0002; 0 × 5xx |
+| Pass 2 (reset 12:14) | 920 PUTs + the same 400; no row changed (the § 10.5 residual classes) |
+| Server totals | user 1,956 × 200 + 2 × 400, group 224, institution 70, organization 20, all 200; 0 × 5xx |
+| Live stream | quiet: `ldap-poll` errors 0, a handful of user PUTs |
+| New users | **two people created by SAMuel**, the same two legacy created in production that day (matched by username, compared without printing it): one in pass 1, 2 min 19 s after legacy, and one from the live stream, 2 min 18 s after legacy. The lag is the testbed's poll interval behind prod's syncrepl. 181 positions, 11 affiliations, 6 emails and 1 institution were inserted along with them (the server's model audit) |
+| Daemon | 0 pauses after an exception, 0 `IMDBStateException`, 0 unknown-key skips |
+| Lifecycle | the daemon's cron child dies at its first slot (the `$samClient` bug, § 10.6 item 4), so the finish and the undo were driven by hand: 175 pending in prod data; one finish closed 55 memberships at one stamp and the reactivation PUT reopened all 55 |
+| Server restarts | two, both self-inflicted: the dev server's reloader read a source file mid-edit (13:18) and mid-rebase (before 14:29). From 14:29 the daemon retried its one pending user PUT (patch 0005) until the teardown; nothing was lost, the reset below resends it |
+
+It ended when `make refresh-dev` reloaded the laptop clone (14:41).
+
+**Dev shadow, from T0 = 2026-10-09 14:41 MDT** (`make refresh-dev`: `sam_dev` = prod at T0;
+`docs/plans/LDAPSYNC_DEV_SHADOW.md`). samuel-dev runs `sha-2af6431` with purge and restore
+on, lifecycle off. Before the repoint: 401 with `Basic realm="Realm"` anonymously, 200 as
+`admin`, the purge permit no longer "disabled", `pendingdeactivations/24` = `[]`; `syncdTest`
+reached dev over verified TLS and read `ldapsync/status` (its LDAP-staging half fails on the
+`.invalid` host by design). 
+| | Result |
+|---|---|
+| First reset (14:50) | the `user` GET took 155 s against a server time of 5 s, and the body arrived cut short of its `Content-Length`; LWP still said 200, the JSON decode failed, and the daemon exited before writing anything. The same request from the image's own LWP took 7.2 s with the full body. Likeliest cause: the transformer rebuilding its 31 MB dump in the same emulated amd64 VM while the ingress cut a stalled reader. Fail-closed, but a truncated read is not retried (patch 0005 covers LWP's own 500s only); watch for a repeat |
+| Pass 1 (restart 14:56) | all seven collections loaded (`user` in about 2 s); 1,349 PUTs: 1,348 × 200 and the one legacy-known 400 (a upid held by another username) skipped by patch 0002; 0 × 5xx, 0 tracebacks; purge permits only, no purge. The same count as the local pass 1 |
+| First new user (Sat 05:54) | one PUT created the user, 2 emails and 1 affiliation, 26 s after legacy created the same person in production. A read-only field comparison with production matched username, uid, upid, active, locked, names, emails and institution, and found one **port defect**: legacy stores `primary_gid` 1000 for every new user (its getter defaults NULL to `DEFAULT_HPC_GID` and Hibernate persists through it), SAMuel stored NULL. Fixed in PR #785 |
+| Third new user (Sat 15:32) | the first created after #785 rolled: 34 s after legacy, and identical to production in every field compared (user columns including `primary_gid` 1000, emails, affiliation, positions, phones). The two earlier users keep NULL until the next `make refresh-dev` |
+
+Daily checks (`LDAPSYNC_DEV_SHADOW.md` § 5), one row per weekday:
+
+| Date | Base | `compare-dumps --ignore` (differing records by type) | Daemon PUTs (200 / 400 / 5xx) | Verdict |
+|---|---|---|---|---|
+| Mon 10-12 06:00 | T0 | user 543 (positions 529, collaborations 12, phones 2, tokenType 1), only-prod 4, only-dev 2; institution only-dev 1; projectGroup 7 + only-prod 2; group 2 | Fri 14:56 to Mon 06:00: about 1,450 / 1 (skipped by 0002) / 0 | **not clean; testbed artifact, no port defect.** 517 of the 529 position users are in the seed diff prod's stock daemon cannot deliver (N22 + bug 15); on them dev matches the PUT body for 499, prod for 273. The dev-only institution is patch 0004's 40-character acronym. Three prod-only users are **tombstoned on dev** (deleted, emails gone) by pass 1 at 14:59 Fri: the testbed's reset rebuilds the directory from its only LDAP dump (Fri ~04:55; prod makes one nightly), so people created after it looked deleted. One prod-only user was created Sun 22:12 and is not in the replica yet. projectGroup and group differences are SAM-side data age |
+| Mon 10-12 06:53 | **T1** = 06:45 (`make refresh-dev`) | re-baseline: `ldap` restarted for a fresh dump (06:52), poller caught up (0 changes), spool reset; pass 1 loaded 28,682 users = dev; three tombstoned users restored by the refresh | pass 1: 1,373 / 1 (skipped by 0002) / 0; 112 group, 35 institution, 10 organization | re-baseline done; clean-day count starts here. `system_status_dev`'s reseed failed (collector posts raced the restore), so dev's status ingest 500s until it is rerun; not the shadow |
+| Tue 10-13 06:00 | T1 | user 536 (positions 521, collaborations 13, phones 2, emails 1), only-prod 2, only-dev 2; institution only-dev 1; projectGroup 10; group 2 | T1 to Tue 06:00: about 1,400 / 1 (skipped by 0002) / 0 | **no port defect; two testbed input gaps.** Seed-diff class as before (positions 512 of 521, both dev-only users, one group); patch 0004's institution; projectGroup = 150 prod membership changes since T1 that the shadow does not mirror. Gaps: (1) a user claimed in FI Mon 07:38 never reached the testbed replica (the poller applied one modify and no rename; no update file, no daemon line), so dev lacks a user prod created at 07:39; (2) the July role account is visible anonymously only under `ou=serviceAccounts`, so every reset tombstones it on dev (again at T1). Neither is SAMuel's |
+| Wed 10-14 06:00 | T1 | user 543 (positions 523, collaborations 16, userName 3, phones 2, emails 2, tokenType 1), only-prod 2, only-dev 2; institution only-dev 1; projectGroup 16 + only-prod 1; group 2 | Tue 06:03 to Wed 06:00: 35 / 0 / 0; 26 files, 0 group PUTs, 0 purges, one N20 pause | **clean day 2; no port defect.** 11 records differ only by surrogate row ids (5 positions, 6 collaborations: rows both sides inserted for the same person, numbered by each database). One new position user is the undelivered class: dev holds the daemon's record (a third position from the directory), prod's stock daemon did not deliver it. The rest of positions, collaborations, phones, the only-prod/only-dev users, the institution and the groups are Tuesday's classes, unchanged. userName/emails/tokenType: the two prod hand renames of Tue 12:10 and 12:34 (dev converges at the next `make refresh-dev`), and a second July placeholder whose owner claimed a name Tue 20:18: SAMuel renamed it on dev (D26, #814, in the dev image) and legacy refused it as before. projectGroup: 4 more prod membership changes, and new projects: on Tuesday dev created two of its own and prod three, so both databases handed out gids 99150 and 99151 to different projects, and prod's third is 99152. SAM-side, not the shadow |
+| Thu 10-15 06:00 | T1 | user 554 (positions 524, collaborations 21, nickname 5, preferredName 5, firstname 4, lastname 3, phones 2, contactPersonUpid 2, userName 2, emails 2, active 1, tokenType 1), only-prod 4, only-dev 2; institution only-dev 1; projectGroup 25; group 2 | Wed 06:03 to Thu 06:00: 38 / 3 (skipped by 0002) / 0; 26 files, 0 group PUTs, 0 purges | **clean day 3; no port defect.** Most new rows trace to one prod event: sam-app restarted its containers Wed 12:58, and prod's stock daemon ran a full pass (7 PUTs) that the testbed, fed only by the incremental stream, has not had since T1. It caught up: the three users whose transient numeric-username updates SAM refused (names, and one reactivation), lost on dev by 0002's restore (fixed going forward by patch 0007, #829, running from 06:01); two users whose modifies 0003 skipped as unknown keys, which reach dev only with the next add file (the testbed's comes at a reset); and two role accounts' contact person. Two collaborations moved to another institution: legacy matches the row by id and keeps the old institution, SAMuel (D2) adds the new institution as a row and keeps the old, ended row. One user gained a second open position at the same organization in the directory: dev holds both, as the directory does (D2: a row matches once); legacy would fold them into one. The rest: 16 rows differ only by row ids, the undelivered and seed classes, the two prod hand renames (the D26 one converged), 9 prod membership changes, and two more gid collisions from projects dev created on its own |
+| Fri 10-16 06:00 | T1 | user 560 (positions 529, collaborations 22, preferredName 5, nickname 5, firstname 4, lastname 3, emails 2, userName 2, phones 2, contactPersonUpid 2, tokenType 1, active 1), only-prod 4, only-dev 2; institution only-dev 1; projectGroup 29 + only-prod 2; group 2 | Thu 06:03 to Fri 06:00: 46 / 0 / 0; 16 files, 0 group PUTs, 0 purges; first day on patch 0007 (#829), nothing owed | **clean day 4; no port defect.** New since Thursday: two row-id-only records (a new user's collaboration, one position); three positions in the undelivered class (dev holds the daemon's record, one of them a planned end date the daemon did carry); one person whose directory gained a Workday twin of a PeopleDB position: dev holds both rows as the daemon sent them, with the two row ids swapped by the matcher's ordering (D2; #830 § 5's ids-first fix); four more prod membership changes, two new prod projects and one more gid collision with a project dev created. The rest are Thursday's classes, unchanged. samuel-dev took PR #841 (`sha-fde9df2`, the directory check, report only, no apply lever) at about 05:55, before capture B; no PUT reached it before the check |
+
+**Directory client on dev from Fri 10-16 11:54Z** (PR #841, `sha-fde9df2`, dispatched 11:50Z on
+Ben's instruction; the review's F2). The PUT handler now reads each synced record from
+`ldap.ucar.edu` after its commit and logs the drift (`DIRECTORY_CHECK_ON_SYNC`, report only, no
+apply lever on dev). Response bytes and SAM writes are unchanged, so the clean-day verdict should
+not move. The daemon's PUT count, p50/max latency and any `directory check ... failed` or
+`directory unavailable` line are on each dev watch tick from the roll onward; the first full read
+after the roll (12:01Z, user 24 MB in 8.3 s) is the daemon's own download, not the hook.
+
+| Mon 10-19 06:00 | T1 | user 567 (positions 534, collaborations 24, nickname 5, preferredName 5, firstname 4, lastname 3, emails 2, phones 2, userName 2, contactPersonUpid 2, tokenType 1, active 1), only-prod 4, only-dev 2; institution only-dev 1; projectGroup 35 + only-prod 3; group 2 | Fri 06:03 to Mon 06:00: 35 / 0 / 0; 34 files, 0 group PUTs, 0 purges, 3 N20 pauses; nothing owed (0007) | **clean day 5; no port defect.** New since Friday: eight records whose content is identical on both sides (row ids or day-level ends, four of them new users'); six more prod membership changes and one new prod project. The rest are Friday's classes, unchanged. Four new users since Friday, all identical to prod. The laptop's VPN dropped Sun 05:05-06:37 MDT: the poller failed 12 times and then caught up, and no directory change was missed. samuel-dev ran #841's directory check (report only) the whole window: 33 check lines, 0 failures, 0 outages, 0 applies. **Exit bar met**: five clean weekdays (10-13 to 10-19) after the T1 re-baseline |
