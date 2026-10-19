@@ -1,36 +1,29 @@
-Dear {{ recipient_name }},
+Dear {{ addressees | join(' and ') if addressees else recipient_name }},
 
-Additional allocation has been added to your project {{ project_code }} -
-"{{ project_title }}" on NSF NCAR computing resources.
-{% if added %}
-Added by this request:
-{% for r in added %}
-  - {{ r.resource_name }}: {{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}
-{%- endfor %}
-{% endif %}
-{% if resources %}
-Your project now holds:
-{% for r in resources %}
-  - {{ r.resource_name }}: {{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}
-    {%- if r.end_date %} through {{ r.end_date }}{% endif %}
-{%- endfor %}
-{% endif %}
+Your {% if opportunity_name %}{{ opportunity_name }} {% endif %}supplement request{% if request_title %} "{{ request_title }}"{% endif %} has been approved, and the additional allocation on project {{ project_code }} is available now.
 {% if approver_comment %}
 Note from the reviewer:
 
 {{ approver_comment }}
 {% endif %}
-The additional time is available now; no change to how you submit work.
-
-  - Documentation: https://ncar-hpc-docs.readthedocs.io/
-  - See your allocations and usage, and manage who is on your project:
-    {{ manage_url or 'https://sam.hpc.ucar.edu/' }}
-{% if recipient_role != 'lead' %}
-Your project lead ({{ project_lead }}{% if project_lead_email %} /
-{{ project_lead_email }}{% endif %}) and the project administrator manage
-membership and any future extension or supplement requests.
+{% include "_xras_project.txt" %}
+{% if added %}
+ADDED BY THIS REQUEST
+{%- for r in added %}
+  - {{ r.resource_name }}: {{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}
+{%- endfor %}
 {% endif %}
---
-This is an automated notification from the NSF NCAR Systems Accounting Manager.
-If you believe you received this message in error, please contact
-help@ucar.edu.
+{%- if resources %}
+YOUR PROJECT NOW HOLDS
+{%- for r in resources %}
+  - {{ r.resource_name }}: {{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}
+    {%- if r.end_date %} through {{ r.end_date }}{% endif %}
+{%- endfor %}
+{% endif %}
+YOUR PROJECT
+  - Your project in SAM (allocations, usage and members):
+    {{ manage_url or 'https://sam.hpc.ucar.edu/' }}
+  - Getting help: https://ncar-hpc-docs.readthedocs.io/en/latest/user-support/
+
+{% include "_xras_questions.txt" %}
+{% include "_xras_footer.txt" %}

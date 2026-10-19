@@ -1,0 +1,5 @@
+--
+Your use of NSF NCAR HPC resources is contingent upon abiding by the terms of
+our End User Agreement: {{ terms_url }}
+
+This is an automated notification from the NSF NCAR Systems Accounting Manager.

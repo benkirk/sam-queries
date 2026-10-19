@@ -19,6 +19,8 @@ ONBOARDING_PATHS = {
 }
 RESOURCE_DETAILS_PATH = 'user/resource-details'
 MANAGE_PROJECT_PATH = 'admin/project/{projcode}/edit'
+#: The public End User Agreement page (no login; the invitation surface, always on).
+TERMS_PATH = 'register/invite/terms'
 
 
 def site_root(site_url: Optional[str]) -> str:
@@ -34,6 +36,10 @@ def resource_details_url(site_url: Optional[str], projcode: str,
                          resource_name: str) -> str:
     return (f'{site_root(site_url)}{RESOURCE_DETAILS_PATH}/{projcode}'
             f'?resource={quote(resource_name)}')
+
+
+def terms_url(site_url: Optional[str]) -> str:
+    return site_root(site_url) + TERMS_PATH
 
 
 def manage_project_url(site_url: Optional[str], projcode: str) -> str:

@@ -1,6 +1,6 @@
 # XRAS phase C and production tickets: SAMuel sends the award mail; refused posts ticket NUSD
 
-**Status: plan, 2026-10-19; Part 1 (§ 4) built, awaiting review and deploy.** Tracked by issue #846 (burn-down checklist), PR #845; built on
+**Status: Part 1 (§ 4) merged in #845, deploying 2026-10-19; Part 2 (§ 5) built in #848 (letters reviewed), the cutover (§ 6) next.** Tracked by issue #846 (burn-down checklist), PR #845; built on
 branch `xras_incoming_tickets`. Lands phase C of [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md)
 and arms phase D ([`XRAS_REQUEST_TICKETS.md`](XRAS_REQUEST_TICKETS.md)) in production. The
 award-mail checklist it carries out is [`XRAS_NOTICES_CUTOVER.md`](XRAS_NOTICES_CUTOVER.md).
@@ -146,20 +146,16 @@ copy has come from `NOTIFY_XRAS_CC` since #480), `XRAS_POST_AUTOMATION.md`,
 
 ## 6. Cutover
 
-On the day of the promotion that carries 5.4 and 5.5:
+The order as decided (Ben, 2026-10-19); the detail is `XRAS_NOTICES_CUTOVER.md` § 6:
 
-1. Re-read production's rules from the template edit pages; `XRAS_NOTICES_CUTOVER.md` § 2 is the
-   rollback record.
-2. Promote (Ben).
-3. Once SAMuel's first notice is confirmed in `notification_log`, delete the Action Approved
-   rules of templates 154, 133, 1803 and 417 and the Extension and Supplement rows of 135 and 149
-   through the admin-ncar UX (Claude via Playwright, Ben's 2FA, his OK per rule; rules only,
-   templates untouched).
-4. Confirm on the next production post that the request leaves the admin queue with no Notify
-   (`XRAS_DEV_PROBES.md` § 6.1, scenario 8).
-5. NUSD stops clicking Notify.
-6. First week: every applied action has a SAMuel `notification_log` row and no XRAS Action
-   Approved mail.
+1. Production's rules recorded (`XRAS_NOTICES_CUTOVER.md` § 7) and the demo proof done (§ 8).
+2. Promote the evening of 2026-10-19. SAMuel mails from the cutover floor, 08:00 MT 2026-10-20
+   (`SAM_TASKS_XRAS_NOTICES_SINCE`, read by both the task and the New's notice).
+3. NUSD stops clicking Notify from 08:00.
+4. After the first SAMuel award mail is confirmed, delete the 29 Action Approved rules in
+   `admin-ncar` (Claude via Playwright, Ben's 2FA, his OK per template; rules only).
+5. First week: every applied action has a SAMuel `notification_log` row and no XRAS Action
+   Approved mail; watch a New whose projcode already exists (it gets the Renewal letter).
 
 ## 7. Verification
 

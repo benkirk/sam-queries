@@ -107,6 +107,19 @@ class TestForAction:
             'full award recommended'
         assert client.calls == ['UABC0001']
 
+    def test_a_new_not_yet_renamed_falls_back_to_its_posted_number(self):
+        """Sent right after the post, the rename may not have landed yet."""
+        class Renamed(FakeClient):
+            def get_request_family_by_number(self, number):
+                family = super().get_request_family_by_number(number)
+                return family if number == 'NCAR4999' else []
+        client = Renamed()
+        action = SimpleNamespace(projcode_result='UABC0001',
+                                 request_number='NCAR4999', action_id=100)
+        assert approver_comment_for_action(action, client=client) == \
+            'full award recommended'
+        assert client.calls == ['UABC0001', 'NCAR4999']
+
     def test_a_later_action_uses_the_request_number(self):
         client = FakeClient()
         action = SimpleNamespace(projcode_result=None,

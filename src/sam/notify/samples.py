@@ -26,11 +26,11 @@ _PROJECT = {
 
 _SUBJECTS = {
     'expiration': 'NSF NCAR Project SCSG0001 Expiration Notice',
-    'xras_activation': 'NSF NCAR Project SCSG0001 is now active',
-    'xras_supplement': 'NSF NCAR Project SCSG0001 has received additional allocation',
-    'xras_extension': 'NSF NCAR Project SCSG0001 allocation has been extended',
-    'xras_update': 'NSF NCAR Project SCSG0001 allocation has been renewed',
-    'xras_adjustment': 'NSF NCAR Project SCSG0001 allocation has been adjusted',
+    'xras_activation': 'Lead NSF NCAR Exploratory Allocation (University) New Request Approved: SCSG0001',
+    'xras_supplement': 'Lead NSF NCAR Exploratory Allocation (University) Supplement Request Approved: SCSG0001',
+    'xras_extension': 'Lead NSF NCAR Exploratory Allocation (University) Extension Request Approved: SCSG0001',
+    'xras_update': 'Lead NSF NCAR Exploratory Allocation (University) Renewal Request Approved: SCSG0001',
+    'xras_adjustment': 'Lead NSF NCAR Exploratory Allocation (University) Adjustment Request Approved: SCSG0001',
     'task_summary': '[SAM] expiration_notices: 11 sent, 1 FAILED',
     'account_queue_summary': 'NCAR HPC account requests: 4 waiting, 3 new',
     'account_verify': 'Verify your email address for your NCAR HPC account request',
@@ -102,6 +102,14 @@ def _xras(kind: str) -> Dict[str, Any]:
                     if kind == 'xras_adjustment' else []),
         'action_type': _XRAS_ACTION_TYPES[kind],
         'approver_comment': 'Approved as recommended by the panel.',
+        'addressees': ['Jane Lead', 'Sam Admin'],
+        'terms_url': 'https://sam.hpc.ucar.edu/register/invite/terms',
+        'request_title': 'Kilometer-scale convection over the Front Range',
+        'opportunity_name': 'Exploratory Allocation (University)',
+        'allocation_type': 'Exploratory',
+        'pi_last_name': 'Lead',
+        'pi_organization': 'University of Colorado Boulder',
+        'grants': [{'number': 'AGS-2146709', 'agency': 'NSF', 'pi_name': 'Jane Lead'}],
     }
 
 
@@ -353,9 +361,6 @@ def preview_context(kind: str, facility: Optional[str] = None,
         'recipient_name': recipient.name,
         'recipient_role': recipient.role,
     }
-    # Mirror build_xras_messages: the approver note is PI-only.
-    if role != 'lead' and 'approver_comment' in context:
-        context['approver_comment'] = None
     return context
 
 
@@ -393,6 +398,17 @@ VARIABLE_NOTES: Dict[str, str] = {
     'changes.units': 'Unit label or empty.',
     'action_type': 'The XRAS action type as received, or empty.',
     'approver_comment': "The XRAS approver's note, or empty when there is none.",
+    'addressees': 'XRAS mail: the To name, then each cc person (the project admin when distinct).',
+    'terms_url': 'XRAS mail: the public End User Agreement page.',
+    'request_title': 'XRAS mail: the request title as submitted, or empty.',
+    'opportunity_name': 'XRAS mail: the opportunity, e.g. Exploratory Allocation (University).',
+    'allocation_type': 'XRAS mail: the allocation type, e.g. Exploratory.',
+    'pi_last_name': "XRAS mail: the PI's last name (SAM's lead first, else the request's PI).",
+    'pi_organization': "XRAS mail: the PI's organization as XRAS has it, or empty.",
+    'grants': 'XRAS mail: the funding awards on the request (only numbers with digits).',
+    'grants.number': 'The award number as submitted, e.g. AGS-2146709.',
+    'grants.agency': 'The funding agency, or empty.',
+    'grants.pi_name': "The award's PI as submitted, or empty.",
     'action': "The lifecycle action word: 'renewed' or 'extended'.",
     'has_subtree': 'True when this project has sub-projects (shows the in-tree '
                    'allocation-adjustment note).',

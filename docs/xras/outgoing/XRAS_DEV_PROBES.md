@@ -214,6 +214,13 @@ in-window PI. **Real Jira**, from the laptop through the task's code (`file_once
 The card's Activate on UHSS0004 (09:00), now through the shared `activate_project`:
 `xras_activation_event` #4 by benkirk, provenance #22.
 
+### 6.4 Phase C: a deleted Action Approved rule removes the Notify step (2026-10-19)
+
+With Exploratory · New · Action Approved · PI deleted from demo template 154, NCAR4094 (1439637,
+benkirk-only) was approved and posted: sam_dev #29 → UHSS0006, gone from Recent submissions, no
+Notify button. XRAS computes the button from the rules at read time; re-adding the rule restored
+it. Record: `docs/plans/XRAS_NOTICES_CUTOVER.md` § 8.
+
 ## 7. Open, and what unblocks it
 
 | Open | Blocked on |
@@ -239,3 +246,5 @@ The card's Activate on UHSS0004 (09:00), now through the shared `activate_projec
 | 1439604 / **UHSS0005** (minted as NCAR4092, authored by a placeholder) | Approved; posted 422 three times, then applied (#26) and renamed (#8); not notified; PI and Allocation Manager benkirk |
 | persons `smoke1015-user-pi`, `smoke1015-user-mem` | **deleted**: merged into benkirk (sam_dev remediation #6, #7) |
 | samuel-dev, 2026-10-15 | UHSS0005 (active, auto-activated); UHSS0004 activated by the card; `xras_action_log` #23–#26; `xras_remediation_event` #6–#8; `account_request` #23, #24 dismissed; dry-run tickets `DRY-SAM-XR-1439539` (NCAR4088) and `-1439604` |
+| 1439637 / **UHSS0006** (minted as NCAR4094, § 6.4) | Approved and posted 2026-10-19; not notified; PI and Allocation Manager benkirk; sam_dev #29, activation #5, rename #9 |
+| 1439605 / NCAR4093 | Approved; post refused 2026-10-19 (`harrter` absent); demo template 154 back to 11 rules after § 6.4 |

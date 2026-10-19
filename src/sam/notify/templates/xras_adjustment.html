@@ -1,15 +1,21 @@
 {% extends "_email_base.html" %}
 
 {% block content %}
-    <p>Dear {{ recipient_name }},</p>
+    <p>Dear {{ addressees | join(' and ') if addressees else recipient_name }},</p>
 
     <div class="callout good">
-        The allocation for your project <strong>{{ project_code }}</strong> -
-        "{{ project_title }}" has been adjusted.
+        An adjustment to the allocation of project <strong>{{ project_code }}</strong>{% if request_title %} ("{{ request_title }}"){% endif %} has been approved and is in effect now.
     </div>
 
-    {# "Change", not "Added": an Adjustment is the only action type whose
-       amounts can be negative, and the sign is carried in r.amount. #}
+    {% if approver_comment %}
+    <div class="callout note">
+        <strong>Note from the reviewer</strong>
+        <p>{{ approver_comment }}</p>
+    </div>
+    {% endif %}
+
+{% include "_xras_project.html" %}
+
     {% if changes %}
     <h3>Changes applied by this request</h3>
     <table class="data">
@@ -37,36 +43,14 @@
     </table>
     {% endif %}
 
-    {% if approver_comment %}
-    <div class="callout note">
-        <strong>Note from the reviewer</strong>
-        <p>{{ approver_comment }}</p>
-    </div>
-    {% endif %}
-
-    <p>
-        The revised balances are in effect now; no change to how you submit
-        work. If this does not look right, please contact
-        <a href="mailto:help@ucar.edu">help@ucar.edu</a>.
-    </p>
-
+    <h3>Your project</h3>
     <ul>
-        <li>Documentation:
-            <a href="https://ncar-hpc-docs.readthedocs.io/">ncar-hpc-docs.readthedocs.io</a></li>
-        <li>See your allocations and usage, and manage who is on your project:
-            <a href="{{ manage_url or 'https://sam.hpc.ucar.edu/' }}">open {{ project_code }} in SAM</a></li>
+        <li><a href="{{ manage_url or 'https://sam.hpc.ucar.edu/' }}">Open {{ project_code }} in SAM</a>:
+            allocations, usage and members</li>
+        <li><a href="https://ncar-hpc-docs.readthedocs.io/en/latest/user-support/">Getting help</a></li>
     </ul>
 
-    {% if recipient_role != 'lead' %}
-    <p>
-        Your project lead ({{ project_lead }}{% if project_lead_email %} /
-        {{ project_lead_email }}{% endif %}) and the project administrator
-        manage membership and any future extension or supplement requests.
-    </p>
-    {% endif %}
+{% include "_xras_questions.html" %}
 {% endblock %}
 
-{% block footer_extra %}
-        <p>If you believe you received this message in error, please contact
-            <a href="mailto:help@ucar.edu">help@ucar.edu</a>.</p>
-{% endblock %}
+{% block footer %}{% include "_xras_footer.html" %}{% endblock %}

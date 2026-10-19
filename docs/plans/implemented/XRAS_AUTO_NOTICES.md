@@ -289,6 +289,9 @@ helper for the already-notified cases.
 
 ### Follow-up commit, **not in this PR**
 
+**Done 2026-10-19 (phase C, `docs/plans/XRAS_PHASE_C_AND_TICKETS.md` § 5.5):** enabled with no
+delay, `add` as the activation's backstop, floored at the cutover.
+
 Remove `xras_notices` from `SAM_TASKS_DISABLED` after a soak watching `skipped`
 rows. That soak is the entire reason the switch exists.
 
