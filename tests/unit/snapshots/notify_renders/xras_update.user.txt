@@ -9,6 +9,10 @@ Allocations for the new period:
   - Derecho: 1.15M hours through 2027-09-30
 
 
+Note from the reviewer:
+
+Approved as recommended by the panel.
+
 Your project code and its members are unchanged.
 
   - Documentation: https://ncar-hpc-docs.readthedocs.io/

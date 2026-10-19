@@ -419,9 +419,8 @@ def _record_notified(session, XrasActivationEvent, sent, by_key,
 
     for action_id, results in sorted(by_action.items()):
         row = rows[action_id]
-        notified_to = '; '.join(
-            f"{r.message.recipient.name or r.message.recipient.address} "
-            f"<{r.message.recipient.address}>" for r in results) or None
+        from sam.queries.xras_notices import notified_to as xras_notified_to
+        notified_to = xras_notified_to(results)
         XrasActivationEvent.create(
             session,
             project_id=row['project_id'],

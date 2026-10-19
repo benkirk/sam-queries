@@ -227,10 +227,12 @@ webapp:
     # These are the deployment defaults only: operators add cc/bcc rows in
     # Admin > Notifications > Addressing (table notification_addressing),
     # which every Notifier reads from the database, the CronJob included.
+    # The XRAS award mail leaves as the help desk, as XRAS's own did (templates 154, 135, 149;
+    # docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 2), with the allocations mailbox on the cc.
     NOTIFY_XRAS_CC: "alloc@ucar.edu"
     NOTIFY_XRAS_BCC: ""
-    NOTIFY_XRAS_FROM: ""
-    NOTIFY_XRAS_REPLY_TO: "alloc@ucar.edu"
+    NOTIFY_XRAS_FROM: "cislhelp@ucar.edu"
+    NOTIFY_XRAS_REPLY_TO: "cislhelp@ucar.edu"
     # The account-request family carries two kinds with different audiences:
     # the queue digest to NUSD and the public form's verification mail to a
     # stranger. NOTIFY_ACCOUNT_QUEUE_TO is the digest recipient; empty means

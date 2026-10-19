@@ -66,12 +66,16 @@ class TestFamilyAddressing:
         assert sent.reply_to == 'alloc@x.edu'
         assert (sent.bcc, sent.sender) == ((), None)
 
-    def test_a_builder_set_value_wins(self, xras_renderer, monkeypatch):
+    def test_a_builder_set_copy_adds_to_the_family_copy(self, xras_renderer, monkeypatch):
+        """The builder copies people (the allocation manager); the family copies a mailbox."""
         monkeypatch.setenv('NOTIFY_XRAS_CC', 'alloc@x.edu')
+        monkeypatch.setenv('NOTIFY_XRAS_FROM', 'help@x.edu')
         sent = self._sent(xras_renderer, _message(kind='xras_extension',
                                                   facility=None,
-                                                  cc=('other@x.edu',)))
-        assert sent.cc == ('other@x.edu',)
+                                                  cc=('other@x.edu', 'ALLOC@x.edu'),
+                                                  sender='builder@x.edu'))
+        assert sent.cc == ('other@x.edu', 'ALLOC@x.edu')
+        assert sent.sender == 'builder@x.edu'
 
     def test_another_family_is_untouched(self, xras_renderer, monkeypatch):
         monkeypatch.setenv('NOTIFY_XRAS_CC', 'alloc@x.edu')
@@ -829,14 +833,14 @@ class TestOperatorAddressing:
         assert self._sent(notifier, transport, _message(
             kind='xras_extension', facility=None)).cc == ()
 
-    def test_a_builder_set_copy_replaces_env_but_rows_still_add(
+    def test_builder_env_and_row_copies_all_add_in_that_order(
             self, xras_renderer, monkeypatch):
         monkeypatch.setenv('NOTIFY_XRAS_CC', 'env@x.edu')
         notifier, transport, _ = self._notifier(
             xras_renderer, rows=[('xras', 'cc', 'ops@x.edu')])
         sent = self._sent(notifier, transport, _message(
             kind='xras_extension', facility=None, cc=('builder@x.edu',)))
-        assert sent.cc == ('builder@x.edu', 'ops@x.edu')
+        assert sent.cc == ('builder@x.edu', 'env@x.edu', 'ops@x.edu')
 
     def test_duplicates_collapse_case_insensitively(self, xras_renderer, monkeypatch):
         monkeypatch.setenv('NOTIFY_XRAS_CC', 'Alloc@x.edu')

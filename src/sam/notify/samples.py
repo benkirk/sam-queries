@@ -102,6 +102,7 @@ def _xras(kind: str) -> Dict[str, Any]:
                     if kind == 'xras_adjustment' else []),
         'action_type': _XRAS_ACTION_TYPES[kind],
         'approver_comment': 'Approved as recommended by the panel.',
+        'addressees': ['Jane Lead', 'Sam Admin'],
     }
 
 
@@ -353,9 +354,6 @@ def preview_context(kind: str, facility: Optional[str] = None,
         'recipient_name': recipient.name,
         'recipient_role': recipient.role,
     }
-    # Mirror build_xras_messages: the approver note is PI-only.
-    if role != 'lead' and 'approver_comment' in context:
-        context['approver_comment'] = None
     return context
 
 
@@ -393,6 +391,7 @@ VARIABLE_NOTES: Dict[str, str] = {
     'changes.units': 'Unit label or empty.',
     'action_type': 'The XRAS action type as received, or empty.',
     'approver_comment': "The XRAS approver's note, or empty when there is none.",
+    'addressees': 'XRAS mail: the To name, then each cc person (the project admin when distinct).',
     'action': "The lifecycle action word: 'renewed' or 'extended'.",
     'has_subtree': 'True when this project has sub-projects (shows the in-tree '
                    'allocation-adjustment note).',

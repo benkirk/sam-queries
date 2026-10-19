@@ -9,6 +9,10 @@ Allocations and their new end dates:
   - Derecho: 1.15M hours through 2027-09-30
 
 
+Note from the reviewer:
+
+Approved as recommended by the panel.
+
 Nothing else changes — your project code, members and unused balance carry
 forward.
 

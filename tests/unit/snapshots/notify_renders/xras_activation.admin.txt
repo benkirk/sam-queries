@@ -11,6 +11,10 @@ Allocations:
 
 
 
+Note from the reviewer:
+
+Approved as recommended by the panel.
+
 Getting started:
   - Documentation: https://ncar-hpc-docs.readthedocs.io/
   - See your allocations and usage, and manage who is on your project:

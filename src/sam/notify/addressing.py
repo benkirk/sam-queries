@@ -63,12 +63,13 @@ class AddressingStore:
                   *, cc: Iterable[str] = (), bcc: Iterable[str] = (),
                   sender: Optional[str] = None,
                   reply_to: Optional[str] = None) -> Addressing:
-        """Merge: a builder-set ``cc``/``bcc`` replaces the env default, the
-        operator rows always add; ``sender``/``reply_to`` are env-only."""
+        """Merge: the builder's ``cc``/``bcc`` (people on the message), then the
+        env default and the operator rows (mailboxes), all additive; a builder-set
+        ``sender``/``reply_to`` wins over the env."""
         extra_cc, extra_bcc = self.extra(message_scopes(kind, facility))
         return Addressing(
-            cc=_dedupe(tuple(cc) or env.cc, extra_cc),
-            bcc=_dedupe(tuple(bcc) or env.bcc, extra_bcc),
+            cc=_dedupe(cc, env.cc, extra_cc),
+            bcc=_dedupe(bcc, env.bcc, extra_bcc),
             sender=sender or env.sender,
             reply_to=reply_to or env.reply_to,
         )

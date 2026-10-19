@@ -292,16 +292,23 @@ class TestTheApproverComment:
         assert self.NOTE in (rendered.text or '')
         assert self.NOTE in (rendered.html or '')
 
-    def test_the_admin_copy_omits_the_note(self, session, project):
-        from sam.notify import TemplateRenderer
-        lead, admin = self._messages(session, project, note=self.NOTE,
-                                     people=self.LEAD_AND_ADMIN)
-        assert admin.recipient.role == 'admin'
-        assert admin.context['approver_comment'] is None
-        rendered = TemplateRenderer().render(admin)
-        assert self.NOTE not in (rendered.text or '')
-        assert self.NOTE not in (rendered.html or '')
-        assert lead.context['approver_comment'] == self.NOTE
+    def test_one_message_to_the_lead_copies_the_admin_with_the_note(self, session, project):
+        """XRAS's award mail shape: one letter, the allocation manager on the cc."""
+        (message,) = self._messages(session, project, note=self.NOTE,
+                                    people=self.LEAD_AND_ADMIN)
+        assert (message.recipient.address, message.cc) == (
+            'pi@example.edu', ('admin@example.edu',))
+        assert message.context['approver_comment'] == self.NOTE
+        assert message.context['addressees'] == ['A PI', 'An Admin']
+        assert message.dedup_key.endswith(':pi@example.edu')
+
+    def test_no_lead_address_sends_to_the_admin_alone(self, session, project):
+        (message,) = self._messages(session, project, note=None,
+                                    people=self.LEAD_AND_ADMIN[1:])
+        assert (message.recipient.address, message.cc) == ('admin@example.edu', ())
+
+    def test_nobody_on_file_builds_nothing(self, session, project):
+        assert self._messages(session, project, note=None, people=[]) == []
 
 
 

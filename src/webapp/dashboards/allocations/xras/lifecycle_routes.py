@@ -38,6 +38,7 @@ from sam.queries.xras_activation import (
 # docstring; `tests/unit/gates/test_notify_import_graph.py` is the gate.
 from sam.integration.xras_api import approver_comment_for_action
 from sam.queries.xras_notices import build_xras_messages, load_xras_action
+from sam.queries.xras_notices import notified_to as xras_notified_to
 from sam.schemas.forms import XrasActivationEventForm, XrasDismissForm
 
 from .. import bp
@@ -247,9 +248,7 @@ def xras_notify(project_id: int):
             {'refreshXrasTab': {}},
             project=project, people=people, summary=summary)
 
-    notified_to = '; '.join(
-        f"{r.message.recipient.name or r.message.recipient.address} "
-        f"<{r.message.recipient.address}>" for r in summary['delivered']) or None
+    notified_to = xras_notified_to(summary['delivered'])
 
     with management_transaction(db.session):
         event = _record_activation_event(

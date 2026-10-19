@@ -74,11 +74,10 @@ class TestThePreviewContext:
     @pytest.mark.parametrize('kind', ['xras_activation', 'xras_update',
                                       'xras_extension', 'xras_supplement',
                                       'xras_adjustment'])
-    def test_the_approver_note_is_pi_only(self, kind):
-        """Mirrors build_xras_messages: only the lead's copy carries the note."""
-        assert preview_context(kind, role='lead')['approver_comment']
-        assert preview_context(kind, role='admin')['approver_comment'] is None
-        assert preview_context(kind, role='user')['approver_comment'] is None
+    def test_the_approver_note_rides_on_the_one_letter(self, kind):
+        """Mirrors build_xras_messages: one message, the admin on the cc, the note on it."""
+        for role in ('lead', 'admin', 'user'):
+            assert preview_context(kind, role=role)['approver_comment']
 
 
 class TestTheNotes:

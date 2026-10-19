@@ -43,6 +43,7 @@ __all__ = [
     'action_increments',
     'build_xras_messages',
     'load_xras_action',
+    'notified_to',
 ]
 
 
@@ -135,18 +136,31 @@ def action_increments(session: Session, action, *,
     return sorted(out, key=lambda r: r['resource_name'])
 
 
+def notified_to(results) -> Optional[str]:
+    """``notified_to`` for the delivered *results*: each To, then the copies
+    that left with it (none on a redirect)."""
+    parts = []
+    for r in results:
+        to = r.message.recipient
+        parts.append(f'{to.name or to.address} <{to.address}>')
+        parts.extend(f'cc <{address}>' for address in r.message.copies()[0])
+    return '; '.join(parts) or None
+
+
 def build_xras_messages(session: Session, project,
                         people: Sequence[Mapping[str, str]], *,
                         action=None, kind: Optional[str] = None,
                         requested_by: str,
                         approver_comment: Optional[str] = None,
                         site_url: Optional[str] = None) -> List[Message]:
-    """Build one :class:`~sam.notify.Message` per recipient for one XRAS action.
+    """Build the one :class:`~sam.notify.Message` for one XRAS action: To the
+    lead (the admin when the lead has no address), cc the admin when distinct,
+    as XRAS's own award mail was addressed. ``[]`` when nobody is on file; the
+    family cc (alloc@) is added by the ``Notifier``.
 
     ``approver_comment`` is the XRAS reviewer's note (``adminComments``),
     resolved by the caller because it lives on the outbound reports feed and
-    this builder is DB-only. It reaches the lead's message only: a non-lead
-    recipient's context carries ``None``, so the note is PI-only.
+    this builder is DB-only.
 
     ``dedup_key`` embeds the action, so a Supplement mints a different key from
     the New that preceded it: each outcome can be reported once, and re-opening
@@ -213,25 +227,26 @@ def build_xras_messages(session: Session, project,
         'changes': (action_increments(session, increments_action, signed=True)
                     if kind == 'xras_adjustment' else []),
         'action_type': action.action_type if action else None,
-        # Default None; the fan-out below sets the note on the lead's copy only.
-        'approver_comment': None,
+        'approver_comment': approver_comment,
     }
     subject = XRAS_KIND_SUBJECTS.get(
         kind, XRAS_KIND_SUBJECTS['xras_activation']
     ).format(projcode=project.projcode)
 
-    return [
-        Message(
-            kind=kind,
-            recipient=recipient,
-            subject=subject,
-            context={**context, 'approver_comment':
-                     approver_comment if recipient.role == 'lead' else None},
-            entity=('project', project.project_id),
-            projcode=project.projcode,
-            dedup_key=xras_dedup_key(kind, project.projcode, action_id,
-                                     recipient.address),
-            requested_by=requested_by,
-        )
-        for recipient in to_recipients(people)
-    ]
+    recipients = to_recipients(people)
+    if not recipients:
+        return []
+    to, copied = recipients[0], recipients[1:]
+    return [Message(
+        kind=kind,
+        recipient=to,
+        subject=subject,
+        context={**context, 'addressees': [r.name or r.address for r in recipients]},
+        entity=('project', project.project_id),
+        projcode=project.projcode,
+        # Keyed on the To address, as the per-person keys were, so a lead
+        # notified before the one-message change stays suppressed.
+        dedup_key=xras_dedup_key(kind, project.projcode, action_id, to.address),
+        requested_by=requested_by,
+        cc=tuple(r.address for r in copied),
+    )]

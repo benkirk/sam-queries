@@ -104,8 +104,8 @@ class NotifyConfig:
     def addressing(family: str) -> Addressing:
         """The family's extra addressing, read live so the CLI and webapp agree.
 
-        The ``Notifier`` fills a ``Message``'s empty ``cc``/``bcc``/``sender``/
-        ``reply_to`` from this; a builder-set value wins. ``family`` comes from
+        The ``Notifier`` adds ``cc``/``bcc`` to a ``Message``'s own and fills an
+        empty ``sender``/``reply_to`` from this. ``family`` comes from
         ``NotificationKind.family``; an empty one has no addressing.
         """
         if not family:
