@@ -19,6 +19,11 @@
 <span class="badge state-tag"{% if title %} title="{{ title }}"{% endif %}>{{ label }}</span>
 {%- endmacro %}
 
+{#- The projcode a New would mint: its series, then #### for the number assigned at creation. -#}
+{% macro projcode_series(series) -%}
+<span class="font-monospace">{{ series }}####</span>
+{%- endmacro %}
+
 {#- Something a person should act on. -#}
 {% macro attention(label, title='') -%}
 <span class="badge bg-warning"{% if title %} title="{{ title }}"{% endif %}>{{ label }}</span>

@@ -372,6 +372,16 @@ def row_blockers(row: Mapping[str, Any]) -> set:
     return kinds
 
 
+def projcode_series(row: Mapping[str, Any]) -> Optional[str]:
+    """The projcode series (``UCSG``) the newest preflighted New would mint, else ``None``."""
+    news = [a for a in row.get('actions') or [] if a.get('action_type') == 'New']
+    for action in sorted(news, key=lambda a: a.get('action_id') or 0, reverse=True):
+        series = ((action.get('preflight') or {}).get('resolved') or {}).get('series')
+        if series:
+            return series
+    return None
+
+
 def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
                         refreshed_at: Any = None,
                         preflights: Optional[Mapping[Any, dict]] = None,

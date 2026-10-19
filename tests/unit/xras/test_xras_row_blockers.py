@@ -1,6 +1,7 @@
-"""`row_blockers` — the per-row blocker classifier behind the Remediations Blocker facet."""
+"""`row_blockers` and `projcode_series`: per-row derivations behind the Remediations card."""
 
-from sam.queries.xras_requests import BLOCKER_LABELS, is_person_blocker, row_blockers
+from sam.queries.xras_requests import (BLOCKER_LABELS, is_person_blocker, projcode_series,
+                                      row_blockers)
 import pytest
 
 from sam.xras import errors as e
@@ -118,3 +119,28 @@ def test_missing_preflight_cell_is_survivable():
 
 def test_blocker_labels_cover_exactly_the_four_categories():
     assert {slug for slug, _ in BLOCKER_LABELS} == {'person', 'mnemonic', 'contract', 'account'}
+
+
+def _typed(action_id, action_type, series=None):
+    resolved = {'series': series} if series else None
+    return {'action_id': action_id, 'action_type': action_type,
+            'preflight': {'status': 'rechecked', 'resolved': resolved}}
+
+
+class TestProjcodeSeries:
+
+    def test_empty_row_has_no_series(self):
+        assert projcode_series({}) is None
+        assert projcode_series({'actions': []}) is None
+
+    def test_the_newest_new_wins(self):
+        row = {'actions': [_typed(3, 'New', 'UOLD'), _typed(9, 'New', 'UCSG')]}
+        assert projcode_series(row) == 'UCSG'
+
+    def test_only_a_new_mints(self):
+        assert projcode_series({'actions': [_typed(9, 'Supplement', 'UCSG')]}) is None
+
+    def test_a_new_without_a_resolved_series_falls_through(self):
+        row = {'actions': [_typed(3, 'New', 'UCSG'), _typed(9, 'New'),
+                           {'action_id': 10, 'action_type': 'New', 'preflight': None}]}
+        assert projcode_series(row) == 'UCSG'
