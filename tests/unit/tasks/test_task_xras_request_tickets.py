@@ -87,11 +87,11 @@ class TestTheRegistration:
         assert TASKS[NAME].needs == ('sam',)
         assert lease_for(TASKS[NAME].expected_runtime).total_seconds() > int(deadline.group(1))
 
-    def test_it_ships_disabled_in_production_and_runs_on_dev(self):
-        """`SAM_TASKS_DISABLED` is fail-OPEN: enabling it in production edits this test too."""
-        for name, expected in (('values.yaml', True), ('values-dev.yaml', False)):
+    def test_it_runs_in_both_envs(self):
+        """`SAM_TASKS_DISABLED` is fail-OPEN: disabling it again edits this test too."""
+        for name in ('values.yaml', 'values-dev.yaml'):
             env = yaml.safe_load((REPO_ROOT / 'helm' / name).read_text())['tasks']['env']
-            assert (NAME in env['SAM_TASKS_DISABLED'].split(',')) is expected, name
+            assert NAME not in env['SAM_TASKS_DISABLED'].split(','), name
 
 
 class TestThePlan:
@@ -153,6 +153,38 @@ class TestTheSelection:
         episode, = q.ticket_episodes(session, since=SLOT - timedelta(days=1), until=SLOT)
         assert (episode.refusals, episode.messages) == (2, (MISSING,))
         assert episode.projcode == 'UCSG0099'
+
+
+class TestTheArmingFloor:
+
+    def test_unset_is_no_floor_and_a_malformed_value_raises(self, monkeypatch):
+        monkeypatch.delenv(q.FLOOR_KEY, raising=False)
+        assert q.ticket_floor() is None
+        monkeypatch.setenv(q.FLOOR_KEY, '2033-11-16')
+        assert q.ticket_floor() == datetime(2033, 11, 16)
+        monkeypatch.setenv(q.FLOOR_KEY, 'soon')
+        with pytest.raises(ValueError):
+            q.ticket_floor()
+
+    def test_a_request_first_refused_before_the_floor_never_opens(self, ctx, session,
+                                                                  monkeypatch):
+        """Its first refusal sits outside the episode once the floor is mid-history."""
+        monkeypatch.setenv(q.FLOOR_KEY, (SLOT - timedelta(hours=2)).isoformat())
+        _refused(session, when=SLOT - timedelta(hours=3))
+        _refused(session, when=SLOT - timedelta(hours=1))
+        _refused(session, when=SLOT - timedelta(hours=1), request_id=RID + 1)
+        detail = mod.xras_request_tickets(ctx()).detail
+        states = {s['request_id']: s['state'] for s in detail['sample']}
+        assert states == {RID: 'predates_floor', RID + 1: 'open'}
+        assert detail['floor'] == (SLOT - timedelta(hours=2)).isoformat()
+
+    def test_the_floor_never_silences_a_linked_ticket(self, ctx, session, provider,
+                                                      monkeypatch):
+        _refused(session, when=SLOT - timedelta(hours=3))
+        mod.xras_request_tickets(ctx())
+        monkeypatch.setenv(q.FLOOR_KEY, (SLOT - timedelta(hours=2)).isoformat())
+        _refused(session, when=SLOT - timedelta(hours=1), errors=('later',))
+        assert mod.xras_request_tickets(ctx()).detail['comment'] == 1
 
 
 class TestTheLevers:
