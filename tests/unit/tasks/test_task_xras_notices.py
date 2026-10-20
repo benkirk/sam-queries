@@ -32,7 +32,7 @@ from sam.notify import NotifyConfig, Notifier
 from sam.notify.ledger import NotificationLedger
 from sam.queries.xras_activation import xras_dedup_key
 from scheduling.registry import TASKS, TaskContext
-from scheduling.schedules import BusinessHourly, occurrence_key
+from scheduling.schedules import AnyOf, BusinessHourly, occurrence_key
 from scheduling.tasks import xras_notices as mod
 from scheduling.tasks.mail_guards import EmailCapExceeded, NotificationsDisabled
 from _paths import REPO_ROOT
@@ -166,12 +166,22 @@ class TestRegistration:
         import scheduling.tasks                   # noqa: F401
         assert NAME in TASKS
 
-    def test_it_runs_hourly_through_the_business_day(self):
+    def test_it_runs_every_quarter_hour_through_the_business_day(self):
         schedule = TASKS[NAME].schedule
-        assert isinstance(schedule, BusinessHourly)
-        assert (schedule.minute, schedule.start_hour, schedule.end_hour) == (0, 8, 17)
-        assert schedule.weekdays == (0, 1, 2, 3, 4)
-        assert schedule.tz == 'America/Denver'
+        assert isinstance(schedule, AnyOf)
+        assert all(isinstance(m, BusinessHourly) for m in schedule.members)
+        assert sorted((m.minute, m.start_hour, m.end_hour) for m in schedule.members) == [
+            (0, 8, 17), (15, 8, 16), (30, 8, 16), (45, 8, 16)]
+        assert {m.weekdays for m in schedule.members} == {(0, 1, 2, 3, 4)}
+        assert {m.tz for m in schedule.members} == {'America/Denver'}
+
+    def test_the_day_opens_at_eight_and_closes_at_five(self):
+        """Quarter hours from 08:00, and 17:00 stays the last slot: no 17:15."""
+        schedule = TASKS[NAME].schedule
+        # Wednesday 2033-11-16, MST (UTC-7).
+        assert schedule.next_occurrence(datetime(2033, 11, 16, 14, 0)) == datetime(2033, 11, 16, 15, 0)
+        assert schedule.next_occurrence(datetime(2033, 11, 16, 15, 0)) == datetime(2033, 11, 16, 15, 15)
+        assert schedule.last_occurrence(datetime(2033, 11, 17, 3, 0)) == datetime(2033, 11, 17, 0, 0)
 
     def test_it_needs_sam_and_not_status(self):
         """The ledger is in `system_status`, but this task never touches it —
@@ -389,7 +399,8 @@ class TestTheFridayCase:
         # Eligible by age, and yet nothing sends: no slot exists on Saturday.
         assert _select(_row(received_time=FRIDAY_EVENING),
                        slot=saturday_afternoon)
-        assert TASKS[NAME].schedule._candidates_on(saturday_afternoon.date()) == []
+        assert all(m._candidates_on(saturday_afternoon.date()) == []
+                   for m in TASKS[NAME].schedule.members)
 
     def test_it_goes_out_at_mondays_first_slot(self):
         selected = _select(_row(received_time=FRIDAY_EVENING),

@@ -70,8 +70,9 @@ the reviews (the mail points to ARC instead).
   XRAS's long NWSC paragraph.
 - **Subjects:** `<PI last name> NSF NCAR <Opportunity> Request Approved`; without an opportunity
   name, `<PI last name> NSF NCAR <Action> Request Approved: <projcode>`.
-- **Timing:** update, extend, supplement and adjust send at the task's next business-hour wake
-  (no day's delay); the New's notice goes out right after activation.
+- **Timing:** update, extend, supplement and adjust send at the task's next quarter-hour slot in
+  business hours (no day's delay; the slots were hourly at the cutover); the New's notice goes
+  out right after activation.
 - **Adjustment** stays auto-sent, though XRAS never sent one.
 - **Templates are reviewed one at a time** as they are written.
 - **The cutover** deletes XRAS's award rules through the admin-ncar UX (Claude via Playwright,
