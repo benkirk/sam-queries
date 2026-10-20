@@ -1,6 +1,6 @@
 """``xras_notices`` — mail the XRAS handoff notices nobody clicked.
 
-Hourly, 08:00-17:00 Mon-Fri Mountain. The second consumer of `sam/notify/`
+Every quarter hour, 08:00-17:00 Mon-Fri Mountain. The second consumer of `sam/notify/`
 on a schedule, and the second task declaring ``needs=('sam',)``.
 
 Every processed XRAS action that changes an allocation already has a notice
@@ -18,9 +18,10 @@ is naive **Mountain** — stamped from the app clock precisely because MySQL's
 one predicate that decides whether a PI gets mailed today or tomorrow.
 
 **No delay since phase C** (docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 5.5): an
-action goes out at the next business-hour slot, as XRAS's own award mail did at
-Notify. A New is sent by the ``/actions`` route right after its activation; this
-task only backstops it, an hour on, once the project is active.
+action goes out at the next quarter-hour slot in business hours, close to when
+XRAS's own award mail went at Notify. A New is sent by the ``/actions`` route
+right after its activation; this task only backstops it, an hour on, once the
+project is active.
 
 **Why business hours.** A notice sent at 03:00 is read at 09:00 anyway, and
 any reply lands while nobody is watching. `BusinessHourly` removes the
@@ -37,7 +38,7 @@ and the reason no locking or claiming is needed around the card.
 dispatch reclaims the stale lease and re-runs; `already_sent_many` suppresses
 everyone already `sent`. Nothing is sent twice and nothing is lost — and
 because the selection window is *rolling* rather than banded, even a wholly
-forfeited slot is covered by the next one an hour later.
+forfeited slot is covered by the next one.
 
 Design: ``docs/plans/XRAS_AUTO_NOTICES.md``.
 """
@@ -51,7 +52,7 @@ from typing import Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from scheduling.registry import TaskResult, task
-from scheduling.schedules import BusinessHourly, to_local_naive
+from scheduling.schedules import AnyOf, BusinessHourly, to_local_naive
 from scheduling.tasks._notice_common import (
     drop_already_notified,
     new_sam_session as _new_sam_session,
@@ -60,10 +61,13 @@ from scheduling.tasks._notice_common import (
 )
 from scheduling.tasks.mail_guards import EmailCapExceeded
 
-#: Ten slots a day, on the hour. `minute=0` rather than an offset because the
-#: CronJob's wakes are :07/:22/:37/:52 — a :00 slot is dispatched about seven
-#: minutes later; any other minute waits for the next wake.
-SCHEDULE = BusinessHourly(minute=0, tz='America/Denver')
+TZ = 'America/Denver'
+
+#: Quarter hours from 08:00 through 17:00 (the :15/:30/:45 members stop at 16:45)
+#: Mon-Fri. On :00/:15/:30/:45 because the CronJob wakes at :07/:22/:37/:52, so a
+#: slot is dispatched about seven minutes after it; any other minute waits a wake.
+SCHEDULE = AnyOf(BusinessHourly(minute=0, tz=TZ),
+                 *(BusinessHourly(minute=m, end_hour=16, tz=TZ) for m in (15, 30, 45)))
 
 
 @dataclass(frozen=True)
@@ -231,9 +235,8 @@ def select(rows, *, slot: datetime, delays: Dict[str, timedelta],
       expected_runtime=timedelta(minutes=20),
       # The 6h default, unlike the other two notice tasks. A misfire costs
       # nothing here: the selection window is rolling rather than banded, so
-      # the next slot an hour later covers everything this one would have. A
-      # longer grace would only run a stale slot that the fresh one already
-      # subsumes.
+      # the next slot covers everything this one would have. A longer grace
+      # would only run a stale slot that the fresh one already subsumes.
       misfire_grace=timedelta(hours=6),
       description='Email XRAS outcome notices nobody sent by hand')
 def xras_notices(ctx) -> TaskResult:
@@ -250,12 +253,12 @@ def xras_notices(ctx) -> TaskResult:
     from sam.integration.xras_api import approver_comment_for_action
     from sam.queries.xras_notices import build_xras_messages, load_xras_action
 
-    # ONE conversion, zone read off SCHEDULE rather than repeated as a literal.
+    # ONE conversion, zone read off TZ rather than repeated as a literal.
     # No truncation to local midnight, unlike `expiration_notices.window_start`:
     # there the occurrence defines selection *bands* that must tile identically
-    # across a re-run. Here it is a rolling threshold, and an hourly schedule
+    # across a re-run. Here it is a rolling threshold, and a sub-daily schedule
     # truncated to midnight would compare every slot against the same instant.
-    slot = to_local_naive(ctx.occurrence, ZoneInfo(SCHEDULE.tz))
+    slot = to_local_naive(ctx.occurrence, ZoneInfo(TZ))
     session = ctx.sam_session
 
     delays = policy()
