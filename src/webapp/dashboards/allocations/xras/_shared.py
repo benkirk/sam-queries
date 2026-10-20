@@ -257,6 +257,7 @@ _ACTIVITY_TAG_LABELS = {
     'needs_activation': 'Activation',
     'not_notified': 'Not notified',
     'notified': 'Notified',
+    'before_cutover': 'XRAS (before cutover)',
     'failed': 'Delivery failed',
     'dismissed': 'Dismissed',
 }

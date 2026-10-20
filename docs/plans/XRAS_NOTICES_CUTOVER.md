@@ -1,7 +1,8 @@
 # XRAS award mail: SAMuel takes over from XRAS (post automation phase C)
 
 **Status: checklist, read from production 2026-10-14; carried out by
-[`XRAS_PHASE_C_AND_TICKETS.md`](XRAS_PHASE_C_AND_TICKETS.md) (planned 2026-10-19).** Phase C of
+[`XRAS_PHASE_C_AND_TICKETS.md`](XRAS_PHASE_C_AND_TICKETS.md) (planned 2026-10-19); cut over
+2026-10-20 (§ 6, § 7).** Phase C of
 [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md). The goal: XRAS stops mailing award
 notices and SAMuel sends them, with no PI missing a notice and none receiving two. Every item
 below is either an XRAS rule to delete, paired with the SAMuel notice that replaces it, or a
@@ -110,11 +111,22 @@ notices move to post time; either is within the timing XRAS has today.
    go, a click on an action SAMuel already mailed sends the PI a second letter.
 6. Once the first SAMuel award mail is confirmed (`notification_log`, From cislhelp@, alloc@ on
    the cc), delete the 29 rules of § 7 in `admin-ncar` (Ben's decision, 2026-10-19). The Notify
-   button then disappears at once, including from actions already posted (§ 8).
+   button then disappears at once, including from actions already posted (§ 8). **Done
+   2026-10-20 ~10:55 MT** (Ben's 2FA, Claude via Playwright), leaving the stand-ins of § 7.1.
+   The first post after it, NCAR4420 → UTAA0014 at 11:31, showed no Notify button while
+   SAMuel sent its activation letter.
 7. Watch the first week: every applied action has a SAMuel `notification_log` row and no XRAS
    Action Approved row. Also watch for a New whose projcode already exists: it routes as
    `update`, so it gets the Renewal letter and subject. That is how News landed when NUSD
    hand-made the projcode, and phase D's tickets should retire it.
+
+**Actions from before the floor.** They were XRAS's to mail. The 10 that NUSD had not yet
+notified in XRAS on 2026-10-20 were sent by hand from SAMuel's card (Allocations → XRAS →
+Pending Activations & Recent Notifications). The card reads the same floor: an unnotified row
+received before it shows "XRAS (before cutover)" instead of "Not notified", and is left out
+of the attention queue and the notify-only Dismiss (`before_cutover` in
+`sam/queries/xras_activation.py`). Its Notify button stays, for an operator who wants SAMuel's
+letter sent anyway. XRAS's own notified flag is not readable through its API, hence the floor.
 
 ## 7. Production rules, recorded 2026-10-19 (the rollback)
 
@@ -179,6 +191,26 @@ event x recipient; a cell lists the allocation types of one action, event and re
 | 140 | COI Reported -> Allocations Process Manager | Renewal | CISL Operations, Educational, Large, Small | keep |
 | 140 | COI Reported -> Allocations Process Manager | Supplement | CISL Operations, Educational, Large, Small | keep |
 | 140 | COI Reported -> Allocations Process Manager | Transfer | CISL Operations, Educational, Large, Small | keep |
+
+### 7.1 What production holds after the cutover (2026-10-20)
+
+XRAS refuses to save a template with zero rules ("You must have at least one notification in
+order to save this template"), so each template the cutover emptied keeps one Action Approved
+-> PI rule that never fires:
+
+| Template | Stand-in | Why it never fires |
+|---|---|---|
+| 154 | CISL Operations · New, its own rule (one of the 29), kept | no XRAS post has used that allocation type, and Add Rules no longer offers it |
+| 133 | Large · Date Adjustment, added | no Date Adjustment has reached SAM in 343 posts; no template had an Action Approved rule for one |
+| 1803 | NCAR External Projects · Date Adjustment, added | the same |
+| 417 | NCAR Strategic Computing · Date Adjustment, added | the same |
+
+135 keeps its 3 Appeal and 3 Final Report rules; 149 keeps its 6 Transfer rules. If XRAS ever
+approves a Date Adjustment for one of those three types, that PI gets XRAS's old letter (SAMuel
+sends none for a Date Adjustment); a CISL Operations New would get it beside SAMuel's.
+
+**Rollback:** re-add the 28 deleted rules from the table, then remove the three Date Adjustment
+stand-ins. Re-add first: a template must never be left empty.
 
 ## 8. The demo proof: a deleted rule removes the Notify step (2026-10-19)
 

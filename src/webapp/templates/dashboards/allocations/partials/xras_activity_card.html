@@ -13,7 +13,8 @@
   because somebody did their job.
 
   Context: rows (scoped, filtered), show_all, attention_total, window_total,
-  hidden_count, outside_count, recent_days, recipients + may_activate
+  hidden_count, outside_count, recent_days, cutover (the award-mail floor or
+  None), recipients + may_activate
   (MANAGE_XRAS only; the route builds neither for VIEW_XRAS), may_manage,
   facet_values, selected, form_id, fragment_url, target_id.
   WARNING: the expansion lists addresses, so it is MANAGE_XRAS only, and the
@@ -122,6 +123,8 @@
                         {% if r.failed_count %}{{ alarm(r.failed_count ~ ' failed') }}{% endif %}
                         {% elif r.failed_count %}
                         {{ alarm('Failed') }}
+                        {% elif r.notifiable and r.before_cutover %}
+                        {{ tag('XRAS (before cutover)', title='Received before SAMuel took over award mail' ~ ((' on ' ~ (cutover | fmt_date)) if cutover else '') ~ ". XRAS's Notify was the send then.") }}
                         {% elif r.notifiable %}
                         {# The one problem a missing Recipients column must not lose. #}
                         {% if not recipients.get(r.project_id) %}
@@ -138,7 +141,7 @@
                         <span class="row-actions" role="group" aria-label="Actions for {{ r.projcode }}">
                         {% if r.notifiable %}
                         {% set notify_title = 'Notify again: preview and resend the notice' if r.notified else 'Notify: preview and send the notice for this action' %}
-                        <button type="button" class="btn btn-row{{ '' if r.notified else ' btn-row-primary' }}"
+                        <button type="button" class="btn btn-row{{ '' if r.notified or r.before_cutover else ' btn-row-primary' }}"
                                 title="{{ notify_title }}" aria-label="{{ notify_title }}"
                                 hx-get="{{ url_for('allocations_dashboard.xras_notify_form', project_id=r.project_id, action_id=r.action_log_id) }}"
                                 hx-target="#xrasModalBody" hx-swap="innerHTML"

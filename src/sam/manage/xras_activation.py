@@ -21,11 +21,12 @@ def auto_activate_armed() -> bool:
 
 def auto_notify_armed(now: Optional[datetime] = None) -> bool:
     """``XRAS_AUTO_NOTIFY``, and not before the cutover floor ``xras_notices`` reads too."""
-    from sam.integration._config import config_bool, config_str
+    from sam.integration._config import config_bool
+    from sam.queries.xras_activation import notices_floor
     if not config_bool('XRAS_AUTO_NOTIFY', False):
         return False
-    raw = config_str('SAM_TASKS_XRAS_NOTICES_SINCE', '').strip()
-    return not raw or (now or datetime.now()) >= datetime.fromisoformat(raw)
+    floor = notices_floor()
+    return floor is None or (now or datetime.now()) >= floor
 
 
 def notify_activated_project(session, projcode: str, notifier, *, by: str,

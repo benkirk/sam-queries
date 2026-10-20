@@ -84,7 +84,8 @@ first task with `needs=('sam',)`.
 phase C cutover, floored by `SAM_TASKS_XRAS_NOTICES_SINCE` so its first run never repeats
 XRAS's own mail. The New's notice is the `/actions` route's, right after activation
 (`XRAS_AUTO_NOTIFY`, `sam/manage/xras_activation.py`); this task backstops it. The same floor
-gates that notice, so `webapp.env` and `tasks.env` carry one value (pinned by `test-dev-render.sh`).
+gates that notice and the card's `before_cutover` rows (`notices_floor`, `sam/queries/xras_activation.py`),
+so `webapp.env` and `tasks.env` carry one value (pinned by `test-dev-render.sh`).
 
 | | |
 |---|---|

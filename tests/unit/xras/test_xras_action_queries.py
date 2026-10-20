@@ -325,10 +325,10 @@ class TestNotifyOnlyProjectIds:
 
     @staticmethod
     def _row(project_id, *, notifiable=True, notified=False,
-             needs_activation=False, dismissed=False):
+             needs_activation=False, dismissed=False, before_cutover=False):
         return {'project_id': project_id, 'notifiable': notifiable,
                 'notified': notified, 'needs_activation': needs_activation,
-                'dismissed': dismissed}
+                'dismissed': dismissed, 'before_cutover': before_cutover}
 
     def test_a_pure_notify_only_project_qualifies(self):
         assert notify_only_project_ids([self._row(10)]) == [10]
@@ -344,6 +344,12 @@ class TestNotifyOnlyProjectIds:
 
     def test_a_needs_activation_project_is_excluded(self):
         assert notify_only_project_ids([self._row(10, needs_activation=True)]) == []
+
+    def test_a_row_from_before_the_cutover_does_not_qualify(self):
+        """XRAS's to mail, so not a pending notification."""
+        assert notify_only_project_ids([self._row(10, before_cutover=True)]) == []
+        rows = [self._row(10, before_cutover=True), self._row(10)]
+        assert notify_only_project_ids(rows) == [10]
 
     def test_a_project_with_both_rows_is_excluded_whole(self):
         """The trap: an older notify-only action AND a latest needs-activation
@@ -621,8 +627,8 @@ class TestActivityTags:
     def test_every_declared_tag_is_reachable(self, session):
         """A tag no row can ever carry is a chip that reads 0 for ever."""
         assert set(ACTIVITY_TAGS) == {
-            'needs_activation', 'not_notified', 'notified', 'failed',
-            'dismissed'}
+            'needs_activation', 'not_notified', 'notified', 'before_cutover',
+            'failed', 'dismissed'}
 
     def test_a_new_inactive_project_needs_activation_and_notice(self, session):
         project = make_project(session, active=False)
@@ -671,6 +677,77 @@ class TestActivityTags:
         assert 'not_notified' in row['tags']
 
 
+class TestCutoverFloor:
+    """``SAM_TASKS_XRAS_NOTICES_SINCE``: an action received before it was XRAS's
+    to mail, so an unnotified one is labeled, not queued."""
+
+    FLOOR_KEY = 'SAM_TASKS_XRAS_NOTICES_SINCE'
+
+    def _extension(self, session, project, days_ago):
+        action = _action(session, status='processed', request_number=project.projcode,
+                         received_time=datetime.now() - timedelta(days=days_ago))
+        action.service = 'extend'
+        session.flush()
+        return action
+
+    def _set_floor(self, monkeypatch, days_ago):
+        floor = (datetime.now() - timedelta(days=days_ago)).replace(microsecond=0)
+        monkeypatch.setenv(self.FLOOR_KEY, floor.isoformat())
+
+    def test_no_floor_leaves_every_row_as_it_was(self, session, monkeypatch):
+        monkeypatch.delenv(self.FLOOR_KEY, raising=False)
+        project = make_project(session, active=True)
+        self._extension(session, project, 20)
+        row = _activity_row(session, project)
+        assert row['before_cutover'] is False
+        assert 'not_notified' in row['tags']
+        assert needs_attention(row, now=datetime.now())
+        assert notify_only_project_ids([row]) == [project.project_id]
+
+    def test_an_unnotified_row_before_the_floor_is_tagged_and_not_queued(
+            self, session, monkeypatch):
+        self._set_floor(monkeypatch, 10)
+        project = make_project(session, active=True)
+        self._extension(session, project, 20)
+        row = _activity_row(session, project)
+        assert row['before_cutover'] is True
+        assert 'before_cutover' in row['tags'] and 'not_notified' not in row['tags']
+        assert needs_attention(row, now=datetime.now()) is False
+        assert notify_only_project_ids([row]) == []
+
+    def test_a_row_after_the_floor_is_unchanged(self, session, monkeypatch):
+        self._set_floor(monkeypatch, 10)
+        project = make_project(session, active=True)
+        self._extension(session, project, 5)
+        row = _activity_row(session, project)
+        assert row['before_cutover'] is False
+        assert 'not_notified' in row['tags']
+        assert needs_attention(row, now=datetime.now())
+        assert notify_only_project_ids([row]) == [project.project_id]
+
+    def test_a_notified_row_before_the_floor_still_reads_notified(
+            self, session, monkeypatch):
+        self._set_floor(monkeypatch, 10)
+        project = make_project(session, active=True)
+        action = self._extension(session, project, 20)
+        _notification(session, kind='xras_extension', projcode=project.projcode,
+                      action_id=action.xras_action_log_id, address='pi@x.edu',
+                      when=datetime.now() - timedelta(days=19))
+        row = _activity_row(session, project)
+        assert row['notified'] is True
+        assert 'notified' in row['tags'] and 'before_cutover' not in row['tags']
+
+    def test_a_row_needing_activation_before_the_floor_stays_queued(
+            self, session, monkeypatch):
+        self._set_floor(monkeypatch, 10)
+        project = make_project(session, active=False)
+        _action(session, status='processed', request_number=project.projcode,
+                action_type='New', received_time=datetime.now() - timedelta(days=20))
+        row = _activity_row(session, project)
+        assert row['before_cutover'] is True and row['needs_activation'] is True
+        assert needs_attention(row, now=datetime.now())
+
+
 class TestNeedsAttention:
     """The attention queue's predicate, on literal rows with a fixed clock.
 
@@ -697,6 +774,12 @@ class TestNeedsAttention:
 
     def test_an_unclicked_notify_is_in_whatever_its_age(self):
         assert needs_attention(self._row(notified=False), now=self.NOW)
+
+    def test_an_unclicked_notify_from_before_the_cutover_is_out_unless_recent(self):
+        row = self._row(notified=False, before_cutover=True)
+        assert needs_attention(row, now=self.NOW) is False
+        row['received_time'] = self.NOW - timedelta(days=1)
+        assert needs_attention(row, now=self.NOW)
 
     def test_a_recent_row_is_in_even_with_nothing_to_click(self):
         row = self._row(received_time=self.NOW - timedelta(days=1))
