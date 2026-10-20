@@ -79,8 +79,8 @@ first task with `needs=('sam',)`.
 
 ### The `xras_notices` task
 
-`src/scheduling/tasks/xras_notices.py`, hourly 08:00–17:00 Mon–Fri Mountain
-(`BusinessHourly`). Mails the XRAS award notices (phase C): **live in prod** since the
+`src/scheduling/tasks/xras_notices.py`, every quarter hour 08:00–17:00 Mon–Fri Mountain
+(`AnyOf` of four `BusinessHourly`; 17:00 is the last slot). Mails the XRAS award notices (phase C): **live in prod** since the
 phase C cutover, floored by `SAM_TASKS_XRAS_NOTICES_SINCE` so its first run never repeats
 XRAS's own mail. The New's notice is the `/actions` route's, right after activation
 (`XRAS_AUTO_NOTIFY`, `sam/manage/xras_activation.py`); this task backstops it. The same floor
