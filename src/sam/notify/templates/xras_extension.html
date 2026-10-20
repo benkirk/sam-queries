@@ -1,11 +1,20 @@
 {% extends "_email_base.html" %}
 
 {% block content %}
-    <p>Dear {{ recipient_name }},</p>
+    <p>Dear {{ addressees | join(' and ') if addressees else recipient_name }},</p>
 
     <div class="callout good">
-        Your project <strong>{{ project_code }}</strong> - "{{ project_title }}" has been extended on NSF NCAR computing resources.
+        Your {% if opportunity_name %}{{ opportunity_name }} {% endif %}extension request{% if request_title %} "{{ request_title }}"{% endif %} has been approved: project <strong>{{ project_code }}</strong> keeps its allocations through the new end dates below. The project code, its members and any unused balance carry forward.
     </div>
+
+    {% if approver_comment %}
+    <div class="callout note">
+        <strong>Note from the reviewer</strong>
+        <p>{{ approver_comment }}</p>
+    </div>
+    {% endif %}
+
+{% include "_xras_project.html" %}
 
     {% if resources %}
     <h3>Allocations and their new end dates</h3>
@@ -21,32 +30,14 @@
     </table>
     {% endif %}
 
-    {% if approver_comment %}
-    <div class="callout note">
-        <strong>Note from the reviewer</strong>
-        <p>{{ approver_comment }}</p>
-    </div>
-    {% endif %}
-
-    <p>Nothing else changes — your project code, members and unused balance carry forward.</p>
-
+    <h3>Your project</h3>
     <ul>
-        <li>Documentation:
-            <a href="https://ncar-hpc-docs.readthedocs.io/">ncar-hpc-docs.readthedocs.io</a></li>
-        <li>See your allocations and usage, and manage who is on your project:
-            <a href="{{ manage_url or 'https://sam.hpc.ucar.edu/' }}">open {{ project_code }} in SAM</a></li>
+        <li><a href="{{ manage_url or 'https://sam.hpc.ucar.edu/' }}">Open {{ project_code }} in SAM</a>:
+            allocations, usage and members</li>
+        <li><a href="https://ncar-hpc-docs.readthedocs.io/en/latest/user-support/">Getting help</a></li>
     </ul>
 
-    {% if recipient_role != 'lead' %}
-    <p>
-        Your project lead ({{ project_lead }}{% if project_lead_email %} /
-        {{ project_lead_email }}{% endif %}) and the project administrator
-        manage membership and any future extension or supplement requests.
-    </p>
-    {% endif %}
+{% include "_xras_questions.html" %}
 {% endblock %}
 
-{% block footer_extra %}
-        <p>If you believe you received this message in error, please contact
-            <a href="mailto:help@ucar.edu">help@ucar.edu</a>.</p>
-{% endblock %}
+{% block footer %}{% include "_xras_footer.html" %}{% endblock %}

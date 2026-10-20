@@ -100,7 +100,7 @@ class TestTheAdjustmentNoticeNeverPresumesADirection:
     def test_it_states_the_signed_change_and_the_resulting_total(self, rendered):
         assert '-100,000 hours' in rendered.text
         assert '1.15M hours' in rendered.text
-        assert 'adjusted' in rendered.text.lower()
+        assert 'adjust' in rendered.text.lower()     # 'an adjustment ... approved'
 
 
 class TestNoOrphans:

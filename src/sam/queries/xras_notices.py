@@ -31,7 +31,7 @@ from sam.enums import ResourceTypeName
 from sam.integration.xras import XrasActionLog, XrasResourceRepositoryKeyResource
 from sam.notify import Message, to_recipients
 
-from .notice_links import manage_project_url, resource_details_url
+from .notice_links import manage_project_url, resource_details_url, terms_url
 from .xras_activation import (
     XRAS_SERVICE_KINDS,
     get_latest_xras_action_id,
@@ -41,24 +41,64 @@ from .xras_activation import (
 __all__ = [
     'XRAS_KIND_SUBJECTS',
     'action_increments',
+    'award_context',
     'build_xras_messages',
     'load_xras_action',
+    'notified_to',
+    'xras_subject',
 ]
 
 
-#: kind -> subject template.
+#: kind -> the request word in the subject, the shape XRAS's award mail used.
 #: The subject lives here rather than in the Jinja file because it is also the
 #: `notification_log.subject` column an operator reads back in the admin log,
 #: and a subject assembled inside a template cannot be searched from SQL.
 XRAS_KIND_SUBJECTS: Mapping[str, str] = {
-    'xras_activation': 'NSF NCAR Project {projcode} is now active',
-    'xras_supplement': 'NSF NCAR Project {projcode} has received additional allocation',
-    'xras_extension': 'NSF NCAR Project {projcode} allocation has been extended',
-    'xras_update': 'NSF NCAR Project {projcode} allocation has been renewed',
-    # Deliberately directionless: an Adjustment can subtract, and a subject
-    # line promising good news is read long before the body corrects it.
-    'xras_adjustment': 'NSF NCAR Project {projcode} allocation has been adjusted',
+    'xras_activation': 'New',
+    'xras_supplement': 'Supplement',
+    'xras_extension': 'Extension',
+    'xras_update': 'Renewal',
+    # An Adjustment can subtract; "approved" still reads true for either direction.
+    'xras_adjustment': 'Adjustment',
 }
+
+
+def xras_subject(kind: str, projcode: str, *, pi_last_name: Optional[str] = None,
+                 opportunity: Optional[str] = None) -> str:
+    """``<PI last> NSF NCAR <Opportunity> <Action> Request Approved: <projcode>``."""
+    words = [pi_last_name, 'NSF NCAR', opportunity,
+             XRAS_KIND_SUBJECTS.get(kind, XRAS_KIND_SUBJECTS['xras_activation']),
+             'Request Approved']
+    return f"{' '.join(w for w in words if w)}: {projcode}"
+
+
+def _payload(action) -> Mapping[str, Any]:
+    try:
+        payload = json.loads(action.raw_payload) if action and action.raw_payload else {}
+    except (ValueError, TypeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def award_context(payload: Mapping[str, Any], lead_username: Optional[str]) -> Dict[str, Any]:
+    """The award facts XRAS's letter carried, from the stored post; absent is ``None``/``[]``."""
+    pis = [r for r in payload.get('roles') or () if isinstance(r, dict)
+           and r.get('roleType') == 'PI']
+    pi = next((r for r in pis if r.get('username') == lead_username), pis[0] if pis else {})
+    person = pi.get('person') or {}
+    grants = [{'number': str(g.get('grantNumber')).strip(),
+               'agency': g.get('fundingAgency') or None,
+               'pi_name': g.get('piName') or None}
+              for g in payload.get('grants') or () if isinstance(g, dict)
+              and any(ch.isdigit() for ch in str(g.get('grantNumber') or ''))]
+    return {
+        'request_title': payload.get('requestTitle') or None,
+        'opportunity_name': payload.get('opportunityName') or None,
+        'allocation_type': payload.get('allocationType') or None,
+        'pi_last_name': person.get('lastName') or None,
+        'pi_organization': person.get('organization') or None,
+        'grants': grants,
+    }
 
 
 def load_xras_action(session: Session,
@@ -135,18 +175,31 @@ def action_increments(session: Session, action, *,
     return sorted(out, key=lambda r: r['resource_name'])
 
 
+def notified_to(results) -> Optional[str]:
+    """``notified_to`` for the delivered *results*: each To, then the copies
+    that left with it (none on a redirect)."""
+    parts = []
+    for r in results:
+        to = r.message.recipient
+        parts.append(f'{to.name or to.address} <{to.address}>')
+        parts.extend(f'cc <{address}>' for address in r.message.copies()[0])
+    return '; '.join(parts) or None
+
+
 def build_xras_messages(session: Session, project,
                         people: Sequence[Mapping[str, str]], *,
                         action=None, kind: Optional[str] = None,
                         requested_by: str,
                         approver_comment: Optional[str] = None,
                         site_url: Optional[str] = None) -> List[Message]:
-    """Build one :class:`~sam.notify.Message` per recipient for one XRAS action.
+    """Build the one :class:`~sam.notify.Message` for one XRAS action: To the
+    lead (the admin when the lead has no address), cc the admin when distinct,
+    as XRAS's own award mail was addressed. ``[]`` when nobody is on file; the
+    family cc (alloc@) is added by the ``Notifier``.
 
     ``approver_comment`` is the XRAS reviewer's note (``adminComments``),
     resolved by the caller because it lives on the outbound reports feed and
-    this builder is DB-only. It reaches the lead's message only: a non-lead
-    recipient's context carries ``None``, so the note is PI-only.
+    this builder is DB-only.
 
     ``dedup_key`` embeds the action, so a Supplement mints a different key from
     the New that preceded it: each outcome can be reported once, and re-opening
@@ -195,13 +248,19 @@ def build_xras_messages(session: Session, project,
     } for name, info in sorted(usage.items())]
 
     lead_email = project.lead.primary_email if project.lead else None
+    award = award_context(_payload(action),
+                          project.lead.username if project.lead else None)
+    pi_last_name = (project.lead.last_name if project.lead else None) or award['pi_last_name']
     context = {
+        **award,
+        'pi_last_name': pi_last_name,
         'project_code': project.projcode,
         'project_title': project.title,
         'project_lead': project.lead.display_name if project.lead else 'Project Lead',
         'project_lead_email': lead_email,
         'resources': resources,
         'manage_url': manage_project_url(site_url, project.projcode),
+        'terms_url': terms_url(site_url),
         # Only one template reads each of these, but every kind carries both —
         # a template that renders an undefined name renders nothing, silently,
         # so the cheapest guard is for the key to always exist.
@@ -213,25 +272,25 @@ def build_xras_messages(session: Session, project,
         'changes': (action_increments(session, increments_action, signed=True)
                     if kind == 'xras_adjustment' else []),
         'action_type': action.action_type if action else None,
-        # Default None; the fan-out below sets the note on the lead's copy only.
-        'approver_comment': None,
+        'approver_comment': approver_comment,
     }
-    subject = XRAS_KIND_SUBJECTS.get(
-        kind, XRAS_KIND_SUBJECTS['xras_activation']
-    ).format(projcode=project.projcode)
+    subject = xras_subject(kind, project.projcode, pi_last_name=pi_last_name,
+                           opportunity=award['opportunity_name'])
 
-    return [
-        Message(
-            kind=kind,
-            recipient=recipient,
-            subject=subject,
-            context={**context, 'approver_comment':
-                     approver_comment if recipient.role == 'lead' else None},
-            entity=('project', project.project_id),
-            projcode=project.projcode,
-            dedup_key=xras_dedup_key(kind, project.projcode, action_id,
-                                     recipient.address),
-            requested_by=requested_by,
-        )
-        for recipient in to_recipients(people)
-    ]
+    recipients = to_recipients(people)
+    if not recipients:
+        return []
+    to, copied = recipients[0], recipients[1:]
+    return [Message(
+        kind=kind,
+        recipient=to,
+        subject=subject,
+        context={**context, 'addressees': [r.name or r.address for r in recipients]},
+        entity=('project', project.project_id),
+        projcode=project.projcode,
+        # Keyed on the To address, as the per-person keys were, so a lead
+        # notified before the one-message change stays suppressed.
+        dedup_key=xras_dedup_key(kind, project.projcode, action_id, to.address),
+        requested_by=requested_by,
+        cc=tuple(r.address for r in copied),
+    )]

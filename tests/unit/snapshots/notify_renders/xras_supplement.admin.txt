@@ -1,30 +1,33 @@
-Dear Alex Admin,
+Dear Jane Lead and Sam Admin,
 
-Additional allocation has been added to your project SCSG0001 -
-"Sample Project Title" on NSF NCAR computing resources.
+Your Exploratory Allocation (University) supplement request "Kilometer-scale convection over the Front Range" has been approved, and the additional allocation on project SCSG0001 is available now.
 
-Added by this request:
+Note from the reviewer:
 
+Approved as recommended by the panel.
+
+PROJECT
+  Project code:   SCSG0001
+  Title:          Sample Project Title
+  Project lead:   Jane Lead, University of Colorado Boulder
+  Funding award:  AGS-2146709 (NSF, PI Jane Lead)
+
+ADDED BY THIS REQUEST
   - Derecho: 150,000 hours
 
-
-Your project now holds:
-
+YOUR PROJECT NOW HOLDS
   - Casper: 50,000 hours through 2027-09-30
   - Derecho: 1.15M hours through 2027-09-30
 
-
-The additional time is available now; no change to how you submit work.
-
-  - Documentation: https://ncar-hpc-docs.readthedocs.io/
-  - See your allocations and usage, and manage who is on your project:
+YOUR PROJECT
+  - Your project in SAM (allocations, usage and members):
     https://sam.hpc.ucar.edu/admin/project/SCSG0001/edit
+  - Getting help: https://ncar-hpc-docs.readthedocs.io/en/latest/user-support/
 
-Your project lead (Jane Lead /
-jane.lead@example.edu) and the project administrator manage
-membership and any future extension or supplement requests.
-
+For questions about this allocation, user accounts or passwords, contact cislhelp@ucar.edu
+or 303-497-2000.
 --
+Your use of NSF NCAR HPC resources is contingent upon abiding by the terms of
+our End User Agreement: https://sam.hpc.ucar.edu/register/invite/terms
+
 This is an automated notification from the NSF NCAR Systems Accounting Manager.
-If you believe you received this message in error, please contact
-help@ucar.edu.

@@ -49,7 +49,7 @@ from sam.manage import xras_remediation as remediation
 from sam.queries.mnemonic_console import search_mnemonic_codes
 from sam.dates import parse_wire_date
 from sam.queries.xras_accounts import live_actions
-from sam.queries.xras_requests import is_pending_work, row_blockers
+from sam.queries.xras_requests import is_pending_work, projcode_series, row_blockers
 from sam.schemas.forms import (
     XrasActionDatesForm,
     XrasActionFieldsForm,
@@ -519,12 +519,13 @@ def _search(rows, needle):
 
 
 def _stamp_blockers(rows):
-    """Shallow-copy each row with its derived ``blockers`` set (as a sorted list).
+    """Shallow-copy each row with its derived ``blockers`` (a sorted list) and ``series``.
 
     A copy, never in place: the rows come from the sweep's shared cache dict, and
     mutating them would leak this request's derivation into the next one.
     """
-    return [{**r, 'blockers': sorted(row_blockers(r))} for r in rows]
+    return [{**r, 'blockers': sorted(row_blockers(r)), 'series': projcode_series(r)}
+            for r in rows]
 
 
 def _stamp_tickets(rows):

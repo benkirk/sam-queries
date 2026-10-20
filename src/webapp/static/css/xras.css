@@ -97,6 +97,11 @@
     font-weight: var(--font-weight-regular);
 }
 
+/* The SAM cell's project link is a code, monospace like the Request column's. */
+.xras-sam-cell a > strong {
+    font-family: var(--bs-font-monospace);
+}
+
 /* One badge size across the XRAS page and its dialog, so a hue and a neutral
    tag line up wherever they meet. */
 .xras-section .badge,

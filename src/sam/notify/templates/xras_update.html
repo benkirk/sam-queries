@@ -1,11 +1,23 @@
 {% extends "_email_base.html" %}
 
 {% block content %}
-    <p>Dear {{ recipient_name }},</p>
+    <p>Dear {{ addressees | join(' and ') if addressees else recipient_name }},</p>
 
     <div class="callout good">
-        Your project <strong>{{ project_code }}</strong> - "{{ project_title }}" has been renewed on NSF NCAR computing resources.
+        Your {% if opportunity_name %}{{ opportunity_name }} {% endif %}renewal request{% if request_title %}
+        "{{ request_title }}"{% endif %} has been approved, and project
+        <strong>{{ project_code }}</strong> continues on NSF NCAR computing resources with
+        the allocations below. The project code and its members are unchanged.
     </div>
+
+    {% if approver_comment %}
+    <div class="callout note">
+        <strong>Note from the reviewer</strong>
+        <p>{{ approver_comment }}</p>
+    </div>
+    {% endif %}
+
+{% include "_xras_project.html" %}
 
     {% if resources %}
     <h3>Allocations for the new period</h3>
@@ -21,32 +33,22 @@
     </table>
     {% endif %}
 
-    {% if approver_comment %}
-    <div class="callout note">
-        <strong>Note from the reviewer</strong>
-        <p>{{ approver_comment }}</p>
-    </div>
-    {% endif %}
-
-    <p>Your project code and its members are unchanged.</p>
-
+    <h3>Your project</h3>
     <ul>
-        <li>Documentation:
-            <a href="https://ncar-hpc-docs.readthedocs.io/">ncar-hpc-docs.readthedocs.io</a></li>
-        <li>See your allocations and usage, and manage who is on your project:
-            <a href="{{ manage_url or 'https://sam.hpc.ucar.edu/' }}">open {{ project_code }} in SAM</a></li>
+        <li><a href="{{ manage_url or 'https://sam.hpc.ucar.edu/' }}">Open {{ project_code }} in SAM</a>:
+            allocations, usage and members</li>
+        <li><a href="https://ncar-hpc-docs.readthedocs.io/en/latest/user-support/">Getting help</a></li>
     </ul>
 
-    {% if recipient_role != 'lead' %}
+    <h3>Acknowledging NCAR and CISL</h3>
     <p>
-        Your project lead ({{ project_lead }}{% if project_lead_email %} /
-        {{ project_lead_email }}{% endif %}) and the project administrator
-        manage membership and any future extension or supplement requests.
+        This allocation requires acknowledging NSF NCAR and CISL support in publications
+        that use these resources
+        (<a href="https://ncar-hpc-docs.readthedocs.io/en/latest/getting-started/acknowledging-ncar-and-cisl/">how to acknowledge</a>).
+        A project lead's later allocations may be delayed until this is met.
     </p>
-    {% endif %}
+
+{% include "_xras_questions.html" %}
 {% endblock %}
 
-{% block footer_extra %}
-        <p>If you believe you received this message in error, please contact
-            <a href="mailto:help@ucar.edu">help@ucar.edu</a>.</p>
-{% endblock %}
+{% block footer %}{% include "_xras_footer.html" %}{% endblock %}

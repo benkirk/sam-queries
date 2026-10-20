@@ -193,21 +193,17 @@ class TestThePreviewPane:
         assert resp.status_code == 200
         assert 'is now active' in resp.get_data(as_text=True)
 
-    def test_the_picker_round_trips_to_the_chosen_recipient(
+    def test_one_letter_to_the_lead_with_the_admin_copied(
             self, auth_client, notifier, monkeypatch):
         from webapp.dashboards.allocations.xras import lifecycle_routes as blueprint
         people = [{'name': 'A PI', 'email': 'pi@example.edu', 'role': 'lead'},
                   {'name': 'An Admin', 'email': 'admin@example.edu', 'role': 'admin'}]
         monkeypatch.setattr(blueprint, 'get_xras_pending_recipients',
                             lambda session, ids: {ids[0]: people})
-        html = auth_client.get(
-            f'/allocations/xras_notify_form/{PROJECT_ID}').get_data(as_text=True)
-        assert 'name="preview_recipient"' in html and self.URL in html
-        second = 'admin@example.edu'
-        resp = auth_client.get(self.URL, query_string={'preview_recipient': second})
-        body = resp.get_data(as_text=True)
-        assert '<option value="1" selected' in body
-        assert second in body.split('>To<')[1].split('</div>')[0]
+        body = auth_client.get(self.URL).get_data(as_text=True)
+        assert 'name="preview_recipient"' not in body
+        assert 'pi@example.edu' in body.split('>To<')[1].split('</div>')[0]
+        assert 'admin@example.edu' in body.split('>To<')[1]
 
     def test_a_missing_project_answers_200_in_the_pane(self, auth_client, notifier):
         resp = auth_client.get('/allocations/xras_notify_preview/999999999')

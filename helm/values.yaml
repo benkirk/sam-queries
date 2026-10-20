@@ -227,10 +227,12 @@ webapp:
     # These are the deployment defaults only: operators add cc/bcc rows in
     # Admin > Notifications > Addressing (table notification_addressing),
     # which every Notifier reads from the database, the CronJob included.
+    # The XRAS award mail leaves as the help desk, as XRAS's own did (templates 154, 135, 149;
+    # docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 2), with the allocations mailbox on the cc.
     NOTIFY_XRAS_CC: "alloc@ucar.edu"
     NOTIFY_XRAS_BCC: ""
-    NOTIFY_XRAS_FROM: ""
-    NOTIFY_XRAS_REPLY_TO: "alloc@ucar.edu"
+    NOTIFY_XRAS_FROM: "cislhelp@ucar.edu"
+    NOTIFY_XRAS_REPLY_TO: "cislhelp@ucar.edu"
     # The account-request family carries two kinds with different audiences:
     # the queue digest to NUSD and the public form's verification mail to a
     # stranger. NOTIFY_ACCOUNT_QUEUE_TO is the digest recipient; empty means
@@ -424,6 +426,11 @@ webapp:
     # XRAS_POST_AUTOMATION.md § 3 B); "0" leaves it to the card's Activate. Armed after the
     # samuel-dev smoke (#828), NUSD told; pinned in tests/unit/gates/test_xras_admin_client.py.
     XRAS_AUTO_ACTIVATE: "1"
+    # The New's award mail right after that activation (phase C); xras_notices backstops it.
+    # Neither sends before the cutover floor, which MUST equal tasks.env's (pinned by
+    # helm/tests/test-dev-render.sh): SAMuel mails from 08:00 MT 2026-10-20 (Ben).
+    XRAS_AUTO_NOTIFY: "1"
+    SAM_TASKS_XRAS_NOTICES_SINCE: "2026-10-20T08:00"
     # The ticket-state first line on a refused New/Renewal's 422 (docs/plans/XRAS_REQUEST_TICKETS.md
     # § 6). "1" only together with the xras_request_tickets task, or the 422 promises a ticket.
     # Armed with the task (docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 4). The floor MUST equal
@@ -705,8 +712,10 @@ tasks:
     #                                         XRAS posts; every 15 min. Armed by
     #                                         XRAS_REQUEST_TICKETS_ENABLED, TICKET_PROVIDER and
     #                                         JIRA_WRITE_ENABLED below. XRAS_REQUEST_TICKETS.md)
-    # Disabled: xras_notices                 (mails external PIs)
-    #           account_queue_digest         (mails NUSD the open queue; Mon 08:00 MT.
+    #           xras_notices                 (mails PIs the XRAS award notice at the next
+    #                                         business hour; floored at the phase C cutover
+    #                                         below. XRAS_PHASE_C_AND_TICKETS.md)
+    # Disabled: account_queue_digest         (mails NUSD the open queue; Mon 08:00 MT.
     #                                         NUSD's handoff is the per-request
     #                                         ticket, NOTIFY_ACCOUNT_TICKET_TO)
     #
@@ -724,7 +733,7 @@ tasks:
     # `sam-admin tasks --run X --force` cannot override it.
     # directory_report: the nightly read-only sweep of ldap.ucar.edu against SAM (counts only);
     # named here until its first weeks on dev are read (docs/plans/DIRECTORY_CLIENT_NEXT.md).
-    SAM_TASKS_DISABLED: "xras_notices,account_queue_digest,directory_report"
+    SAM_TASKS_DISABLED: "account_queue_digest,directory_report"
     # Arms xras_rename, the one task write (the XRAS_WRITE_ENABLED warning in webapp.env).
     # Removing it disarms the task without a code change.
     XRAS_WRITE_ENABLED: "1"
@@ -740,3 +749,7 @@ tasks:
     TICKET_PROVIDER: "jira-servicedesk"
     JIRA_WRITE_ENABLED: "1"
     SAM_TASKS_XRAS_TICKETS_SINCE: "2026-10-19"
+    # The phase C cutover floor, naive Mountain: an action received before it was XRAS's to
+    # mail, so neither xras_notices nor the New's notice after activation sends it. Equal to
+    # webapp.env's (docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 6).
+    SAM_TASKS_XRAS_NOTICES_SINCE: "2026-10-20T08:00"

@@ -1,4 +1,4 @@
-{% from 'dashboards/fragments/xras_bits.html' import verdict %}
+{% from 'dashboards/fragments/xras_bits.html' import projcode_series, verdict %}
 {# SAM's never-writes pre-flight for one action: "if XRAS pushed this today, would
    SAM's ingest accept it?", and why. The messages are the exact ordered 422 a push
    would return. Shared by the request dialog and the readiness dialog. Expects
@@ -22,9 +22,8 @@
     <p class="mb-0 text-muted">No blocking checks: SAM's ingest would accept it.</p>
     {% endif %}
     {% if pf.would_succeed and pf.resolved and pf.resolved.series %}
-    {# The 4-digit number is assigned at creation, hence the dimmed xxxx. #}
     <p class="mb-0 text-muted">Would be created as
-        <span class="font-monospace" title="The 4-digit number is assigned when the project is created.">{{ pf.resolved.series }}<span class="opacity-50">xxxx</span></span>{% if pf.resolved.allocation_type %} · {{ pf.resolved.allocation_type }}{% endif %}{% if pf.resolved.panel_authorised %} · panel authorized{% endif %}</p>
+        <span title="The 4-digit number is assigned when the project is created.">{{ projcode_series(pf.resolved.series) }}</span>{% if pf.resolved.allocation_type %} · {{ pf.resolved.allocation_type }}{% endif %}{% if pf.resolved.panel_authorised %} · panel authorized{% endif %}</p>
     {% endif %}
     {% if pf.gaps %}<p class="mb-0 text-muted">Not synthesized: {{ pf.gaps | join(', ') }}</p>{% endif %}
     {# Calibration: the prediction beside what happened once XRAS pushed it. #}

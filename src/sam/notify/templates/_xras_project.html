@@ -1,0 +1,10 @@
+    <h3>Project</h3>
+    <table class="data">
+        <tr><th>Project code</th><td>{{ project_code }}</td></tr>
+        <tr><th>Title</th><td>{{ project_title }}</td></tr>
+        <tr><th>Project lead</th><td>{{ project_lead }}{% if pi_organization %}, {{ pi_organization }}{% endif %}</td></tr>
+        {% for g in grants %}
+        <tr><th>Funding award</th><td>{{ g.number }}{% if g.agency or g.pi_name %}
+            ({{ [g.agency, g.pi_name and 'PI ' ~ g.pi_name] | select | join(', ') }}){% endif %}</td></tr>
+        {% endfor %}
+    </table>

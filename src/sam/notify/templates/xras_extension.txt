@@ -1,31 +1,23 @@
-Dear {{ recipient_name }},
+Dear {{ addressees | join(' and ') if addressees else recipient_name }},
 
-Your project {{ project_code }} - "{{ project_title }}" has been extended on
-NSF NCAR computing resources.
-{% if resources %}
-Allocations and their new end dates:
-{% for r in resources %}
-  - {{ r.resource_name }}: {{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}
-    {%- if r.end_date %} through {{ r.end_date }}{% endif %}
-{%- endfor %}
-{% endif %}
+Your {% if opportunity_name %}{{ opportunity_name }} {% endif %}extension request{% if request_title %} "{{ request_title }}"{% endif %} has been approved: project {{ project_code }} keeps its allocations through the new end dates below. The project code, its members and any unused balance carry forward.
 {% if approver_comment %}
 Note from the reviewer:
 
 {{ approver_comment }}
 {% endif %}
-Nothing else changes — your project code, members and unused balance carry
-forward.
-
-  - Documentation: https://ncar-hpc-docs.readthedocs.io/
-  - See your allocations and usage, and manage who is on your project:
-    {{ manage_url or 'https://sam.hpc.ucar.edu/' }}
-{% if recipient_role != 'lead' %}
-Your project lead ({{ project_lead }}{% if project_lead_email %} /
-{{ project_lead_email }}{% endif %}) and the project administrator manage
-membership and any future extension or supplement requests.
+{% include "_xras_project.txt" %}
+{% if resources %}
+ALLOCATIONS AND THEIR NEW END DATES
+{%- for r in resources %}
+  - {{ r.resource_name }}: {{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}
+    {%- if r.end_date %} through {{ r.end_date }}{% endif %}
+{%- endfor %}
 {% endif %}
---
-This is an automated notification from the NSF NCAR Systems Accounting Manager.
-If you believe you received this message in error, please contact
-help@ucar.edu.
+YOUR PROJECT
+  - Your project in SAM (allocations, usage and members):
+    {{ manage_url or 'https://sam.hpc.ucar.edu/' }}
+  - Getting help: https://ncar-hpc-docs.readthedocs.io/en/latest/user-support/
+
+{% include "_xras_questions.txt" %}
+{% include "_xras_footer.txt" %}

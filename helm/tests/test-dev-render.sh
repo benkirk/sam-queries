@@ -240,6 +240,9 @@ prod_deploy=$(render prod -s templates/deployment.yaml)
   red "FAIL: prod's 422 names the ticket the armed task files (XRAS_REQUEST_TICKETS_ENABLED=1)"; exit 1; }
 [[ "$(env_value "$prod_cron" XRAS_REQUEST_TICKETS_ENABLED)" == "1" ]] || {
   red "FAIL: the 422's promise and the task's lever move together (prod tasks.env)"; exit 1; }
+notices_floor=$(env_value "$prod_deploy" SAM_TASKS_XRAS_NOTICES_SINCE)
+[[ -n "$notices_floor" && "$notices_floor" == "$(env_value "$prod_cron" SAM_TASKS_XRAS_NOTICES_SINCE)" ]] || {
+  red "FAIL: the New's notice and xras_notices must read one cutover floor (SAM_TASKS_XRAS_NOTICES_SINCE)"; exit 1; }
 prod_floor=$(env_value "$prod_deploy" SAM_TASKS_XRAS_TICKETS_SINCE)
 [[ -n "$prod_floor" && "$prod_floor" == "$(env_value "$prod_cron" SAM_TASKS_XRAS_TICKETS_SINCE)" ]] || {
   red "FAIL: the 422 and the task must read one floor (SAM_TASKS_XRAS_TICKETS_SINCE in both envs)"; exit 1; }

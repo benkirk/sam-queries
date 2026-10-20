@@ -63,7 +63,7 @@ gap to close before that rule is deleted.
 | PI (To) | the project lead (PI → lead in `sam/xras/roster.py`) | covered |
 | Allocation Managers (cc) | the project admin (Allocation Manager → admin), mailed directly | covered |
 | Co-PIs (cc) | — | none: NCAR's wire carries only PI, Allocation Manager and User roles, so the list is empty |
-| `alloc@ucar.edu` (cc on every award mail) | nothing: production has no `notification_addressing` rows | add a cc or bcc row on scope `xras` (Admin → Configuration → Notification Addressing) |
+| `alloc@ucar.edu` (cc on every award mail) | `NOTIFY_XRAS_CC` (since #480), once per letter since #848 | covered |
 | program officers (cc) | — | confirm the tag is empty at NCAR (no program officer on the wire); otherwise decide |
 | `bgrant@nsf.gov`, `mwomack@nsf.gov` (cc, Large New and Renewal only) | — | addressing scopes are family, kind and facility, not allocation type: add an allocation-type scope, or drop the copy (Large News are rare; none since the repoint) |
 | PI email again (417, Strategic Computing) | — | none: a duplicate of the To |
@@ -97,13 +97,109 @@ notices move to post time; either is within the timing XRAS has today.
 
 1. SAMuel ready on samuel-dev: templates at parity (§ 4), the `alloc@` row (§ 3), the
    decisions of § 2 and § 5.
-2. Prove on the demo that a deleted rule silences Notify: delete one rule (Exploratory · New ·
-   Action Approved · PI), approve, post and Notify a benkirk-only request, and read its
-   Notifications view.
-3. Record production's rules (the tables above are the record; re-adding them is the rollback).
-4. One day: enable `xras_notices` in production (and phase B's activation notice), then delete
-   the rules of § 2 in `admin-ncar`.
-5. NUSD stops clicking Notify: a request leaves the admin queue at the post without it
-   (`XRAS_DEV_PROBES.md` § 6.1, scenario 8).
-6. Watch the first week: every applied action has a SAMuel `notification_log` row and no XRAS
-   Action Approved row.
+2. Prove on the demo that a deleted rule silences Notify. **Done 2026-10-19**
+   (§ 8; `XRAS_DEV_PROBES.md` § 6.4): with Exploratory · New · Action Approved · PI deleted, an
+   approved and posted New (NCAR4094 → UHSS0006) left Recent submissions and showed no Notify
+   button ("Notifications Generated? N/A"). Existing posted News lost the button at once, and
+   re-adding the rule brought it back.
+3. Record production's rules. **Done 2026-10-19** (§ 7; re-adding them is the rollback).
+4. Promote #848 the evening of 2026-10-19 (Ben). SAMuel mails nothing before the cutover floor,
+   `SAM_TASKS_XRAS_NOTICES_SINCE=2026-10-20T08:00` in both `webapp.env` and `tasks.env`:
+   neither `xras_notices` nor the New's notice after activation sends an action received earlier.
+5. From 08:00 MT 2026-10-20 SAMuel sends. **NUSD stops clicking Notify then**: until the rules
+   go, a click on an action SAMuel already mailed sends the PI a second letter.
+6. Once the first SAMuel award mail is confirmed (`notification_log`, From cislhelp@, alloc@ on
+   the cc), delete the 29 rules of § 7 in `admin-ncar` (Ben's decision, 2026-10-19). The Notify
+   button then disappears at once, including from actions already posted (§ 8).
+7. Watch the first week: every applied action has a SAMuel `notification_log` row and no XRAS
+   Action Approved row. Also watch for a New whose projcode already exists: it routes as
+   `update`, so it gets the Renewal letter and subject. That is how News landed when NUSD
+   hand-made the projcode, and phase D's tickets should retire it.
+
+## 7. Production rules, recorded 2026-10-19 (the rollback)
+
+Read from `admin-ncar.xras.org` (Admin -> Notifications, each template's edit page) on
+2026-10-19: 15 templates, 206 rules. The cutover deletes the 29 rows marked **delete**;
+re-adding them is the rollback. Every rule here is a row of allocation type x action x
+event x recipient; a cell lists the allocation types of one action, event and recipient.
+
+| Template | Event -> recipient | Action | Allocation types | Cutover |
+|---|---|---|---|---|
+| 154 | Action Approved -> PI | New | CISL Operations, Data Analysis, Educational, Exploratory, NCAR Strategic Computing, Small | **delete** |
+| 154 | Action Approved -> PI | Renewal | CISL Operations, Data Analysis, Educational, Exploratory, Small | **delete** |
+| 133 | Action Approved -> PI | New | Large | **delete** |
+| 133 | Action Approved -> PI | Renewal | Large | **delete** |
+| 1803 | Action Approved -> PI | New | NCAR External Projects | **delete** |
+| 417 | Action Approved -> PI | New | NCAR Strategic Computing | **delete** |
+| 417 | Action Approved -> PI | Renewal | NCAR Strategic Computing | **delete** |
+| 135 | Action Approved -> PI | Appeal | Educational, Large, Small | keep |
+| 135 | Action Approved -> PI | Extension | Data Analysis, Educational, Exploratory, Large, NCAR External Projects, NCAR Strategic Computing, Small | **delete** |
+| 135 | Action Approved -> PI | Final Report | Educational, Large, Small | keep |
+| 149 | Action Approved -> PI | Supplement | Data Analysis, Educational, Exploratory, Large, NCAR Strategic Computing, Small | **delete** |
+| 149 | Action Approved -> PI | Transfer | Data Analysis, Educational, Exploratory, Large, NCAR Strategic Computing, Small | keep |
+| 142 | Action Approved -> PI | Advance | Large | keep |
+| 128 | Action Finalized/Submitted -> PI | Advance | Data Analysis, Educational, Exploratory, Large, NCAR Strategic Computing, Small | keep |
+| 128 | Action Finalized/Submitted -> PI | Appeal | Educational, Large, NCAR Strategic Computing, Small | keep |
+| 128 | Action Finalized/Submitted -> PI | Extension | Data Analysis, Educational, Exploratory, Large, NCAR External Projects, NCAR Strategic Computing, Small | keep |
+| 128 | Action Finalized/Submitted -> PI | Final Report | Educational, Exploratory, Large, Small | keep |
+| 128 | Action Finalized/Submitted -> PI | New | Data Analysis, Educational, Exploratory, NCAR External Projects, Small | keep |
+| 128 | Action Finalized/Submitted -> PI | Renewal | Data Analysis, Educational, Exploratory, NCAR External Projects, Small | keep |
+| 128 | Action Finalized/Submitted -> PI | Supplement | Educational, Exploratory, Large, NCAR External Projects, NCAR Strategic Computing, Small | keep |
+| 128 | Action Finalized/Submitted -> PI | Transfer | Educational, Exploratory, Large, NCAR External Projects, Small | keep |
+| 2562 | Action Finalized/Submitted -> PI | New | Large, NCAR Strategic Computing | keep |
+| 2562 | Action Finalized/Submitted -> PI | Renewal | Large, NCAR Strategic Computing | keep |
+| 129 | Action Finalized/Submitted -> Allocations Process Manager | Advance | Exploratory, NCAR Strategic Computing | keep |
+| 129 | Action Finalized/Submitted -> Allocations Process Manager | Appeal | Educational, Large, Small | keep |
+| 129 | Action Finalized/Submitted -> Allocations Process Manager | Extension | Data Analysis, Educational, Exploratory, Large, NCAR External Projects, NCAR Strategic Computing, Small | keep |
+| 129 | Action Finalized/Submitted -> Allocations Process Manager | Final Report | Educational, Large, Small | keep |
+| 129 | Action Finalized/Submitted -> Allocations Process Manager | New | Data Analysis, Educational, Exploratory, Large, NCAR External Projects, NCAR Strategic Computing, Small | keep |
+| 129 | Action Finalized/Submitted -> Allocations Process Manager | Renewal | Data Analysis, Educational, Exploratory, Large, NCAR External Projects, NCAR Strategic Computing, Small | keep |
+| 129 | Action Finalized/Submitted -> Allocations Process Manager | Supplement | Data Analysis, Educational, Exploratory, Large, NCAR External Projects, NCAR Strategic Computing, Small | keep |
+| 129 | Action Finalized/Submitted -> Allocations Process Manager | Transfer | Educational, Exploratory, Large, NCAR External Projects, Small | keep |
+| 131 | Action Rejected -> PI | Appeal | Large | keep |
+| 131 | Action Rejected -> PI | Extension | Data Analysis, Educational, Exploratory, Large, NCAR External Projects, NCAR Strategic Computing, Small | keep |
+| 131 | Action Rejected -> PI | Final Report | Large | keep |
+| 131 | Action Rejected -> PI | New | CISL Operations, Data Analysis, Educational, Exploratory, NCAR External Projects, Small | keep |
+| 131 | Action Rejected -> PI | Renewal | CISL Operations, Educational, Small | keep |
+| 131 | Action Rejected -> PI | Supplement | Data Analysis, Educational, Exploratory, Large, NCAR External Projects, NCAR Strategic Computing, Small | keep |
+| 131 | Action Rejected -> PI | Transfer | Large | keep |
+| 134 | Action Rejected -> PI | New | Large, NCAR Strategic Computing | keep |
+| 134 | Action Rejected -> PI | Renewal | Large, NCAR Strategic Computing | keep |
+| 143 | Action Rejected -> PI | Advance | Large | keep |
+| 132 | Reviews Completed -> Allocations Process Manager | Appeal | Large | keep |
+| 132 | Reviews Completed -> Allocations Process Manager | Extension | Educational, Large, Small | keep |
+| 132 | Reviews Completed -> Allocations Process Manager | Final Report | Educational, Large, Small | keep |
+| 132 | Reviews Completed -> Allocations Process Manager | New | Educational, Large, NCAR Strategic Computing, Small | keep |
+| 132 | Reviews Completed -> Allocations Process Manager | Renewal | Educational, Large, NCAR Strategic Computing, Small | keep |
+| 132 | Reviews Completed -> Allocations Process Manager | Supplement | Educational, Large, Small | keep |
+| 132 | Reviews Completed -> Allocations Process Manager | Transfer | Educational, Large, Small | keep |
+| 140 | COI Reported -> Allocations Process Manager | Advance | CISL Operations, Educational, Large, Small, TRAC | keep |
+| 140 | COI Reported -> Allocations Process Manager | Appeal | CISL Operations, Educational, Large, Small | keep |
+| 140 | COI Reported -> Allocations Process Manager | New | CISL Operations, Educational, Large, Small | keep |
+| 140 | COI Reported -> Allocations Process Manager | Renewal | CISL Operations, Educational, Large, Small | keep |
+| 140 | COI Reported -> Allocations Process Manager | Supplement | CISL Operations, Educational, Large, Small | keep |
+| 140 | COI Reported -> Allocations Process Manager | Transfer | CISL Operations, Educational, Large, Small | keep |
+
+## 8. The demo proof: a deleted rule removes the Notify step (2026-10-19)
+
+The cutover question (§ 6, step 2): once SAMuel sends the award mail
+and XRAS's Action Approved rules are gone, does an approve and post leave nothing behind? On
+`xras-admin-demo` (Ben's 2FA, Playwright, the demo host asserted before every write), one
+rule deleted from template 154: **Exploratory · New · Action Approved · PI**; the other ten
+kept. No Notify was pressed. The field to read is `view_notify_button` on
+`/actions/<aid>.json` (production's NCAR4412, posted the same day: `true`, with
+`notifications_generated: false`).
+
+| Step | Observed |
+|---|---|
+| Baseline, rule present | every posted, never-notified benkirk action shows Notify: News 372884, 372891, 372917; Extensions 372866, 372886; Supplement 372890 (`view_notify_button: true`) |
+| Rule deleted (Save) | **the three Exploratory News lose the button at once** (`view_notify_button` null; Finalize and Post reads "Notifications Generated? N/A", only Save and Repost); the Extensions and the Supplement, whose rules on 135 and 149 stand, keep it. XRAS computes the button from the rules **at read time**, not at the post |
+| NCAR4094 (1439637 / 372951) | a fresh benkirk-only Exploratory New, PI and Allocation Manager, authored through the demo API from inside the samuel-dev pod (§ 4's recipe; validate successful); submitted 16:33 MDT, listed in Recent submissions, Exploratory "3 pending" |
+| Ben approves and posts | sam_dev **#29** `add` processed 200 → **UHSS0006**; activated 0.16 s later by `xras:XRAS` (`xras_activation_event` #5); renamed (`xras_remediation_event` #9, verified) |
+| After the post | **gone from Recent submissions**, Exploratory "2 pending"; the action reads "Notifications Generated? N/A", **no Notify button**; its notifications are the two submit acknowledgments only |
+| Rule re-added (Add Rules, Save) | template 154 back to its 11 rules; UHSS0006's Notify button **returns** ("No"). Re-adding the rules is a complete rollback |
+
+A post already removes a request from Recent submissions with the rules in place (scenario 8;
+production NCAR4412). Approved-but-unposted requests stay. What the rules decide is whether a
+Notify step waits on the action. The production deletion also clears that step from every
+posted, never-notified action at once.

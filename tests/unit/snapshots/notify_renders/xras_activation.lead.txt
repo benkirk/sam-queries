@@ -1,30 +1,44 @@
-Dear Jane Lead,
+Dear Jane Lead and Sam Admin,
 
-Your project SCSG0001 - "Sample Project Title" is now active on
-NSF NCAR computing resources.
-
-Allocations:
-
-  - Casper: 50,000 hours through 2027-09-30
-
-  - Derecho: 1.15M hours through 2027-09-30
-
-
+Your Exploratory Allocation (University) request "Kilometer-scale convection over the Front Range" has been approved, and project SCSG0001 is now active on NSF NCAR computing resources.
 
 Note from the reviewer:
 
 Approved as recommended by the panel.
 
-Getting started:
-  - Documentation: https://ncar-hpc-docs.readthedocs.io/
-  - See your allocations and usage, and manage who is on your project:
+PROJECT
+  Project code:   SCSG0001
+  Title:          Sample Project Title
+  Project lead:   Jane Lead, University of Colorado Boulder
+  Funding award:  AGS-2146709 (NSF, PI Jane Lead)
+
+ALLOCATIONS
+  - Casper: 50,000 hours through 2027-09-30
+  - Derecho: 1.15M hours through 2027-09-30
+
+GETTING STARTED
+  - Your project in SAM (allocations, usage and members):
     https://sam.hpc.ucar.edu/admin/project/SCSG0001/edit
+  - New users: https://ncar-hpc-docs.readthedocs.io/en/latest/getting-started/
+  - Getting help: https://ncar-hpc-docs.readthedocs.io/en/latest/user-support/
 
-As project lead you can add and remove project members, and designate a
-project administrator (who can also manage members), in SAM. Request extensions
-or supplements through ARC, at https://arc.ucar.edu/
+MEMBERS AND ACCOUNTS
+The project lead and the project administrator add and remove members in SAM.
+Anyone on the project without an NCAR user account will receive a separate
+email from our help system about creating one; new accounts can take up to
+five days. Request extensions and supplements through ARC:
+https://arc.ucar.edu/
 
+ACKNOWLEDGING NCAR AND CISL
+This allocation requires acknowledging NSF NCAR and CISL support in
+publications that use these resources:
+https://ncar-hpc-docs.readthedocs.io/en/latest/getting-started/acknowledging-ncar-and-cisl/
+A project lead's later allocations may be delayed until this is met.
+
+For questions about this allocation, user accounts or passwords, contact cislhelp@ucar.edu
+or 303-497-2000.
 --
+Your use of NSF NCAR HPC resources is contingent upon abiding by the terms of
+our End User Agreement: https://sam.hpc.ucar.edu/register/invite/terms
+
 This is an automated notification from the NSF NCAR Systems Accounting Manager.
-If you believe you received this message in error, please contact
-help@ucar.edu.

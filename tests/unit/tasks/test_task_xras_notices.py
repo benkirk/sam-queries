@@ -21,6 +21,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 import pytest
+import yaml
 from factories.core import make_user
 from factories.projects import make_account, make_allocation, make_project
 from factories.resources import make_resource
@@ -208,19 +209,12 @@ class TestRegistration:
         lease = lease_for(TASKS[NAME].expected_runtime).total_seconds()
         assert lease > int(match.group(1))
 
-    def test_it_ships_switched_off(self):
-        """WARNING: `SAM_TASKS_DISABLED` is fail-OPEN: a registered task dispatches on
-        the next hourly wake unless the chart names it. This one is meant to
-        soak first, so the name must be in `values.yaml` from the commit that
-        registers it — nothing else couples the registry to the chart.
-
-        Delete this test in the commit that clears the switch."""
-
-        values = (REPO_ROOT
-                  / 'helm' / 'values.yaml').read_text()
-        line, = [ln for ln in values.splitlines()
-                 if ln.strip().startswith('SAM_TASKS_DISABLED:')]
-        assert NAME in line, line
+    def test_it_runs_in_production_floored_at_the_cutover(self):
+        """Phase C: the switch is cleared, and the floor keeps the first run
+        from repeating what XRAS already mailed (XRAS_PHASE_C_AND_TICKETS.md § 5.5)."""
+        env = yaml.safe_load((REPO_ROOT / 'helm' / 'values.yaml').read_text())['tasks']['env']
+        assert NAME not in env['SAM_TASKS_DISABLED'].split(',')
+        assert mod.notices_floor(env) is not None
 
 
 # the policy
@@ -233,11 +227,15 @@ class TestThePolicy:
     def test_every_auto_service_is_selected(self, service):
         assert _select(_row(service=service))
 
-    def test_add_is_never_selected(self):
-        """A New is TWO writes — `active=True` and the notice — and the notice
-        says "is now active". An unattended sender has no operator to put them
-        in that order, so `add` stays manual."""
+    def test_add_waits_for_the_activation(self):
+        """The notice says "is now active": the backstop sends only once it is."""
         assert _select(_row(service='add', kind='xras_activation')) == []
+        assert _select(_row(service='add', kind='xras_activation', project_active=True))
+
+    def test_add_gives_the_routes_own_send_an_hour(self):
+        young = _row(service='add', kind='xras_activation', project_active=True,
+                     received_time=SLOT - timedelta(minutes=30))
+        assert _select(young) == []
 
     def test_transfer_is_never_selected(self):
         """It has no notification kind at all, so it cannot be reached even by
@@ -264,16 +262,29 @@ class TestThePolicy:
         assert len(selected) == 1
         assert selected[0]['action_type'] == 'New'
 
-    def test_a_New_that_really_is_new_is_still_not_selected(self):
+    def test_a_New_that_really_is_new_waits_for_its_project(self):
         """The other half: a New with no existing project routes to `add`."""
         assert _select(_row(action_type='New', service='add',
                             kind='xras_activation')) == []
 
-    def test_a_row_younger_than_the_delay_waits(self):
-        assert _select(_row(received_time=SLOT - timedelta(hours=23))) == []
+    def test_a_row_goes_out_at_the_next_slot(self):
+        assert _select(_row(received_time=SLOT - timedelta(minutes=5)))
 
-    def test_a_row_exactly_at_the_boundary_is_selected(self):
-        assert _select(_row(received_time=SLOT - DAY))
+    def test_a_row_after_the_slot_waits_for_the_next(self):
+        assert _select(_row(received_time=SLOT + timedelta(minutes=5))) == []
+
+    def test_a_row_before_the_cutover_floor_is_xras_to_mail(self):
+        row = _row(received_time=SLOT - timedelta(hours=2))
+        assert mod.select([row], slot=SLOT, delays=mod.policy({}),
+                          floor=SLOT - timedelta(hours=1)) == []
+        assert mod.select([row], slot=SLOT, delays=mod.policy({}),
+                          floor=SLOT - timedelta(hours=3))
+
+    def test_the_floor_reads_an_iso_value_and_refuses_junk(self):
+        assert mod.notices_floor({}) is None
+        assert mod.notices_floor({mod.SINCE_ENV: '2033-11-16'}) == datetime(2033, 11, 16)
+        with pytest.raises(ValueError):
+            mod.notices_floor({mod.SINCE_ENV: 'soon'})
 
     def test_an_unnotifiable_row_is_skipped(self):
         assert _select(_row(notifiable=False)) == []
@@ -295,7 +306,9 @@ class TestTheDelayOverride:
 
     def test_absent_means_the_declared_delays(self):
         assert mod.notify_after({}) is None
-        assert set(mod.policy({}).values()) == {DAY}
+        assert mod.policy({}) == {'add': timedelta(hours=1), 'update': timedelta(0),
+                                  'extend': timedelta(0), 'supplement': timedelta(0),
+                                  'adjust': timedelta(0)}
 
     def test_hours_are_the_unit(self):
         assert mod.notify_after({'SAM_XRAS_NOTIFY_AFTER_HOURS': '6'}) == \
@@ -303,7 +316,7 @@ class TestTheDelayOverride:
 
     def test_it_overrides_every_service(self):
         delays = mod.policy({'SAM_XRAS_NOTIFY_AFTER_HOURS': '2'})
-        assert set(delays) == {'update', 'extend', 'supplement', 'adjust'}
+        assert set(delays) == {'add', 'update', 'extend', 'supplement', 'adjust'}
         assert set(delays.values()) == {timedelta(hours=2)}
 
     @pytest.mark.parametrize('raw', ['', '   ', 'soon', '0', '-4'])
@@ -312,10 +325,10 @@ class TestTheDelayOverride:
         the whole point of the window — far more likely a typo than an intent."""
         assert mod.notify_after({'SAM_XRAS_NOTIFY_AFTER_HOURS': raw}) is None
 
-    def test_a_shorter_delay_selects_a_younger_row(self):
+    def test_a_delay_holds_back_a_younger_row(self):
         row = _row(received_time=SLOT - timedelta(hours=3))
-        assert _select(row) == []
-        assert _select(row, env={'SAM_XRAS_NOTIFY_AFTER_HOURS': '2'})
+        assert _select(row)
+        assert _select(row, env={'SAM_XRAS_NOTIFY_AFTER_HOURS': '4'}) == []
 
 
 class TestTheSendCap:
@@ -362,11 +375,10 @@ class TestTheFridayCase:
                       datetime(2033, 11, 21, 14, 0)):     # Mon 07:00 MST
             assert schedule.last_occurrence(probe) == friday_close
 
-    def test_it_is_not_eligible_at_fridays_last_slot(self):
-        """Received 17:00 Friday; the 17:00 slot is the same instant, so a
-        one-day delay has not elapsed."""
+    def test_it_is_not_eligible_before_it_arrives(self):
+        """Received after Friday's last slot, it waits for Monday's first."""
         friday_close = datetime(2033, 11, 18, 17, 0)
-        assert _select(_row(received_time=FRIDAY_EVENING),
+        assert _select(_row(received_time=friday_close + timedelta(minutes=30)),
                        slot=friday_close) == []
 
     def test_it_is_not_eligible_anywhere_over_the_weekend(self):
@@ -462,12 +474,11 @@ class TestASendableAction:
 
     def test_the_window_comes_from_the_occurrence_not_the_clock(self, session,
                                                                ctx, wire):
-        """Dispatched for a slot an hour BEFORE the action was old enough, a
-        late run must still decline it — that is what makes a reclaimed run
-        agree with the punctual one it replaced."""
-        _notifiable(session, received=SLOT - timedelta(hours=23))
+        """An action that arrived after the slot, a late run must still decline
+        — that is what makes a reclaimed run agree with the punctual one."""
+        _notifiable(session, received=SLOT + timedelta(hours=1))
 
-        # The action is >24h old by the time this "runs", but not at the slot.
+        # The action has arrived by the time this "runs", but not at the slot.
         result = mod.xras_notices(ctx(lateness=timedelta(hours=5)))
         assert result.detail['selected'] == 0
 
@@ -513,8 +524,8 @@ class TestTheQuietHour:
         assert detail['suppressed'] == 0
         assert detail['sent'] == 0
         assert detail['window_start'] and detail['window_end']
-        assert detail['delays_hours'] == {'adjust': 24.0, 'extend': 24.0,
-                                          'supplement': 24.0, 'update': 24.0}
+        assert detail['delays_hours'] == {'add': 1.0, 'adjust': 0.0, 'extend': 0.0,
+                                          'supplement': 0.0, 'update': 0.0}
 
     def test_an_already_notified_recipient_writes_no_suppressed_row(
             self, session, ctx, wire, ledger, transport):
