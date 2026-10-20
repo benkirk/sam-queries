@@ -28,6 +28,7 @@ from sam.queries.xras_actions import (
 from sam.queries.xras_activation import (
     ATTENTION_RECENT_DAYS,
     needs_attention,
+    notices_floor,
     notify_only_project_ids,
     get_xras_activity,
     get_xras_pending_recipients,
@@ -262,6 +263,7 @@ def xras_pending_fragment():
         hidden_count=len(in_window) - queued_in_window,
         outside_count=attention_total - queued_in_window,
         recent_days=ATTENTION_RECENT_DAYS,
+        cutover=notices_floor(),
         # Bulk "dismiss notify-only" is an ADMIN_XRAS lever: the count is over
         # the whole set (not the window), matching "skip ALL pending notices".
         notify_only_count=len(notify_only_project_ids(everything)),
