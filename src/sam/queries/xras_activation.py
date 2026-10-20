@@ -43,6 +43,7 @@ __all__ = [
     'XRAS_SERVICE_KINDS',
     'activity_tags',
     'needs_attention',
+    'notices_floor',
     'get_xras_activity',
     'xras_dedup_key',
     'parse_xras_dedup_key',
@@ -83,6 +84,17 @@ XRAS_SERVICE_KINDS: Mapping[str, str] = {
 #: Mirrors :data:`sam.notify.ledger.SUPPRESSING_STATUSES` — deliberately, since
 #: "we told them" and "do not tell them again" must be the same predicate.
 _DELIVERED_STATUSES = frozenset({'sent', 'redirected'})
+
+#: The award-mail cutover (an ISO date or datetime, naive Mountain): an action
+#: received before it was XRAS's to mail. ``xras_notices`` reads the same key.
+NOTICES_FLOOR_KEY = 'SAM_TASKS_XRAS_NOTICES_SINCE'
+
+
+def notices_floor() -> Optional[datetime]:
+    """The cutover floor, or ``None``; a malformed value raises, visibly."""
+    from sam.integration._config import config_str
+    raw = config_str(NOTICES_FLOOR_KEY, '')
+    return datetime.fromisoformat(raw) if raw else None
 
 
 def xras_dedup_key(kind: str, projcode: str, action_id: Optional[int],
@@ -215,7 +227,8 @@ def get_xras_activity(
         ``comment_count``, ``is_latest_action``), the notification rollup
         (``kind``, ``notifiable``, ``notifications``, ``notified``,
         ``notified_time``, ``notified_age``, ``delivered_count``,
-        ``failed_count``, ``suppressed_count``) and ``tags`` — see
+        ``failed_count``, ``suppressed_count``), ``before_cutover`` (received
+        before :func:`notices_floor`, so XRAS's to mail) and ``tags`` — see
         :func:`activity_tags`.
     """
     query = (
@@ -267,6 +280,7 @@ def get_xras_activity(
         by_action.setdefault((parsed_projcode, action_id), []).append(row)
 
     now = datetime.now()
+    floor = notices_floor()
     rows: List[Dict[str, Any]] = []
     for action, project in window:
         events = state.get(project.project_id, {})
@@ -319,6 +333,8 @@ def get_xras_activity(
                                     if n.status == 'suppressed'),
         }
         row['notifiable'] = row['kind'] is not None
+        row['before_cutover'] = (floor is not None and action.received_time is not None
+                                 and action.received_time < floor)
         row['needs_activation'] = (not row['project_active']
                                    and row['is_latest_action']
                                    and not is_dismissed)
@@ -332,7 +348,8 @@ def get_xras_activity(
 #: value with no rows still renders — an absent chip reads as "not measured",
 #: which is a different claim from "none".
 ACTIVITY_TAGS: Tuple[str, ...] = (
-    'needs_activation', 'not_notified', 'notified', 'failed', 'dismissed',
+    'needs_activation', 'not_notified', 'notified', 'before_cutover', 'failed',
+    'dismissed',
 )
 
 
@@ -342,7 +359,8 @@ def activity_tags(row: Mapping[str, Any]) -> List[str]:
     A **list**, not a single state, because the useful questions overlap: a
     row can need activation *and* not have been notified, and an operator
     filtering on "not notified" must still find it. Collapsing these into one
-    enum would make that row reachable from only one chip.
+    enum would make that row reachable from only one chip. An unnotified row
+    received before the cutover is ``before_cutover``, not ``not_notified``.
     """
     tags: List[str] = []
     if row.get('needs_activation'):
@@ -350,7 +368,7 @@ def activity_tags(row: Mapping[str, Any]) -> List[str]:
     if row.get('notified'):
         tags.append('notified')
     elif row.get('notifiable'):
-        tags.append('not_notified')
+        tags.append('before_cutover' if row.get('before_cutover') else 'not_notified')
     if row.get('failed_count'):
         tags.append('failed')
     if row.get('dismissed'):
@@ -375,7 +393,8 @@ def needs_attention(row: Mapping[str, Any], *, now: datetime,
         return False
     if row.get('needs_activation'):
         return True
-    if row.get('notifiable') and not row.get('notified'):
+    if (row.get('notifiable') and not row.get('notified')
+            and not row.get('before_cutover')):
         return True
     received = row.get('received_time')
     return received is not None and received >= now - timedelta(days=recent_days)
@@ -389,7 +408,8 @@ def notify_only_project_ids(rows: Iterable[Mapping[str, Any]]) -> List[int]:
     latest action — so a project holding an older notify-only action AND a latest
     needs-activation action must be excluded, or dismissing it would suppress the
     activation too. A project qualifies iff it has a live notify-only row
-    (notifiable, not notified, not dismissed) and no row needs activation.
+    (notifiable, not notified, not dismissed, not before the cutover) and no row
+    needs activation.
     """
     state: dict[int, dict[str, bool]] = {}
     for row in rows:
@@ -398,7 +418,8 @@ def notify_only_project_ids(rows: Iterable[Mapping[str, Any]]) -> List[int]:
         if row.get('needs_activation'):
             s['needs_activation'] = True
         if (row.get('notifiable') and not row.get('notified')
-                and not row.get('needs_activation') and not row.get('dismissed')):
+                and not row.get('needs_activation') and not row.get('dismissed')
+                and not row.get('before_cutover')):
             s['notify_only'] = True
     return sorted(pid for pid, s in state.items()
                   if s['notify_only'] and not s['needs_activation'])

@@ -1201,6 +1201,18 @@ class TestActivityRowExpansion:
         assert 'No recipients' in body
         assert 'No lead or admin email address on file' in body
 
+    def test_a_row_from_before_the_cutover_reads_as_xras_and_keeps_notify(self, app):
+        from datetime import datetime
+        body = self._render(app, may_manage=True, cutover=datetime(2026, 10, 20, 8, 0),
+                            rows=[self._row(notifications=[], notified=False,
+                                            delivered_count=0, before_cutover=True,
+                                            tags=['before_cutover'])])
+        assert 'XRAS (before cutover)' in body
+        assert 'took over award mail on 2026-10-20' in body
+        assert 'Not notified' not in body
+        cell = self._actions_cell(body)
+        assert 'xras_notify_form' in cell and 'btn-row-primary' not in cell
+
     def test_a_row_needing_activation_offers_no_notify_for_an_unmapped_service(
             self, app):
         """A service with no kind would make Notify post a message nobody can
