@@ -12,6 +12,7 @@ import sam.fmt as fmt  # noqa: F401 — kept for parity with legacy module impor
 from sam.fmt import (
     COMPACT_THRESHOLD,
     ago,
+    amount,
     configure,
     date_str,
     factor,
@@ -239,6 +240,43 @@ class TestAge:
 # ============================================================================
 # factor()
 # ============================================================================
+
+
+class TestAmount:
+
+    @pytest.mark.parametrize("x, expected", [
+        (0.318, '0.318'),
+        (0.3184, '0.318'),
+        (1.6, '1.6'),
+        (1.59, '1.59'),
+        (12.04, '12'),
+        (51.04, '51'),
+        (99.96, '100'),
+        (255.2, '255'),
+        (12_345.6, '12,346'),
+        (1_234_567, '1.23M'),
+        (0.0004, '0.0004'),
+        (0, '0'),
+        (-0.318, '-0.318'),
+    ])
+    def test_sig_figs(self, x, expected):
+        assert amount(x) == expected
+
+    def test_small_charge_not_rounded_away(self):
+        assert number(0.318) == '0'   # contrast: the bug this replaces
+        assert amount(0.318) == '0.318'
+
+    def test_sig_figs_override(self):
+        assert amount(1.234, sig_figs=2) == '1.2'
+
+    def test_decimals_is_the_exact_form(self):
+        assert amount(1.6, decimals=2) == '1.60'
+        assert amount(255.2, decimals=2) == '255.20'
+        assert amount(1_234_567.891, decimals=2) == '1,234,567.89'
+
+    def test_none_returns_null(self):
+        assert amount(None) == '—'
+        assert amount(None, decimals=2, null='N/A') == 'N/A'
 
 
 class TestFactor:
