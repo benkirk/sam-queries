@@ -28,8 +28,11 @@
    billions-suffix and is easy to misread as bytes. #}
 {% set _byte_cols = ['reqmem', 'memory', 'vmemory'] %}
 {% set _header_overrides = {'elapsed': 'Elapsed (h)', 'walltime': 'Walltime (h)'} %}
+{# Hours and charges: 3 significant figures in the table (exact on hover), exact in the drawer. #}
+{% set _amount_cols = ['cpu_hours', 'gpu_hours', 'memory_hours',
+                       'cpu_charges', 'gpu_charges', 'memory_charges'] %}
 
-{% macro render_value(col, val) %}
+{% macro render_value(col, val, exact=false) %}
   {%- if val is none or val == '' -%}
     <span class="text-muted">—</span>
   {%- elif col in ('start', 'end', 'submit', 'eligible') -%}
@@ -57,6 +60,12 @@
     {{ val | fmt_factor }}
   {%- elif col in _byte_cols -%}
     {{ val | fmt_size }}
+  {%- elif col in _amount_cols -%}
+    {%- if exact -%}
+      {{ val | fmt_amount(decimals=2) }}
+    {%- else -%}
+      <span title="{{ val | fmt_amount(decimals=2) }}">{{ val | fmt_amount }}</span>
+    {%- endif -%}
   {%- elif col in _numeric_cols -%}
     {{ val | fmt_number }}
   {%- else -%}
@@ -195,7 +204,7 @@
                     {% set v = r.get(col) %}
                     {% if v is not none and v != '' and v != 0 %}
                       <dt class="col-sm-3 col-md-2 text-muted">{{ _col_label(col) }}</dt>
-                      <dd class="col-sm-9 col-md-10">{{ render_value(col, v) }}</dd>
+                      <dd class="col-sm-9 col-md-10">{{ render_value(col, v, exact=true) }}</dd>
                     {% endif %}
                   {% endfor %}
                 </dl>

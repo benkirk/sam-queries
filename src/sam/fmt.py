@@ -245,6 +245,39 @@ def number(
     return _compact(float(x), use_sf)
 
 
+def amount(
+    x:        Optional[Union[int, float]],
+    *,
+    sig_figs: Optional[int] = None,
+    decimals: Optional[int] = None,
+    null:     str           = '—',
+) -> str:
+    """Format a measured quantity (hours, charges) without hiding small values.
+
+    A value with at least ``sig_figs`` integer digits reads as number() does;
+    a smaller one keeps ``sig_figs`` significant figures, trailing zeros
+    dropped. ``decimals`` instead fixes the places (the exact form, for a
+    tooltip or detail view).
+
+    Examples (sig_figs=3):
+        amount(0.318)              -> '0.318'
+        amount(1.6)                -> '1.6'
+        amount(51.04)              -> '51'
+        amount(255.2)              -> '255'
+        amount(1_234_567)          -> '1.23M'
+        amount(1.6, decimals=2)    -> '1.60'
+    """
+    if x is None:
+        return null
+    if decimals is not None:
+        return f"{x:,.{decimals}f}"
+    use_sf = _sig_figs if sig_figs is None else sig_figs
+    if x == 0 or abs(x) >= 10 ** (use_sf - 1):
+        return number(x, sig_figs=use_sf)
+    places = use_sf - math.floor(math.log10(abs(x))) - 1
+    return f"{x:,.{places}f}".rstrip('0').rstrip('.')
+
+
 def hours(
     seconds:  Optional[Union[int, float]],
     *,
@@ -488,6 +521,7 @@ def register_jinja_filters(target) -> None:
         fmt_date    — {{ value | fmt_date }}
                       {{ value | fmt_date(fmt='%b %Y') }}
         fmt_size    — {{ value | fmt_size }}
+        fmt_amount  — {{ hours_or_charge | fmt_amount }}  -> '0.318', '51'
         fmt_hours   — {{ seconds | fmt_hours }}
         fmt_factor  — {{ multiplier | fmt_factor }}   -> '×0.70'
         fmt_ago     — {{ timedelta | fmt_ago }}       -> '29 hours'
@@ -495,6 +529,7 @@ def register_jinja_filters(target) -> None:
     env = getattr(target, 'jinja_env', target)
 
     env.filters['fmt_number']   = number
+    env.filters['fmt_amount']   = amount
     env.filters['fmt_pct']      = pct
     env.filters['fmt_date']     = date_str
     env.filters['fmt_size']     = size

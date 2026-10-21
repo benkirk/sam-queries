@@ -368,8 +368,8 @@ def display_jobs_table(ctx: Context, rows: list, start_date, end_date, *,
         cols.append(("GPUs", "right", None, lambda r: fmt.number(r.get('numgpus'))))
     cols.append(("Wall-h", "right", "dim", lambda r: fmt.hours(r.get('elapsed'))))
     if verbose:
-        cols.append(("Comp-h", "right", "dim", lambda r: fmt.number(r.get('comp_hours'))))
-    cols.append(("Charges", "right", "bold", lambda r: fmt.number(r.get('charges'))))
+        cols.append(("Comp-h", "right", "dim", lambda r: fmt.amount(r.get('comp_hours'))))
+    cols.append(("Charges", "right", "bold", lambda r: fmt.amount(r.get('charges'))))
     if verbose:
         cols += [
             ("Resource", "left",  "white", lambda r: r.get('resource') or ''),
