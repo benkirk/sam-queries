@@ -19,6 +19,7 @@ Jinja2 filters are registered in `create_app()` — use them in every template.
 |---|---|---|
 | Integer / compact number | `{{ x \| fmt_number }}` | `fmt.number(x)` |
 | Percentage (0–100) | `{{ x \| fmt_pct }}` | `fmt.pct(x)` |
+| Hours / charges (a measured quantity: 3 significant figures below 100, `number()` above) | `{{ x \| fmt_amount }}`, `fmt_amount(decimals=2)` exact | `fmt.amount(x)` |
 | Date / datetime | `{{ x \| fmt_date }}` | `fmt.date_str(x)` |
 | Byte size | `{{ x \| fmt_size }}` | `fmt.size(x)` |
 | Hours / charge factors / relative time | `fmt_hours`, `fmt_factor`, `fmt_ago` | `fmt.hours(x)`, … |

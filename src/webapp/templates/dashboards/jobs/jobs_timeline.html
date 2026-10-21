@@ -147,9 +147,9 @@
               <code>{{ b.label }}</code>
             </td>
             <td class="col-num">{{ b.job_count | fmt_number }}</td>
-            <td class="col-num">{{ b.cpu_hours | fmt_number }}</td>
-            <td class="col-num">{{ b.gpu_hours | fmt_number }}</td>
-            <td class="col-num">{{ tier_num(b, 'charges') | float | fmt_number }}</td>
+            <td class="col-num">{{ b.cpu_hours | fmt_amount }}</td>
+            <td class="col-num">{{ b.gpu_hours | fmt_amount }}</td>
+            <td class="col-num">{{ tier_num(b, 'charges') | float | fmt_amount }}</td>
             <td class="col-num">{{ _share }}</td>
           </tr>
         </tbody>
@@ -177,9 +177,9 @@
               <code>{{ b.label }}</code>
             </td>
             <td class="col-num">{{ b.job_count | fmt_number }}</td>
-            <td class="col-num">{{ b.cpu_hours | fmt_number }}</td>
-            <td class="col-num">{{ b.gpu_hours | fmt_number }}</td>
-            <td class="col-num">{{ tier_num(b, 'charges') | float | fmt_number }}</td>
+            <td class="col-num">{{ b.cpu_hours | fmt_amount }}</td>
+            <td class="col-num">{{ b.gpu_hours | fmt_amount }}</td>
+            <td class="col-num">{{ tier_num(b, 'charges') | float | fmt_amount }}</td>
             <td class="col-num">{{ _share }}</td>
           </tr>
           {% if drill_url %}

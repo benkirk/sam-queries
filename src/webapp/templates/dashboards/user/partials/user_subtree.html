@@ -49,8 +49,8 @@
                 {% if jobs_machine %}{{ jobs_button(djid) }}{% endif %}
               </td>
               <td class="col-num"><small>{{ d.jobs | fmt_number }}</small></td>
-              <td class="col-num"><small>{{ d.core_hours | fmt_number }}</small></td>
-              <td class="col-num"><small>{{ d.charges | fmt_number }}</small></td>
+              <td class="col-num"><small>{{ d.core_hours | fmt_amount }}</small></td>
+              <td class="col-num"><small>{{ d.charges | fmt_amount }}</small></td>
             </tr>
             {% if jobs_machine %}
               {{ jobs_collapse_row(djid, projcode, jobs_machine,
@@ -72,8 +72,8 @@
                 {% if jobs_machine and queue_is_leaf %}{{ jobs_button(qid ~ '-jobs') }}{% endif %}
               </td>
               <td class="col-num">{{ q.jobs | fmt_number }}</td>
-              <td class="col-num">{{ q.core_hours | fmt_number }}</td>
-              <td class="col-num">{{ q.charges | fmt_number }}</td>
+              <td class="col-num">{{ q.core_hours | fmt_amount }}</td>
+              <td class="col-num">{{ q.charges | fmt_amount }}</td>
             </tr>
             {% if jobs_machine and queue_is_leaf %}
               {{ jobs_collapse_row(qid ~ '-jobs', projcode, jobs_machine,
@@ -90,8 +90,8 @@
                     {% if jobs_machine %}{{ jobs_button(djid) }}{% endif %}
                   </td>
                   <td class="col-num"><small>{{ d.jobs | fmt_number }}</small></td>
-                  <td class="col-num"><small>{{ d.core_hours | fmt_number }}</small></td>
-                  <td class="col-num"><small>{{ d.charges | fmt_number }}</small></td>
+                  <td class="col-num"><small>{{ d.core_hours | fmt_amount }}</small></td>
+                  <td class="col-num"><small>{{ d.charges | fmt_amount }}</small></td>
                 </tr>
                 {% if jobs_machine %}
                   {{ jobs_collapse_row(djid, projcode, jobs_machine,

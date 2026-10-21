@@ -43,8 +43,8 @@
             <tr class="table-info fw-bold">
                 <td>Total</td>
                 <td class="col-num">{{ breakdown|sum(attribute='jobs') | fmt_number }}</td>
-                <td class="col-num">{{ breakdown|sum(attribute='core_hours') | fmt_number }}</td>
-                <td class="col-num">{{ breakdown|sum(attribute='charges') | fmt_number }}</td>
+                <td class="col-num">{{ breakdown|sum(attribute='core_hours') | fmt_amount }}</td>
+                <td class="col-num">{{ breakdown|sum(attribute='charges') | fmt_amount }}</td>
             </tr>
         </tbody>
         {% for user in breakdown %}
@@ -60,8 +60,8 @@
                     {% endif %}
                 </td>
                 <td class="col-num" data-sort-value="{{ user.jobs }}">{{ user.jobs | fmt_number }}</td>
-                <td class="col-num" data-sort-value="{{ user.core_hours }}">{{ user.core_hours | fmt_number }}</td>
-                <td class="col-num" data-sort-value="{{ user.charges }}">{{ user.charges | fmt_number }}</td>
+                <td class="col-num" data-sort-value="{{ user.core_hours }}">{{ user.core_hours | fmt_amount }}</td>
+                <td class="col-num" data-sort-value="{{ user.charges }}">{{ user.charges | fmt_amount }}</td>
             </tr>
             {% if jobs_machine and single_triple %}
                 {{ jobs_collapse_row(uid ~ '-jobs', projcode, jobs_machine,
@@ -145,8 +145,8 @@
                 <td>{{ month_key }} <i class="fa-solid fa-chevron-right ms-1 small text-muted collapse-icon"></i></td>
                 <td class="col-num">{{ monthly_user_counts.get(month_key, 0) | fmt_number }}</td>
                 <td class="col-num">{{ m_jobs | fmt_number }}</td>
-                <td class="col-num">{{ m_core_hours | fmt_number }}</td>
-                <td class="col-num">{{ m_charges | fmt_number }}</td>
+                <td class="col-num">{{ m_core_hours | fmt_amount }}</td>
+                <td class="col-num">{{ m_charges | fmt_amount }}</td>
             </tr>
         </tbody>
         <tbody class="collapse" id="month-days-{{ mid }}">
@@ -160,8 +160,8 @@
                 </td>
                 <td class="col-num">{{ day.user_count | fmt_number }}</td>
                 <td class="col-num">{{ day.jobs | fmt_number }}</td>
-                <td class="col-num">{{ day.core_hours | fmt_number }}</td>
-                <td class="col-num">{{ day.charges | fmt_number }}</td>
+                <td class="col-num">{{ day.core_hours | fmt_amount }}</td>
+                <td class="col-num">{{ day.charges | fmt_amount }}</td>
             </tr>
             {# Day-detail placeholder sits immediately after its day
                header — inside the same month-days <tbody> — so the
@@ -199,8 +199,8 @@
                 </td>
                 <td class="col-num">{{ day.user_count | fmt_number }}</td>
                 <td class="col-num">{{ day.jobs | fmt_number }}</td>
-                <td class="col-num">{{ day.core_hours | fmt_number }}</td>
-                <td class="col-num">{{ day.charges | fmt_number }}</td>
+                <td class="col-num">{{ day.core_hours | fmt_amount }}</td>
+                <td class="col-num">{{ day.charges | fmt_amount }}</td>
             </tr>
             <tr class="collapse" id="day-detail-{{ did }}" data-no-persist
                 hx-get="{{ url_for('user_dashboard.resource_details_day_subtree',
@@ -345,7 +345,7 @@
 {%- endif -%}
 {%- endmacro %}
 {% macro _scope_value(node) -%}
-{%- if node.subtree_charges > 0 %}{{ node.subtree_charges | fmt_number }}{% endif -%}
+{%- if node.subtree_charges > 0 %}{{ node.subtree_charges | fmt_amount }}{% endif -%}
 {%- endmacro %}
 
 <!-- Project Scope Tree Card -->
