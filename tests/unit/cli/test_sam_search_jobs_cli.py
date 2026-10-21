@@ -122,6 +122,17 @@ class TestRecentMode:
         assert '1234567.desched1' in result.output
         assert 'SCSG0001' in result.output
 
+    def test_small_charge_keeps_significant_figures(self, runner, mock_search_session, monkeypatch):
+        _install_fake_plugin(monkeypatch, rows=[_job(
+            queue='pgpu', numnodes=1, numcpus=64, numgpus=4, qos_factor=0.2,
+            cpu_hours=127.4, gpu_hours=7.96, cpu_charges=25.48, gpu_charges=1.592,
+        )])
+        result = runner.invoke(search_cli, [
+            'accounting', '--jobs', '--last', '7d', '--machine', 'derecho',
+        ])
+        assert result.exit_code == 0
+        assert '1.59' in result.output   # not rounded to "2"
+
     def test_default_recent_json_envelope(self, runner, mock_search_session, monkeypatch):
         _install_fake_plugin(monkeypatch, rows=[_job()])
         result = runner.invoke(search_cli, [

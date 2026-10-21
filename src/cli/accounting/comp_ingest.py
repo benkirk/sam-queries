@@ -98,7 +98,7 @@ def classify_comp_resource(
             # comp_hours = GPU hours (the Derecho GPU billing metric)
             return "Derecho GPU", "derecho-gpu", gpu_h, gpu_c
         # Pure CPU job (or anomalous GPU ratio -> treat as CPU)
-        # comp_hours = CPU core-hours (numnodes * 128 * wall_hours)
+        # comp_hours = CPU core-hours (the plugin's node-type core count x wall hours)
         return "Derecho", "derecho", cpu_h, cpu_c
 
     elif machine == "casper":
