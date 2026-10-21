@@ -42,8 +42,8 @@
             </td>
             <td></td>
             <td class="col-num"><small>{{ sub.total_jobs | fmt_number }}</small></td>
-            <td class="col-num"><small>{{ sub.total_core_hours | fmt_number }}</small></td>
-            <td class="col-num"><small>{{ sub.total_charges | fmt_number }}</small></td>
+            <td class="col-num"><small>{{ sub.total_core_hours | fmt_amount }}</small></td>
+            <td class="col-num"><small>{{ sub.total_charges | fmt_amount }}</small></td>
           </tr>
           {% if jobs_machine %}
             {{ jobs_collapse_row(jid, projcode, jobs_machine,

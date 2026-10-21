@@ -530,6 +530,27 @@ def test_jobs_fragment_drawer_renders_fractional_qos_factor(
     assert '×1.50' in body              # premium factor, with decimals
 
 
+def test_jobs_fragment_small_charges_keep_significant_figures(
+    app, auth_client, active_project, monkeypatch,
+):
+    """A preempt-priced charge (0.318) must not render as "0": the table shows
+    3 significant figures with the exact value on hover, the drawer the exact."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', gpu_charges=0.318, cpu_charges=51.04,
+                      gpu_hours=1.592),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert '<span title="0.32">0.318</span>' in body     # table: GPU chg
+    assert '<span title="51.04">51</span>' in body       # table: CPU chg
+    assert '>1.59</dd>' in body                          # drawer: GPU-h, exact
+
+
 def test_jobs_fragment_no_qos_badge_when_rows_have_variation(
     app, auth_client, active_project, monkeypatch,
 ):

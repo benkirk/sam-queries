@@ -82,8 +82,8 @@ def _mock_daily_breakdown(monkeypatch):
             'rows': [
                 {'username': 'alice', 'queue': 'main',
                  'total_jobs': 4, 'total_core_hours': 30.0, 'total_charges': 15.0},
-                {'username': 'bob',   'queue': 'gpu',
-                 'total_jobs': 3, 'total_core_hours': 20.0, 'total_charges': 10.0},
+                {'username': 'bob',   'queue': 'pgpu',     # preempt-priced: sub-1 charges
+                 'total_jobs': 3, 'total_core_hours': 1.592, 'total_charges': 0.318},
             ],
         }]
 
@@ -175,7 +175,10 @@ class TestDaySubtreeRoute:
         assert 'alice' in body
         assert 'bob' in body
         assert 'main' in body
-        assert 'gpu' in body
+        assert 'pgpu' in body
+        # Hours and charges keep significant figures (fmt_amount): 0.318 was "0".
+        assert '>1.59<' in body
+        assert '>0.318<' in body
 
         # Query received exactly start=end=2026-04-15.
         kw = _mock_daily_breakdown['kwargs']

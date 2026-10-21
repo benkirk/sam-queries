@@ -72,10 +72,10 @@
     {% endif %}
     <span class="ms-auto text-muted small">
       {{ totals.get('job_count', 0) | fmt_number }} jobs ·
-      {{ totals.get('cpu_hours', 0) | fmt_number }} CPU-h ·
-      {{ totals.get('gpu_hours', 0) | fmt_number }} GPU-h ·
+      {{ totals.get('cpu_hours', 0) | fmt_amount }} CPU-h ·
+      {{ totals.get('gpu_hours', 0) | fmt_amount }} GPU-h ·
       {{ ((totals.get('cpu_charges') or 0)
-          + (totals.get('gpu_charges') or 0)) | fmt_number }} charges
+          + (totals.get('gpu_charges') or 0)) | fmt_amount }} charges
     </span>
   </div>
 
@@ -148,11 +148,11 @@
                 {% endif %}
               </td>
               <td class="col-num" data-sort-value="{{ r.job_count }}">{{ r.job_count | fmt_number }}</td>
-              <td class="col-num" data-sort-value="{{ r.cpu_hours }}">{{ r.cpu_hours | fmt_number }}</td>
-              <td class="col-num" data-sort-value="{{ r.gpu_hours }}">{{ r.gpu_hours | fmt_number }}</td>
+              <td class="col-num" data-sort-value="{{ r.cpu_hours }}">{{ r.cpu_hours | fmt_amount }}</td>
+              <td class="col-num" data-sort-value="{{ r.gpu_hours }}">{{ r.gpu_hours | fmt_amount }}</td>
               {# Charges = cpu + gpu, matching charts/jobs_metrics.py JOBS_METRIC_KEYS. #}
               {% set _rc = (r.cpu_charges or 0) + (r.gpu_charges or 0) %}
-              <td class="col-num" data-sort-value="{{ _rc }}">{{ _rc | fmt_number }}</td>
+              <td class="col-num" data-sort-value="{{ _rc }}">{{ _rc | fmt_amount }}</td>
             </tr>
             {% if val %}
             {# The drill param only ever NARROWS the mode's already-scoped fragment
@@ -175,10 +175,10 @@
             <td>Other <span class="small">(beyond top {{ rows | length }} by
               {{ JOBS_METRIC_NOUNS[metric] }})</span></td>
             <td class="col-num">{{ other.job_count | fmt_number }}</td>
-            <td class="col-num">{{ other.cpu_hours | fmt_number }}</td>
-            <td class="col-num">{{ other.gpu_hours | fmt_number }}</td>
+            <td class="col-num">{{ other.cpu_hours | fmt_amount }}</td>
+            <td class="col-num">{{ other.gpu_hours | fmt_amount }}</td>
             <td class="col-num">{{ ((other.cpu_charges or 0)
-                                     + (other.gpu_charges or 0)) | fmt_number }}</td>
+                                     + (other.gpu_charges or 0)) | fmt_amount }}</td>
           </tr>
         </tbody>
         {% endif %}

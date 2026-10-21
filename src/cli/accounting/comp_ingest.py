@@ -17,9 +17,11 @@ from sam.plugins import HPC_USAGE_QUERIES
 from sam.summaries.comp_summaries import COMP_CHARGING_EPOCH
 
 
-# Threshold: GPU hours must be at least this fraction of total compute hours
-# to classify a row as a GPU resource charge rather than CPU.
-# Avoids misclassifying CPU jobs that happened to touch a GPU queue briefly.
+# A row bills as GPU when GPU hours are at least this fraction of its compute
+# hours. The plugin charges whole nodes by type (a GPU node is 64 cores + 4
+# GPUs, 4/68 = 5.9%), so a pure GPU-node job always clears it; a job mixing
+# node types clears it only up to about 2.6 CPU nodes per GPU node, and bills
+# as CPU with its GPU hours dropped past that.
 GPU_FRACTION_THRESHOLD = 0.01  # 1%
 
 # PBS assigns ephemeral names like R5184776 (reservation), M2498882 (maintenance),
@@ -61,10 +63,9 @@ def classify_comp_resource(
       - The ``vis`` queue consumes GPUs but we don't charge for that, so its
         GPU hours/charges are zeroed (keeps it accessible to projects without
         a GPU allocation).
-      - A record bills as GPU only when GPU hours are a meaningful fraction
-        (``GPU_FRACTION_THRESHOLD``) of total compute hours; otherwise it bills
-        as CPU.  This avoids misclassifying a CPU job that briefly touched a
-        GPU queue.
+      - A record bills as GPU only when GPU hours are at least
+        ``GPU_FRACTION_THRESHOLD`` of total compute hours (see the constant for
+        what that means per node mix); otherwise it bills as CPU.
 
     Unlike ``adapt_jobstats_row`` this never skips: callers decide what to do
     with a zero-hours result (the poster skips it; the listing may still show
@@ -98,7 +99,7 @@ def classify_comp_resource(
             # comp_hours = GPU hours (the Derecho GPU billing metric)
             return "Derecho GPU", "derecho-gpu", gpu_h, gpu_c
         # Pure CPU job (or anomalous GPU ratio -> treat as CPU)
-        # comp_hours = CPU core-hours (numnodes * 128 * wall_hours)
+        # comp_hours = CPU core-hours (the plugin's node-type core count x wall hours)
         return "Derecho", "derecho", cpu_h, cpu_c
 
     elif machine == "casper":
