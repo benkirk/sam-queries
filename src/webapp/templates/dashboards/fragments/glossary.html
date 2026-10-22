@@ -286,11 +286,13 @@ the project is still active, but this user's
 
 
 {# XRAS Activations: needs attention vs. everything in the window (popover) #}
-{% macro g_xras_attention_queue(recent_days) -%}
-<strong>Off &mdash; needs attention.</strong> An action whose project is still
-<strong>waiting for activation</strong>, a notice <strong>nobody has sent</strong>,
-or anything <strong>received in the last {{ recent_days }} days</strong>. No date
-filter: a New nobody activated three months ago is exactly the point.
+{% macro g_xras_attention_queue(grace_days) -%}
+<strong>Off &mdash; needs attention.</strong> What the automation could not finish:
+a project still <strong>waiting for activation</strong>, a notice whose
+<strong>delivery failed</strong>, or a notice <strong>still unsent after
+{{ grace_days }} days</strong> (notices go out in business hours, so a weekend
+arrival waits). No date filter: a New nobody activated three months ago is
+exactly the point.
 <br><br><strong>Dismiss</strong> takes a row out of this view at once and
 suppresses its automatic notice; the row stays, grayed with <em>Restore</em>,
 under Everything in the window. Activate and Notify clear their own prompts.

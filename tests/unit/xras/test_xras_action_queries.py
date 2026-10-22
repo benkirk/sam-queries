@@ -30,7 +30,7 @@ from sam.queries.xras_actions import (
     summarize_xras_actions,
 )
 from sam.queries.xras_activation import (
-    ATTENTION_RECENT_DAYS,
+    NOTICE_GRACE_DAYS,
     needs_attention,
     notify_only_project_ids,
     ACTIVITY_TAGS,
@@ -751,10 +751,9 @@ class TestCutoverFloor:
 class TestNeedsAttention:
     """The attention queue's predicate, on literal rows with a fixed clock.
 
-    Three ways in — a pending activation, a Notify nobody clicked, or received
-    in the last ``recent_days`` — and one way out that beats all three:
-    dismissed. Undo is Restore under "Everything in the window", so a
-    dismissed row must not linger here.
+    Three ways in, each something the automation could not finish: a pending
+    activation, a failed delivery, a notice unsent past the grace. Dismissed
+    beats all three; undo is Restore under "Everything in the window".
     """
 
     NOW = datetime(2026, 8, 25, 12, 0, 0)
@@ -762,54 +761,71 @@ class TestNeedsAttention:
 
     def _row(self, **over):
         row = {'needs_activation': False, 'notifiable': True, 'notified': True,
-               'dismissed': False, 'received_time': self.OLD}
+               'dismissed': False, 'failed_count': 0, 'received_time': self.OLD}
         row.update(over)
         return row
 
     def test_an_old_notified_row_is_out(self):
         assert needs_attention(self._row(), now=self.NOW) is False
 
-    def test_a_pending_activation_is_in_whatever_its_age(self):
-        assert needs_attention(self._row(needs_activation=True), now=self.NOW)
+    def test_a_fresh_notified_row_is_out(self):
+        """Recency alone no longer queues a row: the automation handled it."""
+        row = self._row(received_time=self.NOW - timedelta(hours=1))
+        assert needs_attention(row, now=self.NOW) is False
 
-    def test_an_unclicked_notify_is_in_whatever_its_age(self):
+    def test_a_pending_activation_is_in_whatever_its_age(self):
+        row = self._row(needs_activation=True, received_time=self.NOW)
+        assert needs_attention(row, now=self.NOW)
+
+    def test_an_unsent_notice_past_the_grace_is_in(self):
         assert needs_attention(self._row(notified=False), now=self.NOW)
 
-    def test_an_unclicked_notify_from_before_the_cutover_is_out_unless_recent(self):
+    def test_an_unsent_notice_inside_the_grace_is_out(self):
+        row = self._row(notified=False, received_time=self.NOW - timedelta(days=1))
+        assert needs_attention(row, now=self.NOW) is False
+
+    def test_the_grace_boundary_is_inclusive(self):
+        edge = self.NOW - timedelta(days=NOTICE_GRACE_DAYS)
+        assert needs_attention(self._row(notified=False, received_time=edge), now=self.NOW)
+        inside = edge + timedelta(seconds=1)
+        assert needs_attention(self._row(notified=False, received_time=inside),
+                               now=self.NOW) is False
+
+    def test_grace_days_is_overridable(self):
+        row = self._row(notified=False, received_time=self.NOW - timedelta(days=5))
+        assert needs_attention(row, now=self.NOW)
+        assert needs_attention(row, now=self.NOW, grace_days=7) is False
+
+    def test_a_failed_delivery_is_in_at_once(self):
+        row = self._row(notified=False, failed_count=1, received_time=self.NOW)
+        assert needs_attention(row, now=self.NOW)
+
+    def test_a_failure_beside_a_delivery_is_out(self):
+        """Somebody was told; the drawer's alarm carries the partial failure."""
+        row = self._row(failed_count=1, received_time=self.NOW)
+        assert needs_attention(row, now=self.NOW) is False
+
+    def test_a_failed_send_before_the_cutover_is_in(self):
+        """SAM's own send failed, whoever owned the mail then."""
+        row = self._row(notified=False, before_cutover=True, failed_count=1)
+        assert needs_attention(row, now=self.NOW)
+
+    def test_an_unsent_notice_from_before_the_cutover_is_out(self):
         row = self._row(notified=False, before_cutover=True)
         assert needs_attention(row, now=self.NOW) is False
-        row['received_time'] = self.NOW - timedelta(days=1)
-        assert needs_attention(row, now=self.NOW)
 
-    def test_a_recent_row_is_in_even_with_nothing_to_click(self):
-        row = self._row(received_time=self.NOW - timedelta(days=1))
-        assert needs_attention(row, now=self.NOW)
-
-    def test_an_old_unmapped_service_is_out(self):
-        """No notice defined means nothing to click: not a to-do."""
+    def test_an_unmapped_service_is_out(self):
+        """No notice defined means nothing to send: not a to-do."""
         row = self._row(notifiable=False, notified=False)
         assert needs_attention(row, now=self.NOW) is False
 
     def test_dismissed_beats_every_way_in(self):
         row = self._row(dismissed=True, needs_activation=True, notified=False,
-                        received_time=self.NOW)
+                        failed_count=1, received_time=self.NOW)
         assert needs_attention(row, now=self.NOW) is False
 
-    def test_the_recency_boundary_is_inclusive(self):
-        edge = self.NOW - timedelta(days=ATTENTION_RECENT_DAYS)
-        assert needs_attention(self._row(received_time=edge), now=self.NOW)
-        just_past = edge - timedelta(seconds=1)
-        assert needs_attention(self._row(received_time=just_past),
-                               now=self.NOW) is False
-
-    def test_recent_days_is_overridable(self):
-        row = self._row(received_time=self.NOW - timedelta(days=5))
-        assert needs_attention(row, now=self.NOW) is False
-        assert needs_attention(row, now=self.NOW, recent_days=7)
-
-    def test_a_dateless_row_is_never_recent(self):
-        assert needs_attention(self._row(received_time=None),
-                               now=self.NOW) is False
+    def test_a_dateless_unsent_row_is_never_fresh(self):
+        assert needs_attention(self._row(notified=False, received_time=None), now=self.NOW)
 
 
 class TestActivationDeriveRule:
