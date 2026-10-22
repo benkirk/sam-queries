@@ -13,7 +13,7 @@
   because somebody did their job.
 
   Context: rows (scoped, filtered), show_all, attention_total, window_total,
-  hidden_count, outside_count, recent_days, cutover (the award-mail floor or
+  hidden_count, outside_count, grace_days, cutover (the award-mail floor or
   None), recipients + may_activate
   (MANAGE_XRAS only; the route builds neither for VIEW_XRAS), may_manage,
   facet_values, selected, form_id, fragment_url, target_id.
@@ -27,7 +27,7 @@
         {{ queue_badges(rows | length, '' if show_all else 'need attention',
                         more=(hidden_count if not show_all else 0),
                         more_label='Everything in the window',
-                        more_title='Needs attention only. The rest of the window was activated, notified or dismissed; switch on Everything in the window to see it.',
+                        more_title='Needs attention only. The rest of the window needs nothing, or its notice is still inside the send grace; switch on Everything in the window to see it.',
                         outside=(outside_count if show_all else 0),
                         outside_label='needing attention outside the date filter',
                         outside_title='Rows needing attention that the date filter above hides. Widen the filter, or switch the toggle off to see the queue without a date bound.') }}
@@ -41,7 +41,7 @@
             {{ queue_switch('xras-activity-show-all',
                             'Everything in the window (' ~ ((window_total or 0) | fmt_number) ~ ')',
                             show_all, form_id, fragment_url, target_id,
-                            help=help_icon(g_xras_attention_queue(recent_days or 3), rich=True,
+                            help=help_icon(g_xras_attention_queue(grace_days or 3), rich=True,
                                            title='Needs attention vs. everything', placement='right')) }}
             {% endcall %}
             {{ facet_row('State', facet_values.tag, form_id, 'tag',

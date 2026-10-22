@@ -10,7 +10,7 @@
     <li><i class="fa-solid fa-building-columns" aria-hidden="true"></i><strong>{{ rec.acronym }}</strong> {{ rec.name }} · {{ rec.org_type or '—' }} · source {{ rec.source or '—' }}</li>
     <li><i class="fa-solid fa-location-dot" aria-hidden="true"></i>{{ rec.city or '—' }}{% if rec.state_code and rec.state_code != rec.country %}, {{ rec.state_code }}{% endif %}{% if rec.country %}, {{ rec.country }}{% endif %}{% if rec.postal_code %} {{ rec.postal_code }}{% endif %}{% if rec.nsf_org_code %} · NSF {{ rec.nsf_org_code }}{% endif %}</li>
 </ul>
-{% set can_apply = has_permission(Permission.EDIT_ORG_METADATA) %}
+{% set can_apply = has_permission(Permission.MANAGE_DIRECTORY) %}
 {% set apply_url = url_for('admin_dashboard.htmx_institution_directory_apply', inst_id=inst.institution_id) %}
 {% set apply_target = '#instDirectoryModalBody' %}
 {% include 'dashboards/admin/fragments/_directory_drift.html' %}

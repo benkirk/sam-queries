@@ -39,7 +39,7 @@ from .xras_actions import _LATEST_ACTION_ORDER, action_names_project
 
 __all__ = [
     'ACTIVITY_TAGS',
-    'ATTENTION_RECENT_DAYS',
+    'NOTICE_GRACE_DAYS',
     'XRAS_SERVICE_KINDS',
     'activity_tags',
     'needs_attention',
@@ -376,28 +376,30 @@ def activity_tags(row: Mapping[str, Any]) -> List[str]:
     return tags
 
 
-#: Days a row stays in the attention queue on recency alone, so a fresh post
-#: is seen once even when nothing about it needs a click.
-ATTENTION_RECENT_DAYS = 3
+#: Days an unsent notice may wait before it counts as stuck: ``xras_notices`` sends only
+#: in business hours, so a Friday-evening arrival legitimately waits until Monday.
+NOTICE_GRACE_DAYS = 3
 
 
 def needs_attention(row: Mapping[str, Any], *, now: datetime,
-                    recent_days: int = ATTENTION_RECENT_DAYS) -> bool:
-    """Needs a human, or too recent to have been looked at. Dismissed is never in.
+                    grace_days: int = NOTICE_GRACE_DAYS) -> bool:
+    """Something the automation could not finish. Dismissed is never in.
 
-    ``now`` is injected, unlike :func:`get_xras_activity`'s own clock, so the
-    boundary is testable without patching. A dateless row is never "recent" —
-    the same guard as the ``xras_notices`` task.
+    A pending activation, a delivery that failed with nothing delivered, or a
+    post-cutover notice still unsent after ``grace_days``. A dateless row is never fresh.
     """
     if row.get('dismissed'):
         return False
     if row.get('needs_activation'):
         return True
-    if (row.get('notifiable') and not row.get('notified')
-            and not row.get('before_cutover')):
+    if row.get('notified') or not row.get('notifiable'):
+        return False
+    if row.get('failed_count'):
         return True
+    if row.get('before_cutover'):
+        return False
     received = row.get('received_time')
-    return received is not None and received >= now - timedelta(days=recent_days)
+    return received is None or received <= now - timedelta(days=grace_days)
 
 
 def notify_only_project_ids(rows: Iterable[Mapping[str, Any]]) -> List[int]:

@@ -262,12 +262,12 @@ still 200 and SAM unchanged beyond the PUT.
 - **User card** (`dashboards/user/partials/user_card.html`, admin wrapper passes `directory`):
   a "Directory" section rendered only when `directory_configured()`, inline in the card (the
   card is also loaded into `#userDetailsModal` on the user dashboard, so a nested modal would
-  add a host-shell dependency everywhere). "Check directory" (`VIEW_USERS`) ->
+  add a host-shell dependency everywhere). "Check directory" (`VIEW_DIRECTORY`) ->
   `GET /htmx/user/<username>/directory` -> `fragments/user_directory_panel.html`: the person's
   facts, current positions and collaborations as the directory holds them (sponsor org on each
   collaboration), and the drift table with both values shown; each row is marked "would apply"
   or "withheld" from `reconcile_person(dry_run=True)`, one derivation for the report and the
-  write. Operator-initiated, so a card view never pays an LDAP read. "Apply" (`EDIT_USERS`,
+  write. Operator-initiated, so a card view never pays an LDAP read. "Apply" (`MANAGE_DIRECTORY`,
   shown only with a lever on) -> `POST /htmx/user/<username>/directory/apply` ->
   `reconcile_person` inside `management_transaction` with the sync's restore hook -> the panel
   re-rendered with a result banner and a "Refresh card" button (a `reloadUserCard` would wipe
@@ -275,9 +275,9 @@ still 200 and SAM unchanged beyond the PUT.
 - **Organizations card**: a per-row "Directory" action (a bespoke route, not a `CrudSpec`
   field) shown when a directory is configured (the card is cached per user, so a config flip
   shows after `sam-admin cache --refresh`): `GET /htmx/organization/<id>/directory`
-  (`VIEW_ORG_METADATA`) into `#orgDirectoryModal` (shell in `organization_modals.html`;
+  (`VIEW_DIRECTORY`) into `#orgDirectoryModal` (shell in `organization_modals.html`;
   facts in `.modal-facts`, never alerts, per the modal ratchet), `POST .../apply`
-  (`EDIT_ORG_METADATA`) re-renders the dialog and fires `reloadOrganizationsCard` when
+  (`MANAGE_DIRECTORY`) re-renders the dialog and fires `reloadOrganizationsCard` when
   something applied. The Institutions tab has the same action into `#instDirectoryModal`.
   Groups (the admin project card and the adhoc group card) are report-only panels whose SAM side
   is the sync's own `project_group` / `groups` row: `DIRECTORY_CLIENT_NEXT.md` section 3.
@@ -285,7 +285,10 @@ still 200 and SAM unchanged beyond the PUT.
   `HTMX_FRAGMENT_SHELL_DEPS` if a fragment names a host id; the `wire-dashboard-feature` skill
   checklist; CSP (no inline scripts). Tests in `tests/unit/webapp/test_directory_panels.py`
   (auth, 404, unconfigured -> hidden, fake reader -> render smoke, the apply route refuses
-  without `EDIT_USERS`).
+  without `MANAGE_DIRECTORY`).
+- **Permissions** (2026-10-22): `VIEW_DIRECTORY` gates every panel GET and the card buttons
+  (allocation_admin, so NUSD and CSG; ssg and viewer subtract it); `MANAGE_DIRECTORY` gates
+  every Apply and is WITHHELD from the default roles until the write phase picks its holders.
 
 ## 7. Step 4: CLI and the nightly report
 

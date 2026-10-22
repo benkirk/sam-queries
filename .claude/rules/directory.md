@@ -39,7 +39,8 @@ Appendix C.
   Identity columns (`User.SYNC_FIELDS` excludes them), twins, undated-inactive entries,
   reopens and SAM-only history are withheld whatever the lever says. `dry_run` touches nothing.
 - **Panels** (`sam/manage/directory_panel.py`, Flask-free so the CLI `--directory` views share
-  it; routes in `dashboards/admin/directory_routes.py`) are operator-initiated reads: a card
+  it; routes in `dashboards/admin/directory_routes.py`) are operator-initiated reads gated on
+  `VIEW_DIRECTORY` (NUSD, CSG); every Apply is `MANAGE_DIRECTORY`, withheld from the default roles: a card
   view never dials the directory. The GET is `reconcile_*(dry_run=True)`, so "would apply" /
   "withheld" comes from the same rules as the write. Groups (the admin project card, the adhoc
   group card) are report-only for different reasons, and the panel note says which: a project

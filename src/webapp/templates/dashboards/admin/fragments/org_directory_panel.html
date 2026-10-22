@@ -10,7 +10,7 @@
     <li><i class="fa-solid fa-sitemap" aria-hidden="true"></i><strong>{{ rec.acronym }}</strong> {{ rec.name }} · {{ 'active' if rec.active else 'inactive' }} · source {{ rec.source or '—' }}</li>
     <li><i class="fa-solid fa-layer-group" aria-hidden="true"></i>{{ rec.level or '—' }}{% if rec.level_code %} ({{ rec.level_code }}){% endif %} · parent {{ panel.parent or '—' }}</li>
 </ul>
-{% set can_apply = has_permission(Permission.EDIT_ORG_METADATA) %}
+{% set can_apply = has_permission(Permission.MANAGE_DIRECTORY) %}
 {% set apply_url = url_for('admin_dashboard.htmx_organization_directory_apply', org_id=org.organization_id) %}
 {% set apply_target = '#orgDirectoryModalBody' %}
 {% include 'dashboards/admin/fragments/_directory_drift.html' %}

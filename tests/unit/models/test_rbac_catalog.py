@@ -97,6 +97,6 @@ class TestDefaults:
         assert any(P.MANAGE_ROLES in perms and key[0] != 'apikey'
                    for key, perms in cat.unscoped.items())
 
-    def test_viewer_is_all_view(self):
+    def test_viewer_is_all_view_but_the_directory(self):
         cat = build_catalog(DEFAULT_ROLES, DEFAULT_GRANTS)
-        assert cat.roles['viewer'] == ALL_VIEW | {P.ACCESS_ADMIN_DASHBOARD}
+        assert cat.roles['viewer'] == (ALL_VIEW - {P.VIEW_DIRECTORY}) | {P.ACCESS_ADMIN_DASHBOARD}

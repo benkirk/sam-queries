@@ -290,6 +290,45 @@ class TestUserPanel:
         outage.reset()
 
 
+class TestDirectoryGates:
+    """Reading is VIEW_DIRECTORY, Apply is MANAGE_DIRECTORY; VIEW_USERS and EDIT_USERS confer
+    neither."""
+
+    _CARD = {'VIEW_USERS', 'EDIT_USERS', 'ACCESS_ADMIN_DASHBOARD'}
+
+    def _as(self, monkeypatch, client, *extra):
+        from webapp.extensions import db
+        from webapp.utils import rbac
+        from webapp.utils.rbac import Permission
+        with client.session_transaction() as sess:
+            uid = int(sess['_user_id'])
+        with client.application.app_context():
+            username = db.session.get(User, uid).username
+        monkeypatch.setitem(rbac.USER_PERMISSION_OVERRIDES, username,
+                            {Permission[p] for p in self._CARD | set(extra)})
+
+    def test_user_edit_alone_neither_reads_nor_applies(self, non_admin_client, configured, benkirk,
+                                                       monkeypatch, any_organization):
+        self._as(monkeypatch, non_admin_client)
+        assert 'Check directory' not in non_admin_client.get(CARD).get_data(as_text=True)
+        assert non_admin_client.get(PANEL).status_code == 403
+        assert non_admin_client.post(APPLY).status_code == 403
+        oid = any_organization.organization_id
+        assert non_admin_client.get(f'/admin/htmx/organization/{oid}/directory').status_code == 403
+        assert non_admin_client.get(GROUP_PANEL).status_code == 403
+        assert configured.calls == []
+
+    def test_view_directory_reads_but_never_applies(self, non_admin_client, configured, benkirk,
+                                                    monkeypatch):
+        self._as(monkeypatch, non_admin_client, 'VIEW_DIRECTORY')
+        monkeypatch.setenv('DIRECTORY_APPLY_PERSON', '1')
+        _seed(configured, benkirk, first_name='Someone Else', positions=())
+        assert 'Check directory' in non_admin_client.get(CARD).get_data(as_text=True)
+        html = non_admin_client.get(PANEL).get_data(as_text=True)
+        assert 'Someone Else' in html and 'hx-post="' + APPLY not in html
+        assert non_admin_client.post(APPLY).status_code == 403
+
+
 class TestUserApply:
     def test_apply_runs_the_reconcile_once_and_shows_the_banner(self, auth_client, configured,
                                                                 benkirk, monkeypatch):

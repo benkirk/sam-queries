@@ -65,6 +65,10 @@ _API_SYSTEMS_INTEGRATION = frozenset({
     P.VIEW_USERS, P.VIEW_PROJECTS, P.VIEW_RESOURCES, P.VIEW_ALL_JOB_DATA,
 })
 
+# The directory read is NUSD's and CSG's (allocation_admin); every other ALL_VIEW
+# bundle subtracts it. Apply (MANAGE_DIRECTORY) is WITHHELD until the write phase.
+_DIRECTORY_READ = frozenset({P.VIEW_DIRECTORY})
+
 DEFAULT_ROLES = (
     RoleDef('allocation_admin', _ALLOCATION_ADMIN,
             description='Projects, allocations and contracts end to end; '
@@ -74,12 +78,13 @@ DEFAULT_ROLES = (
     RoleDef('csg', frozenset({P.EDIT_RESOURCES, P.MANAGE_EVENTS, P.ADMIN_DATABASE}),
             extends='allocation_admin',
             description='allocation_admin plus resources edit, events and the database browser.'),
-    RoleDef('ssg', frozenset(ALL_VIEW | {P.ACCESS_ADMIN_DASHBOARD, P.EDIT_RESOURCES,
-                                         P.CREATE_RESOURCES, P.EDIT_SYSTEM_STATUS}),
+    RoleDef('ssg', frozenset((ALL_VIEW - _DIRECTORY_READ)
+                           | {P.ACCESS_ADMIN_DASHBOARD, P.EDIT_RESOURCES,
+                              P.CREATE_RESOURCES, P.EDIT_SYSTEM_STATUS}),
             description='Read everything; create/edit resources; post outages.'),
     RoleDef('system_admin', frozenset({P.SYSTEM_ADMIN}),
             description='Every permission, including the ones added tomorrow.'),
-    RoleDef('viewer', frozenset(ALL_VIEW | {P.ACCESS_ADMIN_DASHBOARD}),
+    RoleDef('viewer', frozenset((ALL_VIEW - _DIRECTORY_READ) | {P.ACCESS_ADMIN_DASHBOARD}),
             description='Read-only access to the admin dashboards.'),
     RoleDef('facility_manager', _FACILITY_MANAGER,
             description='Provision and manage projects and allocations; grant per facility.'),
@@ -113,4 +118,5 @@ WITHHELD = frozenset({
     P.EDIT_FACILITIES, P.CREATE_FACILITIES,
     P.EXPORT_DATA,
     P.MANAGE_ROLES, P.ADMIN_XRAS,
+    P.MANAGE_DIRECTORY,
 })
