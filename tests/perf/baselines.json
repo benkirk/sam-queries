@@ -248,5 +248,9 @@
     "heuv_group": {
         "queries": 23,
         "notes": "measured 15 (2026-10-10); flat in the user. group_populator(username=) binds every membership query to the one user (~245 ms -> ~19 ms locally)"
+    },
+    "xras_pending_recipients": {
+        "queries": 18,
+        "notes": "measured 14 (2026-10-22) on 40 snapshot projects with a distinct lead and admin, cold; flat in projects. Was 286: Project.lead and Project.admin loaded lazily per project, each User load running its selectin relationships"
     }
 }

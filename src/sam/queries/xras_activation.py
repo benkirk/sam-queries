@@ -29,7 +29,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from sam.integration.xras import XrasActionLog, XrasActivationEvent
 from sam.projects.projects import Project
@@ -505,8 +505,11 @@ def get_xras_pending_recipients(
     if not project_ids:
         return {}
 
+    # Lead and admin in one batched load each (their emails batch behind them),
+    # not two lazy loads per project.
     projects = (
         session.query(Project)
+        .options(selectinload(Project.lead), selectinload(Project.admin))
         .filter(Project.project_id.in_(project_ids))
         .all()
     )
