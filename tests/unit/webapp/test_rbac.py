@@ -293,6 +293,29 @@ def test_database_browser_is_csg_only():
     assert holders == {'csg'}
 
 
+class TestDirectoryGrants:
+    """The directory read is NUSD's and CSG's; Apply is held by no bundle yet."""
+
+    @pytest.mark.parametrize('bundle', ['nusd', 'csg'])
+    def test_the_allocation_tier_reads(self, bundle):
+        assert Permission.VIEW_DIRECTORY in GROUP_PERMISSIONS[bundle]
+
+    @pytest.mark.parametrize('bundle', ['ssg', 'viewer'])
+    def test_the_other_view_bundles_subtract_it(self, bundle):
+        from sam.security.rbac_defaults import DEFAULT_ROLES
+        perms = next(r.permissions for r in DEFAULT_ROLES if r.name == bundle)
+        assert Permission.VIEW_USERS in perms and Permission.VIEW_DIRECTORY not in perms
+
+    def test_the_facility_scoped_tier_does_not_read(self):
+        assert Permission.VIEW_DIRECTORY not in rbac.USER_FACILITY_PERMISSIONS['sureshm']['WNA']
+
+    def test_apply_is_withheld(self):
+        from sam.security.rbac_defaults import WITHHELD
+        holders = {name for name, perms in GROUP_PERMISSIONS.items()
+                   if Permission.MANAGE_DIRECTORY in perms} - {'admin-testing-only'}
+        assert holders == set() and Permission.MANAGE_DIRECTORY in WITHHELD
+
+
 class TestOrgMetadataGrants:
     """Who may create and retire org metadata (organizations, institutions,
     mnemonic codes, AOIs). Pinned so an ``ALL_*`` refactor can't silently

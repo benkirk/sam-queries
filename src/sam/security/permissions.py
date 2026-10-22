@@ -140,6 +140,11 @@ class Permission(Enum):
     # close / reopen on a project's Invitations tab. Inviting people and
     # pasting rosters stay on MANAGE_ACCOUNT_REQUESTS.
     MANAGE_EVENTS = "manage_events"
+    # The UCAR directory (LDAP) panels: Check directory reads one record beside
+    # SAM's drift; MANAGE_DIRECTORY is Apply, the write into SAM. Not facility-scoped.
+    # ALL_VIEW sweeps VIEW_DIRECTORY in, so the ssg and viewer bundles subtract it.
+    VIEW_DIRECTORY = "view_directory"
+    MANAGE_DIRECTORY = "manage_directory"
     # The read-only /database row browser over every engine the webapp holds
     # (webapp/db_browser). ``admin_`` so no ALL_* aggregate grants it: rows
     # include PII, and redaction covers secrets, not people.
