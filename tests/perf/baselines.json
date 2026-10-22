@@ -248,5 +248,13 @@
     "heuv_group": {
         "queries": 23,
         "notes": "measured 15 (2026-10-10); flat in the user. group_populator(username=) binds every membership query to the one user (~245 ms -> ~19 ms locally)"
+    },
+    "xras_pending_recipients": {
+        "queries": 18,
+        "notes": "measured 14 (2026-10-22) on 40 snapshot projects with a distinct lead and admin, cold; flat in projects. Was 286: Project.lead and Project.admin loaded lazily per project, each User load running its selectin relationships"
+    },
+    "xras_worklist_preflight": {
+        "queries": 140,
+        "notes": "measured 113 (2026-10-22): 25 failed Extension actions on distinct snapshot projects, validated; ~4 per action (two projcode lookups) plus a constant preload. Was 725: each preflight walked its allocation trees lazily, and dispatch read each projcode three times"
     }
 }

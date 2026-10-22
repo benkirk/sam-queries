@@ -28,14 +28,15 @@ Run from this directory with the project conda environment active
 |---|---|
 | `make db-up` / `db-down` / `db-restart` | Start (and wait for), stop, or stop-and-start the `mysql` compose service. Data survives all three. |
 | `make db-reset` | Drop the `mysql` container **and its volume** (only that volume); the next `db-up` restores `backups/sam-obfuscated.sql.xz`. |
-| `make clone` | Subset production into the running container. **The result holds real PII.** 10–20 minutes, ~0.5 GB. Exits non-zero if any table, the views, or the orphan sweep failed. `SAM_CLONE_DAYS=1500 make clone` (or `--days`) deepens every `recent` window. |
+| `make clone` | Subset production into the running container. **The result holds real PII.** 10–20 minutes, ~0.5 GB. Exits non-zero if any table, the views, or the orphan sweep failed. `SAM_CLONE_DAYS=1500 make clone` (or `--days`) deepens every `recent` window. Ends with `analyze-dev`. |
+| `make analyze-dev` | `ANALYZE TABLE` on every user table on 3306, for a copy loaded some other way (`init-db.sh` does it on a blob restore). |
 | `make verify` | Leak check against the container; non-zero on a leak. |
 | `make backups/sam-obfuscated.sql.xz` | Dump the committed blob. Depends on `verify`, so it cannot be built from an unanonymized database. |
 | `make bootstrap` | `clean`, remove `backups/*` → `clone` → raw backup → `run_anonymization_workflow.sh --yes` → verified blob. Stops at the first failure. |
 | `make db-test` | `verify` plus the username-consistency test. |
 | `make test-db-up` / `test-db-reset` | The same pair for `mysql-test` (3307, the pytest target); `test-db-reset` drops only its volume, so the next `test-db-up` restores the committed blob. |
 | `make regen-lfs-blob` | Re-dump the committed blob **from `mysql-test`**: the blob as restored plus every app-owned table the pytest bootstrap created from `scripts/sql/` (`_BOOTSTRAP_TABLES` in `tests/conftest.py`). Refuses if 3307 lacks a table the blob carries or holds rows in a table the blob ships empty (a test leftover); lists new tables with row counts; runs the leak check on 3307. No pytest may be running (global lock). |
-| `make restore-dev-raw` | Put the **raw** subset (`backups/sam-local-dev.sql.xz`, written by `bootstrap` before anonymization) back on 3306 and `ANALYZE` it. Local dev runs on real data with one prod pull; the clone path never analyzes, so this is the analyzed copy. |
+| `make restore-dev-raw` | Put the **raw** subset (`backups/sam-local-dev.sql.xz`, written by `bootstrap` before anonymization) back on 3306 and `ANALYZE` it. Local dev runs on real data with one prod pull. |
 | `make everything-coherent` | One prod pull, every copy coherent: `pg-up pg-test-up bootstrap restore-dev-raw clone-pg-local clone-pg test-db-reset test-db-up clone-pg-test`. Raw on 3306, 5433 and the CNPG `sam_dev`; anonymized on 3307, 5434 and the blob. The 3307 reset **must** follow `bootstrap` (3307 restores from the blob file at volume creation) and precede `clone-pg-test`. Then commit the blob. |
 
 **A new table's DDL, into CI before production:** `make test-db-reset test-db-up`
