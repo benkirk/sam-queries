@@ -437,3 +437,47 @@ def test_cli_build_user_projects(session, count_queries, perf_multi_project_user
         rows = build_user_projects(User.get_by_username(session, username), inactive=True)
     assert len(rows) > 1
     _assert_within("cli_build_user_projects", stats)
+
+
+def test_xras_pending_recipients_is_flat_in_projects(session, count_queries):
+    """The XRAS card's Notify recipients: lead and admin batched, never two lazy loads a project."""
+    from sam import Project
+    from sam.queries.xras_activation import get_xras_pending_recipients
+    ids = [pid for (pid,) in session.query(Project.project_id)
+           .filter(Project.project_admin_user_id.isnot(None),
+                   Project.project_admin_user_id != Project.project_lead_user_id)
+           .order_by(Project.project_id).limit(40)]
+    session.expire_all()
+    with count_queries() as stats:
+        recipients = get_xras_pending_recipients(session, ids)
+    assert len(recipients) == 40
+    _assert_within("xras_pending_recipients", stats)
+
+
+def test_xras_worklist_preflight_is_flat_in_projects(session, count_queries):
+    """The Pending Users card validates each failed action; its allocation trees load in batches."""
+    import json
+
+    from _paths import TESTS
+    from sam import Project
+    from sam.accounting.accounts import Account
+    from sam.integration.xras import XrasActionLog
+    from sam.queries.xras_accounts import records_from_action_log
+
+    body = json.loads((TESTS / 'fixtures' / 'xras' / 'actions'
+                       / 'extension_ufsu0023_failed.json').read_text())
+    codes = [c for (c,) in session.query(Project.projcode).join(Account)
+             .filter(Project.is_active).group_by(Project.projcode)
+             .order_by(Project.projcode).limit(25)]
+    for i, code in enumerate(codes):
+        session.add(XrasActionLog(received_time=datetime(2026, 8, 1) + timedelta(minutes=i),
+                                  remote_actor='XRAS', status='failed', action_type='Extension',
+                                  request_number=code,
+                                  raw_payload=json.dumps({**body, 'requestNumber': code})))
+    session.flush()
+    session.expire_all()
+    with count_queries() as stats:
+        records = records_from_action_log(session, validate=True, since=datetime(2026, 7, 31),
+                                          until=datetime(2026, 8, 2))
+    assert len([r for r in records if r.ref.request_number in codes]) == 25
+    _assert_within("xras_worklist_preflight", stats)

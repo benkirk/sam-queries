@@ -294,6 +294,8 @@ def records_from_action_log(session: Session, *,
     rows = query.all()
     superseded = superseded_log_ids(session, rows)
     merged_away = merged_away_usernames(session)
+    # Held until the loop ends: the identity map is weak, and the preflight's lazy reads hit it.
+    preloaded = _preload_preflight(session, rows) if validate else []
     for row in rows:
         if row.xras_action_log_id in superseded:
             continue
@@ -332,7 +334,28 @@ def records_from_action_log(session: Session, *,
             roles_by_username={k: tuple(v) for k, v in roles.items()},
             account_flag=flags,
             person_by_username=people))
+    del preloaded
     return records
+
+
+def _preload_preflight(session: Session, rows) -> list:
+    """Load what the preflight reads lazily (resources, each named project's allocation trees)."""
+    from sqlalchemy.orm import selectinload
+
+    from sam.accounting.accounts import Account
+    from sam.accounting.allocations import Allocation
+    from sam.projects.projects import Project
+    from sam.resources.resources import Resource
+
+    codes = {r.request_number for r in rows
+             if r.status in VALIDATE_STATUSES and r.request_number}
+    if not codes:
+        return []
+    tree = (selectinload(Project.accounts).selectinload(Account.allocations)
+            .selectinload(Allocation.children, recursion_depth=-1)
+            .selectinload(Allocation.account).selectinload(Account.allocations))
+    return (session.query(Resource).all()
+            + session.query(Project).filter(Project.projcode.in_(codes)).options(tree).all())
 
 
 def superseded_log_ids(session: Session, rows) -> set:

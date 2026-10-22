@@ -2,7 +2,7 @@ COMPOSE_FILE := ../../compose.yaml
 
 .PHONY: all clone clean bootstrap verify db-up db-test db-down db-restart db-reset FORCE \
         pg-up pg-down pg-reset clone-pg clone-pg-local clone-pg-test pg-test-up pg-test-reset \
-        test-db-up test-db-reset regen-lfs-blob restore-dev-raw everything-coherent
+        test-db-up test-db-reset regen-lfs-blob restore-dev-raw analyze-dev everything-coherent
 
 # The compose service the blob is dumped from: `mysql` (3306, the dev copy) by
 # default; regen-lfs-blob sets `mysql-test` (3307). VERIFY_ARGS follows it.
@@ -22,11 +22,19 @@ compose_up = docker compose -f $(COMPOSE_FILE) $(1) up -d $(2) \
 
 all: clone
 
-# Subset production into the local container (reads prod as hpc-reader).
+# Subset production into the local container (reads prod as hpc-reader), then analyze it.
 # The result holds REAL PII until `bootstrap` anonymizes it.
 # SAM_CLONE_DAYS=<n> deepens every `recent` window in config.yaml.
 clone:
 	@python bootstrap_clone.py --config config.yaml
+	@$(MAKE) analyze-dev
+
+# ANALYZE TABLE on every user table on 3306; init-db.sh does the same on a blob restore.
+analyze-dev:
+	@echo "ANALYZE TABLE on every user table on 3306..."
+	@$(MYSQL_DEV) --skip-column-names -e "SELECT CONCAT('ANALYZE TABLE \`', table_schema, '\`.\`', table_name, '\`;') FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys')" \
+	    | $(MYSQL_DEV) >/dev/null
+	@echo "✅ 3306 analyzed"
 
 clean:
 	rm -rf dump/ *.sql.xz *~
@@ -91,9 +99,9 @@ bootstrap:
 
 # Put the RAW (pre-anonymization) subset back on 3306 after `bootstrap` has
 # anonymized it in place, so local dev runs on real data with one prod pull.
-# The clone path never runs ANALYZE (only init-db.sh does, on a blob restore),
-# so it is run here. NOT a make prerequisite: the `%.sql.xz: FORCE` rule
-# would re-dump the anonymized 3306 over the raw backup.
+# A dump restore carries no statistics, so it ends with analyze-dev. NOT a make
+# prerequisite: the `%.sql.xz: FORCE` rule would re-dump the anonymized 3306
+# over the raw backup.
 restore-dev-raw:
 	@test -f backups/sam-local-dev.sql.xz \
 	    || { echo "backups/sam-local-dev.sql.xz is missing: make bootstrap writes it"; exit 1; }
@@ -101,9 +109,7 @@ restore-dev-raw:
 	# The GTID_PURGED line a dump made without --set-gtid-purged=OFF carries is
 	# refused by the server it came from; drop it either way.
 	xz -dc backups/sam-local-dev.sql.xz | grep -v '^SET @@GLOBAL.GTID_PURGED' | $(MYSQL_DEV)
-	@echo "ANALYZE TABLE on every user table (init-db.sh does this on a blob restore; the clone path never does)..."
-	@$(MYSQL_DEV) --skip-column-names -e "SELECT CONCAT('ANALYZE TABLE \`', table_schema, '\`.\`', table_name, '\`;') FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys')" \
-	    | $(MYSQL_DEV) >/dev/null
+	@$(MAKE) analyze-dev
 	@echo "✅ 3306 is the raw subset again, analyzed"
 
 # One prod pull, every copy coherent: raw on 3306, 5433 and the CNPG sam_dev;
