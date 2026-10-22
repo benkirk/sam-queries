@@ -1,9 +1,10 @@
 """Admin dashboard: the Directory panels (docs/plans/DIRECTORY_CLIENT.md step 3, _NEXT.md section 3).
 
 A panel is an operator-initiated read of one person, organization, institution or group
-from the directory with SAM's drift beside it; Apply writes the kinds whose
-``DIRECTORY_APPLY_<KIND>`` lever is on, inside ``management_transaction``. Groups are
-report-only. The directory being down is a 200 with an alert, never a 500.
+from the directory with SAM's drift beside it (``VIEW_DIRECTORY``); Apply
+(``MANAGE_DIRECTORY``) writes the kinds whose ``DIRECTORY_APPLY_<KIND>`` lever is on, inside
+``management_transaction``. Groups are report-only. The directory being down is a 200 with
+an alert, never a 500.
 """
 
 import json
@@ -27,8 +28,7 @@ from webapp.api.access_control import require_project_facility_permission
 from webapp.api.ldapsync.sync import restore_hook
 from webapp.extensions import db
 from webapp.utils.htmx import htmx_not_found
-from webapp.utils.rbac import (Permission, require_permission,
-                               require_permission_any_facility)
+from webapp.utils.rbac import Permission, require_permission
 
 from .blueprint import bp
 
@@ -60,7 +60,7 @@ def _apply(template, obj, key, read, reconcile, context, *, trigger=None, **kwar
 
 @bp.route('/htmx/user/<username>/directory', methods=['GET'])
 @login_required
-@require_permission_any_facility(Permission.VIEW_USERS)
+@require_permission(Permission.VIEW_DIRECTORY)
 def htmx_user_directory(username):
     sam_user = User.get_by_username(db.session, username)
     if sam_user is None:
@@ -70,7 +70,7 @@ def htmx_user_directory(username):
 
 @bp.route('/htmx/user/<username>/directory/apply', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_USERS)
+@require_permission(Permission.MANAGE_DIRECTORY)
 def htmx_user_directory_apply(username):
     sam_user = User.get_by_username(db.session, username)
     if sam_user is None:
@@ -85,6 +85,7 @@ def htmx_user_directory_apply(username):
 # project_directory_* family is the filesystem directories.
 @bp.route('/htmx/project/<projcode>/directory', methods=['GET'])
 @login_required
+@require_permission(Permission.VIEW_DIRECTORY)
 @require_project_facility_permission(Permission.VIEW_PROJECTS)
 def htmx_project_group_directory(project):
     return render_template(GROUP_PANEL, panel=project_group_panel(db.session, project))
@@ -92,7 +93,7 @@ def htmx_project_group_directory(project):
 
 @bp.route('/htmx/group/<group_name>/directory', methods=['GET'])
 @login_required
-@require_permission_any_facility(Permission.VIEW_GROUPS)
+@require_permission(Permission.VIEW_DIRECTORY)
 def htmx_group_directory(group_name):
     group = AdhocGroup.get_by_name(db.session, group_name)
     if group is None:
@@ -102,7 +103,7 @@ def htmx_group_directory(group_name):
 
 @bp.route('/htmx/organization/<int:org_id>/directory', methods=['GET'])
 @login_required
-@require_permission_any_facility(Permission.VIEW_ORG_METADATA)
+@require_permission(Permission.VIEW_DIRECTORY)
 def htmx_organization_directory(org_id):
     org = db.session.get(Organization, org_id)
     if org is None:
@@ -112,7 +113,7 @@ def htmx_organization_directory(org_id):
 
 @bp.route('/htmx/organization/<int:org_id>/directory/apply', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_ORG_METADATA)
+@require_permission(Permission.MANAGE_DIRECTORY)
 def htmx_organization_directory_apply(org_id):
     org = db.session.get(Organization, org_id)
     if org is None:
@@ -125,7 +126,7 @@ def htmx_organization_directory_apply(org_id):
 
 @bp.route('/htmx/institution/<int:inst_id>/directory', methods=['GET'])
 @login_required
-@require_permission_any_facility(Permission.VIEW_ORG_METADATA)
+@require_permission(Permission.VIEW_DIRECTORY)
 def htmx_institution_directory(inst_id):
     inst = db.session.get(Institution, inst_id)
     if inst is None:
@@ -135,7 +136,7 @@ def htmx_institution_directory(inst_id):
 
 @bp.route('/htmx/institution/<int:inst_id>/directory/apply', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_ORG_METADATA)
+@require_permission(Permission.MANAGE_DIRECTORY)
 def htmx_institution_directory_apply(inst_id):
     inst = db.session.get(Institution, inst_id)
     if inst is None:

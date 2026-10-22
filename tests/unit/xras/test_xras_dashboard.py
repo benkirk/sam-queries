@@ -1047,7 +1047,7 @@ class TestActivityRowExpansion:
     def _render(self, app, *, may_manage, rows=None, **counts):
         from flask import render_template
         counts = {'show_all': False, 'attention_total': 1, 'window_total': 1,
-                  'hidden_count': 0, 'outside_count': 0, 'recent_days': 3,
+                  'hidden_count': 0, 'outside_count': 0, 'grace_days': 3,
                   **counts}
         with app.test_request_context():
             return render_template(

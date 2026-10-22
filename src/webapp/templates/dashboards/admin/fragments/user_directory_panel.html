@@ -70,7 +70,7 @@
 {% if not panel.positions and not panel.collaborations %}
 <p class="text-muted small">No positions or collaborations in the directory.</p>
 {% endif %}
-{% set can_apply = has_permission(Permission.EDIT_USERS) %}
+{% set can_apply = has_permission(Permission.MANAGE_DIRECTORY) %}
 {% set apply_url = url_for('admin_dashboard.htmx_user_directory_apply', username=sam_user.username) %}
 {% set apply_target = '#userDirectoryPanel-' ~ sam_user.user_id %}
 {% include 'dashboards/admin/fragments/_directory_drift.html' %}
