@@ -128,6 +128,10 @@ Run each pass and collect findings. The examples are real.
   for `sam-search project`, 110 of them from `get_user_count`. Run the counts with the target
   host's environment: on HPC, `NCAR_HOST` turns on a provisioning check that walked the same
   members again, and it was invisible locally until the post-deploy re-time.
+  A keyed `.filter(...).first()` never hits the identity map, so code written for one item
+  and run per item in a loop re-reads the same rows, and `selectinload` cannot reach it.
+  Scope a memo to the batch and seed it with one query per key kind (sweep 30,
+  `sam/xras/lookups.py`).
 - **Ratchet.** Where a fix is cheap to pin, add an equality ratchet so the city does not regrow.
   Models: `tests/unit/gates/test_css_tokens.py` (raw colors) and
   `tests/unit/gates/test_no_fstring_sql.py`. Only ratchet a count that is going down.

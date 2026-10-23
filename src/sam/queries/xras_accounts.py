@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import (Any, Callable, Dict, Iterable, Iterator, List, Mapping,
@@ -41,6 +42,7 @@ from sam.integration.xras import XrasActionLog, XrasRemediationEvent
 from sam.queries.projects import project_ids_by_code
 from sam.queries.users import users_by_username_ci
 from sam.queries.xras_actions import XRAS_ACTION_STATUSES, canonical_action_type
+from sam.xras.lookups import batch_lookups, seed
 
 logger = logging.getLogger(__name__)
 
@@ -294,8 +296,7 @@ def records_from_action_log(session: Session, *,
     rows = query.all()
     superseded = superseded_log_ids(session, rows)
     merged_away = merged_away_usernames(session)
-    # Held until the loop ends: the identity map is weak, and the preflight's lazy reads hit it.
-    preloaded = _preload_preflight(session, rows) if validate else []
+    parsed = []
     for row in rows:
         if row.xras_action_log_id in superseded:
             continue
@@ -308,54 +309,87 @@ def records_from_action_log(session: Session, *,
             logger.debug('xras worklist: action %s did not parse (%s)',
                          row.xras_action_log_id, exc)
             continue
+        parsed.append((row, action, _roster_from_action(action)))
 
-        usernames, roles, flags, people = _roster_from_action(action)
-        usernames = [u for u in usernames
-                     if u and u.casefold() not in merged_away]
-        if not usernames:
-            continue
+    with batch_lookups(session) if validate else nullcontext():
+        # Held until the loop ends: the identity map is weak, and the preflight's lazy reads hit it.
+        preloaded = _preload_preflight(session, parsed) if validate else []
+        for row, action, roster in parsed:
+            usernames, roles, flags, people = roster
+            usernames = [u for u in usernames
+                         if u and u.casefold() not in merged_away]
+            if not usernames:
+                continue
 
-        preflight_status, messages = None, ()
-        if validate and row.status in VALIDATE_STATUSES:
-            preflight_status, messages = _validate(session, action,
-                                                   row.xras_action_log_id)
+            preflight_status, messages = None, ()
+            if validate and row.status in VALIDATE_STATUSES:
+                preflight_status, messages = _validate(session, action,
+                                                       row.xras_action_log_id)
 
-        records.append(RosterRecord(
-            ref=ActionRef(action_log_id=row.xras_action_log_id,
-                          request_number=row.request_number,
-                          action_type=row.action_type,
-                          status=row.status,
-                          received_time=row.received_time,
-                          source=SOURCE_ACTION_LOG,
-                          would_succeed=_would_succeed(preflight_status),
-                          preflight_status=preflight_status,
-                          reject_messages=messages),
-            usernames=usernames,
-            roles_by_username={k: tuple(v) for k, v in roles.items()},
-            account_flag=flags,
-            person_by_username=people))
-    del preloaded
+            records.append(RosterRecord(
+                ref=ActionRef(action_log_id=row.xras_action_log_id,
+                              request_number=row.request_number,
+                              action_type=row.action_type,
+                              status=row.status,
+                              received_time=row.received_time,
+                              source=SOURCE_ACTION_LOG,
+                              would_succeed=_would_succeed(preflight_status),
+                              preflight_status=preflight_status,
+                              reject_messages=messages),
+                usernames=usernames,
+                roles_by_username={k: tuple(v) for k, v in roles.items()},
+                account_flag=flags,
+                person_by_username=people))
+        del preloaded
     return records
 
 
-def _preload_preflight(session: Session, rows) -> list:
-    """Load what the preflight reads lazily (resources, each named project's allocation trees)."""
+def _preload_preflight(session: Session, parsed) -> list:
+    """Batch what the preflight reads: allocation trees and resources, and the memo's keyed rows."""
     from sqlalchemy.orm import selectinload
 
     from sam.accounting.accounts import Account
     from sam.accounting.allocations import Allocation
+    from sam.integration.xras import XrasRequestOverride
     from sam.projects.projects import Project
     from sam.resources.resources import Resource
+    from sam.xras.wire import get_field
 
-    codes = {r.request_number for r in rows
-             if r.status in VALIDATE_STATUSES and r.request_number}
-    if not codes:
+    checked = [(row, action, roster) for row, action, roster in parsed
+               if row.status in VALIDATE_STATUSES]
+    numbers = {n.strip() for row, action, _ in checked
+               for n in (row.request_number, get_field(action, 'requestNumber'))
+               if n and n.strip()}
+    if not numbers:
         return []
+    codes = {n.upper() for n in numbers}
     tree = (selectinload(Project.accounts).selectinload(Account.allocations)
             .selectinload(Allocation.children, recursion_depth=-1)
             .selectinload(Allocation.account).selectinload(Account.allocations))
-    return (session.query(Resource).all()
-            + session.query(Project).filter(Project.projcode.in_(codes)).options(tree).all())
+    projects = session.query(Project).filter(Project.projcode.in_(codes)).options(tree).all()
+    _seed_found(session, 'project', codes, {p.projcode.upper(): p for p in projects})
+
+    kinds = ('mnemonic', 'ignore_contract')
+    overrides = (session.query(XrasRequestOverride)
+                 .filter(XrasRequestOverride.request_number.in_(numbers),
+                         XrasRequestOverride.kind.in_(kinds), XrasRequestOverride.is_active)
+                 .all())
+    _seed_found(session, 'request_override', {(n, k) for n in numbers for k in kinds},
+                {(o.request_number, o.kind): o for o in overrides})
+
+    names = {u for _, _, roster in checked for u in roster[0] if u}
+    _seed_found(session, 'user', {u.casefold() for u in names},
+                users_by_username_ci(session, names))
+    return session.query(Resource).all() + projects
+
+
+def _seed_found(session: Session, kind: str, wanted: set, found: dict) -> None:
+    """Seed the memo with *found*, and with a miss for every other *wanted* key when safe."""
+    seed(session, [((kind, k), v) for k, v in found.items() if k in wanted])
+    # A row that matched under the column's collation but not under its key (an accent, a
+    # trailing space) could be a seeded "miss"; then misses are left to the real query.
+    if set(found) <= wanted:
+        seed(session, [((kind, k), None) for k in wanted - set(found)])
 
 
 def superseded_log_ids(session: Session, rows) -> set:

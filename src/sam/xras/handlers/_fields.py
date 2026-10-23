@@ -30,6 +30,7 @@ from sam.resources.resources import Resource
 from .. import errors as e
 from ..errors import ActionErrors
 from ..extractors import resolve_contract
+from ..lookups import cached
 from ..roster import normalize_username
 from ..wire import get_field
 
@@ -173,9 +174,10 @@ def resolve_resource(session, wire_resource, errs: ActionErrors) -> Optional[Res
     key = get_field(wire_resource, 'resourceRepositoryKey')
     row = None
     if key is not None:
-        row = (session.query(XrasResourceRepositoryKeyResource)
-               .filter(XrasResourceRepositoryKeyResource.resource_repository_key == key)
-               .first())
+        row = cached(session, ('resource_key', key), lambda: (
+            session.query(XrasResourceRepositoryKeyResource)
+            .filter(XrasResourceRepositoryKeyResource.resource_repository_key == key)
+            .first()))
     if row is None or row.resource is None:
         errs.report(e.no_resource_for_key('' if key is None else str(key)))
         return None
