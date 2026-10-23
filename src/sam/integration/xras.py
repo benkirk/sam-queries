@@ -275,13 +275,15 @@ def lookup_request_override(session, request_number, kind):
     The consult primitive shared by ``resolve_mnemonic_code`` (mnemonic) and
     ``plan_contracts`` (ignore_contract).
     """
+    from sam.xras.lookups import cached
     if not request_number:
         return None
-    return (session.query(XrasRequestOverride)
-            .filter(XrasRequestOverride.request_number == request_number)
-            .filter(XrasRequestOverride.kind == kind)
-            .filter(XrasRequestOverride.is_active)
-            .first())
+    return cached(session, ('request_override', request_number, kind), lambda: (
+        session.query(XrasRequestOverride)
+        .filter(XrasRequestOverride.request_number == request_number)
+        .filter(XrasRequestOverride.kind == kind)
+        .filter(XrasRequestOverride.is_active)
+        .first()))
 
 
 #----------------------------------------------------------------------------

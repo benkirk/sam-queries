@@ -47,6 +47,7 @@ from sam.core.users import User
 
 from . import errors as e
 from .errors import ActionErrors
+from .lookups import cached
 from .wire import get_field
 
 logger = logging.getLogger(__name__)
@@ -266,12 +267,14 @@ def _user_resolver(session):
 
     Scoped to a single call rather than module-level: it must not outlive the session
     it queried, and an action is short.
+    Validate-only dispatch also shares the loads across actions (``sam.xras.lookups``).
     """
     cache: Dict[str, Optional[User]] = {}
 
     def resolve(username: str) -> Optional[User]:
         if username not in cache:
-            cache[username] = User.get_by_username(session, username)
+            cache[username] = cached(session, ('user', username.casefold()),
+                                     lambda: User.get_by_username(session, username))
         return cache[username]
 
     return resolve
