@@ -254,7 +254,7 @@
         "notes": "measured 14 (2026-10-22) on 40 snapshot projects with a distinct lead and admin, cold; flat in projects. Was 286: Project.lead and Project.admin loaded lazily per project, each User load running its selectin relationships"
     },
     "xras_worklist_preflight": {
-        "queries": 140,
-        "notes": "measured 113 (2026-10-22): 25 failed Extension actions on distinct snapshot projects, validated; ~4 per action (two projcode lookups) plus a constant preload. Was 725: each preflight walked its allocation trees lazily, and dispatch read each projcode three times"
+        "queries": 30,
+        "notes": "measured 23 (2026-10-23, MySQL and Postgres): 25 failed Extensions on distinct snapshot projects plus 25 failed News, validated; flat in actions (the test also asserts 50 actions cost at most 5 more than 10). Was 463: each action re-read the resource key, opportunity map, allocation type, area of interest, overrides, users and projcode; now one seeded lookup memo (sam/xras/lookups.py). Before #861 it was 725 for the Extensions alone"
     }
 }
