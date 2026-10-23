@@ -46,6 +46,7 @@ from sam.resources.facilities import Panel
 
 from . import errors as e
 from .errors import ActionErrors
+from .lookups import cached
 from .wire import get_field
 
 __all__ = [
@@ -346,9 +347,10 @@ def select_allocation_type_mapped(session, action) -> Optional[SelectionParms]:
     if opportunity_id is not None:
         # `opportunityId` is `opt_int()`, so it arrives as an int or None —
         # deliberately not run through `_clean`, which is str-only.
-        row = (session.query(XrasOpportunityAllocationType)
-               .filter(XrasOpportunityAllocationType.opportunity_id == opportunity_id)
-               .first())
+        row = cached(session, ('opportunity', opportunity_id), lambda: (
+            session.query(XrasOpportunityAllocationType)
+            .filter(XrasOpportunityAllocationType.opportunity_id == opportunity_id)
+            .first()))
         panel = getattr(getattr(row, 'allocation_type', None), 'panel', None)
         if panel is not None:
             return SelectionParms(panel.panel_name,
@@ -385,11 +387,12 @@ def resolve_allocation_type(session, action, errs: ActionErrors) -> Optional[All
         errs.report(e.allocation_type_undetermined())
         return None
 
-    row = (session.query(AllocationType)
-           .join(Panel, AllocationType.panel_id == Panel.panel_id)
-           .filter(Panel.panel_name == parms.panel)
-           .filter(AllocationType.allocation_type == parms.allocation_type)
-           .first())
+    row = cached(session, ('allocation_type', (parms.panel, parms.allocation_type)), lambda: (
+        session.query(AllocationType)
+        .join(Panel, AllocationType.panel_id == Panel.panel_id)
+        .filter(Panel.panel_name == parms.panel)
+        .filter(AllocationType.allocation_type == parms.allocation_type)
+        .first()))
     if row is None:
         errs.report(e.no_allocation_type_for_pair(parms.panel, parms.allocation_type))
         return None
@@ -459,13 +462,15 @@ def resolve_area_of_interest(session, action, errs: ActionErrors,
         errs.report(e.no_fos_objects())
         return None
 
-    row = None
-    try:
-        row = session.get(AreaOfInterest, int(str(fos).strip(), 0))
-    except (TypeError, ValueError):
-        row = (session.query(AreaOfInterest)
-               .filter(AreaOfInterest.area_of_interest == fos)
-               .first())
+    def load():
+        try:
+            return session.get(AreaOfInterest, int(str(fos).strip(), 0))
+        except (TypeError, ValueError):
+            return (session.query(AreaOfInterest)
+                    .filter(AreaOfInterest.area_of_interest == fos)
+                    .first())
+
+    row = cached(session, ('area_of_interest', fos), load)
 
     if row is None:
         errs.report(e.aoi_not_in_database(str(fos)))

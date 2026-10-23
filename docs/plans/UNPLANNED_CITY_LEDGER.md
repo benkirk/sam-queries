@@ -44,6 +44,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-13 | `1526d856` + sweep 26 (XRAS request identity) | 51 / 63 / 26 | 1 (2) | 16 / 52 | 20 (20), 2 kept | 5,245 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
 | 2026-10-14 | `50bda35a` + sweep 27 (XRAS soft-deleted records) | 51 / 63 / 26 | 1 (2) | 16 / 52 | 20 (20), 2 kept | 5,245 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
 | 2026-10-15 | `034fff4a` + sweep 28 (quota reconcile), py only | 52 / 64 / 26 | 1 (2) | 16 / 52 | — | — | — | — | — | — | — | 6 |
+| 2026-10-23 | `bfb58fd8` + sweep 30 (XRAS validate-only lookups), py only | 52 / 64 / 26 | 1 (2) | 21 / 67 | — | — | — | — | — | — | — | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -1996,6 +1997,45 @@ and nightly report, built that morning in seven commits on `directory-client` (b
   bool); different jobs under one name.
 - [ ] The inline `style=""` attributes the inventory lists on `user_card.html` and
   `group_card.html` predate the PR and sit outside its sections.
+
+## 30. 2026-10-23: window sweep, the XRAS validate-only lookups (after #861)
+
+**Mode:** window, PR #861 read with the production watch beside it. End commit
+`origin/staging` `bfb58fd8`. On prod, after #861, `xras_pending_fragment` fell from 685 to
+7-27 statements, but `xras_accounts_fragment` (Pending Users) only fell from 367 to 275 /
+2.2 s. The cause was not lazy relationships. `records_from_action_log(validate=True)` runs
+`dispatch_action(validate_only=True)` per action, and handler code written for one post
+re-read the same keyed rows each time; a keyed `.filter(...).first()` never hits the
+identity map. #861's perf test seeded only Extensions and so never measured the New path.
+
+**Findings and done** (one commit each, PR on `xras-validate-lookups`):
+
+- [x] V1, consolidate + round trips: `sam/xras/lookups.py` (`batch_lookups`, `cached`,
+  `seed`, `find_project`), open only on the validate-only path. It replaces
+  `_found_once`, which could not keep a miss, and every New is a distinct miss. It now
+  covers the resource key, opportunity map, allocation-type pair, area of interest,
+  request overrides, the roster's users and the projcode. Live posts open no memo.
+- [x] V2, round trips: the worklist parses first, then validates inside one memo seeded
+  from one batched query each (projects, overrides, users via `users_by_username_ci`).
+  Misses are seeded only when every found row maps back to a wanted key.
+  10 / 50 / 97 actions: 103 / 463 / 1310 -> 23 / 23 / 139 statements. Verdicts hash
+  identically on MySQL and Postgres.
+- [x] V3, ratchet: `test_xras_worklist_preflight_is_flat_in_projects` seeds News and asserts
+  50 actions cost at most 5 more than 10; baseline 140 -> 30 (measured 23).
+
+**Tried and dropped:** nothing.
+
+**Open:**
+
+- [ ] `sam/xras/preflight.py` (the sweep's push-readiness loop over Feed B) gets the
+  one-action memo but not a cross-action one. It runs on the sweep's session under a
+  SAVEPOINT with an opportunity-mapping write pending, so a batch memo there needs care.
+- [ ] The 97-action remainder is per distinct key or per resolvable PI: the mnemonic by
+  institution (`best_institution`, `MnemonicCode.build_lookup`) and the per-grant
+  contract reads (`Contract.get_by_number`, `contract_candidates`). They are batchable the
+  same way if a real worklist grows them.
+- [ ] `resolve_project`'s `logged_projcode` read stays per action, for a project-scoped
+  number that is not a projcode (not seen in the measured windows).
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

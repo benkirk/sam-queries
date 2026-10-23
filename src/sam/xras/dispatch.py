@@ -36,12 +36,13 @@ See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``, *The dispatcher*.
 
 import copy
 import logging
+from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
 from typing import Callable, Dict, FrozenSet, Optional, Tuple
 
-from sam.projects.projects import Project
 from sam.queries.xras_actions import XRAS_ACTION_TYPES, canonical_action_type
 
+from .lookups import batch_lookups, find_project
 from .wire import get_field
 
 logger = logging.getLogger(__name__)
@@ -164,25 +165,7 @@ def parse_enabled_action_types(value: Optional[str]) -> FrozenSet[str]:
     return frozenset(enabled)
 
 
-def _find_project(session, projcode):
-    return Project.get_by_projcode(session, projcode)
-
-
-def _found_once():
-    """A ``find`` that remembers the rows it found, never a miss; validate-only dispatch only."""
-    found: Dict[str, Project] = {}
-
-    def find(session, projcode):
-        if projcode not in found:
-            project = _find_project(session, projcode)
-            if project is None:
-                return None
-            found[projcode] = project
-        return found[projcode]
-    return find
-
-
-def select_service(session, action, *, find=_find_project) -> Optional[str]:
+def select_service(session, action) -> Optional[str]:
     """Which legacy service would handle this action, or ``None`` for no match.
 
     Resolves ``requestNumber`` as a projcode against the **database** (through
@@ -192,10 +175,10 @@ def select_service(session, action, *, find=_find_project) -> Optional[str]:
     design (``InactivateNewProject``), so an active-only existence check would route a
     re-posted New action to the Add handler and mint a second project.
     """
-    action, _, _ = resolve_project(session, action, find=find)
+    action, _, _ = resolve_project(session, action)
     action_type = canonical_action_type(get_field(action, 'actionType'))
     request_number = (get_field(action, 'requestNumber') or '').strip()
-    exists = bool(request_number) and find(session, request_number) is not None
+    exists = bool(request_number) and find_project(session, request_number) is not None
 
     if action_type == 'New' and not exists:
         return 'add'
@@ -221,7 +204,7 @@ def select_service(session, action, *, find=_find_project) -> Optional[str]:
 _PROJECT_SCOPED = frozenset({'Renewal', 'Extension', 'Supplement', 'Transfer', 'Adjustment'})
 
 
-def resolve_project(session, action, *, find=_find_project):
+def resolve_project(session, action):
     """``(action, note, unknown)``: *action* with ``requestNumber`` resolved through SAM's log.
 
     ``XRAS_SUBMISSION.md`` § 4.6 item 2. Rule 1 is the number itself; rules 2 and 3
@@ -234,11 +217,11 @@ def resolve_project(session, action, *, find=_find_project):
     number = (get_field(action, 'requestNumber') or '').strip()
     if canonical_action_type(get_field(action, 'actionType')) not in _PROJECT_SCOPED:
         return action, None, None
-    if number and find(session, number) is not None:
+    if number and find_project(session, number) is not None:
         return action, None, None
     found = logged_projcode(session, request_id=get_field(action, 'requestId'),
                             request_number=number)
-    if found is None or find(session, found[0]) is None:
+    if found is None or find_project(session, found[0]) is None:
         return action, None, number or None
     projcode, rule = found
     if isinstance(action, dict):
@@ -272,11 +255,14 @@ def dispatch_action(session, action, *,
             raised before any transaction opens. Raised on the *validate_only* path
             for the same reason, which is what makes a re-check informative.
     """
+    with batch_lookups(session) if validate_only else nullcontext():
+        return _dispatch(session, action, enabled=enabled, validate_only=validate_only)
+
+
+def _dispatch(session, action, *, enabled, validate_only) -> DispatchResult:
     action_type = canonical_action_type(get_field(action, 'actionType'))
-    # Validate-only reads each projcode up to three times on the way to the handler.
-    find = _found_once() if validate_only else _find_project
-    action, resolution, unknown = resolve_project(session, action, find=find)
-    service = select_service(session, action, find=find)
+    action, resolution, unknown = resolve_project(session, action)
+    service = select_service(session, action)
 
     if service is None:
         reason = (f'no SAM project for requestNumber={unknown!r} '

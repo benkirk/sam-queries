@@ -455,7 +455,7 @@ def test_xras_pending_recipients_is_flat_in_projects(session, count_queries):
 
 
 def test_xras_worklist_preflight_is_flat_in_projects(session, count_queries):
-    """The Pending Users card validates each failed action; its allocation trees load in batches."""
+    """The Pending Users card validates each failed action; its keyed reads load in batches."""
     import json
 
     from _paths import TESTS
@@ -464,20 +464,39 @@ def test_xras_worklist_preflight_is_flat_in_projects(session, count_queries):
     from sam.integration.xras import XrasActionLog
     from sam.queries.xras_accounts import records_from_action_log
 
-    body = json.loads((TESTS / 'fixtures' / 'xras' / 'actions'
-                       / 'extension_ufsu0023_failed.json').read_text())
+    actions = TESTS / 'fixtures' / 'xras' / 'actions'
+    extension = json.loads((actions / 'extension_ufsu0023_failed.json').read_text())
+    new = json.loads((actions / 'new_ncar4227_failed.json').read_text())
     codes = [c for (c,) in session.query(Project.projcode).join(Account)
              .filter(Project.is_active).group_by(Project.projcode)
              .order_by(Project.projcode).limit(25)]
-    for i, code in enumerate(codes):
+
+    def post(i, body, number):
         session.add(XrasActionLog(received_time=datetime(2026, 8, 1) + timedelta(minutes=i),
-                                  remote_actor='XRAS', status='failed', action_type='Extension',
-                                  request_number=code,
-                                  raw_payload=json.dumps({**body, 'requestNumber': code})))
-    session.flush()
-    session.expire_all()
-    with count_queries() as stats:
-        records = records_from_action_log(session, validate=True, since=datetime(2026, 7, 31),
-                                          until=datetime(2026, 8, 2))
-    assert len([r for r in records if r.ref.request_number in codes]) == 25
+                                  remote_actor='XRAS', status='failed',
+                                  action_type=body['actionType'], request_number=number,
+                                  raw_payload=json.dumps({**body, 'requestNumber': number})))
+
+    def validate(n):
+        for i in range(n):
+            post(2 * i, extension, codes[i])
+            post(2 * i + 1, new, f'NCAR9{i:03d}')
+        session.flush()
+        session.expire_all()
+        with count_queries() as stats:
+            records = records_from_action_log(session, validate=True,
+                                              since=datetime(2026, 7, 31),
+                                              until=datetime(2026, 8, 2))
+        assert len([r for r in records if r.ref.preflight_status]) == 2 * n
+        return stats
+
+    small = validate(5)
+    session.query(XrasActionLog).filter(XrasActionLog.remote_actor == 'XRAS',
+                                        XrasActionLog.received_time >= datetime(2026, 8, 1),
+                                        XrasActionLog.received_time < datetime(2026, 8, 2)
+                                        ).delete(synchronize_session=False)
+    stats = validate(25)
+    assert stats.count <= small.count + 5, (
+        f"xras_worklist_preflight grows with actions: {small.count} for 10, "
+        f"{stats.count} for 50. Breakdown: {stats.summary()}")
     _assert_within("xras_worklist_preflight", stats)

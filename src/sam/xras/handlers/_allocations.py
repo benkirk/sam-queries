@@ -36,6 +36,7 @@ from sam.resources.resources import Resource
 from .. import errors as e
 from ..errors import ActionErrors
 from ..extractors import select_allocation_type_mapped
+from ..lookups import find_project
 from ..wire import get_field
 
 logger = logging.getLogger(__name__)
@@ -254,7 +255,7 @@ def auth_at_panel_meeting(session, action) -> bool:
         derived = parms is not None and parms.allocation_type in PANEL_AUTHORISED_TYPES
     else:
         projcode = (get_field(action, 'requestNumber') or '').strip()
-        project = Project.get_by_projcode(session, projcode) if projcode else None
+        project = find_project(session, projcode) if projcode else None
         stored = (getattr(project.allocation_type, 'allocation_type', None)
                   if project else None)
         derived = stored in PANEL_AUTHORISED_TYPES
