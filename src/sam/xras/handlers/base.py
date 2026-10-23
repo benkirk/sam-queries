@@ -48,6 +48,7 @@ from sam.projects.projects import Project
 
 from ..dispatch import DispatchResult
 from ..errors import ActionErrors, XrasActionRejected
+from ..lookups import find_project
 from ..wire import get_field
 from ._allocations import mark_panel_authorised
 from ._plans import apply_plan
@@ -213,7 +214,7 @@ class ActionHandler(ABC):
         """
         if not self.projcode:
             return None
-        return Project.get_by_projcode(self.session, self.projcode)
+        return find_project(self.session, self.projcode)
 
     def mark_panel_authorised(self, allocation) -> None:
         """Set ``auth_at_panel_mtg`` on the CREATE row just written for *allocation*."""

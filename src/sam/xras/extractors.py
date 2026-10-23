@@ -387,7 +387,7 @@ def resolve_allocation_type(session, action, errs: ActionErrors) -> Optional[All
         errs.report(e.allocation_type_undetermined())
         return None
 
-    row = cached(session, ('allocation_type', parms.panel, parms.allocation_type), lambda: (
+    row = cached(session, ('allocation_type', (parms.panel, parms.allocation_type)), lambda: (
         session.query(AllocationType)
         .join(Panel, AllocationType.panel_id == Panel.panel_id)
         .filter(Panel.panel_name == parms.panel)

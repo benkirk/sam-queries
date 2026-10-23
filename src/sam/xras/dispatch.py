@@ -40,10 +40,9 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
 from typing import Callable, Dict, FrozenSet, Optional, Tuple
 
-from sam.projects.projects import Project
 from sam.queries.xras_actions import XRAS_ACTION_TYPES, canonical_action_type
 
-from .lookups import batch_lookups, cached
+from .lookups import batch_lookups, find_project
 from .wire import get_field
 
 logger = logging.getLogger(__name__)
@@ -166,11 +165,6 @@ def parse_enabled_action_types(value: Optional[str]) -> FrozenSet[str]:
     return frozenset(enabled)
 
 
-def _find_project(session, projcode):
-    return cached(session, ('project', projcode.upper()),
-                  lambda: Project.get_by_projcode(session, projcode))
-
-
 def select_service(session, action) -> Optional[str]:
     """Which legacy service would handle this action, or ``None`` for no match.
 
@@ -184,7 +178,7 @@ def select_service(session, action) -> Optional[str]:
     action, _, _ = resolve_project(session, action)
     action_type = canonical_action_type(get_field(action, 'actionType'))
     request_number = (get_field(action, 'requestNumber') or '').strip()
-    exists = bool(request_number) and _find_project(session, request_number) is not None
+    exists = bool(request_number) and find_project(session, request_number) is not None
 
     if action_type == 'New' and not exists:
         return 'add'
@@ -223,11 +217,11 @@ def resolve_project(session, action):
     number = (get_field(action, 'requestNumber') or '').strip()
     if canonical_action_type(get_field(action, 'actionType')) not in _PROJECT_SCOPED:
         return action, None, None
-    if number and _find_project(session, number) is not None:
+    if number and find_project(session, number) is not None:
         return action, None, None
     found = logged_projcode(session, request_id=get_field(action, 'requestId'),
                             request_number=number)
-    if found is None or _find_project(session, found[0]) is None:
+    if found is None or find_project(session, found[0]) is None:
         return action, None, number or None
     projcode, rule = found
     if isinstance(action, dict):

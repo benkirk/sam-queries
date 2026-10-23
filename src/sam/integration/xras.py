@@ -278,7 +278,7 @@ def lookup_request_override(session, request_number, kind):
     from sam.xras.lookups import cached
     if not request_number:
         return None
-    return cached(session, ('request_override', request_number, kind), lambda: (
+    return cached(session, ('request_override', (request_number, kind)), lambda: (
         session.query(XrasRequestOverride)
         .filter(XrasRequestOverride.request_number == request_number)
         .filter(XrasRequestOverride.kind == kind)

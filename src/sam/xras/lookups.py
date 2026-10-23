@@ -36,6 +36,13 @@ def cached(session, key: Hashable, load: Callable[[], Any]) -> Any:
     return memo[key]
 
 
+def find_project(session, projcode: str):
+    """``Project.get_by_projcode`` through the memo; the dispatcher and the handlers share it."""
+    from sam.projects.projects import Project
+    return cached(session, ('project', projcode.upper()),
+                  lambda: Project.get_by_projcode(session, projcode))
+
+
 def seed(session, items: Iterable[Tuple[Hashable, Any]]) -> None:
     """Fill the open memo with ``(key, value)`` pairs; a no-op when none is open."""
     memo = session.info.get(_INFO_KEY)
