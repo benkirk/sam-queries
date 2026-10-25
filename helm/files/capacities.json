@@ -4,10 +4,10 @@
     "scale": 10000,
     "machines": {
         "Casper": {
-            "_comment": "Roughly the number of CPU cores and GPGPUs allocated against CPU- and GPU- project allocations, respectively.",
+            "_comment": "A relative weighting of CPU against GPU, not a hardware count: only N_cpu/N_gpu is used, in the share weight and in the scheduler's fairshare_usage_res formula, so it must match the hsg-ansible inventory value (4000/92). pbsnodes lists more (9544 cores, 196 GPUs) and that is expected.",
             "cpu_resource": "Casper",
             "gpu_resource": "Casper GPU",
-            "N_cpu": 4096,
+            "N_cpu": 4000,
             "N_gpu": 92
         },
         "Derecho": {
