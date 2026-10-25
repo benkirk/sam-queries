@@ -1,7 +1,7 @@
 {
-    "_comment": "SAM's copy of the hpc-scheduling-tools capacities.json, consumed in-process by the /api/v1/fairshare endpoint via $HPC_SCHED_CAPACITIES. The plugin repo (NCAR/hpc-scheduling-tools) is the source of truth for these constants; keep this in sync on a hardware change. N_cpu/N_gpu are operator-tunable and must track the scheduler's fairshare_usage_res formula, which is why they live here (mounted as a ConfigMap in prod, editable without an image rebuild) rather than baked into the wheel.",
+    "_comment": "SAM's copy of the hpc-scheduling-tools capacities.json, consumed in-process by the /api/v1/fairshare endpoint via $HPC_SCHED_CAPACITIES. The plugin repo (NCAR/hpc-scheduling-tools) is the source of truth for these constants; keep this in sync on a hardware change. N_cpu/N_gpu are operator-tunable and must track the scheduler's fairshare_usage_res formula, which is why they live here (mounted as a ConfigMap in prod, editable without an image rebuild) rather than baked into the wheel. 'scale' is the share unit (not a hardware value): every share but the machine vertex's is its percentage of its siblings times scale, so share / scale is that percentage; an integer in [100, 1000000].",
     "default_duration_days": 365,
-    "scale": 100,
+    "scale": 10000,
     "machines": {
         "Casper": {
             "_comment": "Roughly the number of CPU cores and GPGPUs allocated against CPU- and GPU- project allocations, respectively.",
