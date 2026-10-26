@@ -156,7 +156,7 @@ def test_by_user_fragment_404_on_unknown_projcode(auth_client):
 def test_wait_times_fragment_caption_on_null_count(
     app, auth_client, active_project, monkeypatch,
 ):
-    """null_count > 0 on the wait dimension -> the eligible-time caption."""
+    """null_count > 0 on the wait dimension -> the no-wait-measurement caption."""
     _install_mock_plugin(
         app, monkeypatch, jobs_histogram_return=_sample_hist(null_count=7),
     )
@@ -166,7 +166,7 @@ def test_wait_times_fragment_caption_on_null_count(
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert 'no wait measurement' in body
-    assert 'early 2025 on Derecho' in body
+    assert 'neither an eligible time' in body
 
 
 def test_wait_times_fragment_no_caption_when_all_measured(
@@ -312,12 +312,12 @@ def test_histogram_fragment_native_bounds_passthrough(
     )
     auth_client.get(
         f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
-        '?machine=derecho&min_eligible_secs=120&max_eligible_secs=900'
+        '?machine=derecho&min_wait_secs=120&max_wait_secs=900'
         '&min_reqmem=1073741824&min_memory_used=2147483648'
     )
     _dim, kwargs = captured['last_jobs_histogram']
-    assert kwargs['min_eligible_secs'] == 120
-    assert kwargs['max_eligible_secs'] == 900
+    assert kwargs['min_wait_secs'] == 120
+    assert kwargs['max_wait_secs'] == 900
     assert kwargs['min_reqmem'] == 1073741824
     assert kwargs['min_memory_used'] == 2147483648
 
@@ -332,10 +332,29 @@ def test_histogram_fragment_native_bound_wins_over_human_units(
     )
     auth_client.get(
         f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
-        '?machine=derecho&min_wait_hours=2&min_eligible_secs=120'
+        '?machine=derecho&min_wait_hours=2&min_wait_secs=120'
     )
     _dim, kwargs = captured['last_jobs_histogram']
-    assert kwargs['min_eligible_secs'] == 120
+    assert kwargs['min_wait_secs'] == 120
+
+
+def test_histogram_fragment_legacy_wait_spelling_still_filters(
+    app, auth_client, active_project, monkeypatch,
+):
+    """A legacy URL's min/max_eligible_secs reaches the plugin as the wait
+    pair; the current spelling wins when both are present."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&min_eligible_secs=120&max_eligible_secs=900'
+        '&max_wait_secs=600'
+    )
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['min_wait_secs'] == 120
+    assert kwargs['max_wait_secs'] == 600
+    assert 'min_eligible_secs' not in kwargs
 
 
 def test_histogram_fragment_negative_wasted_bound_not_clamped(
@@ -396,7 +415,7 @@ def test_durations_fragment_pins_duration_dimension(
 def test_histogram_fragment_converts_wait_hours_to_secs(
     app, auth_client, active_project, monkeypatch,
 ):
-    """min/max_wait_hours (human units) convert to eligible_secs at the
+    """min/max_wait_hours (human units) convert to wait_secs at the
     route boundary — the service/plugin only ever see seconds."""
     captured = _install_mock_plugin(
         app, monkeypatch, jobs_histogram_return=_sample_hist(),
@@ -406,8 +425,8 @@ def test_histogram_fragment_converts_wait_hours_to_secs(
         '?machine=derecho&min_wait_hours=2&max_wait_hours=4.5'
     )
     _dim, kwargs = captured['last_jobs_histogram']
-    assert kwargs['min_eligible_secs'] == 7200
-    assert kwargs['max_eligible_secs'] == 16200
+    assert kwargs['min_wait_secs'] == 7200
+    assert kwargs['max_wait_secs'] == 16200
 
 
 def test_histogram_bucket_rows_carry_band_drill_urls(
@@ -429,8 +448,8 @@ def test_histogram_bucket_rows_carry_band_drill_urls(
     import re
     url0 = re.search(r'id="[^"]*-b0-content"\s+hx-get="([^"]+)"', body).group(1)
     assert f'/dashboards/user/jobs/{active_project.projcode}?' in url0
-    assert 'min_eligible_secs=0' in url0
-    assert 'max_eligible_secs=59' in url0
+    assert 'min_wait_secs=0' in url0
+    assert 'max_wait_secs=59' in url0
     assert 'queue=cpu' in url0             # pane filters carried into the drill
     assert 'machine=derecho' in url0
     assert 'target_id=' in url0
@@ -477,12 +496,33 @@ def test_histogram_bucket_drill_band_bound_replaces_pane_param(
     )
     resp = auth_client.get(
         f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
-        '?machine=derecho&min_eligible_secs=999'
+        '?machine=derecho&min_wait_secs=999'
     )
     body = resp.get_data(as_text=True)
     url0 = re.search(r'id="[^"]*-b0-content"\s+hx-get="([^"]+)"', body).group(1)
-    assert 'min_eligible_secs=0' in url0
-    assert 'min_eligible_secs=999' not in url0
+    assert 'min_wait_secs=0' in url0
+    assert 'min_wait_secs=999' not in url0
+
+
+@pytest.mark.parametrize('pane', ['min_eligible_secs=999', 'min_wait_secs=999'])
+def test_histogram_bucket_drill_replaces_either_spelling(
+    app, auth_client, active_project, monkeypatch, pane,
+):
+    """A legacy pane bound round-trips under the current name, so the band
+    still replaces it rather than riding along beside it."""
+    import re
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        f'?machine=derecho&{pane}'
+    )
+    body = resp.get_data(as_text=True)
+    url0 = re.search(r'id="[^"]*-b0-content"\s+hx-get="([^"]+)"', body).group(1)
+    assert 'min_wait_secs=0' in url0
+    assert '999' not in url0
+    assert 'eligible' not in url0
 
 
 def test_histogram_fragment_metric_pill_roundtrip(

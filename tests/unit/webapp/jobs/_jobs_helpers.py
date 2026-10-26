@@ -258,8 +258,8 @@ def _capture_connect_listener(monkeypatch, **kwargs):
 # jobs_metrics.jobs_metric_value's `.get(k) or 0` fallback and prove nothing.
 def _sample_hist(dimension='wait', null_count=0):
     return {
-        'dimension': dimension, 'column': 'eligible_secs', 'unit': 'seconds',
-        'min_param': 'min_eligible_secs', 'max_param': 'max_eligible_secs',
+        'dimension': dimension, 'column': 'wait_secs', 'unit': 'seconds',
+        'min_param': 'min_wait_secs', 'max_param': 'max_wait_secs',
         'buckets': [
             {'label': '<1m', 'lo': 0, 'hi': 59,
              'job_count': 10, 'cpu_hours': 100.0, 'gpu_hours': 0.0,

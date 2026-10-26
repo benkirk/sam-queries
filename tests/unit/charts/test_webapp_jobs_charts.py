@@ -43,8 +43,8 @@ def _hist(counts=(10, 5, 0), cpu_hours=(100.0, 50.0, 0.0),
     if gpu_charges is None:
         gpu_charges = [h * 0.5 for h in gpu_hours]
     return {
-        'dimension': dimension, 'column': 'eligible_secs', 'unit': 'seconds',
-        'min_param': 'min_eligible_secs', 'max_param': 'max_eligible_secs',
+        'dimension': dimension, 'column': 'wait_secs', 'unit': 'seconds',
+        'min_param': 'min_wait_secs', 'max_param': 'max_wait_secs',
         'buckets': [
             {'label': lbl, 'lo': lo, 'hi': hi,
              'job_count': c, 'cpu_hours': ch, 'gpu_hours': gh,

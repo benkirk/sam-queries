@@ -491,12 +491,19 @@ _ROUNDTRIP_KEYS = (
     'min_elapsed_hours', 'max_elapsed_hours',
     'min_reqmem_gb', 'max_reqmem_gb',
     # Plugin-native bounds (bar-drill deep links / envelope replays).
-    'min_eligible_secs', 'max_eligible_secs',
+    'min_wait_secs', 'max_wait_secs',
     'min_elapsed', 'max_elapsed', 'min_reqmem', 'max_reqmem',
     'min_memory_used', 'max_memory_used',
     'min_memory_wasted', 'max_memory_wasted',
     'scope', 'account',
 )
+
+# Superseded URL spellings of plugin-native bounds (bookmarks, older bar drills),
+# read and round-tripped under the current name by _arg.
+_LEGACY_ARG_NAMES = {
+    'min_wait_secs': 'min_eligible_secs',
+    'max_wait_secs': 'max_eligible_secs',
+}
 
 _SECS_PER_HOUR = 3600
 
@@ -522,14 +529,22 @@ _NUMERIC_LADDERS = (
     ('nodes',    'Nodes',           'min_nodes',         'max_nodes',         'min_nodes',         'max_nodes',         1),
     ('cpus',     'CPUs',            'min_cpus',          'max_cpus',          'min_cpus',          'max_cpus',          1),
     ('gpus',     'GPUs',            'min_gpus',          'max_gpus',          'min_gpus',          'max_gpus',          1),
-    ('wait',     'Wait (hours)',    'min_wait_hours',    'max_wait_hours',    'min_eligible_secs', 'max_eligible_secs', _SECS_PER_HOUR),
+    ('wait',     'Wait (hours)',    'min_wait_hours',    'max_wait_hours',    'min_wait_secs',     'max_wait_secs',     _SECS_PER_HOUR),
     ('duration', 'Elapsed (hours)', 'min_elapsed_hours', 'max_elapsed_hours', 'min_elapsed',       'max_elapsed',       _SECS_PER_HOUR),
     ('memory',   'Req mem (GB)',    'min_reqmem_gb',     'max_reqmem_gb',     'min_reqmem',        'max_reqmem',        _BYTES_PER_GB),
 )
 
 
+def _arg(name: str) -> Optional[str]:
+    """``request.args[name]``, falling back to its legacy spelling when unset."""
+    raw = request.args.get(name)
+    if not (raw or '').strip() and name in _LEGACY_ARG_NAMES:
+        raw = request.args.get(_LEGACY_ARG_NAMES[name])
+    return raw
+
+
 def _parse_int_arg(name: str) -> Optional[int]:
-    raw = (request.args.get(name) or '').strip()
+    raw = (_arg(name) or '').strip()
     if not raw:
         return None
     try:
@@ -611,9 +626,9 @@ def _parse_job_filters(include_user: bool = True) -> dict:
     min_wait = _parse_float_arg('min_wait_hours')
     max_wait = _parse_float_arg('max_wait_hours')
     if min_wait is not None:
-        f['min_eligible_secs'] = round(min_wait * _SECS_PER_HOUR)
+        f['min_wait_secs'] = round(min_wait * _SECS_PER_HOUR)
     if max_wait is not None:
-        f['max_eligible_secs'] = round(max_wait * _SECS_PER_HOUR)
+        f['max_wait_secs'] = round(max_wait * _SECS_PER_HOUR)
     for arg, target, factor in (
             ('min_elapsed_hours', 'min_elapsed', _SECS_PER_HOUR),
             ('max_elapsed_hours', 'max_elapsed', _SECS_PER_HOUR),
@@ -622,7 +637,7 @@ def _parse_job_filters(include_user: bool = True) -> dict:
         v = _parse_float_arg(arg)
         if v is not None:
             f[target] = round(v * factor)
-    for key in ('min_eligible_secs', 'max_eligible_secs',
+    for key in ('min_wait_secs', 'max_wait_secs',
                 'min_elapsed', 'max_elapsed',
                 'min_reqmem', 'max_reqmem',
                 'min_memory_used', 'max_memory_used'):
@@ -639,8 +654,8 @@ def _parse_job_filters(include_user: bool = True) -> dict:
 def _roundtrip_params(machine: str, target_id: str) -> dict:
     """Raw (display-unit) query params to carry through re-fetches."""
     params = {
-        k: request.args.get(k) for k in _ROUNDTRIP_KEYS
-        if (request.args.get(k) or '').strip()
+        k: _arg(k) for k in _ROUNDTRIP_KEYS
+        if (_arg(k) or '').strip()
     }
     days = _parse_days()
     if days is not None:
@@ -1498,7 +1513,7 @@ def _effective_native(display_key: str, native_key: str, factor: int):
 
     Two spellings reach the same filter: the panel's display-unit field
     (``min_wait_hours``) and the plugin-native one a histogram bar drill writes
-    (``min_eligible_secs``). ``_parse_job_filters`` already lets native win;
+    (``min_wait_secs``). ``_parse_job_filters`` already lets native win;
     this mirrors that precedence so the control agrees with the query.
     """
     native = _parse_int_arg(native_key)
@@ -1602,11 +1617,11 @@ def _panel_filters(machine: str) -> dict:
         'min_gpus':  _parse_int_arg('min_gpus'),
         'max_gpus':  _parse_int_arg('max_gpus'),
         # Fall back to the plugin-native spelling: a bar drill writes
-        # min_eligible_secs / min_elapsed / min_reqmem, which _parse_job_filters
+        # min_wait_secs / min_elapsed / min_reqmem, which _parse_job_filters
         # honors but the panel's own box does not, so without this the viewer
         # sees a filtered table with no visible filter and no way to clear it.
-        'min_wait_hours': _shown('min_wait_hours', 'min_eligible_secs', _SECS_PER_HOUR),
-        'max_wait_hours': _shown('max_wait_hours', 'max_eligible_secs', _SECS_PER_HOUR),
+        'min_wait_hours': _shown('min_wait_hours', 'min_wait_secs', _SECS_PER_HOUR),
+        'max_wait_hours': _shown('max_wait_hours', 'max_wait_secs', _SECS_PER_HOUR),
         'min_elapsed_hours': _shown('min_elapsed_hours', 'min_elapsed', _SECS_PER_HOUR),
         'max_elapsed_hours': _shown('max_elapsed_hours', 'max_elapsed', _SECS_PER_HOUR),
         'min_reqmem_gb': _shown('min_reqmem_gb', 'min_reqmem', _BYTES_PER_GB),

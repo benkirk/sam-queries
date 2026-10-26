@@ -250,7 +250,7 @@ def test_log_does_not_leak_into_the_band_drill_urls(
     ).get_data(as_text=True)
 
     import re
-    drills = re.findall(r'hx-get="([^"]*min_eligible_secs[^"]*)"', body)
+    drills = re.findall(r'hx-get="([^"]*min_wait_secs[^"]*)"', body)
     assert drills, 'no band drill URLs rendered'
     assert not [d for d in drills if 'log=' in d]
 
@@ -568,10 +568,20 @@ def test_a_wait_band_edge_survives_the_hours_round_trip(app):
 def test_a_bar_drill_now_shows_in_the_panel(
         app, auth_client, active_project, monkeypatch):
     """Regression: a wait/elapsed/memory histogram bar drill writes the
-    PLUGIN-native param (min_eligible_secs), which the query has always
+    PLUGIN-native param (min_wait_secs), which the query has always
     honored — but the panel's own box rendered empty, so the viewer saw a
     filtered table with no visible filter and no way to clear it without going
     back to the chart."""
+    import re
+    body = _explore_body(app, auth_client, monkeypatch, active_project.projcode,
+                         query='&min_wait_secs=3600')
+    box = re.search(r'<input[^>]*name="min_wait_hours"[^>]*>', body)
+    assert box and 'value="1.0"' in box.group(0)
+
+
+def test_a_legacy_wait_drill_url_shows_in_the_panel(
+        app, auth_client, active_project, monkeypatch):
+    """A legacy drill URL (min_eligible_secs) still fills the box."""
     import re
     body = _explore_body(app, auth_client, monkeypatch, active_project.projcode,
                          query='&min_eligible_secs=3600')
