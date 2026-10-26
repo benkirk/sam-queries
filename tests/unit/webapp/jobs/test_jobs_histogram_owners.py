@@ -41,8 +41,8 @@ def test_histogram_owner_drill_appends_user(
     m = re.search(r'id="[^"]*-b0-u1-content"\s+hx-get="([^"]+)"', body)
     assert m, 'owner drill div missing'
     url = m.group(1).replace('&amp;', '&')
-    assert 'min_eligible_secs=0' in url
-    assert 'max_eligible_secs=59' in url
+    assert 'min_wait_secs=0' in url
+    assert 'max_wait_secs=59' in url
     assert 'user=alice' in url
     assert 'machine=derecho' in url
     assert 'target_id=' in url

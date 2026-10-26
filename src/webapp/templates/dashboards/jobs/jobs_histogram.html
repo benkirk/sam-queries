@@ -37,8 +37,8 @@
    below, so the two can't drift. #}
 {% macro _missing_because(dimension) -%}
   {%- if dimension == 'wait' -%}
-    no wait measurement (queued before eligible-time collection began,
-    early 2025 on Derecho)
+    no wait measurement (PBS recorded neither an eligible time nor a
+    usable eligible timestamp)
   {%- elif dimension == 'memory_used' -%}
     no recorded memory usage
   {%- elif dimension == 'memory_wasted' -%}
