@@ -93,8 +93,8 @@ Divisional, Staff, the reserves); an unlisted name routes `staff` with its reaso
 `request_routing(session, project, family, username, *, armed) → RoutingDecision` carries one
 reason vocabulary: lever off, policy, no live family, not on the roster, action already pending.
 The gate stays the family read plus the roster (§ 4.4 of the design); the opportunity read's
-per-user `availableActionRequests` feeds the picker as the XRAS-dev-proven refinement until one
-production read confirms it there.
+per-user `availableActionRequests` and the line's `allowedActions` (both 200 as the PI on
+production, 2026-10-28) feed the picker and the resource lists.
 
 ### The tab and the forms (`webapp/dashboards/user/requests_routes.py`)
 
@@ -171,15 +171,14 @@ House shape (`create_external_ticket.sql`, `create_account_request.sql`): no for
 utf8mb4 on prose and echoed columns, app-clock timestamps, NO DROP, verification SELECTs at the
 end. The seed is an `INSERT … SELECT` joining `allocation_type` and `resources` by name: Small
 (both rows) Derecho 1,000,000 and Derecho GPU 2,500; Classroom and Exploratory 500,000 and
-1,500; Data Analysis waits for Ben's Casper number.
+1,500; Data Analysis Casper 1 (a yes, not a quota); Casper on the other three per Ben's numbers.
 
 ## 5. Items left for Thursday
 
-1. Ben's Data Analysis / Casper limit.
-2. One production read with Ben's say-so: `GET /v1/opportunities` under `submit` as a real PI.
-3. Redact the person block and commit the two captured create responses as
-   `tests/fixtures/xras/outgoing/create_exploratory_532221.json` and `create_small_532220.json`.
-4. Before the phase-2 proof: open a Large and an NSC opportunity in `xras-admin-demo`.
+1. Ben's Casper limits for Small, Exploratory and Classroom (Data Analysis is 1; nothing is published).
+2. Done 2026-10-28: the production read as benkirk (§ 9); the fixtures
+   `tests/fixtures/xras/outgoing/create_request_*.json`.
+3. Before the phase-2 proof: open a Large and an NSC opportunity in `xras-admin-demo`.
 
 ## 6. The dev proof (samuel-dev ↔ XRAS-dev)
 
@@ -245,6 +244,13 @@ and was soft-deleted afterwards.
 | Small New fully populated (1439705 / 373020: PI role 537888, attributes with `isSupportedByGrants=true`, fos 500003 primary, Derecho 530902 amount 1000, dates 2027, EUA 539637 `null`) + `POST …/grants?grantNumber=2345678&fundingAgencyId=1` | grant 174568 stored with every other field null; **validate failed** with six errors: "Supporting Grant PI Name / Title / Program Officer Name / Program Officer Email / Begin Date / End Date is required" |
 | `PUT …/grants/174568` with all six | 200; **validate successful** |
 | `DELETE /requests/1439703`, `/1439704`, `/1439705` | 200; each then answers **401 by id** (the verify signal for a deleted draft). `DELETE …/actions/373019` → 200, re-read `isDeleted: true` |
+
+**Production read, 2026-10-28** (Ben's say-so, GET only, as benkirk): `GET /v1/opportunities`
+lists the same five University and External opportunities with per-user rules (UHSS0001 offers
+Renewal; Small's `resourceIdsAvailableForNewRequest` has seven ids, Data Analysis four, none
+with Derecho); `GET /v1/requests/1449367` answers 200 with `allowedActions ["Supplement",
+"Extension","Transfer"]` and per-action resource ids. The 401 in the privilege register was for
+an identity with no role on the line.
 
 What this settles for the design: the New form's resource list comes from the opportunity's
 rules, read before any write; an Extension is two writes before validate; a grant must carry

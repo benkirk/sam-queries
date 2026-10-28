@@ -122,7 +122,7 @@ verify-by-reread go through the `report` context, the dual-context arrangement
 | Step | Endpoint | Measured behavior |
 |---|---|---|
 | Create | `POST /v1/requests?opportunityId&requestType[&requestNumber&grantTypeId]` | returns the full object **with `rules{}`**, status `Incomplete`, **the first action already minted**, `requestNumber` **null**, and the creator as **Allocation Manager, not PI**. The request's `rules{}` is only `allowedOperations`, `allowedActions` and `existingActions`: **the resource list is on the opportunity's rules** (below). A deleted draft answers **401 by id** afterwards, which is the verify signal (2026-10-27) |
-| Opportunity rules | `GET /v1/opportunities[/<id>]` under `submit` as the user | `rules{}` per opportunity: `canSubmitNewRequest`, `resourceIdsAvailableForNewRequest`, `defaultAllocationAwardPeriod` (12 months on every open one) and **`availableActionRequests`**, the actions XRAS offers *that* user per family (a user with no role sees none). The request's own `allowedActions` is advisory: XRAS accepted an Extension it did not list. Measured on XRAS-dev 2026-10-27; production's per-user answer is unprobed (§ 5) |
+| Opportunity rules | `GET /v1/opportunities[/<id>]` under `submit` as the user | `rules{}` per opportunity: `canSubmitNewRequest`, `resourceIdsAvailableForNewRequest`, `defaultAllocationAwardPeriod` (12 months on every open one) and **`availableActionRequests`**, the actions XRAS offers *that* user per family (a user with no role sees none). The request's own `allowedActions` is advisory: XRAS accepted an Extension it did not list. Measured on XRAS-dev 2026-10-27 and **on production 2026-10-28** as benkirk: UHSS0001 offers Renewal, and `GET /v1/requests/1449367` by id answers 200 with `allowedActions ["Supplement","Extension","Transfer"]` |
 | PI | `POST /v1/requests/<rid>/roles/PI/<username>` | required. One person may hold both PI and Allocation Manager. Validate and submit run as the PI: the same call passes as the PI and fails as an Allocation Manager who is not also the PI |
 | Text | `PUT /v1/requests/<rid>/attributes` | `title shortTitle abstract keywords isSupportedByGrants`. The apidoc also documents `requestType`, `grantTypeId` and `requestNumber`, which renames the request into that family (§ 4.6 item 3) |
 | Action | `POST /v1/requests/<rid>/actions?actionType[&userComments]` → `{actionId}` | accepted on `Approved`, `Incomplete` and `Submitted` lines; `userComments` sticks as a create param, so an Extension is two writes, this and `allocation_dates?endDate` alone (`beginDate` null is accepted). `DELETE …/actions/<aid>` is a **soft delete**: the row stays with `isDeleted: true`, and the line's own `isDeleted` is derived from its actions. A deleted action can hold the family's highest `actionId`, so anything that walks `actions[]` must filter it |
@@ -139,8 +139,9 @@ nothing), and the audit row is committed **before** the write leaves
 (`sam/manage/xras_remediation.py`, `_editor_op`).
 
 Two entries belong in the privilege register (`XRAS_WRITE_PROBES.md` § 7):
-- The create response is captured, because it is the only `rules{}` read our key gets on
-  production. `GET /v1/requests/<rid>` is 401 there; XRAS-dev answers it for a role-holder.
+- The create response is captured for its `rules{}`. `GET /v1/requests/<rid>` is 401 on
+  production for an identity with no role on the line and 200 for a role-holder (benkirk on
+  UHSS0001, 2026-10-28), the same as XRAS-dev.
 - The Requested stage is the only stage a SAM submission can populate.
 
 XRAS checks nothing at submit about the people on the line. A request whose PI is an
@@ -539,7 +540,13 @@ published policy:
 - **Small:** Derecho 1,000,000 core-hours, Derecho GPU 2,500 GPU-hours.
 - **Exploratory and Classroom:** 500,000 and 1,500.
 - **Large:** none.
-- **Data Analysis:** Casper only; the number is Ben's, and the pair stays unconfigured until set.
+- **Data Analysis:** Casper only, amount 1: the allocation is a yes, not a quota (Ben, 2026-10-28).
+- **Casper on Small, Exploratory and Classroom:** different per type and published nowhere; Ben
+  supplies the rows.
+
+Two published rules the table does not encode: requesting Derecho and Derecho GPU together
+reduces each limit proportionally, and a Small or Exploratory one-time supplement may reach
+twice the original. The form states them; nothing enforces them.
 
 The same limits apply to initial requests and supplements.
 
@@ -605,8 +612,8 @@ to phase 2.
 | **Which window an action lands on** (§ 4.1) | `latest_allocation` (max end date) drives the extension, supplement, adjustment and update handlers and the preflight. After a Renewal posts, a Supplement on the old line applies to the renewal's future window silently, and an Extension to a date before that window's end is refused | undecided (`XRAS_INGEST_IMPROVEMENTS.md` § 4); sprint 1's form names the window it will reach and floors the date on it |
 | **Write client gaps** | `_write` takes params only; create request, person-create, opportunity attributes, document upload, action delete, field of science, grants and publications are unbuilt. Action delete is the abort of § 4.3, so phase 1 needs it before the flow layer | sprint 1, commit 0a |
 | **DDL is two-dialect** | samuel-dev runs Postgres, production MySQL; `load_postgres.py` streams every ORM table from the local MySQL clone | one MySQL and one Postgres script per table (§ 4.2) |
-| **Per-user `availableActionRequests` on production** | measured on XRAS-dev only (§ 3.1); production's `GET /v1/requests/<rid>` is 401 and the opportunity read as a PI is unprobed there | one production read with Ben's say-so; until then the family read and the roster are the gate (§ 4.4) |
 | **Large and NSC on the demo** | XRAS-dev has no open Large or NSC opportunity (its five are the University four and External), so the Main Document and the officer-bearing grants have no target there | open one of each in `xras-admin-demo` before the phase-2 proof |
+| **Casper limits per type** | not published; Data Analysis is 1 | Ben's numbers for Small, Exploratory and Classroom, into the seed |
 | **Grant lookup depth** | validate wants the program officer; NSF's API carries it, USAspending does not | NSF first; decide USAspending when the step is built (§ 3.5) |
 | **Placeholders SAM mints** (phase 3) | SAM classifies a placeholder by its username shape alone (`PLACEHOLDER_USERNAME_RE`, `^\S+-user-\S+$`, `sam/queries/xras_accounts.py`), and fulfills an `account_request` by email. A merge into an account under a different email leaves the sweep's row open in NUSD's queue (`XRAS_DEV_PROBES.md` § 6.1, scenario 6) | SAM names its placeholders `<x>-user-<y>`; `merge_placeholder` closes the source's rows (`XRAS_POST_AUTOMATION.md` phase D, item 6) |
 | **A parked action answers 200** (§ 4.6 item 2) | XRAS shows the operator a successful post, and phase D's tickets cover New and Renewal only | ask whether a parked action opens the request's ticket too, when phase D is built |
