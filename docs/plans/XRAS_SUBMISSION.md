@@ -536,13 +536,15 @@ no editor for a maximum:
 NCAR's data agrees: two decade-old defaults and Derecho dollar values, never a maximum. ARC
 publishes the policy limits as text on its opportunities page and enforces nothing, so SAM's
 table is the only enforcement. Its seed script (both dialects, sprint 1) carries ARC's
-published policy:
-- **Small:** Derecho 1,000,000 core-hours, Derecho GPU 2,500 GPU-hours.
-- **Exploratory and Classroom:** 500,000 and 1,500.
-- **Large:** none.
-- **Data Analysis:** Casper only, amount 1: the allocation is a yes, not a quota (Ben, 2026-10-28).
-- **Casper on Small, Exploratory and Classroom:** different per type and published nowhere; Ben
-  supplies the rows.
+published policy where one exists and the snapshot's medians elsewhere (Ben, 2026-10-28:
+the default is a nice median of what active projects of the type hold, the limit a multiple
+above, and the peer-reviewed panels get a high ceiling and no default). The full table, with
+the measured medians beside each proposed value, is `XRAS_SUBMISSION_SPRINT1.md` § 4. In short:
+- **Small:** Derecho 500,000 default under the published 1,000,000 cap; Derecho GPU 1,500 under 2,500.
+- **Exploratory and Classroom:** 500,000 and 400,000 defaults under the published 500,000 cap; GPU 1,500.
+- **Casper, Casper GPU, Campaign Storage:** medians as defaults, p90 as the limit, per type.
+- **Data Analysis:** Casper 1 / 1, the allocation is a yes, not a quota.
+- **CHAP and NSC:** no default; ceilings of 500 million and 200 million Derecho core-hours.
 
 Two published rules the table does not encode: requesting Derecho and Derecho GPU together
 reduces each limit proportionally, and a Small or Exploratory one-time supplement may reach
@@ -613,7 +615,7 @@ to phase 2.
 | **Write client gaps** | `_write` takes params only; create request, person-create, opportunity attributes, document upload, action delete, field of science, grants and publications are unbuilt. Action delete is the abort of § 4.3, so phase 1 needs it before the flow layer | sprint 1, commit 0a |
 | **DDL is two-dialect** | samuel-dev runs Postgres, production MySQL; `load_postgres.py` streams every ORM table from the local MySQL clone | one MySQL and one Postgres script per table (§ 4.2) |
 | **Large and NSC on the demo** | XRAS-dev has no open Large or NSC opportunity (its five are the University four and External), so the Main Document and the officer-bearing grants have no target there | open one of each in `xras-admin-demo` before the phase-2 proof |
-| **Casper limits per type** | not published; Data Analysis is 1 | Ben's numbers for Small, Exploratory and Classroom, into the seed |
+| **The seed values** | proposed from the snapshot's medians and the published caps (`XRAS_SUBMISSION_SPRINT1.md` § 4) | Ben reviews the proposal Thursday |
 | **Grant lookup depth** | validate wants the program officer; NSF's API carries it, USAspending does not | NSF first; decide USAspending when the step is built (§ 3.5) |
 | **Placeholders SAM mints** (phase 3) | SAM classifies a placeholder by its username shape alone (`PLACEHOLDER_USERNAME_RE`, `^\S+-user-\S+$`, `sam/queries/xras_accounts.py`), and fulfills an `account_request` by email. A merge into an account under a different email leaves the sweep's row open in NUSD's queue (`XRAS_DEV_PROBES.md` § 6.1, scenario 6) | SAM names its placeholders `<x>-user-<y>`; `merge_placeholder` closes the source's rows (`XRAS_POST_AUTOMATION.md` phase D, item 6) |
 | **A parked action answers 200** (§ 4.6 item 2) | XRAS shows the operator a successful post, and phase D's tickets cover New and Renewal only | ask whether a parked action opens the request's ticket too, when phase D is built |

@@ -169,13 +169,58 @@ Per roll:
 
 House shape (`create_external_ticket.sql`, `create_account_request.sql`): no foreign keys,
 utf8mb4 on prose and echoed columns, app-clock timestamps, NO DROP, verification SELECTs at the
-end. The seed is an `INSERT … SELECT` joining `allocation_type` and `resources` by name: Small
-(both rows) Derecho 1,000,000 and Derecho GPU 2,500; Classroom and Exploratory 500,000 and
-1,500; Data Analysis Casper 1 (a yes, not a quota); Casper on the other three per Ben's numbers.
+end. The seed is an `INSERT … SELECT` joining `allocation_type` (active rows, both "Small" rows
+alike) and `resources` by name.
+
+**The seed values** (Ben, 2026-10-28: defaults are a nice median of what active projects of
+that type hold, limits a multiple above, the peer-reviewed panels get a high ceiling and no
+default). Read from the 2026-10 snapshot: every non-deleted top-level allocation live today on
+an active project, grouped by the project's allocation type and the account's resource, with
+the first transaction as the initial award:
+
+| SAM type (opportunity) | Resource | n | median | p90 | first award | **default / max** |
+|---|---|---|---|---|---|---|
+| Small (Small) | Derecho | 274 | 707,777 | 2,000,000 | 500,000 | **500,000 / 1,000,000** (published cap) |
+| | Derecho GPU | 108 | 2,500 | 5,000 | 2,500 | **1,500 / 2,500** (published cap) |
+| | Casper | 259 | 5,000 | 20,000 | 5,000 | **5,000 / 20,000** |
+| | Casper GPU | 77 | 1,500 | 6,000 | 1,500 | **1,500 / 6,000** |
+| | Campaign_Store (TB) | 142 | 5 | 15 | 5 | **5 / 20** |
+| Small (No NSF award) (Exploratory) | Derecho | 431 | 500,000 | 1,000,000 | 500,000 | **500,000 / 500,000** (published cap) |
+| | Derecho GPU | 144 | 1,500 | 1,500 | 1,500 | **1,500 / 1,500** (published cap) |
+| | Casper | 423 | 5,000 | 10,000 | 5,000 | **5,000 / 10,000** |
+| | Casper GPU | 89 | 1,000 | 5,000 | 1,000 | **1,000 / 5,000** |
+| | Campaign_Store | 116 | 5 | 10 | 5 | **5 / 10** |
+| Classroom (Classroom) | Derecho | 53 | 400,000 | 500,000 | 400,000 | **400,000 / 500,000** (published cap) |
+| | Derecho GPU | 15 | 1,500 | 5,000 | 1,500 | **1,500 / 1,500** (published cap) |
+| | Casper | 56 | 5,000 | 10,000 | 5,000 | **5,000 / 10,000** |
+| | Casper GPU | 13 | 1,500 | 4,500 | 1,500 | **1,500 / 4,500** |
+| | Campaign_Store | 3 | 2 | 4 | 2 | **2 / 5** |
+| Data (Data Analysis) | Casper | 145 | 10,000 | 25,000 | 5,000 | **1 / 1** (a yes, not a quota; the operator sets the SAM amount) |
+| | Casper GPU | 27 | 1,500 | 3,000 | 1,500 | **1 / 1** |
+| | Campaign_Store | 39 | 5 | 10 | 5 | **5 / 20** |
+| External Project (External) | Derecho | 15 | 2,000,000 | 3,900,000 | 2,000,000 | **2,000,000 / 4,000,000** |
+| | Derecho GPU | 3 | 5,000 | 37,000 | 5,000 | **5,000 / 50,000** |
+| | Casper | 13 | 10,000 | 90,000 | 10,000 | **10,000 / 100,000** |
+| | Casper GPU | 3 | 500 | 16,100 | 500 | **500 / 20,000** |
+| | Campaign_Store | 4 | 15 | 24 | 15 | **15 / 50** |
+| CHAP (Large) | Derecho | 188 | 8,353,935 | 30,000,000 | 4,000,000 | **— / 500,000,000** |
+| | Derecho GPU | 34 | 10,000 | 185,000 | 9,800 | **— / 1,000,000** |
+| | Casper | 189 | 11,000 | 50,000 | 10,000 | **— / 1,000,000** |
+| | Casper GPU | 35 | 1,500 | 5,000 | 1,000 | **— / 50,000** |
+| | Campaign_Store | 172 | 50 | 170 | 30 | **— / 2,000** |
+| NSC (NSC) | Derecho | 32 | 20,944,000 | 52,602,000 | 20,444,000 | **— / 200,000,000** |
+| | Derecho GPU | 3 | 142,300 | 198,412 | 142,000 | **— / 500,000** |
+| | Casper | 29 | 10,000 | 50,000 | 10,000 | **— / 200,000** |
+| | Casper GPU | 2 | 5,500 | 9,100 | 5,500 | **— / 20,000** |
+| | Campaign_Store | — | — | — | — | **— / 2,000** |
+
+WRAP, Divisional and Staff route by email or to staff (§ 4.4 of the design) and get no rows. A
+pair with no row means "no limit, says so". Ben reviews the bold column on Thursday; the
+numbers are a proposal from the data, not policy.
 
 ## 5. Items left for Thursday
 
-1. Ben's Casper limits for Small, Exploratory and Classroom (Data Analysis is 1; nothing is published).
+1. Ben reviews the proposed seed (§ 4): medians from the snapshot as defaults, published caps or a multiple as the limit, no defaults for CHAP and NSC.
 2. Done 2026-10-28: the production read as benkirk (§ 9); the fixtures
    `tests/fixtures/xras/outgoing/create_request_*.json`.
 3. Before the phase-2 proof: open a Large and an NSC opportunity in `xras-admin-demo`.
