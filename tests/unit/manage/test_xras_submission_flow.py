@@ -353,3 +353,22 @@ class TestTheRenewal:
             'submit': 'submit_action'}
         scopes = {c.args for c in client.reading_draft.call_args_list}
         assert scopes == {(rid, 'pi1')} and client.reading_draft.call_count == 6
+
+    @pytest.mark.parametrize('failure', [XrasWriteRejected('no renewal here', status=400),
+                                         XrasSourceUnavailable('timeout')])
+    def test_a_renew_that_never_landed_leaves_the_original_line_on_discard(self, factory,
+                                                                           failure):
+        client = _client()
+        client.renew_request.side_effect = failure
+        old = next(_IDS)
+        draft = ActionRequest(action_type='Renewal', request_number='UHSS0002', request_id=old,
+                              opportunity_id=532221, abstract='Year two.')
+        out = flow.request_action(factory, draft, actor='pi1', xa_user='pi1', eula=EULA,
+                                  client=client)
+        assert out.step == 'mint' and out.state == 'draft'
+        assert _row(factory, out.submission_id).request_id == old   # the line it renews
+
+        done = flow.abort_submission(factory, out.submission_id, actor='pi1', client=client)
+        assert done.state == 'aborted'
+        client.delete_request.assert_not_called()
+        client.delete_action.assert_not_called()

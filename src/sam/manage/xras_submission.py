@@ -446,8 +446,13 @@ def abort_submission(session_factory, submission_id: int, *, actor: str,
     if view['state'] not in ('draft', 'created', 'populated'):
         raise SubmissionRefused(f'submission {submission_id} is {view["state"]}')
     xa = view['xa_user']
+    # A row opens on the line it acts on (a Renewal: the line it renews), so only an id
+    # that differs is a line SAM minted. A refused renew leaves the original's id behind,
+    # and that line must never be deleted.
+    minted_line = (view['request_type'] in LINE_MINTING_TYPES and view['request_id']
+                   and view['request_id'] != (view['payload'] or {}).get('request_id'))
 
-    if view['request_type'] in LINE_MINTING_TYPES and view['request_id']:
+    if minted_line:
         step = ('abort', 'delete_request', lambda a, k: a.delete_request(
             k['request_id'], request_number=None, xa_user=xa))
     elif view['action_id']:
