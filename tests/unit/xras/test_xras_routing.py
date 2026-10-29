@@ -82,3 +82,40 @@ class TestTheGates:
                               project_id=-4242)
         d = request_routing(session, project, [_line()], 'pi1', armed=True)
         assert d.reason == 'pending'
+
+
+class TestTheOffers:
+    """``action_offers``: one per picker action, disabled with its reason, never hidden."""
+
+    @staticmethod
+    def _allowed():
+        from sam.xras.routing import RoutingDecision
+        return RoutingDecision('xras', request_number='UHSS0001', request_id=10)
+
+    def test_a_refused_decision_disables_every_offer_with_its_reason(self):
+        from sam.xras.routing import PICKER_ACTION_TYPES, RoutingDecision, action_offers
+        offers = action_offers(RoutingDecision('xras', reason='not_on_roster'), [],
+                               lambda t: True)
+        assert [o.action_type for o in offers] == list(PICKER_ACTION_TYPES)
+        assert {o.reason for o in offers} == {ROUTING_REASONS['not_on_roster']}
+
+    def test_an_unarmed_type_is_disabled_alone(self):
+        from sam.xras.routing import action_offers
+        offers = {o.action_type: o for o in action_offers(
+            self._allowed(), [], lambda t: t == 'Extension')}
+        assert offers['Extension'].enabled
+        assert 'not enabled here yet' in offers['Supplement'].reason
+
+    def test_a_renewal_needs_xras_to_offer_it(self):
+        from sam.xras.routing import action_offers
+        available = [{'opportunity_id': 532221, 'request_number': 'UHSS0001',
+                      'action_type': 'Renewal', 'resource_ids': [530902]},
+                     {'opportunity_id': 1, 'request_number': 'OTHER',
+                      'action_type': 'Renewal'}]
+        renewal = action_offers(self._allowed(), available, lambda t: True)[-1]
+        assert renewal.enabled and (renewal.opportunity_id, renewal.resource_ids) == \
+            (532221, (530902,))
+        assert 'offers no renewal' in action_offers(
+            self._allowed(), available[1:], lambda t: True)[-1].reason
+        assert 'did not answer' in action_offers(
+            self._allowed(), None, lambda t: True)[-1].reason

@@ -1140,6 +1140,20 @@ class TestDraftReads:
         assert client.required_documents_status(1, 3, xa_user='pi-user') == []
         assert _calls(client)[0][1].endswith('/requests/1/actions/2/required_documents_status')
 
+    def test_available_action_requests_flattens_the_opportunity_rules(self, monkeypatch):
+        offer = {'requestId': 1449367, 'requestNumber': 'UHSS0001', 'actionType': 'Renewal',
+                 'actionTypeId': 500021, 'resourceIdsAvailableForAction': [530902]}
+        opportunities = [{'opportunityId': 532220, 'rules': {'availableActionRequests': []}},
+                         {'opportunityId': 532221, 'opportunityName': 'Exploratory',
+                          'rules': {'availableActionRequests': [offer]}}]
+        client = _client(monkeypatch, [_response(200, opportunities)])
+        assert client.available_action_requests('pi-user') == [{
+            'opportunity_id': 532221, 'opportunity_name': 'Exploratory',
+            'request_id': 1449367, 'request_number': 'UHSS0001', 'action_type': 'Renewal',
+            'resource_ids': [530902]}]
+        method, url, kwargs = _calls(client)[0]
+        assert url.endswith('/v1/opportunities') and kwargs['headers']['XA-USER'] == 'pi-user'
+
     def test_required_fields_is_a_read_client_call_keyed_by_ids(self, monkeypatch):
         reader = XrasApiClient(XrasApiConfig(enabled=True, api_key='k'))
         monkeypatch.setattr(reader.session, 'request', MagicMock(

@@ -5,5 +5,6 @@ Provides dashboard view for regular users to see their projects and allocation s
 """
 
 from .blueprint import bp
+from . import requests_routes  # noqa: F401  (registers its routes on bp)
 
 __all__ = ['bp']

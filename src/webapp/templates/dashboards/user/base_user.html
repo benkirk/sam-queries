@@ -1,6 +1,6 @@
 {#
   Shared layout for the user dashboard pages
-  (/user/accounts, /user/info, /user/data).
+  (/user/accounts, /user/info, /user/data, /user/requests, ...).
 
   Provides the page header and the routable tab strip; each page fills
   {% block user_content %}. Context comes from the blueprint's
@@ -16,6 +16,7 @@
 {% set accounts_label = user.username ~ "'s Accounts" if impersonator_id else 'My Accounts' %}
 {{ page_tabs([
     {'endpoint': 'user_dashboard.accounts', 'label': accounts_label, 'icon': 'fa-solid fa-file-invoice-dollar'},
+    {'endpoint': 'user_dashboard.my_requests_page', 'label': 'My Requests', 'icon': 'fa-solid fa-paper-plane'},
     {'endpoint': 'user_dashboard.info',     'label': 'User Information', 'icon': 'fa-solid fa-circle-user'},
     {'endpoint': 'user_dashboard.my_data',  'label': 'My Data', 'icon': 'fa-solid fa-hard-drive',
      'visible': my_data_available},

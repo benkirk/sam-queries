@@ -1,0 +1,6 @@
+{#- My Requests: one readout (sam.queries.xras_my_requests.Readout) as a badge. -#}
+{%- set _TONES = {'success': 'bg-success', 'info': 'bg-info', 'attention': 'bg-warning',
+                  'danger': 'bg-danger', 'muted': 'state-tag'} -%}
+{% macro readout_badge(readout, title='') -%}
+<span class="badge {{ _TONES.get(readout.tone, 'state-tag') }}"{% if title %} title="{{ title }}"{% endif %}>{{ readout.label }}</span>
+{%- endmacro %}

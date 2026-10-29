@@ -101,3 +101,49 @@ def request_routing(session, project, family: Optional[List[Dict[str, Any]]],
         return RoutingDecision('xras', reason='pending',
                                detail=f'xras_submission {pending[0]}', **keys)
     return RoutingDecision('xras', **keys)
+
+
+#: The actions the picker offers on an existing project, in display order.
+PICKER_ACTION_TYPES = ('Extension', 'Supplement', 'Renewal')
+
+
+@dataclass(frozen=True)
+class Offer:
+    action_type: str
+    reason: Optional[str] = None                # None = may file
+    opportunity_id: Optional[int] = None
+    resource_ids: tuple = ()
+
+    @property
+    def enabled(self) -> bool:
+        return self.reason is None
+
+
+def action_offers(decision: RoutingDecision, available: Optional[List[Dict[str, Any]]],
+                  allows) -> List[Offer]:
+    """One offer per picker action, disabled with its reason, never hidden.
+
+    *available* is ``available_action_requests`` for the user (``None`` when XRAS did not
+    answer); a Renewal needs its entry, which names the opportunity to renew under.
+    *allows* is ``XrasApiConfig.submit_allows``.
+    """
+    offers = []
+    for action_type in PICKER_ACTION_TYPES:
+        if not decision.allowed:
+            offers.append(Offer(action_type, decision.message))
+        elif not allows(action_type):
+            offers.append(Offer(action_type, f'{action_type} requests through SAM are not '
+                                             'enabled here yet.'))
+        elif action_type != 'Renewal':
+            offers.append(Offer(action_type))
+        elif available is None:
+            offers.append(Offer(action_type, 'XRAS did not answer, so renewals cannot be '
+                                             'offered right now.'))
+        else:
+            entry = next((a for a in available if a.get('action_type') == 'Renewal'
+                          and a.get('request_number') == decision.request_number), None)
+            offers.append(Offer(action_type, None if entry else
+                                'XRAS offers no renewal for this project right now.',
+                                opportunity_id=(entry or {}).get('opportunity_id'),
+                                resource_ids=tuple((entry or {}).get('resource_ids') or ())))
+    return offers

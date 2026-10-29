@@ -1133,6 +1133,21 @@ class XrasAdminClient(_XrasTransport):
         return [r for r in (result or ()) if isinstance(r, dict)] \
             if isinstance(result, list) else []
 
+    def available_action_requests(self, xa_user: str) -> List[Dict[str, Any]]:
+        """The actions XRAS offers *xa_user* on existing lines, flattened across the open opportunities."""
+        result = self._get('/v1/opportunities', xa_user=xa_user)
+        out = []
+        for opp in result if isinstance(result, list) else ():
+            rules = opp.get('rules') if isinstance(opp, dict) else None
+            for offer in (rules or {}).get('availableActionRequests') or ():
+                out.append({'opportunity_id': opp.get('opportunityId'),
+                            'opportunity_name': opp.get('opportunityName'),
+                            'request_id': offer.get('requestId'),
+                            'request_number': offer.get('requestNumber'),
+                            'action_type': offer.get('actionType'),
+                            'resource_ids': offer.get('resourceIdsAvailableForAction') or []})
+        return out
+
     def _reread(self, request_id: int, xa_user: str
                 ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         """``(draft, None)``, or ``(None, why)`` when the verifying read could not be made."""

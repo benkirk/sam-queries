@@ -381,6 +381,13 @@
                     <i class="fa-solid fa-pen-to-square"></i> Manage Project
                 </a>
                 {% endif %}
+                {% if not admin_origin and ((project.lead and project.lead.user_id == user.user_id)
+                                            or (project.admin and project.admin.user_id == user.user_id)) %}
+                <a href="{{ url_for('user_dashboard.my_requests_page', projcode=project.projcode) }}"
+                   class="btn btn-sm btn-link" data-request-time>
+                    <i class="fa-solid fa-paper-plane"></i> Request time
+                </a>
+                {% endif %}
                 {% endcall %}
 
                 <!-- Resources Section -->

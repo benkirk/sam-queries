@@ -1,0 +1,106 @@
+{% extends 'dashboards/user/base_user.html' %}
+{% from 'dashboards/fragments/project_bits.html' import project_link %}
+{% from 'dashboards/fragments/collapse.html' import drill_toggle, lazy_drill_row %}
+{% from 'dashboards/fragments/xras_bits.html' import type_label %}
+{% from 'dashboards/user/partials/request_bits.html' import readout_badge %}
+{# My Requests. Context: requests (sam.queries.xras_my_requests.my_requests), projects
+   [(project, route)], open_projcode (a deep link opens that picker), submit_configured. #}
+{% block title %}My Requests - SAM{% endblock %}
+
+{% set _ROUTES = {'xras': 'Through XRAS', 'staff': 'CISL staff'} %}
+
+{% block user_content %}
+<div class="mb-3">
+    <h4 class="mb-1"><i class="fa-solid fa-paper-plane"></i> My Requests</h4>
+    <p class="text-muted mb-0">
+        Ask for more time or resources on a project you lead or administer, and follow each
+        request through review.
+    </p>
+</div>
+
+{% if not submit_configured %}
+<div class="alert alert-secondary small">
+    <i class="fa-solid fa-circle-info me-1"></i>
+    Requests through SAM are not enabled here yet. Each project below shows where its requests go.
+</div>
+{% endif %}
+
+<div class="card mb-3" id="my-requests-status">
+    <div class="card-header"><h5 class="mb-0">Your requests</h5></div>
+    <div class="card-body p-0">
+    {% if not requests %}
+        <p class="text-muted small m-3">No requests yet. Requests you file, and XRAS requests that
+            name you, appear here.</p>
+    {% else %}
+        <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead class="table-subtle">
+                <tr>
+                    <th class="col-shrink">Request</th>
+                    <th class="col-shrink">Action</th>
+                    <th>Status</th>
+                    <th class="col-shrink">Date</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for r in requests %}
+                <tr>
+                    <td class="col-shrink font-monospace text-nowrap">{{ r.request_number or 'New' }}</td>
+                    <td class="col-shrink">{{ type_label(r.action_type) }}</td>
+                    <td>{{ readout_badge(r.readout) }}
+                        {% if r.readout.when and r.readout.tone == 'success' %}
+                        <span class="small text-muted ms-1">{{ r.readout.when | fmt_date }}</span>
+                        {% endif %}
+                        {% if r.kind == 'filed' %}<span class="small text-muted ms-1">filed through SAM</span>{% endif %}
+                    </td>
+                    <td class="col-shrink text-nowrap small text-muted">{{ r.when | fmt_date }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    {% endif %}
+    </div>
+</div>
+
+<div class="card mb-3" id="my-requests-projects">
+    <div class="card-header"><h5 class="mb-0">Your projects</h5></div>
+    <div class="card-body p-0">
+    {% if not projects %}
+        <p class="text-muted small m-3">You lead or administer no active project. A project's lead
+            or administrator files its requests.</p>
+    {% else %}
+        <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead class="table-subtle">
+                <tr>
+                    <th class="col-shrink">Project</th>
+                    <th>Title</th>
+                    <th class="col-shrink d-none d-md-table-cell">Type</th>
+                    <th class="col-shrink">Requests&nbsp;go</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for project, route in projects %}
+                {% set rid = 'req-' ~ project.projcode %}
+                {% set is_open = project.projcode == open_projcode %}
+                <tr>
+                    <td class="col-shrink text-nowrap">
+                        {{ drill_toggle(rid ~ '-row', label='Show the actions', expanded=is_open) }}{{ project_link(project.projcode, True) }}
+                    </td>
+                    <td class="cell-truncate" title="{{ project.title }}">{{ project.title }}</td>
+                    <td class="col-shrink text-nowrap small d-none d-md-table-cell">{{ project.allocation_type.allocation_type if project.allocation_type else '—' }}</td>
+                    <td class="col-shrink text-nowrap small">
+                        {%- if route.startswith('email:') %}By email{% else %}{{ _ROUTES.get(route, route) }}{% endif -%}
+                    </td>
+                </tr>
+                {{ lazy_drill_row(rid, url_for('user_dashboard.my_requests_actions', projcode=project.projcode),
+                                  4, 'Asking XRAS what this project can request', persist=false, open=is_open) }}
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    {% endif %}
+    </div>
+</div>
+{% endblock %}

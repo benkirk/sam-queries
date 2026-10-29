@@ -518,3 +518,13 @@ def test_heuv_group(app, client, monkeypatch, route_count_queries, multi_project
     assert response.status_code == 200, response.data
     assert stats.count <= baseline, (
         f"HEUV group: {stats.count} queries > {baseline} baseline. {stats.summary()}")
+
+
+# ---------------------------------------------------------------------------
+# My Requests: the led projects in one query and the action-log rows in one IN query,
+# never a query per project or per request (XRAS_SUBMISSION_SPRINT1.md § 7).
+# ---------------------------------------------------------------------------
+
+def test_user_my_requests_route(auth_client, route_count_queries):
+    _route_within("user_my_requests_route", auth_client, route_count_queries,
+                  '/user/requests')

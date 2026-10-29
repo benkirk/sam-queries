@@ -3236,6 +3236,20 @@
     ]
   ],
   [
+    "user_dashboard.my_requests_actions",
+    "/user/requests/<projcode>/actions",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "user_dashboard.my_requests_page",
+    "/user/requests",
+    [
+      "GET"
+    ]
+  ],
+  [
     "user_dashboard.project_details_modal",
     "/user/project-details-modal/<projcode>",
     [

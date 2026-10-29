@@ -117,6 +117,14 @@ production, 2026-10-28) feed the picker and the resource lists.
 | `POST /user/requests/<id>/abort`, `…/resume` | owner or `MANAGE_XRAS` | the stopped-row controls |
 | `GET /user/requests/htmx/mnemonic-suggest`, `…/award-lookup` | `login_required` | the New form's pickers |
 
+- The page reads `sam/queries/xras_my_requests.py`: `my_requests` (SAM's rows, then the index
+  lines the user is on, each through one `Readout`: the `xras_action_log` row once posted, else
+  XRAS's action status) and `led_projects`. The page makes no XRAS call; a project's picker reads
+  the family, then `XrasAdminClient.available_action_requests(xa_user)` (the opportunity rules as
+  the user), and `action_offers` in the routing module turns the decision into one offer per
+  action. Renewal is offered only where that read names the line, with its opportunity;
+  Extension and Supplement follow the gate alone, since the line's `allowedActions` is advisory.
+  `?projcode=` (the card's "Request time" link) opens that project's picker on load.
 - Schemas in `sam/schemas/forms/xras_submission.py`, composed from the caps and validators of
   `forms/xras_remediation.py`; `XrasAgreementMixin` on all four.
 - The review step runs `preflight_draft` (`sam/xras/submission_preflight.py`), which builds the

@@ -256,5 +256,9 @@
     "xras_worklist_preflight": {
         "queries": 30,
         "notes": "measured 23 (2026-10-23, MySQL and Postgres): 25 failed Extensions on distinct snapshot projects plus 25 failed News, validated; flat in actions (the test also asserts 50 actions cost at most 5 more than 10). Was 463: each action re-read the resource key, opportunity map, allocation type, area of interest, overrides, users and projcode; now one seeded lookup memo (sam/xras/lookups.py). Before #861 it was 725 for the Extensions alone"
+    },
+    "user_my_requests_route": {
+        "queries": 20,
+        "notes": "measured 15 (2026-10-29, benkirk, 5 led projects): the user-page context (13 on /user/events) plus one led-projects query with its accounts selectin and one xras_submission read; the action-log IN query runs only when a row carries an action id. Flat in projects"
     }
 }

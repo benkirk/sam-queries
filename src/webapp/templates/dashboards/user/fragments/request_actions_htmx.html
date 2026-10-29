@@ -1,0 +1,35 @@
+{#- One project's request offers (GET /user/requests/<projcode>/actions). Context: project,
+    decision (sam.xras.routing.RoutingDecision, or none on an outage), outage, offers. -#}
+{% if outage %}
+<p class="small text-warning-emphasis mb-0"><i class="fa-solid fa-triangle-exclamation me-1"></i>{{ outage }}</p>
+{% else %}
+<div class="d-flex flex-wrap align-items-center gap-2">
+    {% for offer in offers %}
+    {% if offer.enabled %}
+    <span class="badge bg-success-subtle text-success-emphasis" data-offer="{{ offer.action_type }}">
+        <i class="fa-solid fa-check me-1"></i>{{ offer.action_type }} available</span>
+    {% else %}
+    <span class="badge state-tag" data-offer="{{ offer.action_type }}" title="{{ offer.reason }}">{{ offer.action_type }}</span>
+    {% endif %}
+    {% endfor %}
+    {% if decision.request_number %}
+    <span class="small text-muted ms-auto">XRAS request <span class="font-monospace">{{ decision.request_number }}</span>{% if decision.pi_username %}, PI {{ decision.pi_username }}{% endif %}</span>
+    {% endif %}
+</div>
+{% if decision.reason %}
+<p class="small text-muted mb-0 mt-2">
+    {{ decision.message }}
+    {% if decision.route == 'email' and decision.email %}
+    Write to <a href="mailto:{{ decision.email }}?subject={{ ('Request for ' ~ project.projcode) | urlencode }}">{{ decision.email }}</a>.
+    {% endif %}
+    {% if decision.detail %}<span class="d-block">{{ decision.detail }}</span>{% endif %}
+</p>
+{% else %}
+{% set _reasons = offers | rejectattr('enabled') | list %}
+{% if _reasons %}
+<ul class="small text-muted mb-0 mt-2 ps-3">
+    {% for offer in _reasons %}<li>{{ offer.action_type }}: {{ offer.reason }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% endif %}
+{% endif %}
