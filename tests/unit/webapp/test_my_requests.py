@@ -325,29 +325,75 @@ class TestResumeAndDiscard:
         assert 'Stopped at submit' in html
         assert f'/user/requests/{a_row}/resume' in html and f'/user/requests/{a_row}/abort' in html
 
-    def test_a_row_whose_document_never_went_up_offers_only_discard(self, auth_client,
-                                                                   engine):
+    @pytest.fixture
+    def lettered_row(self, engine):
+        import hashlib
         from datetime import datetime
         from sqlalchemy import delete
         from sqlalchemy.orm import Session
         from sam.integration.xras_submission import XrasSubmission
+        letter = {'document_type': 'Advisor_Letter', 'filename': 'letter.pdf',
+                  'title': 'Advisor Letter', 'bytes': 13,
+                  'sha256': hashlib.sha256(b'%PDF-1.7 body').hexdigest()}
         with Session(engine) as s:
             row = XrasSubmission.create(
                 s, action_type='New', created_by='benkirk', xa_user='benkirk',
-                payload={'documents': [{'filename': 'letter.pdf'}]}, eula_sha='a' * 40,
+                payload={'documents': [letter]}, eula_sha='a' * 40,
                 eula_accepted_at=datetime.now())
             row.stop({'step': 'attributes', 'reason': 'unverified'})
             s.commit()
             sid = row.xras_submission_id
-        try:
-            html = auth_client.get(PAGE).get_data(as_text=True)
-            assert f'/user/requests/{sid}/abort' in html
-            assert f'/user/requests/{sid}/resume' not in html
-            assert 'discard it and file again' in html and 'the request it started' in html
-        finally:
-            with engine.begin() as conn:
-                conn.execute(delete(XrasSubmission).where(
-                    XrasSubmission.xras_submission_id == sid))
+        yield sid
+        with engine.begin() as conn:
+            conn.execute(delete(XrasSubmission).where(XrasSubmission.xras_submission_id == sid))
+
+    @pytest.fixture
+    def resumed(self, monkeypatch):
+        from sam.manage import xras_submission as flow
+        seen = []
+        monkeypatch.setattr(flow, 'resume_submission',
+                            lambda f, sid, **kw: seen.append((sid, kw)))
+        return seen
+
+    def test_a_row_lacking_its_document_opens_the_resume_modal(self, auth_client,
+                                                               lettered_row):
+        html = auth_client.get(PAGE).get_data(as_text=True)
+        assert f'hx-get="/user/requests/{lettered_row}/resume"' in html
+        assert 'the request it started' in html
+        modal = auth_client.get(f'/user/requests/{lettered_row}/resume').get_data(as_text=True)
+        assert 'name="document_Advisor_Letter"' in modal and 'first attached as letter.pdf' in modal
+
+    def test_resume_hands_the_attached_letter_to_the_flow(self, auth_client, lettered_row,
+                                                          resumed):
+        from io import BytesIO
+        resp = auth_client.post(f'/user/requests/{lettered_row}/resume', data={
+            'document_Advisor_Letter': (BytesIO(b'%PDF-1.7 body'), 'renamed.pdf')},
+            content_type='multipart/form-data')
+        assert resp.headers.get('HX-Refresh') == 'true'
+        (sid, kw), = resumed
+        (doc,) = kw['documents']
+        assert (doc.document_type, doc.filename, doc.content) == \
+            ('Advisor_Letter', 'letter.pdf', b'%PDF-1.7 body')
+
+    def test_a_different_file_is_taken_and_said_so(self, auth_client, lettered_row, resumed):
+        from io import BytesIO
+        auth_client.post(f'/user/requests/{lettered_row}/resume', data={
+            'document_Advisor_Letter': (BytesIO(b'%PDF-1.7 revised'), 'letter.pdf')},
+            content_type='multipart/form-data')
+        assert resumed
+        with auth_client.session_transaction() as sess:
+            flashes = [m for _, m in sess.get('_flashes', [])]
+        assert any('different file' in m for m in flashes)
+
+    def test_a_missing_or_non_pdf_stays_in_the_modal(self, auth_client, lettered_row, resumed):
+        from io import BytesIO
+        html = auth_client.post(f'/user/requests/{lettered_row}/resume', data={},
+                                content_type='multipart/form-data').get_data(as_text=True)
+        assert 'Attach the Advisor Letter' in html
+        html = auth_client.post(f'/user/requests/{lettered_row}/resume', data={
+            'document_Advisor_Letter': (BytesIO(b'plain'), 'letter.txt')},
+            content_type='multipart/form-data').get_data(as_text=True)
+        assert 'not a PDF' in html and not resumed
 
     def test_resume_runs_the_flow_and_refreshes(self, auth_client, a_row, monkeypatch):
         from sam.manage import xras_submission as flow
@@ -356,7 +402,7 @@ class TestResumeAndDiscard:
                             lambda f, sid, **kw: seen.append((sid, kw)))
         resp = auth_client.post(f'/user/requests/{a_row}/resume')
         assert resp.headers.get('HX-Refresh') == 'true'
-        assert seen == [(a_row, {'actor': 'benkirk', 'door': 'pi'})]
+        assert seen == [(a_row, {'actor': 'benkirk', 'door': 'pi', 'documents': ()})]
 
     def test_abort_runs_the_flow(self, auth_client, a_row, monkeypatch):
         from sam.manage import xras_submission as flow

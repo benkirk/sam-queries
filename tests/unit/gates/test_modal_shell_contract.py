@@ -213,6 +213,7 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'xrasRequestModal', 'xrasRequestModalBody'],
     'dashboards/user/fragments/request_review_htmx.html': ['xrasRequestModalBody'],
     'dashboards/user/fragments/request_new_amounts_htmx.html': ['xrasRequestModalBody'],
+    'dashboards/user/fragments/request_resume_htmx.html': ['xrasRequestModalBody'],
     # Loaded only into admin/configuration.html, which ships both limit shells.
     'dashboards/admin/fragments/allocation_limits_card.html': [
         'createAllocationLimitFormContainer', 'createAllocationLimitModal'],

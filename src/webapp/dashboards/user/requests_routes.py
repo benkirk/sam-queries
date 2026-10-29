@@ -759,18 +759,63 @@ def _refresh():
     return resp
 
 
+_RESUME = 'dashboards/user/fragments/request_resume_htmx.html'
+
+
+def _resume_documents(row):
+    """``(documents, error, notes)`` from the uploads for the documents *row* still lacks."""
+    import hashlib
+    from sam.manage.xras_submission import SubmissionDocument
+    from sam.queries.xras_my_requests import missing_documents
+    from sam.xras.submission_preflight import document_refusal
+    documents, notes = [], []
+    for wanted in missing_documents(row):
+        label = wanted.get('title') or wanted['document_type']
+        upload = request.files.get(f"document_{wanted['document_type']}")
+        if upload is None or not upload.filename:
+            return [], f'Attach the {label}.', []
+        content = upload.read()
+        why = document_refusal(upload.filename, content)
+        if why:
+            return [], why, []
+        if wanted.get('sha256') and hashlib.sha256(content).hexdigest() != wanted['sha256']:
+            notes.append(f'The {label} is a different file than the first time.')
+        # The stored name keeps the payload match (ActionRequest.from_payload, by filename).
+        documents.append(SubmissionDocument(wanted['document_type'], wanted['filename'],
+                                            content, title=wanted.get('title')))
+    return documents, None, notes
+
+
+@bp.route('/requests/<int:submission_id>/resume')
+@login_required
+def my_request_resume_fragment(submission_id):
+    """The documents a stopped row needs again, into ``#xrasRequestModalBody``."""
+    from sam.queries.xras_my_requests import missing_documents
+    row = _owned_submission(submission_id)
+    return render_template(_RESUME, row=row, missing=missing_documents(row), error=None)
+
+
 @bp.route('/requests/<int:submission_id>/resume', methods=['POST'])
 @login_required
 def my_request_resume(submission_id):
     from sam.manage import xras_submission as flow
+    from sam.queries.xras_my_requests import missing_documents
     row = _owned_submission(submission_id)
     door = 'pi' if current_user.username == row.xa_user else 'admin'
+    documents, notes = (), []
+    if missing_documents(row):
+        documents, error, notes = _resume_documents(row)
+        if error:
+            return render_template(_RESUME, row=row, missing=missing_documents(row),
+                                   error=error)
     try:
-        flow.resume_submission(_session_factory, submission_id,
-                               actor=current_user.username, door=door)
+        flow.resume_submission(_session_factory, submission_id, actor=current_user.username,
+                               door=door, documents=tuple(documents))
     except (flow.SubmissionRefused, LookupError, XrasSourceUnavailable) as exc:
         current_app.logger.warning('my requests resume %s: %s', submission_id, exc)
         flash(str(exc), 'warning')
+    for note in notes:
+        flash(note, 'info')
     return _refresh()
 
 

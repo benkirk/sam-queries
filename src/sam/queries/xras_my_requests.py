@@ -58,11 +58,12 @@ def stopped_step(row) -> Optional[str]:
         return 'a step'
 
 
-def resumable(row) -> bool:
-    """Resume can finish *row*: every document it names has gone up (the bytes are never kept)."""
+def missing_documents(row) -> List[Dict[str, Any]]:
+    """The documents *row* names that never went up: a resume must be handed them again,
+    since SAM keeps a document's name and digest, never its bytes."""
     steps = row.steps
-    return all(f"document:{d.get('filename')}" in steps
-               for d in row.payload_dict.get('documents') or ())
+    return [d for d in row.payload_dict.get('documents') or ()
+            if f"document:{d.get('filename')}" not in steps]
 
 
 def submission_readout(row, log=None, action_status: Optional[str] = None) -> Readout:
@@ -131,7 +132,8 @@ def my_requests(session, username: str,
         rows.append(dict(kind='filed', request_number=sub.request_number,
                          action_type=sub.action_type, readout=readout,
                          when=sub.submitted_time or sub.creation_time, submission=sub,
-                         open=sub.is_active, resumable=sub.is_active and resumable(sub)))
+                         open=sub.is_active,
+                         needs_documents=missing_documents(sub) if sub.is_active else []))
     for number in numbers:
         action = latest.get(number)
         if action is None or action['action_id'] in shown:
@@ -142,7 +144,7 @@ def my_requests(session, username: str,
                          readout=action_readout(action.get('action_status'),
                                                 logs.get(action['action_id']), entered,
                                                 (action.get('preflight') or {}).get('push_state')),
-                         when=entered, submission=None, open=False, resumable=False))
+                         when=entered, submission=None, open=False, needs_documents=[]))
     rows.sort(key=lambda r: (not r['open'], -_ordinal(r['when'])))
     return rows
 

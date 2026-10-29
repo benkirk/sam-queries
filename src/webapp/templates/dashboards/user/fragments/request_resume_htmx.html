@@ -1,0 +1,26 @@
+{#- Resume a stopped row that lacks its documents, into #xrasRequestModalBody: SAM keeps a
+    document's name and digest, never its bytes, so the PI attaches each again. Context: row
+    (XrasSubmission), missing (payload document entries), error. -#}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{{ modal_title('xrasRequestModalLabel', 'Resume the ' ~ row.action_type ~ (' request' if row.action_type == 'New' else ''), 'paper-plane', meta=row.request_number) }}
+<form hx-post="{{ url_for('user_dashboard.my_request_resume', submission_id=row.xras_submission_id) }}"
+      hx-target="#xrasRequestModalBody" hx-swap="innerHTML" hx-encoding="multipart/form-data"
+      hx-disabled-elt="find button[type='submit']" hx-disinherit="hx-disabled-elt" novalidate>
+    <div class="modal-body">
+        <p class="small mb-2">SAM keeps no copy of a document, so attach it again. The steps
+            already done in XRAS are not repeated.</p>
+        {% for d in missing %}
+        <div class="mb-2">
+            <label for="xrasResumeDoc{{ loop.index }}" class="form-label small mb-1">{{ d.title or d.document_type }} <span class="text-danger">*</span>
+                <span class="text-muted">(PDF; first attached as {{ d.filename }})</span></label>
+            <input type="file" class="form-control form-control-sm" id="xrasResumeDoc{{ loop.index }}"
+                   name="document_{{ d.document_type }}" accept="application/pdf,.pdf">
+        </div>
+        {% endfor %}
+        {% if error %}<p class="small text-danger-emphasis mb-0"><i class="fa-solid fa-circle-exclamation me-1"></i>{{ error }}</p>{% endif %}
+    </div>
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-paper-plane"></i> Resume</button>
+    </div>
+</form>

@@ -11,8 +11,8 @@ from sam.integration.xras_submission import XrasSubmission
 from sam.queries.xras_my_requests import (
     action_readout,
     led_projects,
+    missing_documents,
     my_requests,
-    resumable,
     submission_readout,
 )
 
@@ -126,15 +126,15 @@ class TestLedProjects:
                    for p in found)
 
 
-class TestResumable:
+class TestMissingDocuments:
 
     def _row(self, documents, steps):
         return SimpleNamespace(payload_dict={'documents': documents}, steps=steps)
 
-    def test_a_row_without_documents_resumes(self):
-        assert resumable(self._row([], {'mint': 1}))
+    def test_a_row_without_documents_needs_none(self):
+        assert missing_documents(self._row([], {'mint': 1})) == []
 
-    def test_a_document_never_sent_cannot_resume(self):
-        letter = [{'filename': 'letter.pdf'}]
-        assert not resumable(self._row(letter, {'mint': 1, 'attributes': 2}))
-        assert resumable(self._row(letter, {'mint': 1, 'document:letter.pdf': 3}))
+    def test_a_document_never_sent_is_needed_again(self):
+        letter = [{'filename': 'letter.pdf', 'document_type': 'Advisor_Letter'}]
+        assert missing_documents(self._row(letter, {'mint': 1, 'attributes': 2})) == letter
+        assert missing_documents(self._row(letter, {'document:letter.pdf': 3})) == []

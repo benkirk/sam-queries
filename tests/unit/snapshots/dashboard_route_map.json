@@ -3285,6 +3285,13 @@
     ]
   ],
   [
+    "user_dashboard.my_request_resume_fragment",
+    "/user/requests/<int:submission_id>/resume",
+    [
+      "GET"
+    ]
+  ],
+  [
     "user_dashboard.my_requests_actions",
     "/user/requests/<projcode>/actions",
     [

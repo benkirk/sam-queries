@@ -275,6 +275,13 @@ class TestDocuments:
         assert 'attach plan.pdf again' in again.error
         client.upload_document.assert_not_called()
 
+        client.add_action.return_value = _ok('add_action', action_id=client.action_id)
+        client.upload_document.return_value = _ok('upload_document')
+        done = flow.resume_submission(factory, out.submission_id, actor='pi1',
+                                      documents=(doc,), client=client)
+        assert done.succeeded and done.state == 'submitted'
+        assert client.upload_document.call_args.kwargs['content'] == b'%PDF-1.7 body'
+
 
 class TestRefusals:
 
