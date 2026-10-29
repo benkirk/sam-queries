@@ -37,3 +37,51 @@
 {%- endif %}
 </div>
 {%- endmacro %}
+
+{#- The amount per resource, each with its type's limit (r.limit) and default; a renewal pre-fills
+    only what the line already holds (r.prefill is false otherwise). -#}
+{% macro amounts_table(resources, form, field_errors) -%}
+<table class="table table-sm align-middle mb-2">
+    <thead class="table-subtle">
+        <tr><th>Resource</th><th class="col-num">Amount</th><th class="col-shrink">Limit</th></tr>
+    </thead>
+    <tbody>
+    {% for r in resources %}
+        {% set _name = 'amount_' ~ r.resource_id %}
+        {% set _err = (field_errors or {}).get(_name) %}
+        {% set _default = r.limit.default_amount if r.limit and r.limit.default_amount is not none
+                          and r.prefill is not false else '' %}
+        <tr>
+            <td><label for="xrasRequestAmount{{ r.resource_id }}" class="mb-0">{{ r.name }}</label>
+                {% if r.units %}<span class="small text-muted">{{ r.units }}</span>{% endif %}</td>
+            <td class="col-num">
+                <input type="text" inputmode="decimal" class="form-control form-control-sm text-end ctl-w-sm{{ ' is-invalid' if _err }}"
+                       id="xrasRequestAmount{{ r.resource_id }}" name="{{ _name }}"
+                       value="{{ form.get(_name) if form and form.get(_name) is not none else ('%g' | format(_default) if _default != '' else '') }}">
+                {% if _err %}<div class="invalid-feedback d-block text-start">{{ _err[0] }}</div>{% endif %}
+            </td>
+            <td class="col-shrink text-nowrap small text-muted">
+                {%- if r.limit and r.limit.max_amount is not none %}up to {{ r.limit.max_amount | fmt_number }}{% else %}—{% endif -%}
+            </td>
+        </tr>
+    {% else %}
+        <tr><td colspan="3" class="text-muted small">This request names no resources.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+<p class="form-text mt-0">Leave a resource blank to ask for none of it.</p>
+{%- endmacro %}
+
+{#- Hidden inputs that carry an earlier page's answers forward, from the posted form. -#}
+{% macro carry(form, names) -%}
+{%- for name in names if form and form.get(name) %}<input type="hidden" name="{{ name }}" value="{{ form.get(name) }}">{% endfor -%}
+{%- endmacro %}
+
+{#- One supporting grant on a review. -#}
+{% macro grant_facts(grant) -%}
+{%- if grant %}
+<dt class="col-sm-4">Grant</dt>
+<dd class="col-sm-8"><span class="font-monospace">{{ grant.grantNumber }}</span>{% if grant.title %}, {{ grant.title }}{% endif %}
+    {%- if grant.beginDate or grant.endDate %} <span class="text-muted">({{ grant.beginDate | fmt_date }} to {{ grant.endDate | fmt_date }})</span>{% endif %}</dd>
+{%- endif %}
+{%- endmacro %}

@@ -121,6 +121,13 @@ def _date_str(value: Any) -> Optional[str]:
     return str(value)[:10]
 
 
+def _read_text(value: Any) -> str:
+    """A read-back field as sent text: a JSON boolean reads ``true``/``false``."""
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    return str(value or '').strip()
+
+
 def _first_action_id(payload: Any) -> Optional[int]:
     """The ``actionId`` a create or renew minted with its line, or ``None``."""
     actions = payload.get('actions') if isinstance(payload, dict) else None
@@ -893,8 +900,7 @@ class XrasAdminClient(_XrasTransport):
         """
         if source is None:
             return False
-        return all(str(source.get(k) or '').strip() == v.strip()
-                   for k, v in params.items())
+        return all(_read_text(source.get(k)) == v.strip() for k, v in params.items())
 
     def update_request_attributes(self, request_id: int, *,
                                   request_number: str, xa_user: str,
@@ -1164,36 +1170,54 @@ class XrasAdminClient(_XrasTransport):
         Each carries its opportunity's allocation type, award period, named resources and the
         required End User Agreement attribute (``eua_attribute_id``), which a renewal echoes.
         """
-        result = self._get('/v1/opportunities', xa_user=xa_user)
         out = []
+        for opp, view, named in self._opportunities(xa_user):
+            for offer in (opp.get('rules') or {}).get('availableActionRequests') or ():
+                ids = offer.get('resourceIdsAvailableForAction') or []
+                out.append(dict(view, request_id=offer.get('requestId'),
+                                request_number=offer.get('requestNumber'),
+                                action_type=offer.get('actionType'), resource_ids=ids,
+                                resources=named(ids)))
+        return out
+
+    def new_request_opportunities(self, xa_user: str) -> List[Dict[str, Any]]:
+        """The open opportunities as *xa_user* sees them for a New: whether XRAS lets them
+        file one (``can_submit``, else ``reason``) and the resources it offers there."""
+        out = []
+        for opp, view, named in self._opportunities(xa_user):
+            rules = opp.get('rules') or {}
+            ids = rules.get('resourceIdsAvailableForNewRequest') or []
+            out.append(dict(view, can_submit=rules.get('canSubmitNewRequest') is True,
+                            reason=rules.get('noAvailableActionsReason'), resource_ids=ids,
+                            resources=named(ids)))
+        return sorted(out, key=lambda o: o['opportunity_name'] or '')
+
+    def _opportunities(self, xa_user: str):
+        """``(opportunity, view, named(ids))`` per open opportunity, read as *xa_user* (rules are per user)."""
+        result = self._get('/v1/opportunities', xa_user=xa_user)
         for opp in result if isinstance(result, list) else ():
-            rules = opp.get('rules') if isinstance(opp, dict) else None
-            kind = opp.get('allocationTypeInfo') or {} if isinstance(opp, dict) else {}
+            if not isinstance(opp, dict):
+                continue
+            kind = opp.get('allocationTypeInfo') or {}
             named = {r.get('resourceId'): r for r in opp.get('resources') or ()
-                     if isinstance(r, dict)} if isinstance(opp, dict) else {}
+                     if isinstance(r, dict)}
             eua = next((a.get('opportunityAttributeId')
                         for group in opp.get('attributeSets') or ()
                         if 'End User Agreement' in (group.get('attributeSetName') or '')
-                        for a in group.get('attributes') or () if a.get('isRequired')),
-                       None) if isinstance(opp, dict) else None
-            for offer in (rules or {}).get('availableActionRequests') or ():
-                ids = offer.get('resourceIdsAvailableForAction') or []
-                out.append({'opportunity_id': opp.get('opportunityId'),
-                            'opportunity_name': opp.get('opportunityName'),
-                            'allocation_type_id': kind.get('allocationTypeId'),
-                            'allocation_type': kind.get('allocationType'),
-                            'award_months': opp.get('defaultAllocationAwardPeriod'),
-                            'eua_attribute_id': eua,
-                            'request_id': offer.get('requestId'),
-                            'request_number': offer.get('requestNumber'),
-                            'action_type': offer.get('actionType'),
-                            'resource_ids': ids,
-                            'resources': [{'resource_id': rid,
-                                           'name': (named.get(rid) or {}).get('displayResourceName')
-                                           or f'resource {rid}',
-                                           'units': (named.get(rid) or {}).get('resourceUnits') or ''}
-                                          for rid in ids]})
-        return out
+                        for a in group.get('attributes') or () if a.get('isRequired')), None)
+
+            def resources(ids, named=named):
+                return [{'resource_id': rid,
+                         'name': (named.get(rid) or {}).get('displayResourceName')
+                         or f'resource {rid}',
+                         'units': (named.get(rid) or {}).get('resourceUnits') or ''}
+                        for rid in ids]
+            yield opp, {'opportunity_id': opp.get('opportunityId'),
+                        'opportunity_name': opp.get('opportunityName'),
+                        'allocation_type_id': kind.get('allocationTypeId'),
+                        'allocation_type': kind.get('allocationType'),
+                        'award_months': opp.get('defaultAllocationAwardPeriod'),
+                        'eua_attribute_id': eua}, resources
 
     def _reread(self, request_id: int, xa_user: str
                 ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:

@@ -302,7 +302,7 @@ modal has the same gap: it creates a bare action and stops.
 | **SAM owns the agreement, on every action.** Gentle acceptance (a checkbox beside the submit, the text one click away, no scroll gate) on Extension and Supplement too; `eula_sha` and `eula_accepted_at` on every row. XRAS's attribute sets are deprecated at the production pivot | one agreement, one record, whichever door |
 | **Upload limits are hooks, dark at rollout**: `SUBMISSION_DOCUMENT_MAX_BYTES` and `SUBMISSION_DOCUMENT_MAX_PAGES`, unset means no SAM-side bound; the PDF check and XRAS's own refusal are the real bounds, the rule book's page limit is shown as advice | XRAS took a 15 MB PDF |
 | **Logging is enough to diagnose, not pedantic**: one log line per flow step and XRAS's `errors[]` kept whole on the row | |
-| **Grants are lookup-then-confirm**: the award number goes to the registry, the six fields XRAS validates are prefilled from `AwardRecord`, and only the unavailable ones are typed. NSF first; whether USAspending stays (it lacks the program officer) is decided when the step is built | |
+| **Grants are lookup-then-confirm**: the award number goes to the registry, the six fields XRAS validates are prefilled from `AwardRecord`, and only the unavailable ones are typed. NSF only (2a, 2026-10-29): USAspending lacks the program officer validate demands, so any other award is typed | |
 | **Rollout**: the PR branch rolls to samuel-dev by workflow dispatch as often as needed; Ben applies the Postgres DDL to `sam_dev` by hand; staging and production MySQL follow at convergence | DDL ships in two dialects (§ 4.2) |
 
 ## 4. The design

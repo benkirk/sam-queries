@@ -99,6 +99,51 @@ def draft_action(draft) -> Dict[str, Any]:
     return action
 
 
+def _wire_opportunity(opportunity: Mapping[str, Any]) -> Dict[str, Any]:
+    return {'opportunityId': opportunity.get('opportunity_id'),
+            'opportunityName': opportunity.get('opportunity_name'),
+            'allocationType': opportunity.get('allocation_type'), 'requestNumber': None}
+
+
+def new_request_sam_state(session, opportunity: Mapping[str, Any], pi) -> Dict[str, Any]:
+    """What the New handler's ladder resolves for *pi* under *opportunity*: ``allocation_type``,
+    ``mnemonic`` (rows or ``None``), ``affiliation`` and ``mnemonic_errors``."""
+    from sam.xras.errors import ActionErrors
+    from sam.xras.extractors import (
+        best_institution,
+        best_organization,
+        resolve_allocation_type,
+        resolve_mnemonic_code,
+    )
+    action = _wire_opportunity(opportunity)
+    type_errors, mnemonic_errors = ActionErrors(), ActionErrors()
+    allocation_type = resolve_allocation_type(session, action, type_errors)
+    mnemonic = resolve_mnemonic_code(session, action, mnemonic_errors,
+                                     pi_username=pi.username if pi else None, pi=pi)
+    where = (best_institution(pi) or best_organization(pi)) if pi else None
+    return {'allocation_type': allocation_type, 'mnemonic': mnemonic,
+            'affiliation': getattr(where, 'name', None), 'mnemonic_errors': list(mnemonic_errors)}
+
+
+#: The push spells the agency by name; ``add_grant`` sends its id.
+_NSF_NAME = 'National Science Foundation'
+
+
+def new_request_line(draft, *, pi_username: str, opportunity: Mapping[str, Any],
+                     fos: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+    """The reports-shaped line a New *draft* would become: no ids, the roster SAM will add."""
+    roles = [{'person': {'username': pi_username}, 'roles': [{'role': 'PI'}]}]
+    if draft.admin_username:
+        roles.append({'person': {'username': draft.admin_username},
+                      'roles': [{'role': 'Allocation Manager'}]})
+    grants = [{**{k: v for k, v in g.items() if k != 'fundingAgencyId'},
+               'fundingAgency': _NSF_NAME} for g in draft.grants]
+    return {**_wire_opportunity(opportunity), 'requestId': None, 'requestType': 'New',
+            'requestStatus': 'Incomplete', 'title': draft.title, 'abstract': draft.abstract,
+            'roles': roles, 'fos': [dict(fos, isPrimary=True)] if fos else [],
+            'grants': grants}
+
+
 def preflight_draft(session, line: Mapping[str, Any], draft, *,
                     resource_keys: Optional[Mapping[int, int]] = None,
                     opportunities: Optional[Mapping[int, dict]] = None):

@@ -291,6 +291,7 @@ from .xras_remediation import (
 from .xras_submission import (
     XrasAddActionAgreementForm,
     XrasExtensionRequestForm,
+    XrasNewRequestForm,
     XrasRenewalRequestForm,
     XrasSupplementRequestForm,
 )
@@ -415,7 +416,7 @@ __all__ = [
     'XrasAddActionForm',
     'XrasRequestOverrideForm',
     'XrasExtensionRequestForm', 'XrasSupplementRequestForm', 'XrasRenewalRequestForm',
-    'XrasAddActionAgreementForm',
+    'XrasNewRequestForm', 'XrasAddActionAgreementForm',
     'XrasActionSchema',
     'XrasActionResourceSchema',
     'XrasActionRoleSchema',

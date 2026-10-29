@@ -205,6 +205,8 @@ def _plan(draft: ActionRequest, view: Dict[str, Any]) -> List[Tuple[str, str, Ca
     steps: List[Tuple[str, str, Callable]] = []
     fields = {k: v for k, v in (('title', draft.title), ('abstract', draft.abstract),
                                 ('keywords', draft.keywords)) if v is not None}
+    if draft.grants:
+        fields['isSupportedByGrants'] = 'true'
     if fields:
         steps.append(('attributes', 'update_attributes', lambda a, k: a.update_request_attributes(
             k['request_id'], request_number=k['request_number'], xa_user=xa, **fields)))
@@ -322,11 +324,14 @@ def _drive(session_factory, draft: ActionRequest, view, *, submit: bool,
     statuses = _step_statuses(session_factory, view['steps'])
     done = {step for step, status in statuses.items() if status == 'verified'}
 
-    def run(phase, by_id=False):
+    minted = draft.action_type in LINE_MINTING_TYPES
+
+    def run(phase):
         for step, operation, dispatch in phase:
             if step in done:
                 continue
-            if by_id:
+            # The mint has no line to read yet; every later step on a minted line is a draft's.
+            if minted and step != 'mint':
                 dispatch = _by_id(dispatch, view['xa_user'])
             if operation in ADDING_OPERATIONS and statuses.get(step) not in (None, 'rejected'):
                 return _stop(session_factory, view, step, reason=(
@@ -350,9 +355,8 @@ def _drive(session_factory, draft: ActionRequest, view, *, submit: bool,
     if view['state'] == 'created' and missing:
         return _stop(session_factory, view, f'document:{missing[0]}',
                      reason=f'attach {", ".join(missing)} again to continue')
-    minted = draft.action_type in LINE_MINTING_TYPES
     if view['state'] == 'created' and populate:
-        stopped = run(populate, by_id=minted)
+        stopped = run(populate)
         if stopped:
             return stopped
         _advance(session_factory, view, 'populated')
@@ -360,7 +364,7 @@ def _drive(session_factory, draft: ActionRequest, view, *, submit: bool,
     if submit and view['state'] in ('created', 'populated'):
         stopped = run([('submit', 'submit_action', lambda a, k: a.submit_action(
             k['request_id'], k['action_id'], request_number=k['request_number'],
-            xa_user=view['xa_user'], preflight=True))], by_id=minted)
+            xa_user=view['xa_user'], preflight=True))])
         if stopped:
             return stopped
         _advance(session_factory, view, 'submitted')

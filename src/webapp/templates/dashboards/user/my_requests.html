@@ -6,7 +6,7 @@
 {% from 'dashboards/fragments/modals.html' import modal_scaffold %}
 {# My Requests. Context: requests (sam.queries.xras_my_requests.my_requests), projects
    [(project, route)], open_projcode (a deep link opens that picker), submit_configured,
-   can_manage_xras (Resume/Discard on anyone's open row). #}
+   new_enabled (the New opener), can_manage_xras (Resume/Discard on anyone's open row). #}
 {% block title %}My Requests - SAM{% endblock %}
 
 {% set _ROUTES = {'xras': 'Through XRAS', 'staff': 'CISL staff'} %}
@@ -15,8 +15,8 @@
 <div class="mb-3">
     <h4 class="mb-1"><i class="fa-solid fa-paper-plane"></i> My Requests</h4>
     <p class="text-muted mb-0">
-        Ask for more time or resources on a project you lead or administer, and follow each
-        request through review.
+        Start a new project, ask for more time or resources on one you lead or administer, and
+        follow each request through review.
     </p>
 </div>
 
@@ -83,7 +83,20 @@
 </div>
 
 <div class="card mb-3" id="my-requests-projects">
-    <div class="card-header"><h5 class="mb-0">Your projects</h5></div>
+    <div class="card-header d-flex align-items-center gap-2">
+        <h5 class="mb-0">Your projects</h5>
+        {% if new_enabled %}
+        <button type="button" class="btn btn-sm btn-primary ms-auto" id="xrasNewRequestOpen"
+                data-bs-toggle="modal" data-bs-target="#xrasRequestModal"
+                hx-get="{{ url_for('user_dashboard.my_request_new') }}"
+                hx-target="#xrasRequestModalBody" hx-swap="innerHTML">
+            <i class="fa-solid fa-plus me-1"></i>New request</button>
+        {% else %}
+        <button type="button" class="btn btn-sm btn-secondary ms-auto" disabled
+                title="New requests through SAM are not enabled here">
+            <i class="fa-solid fa-plus me-1"></i>New request</button>
+        {% endif %}
+    </div>
     <div class="card-body p-0">
     {% if not projects %}
         <p class="text-muted small m-3">You lead or administer no active project. A project's lead
@@ -123,5 +136,5 @@
     </div>
 </div>
 
-{{ modal_scaffold('xrasRequestModal', 'Request', 'paper-plane', 'xrasRequestModalBody', size='lg') }}
+{{ modal_scaffold('xrasRequestModal', 'Request', 'paper-plane', container_id='xrasRequestModalBody', size='lg') }}
 {% endblock %}

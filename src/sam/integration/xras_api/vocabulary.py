@@ -111,6 +111,9 @@ REQUEST_TYPES = {'New': 6, 'Renewal': 7}
 #: The action types SAM files for a user, in the order the picker offers them.
 SUBMIT_ACTION_TYPES = ('Extension', 'Supplement', 'Renewal', 'New')
 
+#: ``GET /v1/funding_agencies``: NSF, the one agency SAM looks a grant up for (XRAS_DEV_PROBES § 2).
+NSF_FUNDING_AGENCY_ID = 1
+
 _ACTION_BY_NAME = {name.casefold(): name for name in ACTION_TYPES}
 
 

@@ -851,6 +851,15 @@ class TestMetadataVerbs:
         assert kwargs['params'] == {'shortTitle': ''}
         assert result.verified is True
 
+    def test_a_boolean_reads_back_as_the_text_sent(self, monkeypatch):
+        before = self._attr_payload(isSupportedByGrants=None)
+        after = self._attr_payload(isSupportedByGrants=True)
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(before, after))
+        result = client.update_request_attributes(
+            900001, request_number='EXAM0001', xa_user='pi-user', isSupportedByGrants='true')
+        assert result.verified is True
+
     def test_update_action_puts_to_the_action_and_verifies(self, monkeypatch):
         before = _reports_with(resources=[])
         before['actions'][0]['userComments'] = 'old'
@@ -1166,6 +1175,25 @@ class TestDraftReads:
                                                      'units': 'Core-hours'}]}]
         method, url, kwargs = _calls(client)[0]
         assert url.endswith('/v1/opportunities') and kwargs['headers']['XA-USER'] == 'pi-user'
+
+    def test_new_request_opportunities_carry_the_users_rules(self, monkeypatch):
+        opportunities = [
+            {'opportunityId': 532221, 'opportunityName': 'Exploratory',
+             'allocationTypeInfo': {'allocationTypeId': 500847, 'allocationType': 'Exploratory'},
+             'resources': [{'resourceId': 530902, 'displayResourceName': 'NSF NCAR Derecho',
+                            'resourceUnits': 'Core-hours'}],
+             'rules': {'canSubmitNewRequest': True,
+                       'resourceIdsAvailableForNewRequest': [530902]}},
+            {'opportunityId': 532220, 'opportunityName': 'Small',
+             'rules': {'canSubmitNewRequest': False,
+                       'noAvailableActionsReason': 'Closed to you'}}]
+        client = _client(monkeypatch, [_response(200, opportunities)])
+        exploratory, small = client.new_request_opportunities('pi-user')
+        assert (small['can_submit'], small['reason'], small['resources']) == \
+            (False, 'Closed to you', [])
+        assert exploratory['can_submit'] and exploratory['resources'] == [
+            {'resource_id': 530902, 'name': 'NSF NCAR Derecho', 'units': 'Core-hours'}]
+        assert exploratory['allocation_type_id'] == 500847
 
     def test_required_fields_is_a_read_client_call_keyed_by_ids(self, monkeypatch):
         reader = XrasApiClient(XrasApiConfig(enabled=True, api_key='k'))

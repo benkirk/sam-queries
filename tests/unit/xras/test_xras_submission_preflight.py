@@ -10,6 +10,8 @@ from sam.xras.submission_preflight import (
     extension_floor,
     limit_refusals,
     line_resources,
+    new_request_line,
+    new_request_sam_state,
     preflight_draft,
 )
 
@@ -86,6 +88,54 @@ class TestTheVerdict:
             action_type='Extension', request_number='UHSS0001',
             dates=(None, extension_floor(uhss0001) + timedelta(days=365))))
         assert verdict.status == 'rechecked' and verdict.service == 'extend'
+
+
+_EXPLORATORY = {'opportunity_id': 532221, 'allocation_type': 'Exploratory',
+                'opportunity_name': 'Exploratory Allocation (University)'}
+
+
+class TestTheNew:
+
+    def _draft(self, **kw):
+        return ActionRequest(action_type='New', opportunity_id=532221, title='T',
+                             abstract='Regional runs.', resources=(ResourceAmount(530902, 1e3),),
+                             dates=(date(2026, 12, 1), date(2027, 11, 30)), **kw)
+
+    def test_the_line_carries_the_roster_sam_will_add_and_the_grant_by_name(self):
+        draft = self._draft(admin_username='adm1',
+                            grants=({'grantNumber': '2345678', 'fundingAgencyId': 1},))
+        line = new_request_line(draft, pi_username='pi1', opportunity=_EXPLORATORY,
+                                fos={'fosTypeId': 500003, 'fosNum': '1'})
+        assert (line['requestNumber'], line['requestType'], line['opportunityId']) == \
+            (None, 'New', 532221)
+        assert [(r['person']['username'], r['roles'][0]['role']) for r in line['roles']] == \
+            [('pi1', 'PI'), ('adm1', 'Allocation Manager')]
+        assert line['grants'] == [{'grantNumber': '2345678',
+                                   'fundingAgency': 'National Science Foundation'}]
+        assert line['fos'] == [{'fosTypeId': 500003, 'fosNum': '1', 'isPrimary': True}]
+
+    def test_the_ladder_readout_and_the_verdict_speak_the_same_words(self, session):
+        from sam.core.users import User
+        from sam.integration.xras import XrasResourceRepositoryKeyResource
+        pi = User.get_by_username(session, 'benkirk')
+        key = next((k.resource_repository_key for k in session.query(
+            XrasResourceRepositoryKeyResource) if k.resource
+            and k.resource.resource_name == 'Derecho'), None)
+        if pi is None or key is None:
+            pytest.skip('no benkirk or no Derecho key mapping in this snapshot')
+        state = new_request_sam_state(session, _EXPLORATORY, pi)
+        assert state['allocation_type'] is not None
+        draft = self._draft()
+        verdict = preflight_draft(
+            session, new_request_line(draft, pi_username='benkirk', opportunity=_EXPLORATORY,
+                                      fos={'fosTypeId': 500003, 'fosNum': '1'}),
+            draft, resource_keys={530902: key},
+            opportunities={532221: {'allocationType': 'Exploratory'}})
+        assert verdict.service == 'add'
+        if state['mnemonic'] is None:
+            assert set(state['mnemonic_errors']) <= set(verdict.messages)
+        else:
+            assert verdict.status == 'rechecked'
 
 
 class TestTheDocumentCheck:

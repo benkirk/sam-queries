@@ -3250,6 +3250,27 @@
     ]
   ],
   [
+    "user_dashboard.my_request_new",
+    "/user/requests/new",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "user_dashboard.my_request_new_opportunity",
+    "/user/requests/new/opportunity",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "user_dashboard.my_request_new_post",
+    "/user/requests/new",
+    [
+      "POST"
+    ]
+  ],
+  [
     "user_dashboard.my_request_post",
     "/user/requests/<projcode>/<any(extension, supplement, renewal):kind>",
     [
@@ -3273,6 +3294,20 @@
   [
     "user_dashboard.my_requests_agreement",
     "/user/requests/agreement",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "user_dashboard.my_requests_award_lookup",
+    "/user/requests/htmx/award-lookup",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "user_dashboard.my_requests_mnemonic_suggest",
+    "/user/requests/htmx/mnemonic-suggest",
     [
       "GET"
     ]

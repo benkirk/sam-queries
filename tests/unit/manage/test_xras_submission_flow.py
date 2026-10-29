@@ -218,6 +218,27 @@ class TestTheNew:
                                                       xa_user='pi1')
         client.delete_action.assert_not_called()
 
+    def test_the_roles_and_the_grant_read_the_unnumbered_draft_by_id(self, factory):
+        client = _client()
+        rid, aid = next(_IDS), next(_IDS)
+        client.create_request.return_value = _ok(
+            'create_request', request_id=rid, action_id=aid, response={'requestId': rid})
+        for verb, op in (('add_role', 'add_role'), ('update_request_attributes',
+                                                    'update_attributes'),
+                         ('set_fos', 'set_fos'), ('add_grant', 'add_grant')):
+            getattr(client, verb).return_value = _ok(op)
+        draft = ActionRequest(action_type='New', opportunity_id=532220, title='T',
+                              abstract='A', fos_type_id=500003,
+                              grants=({'grantNumber': '2345678', 'fundingAgencyId': 1},))
+        out = flow.request_action(factory, draft, actor='pi1', xa_user='pi1', eula=EULA,
+                                  client=client)
+        assert out.state == 'submitted'
+        # every step after the mint: the PI role, attributes, fos, grant, submit
+        assert client.reading_draft.call_count == 5
+        assert {c.args for c in client.reading_draft.call_args_list} == {(rid, 'pi1')}
+        attrs = client.update_request_attributes.call_args.kwargs
+        assert attrs['isSupportedByGrants'] == 'true' and attrs['request_number'] is None
+
 
 class TestDocuments:
 

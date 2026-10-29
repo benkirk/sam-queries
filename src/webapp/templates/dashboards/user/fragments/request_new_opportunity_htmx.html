@@ -1,0 +1,25 @@
+{#- What a New's page one says about the chosen opportunity, into #xrasNewOpportunity: its type,
+    resources, documents and the project code letters. On the reveal (oob) the inputs it asks
+    for follow out of band into #xrasNewOpportunityInputs. Context: opportunity, rules,
+    sam_state, chosen_mnemonic, form, field_errors, oob (or outage). -#}
+{% if outage %}
+<p class="small text-warning-emphasis"><i class="fa-solid fa-triangle-exclamation me-1"></i>{{ outage }}</p>
+{% elif opportunity %}
+{% set _docs = rules.documents | selectattr('required') | list %}
+<div class="modal-facts small mb-3">
+    {{ opportunity.allocation_type }}: XRAS offers
+    {{ opportunity.resources | map(attribute='name') | join(', ') or 'no resources' }} here.
+    {%- if not opportunity.can_submit %}
+    <span class="d-block text-warning-emphasis">{{ opportunity.reason or 'XRAS does not take a new request from you here.' }}</span>
+    {%- endif %}
+    {%- if _docs %}
+    <span class="d-block">You attach the {{ _docs | map(attribute='label') | join(' and ') }} at the review.</span>
+    {%- endif %}
+    {%- if sam_state.mnemonic %}
+    <span class="d-block">The project code starts with <span class="font-monospace">{{ sam_state.mnemonic.code }}</span>{% if sam_state.affiliation %}, from {{ sam_state.affiliation }}{% endif %}.</span>
+    {%- endif %}
+</div>
+{% endif %}
+{% if oob %}
+<div id="xrasNewOpportunityInputs" hx-swap-oob="true">{% include 'dashboards/user/fragments/request_new_inputs_htmx.html' %}</div>
+{% endif %}

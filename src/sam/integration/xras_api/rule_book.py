@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from sam.integration.xras_api.base import XrasSourceUnavailable
 
 #: By XRAS allocation-type name x action type: (required request fields, documents as (code,
-#: label, hard page limit)). Documents and the Data Analysis / External fields were read
+#: label, hard page limit)). New, documents and the Data Analysis / External fields were read
 #: 2026-10-27; grants on a Small or Large Renewal are the design's (§ 4.1), not yet read.
 RULE_BOOK_FALLBACK: Dict[Tuple[str, str], Tuple[Tuple[str, ...], Tuple[Tuple[str, str, Optional[int]], ...]]] = {
     ('Exploratory', 'Renewal'): (('title', 'abstract'), (('Advisor_Letter', 'Advisor Letter', None),)),
@@ -25,7 +25,20 @@ RULE_BOOK_FALLBACK: Dict[Tuple[str, str], Tuple[Tuple[str, ...], Tuple[Tuple[str
                                                          ('Supp_Info', 'Supporting Information', None))),
     ('Data Analysis', 'Renewal'): (('title', 'abstract'), ()),
     ('NCAR External Projects', 'Renewal'): (('title', 'abstract'), ()),
+    ('Exploratory', 'New'): (('title', 'abstract'), (('Advisor_Letter', 'Advisor Letter', None),)),
+    ('Small', 'New'): (('title', 'abstract', 'grants'), ()),
+    ('Large', 'New'): (('title', 'abstract', 'grants'), (('Main_Doc', 'Main Document', 10),)),
+    ('NCAR Strategic Computing', 'New'): (('title', 'abstract'), (('Main_Doc', 'Main Document', 10),)),
+    ('Educational', 'New'): (('title', 'abstract'), (('Supp_Info', 'Supporting Information', None),)),
+    ('Data Analysis', 'New'): (('title', 'abstract'), ()),
+    ('NCAR External Projects', 'New'): (('title', 'abstract', 'grants'), ()),
 }
+
+#: The grant fields validate demands beyond the number, by allocation-type name (read
+#: 2026-10-27: External asks no officer and no title). Wire names, as ``add_grant`` sends them.
+GRANT_FIELDS = ('title', 'piName', 'beginDate', 'endDate', 'programOfficerName',
+                'programOfficerEmail')
+GRANT_FIELDS_BY_TYPE = {'NCAR External Projects': ('piName', 'beginDate', 'endDate')}
 
 
 @dataclass(frozen=True)
@@ -42,6 +55,7 @@ class RuleBook:
     required: Tuple[str, ...] = ()          # request-level field names XRAS requires
     documents: Tuple[DocumentRule, ...] = ()
     source: str = 'xras'                    # xras | fallback | none
+    grant_fields: Tuple[str, ...] = GRANT_FIELDS
 
     @property
     def wants_grants(self) -> bool:
@@ -72,13 +86,18 @@ def _document_rules(document_types: Optional[List[Dict[str, Any]]], allocation_t
     return tuple(out)
 
 
+def _grant_fields(allocation_type_name: Optional[str]) -> Tuple[str, ...]:
+    return GRANT_FIELDS_BY_TYPE.get(allocation_type_name or '', GRANT_FIELDS)
+
+
 def _fallback(allocation_type_name: Optional[str], action_type: str) -> RuleBook:
     found = RULE_BOOK_FALLBACK.get((allocation_type_name or '', action_type))
     if found is None:
         return RuleBook(source='none')
     required, documents = found
     return RuleBook(required, tuple(DocumentRule(c, label, True, limit)
-                                    for c, label, limit in documents), source='fallback')
+                                    for c, label, limit in documents), source='fallback',
+                    grant_fields=_grant_fields(allocation_type_name))
 
 
 def rule_book(reader, allocation_type_id: Optional[int], action_type: str, *,
@@ -98,4 +117,5 @@ def rule_book(reader, allocation_type_id: Optional[int], action_type: str, *,
     if fields is None:
         return _fallback(allocation_type_name, action_type)
     return RuleBook(_required_names(fields),
-                    _document_rules(documents, int(allocation_type_id), action_type))
+                    _document_rules(documents, int(allocation_type_id), action_type),
+                    grant_fields=_grant_fields(allocation_type_name))

@@ -114,6 +114,7 @@ production, 2026-10-28) feed the picker and the resource lists.
 | `GET /user/requests/<projcode>/actions` | + `require_project_permission(EDIT_PROJECTS)` | the lazy picker for one project |
 | `GET/POST …/<projcode>/extension`, `…/supplement`, `…/renewal` | the same | one `HtmxFormHandler` subclass per type, `stage=review` then `stage=submit` |
 | `GET/POST /user/requests/new` | `login_required` | the New form, stages describe → request → review → submit |
+| `GET /user/requests/new/opportunity` | `login_required` | page one's reveal for the chosen opportunity |
 | `POST /user/requests/<id>/abort`, `…/resume` | owner or `MANAGE_XRAS` | the stopped-row controls |
 | `GET /user/requests/htmx/mnemonic-suggest`, `…/award-lookup` | `login_required` | the New form's pickers |
 
@@ -141,7 +142,7 @@ production, 2026-10-28) feed the picker and the resource lists.
   a day, `RULE_BOOK_FALLBACK` by type name) names the documents; each required one is a PDF
   upload on the review, checked by `document_refusal`. The form pre-fills the abstract from the
   line (`/renew` does not copy it) and the window from the day after the current end for the
-  award period. A rule book that wants grants refuses the form until the grant step (2a).
+  award period. A rule book that wants grants asks for one on the form (the New's grant step).
 - Lines SAM mints (New, Renewal) are drafts: their populate and submit steps verify by id
   (`XrasAdminClient.reading_draft`, a `get_draft` re-read as the PI) instead of the reports
   family by number.
@@ -155,9 +156,21 @@ production, 2026-10-28) feed the picker and the resource lists.
   resolution ladder (roster, mnemonic, allocation type, contracts) run while the submitter is
   present. The Extension review names the window it reaches and floors the date on
   `latest_allocation`; Supplement and New amounts are re-checked against the limits table.
-- Grants are lookup-then-confirm: the award number goes to `resolve_award`; `AwardRecord` fills
-  grant number, title, begin and end date, PI name and, for NSF, the program officer; the
-  `unavailable_fields` are typed. NSF first; USAspending's place is decided when the step is built.
+- Grants are lookup-then-confirm: the award number goes to `resolve_award('NSF', …)`;
+  `AwardRecord` fills title, begin and end date, PI name and the program officer (`monitor`),
+  and the PI types what NSF lacks. NSF only (`fundingAgencyId` 1): USAspending carries no program
+  officer, so any other award is typed. The rule book's grant fields (`GRANT_FIELDS`, External
+  without officer or title) are required by the handler; the draft sets `isSupportedByGrants`.
+- The New (2a) re-reads the user's opportunities (`new_request_opportunities`: `canSubmitNewRequest`,
+  `resourceIdsAvailableForNewRequest`) at every stage and writes nothing before submit, so its
+  Cancel is the modal's. Page one asks the opportunity, then title, abstract, keywords, field of
+  science (`/types/fos`, selectable rows) and an optional project admin (a live SAM user with an
+  XRAS person); the opportunity reveals its facts, the code letters and the grant. The letters
+  come from the New handler's own ladder (`new_request_sam_state`); where it misses, the PI picks
+  a code and the review drops the ladder's miss from the verdict until 2b's presets make the
+  handler honor it. Page two is the window (the first of next month for the award period) and the
+  amounts; the review adds the document and the agreement. A stopped New is discarded with
+  `delete_request`.
 - Documents: PDF magic always; `SUBMISSION_DOCUMENT_MAX_BYTES` and `SUBMISSION_DOCUMENT_MAX_PAGES`
   are dark unless set; the rule book's `hardPageLimit` and document type are shown beside the
   upload; XRAS's own 400 is the backstop.
@@ -299,7 +312,8 @@ imports from `sam.integration`, never `sam.queries.__init__`).
 - The LFS blob conflicts with any concurrent regen: regenerate once, last.
 - The editor verbs the flow reuses (attributes, resources, dates, roles, submit) verify through
   the reports family by number; on a line SAM minted the flow scopes them to the by-id read
-  (`reading_draft`, 1c), which a New's unnumbered draft needs too.
+  (`reading_draft`, 1c). On a New every step after the create reads by id, the PI role
+  included: its roster read by number has no number to use (2a).
 - `require_project_permission(EDIT_PROJECTS)` admits stewards by design (§ 4.4).
 
 ## 9. Probe record (2026-10-27)

@@ -27,7 +27,7 @@ def armed(monkeypatch):
     monkeypatch.setattr(requests_routes, '_config', lambda: config)
     fakes = type('Fakes', (), {'family': [], 'available': [], 'reads': [], 'catalog': [],
                                'required': {'requiredFields': {'request': {}}},
-                               'documents': []})()
+                               'documents': [], 'opportunities': [], 'people': set()})()
 
     class Reader:
         def get_request_family_by_number(self, number):
@@ -47,6 +47,13 @@ def armed(monkeypatch):
         def available_action_requests(self, username):
             fakes.reads.append(('offers', username))
             return fakes.available
+
+        def new_request_opportunities(self, username):
+            fakes.reads.append(('opportunities', username))
+            return fakes.opportunities
+
+        def get_person(self, username):
+            return {'username': username} if username in fakes.people else None
 
     monkeypatch.setattr('sam.integration.xras_api.XrasApiClient.from_environment',
                         classmethod(lambda cls, *a, **k: Reader()))
@@ -371,6 +378,11 @@ def renewable(on_roster):
     xras_cache._CACHE.reset_for_tests(disabled=False)
 
 
+_GRANT = dict(grant_number='2345678', grant_title='Ensembles', grant_pi_name='B. Kirk',
+              grant_begin_date='2026-01-01', grant_end_date='2028-12-31',
+              grant_officer_name='P. Officer', grant_officer_email='po@nsf.gov')
+
+
 def _ren(stage='review', **extra):
     return dict(stage=stage, abstract='Year two of the ensemble runs.',
                 begin_date='2027-11-01', end_date='2028-10-31', amount_530902='1000', **extra)
@@ -386,9 +398,23 @@ class TestTheRenewalForm:
         on_roster.available = []
         assert 'offers no renewal' in auth_client.get(REN).get_data(as_text=True)
 
-    def test_a_rule_book_wanting_grants_waits_for_the_grant_step(self, auth_client, renewable):
+    def test_a_rule_book_wanting_grants_asks_for_one(self, auth_client, renewable, filed):
         renewable.required = {'requiredFields': {'request': {'grants': {'required': True}}}}
-        assert 'supporting grants' in auth_client.get(REN).get_data(as_text=True)
+        assert 'name="grant_number"' in auth_client.get(REN).get_data(as_text=True)
+        html = auth_client.post(REN, data=_ren()).get_data(as_text=True)
+        assert 'needs a supporting grant' in html and not filed
+
+    def test_the_grant_rides_the_renewal_with_nsfs_agency_id(self, auth_client, renewable,
+                                                            filed):
+        from io import BytesIO
+        renewable.required = {'requiredFields': {'request': {'grants': {'required': True}}}}
+        auth_client.post(REN, data=_ren('submit', eula_sha=_sha(), agree='1', **_GRANT,
+                                        document_Advisor_Letter=(BytesIO(b'%PDF-1.7 x'), 'l.pdf')),
+                         content_type='multipart/form-data')
+        draft, _ = filed[0]
+        assert draft.grants[0]['grantNumber'] == '2345678'
+        assert draft.grants[0]['fundingAgencyId'] == 1
+        assert draft.grants[0]['programOfficerEmail'] == 'po@nsf.gov'
 
     def test_only_the_resources_the_line_holds_are_prefilled(self, auth_client, renewable,
                                                              monkeypatch):
@@ -401,9 +427,9 @@ class TestTheRenewalForm:
             for rid, name in ((530902, 'Derecho'), (530275, 'Casper'))})
         monkeypatch.setattr('sam.accounting.allocation_type_limits.limits_for_allocation_type',
                             lambda s, t: {'Derecho': limit, 'Casper': limit})
+        import re
         html = auth_client.get(REN).get_data(as_text=True)
-        assert 'name="amount_530902"\n                               value="5000"' in html \
-            or 'name="amount_530902" value="5000"' in html.replace('\n', ' ').replace('  ', ' ')
+        assert re.search(r'name="amount_530902"\s+value="5000"', html)
         casper = html.split('name="amount_530275"')[1][:120]
         assert 'value=""' in casper
 
@@ -448,3 +474,200 @@ class TestTheRenewalForm:
         assert [(d.document_type, d.filename) for d in draft.documents] == \
             [('Advisor_Letter', 'letter.pdf')]
         assert draft.abstract == 'Year two of the ensemble runs.'
+
+
+# 2a: the New
+
+NEW = '/user/requests/new'
+_FOS = [{'fosTypeId': 500003, 'fosNum': '1', 'fosName': 'Atmospheric Sciences',
+         'isSelectable': True},
+        {'fosTypeId': 500004, 'fosNum': '2', 'fosName': 'Not offered', 'isSelectable': False}]
+
+
+def _opportunity(opportunity_id=532221, allocation_type='Exploratory', type_id=500847, **kw):
+    return {'opportunity_id': opportunity_id, 'opportunity_name': f'{allocation_type} (University)',
+            'allocation_type_id': type_id, 'allocation_type': allocation_type,
+            'award_months': 12, 'eua_attribute_id': 539638, 'can_submit': True, 'reason': None,
+            'resource_ids': [530902],
+            'resources': [{'resource_id': 530902, 'name': 'NSF NCAR Derecho',
+                           'units': 'Core-hours'}], **kw}
+
+
+@pytest.fixture
+def newable(armed, monkeypatch):
+    from sam.integration.xras_api import cache as xras_cache
+    xras_cache._CACHE.reset_for_tests()
+    monkeypatch.setattr('sam.integration.xras_api.lookups.get_fos_types', lambda: _FOS)
+    armed.opportunities = [_opportunity(),
+                           _opportunity(532220, 'Small', 500024),
+                           _opportunity(532223, 'Educational', 500026, can_submit=False,
+                                        reason='You already have one')]
+    armed.documents = [{'documentType': 'Advisor_Letter', 'displayDocumentType': 'Advisor Letter',
+                        'allocationActionTypes': [{'allocationTypeId': 500847, 'actionTypes': [
+                            {'actionType': 'New', 'isRequired': True}]}]}]
+    yield armed
+    xras_cache._CACHE.reset_for_tests(disabled=False)
+
+
+@pytest.fixture
+def lettered(monkeypatch):
+    """The ladder's mnemonic for the PI, whatever this snapshot's affiliation rows say."""
+    import sam.xras.submission_preflight as pre
+    from sam.core.organizations import MnemonicCode
+    real = pre.new_request_sam_state
+
+    def state(session, opportunity, pi):
+        out = real(session, opportunity, pi)
+        if out['mnemonic'] is None:
+            out['mnemonic'] = session.query(MnemonicCode).filter(MnemonicCode.is_active).first()
+        return out
+    monkeypatch.setattr(pre, 'new_request_sam_state', state)
+
+
+def _new(stage='request', **extra):
+    return {**dict(stage=stage, opportunity_id='532221', title='Ensemble downscaling',
+                   abstract='Regional runs for the next three summers.', fos_type_id='500003'),
+            **extra}
+
+
+def _new_review(**extra):
+    return _new(**{'stage': 'review', 'begin_date': '2026-12-01', 'end_date': '2027-11-30',
+                   'amount_530902': '1000', **extra})
+
+
+class TestTheNewForm:
+
+    def test_the_lever_off_refuses_with_a_message(self, auth_client):
+        assert 'not enabled here' in auth_client.get(NEW).get_data(as_text=True)
+
+    def test_the_opener_follows_the_lever(self, auth_client, armed):
+        html = auth_client.get(PAGE).get_data(as_text=True)
+        assert 'id="xrasNewRequestOpen"' in html and '/user/requests/new' in html
+
+    def test_page_one_lists_the_opportunities_and_the_selectable_fields(self, auth_client,
+                                                                       newable):
+        html = auth_client.get(NEW).get_data(as_text=True)
+        assert 'Exploratory (University)' in html and 'Educational (University) (not open to you)' in html
+        assert 'Atmospheric Sciences' in html and 'Not offered' not in html
+        assert ('opportunities', 'benkirk') in newable.reads
+
+    def test_the_reveal_names_the_letter_and_the_code(self, auth_client, newable, lettered):
+        html = auth_client.get(NEW + '/opportunity?opportunity_id=532221').get_data(as_text=True)
+        assert 'Advisor Letter at the review' in html
+        assert 'project code starts with' in html and 'name="grant_number"' not in html
+
+    def test_a_grant_wanting_type_reveals_the_grant(self, auth_client, newable, lettered):
+        newable.required = {'requiredFields': {'request': {'grants': {'required': True}}}}
+        html = auth_client.get(NEW + '/opportunity?opportunity_id=532220').get_data(as_text=True)
+        assert 'name="grant_number"' in html and 'Look up' in html and 'hx-swap-oob' in html
+
+    def test_a_missing_title_stays_on_page_one(self, auth_client, newable, lettered):
+        html = auth_client.post(NEW, data=_new(title='')).get_data(as_text=True)
+        assert 'needs a title' in html and 'name="abstract"' in html
+
+    def test_a_closed_opportunity_gives_xrass_reason(self, auth_client, newable, lettered):
+        html = auth_client.post(NEW, data=_new(opportunity_id='532223')).get_data(as_text=True)
+        assert 'You already have one' in html
+
+    def test_an_unknown_admin_is_refused(self, auth_client, newable, lettered):
+        html = auth_client.post(NEW, data=_new(admin_username='nosuchuser9')).get_data(
+            as_text=True)
+        assert 'SAM has no active user nosuchuser9' in html
+
+    def test_the_grant_is_required_where_the_rule_book_wants_one(self, auth_client, newable,
+                                                                lettered):
+        newable.required = {'requiredFields': {'request': {'grants': {'required': True}}}}
+        html = auth_client.post(NEW, data=_new(opportunity_id='532220')).get_data(as_text=True)
+        assert 'needs a supporting grant' in html
+        html = auth_client.post(NEW, data=_new(opportunity_id='532220', grant_number='2345678')
+                                ).get_data(as_text=True)
+        assert 'Required for the grant.' in html
+
+    def test_where_the_ladder_misses_the_pi_picks_the_letters(self, auth_client, newable,
+                                                              session):
+        from sam.core.organizations import MnemonicCode
+        html = auth_client.get(NEW + '/opportunity?opportunity_id=532221').get_data(as_text=True)
+        if 'project code starts with' in html:
+            pytest.skip("the ladder resolves benkirk's code in this snapshot")
+        assert 'name="mnemonic_code_id"' in html
+        html = auth_client.post(NEW, data=_new()).get_data(as_text=True)
+        assert 'Choose the letters' in html
+        code = session.query(MnemonicCode).filter(MnemonicCode.is_active).first()
+        html = auth_client.post(NEW, data=_new(mnemonic_code_id=str(code.mnemonic_code_id))
+                                ).get_data(as_text=True)
+        assert 'name="amount_530902"' in html
+
+    def test_page_two_carries_page_one_and_offers_the_resources(self, auth_client, newable,
+                                                               lettered):
+        html = auth_client.post(NEW, data=_new()).get_data(as_text=True)
+        assert 'name="amount_530902"' in html and 'name="begin_date"' in html
+        assert 'type="hidden" name="title" value="Ensemble downscaling"' in html
+        assert 'value="describe"' in html          # Back
+
+    def test_the_review_asks_for_the_letter_and_the_terms(self, auth_client, newable, lettered,
+                                                         filed):
+        html = auth_client.post(NEW, data=_new_review()).get_data(as_text=True)
+        assert 'Review the New request' in html and 'name="document_Advisor_Letter"' in html
+        assert 'name="agree"' in html and 'value="request"' in html and not filed
+
+    def test_submit_files_the_new_through_the_pi_door(self, auth_client, newable, lettered,
+                                                     filed):
+        from datetime import date
+        from io import BytesIO
+        html = auth_client.post(NEW, data=_new_review(
+            stage='submit', eula_sha=_sha(), agree='1',
+            document_Advisor_Letter=(BytesIO(b'%PDF-1.7 letter'), 'letter.pdf')),
+            content_type='multipart/form-data').get_data(as_text=True)
+        assert 'New request filed' in html
+        draft, kw = filed[0]
+        assert (draft.action_type, draft.opportunity_id, draft.fos_type_id,
+                draft.eua_attribute_id) == ('New', 532221, 500003, 539638)
+        assert draft.dates == (date(2026, 12, 1), date(2027, 11, 30))
+        assert [(r.resource_id, r.amount) for r in draft.resources] == [(530902, 1000.0)]
+        assert draft.sam.mnemonic_code_id is not None and draft.request_id is None
+        assert (kw['door'], kw['xa_user']) == ('pi', 'benkirk')
+
+    def test_an_impersonator_cannot_file(self, auth_client, newable):
+        with auth_client.session_transaction() as sess:
+            sess['impersonator_id'] = 1
+        assert 'viewing SAM as another user' in auth_client.get(NEW).get_data(as_text=True)
+
+
+class TestThePickers:
+
+    def test_the_award_lookup_fills_the_grant_from_nsf(self, auth_client, monkeypatch):
+        from datetime import date
+        from sam.integration.awards.base import AwardRecord, PersonRef
+        record = AwardRecord('nsf', contract_number='2345678', title='Ensembles',
+                             start_date=date(2026, 1, 1), end_date=date(2028, 12, 31),
+                             pi=PersonRef('B. Kirk'), monitor=PersonRef('P. Officer', 'po@nsf.gov'))
+        monkeypatch.setattr('sam.integration.awards.registry.resolve_award',
+                            lambda source, number: record if source == 'NSF' else None)
+        html = auth_client.get('/user/requests/htmx/award-lookup?grant_number=2345678'
+                               '&grant_required=title,programOfficerEmail').get_data(as_text=True)
+        assert 'value="Ensembles"' in html and 'value="po@nsf.gov"' in html
+        assert 'value="2026-01-01"' in html and 'Filled from NSF' in html
+
+    def test_an_unknown_award_says_so(self, auth_client, monkeypatch):
+        monkeypatch.setattr('sam.integration.awards.registry.resolve_award', lambda s, n: None)
+        html = auth_client.get('/user/requests/htmx/award-lookup?grant_number=9').get_data(
+            as_text=True)
+        assert 'NSF has no award 9' in html
+
+    def test_nsf_down_is_not_no_such_award(self, auth_client, monkeypatch):
+        from sam.integration.awards.base import AwardSourceUnavailable
+
+        def down(source, number):
+            raise AwardSourceUnavailable('timeout')
+        monkeypatch.setattr('sam.integration.awards.registry.resolve_award', down)
+        html = auth_client.get('/user/requests/htmx/award-lookup?grant_number=9').get_data(
+            as_text=True)
+        assert 'NSF is not answering' in html
+
+    def test_the_mnemonic_suggest_needs_two_letters(self, auth_client, session):
+        from sam.core.organizations import MnemonicCode
+        code = session.query(MnemonicCode).filter(MnemonicCode.is_active).first()
+        assert auth_client.get('/user/requests/htmx/mnemonic-suggest?q=a').get_data() == b''
+        html = auth_client.get(f'/user/requests/htmx/mnemonic-suggest?q={code.code}').get_data(
+            as_text=True)
+        assert f'data-fk-label="{code.code}"' in html

@@ -3,22 +3,34 @@
 The page renders from SAM's tables and the sweep's index, never a live XRAS read; each
 project's picker reads XRAS lazily when opened (the family, then the user's offers). A form
 re-reads the family and re-runs the routing at every stage (edit, review, submit), so a
-decision is never carried in the browser. Files go through ``sam.manage.xras_submission``.
-Design: ``docs/plans/XRAS_SUBMISSION.md`` § 4.0, routing § 4.4.
+decision is never carried in the browser; a New re-reads the user's opportunities the same
+way, and nothing reaches XRAS before its submit. Files go through
+``sam.manage.xras_submission``. Design: ``docs/plans/XRAS_SUBMISSION.md`` § 4.0-4.1.
 """
 
 from datetime import datetime, timedelta
 
-from flask import abort, current_app, flash, make_response, render_template, request, session
+from flask import (
+    abort,
+    current_app,
+    flash,
+    make_response,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from flask_login import current_user, login_required
 
 from sam.integration.xras_api import XrasSourceUnavailable
 from sam.queries.xras_my_requests import led_projects, my_requests
 from sam.schemas.forms import (
     XrasExtensionRequestForm,
+    XrasNewRequestForm,
     XrasRenewalRequestForm,
     XrasSupplementRequestForm,
 )
+from sam.schemas.forms.xras_submission import GRANT_INPUTS
 from sam.xras.routing import action_offers, request_routing, route_for
 from webapp.api.access_control import require_project_permission
 from webapp.extensions import db
@@ -82,12 +94,13 @@ def my_requests_page():
     ctx = _page_context()
     user = ctx['user']
     projects = led_projects(db.session, user)
+    config = _config()
     return render_template(
         'dashboards/user/my_requests.html',
         requests=my_requests(db.session, user.username, _index_rows()),
         projects=[(p, route_for(_type_name(p))) for p in projects],
         open_projcode=(request.args.get('projcode') or '').strip().upper() or None,
-        submit_configured=_config().submit_configured,
+        submit_configured=config.submit_configured, new_enabled=config.submit_allows('New'),
         can_manage_xras=has_permission(current_user, Permission.MANAGE_XRAS),
         **ctx)
 
@@ -189,9 +202,6 @@ class _RequestForm(HtmxFormHandler):
             raise FormError('XRAS offers no renewal for this project right now.')
         rules = rule_book(_reader(config), offer['allocation_type_id'], 'Renewal',
                           allocation_type_name=offer['allocation_type'])
-        if rules.wants_grants:
-            raise FormError('This renewal needs supporting grants, which My Requests cannot '
-                            'take yet. Renew in ARC for now.')
         begin = floor + timedelta(days=1) if floor else datetime.now().date()
         months = offer.get('award_months') or 12
         end = _add_months(begin, months) - timedelta(days=1)
@@ -203,7 +213,7 @@ class _RequestForm(HtmxFormHandler):
                 'line_abstract': (decision.line or {}).get('abstract') or '',
                 **self._with_limits(config, resources)}
 
-    def _with_limits(self, config, resources):
+    def _with_limits(self, config, resources, type_name=None):
         """*resources* with their SAM resource and type limit, through the catalog key."""
         from sam.accounting.allocation_type_limits import limits_for_allocation_type
         from sam.integration.xras_api.people import resource_key_map
@@ -214,7 +224,8 @@ class _RequestForm(HtmxFormHandler):
             catalog = None
         keys = resource_key_map(catalog) if catalog else None
         sam = sam_resources_by_xras_id(db.session, [r['resource_id'] for r in resources], keys)
-        limits = limits_for_allocation_type(db.session, _type_name(self.project))
+        name = type_name or (_type_name(self.project) if self.project else None)
+        limits = limits_for_allocation_type(db.session, name) if name else {}
         for r in resources:
             resource = sam.get(r['resource_id'])
             r['sam_name'] = resource.resource_name if resource is not None else None
@@ -245,6 +256,7 @@ class _RequestForm(HtmxFormHandler):
                              eua_attribute_id=ctx['offer'].get('eua_attribute_id'),
                              abstract=data['abstract'], resources=resources,
                              dates=(data['begin_date'], data['end_date']),
+                             grants=self._grants(data),
                              documents=tuple(data.get('documents') or ()), **common)
 
     def clean(self, data):
@@ -259,6 +271,10 @@ class _RequestForm(HtmxFormHandler):
                     f'Choose a date after {ctx["floor"].isoformat()}, the project\'s '
                     'current end.']})
         else:
+            if ctx.get('rules') and ctx['rules'].wants_grants:
+                errors = self._grant_errors(data, ctx['rules'])
+                if errors:
+                    raise ValidationError(errors)
             by_id = {r['resource_id']: r for r in ctx['resources']}
             unknown = [rid for rid in data['amounts'] if rid not in by_id]
             if unknown:
@@ -284,6 +300,21 @@ class _RequestForm(HtmxFormHandler):
             if back:
                 data.update(stage='review', review_error=back)
         return data
+
+    @staticmethod
+    def _grant_errors(data, rules):
+        """``{field: [message]}`` for the grant fields the rule book requires and the form lacks."""
+        if not data['grant_number']:
+            return {'grant_number': ['This request needs a supporting grant.']}
+        wire_to_input = {w: n for n, w in GRANT_INPUTS.items()}
+        return {wire_to_input[w]: ['Required for the grant.'] for w in rules.grant_fields
+                if w in wire_to_input and data.get(wire_to_input[w]) is None}
+
+    @staticmethod
+    def _grants(data):
+        from sam.integration.xras_api.vocabulary import NSF_FUNDING_AGENCY_ID
+        return ((dict(data['grant'], fundingAgencyId=NSF_FUNDING_AGENCY_ID),)
+                if data.get('grant') else ())
 
     @staticmethod
     def _attached(rules):
@@ -371,6 +402,342 @@ def my_request_form(project, kind):
 @require_project_permission(Permission.EDIT_PROJECTS)
 def my_request_post(project, kind):
     return _RequestForm(project=project, action_type=_form_type(kind)).handle()
+
+
+# the New request: describe -> request -> review -> submit
+
+_NEW_DESCRIBE = 'dashboards/user/fragments/request_new_htmx.html'
+_NEW_OPPORTUNITY = 'dashboards/user/fragments/request_new_opportunity_htmx.html'
+_NEW_AMOUNTS = 'dashboards/user/fragments/request_new_amounts_htmx.html'
+_GRANT = 'dashboards/user/fragments/request_grant_htmx.html'
+#: The page-one inputs a later page carries in hidden fields, and whose errors land on page one.
+_DESCRIBE_FIELDS = ('opportunity_id', 'title', 'abstract', 'keywords', 'fos_type_id',
+                    'admin_username', 'mnemonic_code_id') + tuple(GRANT_INPUTS)
+
+
+def _new_opportunities(config):
+    """The open opportunities as the current user sees them; ``FormError`` on an outage."""
+    from sam.integration.xras_api.admin_client import XrasAdminClient
+    try:
+        return XrasAdminClient.from_environment(config).new_request_opportunities(
+            current_user.username)
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('my requests opportunities %s: %s', current_user.username, exc)
+        raise FormError('XRAS is not answering, so a new request cannot be started now.')
+
+
+def _fos_options():
+    from sam.integration.xras_api.lookups import get_fos_types
+    try:
+        rows = get_fos_types() or []
+    except XrasSourceUnavailable:
+        raise FormError('XRAS is not answering, so a new request cannot be started now.')
+    return sorted((r for r in rows if r.get('isSelectable') is not False),
+                  key=lambda r: r.get('fosName') or '')
+
+
+def _opportunity_context(config, opportunity):
+    """What page one reveals for *opportunity*: the rule book, the PI's mnemonic, the grant."""
+    from sam.core.users import User
+    from sam.integration.xras_api.rule_book import rule_book
+    from sam.xras.submission_preflight import new_request_sam_state
+    if opportunity is None:
+        return {'opportunity': None, 'rules': None, 'sam_state': None}
+    rules = rule_book(_reader(config), opportunity['allocation_type_id'], 'New',
+                      allocation_type_name=opportunity['allocation_type'])
+    pi = User.get_by_username(db.session, current_user.username)
+    return {'opportunity': opportunity, 'rules': rules,
+            'sam_state': new_request_sam_state(db.session, opportunity, pi)}
+
+
+def _chosen(opportunities, opportunity_id):
+    return next((o for o in opportunities if o['opportunity_id'] == opportunity_id), None)
+
+
+def _mnemonic_label(mnemonic_code_id):
+    from sam.core.organizations import MnemonicCode
+    code = db.session.get(MnemonicCode, mnemonic_code_id) if mnemonic_code_id else None
+    return code.code if code is not None else ''
+
+
+def _first_of_next_month(day):
+    return (day.replace(day=1) + timedelta(days=32)).replace(day=1)
+
+
+class _NewRequestForm(_RequestForm):
+    """A New through describe -> request -> review -> submit; nothing reaches XRAS before submit."""
+
+    schema_cls = XrasNewRequestForm
+    template = _NEW_DESCRIBE
+
+    def __init__(self):
+        HtmxFormHandler.__init__(self, project=None, action_type='New')
+        self._ctx = None
+
+    def form_input(self):
+        raw = request.form.to_dict()
+        raw['amounts'] = {k[len('amount_'):]: v for k, v in request.form.items()
+                          if k.startswith('amount_')}
+        return raw
+
+    def gate(self):
+        if self._ctx is not None:
+            return self._ctx
+        from webapp.register.eula import eula_sha
+        config = _config()
+        if session.get('impersonator_id'):
+            raise FormError('You are viewing SAM as another user. They file their own '
+                            'requests, under their own agreement.')
+        if not config.submit_allows('New'):
+            raise FormError('New requests through SAM are not enabled here.')
+        opportunities = _new_opportunities(config)
+        chosen = _chosen(opportunities, request.values.get('opportunity_id', type=int))
+        fos = _fos_options()
+        self._ctx = dict(project=None, action_type='New', decision=None,
+                         eula_sha=eula_sha(), post_url=url_for('user_dashboard.my_request_new_post'),
+                         opportunities=opportunities, fos_options=fos,
+                         opportunity_options=[(o['opportunity_id'], o['opportunity_name']
+                                               if o['can_submit'] else
+                                               f"{o['opportunity_name']} (not open to you)")
+                                              for o in opportunities],
+                         fos_choices=[(r['fosTypeId'], r.get('fosName')) for r in fos],
+                         chosen_mnemonic=_mnemonic_label(request.values.get(
+                             'mnemonic_code_id', type=int)),
+                         carry_fields=_DESCRIBE_FIELDS,
+                         **_opportunity_context(config, chosen))
+        self._ctx.update(self._amounts_context(config))
+        return self._ctx
+
+    def _amounts_context(self, config):
+        """Page two: the opportunity's resources with their limits, and the default window."""
+        opportunity, state = self._ctx['opportunity'], self._ctx['sam_state']
+        if opportunity is None:
+            return {'resources': [], 'resource_keys': None, 'documents': []}
+        begin = _first_of_next_month(datetime.now().date())
+        end = _add_months(begin, opportunity.get('award_months') or 12) - timedelta(days=1)
+        type_name = state['allocation_type'].allocation_type if state['allocation_type'] else None
+        resources = [dict(r) for r in opportunity['resources']]
+        return {'default_begin': begin, 'default_end': end, 'sam_type_name': type_name,
+                'documents': [d for d in self._ctx['rules'].documents if d.required],
+                **self._with_limits(config, resources, type_name)}
+
+    def context(self):
+        try:
+            return self.gate()
+        except FormError:
+            return dict(project=None, action_type='New', decision=None, opportunities=[],
+                        opportunity_options=[], fos_options=[], fos_choices=[],
+                        opportunity=None, rules=None, sam_state=None, chosen_mnemonic='',
+                        carry_fields=_DESCRIBE_FIELDS, resources=[], documents=[],
+                        eula_sha=None, post_url=url_for('user_dashboard.my_request_new_post'))
+
+    def render_errors(self, errors, field_errors=None):
+        stage = request.form.get('stage')
+        page_one = stage in ('describe', 'request') or any(
+            k in _DESCRIBE_FIELDS for k in field_errors or {})
+        self.template = _NEW_DESCRIBE if page_one else _NEW_AMOUNTS
+        return super().render_errors(errors, field_errors)
+
+    def clean(self, data):
+        from marshmallow import ValidationError
+        ctx = self.gate()
+        if data['stage'] == 'describe':
+            return data
+        errors = self._describe_errors(data, ctx)
+        if errors:
+            raise ValidationError(errors)
+        if data['stage'] == 'request':
+            return data
+        by_id = {r['resource_id']: r for r in ctx['resources']}
+        if any(rid not in by_id for rid in data['amounts']):
+            raise FormError('XRAS does not offer one of those resources here; start again.')
+        self._check_limits(data, by_id, ctx.get('sam_type_name'))
+        if data['stage'] == 'submit' and ctx['documents']:
+            data['documents'], data['document_error'] = self._attached(ctx['documents'])
+        data['draft'] = self.draft(data)
+        data['verdict'] = self._verdict(data, ctx)
+        if data['stage'] == 'submit':
+            back = self._back_to_review(data)
+            if back:
+                data.update(stage='review', review_error=back)
+        return data
+
+    def _describe_errors(self, data, ctx):
+        """Page one's checks against XRAS and SAM, as ``{field: [message]}``."""
+        from sam.core.organizations import MnemonicCode
+        from sam.core.users import User
+        errors = {}
+        opportunity = ctx['opportunity']
+        if opportunity is None or opportunity['opportunity_id'] != data['opportunity_id']:
+            errors['opportunity_id'] = ['Choose one of the open opportunities.']
+            return errors
+        if not opportunity['can_submit']:
+            errors['opportunity_id'] = [opportunity.get('reason')
+                                        or 'XRAS does not take a new request from you here.']
+        if data['fos_type_id'] not in {r.get('fosTypeId') for r in ctx['fos_options']}:
+            errors['fos_type_id'] = ['Choose the field of science.']
+        admin = data['admin_username']
+        if admin:
+            found = User.get_by_username(db.session, admin)
+            if found is None or not found.is_active:
+                errors['admin_username'] = [f'SAM has no active user {admin}.']
+            elif admin.casefold() == current_user.username.casefold():
+                errors['admin_username'] = ['You are the PI; name someone else, or no one.']
+            elif not self._in_xras(admin):
+                errors['admin_username'] = [f'{admin} has no XRAS account yet.']
+        if data['mnemonic_code_id']:
+            code = db.session.get(MnemonicCode, data['mnemonic_code_id'])
+            if code is None or not code.is_active:
+                errors['mnemonic_code_id'] = ['Choose an active code.']
+        elif ctx['sam_state']['mnemonic'] is None:
+            errors['mnemonic_code_id'] = ['Choose the letters the project code starts with.']
+        if ctx['rules'].wants_grants:
+            errors.update(self._grant_errors(data, ctx['rules']))
+        return errors
+
+    @staticmethod
+    def _in_xras(username):
+        from sam.integration.xras_api.admin_client import XrasAdminClient
+        from sam.integration.xras_api.base import XrasWriteRejected
+        try:
+            return XrasAdminClient.from_environment(_config()).get_person(username) is not None
+        except XrasWriteRejected:
+            return False
+        except XrasSourceUnavailable:
+            return True        # the add_role step is the backstop
+
+    def _check_limits(self, data, by_id, type_name):
+        from marshmallow import ValidationError
+        from sam.xras.submission_preflight import limit_refusals
+        named = {by_id[rid]['sam_name']: amt for rid, amt in data['amounts'].items()
+                 if by_id[rid]['sam_name']}
+        refused = limit_refusals(db.session, type_name, named)
+        errors = {f'amount_{rid}': [refused[by_id[rid]['sam_name']]]
+                  for rid in data['amounts'] if by_id[rid]['sam_name'] in refused}
+        if errors:
+            raise ValidationError(errors)
+
+    def _verdict(self, data, ctx):
+        """The preflight on the draft; a code the PI chose stands in for the ladder's miss."""
+        from dataclasses import replace
+        from sam.xras.submission_preflight import new_request_line, preflight_draft
+        fos = next((r for r in ctx['fos_options'] if r.get('fosTypeId') == data['fos_type_id']),
+                   None)
+        opportunity = ctx['opportunity']
+        line = new_request_line(data['draft'], pi_username=current_user.username,
+                                opportunity=opportunity, fos=fos)
+        verdict = preflight_draft(
+            db.session, line, data['draft'], resource_keys=ctx['resource_keys'],
+            opportunities={opportunity['opportunity_id']: {
+                'allocationType': opportunity['allocation_type']}})
+        # NOTE: until the New handler takes the row's presets (2b), drop the ladder's
+        # mnemonic miss when the PI chose a code.
+        skip = set(ctx['sam_state']['mnemonic_errors']) if data['mnemonic_code_id'] else set()
+        if verdict.status == 'failed' and skip:
+            left = tuple(m for m in verdict.messages if m not in skip)
+            verdict = replace(verdict, messages=left,
+                              status='failed' if left else 'rechecked', would_succeed=not left)
+        return verdict
+
+    def draft(self, data):
+        from sam.manage.xras_submission import ActionRequest, ResourceAmount, SamRefs
+        ctx = self._ctx
+        opportunity, state = ctx['opportunity'], ctx['sam_state']
+        allocation_type = state['allocation_type']
+        mnemonic_id = data['mnemonic_code_id'] or (
+            state['mnemonic'].mnemonic_code_id if state['mnemonic'] else None)
+        return ActionRequest(
+            action_type='New', opportunity_id=opportunity['opportunity_id'],
+            title=data['title'], abstract=data['abstract'], keywords=data['keywords'],
+            fos_type_id=data['fos_type_id'], admin_username=data['admin_username'],
+            resources=tuple(ResourceAmount(rid, amt) for rid, amt in data['amounts'].items()),
+            dates=(data['begin_date'], data['end_date']), grants=self._grants(data),
+            documents=tuple(data.get('documents') or ()),
+            eua_attribute_id=opportunity.get('eua_attribute_id'),
+            sam=SamRefs(
+                allocation_type_id=allocation_type.allocation_type_id if allocation_type else None,
+                facility_id=allocation_type.panel.facility_id
+                if allocation_type and allocation_type.panel else None,
+                mnemonic_code_id=mnemonic_id))
+
+    def on_success(self, data):
+        ctx = dict(self._ctx, form=request.form, data=data, errors=[], field_errors={})
+        if data['stage'] == 'describe':
+            return render_template(_NEW_DESCRIBE, **ctx)
+        if data['stage'] == 'request':
+            return render_template(_NEW_AMOUNTS, **ctx)
+        if data['stage'] == 'review':
+            return render_template(_REVIEW, **ctx)
+        return render_template(_OUTCOME, outcome=data['outcome'], **ctx)
+
+
+@bp.route('/requests/new')
+@login_required
+def my_request_new():
+    """Page one of a New, into ``#xrasRequestModalBody``; a refusal renders as a message."""
+    handler = _NewRequestForm()
+    try:
+        ctx = handler.gate()
+    except FormError as exc:
+        return _message('New request unavailable', ' '.join(exc.errors))
+    return render_template(_NEW_DESCRIBE, errors=[], field_errors={}, form=None, **ctx)
+
+
+@bp.route('/requests/new', methods=['POST'])
+@login_required
+def my_request_new_post():
+    return _NewRequestForm().handle()
+
+
+@bp.route('/requests/new/opportunity')
+@login_required
+def my_request_new_opportunity():
+    """Page one's reveal for the chosen opportunity: its rule book, the code letters, the grant."""
+    try:
+        ctx = _NewRequestForm().gate()
+    except FormError as exc:
+        return render_template(_NEW_OPPORTUNITY, outage=' '.join(exc.errors), form=None,
+                               field_errors={}, opportunity=None, oob=True)
+    return render_template(_NEW_OPPORTUNITY, form=None, field_errors={}, oob=True, **ctx)
+
+
+@bp.route('/requests/htmx/mnemonic-suggest')
+@login_required
+def my_requests_mnemonic_suggest():
+    from sam.queries.mnemonic_console import search_mnemonic_codes
+    q = (request.args.get('q') or '').strip()
+    if len(q) < 2:
+        return ''
+    return render_template(
+        'dashboards/allocations/partials/mnemonic_code_search_results_fk_htmx.html',
+        q=q, codes=search_mnemonic_codes(db.session, q, limit=10))
+
+
+@bp.route('/requests/htmx/award-lookup')
+@login_required
+def my_requests_award_lookup():
+    """The grant fieldset, filled from NSF's record of the number typed."""
+    from sam.integration.awards.base import AwardSourceUnavailable
+    from sam.integration.awards.registry import resolve_award
+    number = (request.args.get('grant_number') or '').strip()
+    required = [w for w in (request.args.get('grant_required') or '').split(',') if w]
+    found, note = {}, None
+    try:
+        record = resolve_award('NSF', number) if number else None
+    except AwardSourceUnavailable:
+        record, note = None, 'NSF is not answering. Type the grant\'s details, or try again.'
+    if record is not None:
+        found = {'grant_number': record.contract_number or number,
+                 'grant_title': record.title, 'grant_begin_date': record.start_date,
+                 'grant_end_date': record.end_date,
+                 'grant_pi_name': record.pi.name if record.pi else None,
+                 'grant_officer_name': record.monitor.name if record.monitor else None,
+                 'grant_officer_email': record.monitor.email if record.monitor else None}
+        note = 'Filled from NSF. Check each field, and type any NSF left blank.'
+    elif number and note is None:
+        note = f'NSF has no award {number}. Check the number, or type the details.'
+    values = {'grant_number': number, **{k: v for k, v in found.items() if v}}
+    return render_template(_GRANT, form=values, required=required, note=note, field_errors={})
 
 
 # a stopped row: resume or discard
