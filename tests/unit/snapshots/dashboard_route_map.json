@@ -3236,8 +3236,43 @@
     ]
   ],
   [
+    "user_dashboard.my_request_abort",
+    "/user/requests/<int:submission_id>/abort",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "user_dashboard.my_request_form",
+    "/user/requests/<projcode>/<any(extension, supplement):kind>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "user_dashboard.my_request_post",
+    "/user/requests/<projcode>/<any(extension, supplement):kind>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "user_dashboard.my_request_resume",
+    "/user/requests/<int:submission_id>/resume",
+    [
+      "POST"
+    ]
+  ],
+  [
     "user_dashboard.my_requests_actions",
     "/user/requests/<projcode>/actions",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "user_dashboard.my_requests_agreement",
+    "/user/requests/agreement",
     [
       "GET"
     ]

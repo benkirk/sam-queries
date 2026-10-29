@@ -2059,6 +2059,31 @@ class TestPartCIsAdminOnly:
             data={'action_type': 'Nonsense'}).get_data(as_text=True)
         assert 'Must be one of' in body
 
+    def test_an_extension_needs_the_terms(self, auth_client, armed, monkeypatch):
+        from sam.manage import xras_submission as flow
+        _reader(monkeypatch, payload=_detail_payload())
+        monkeypatch.setattr(flow, 'request_action', lambda *a, **k: pytest.fail('filed'))
+        body = auth_client.post('/allocations/xras_add_action/EXAM0001',
+                                data={'action_type': 'Extension'}).get_data(as_text=True)
+        assert 'terms of use' in body
+
+    def test_an_extension_is_filed_through_the_flow_unsubmitted(self, auth_client, armed,
+                                                               monkeypatch):
+        from sam.manage import xras_submission as flow
+        from webapp.register.eula import eula_sha
+        _reader(monkeypatch, payload=_detail_payload())
+        calls = []
+        monkeypatch.setattr(flow, 'request_action', lambda f, draft, **kw: calls.append(
+            (draft, kw)) or flow.SubmissionOutcome(1, 'populated', 'mint', None, None))
+        body = auth_client.post('/allocations/xras_add_action/EXAM0001', data={
+            'action_type': 'Extension', 'agree': '1', 'eula_sha': eula_sha()}).get_data(
+            as_text=True)
+        assert 'Added a Extension action' in body
+        draft, kw = calls[0]
+        assert (draft.action_type, draft.request_number) == ('Extension', 'EXAM0001')
+        assert (kw['door'], kw['submit'], kw['xa_user'], kw['actor']) == \
+            ('admin', False, 'pi-user', 'benkirk')
+
     def test_the_lever_off_refuses_a_delete(self, auth_client, configured,
                                            monkeypatch):
         """Belt and braces: the button is disabled AND the POST refuses."""

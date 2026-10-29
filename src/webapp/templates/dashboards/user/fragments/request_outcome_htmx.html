@@ -1,0 +1,18 @@
+{#- After Submit: filed, or stopped at a step (the row keeps the reason; Resume or Discard
+    from My Requests). Context: the form's, plus outcome (SubmissionOutcome). -#}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{{ modal_title('xrasRequestModalLabel', action_type ~ (' filed' if outcome.succeeded else ' stopped'), 'paper-plane', meta=project.projcode) }}
+<div class="modal-body">
+    {% if outcome.succeeded %}
+    <p class="mb-0 text-success-emphasis"><i class="fa-solid fa-circle-check me-1"></i>
+        XRAS has your {{ action_type }} on <span class="font-monospace">{{ decision.request_number }}</span>
+        for review. My Requests shows where it is.</p>
+    {% else %}
+    <p class="mb-1 text-warning-emphasis"><i class="fa-solid fa-triangle-exclamation me-1"></i>
+        The request stopped at <strong>{{ outcome.step }}</strong>{% if outcome.error %}: {{ outcome.error }}{% endif %}.</p>
+    <p class="mb-0 small text-muted">Nothing was undone. Resume or Discard it from My Requests.</p>
+    {% endif %}
+</div>
+<div class="modal-footer">
+    <a class="btn btn-primary" href="{{ url_for('user_dashboard.my_requests_page') }}">Done</a>
+</div>

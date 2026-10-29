@@ -207,6 +207,11 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/admin/fragments/contracts_table_htmx.html': [
         'contractDetailsModalBody', 'createContractFormContainer', 'createContractModal',
         'createContractSourceFormContainer', 'createContractSourceModal'],
+    # Loaded only into user/my_requests.html, which ships #xrasRequestModal. The picker is
+    # on the page (it opens the shell); the review swaps inside the open body, no toggle.
+    'dashboards/user/fragments/request_actions_htmx.html': [
+        'xrasRequestModal', 'xrasRequestModalBody'],
+    'dashboards/user/fragments/request_review_htmx.html': ['xrasRequestModalBody'],
     # Loaded only into admin/configuration.html, which ships both limit shells.
     'dashboards/admin/fragments/allocation_limits_card.html': [
         'createAllocationLimitFormContainer', 'createAllocationLimitModal'],

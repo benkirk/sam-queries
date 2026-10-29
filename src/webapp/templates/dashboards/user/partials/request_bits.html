@@ -4,3 +4,36 @@
 {% macro readout_badge(readout, title='') -%}
 <span class="badge {{ _TONES.get(readout.tone, 'state-tag') }}"{% if title %} title="{{ title }}"{% endif %}>{{ readout.label }}</span>
 {%- endmacro %}
+
+{#- The gentle agreement: a checkbox beside the submit, the text one click away (a new tab). -#}
+{% macro agreement(eula_sha, checked=False, error=None, id='xrasRequestAgree') -%}
+<input type="hidden" name="eula_sha" value="{{ eula_sha }}">
+<div class="form-check mb-0">
+    <input type="checkbox" class="form-check-input{{ ' is-invalid' if error }}" id="{{ id }}"
+           name="agree" value="1"{% if checked %} checked{% endif %}>
+    <label class="form-check-label" for="{{ id }}">
+        I accept the <a href="{{ url_for('user_dashboard.my_requests_agreement') }}" target="_blank"
+                        rel="noopener">NSF NCAR HPC terms of use</a> for this request.
+    </label>
+    {%- if error %}<div class="invalid-feedback d-block">{{ error }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
+{#- A preflight verdict (sam.xras.preflight.Verdict) in the requester's words. -#}
+{% macro verdict_note(verdict) -%}
+<div class="modal-facts small mb-2">
+{%- if verdict.status == 'rechecked' %}
+    <span class="text-success-emphasis"><i class="fa-solid fa-circle-check me-1"></i>SAM checked this:
+        once XRAS approves it, SAM can apply it.</span>
+{%- elif verdict.status == 'failed' %}
+    <span class="text-danger-emphasis"><i class="fa-solid fa-circle-exclamation me-1"></i>SAM could not
+        apply this once approved:</span>
+    <ul class="mb-0 text-danger-emphasis">{% for m in verdict.messages %}<li>{{ m }}</li>{% endfor %}</ul>
+{%- elif verdict.status == 'manual' %}
+    <span><i class="fa-solid fa-user-gear me-1"></i>Once approved, CISL staff apply this one by hand.</span>
+{%- else %}
+    <span><i class="fa-solid fa-circle-info me-1"></i>SAM could not check this in advance; XRAS
+        reviews it as usual.</span>
+{%- endif %}
+</div>
+{%- endmacro %}

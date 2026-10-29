@@ -125,6 +125,18 @@ production, 2026-10-28) feed the picker and the resource lists.
   action. Renewal is offered only where that read names the line, with its opportunity;
   Extension and Supplement follow the gate alone, since the line's `allowedActions` is advisory.
   `?projcode=` (the card's "Request time" link) opens that project's picker on load.
+- The Extension and Supplement forms are one `HtmxFormHandler` (`_RequestForm`): each stage
+  re-reads the family and re-runs the routing, so nothing about the gate rides in the browser.
+  Review runs `preflight_draft` (`sam/xras/submission_preflight.py`) and disables Submit on a
+  `failed` verdict; a submit without the tick, with a stale `eula_sha` or with a failed verdict
+  returns to the review. Comments are required on both, a SAM choice (XRAS requires them on an
+  Extension only). The Supplement's resources are the line's own; its limits map through the
+  catalog key to SAM's resource. An impersonating session cannot file. The terms open at
+  `/user/requests/agreement` (the `/register` blueprint is unmounted on production). Resume and
+  Discard answer `HX-Refresh`.
+- The admin Add-action files Extension and Supplement through `request_action(door='admin',
+  submit=False)` and asks the same agreement tick; Transfer, Adjustment, New and Renewal keep
+  the editor's direct `add_action`.
 - Schemas in `sam/schemas/forms/xras_submission.py`, composed from the caps and validators of
   `forms/xras_remediation.py`; `XrasAgreementMixin` on all four.
 - The review step runs `preflight_draft` (`sam/xras/submission_preflight.py`), which builds the

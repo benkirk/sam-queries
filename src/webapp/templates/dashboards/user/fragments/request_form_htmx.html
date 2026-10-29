@@ -1,0 +1,54 @@
+{#- An Extension or Supplement form, into #xrasRequestModalBody (GET, and every error or Back).
+    Context: project, action_type, decision, floor, resources [{resource_id, name, units,
+    sam_name, limit}], post_url, eula_sha, errors, field_errors, form. -#}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{% from 'dashboards/fragments/form_fields.html' import date_field, textarea_field with context %}
+{{ modal_title('xrasRequestModalLabel', action_type ~ ' request', 'paper-plane', meta=project.projcode) }}
+{% call htmx_form(post_url, '#xrasRequestModalBody', 'Review', submit_icon='arrow-right',
+                  errors=errors, disabled=not decision) %}
+    <input type="hidden" name="stage" value="review">
+    {% if decision %}
+    <div class="modal-facts small mb-3">
+        XRAS request <span class="font-monospace">{{ decision.request_number }}</span>
+        {%- if action_type == 'Extension' and floor %}; the project's allocations end {{ floor | fmt_date }}{% endif %}.
+    </div>
+    {% endif %}
+    {% if action_type == 'Extension' %}
+        {{ date_field('end_date', 'New end date', required=True, id='xrasRequestEnd', min=end_min,
+                      help='Every allocation on the project moves to this date.') }}
+        {{ textarea_field('user_comments', 'Why the project needs more time', required=True,
+                          rows=4, id='xrasRequestComments') }}
+    {% else %}
+        <table class="table table-sm align-middle mb-2">
+            <thead class="table-subtle">
+                <tr><th>Resource</th><th class="col-num">Amount</th><th class="col-shrink">Limit</th></tr>
+            </thead>
+            <tbody>
+            {% for r in resources %}
+                {% set _name = 'amount_' ~ r.resource_id %}
+                {% set _err = (field_errors or {}).get(_name) %}
+                {% set _default = r.limit.default_amount if r.limit and r.limit.default_amount is not none else '' %}
+                <tr>
+                    <td><label for="xrasRequestAmount{{ r.resource_id }}" class="mb-0">{{ r.name }}</label>
+                        {% if r.units %}<span class="small text-muted">{{ r.units }}</span>{% endif %}</td>
+                    <td class="col-num">
+                        <input type="text" inputmode="decimal" class="form-control form-control-sm text-end ctl-w-sm{{ ' is-invalid' if _err }}"
+                               id="xrasRequestAmount{{ r.resource_id }}" name="{{ _name }}"
+                               value="{{ form.get(_name) if form else ('%g' | format(_default) if _default != '' else '') }}">
+                        {% if _err %}<div class="invalid-feedback d-block text-start">{{ _err[0] }}</div>{% endif %}
+                    </td>
+                    <td class="col-shrink text-nowrap small text-muted">
+                        {%- if r.limit and r.limit.max_amount is not none %}up to {{ r.limit.max_amount | fmt_number }}{% else %}—{% endif -%}
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="3" class="text-muted small">This request names no resources.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <p class="form-text mt-0">Leave a resource blank to ask for none of it.</p>
+        {{ textarea_field('user_comments', 'What the extra resources are for', required=True,
+                          rows=4, id='xrasRequestComments') }}
+    {% endif %}
+{% endcall %}
