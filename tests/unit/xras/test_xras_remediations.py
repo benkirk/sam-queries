@@ -2078,7 +2078,7 @@ class TestPartCIsAdminOnly:
         body = auth_client.post('/allocations/xras_add_action/EXAM0001', data={
             'action_type': 'Extension', 'agree': '1', 'eula_sha': eula_sha()}).get_data(
             as_text=True)
-        assert 'Added a Extension action' in body
+        assert 'Added an Extension action' in body
         draft, kw = calls[0]
         assert (draft.action_type, draft.request_number) == ('Extension', 'EXAM0001')
         assert (kw['door'], kw['submit'], kw['xa_user'], kw['actor']) == \

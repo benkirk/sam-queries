@@ -177,6 +177,7 @@ class _RequestForm(HtmxFormHandler):
         """XRAS's renewal offer for the line (opportunity, resources, award period) and its rule book."""
         from sam.integration.xras_api.admin_client import XrasAdminClient
         from sam.integration.xras_api.rule_book import rule_book
+        from sam.xras.submission_preflight import line_resources
         try:
             offers = XrasAdminClient.from_environment(config).available_action_requests(
                 current_user.username)
@@ -194,11 +195,13 @@ class _RequestForm(HtmxFormHandler):
         begin = floor + timedelta(days=1) if floor else datetime.now().date()
         months = offer.get('award_months') or 12
         end = _add_months(begin, months) - timedelta(days=1)
+        held = {r['resource_id'] for r in line_resources(decision.line)}
+        resources = [dict(r, prefill=r['resource_id'] in held) for r in offer['resources']]
         return {'floor': floor, 'offer': offer, 'rules': rules,
                 'documents': [d for d in rules.documents if d.required],
                 'default_begin': begin, 'default_end': end,
                 'line_abstract': (decision.line or {}).get('abstract') or '',
-                **self._with_limits(config, [dict(r) for r in offer['resources']])}
+                **self._with_limits(config, resources)}
 
     def _with_limits(self, config, resources):
         """*resources* with their SAM resource and type limit, through the catalog key."""

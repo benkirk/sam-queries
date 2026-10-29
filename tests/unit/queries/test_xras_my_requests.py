@@ -60,8 +60,8 @@ class TestSubmissionReadout:
         out = submission_readout(row)
         assert (out.label, out.tone) == ('Stopped at submit', 'danger')
 
-    def test_an_open_row_without_an_error_is_being_filed(self):
-        assert submission_readout(self._row(state='created')).label == 'Being filed'
+    def test_an_open_row_without_an_error_is_not_submitted(self):
+        assert submission_readout(self._row(state='created')).label == 'Not submitted'
 
     def test_submitted_reads_through_the_action(self):
         row = self._row(state='submitted')
@@ -111,7 +111,7 @@ class TestMyRequests:
         XrasSubmission.create(session, action_type='Supplement', created_by='op',
                               xa_user='pi9', payload={}, **EULA)
         rows = my_requests(session, 'pi9', None)
-        assert [r['readout'].label for r in rows] == ['Being filed', 'Discarded']
+        assert [r['readout'].label for r in rows] == ['Not submitted', 'Discarded']
 
 
 class TestLedProjects:

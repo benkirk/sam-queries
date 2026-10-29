@@ -42,7 +42,9 @@
             {% for r in resources %}
                 {% set _name = 'amount_' ~ r.resource_id %}
                 {% set _err = (field_errors or {}).get(_name) %}
-                {% set _default = r.limit.default_amount if r.limit and r.limit.default_amount is not none else '' %}
+                {#- A renewal pre-fills only what the line already holds (r.prefill). -#}
+                {% set _default = r.limit.default_amount if r.limit and r.limit.default_amount is not none
+                                  and r.prefill is not false else '' %}
                 <tr>
                     <td><label for="xrasRequestAmount{{ r.resource_id }}" class="mb-0">{{ r.name }}</label>
                         {% if r.units %}<span class="small text-muted">{{ r.units }}</span>{% endif %}</td>

@@ -2000,8 +2000,9 @@ class _XrasAddActionHandler(_XrasRemediationHandler):
         return filed
 
     def on_success(self, result):
+        article = 'an' if self.added_type[:1] in 'AEIOU' else 'a'
         return _render_detail(
-            self.request_number, flash=f'Added a {self.added_type} action.')
+            self.request_number, flash=f'Added {article} {self.added_type} action.')
 
     def load(self, raw):
         data = super().load(raw)

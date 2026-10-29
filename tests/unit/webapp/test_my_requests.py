@@ -390,6 +390,23 @@ class TestTheRenewalForm:
         renewable.required = {'requiredFields': {'request': {'grants': {'required': True}}}}
         assert 'supporting grants' in auth_client.get(REN).get_data(as_text=True)
 
+    def test_only_the_resources_the_line_holds_are_prefilled(self, auth_client, renewable,
+                                                             monkeypatch):
+        import sam.xras.submission_preflight as pre
+        renewable.available[0]['resources'].append(
+            {'resource_id': 530275, 'name': 'Casper', 'units': 'Core-hours'})
+        limit = type('L', (), {'default_amount': 5000.0, 'max_amount': 10000.0})()
+        monkeypatch.setattr(pre, 'sam_resources_by_xras_id', lambda s, ids, k: {
+            rid: type('R', (), {'resource_name': name})()
+            for rid, name in ((530902, 'Derecho'), (530275, 'Casper'))})
+        monkeypatch.setattr('sam.accounting.allocation_type_limits.limits_for_allocation_type',
+                            lambda s, t: {'Derecho': limit, 'Casper': limit})
+        html = auth_client.get(REN).get_data(as_text=True)
+        assert 'name="amount_530902"\n                               value="5000"' in html \
+            or 'name="amount_530902" value="5000"' in html.replace('\n', ' ').replace('  ', ' ')
+        casper = html.split('name="amount_530275"')[1][:120]
+        assert 'value=""' in casper
+
     def test_the_form_prefills_the_abstract_and_the_window(self, auth_client, renewable, floor):
         from datetime import timedelta
         html = auth_client.get(REN).get_data(as_text=True)

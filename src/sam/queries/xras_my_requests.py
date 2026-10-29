@@ -68,7 +68,7 @@ def submission_readout(row, log=None, action_status: Optional[str] = None) -> Re
     step = stopped_step(row)
     if step:
         return Readout(f'Stopped at {step}', 'danger', row.modified_time)
-    return Readout('Being filed', 'info', row.modified_time)
+    return Readout('Not submitted', 'info', row.modified_time)
 
 
 def _latest_logs(session, action_ids: Iterable[int]) -> Dict[int, Any]:
