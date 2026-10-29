@@ -105,6 +105,16 @@ class TestMyRequests:
             ('filed', 'UHSS0001', 'Applied'), ('xras', 'UHSS0002', 'In review')]
         assert rows[1]['action_type'] == 'Supplement'
 
+    def test_an_applied_new_is_named_by_its_project(self, session, active_project):
+        """The stamp records the project a New created; the row shows its code, not 'New'."""
+        done = XrasSubmission.create(session, action_type='New', created_by='pi9',
+                                     xa_user='pi9', payload={}, **EULA)
+        done.advance('created').advance('submitted').mark_applied(active_project.project_id)
+        stopped = XrasSubmission.create(session, action_type='New', created_by='pi9',
+                                        xa_user='pi9', payload={}, **EULA)
+        rows = {r['readout'].label: r['request_number'] for r in my_requests(session, 'pi9', None)}
+        assert rows == {'Applied': active_project.projcode, 'Not submitted': None}
+
     def test_an_open_row_sorts_first(self, session):
         old = XrasSubmission.create(session, action_type='Extension', created_by='pi9',
                                     xa_user='pi9', payload={}, **EULA)

@@ -142,13 +142,17 @@ def my_requests(session, username: str,
     logs = _latest_logs(session, [r.action_id for r in filed]
                         + [a['action_id'] for a in latest.values() if a])
     statuses = {a['action_id']: a.get('action_status') for a in latest.values() if a}
+    projcodes = _projcodes(session, [r.project_id for r in filed
+                                     if r.project_id and not r.request_number])
 
     rows: List[Dict[str, Any]] = []
     shown = set()
     for sub in filed:
         readout = submission_readout(sub, logs.get(sub.action_id), statuses.get(sub.action_id))
         shown.add(sub.action_id)
-        rows.append(dict(kind='filed', request_number=sub.request_number,
+        # A New's row never learns a number (the stamp records the project); name that instead.
+        rows.append(dict(kind='filed',
+                         request_number=sub.request_number or projcodes.get(sub.project_id),
                          action_type=sub.action_type, readout=readout,
                          when=sub.submitted_time or sub.creation_time, submission=sub,
                          open=sub.is_active,
@@ -166,6 +170,16 @@ def my_requests(session, username: str,
                          when=entered, submission=None, open=False, needs_documents=[]))
     rows.sort(key=lambda r: (not r['open'], -_ordinal(r['when'])))
     return rows
+
+
+def _projcodes(session, project_ids: Iterable[int]) -> Dict[int, str]:
+    """``{project_id: projcode}`` in one query, for the filed rows that carry no request number."""
+    from sam.projects.projects import Project
+    wanted = sorted({int(i) for i in project_ids if i})
+    if not wanted:
+        return {}
+    return dict(session.query(Project.project_id, Project.projcode)
+                .filter(Project.project_id.in_(wanted)))
 
 
 def _ordinal(when) -> int:
