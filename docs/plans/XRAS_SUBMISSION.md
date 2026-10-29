@@ -160,8 +160,8 @@ SAM is the only gate.
 - Return for Corrections sets the request and action back to `Incomplete` with
   `returnedForCorrections: true` (`XRAS_DEV_PROBES.md` § 6.1).
 
-`sam/integration/xras_api/vocabulary.py` holds the role types; the action and request type ids
-join it in sprint 1, because the rule-book endpoints take them.
+`sam/integration/xras_api/vocabulary.py` holds the role types and the action and request type
+ids (`ACTION_TYPES`, `REQUEST_TYPES`), because the rule-book endpoints take them.
 
 **The rule book is exact** (every type, including New, read 2026-10-27).
 - A Supplement requires **nothing**.

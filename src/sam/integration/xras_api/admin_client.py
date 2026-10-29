@@ -120,6 +120,23 @@ def _date_str(value: Any) -> Optional[str]:
     return str(value)[:10]
 
 
+def _first_action_id(payload: Any) -> Optional[int]:
+    """The ``actionId`` a create or renew minted with its line, or ``None``."""
+    actions = payload.get('actions') if isinstance(payload, dict) else None
+    first = next((a for a in actions or () if isinstance(a, dict)), None)
+    return first.get('actionId') if first else None
+
+
+def _same_value(key: str, sent: Any, read: Any) -> bool:
+    """One sent field against its read-back: dates by day, numbers by value, text stripped."""
+    if key.endswith('Date'):
+        return _date_str(sent) == _date_str(read)
+    if isinstance(read, (int, float)) and not isinstance(read, bool):
+        return _amount_eq(sent, read)
+    return str(sent if sent is not None else '').strip() == \
+        str(read if read is not None else '').strip()
+
+
 @dataclass(frozen=True)
 class XrasWriteResult:
     """The whole record of one write attempt — what the audit row is built from.
@@ -232,10 +249,11 @@ class XrasAdminClient(_XrasTransport):
 
     def _write(self, method: str, path: str, *,
                params: Optional[Mapping[str, Any]] = None,
+               json: Any = None,
                xa_user: Optional[str] = None,
                context: Optional[str] = None
                ) -> Tuple[int, Any, Optional[str], Optional[str]]:
-        """**One** attempt. Returns ``(status, result, message, error)``.
+        """**One** attempt. Returns ``(status, result, message, error)``. *json* is the body, if any.
 
         Raises:
             XrasWriteRejected: XRAS refused deterministically (4xx). Nothing
@@ -250,7 +268,7 @@ class XrasAdminClient(_XrasTransport):
         url = self._url(path)
         try:
             response = self.session.request(
-                method, url, params=params,
+                method, url, params=params, json=json,
                 headers=self._headers(xa_user, context),
                 timeout=self.config.timeout)
         except requests.RequestException as exc:
@@ -976,7 +994,7 @@ class XrasAdminClient(_XrasTransport):
             'action_count': len(payload.get('actions') or ()),
         }
 
-    def delete_request(self, request_id: int, *, request_number: str,
+    def delete_request(self, request_id: int, *, request_number: Optional[str],
                        xa_user: str,
                        context: Optional[str] = None) -> XrasWriteResult:
         """Delete a whole request. **Irreversible in XRAS.**
@@ -984,9 +1002,13 @@ class XrasAdminClient(_XrasTransport):
         Verified by: **this line** is absent from the reports family -- sibling
         lines (a New beside the deleted Renewal) still resolve and must not read
         as a failed delete. The pre-delete identity is captured for the audit
-        row, because after this there is nothing left to read.
+        row, because after this there is nothing left to read. A draft with no
+        number yet (*request_number* ``None``) verifies by its by-id read instead.
         """
         path = f'/v1/requests/{int(request_id)}'
+        if request_number is None:
+            return self._delete_draft(request_id, path, xa_user=xa_user,
+                                      context=context)
         before = self._identity(self.reader.get_request_line(
             request_number, request_id=request_id))
         status, _, message, error = self._write(
@@ -1010,17 +1032,20 @@ class XrasAdminClient(_XrasTransport):
                    'context': context or XA_ADMIN_CONTEXT})
 
     def renew_request(self, request_id: int, *, request_number: str,
-                      xa_user: str,
+                      xa_user: str, opportunity_id: Optional[int] = None,
                       context: Optional[str] = None) -> XrasWriteResult:
-        """Spawn a renewal of a request.
+        """Spawn a renewal of a request, under *opportunity_id* when given.
 
         Verified by: the POST returns a **new** ``requestId`` (a renewal is a
         distinct request; the original stays). A 200 with no id read back is
-        left ``unverified`` — an operator confirms in XRAS.
+        left ``unverified`` — an operator confirms in XRAS. The response (the
+        new line with its ``rules{}``) travels in ``extra['response']``.
         """
         path = f'/v1/requests/{int(request_id)}/renew'
+        params = ({'opportunityId': int(opportunity_id)}
+                  if opportunity_id is not None else None)
         status, result, message, error = self._write(
-            'POST', path, xa_user=xa_user, context=context)
+            'POST', path, params=params, xa_user=xa_user, context=context)
         new_id = result.get('requestId') if isinstance(result, dict) else None
 
         if error:
@@ -1038,18 +1063,24 @@ class XrasAdminClient(_XrasTransport):
             after={'renewalRequestId': new_id}, verified=verified,
             verify_detail=detail, write_error=error,
             extra={'request_number': request_number, 'renewal_request_id': new_id,
+                   'action_id': _first_action_id(result),
+                   'opportunity_id': opportunity_id, 'response': result,
                    'context': context or XA_ADMIN_CONTEXT})
 
     def add_action(self, request_id: int, action_type: str, *,
                    request_number: str, xa_user: str,
+                   user_comments: Optional[str] = None,
                    context: Optional[str] = None) -> XrasWriteResult:
-        """Add a new action to a request.
+        """Add a new action to a request, with *user_comments* as a create param.
 
         Verified by: a new action appears on the request (the returned
-        ``actionId`` is present, or the action count grew).
+        ``actionId`` is present, or the action count grew), carrying the
+        comments when they were sent.
         """
         path = f'/v1/requests/{int(request_id)}/actions'
         params = {'actionType': str(action_type)}
+        if user_comments is not None:
+            params['userComments'] = str(user_comments)
         before_count = len(self._actions(request_number))
         status, result, message, error = self._write(
             'POST', path, params=params, xa_user=xa_user, context=context)
@@ -1057,9 +1088,11 @@ class XrasAdminClient(_XrasTransport):
 
         try:
             after = self._actions(request_number)
-            verified = ((new_id is not None
-                         and any(a.get('actionId') == new_id for a in after))
-                        or len(after) > before_count)
+            added = next((a for a in after if a.get('actionId') == new_id), None) \
+                if new_id is not None else None
+            verified = ((added is not None or len(after) > before_count)
+                        and (user_comments is None or self._fields_verified(
+                            added, {'userComments': str(user_comments)})))
             detail = (f'action {new_id} added' if new_id is not None
                       else f'action count {before_count} -> {len(after)}')
         except XrasSourceUnavailable as exc:
@@ -1074,3 +1107,307 @@ class XrasAdminClient(_XrasTransport):
             extra={'request_number': request_number, 'action_id': new_id,
                    'action_type': action_type,
                    'context': context or XA_ADMIN_CONTEXT})
+
+    # submission (a user's own request: create, populate, abort)
+    #
+    # A draft has no requestNumber until submit, so these verify through the
+    # by-id read as the role-holder (get_draft), not the reports family. That
+    # read answers 200 for a role-holder on XRAS-dev and production (2026-10-28).
+
+    def get_draft(self, request_id: int, *, xa_user: str) -> Optional[Dict[str, Any]]:
+        """One request line by id under ``submit`` as *xa_user*, ``rules{}`` included.
+
+        Raises:
+            XrasWriteRejected: 401 when *xa_user* holds no role on the line, which
+                is also how a deleted draft answers.
+        """
+        result = self._get(f'/v1/requests/{int(request_id)}', xa_user=xa_user)
+        return result if isinstance(result, dict) else None
+
+    def required_documents_status(self, request_id: int, action_id: int, *,
+                                  xa_user: str) -> List[Dict[str, Any]]:
+        """The document rules for one action and whether each is met (``[]`` when none apply)."""
+        result = self._get(
+            f'/v1/requests/{int(request_id)}/actions/{int(action_id)}'
+            '/required_documents_status', xa_user=xa_user)
+        return [r for r in (result or ()) if isinstance(r, dict)] \
+            if isinstance(result, list) else []
+
+    def _reread(self, request_id: int, xa_user: str
+                ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+        """``(draft, None)``, or ``(None, why)`` when the verifying read could not be made."""
+        try:
+            draft = self.get_draft(request_id, xa_user=xa_user)
+        except XrasSourceUnavailable as exc:
+            return None, f'verify read failed: {exc}'
+        if draft is None:
+            return None, f'verify read: requestId {int(request_id)} not found'
+        return draft, None
+
+    @staticmethod
+    def _draft_action(draft: Optional[Dict[str, Any]],
+                      action_id: int) -> Optional[Dict[str, Any]]:
+        return next((a for a in (draft or {}).get('actions') or ()
+                     if isinstance(a, dict) and a.get('actionId') == int(action_id)),
+                    None)
+
+    def _verified_by_draft(self, request_id: int, xa_user: str, check
+                           ) -> Tuple[Optional[bool], str, Any]:
+        """Re-read the draft and apply ``check(draft) -> (ok, detail, after)``."""
+        draft, why = self._reread(request_id, xa_user)
+        if why:
+            return None, why, None
+        return check(draft)
+
+    def create_request(self, opportunity_id: int, *, xa_user: str,
+                       request_type: str = 'New',
+                       request_number: Optional[str] = None) -> XrasWriteResult:
+        """Create a request line under *opportunity_id*; XRAS mints its first action with it.
+
+        *xa_user* lands as **Allocation Manager**, not PI, and ``requestNumber``
+        stays null until submit. The response, ``rules{}`` included, travels in
+        ``extra['response']``. Verified by the new id reading back with its action.
+        """
+        params: Dict[str, Any] = {'opportunityId': int(opportunity_id),
+                                  'requestType': str(request_type)}
+        if request_number is not None:
+            params['requestNumber'] = str(request_number)
+        path = '/v1/requests'
+        status, result, message, error = self._write(
+            'POST', path, params=params, xa_user=xa_user)
+        new_id = result.get('requestId') if isinstance(result, dict) else None
+        action_id = _first_action_id(result)
+
+        if new_id is None:
+            verified, after = None, None
+            detail = (f'create errored: {error}' if error
+                      else 'no requestId returned; confirm in XRAS')
+        else:
+            def check(draft):
+                found = self._draft_action(draft, action_id) if action_id else None
+                return (found is not None,
+                        f'requestId {new_id} reads back with action {action_id}'
+                        if found else f'requestId {new_id} has no action {action_id}',
+                        self._identity(draft))
+            verified, detail, after = self._verified_by_draft(new_id, xa_user, check)
+
+        return XrasWriteResult(
+            operation='create_request', method='POST', path=path,
+            xa_user=xa_user, http_status=status, message=message,
+            before=None, after=after, verified=verified, verify_detail=detail,
+            write_error=error,
+            extra={'request_id': new_id, 'action_id': action_id,
+                   'opportunity_id': int(opportunity_id),
+                   'request_type': request_type, 'response': result})
+
+    def _delete_draft(self, request_id: int, path: str, *, xa_user: str,
+                      context: Optional[str]) -> XrasWriteResult:
+        """``delete_request`` for an unnumbered draft: gone when the by-id read is 401, 404 or ``isDeleted``."""
+        try:
+            before = self._identity(self.get_draft(request_id, xa_user=xa_user))
+        except XrasSourceUnavailable:
+            before = None
+        status, _, message, error = self._write(
+            'DELETE', path, xa_user=xa_user, context=context)
+
+        try:
+            draft = self.get_draft(request_id, xa_user=xa_user)
+            verified = draft is None or draft.get('isDeleted') is True
+            detail = ('draft reads isDeleted' if draft is not None and verified
+                      else 'draft no longer resolves by id' if verified
+                      else 'draft still resolves, not deleted')
+        except XrasWriteRejected as exc:
+            verified = True if exc.status == 401 else None
+            detail = (f'draft by-id read answers {exc.status}' if verified
+                      else f'verify read failed: {exc}')
+        except XrasSourceUnavailable as exc:
+            verified, detail = None, f'verify read failed: {exc}'
+
+        return XrasWriteResult(
+            operation='delete_request', method='DELETE', path=path,
+            xa_user=xa_user, http_status=status, message=message,
+            before=before, after=None, verified=verified,
+            verify_detail=detail, write_error=error,
+            extra={'request_number': None, 'request_id': int(request_id),
+                   'context': context or XA_ADMIN_CONTEXT})
+
+    def delete_action(self, request_id: int, action_id: int, *,
+                      xa_user: str) -> XrasWriteResult:
+        """Soft-delete one action (the abort of a stopped submission).
+
+        XRAS keeps the row with ``isDeleted: true``; verified by reading that back.
+        """
+        path = f'/v1/requests/{int(request_id)}/actions/{int(action_id)}'
+        status, _, message, error = self._write('DELETE', path, xa_user=xa_user)
+
+        def check(draft):
+            action = self._draft_action(draft, action_id)
+            if action is None:
+                return True, f'action {action_id} no longer on the line', None
+            gone = action.get('isDeleted') is True
+            return gone, f'action {action_id} isDeleted={action.get("isDeleted")!r}', \
+                {'isDeleted': action.get('isDeleted')}
+        verified, detail, after = self._verified_by_draft(request_id, xa_user, check)
+
+        return XrasWriteResult(
+            operation='delete_action', method='DELETE', path=path,
+            xa_user=xa_user, http_status=status, message=message,
+            after=after, verified=verified, verify_detail=detail,
+            write_error=error,
+            extra={'request_id': int(request_id), 'action_id': int(action_id)})
+
+    def upload_document(self, request_id: int, action_id: int, *,
+                        document_type: str, filename: str, content: bytes,
+                        xa_user: str, title: Optional[str] = None
+                        ) -> XrasWriteResult:
+        """Attach a PDF to one action (JSON, base64 body). XRAS refuses a non-PDF with a 400.
+
+        The bytes never reach the result: the audit row records type, name and size.
+        """
+        import base64
+        path = (f'/v1/requests/{int(request_id)}/actions/{int(action_id)}'
+                '/documents')
+        body = {'documentType': str(document_type), 'filename': str(filename),
+                'title': str(title or filename),
+                'document': base64.b64encode(content).decode('ascii')}
+        status, result, message, error = self._write(
+            'POST', path, json=body, xa_user=xa_user)
+        doc_id = result.get('documentId') if isinstance(result, dict) else None
+
+        def check(draft):
+            docs = (self._draft_action(draft, action_id) or {}).get('documents') or []
+            found = any(isinstance(d, dict) and doc_id is not None
+                        and d.get('documentId') == doc_id for d in docs)
+            return found, (f'document {doc_id} on action {action_id}' if found
+                           else f'document {doc_id} not on action {action_id}'), \
+                {'document_id': doc_id, 'document_count': len(docs)}
+        verified, detail, after = self._verified_by_draft(request_id, xa_user, check)
+
+        return XrasWriteResult(
+            operation='upload_document', method='POST', path=path,
+            xa_user=xa_user, http_status=status, message=message,
+            after=after, verified=verified, verify_detail=detail,
+            write_error=error,
+            extra={'request_id': int(request_id), 'action_id': int(action_id),
+                   'document_id': doc_id, 'document_type': document_type,
+                   'filename': filename, 'bytes': len(content)})
+
+    def set_opportunity_attributes(self, request_id: int, action_id: int,
+                                   attributes: List[Dict[str, Any]], *,
+                                   xa_user: str) -> XrasWriteResult:
+        """Replace one action's opportunity attributes (the EUA echo): ``[{opportunityAttributeId, attributeValue}]``.
+
+        The bulk JSON form; the single-attribute PUT with no value is a 400. The
+        EUA row stores no value, so presence of each id is what verifies.
+        """
+        path = (f'/v1/requests/{int(request_id)}/actions/{int(action_id)}'
+                '/opportunity_attributes')
+        sent = [{'opportunityAttributeId': int(a['opportunityAttributeId']),
+                 'attributeValue': a.get('attributeValue')} for a in attributes]
+        status, _, message, error = self._write(
+            'PUT', path, json={'opportunityAttributes': sent}, xa_user=xa_user)
+        wanted = {a['opportunityAttributeId'] for a in sent}
+
+        def check(draft):
+            rows = (self._draft_action(draft, action_id) or {}).get(
+                'opportunityAttributes') or []
+            have = {r.get('opportunityAttributeId') for r in rows if isinstance(r, dict)}
+            missing = sorted(wanted - have)
+            return not missing, (f'attributes {sorted(wanted)} present' if not missing
+                                 else f'attributes {missing} missing'), sorted(have)
+        verified, detail, after = self._verified_by_draft(request_id, xa_user, check)
+
+        return XrasWriteResult(
+            operation='set_opp_attributes', method='PUT', path=path,
+            xa_user=xa_user, http_status=status, message=message,
+            after=after, verified=verified, verify_detail=detail,
+            write_error=error,
+            extra={'request_id': int(request_id), 'action_id': int(action_id),
+                   'attribute_ids': sorted(wanted)})
+
+    @staticmethod
+    def _grant_matches(grant: Dict[str, Any], params: Dict[str, Any]
+                       ) -> Tuple[bool, List[str]]:
+        """Each sent field the read echoes equals it; returns ``(ok, keys not echoed)``."""
+        unechoed = [k for k in params if k not in grant]
+        ok = all(_same_value(k, v, grant.get(k)) for k, v in params.items()
+                 if k in grant)
+        return ok, unechoed
+
+    def _grant_op(self, operation: str, method: str, path: str, request_id: int,
+                  grant_id: Optional[int], params: Dict[str, Any], *,
+                  xa_user: str) -> XrasWriteResult:
+        status, result, message, error = self._write(
+            method, path, params=params, xa_user=xa_user)
+        if grant_id is None and isinstance(result, dict):
+            grant_id = result.get('grantId')
+
+        def check(draft):
+            grants = [g for g in draft.get('grants') or () if isinstance(g, dict)]
+            grant = next((g for g in grants if grant_id is not None
+                          and g.get('grantId') == grant_id), None)
+            if grant is None:
+                grant = next((g for g in grants if 'grantId' not in g and _same_value(
+                    'grantNumber', params.get('grantNumber'), g.get('grantNumber'))), None)
+            if grant is None:
+                return False, f'grant {grant_id} not on the request', None
+            ok, unechoed = self._grant_matches(grant, params)
+            note = f'; not echoed: {", ".join(unechoed)}' if unechoed else ''
+            return ok, (f'grant {grant_id} reads back' if ok
+                        else f'grant {grant_id} differs') + note, \
+                {k: grant.get(k) for k in params if k in grant}
+        verified, detail, after = self._verified_by_draft(request_id, xa_user, check)
+
+        return XrasWriteResult(
+            operation=operation, method=method, path=path, xa_user=xa_user,
+            http_status=status, message=message, after=after,
+            verified=verified, verify_detail=detail, write_error=error,
+            extra={'request_id': int(request_id), 'grant_id': grant_id,
+                   'fields': list(params)})
+
+    def add_grant(self, request_id: int, *, xa_user: str,
+                  **fields: Any) -> XrasWriteResult:
+        """Add a supporting grant; *fields* are wire-named (``grantNumber``, ``fundingAgencyId``, ``piName`` ...).
+
+        Validate on Small, Large and External demands six beyond the number and
+        agency: PI name, title, begin and end date, program officer name and email.
+        """
+        params = {k: _date_str(v) if k.endswith('Date') else v
+                  for k, v in fields.items() if v is not None}
+        return self._grant_op('add_grant', 'POST',
+                              f'/v1/requests/{int(request_id)}/grants',
+                              request_id, None, params, xa_user=xa_user)
+
+    def update_grant(self, request_id: int, grant_id: int, *, xa_user: str,
+                     **fields: Any) -> XrasWriteResult:
+        """Update one grant in place; *fields* as for :meth:`add_grant`."""
+        params = {k: _date_str(v) if k.endswith('Date') else v
+                  for k, v in fields.items() if v is not None}
+        return self._grant_op('update_grant', 'PUT',
+                              f'/v1/requests/{int(request_id)}/grants/{int(grant_id)}',
+                              request_id, int(grant_id), params, xa_user=xa_user)
+
+    def set_fos(self, request_id: int, fos_type_id: int, *, xa_user: str,
+                is_primary: bool = True) -> XrasWriteResult:
+        """Put a field of science on the request; ``isPrimary`` is required by the route."""
+        path = f'/v1/requests/{int(request_id)}/fos/{int(fos_type_id)}'
+        params = {'isPrimary': 'true' if is_primary else 'false'}
+        status, _, message, error = self._write(
+            'PUT', path, params=params, xa_user=xa_user)
+
+        def check(draft):
+            row = next((f for f in draft.get('fos') or () if isinstance(f, dict)
+                        and f.get('fosTypeId') == int(fos_type_id)), None)
+            ok = row is not None and ('isPrimary' not in row
+                                      or bool(row['isPrimary']) == is_primary)
+            return ok, (f'fos {fos_type_id} present (isPrimary={row.get("isPrimary")!r})'
+                        if row else f'fos {fos_type_id} not on the request'), \
+                [f.get('fosTypeId') for f in draft.get('fos') or () if isinstance(f, dict)]
+        verified, detail, after = self._verified_by_draft(request_id, xa_user, check)
+
+        return XrasWriteResult(
+            operation='set_fos', method='PUT', path=path, xa_user=xa_user,
+            http_status=status, message=message, after=after,
+            verified=verified, verify_detail=detail, write_error=error,
+            extra={'request_id': int(request_id), 'fos_type_id': int(fos_type_id),
+                   'is_primary': is_primary})

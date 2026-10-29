@@ -19,7 +19,9 @@ trusted status codes would report irreversible operations as fine.
 
 from __future__ import annotations
 
+import base64
 import inspect
+import json
 from pathlib import Path
 from _paths import REPO_ROOT
 from unittest.mock import MagicMock
@@ -44,7 +46,19 @@ from sam.integration.xras_api.base import (
     XrasWriteRejected,
 )
 from sam.integration.xras_api.client import XA_CONTEXT, XrasApiClient
-from sam.integration.xras_api.config import XrasApiConfig, xras_write_configured
+from sam.integration.xras_api.config import (
+    XrasApiConfig,
+    parse_submit_action_types,
+    xras_submit_configured,
+    xras_write_configured,
+)
+from sam.integration.xras_api.vocabulary import (
+    ACTION_TYPES,
+    REQUEST_TYPES,
+    SUBMIT_ACTION_TYPES,
+    action_type_id,
+    action_type_name,
+)
 
 
 # canned payloads
@@ -989,3 +1003,319 @@ class TestVerifiesReadTheTargetedLine:
         src = REPO_ROOT / 'src'
         hits = [p for p in src.rglob('*.py') if 'get_request_by_number' in p.read_text()]
         assert hits == [], hits
+
+
+# the submit lever (XRAS_SUBMISSION_SPRINT1.md § 3)
+
+
+class TestTheSubmitLever:
+    """A fourth lever, off by default, that only means anything on top of the write lever."""
+
+    def test_off_by_default(self, monkeypatch):
+        for key in ('XRAS_SUBMIT_ENABLED', 'XRAS_SUBMIT_ACTION_TYPES'):
+            monkeypatch.delenv(key, raising=False)
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_WRITE_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        assert xras_submit_configured() is False
+
+    def test_it_needs_the_write_lever(self):
+        assert XrasApiConfig(enabled=True, write_enabled=False, submit_enabled=True,
+                             api_key='k').submit_configured is False
+        assert XrasApiConfig(enabled=True, write_enabled=True, submit_enabled=True,
+                             api_key='k').submit_configured is True
+
+    @pytest.mark.parametrize('value, expected', [
+        (None, set(SUBMIT_ACTION_TYPES)), ('', set(SUBMIT_ACTION_TYPES)),
+        ('all', set(SUBMIT_ACTION_TYPES)), ('none', set()),
+        ('Extension,Supplement', {'Extension', 'Supplement'}),
+        ('extension, Extention ,new', {'Extension', 'New'}),   # the typo is dropped
+    ])
+    def test_the_type_list_parses_fail_safe(self, value, expected):
+        assert parse_submit_action_types(value) == expected
+
+    def test_a_type_off_the_list_is_not_armed(self, monkeypatch):
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_WRITE_ENABLED', '1')
+        monkeypatch.setenv('XRAS_SUBMIT_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        monkeypatch.setenv('XRAS_SUBMIT_ACTION_TYPES', 'Extension,Supplement')
+        config = XrasApiConfig.from_environment()
+        assert config.submit_allows('Extension') and not config.submit_allows('New')
+
+    def test_the_summary_reports_both(self):
+        summary = XrasApiConfig(enabled=True, write_enabled=True, submit_enabled=True,
+                                api_key='k',
+                                submit_action_types=frozenset({'Supplement'})).summary()
+        assert summary['submit_enabled'] is True and summary['submit_configured'] is True
+        assert summary['submit_action_types'] == ['Supplement']
+
+
+class TestHelmSubmitLever:
+    """Prod ships dark and narrowed, dev armed, and neither CronJob ever carries it."""
+
+    def _values(self, name):
+        return yaml.safe_load((REPO_ROOT / 'helm' / name).read_text())
+
+    def test_prod_ships_it_dark_and_narrowed(self):
+        env = self._values('values.yaml')['webapp']['env']
+        assert str(env['XRAS_SUBMIT_ENABLED']) == '0'
+        assert parse_submit_action_types(env['XRAS_SUBMIT_ACTION_TYPES']) == {
+            'Extension', 'Supplement'}
+
+    def test_dev_arms_it(self):
+        assert self._values('values-dev.yaml')['webapp']['env']['XRAS_SUBMIT_ENABLED'] == '1'
+
+    def test_no_task_pod_carries_it(self):
+        for name in ('values.yaml', 'values-dev.yaml'):
+            tasks_env = (self._values(name).get('tasks') or {}).get('env') or {}
+            assert 'XRAS_SUBMIT_ENABLED' not in tasks_env, name
+        manifest = (REPO_ROOT / 'helm' / 'templates' / 'cronjob-tasks.yaml').read_text()
+        assert 'XRAS_SUBMIT' not in manifest
+
+
+class TestActionAndRequestTypes:
+    """The ids ``/v1/types/all`` answered on 2026-10-27; the rule-book route takes them."""
+
+    def test_the_ids_the_design_names(self):
+        assert {k: ACTION_TYPES[k] for k in ('Supplement', 'Extension', 'Renewal', 'New',
+                                             'Adjustment', 'Date Adjustment')} == {
+            'Supplement': 500020, 'Extension': 500017, 'Renewal': 500021, 'New': 500019,
+            'Adjustment': 500168, 'Date Adjustment': 500334}
+        assert REQUEST_TYPES == {'New': 6, 'Renewal': 7}
+
+    def test_every_submit_type_has_an_id(self):
+        assert all(t in ACTION_TYPES for t in SUBMIT_ACTION_TYPES)
+
+    @pytest.mark.parametrize('key', ['extension', 'Extension', 500017, '500017'])
+    def test_it_resolves_any_spelling(self, key):
+        assert action_type_name(key) == 'Extension' and action_type_id(key) == 500017
+
+    def test_an_unknown_type_is_loud(self):
+        with pytest.raises(ValueError):
+            action_type_id('Extention')
+
+
+# submission verbs
+
+_FIXTURES = REPO_ROOT / 'tests' / 'fixtures' / 'xras' / 'outgoing'
+
+
+def _draft(**changes):
+    """The captured create response for Small 532220 (request 1439704, action 373018)."""
+    body = json.loads((_FIXTURES / 'create_request_small_532220.json').read_text())['result']
+    body.update(changes)
+    return body
+
+
+def _draft_action(draft, **changes):
+    draft['actions'][0].update(changes)
+    return draft
+
+
+def _calls(client):
+    return [(c[0][0], c[0][1], c[1]) for c in client.session.request.call_args_list]
+
+
+class TestDraftReads:
+
+    def test_get_draft_reads_by_id_as_the_user(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200, _draft())])
+        assert client.get_draft(1439704, xa_user='pi-user')['requestId'] == 1439704
+        method, url, kwargs = _calls(client)[0]
+        assert (method, url.split('/v1')[1]) == ('GET', '/requests/1439704')
+        assert kwargs['headers']['XA-USER'] == 'pi-user'
+
+    def test_a_line_without_a_role_is_a_401(self, monkeypatch):
+        client = _client(monkeypatch, [_response(401)])
+        with pytest.raises(XrasWriteRejected) as exc:
+            client.get_draft(1439704, xa_user='someone-else')
+        assert exc.value.status == 401
+
+    def test_required_documents_status(self, monkeypatch):
+        rule = {'documentTypeId': 22, 'documentType': 'Advisor_Letter',
+                'hardPageLimit': None, 'requirementMet': False}
+        client = _client(monkeypatch, [_response(200, [rule]), _response(200, [])])
+        assert client.required_documents_status(1, 2, xa_user='pi-user') == [rule]
+        assert client.required_documents_status(1, 3, xa_user='pi-user') == []
+        assert _calls(client)[0][1].endswith('/requests/1/actions/2/required_documents_status')
+
+    def test_required_fields_is_a_read_client_call_keyed_by_ids(self, monkeypatch):
+        reader = XrasApiClient(XrasApiConfig(enabled=True, api_key='k'))
+        monkeypatch.setattr(reader.session, 'request', MagicMock(
+            return_value=_response(200, {'requiredFields': {'request': {}}})))
+        assert reader.required_fields(500024, 'Extension') == {
+            'requiredFields': {'request': {}}}
+        url = reader.session.request.call_args[0][1]
+        assert url.endswith('/v1/allocation_types/500024/action_types/500017/required_fields')
+
+
+class TestCreateRequest:
+
+    def test_it_posts_params_and_verifies_by_the_new_id(self, monkeypatch):
+        created = _draft()
+        client = _client(monkeypatch, [_response(200, created), _response(200, _draft())])
+        result = client.create_request(532220, xa_user='pi-user')
+        assert result.verified is True
+        assert (result.extra['request_id'], result.extra['action_id']) == (1439704, 373018)
+        assert result.extra['response'] == created
+        method, url, kwargs = _calls(client)[0]
+        assert (method, kwargs['params']) == (
+            'POST', {'opportunityId': 532220, 'requestType': 'New'})
+        assert _calls(client)[1][1].endswith('/requests/1439704')
+        assert 'roles' not in (result.after or {})     # no person block in the audit row
+
+    def test_a_5xx_with_no_id_is_unknown_not_failed(self, monkeypatch):
+        client = _client(monkeypatch, [_response(502)])
+        result = client.create_request(532220, xa_user='pi-user')
+        assert result.verified is None and result.write_error == 'HTTP 502'
+        assert client.session.request.call_count == 1          # one attempt, no reread
+
+    def test_an_unreadable_draft_is_unknown(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200, _draft()), _response(401)])
+        result = client.create_request(532220, xa_user='pi-user')
+        assert result.verified is None and 'verify read failed' in result.verify_detail
+
+
+class TestAbortVerbs:
+
+    def test_delete_action_verifies_the_soft_delete(self, monkeypatch):
+        after = _draft_action(_draft(), isDeleted=True)
+        client = _client(monkeypatch, [_response(200), _response(200, after)])
+        result = client.delete_action(1439704, 373018, xa_user='pi-user')
+        assert result.verified is True and result.operation == 'delete_action'
+        assert _calls(client)[0][:2] == (
+            'DELETE', client._url('/v1/requests/1439704/actions/373018'))
+
+    def test_an_action_still_live_is_not_verified(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200), _response(200, _draft())])
+        assert client.delete_action(1439704, 373018, xa_user='pi-user').verified is False
+
+    def test_a_draft_delete_verifies_by_the_by_id_401(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200, _draft()), _response(200),
+                                       _response(401)])
+        result = client.delete_request(1439704, request_number=None, xa_user='pi-user')
+        assert result.verified is True and '401' in result.verify_detail
+        assert result.before['requestId'] == 1439704
+        assert [c[0] for c in _calls(client)] == ['GET', 'DELETE', 'GET']
+
+    def test_a_draft_that_still_reads_live_is_not_deleted(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200, _draft()), _response(200),
+                                       _response(200, _draft())])
+        assert client.delete_request(1439704, request_number=None,
+                                     xa_user='pi-user').verified is False
+
+
+class TestPopulateVerbs:
+
+    def test_upload_sends_base64_json_and_keeps_the_bytes_out(self, monkeypatch):
+        pdf = b'%PDF-1.4 rendered'
+        after = _draft_action(_draft(), documents=[{'documentId': 304037}])
+        client = _client(monkeypatch, [_response(200, {'documentId': 304037}),
+                                       _response(200, after)])
+        result = client.upload_document(1439704, 373018, document_type='Advisor_Letter',
+                                        filename='letter.pdf', content=pdf,
+                                        xa_user='pi-user')
+        assert result.verified is True
+        method, url, kwargs = _calls(client)[0]
+        assert method == 'POST' and url.endswith('/actions/373018/documents')
+        assert kwargs['json'] == {'documentType': 'Advisor_Letter', 'filename': 'letter.pdf',
+                                  'title': 'letter.pdf',
+                                  'document': base64.b64encode(pdf).decode()}
+        assert base64.b64encode(pdf).decode() not in repr(result)
+        assert result.extra['bytes'] == len(pdf)
+
+    def test_a_non_pdf_is_refused_by_xras(self, monkeypatch):
+        client = _client(monkeypatch, [_response(400, message='document is not a PDF file')])
+        with pytest.raises(XrasWriteRejected, match='not a PDF'):
+            client.upload_document(1, 2, document_type='Main_Doc', filename='x.txt',
+                                   content=b'text', xa_user='pi-user')
+
+    def test_opportunity_attributes_go_as_the_bulk_json_body(self, monkeypatch):
+        after = _draft_action(_draft(), opportunityAttributes=[
+            {'opportunityAttributeId': 539637, 'attributeValue': None}])
+        client = _client(monkeypatch, [_response(200), _response(200, after)])
+        result = client.set_opportunity_attributes(
+            1439704, 373018, [{'opportunityAttributeId': 539637}], xa_user='pi-user')
+        assert result.verified is True and result.operation == 'set_opp_attributes'
+        assert _calls(client)[0][2]['json'] == {'opportunityAttributes': [
+            {'opportunityAttributeId': 539637, 'attributeValue': None}]}
+
+    def test_a_missing_attribute_is_not_verified(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200), _response(200, _draft())])
+        assert client.set_opportunity_attributes(
+            1, 373018, [{'opportunityAttributeId': 539637}],
+            xa_user='pi-user').verified is False
+
+    _SIX = dict(piName='Ada Invented', title='An award', beginDate='2026-01-01',
+                endDate='2028-12-31', programOfficerName='Officer',
+                programOfficerEmail='officer@example.invalid')
+
+    def test_add_grant_posts_params_and_reads_the_grant_back(self, monkeypatch):
+        grant = {'grantId': 174568, 'grantNumber': '2345678',
+                 **self._SIX, 'beginDate': '2026-01-01T00:00:00Z'}
+        client = _client(monkeypatch, [_response(200, {'grantId': 174568}),
+                                       _response(200, _draft(grants=[grant]))])
+        result = client.add_grant(1439704, xa_user='pi-user', grantNumber='2345678',
+                                  fundingAgencyId=1, **self._SIX)
+        assert result.verified is True and result.extra['grant_id'] == 174568
+        assert 'fundingAgencyId' in result.verify_detail      # named, not silently passed
+        method, url, kwargs = _calls(client)[0]
+        assert method == 'POST' and url.endswith('/requests/1439704/grants')
+        assert kwargs['params']['programOfficerEmail'] == 'officer@example.invalid'
+
+    def test_a_grant_field_that_reads_back_different_is_not_verified(self, monkeypatch):
+        grant = {'grantId': 174568, 'grantNumber': '2345678', 'piName': None}
+        client = _client(monkeypatch, [_response(200),
+                                       _response(200, _draft(grants=[grant]))])
+        result = client.update_grant(1439704, 174568, xa_user='pi-user',
+                                     piName='Ada Invented')
+        assert result.verified is False
+        assert _calls(client)[0][:2] == ('PUT', client._url('/v1/requests/1439704/grants/174568'))
+
+    def test_set_fos_sends_is_primary_and_verifies(self, monkeypatch):
+        after = _draft(fos=[{'fosTypeId': 500003, 'isPrimary': True}])
+        client = _client(monkeypatch, [_response(200), _response(200, after)])
+        result = client.set_fos(1439704, 500003, xa_user='pi-user')
+        assert result.verified is True
+        assert _calls(client)[0][2]['params'] == {'isPrimary': 'true'}
+
+    def test_every_new_operation_fits_the_audit_column(self):
+        names = ('create_request', 'delete_action', 'upload_document',
+                 'set_opp_attributes', 'add_grant', 'update_grant', 'set_fos')
+        source = inspect.getsource(XrasAdminClient)
+        assert all(f"'{n}'" in source and len(n) <= 24 for n in names)
+
+
+class TestExtendedVerbs:
+
+    def test_add_action_sends_comments_and_verifies_them(self, monkeypatch):
+        before = _reports_with(resources=[])
+        after = _reports_with(resources=[])
+        after['actions'].append({'actionId': 8, 'actionType': 'Extension',
+                                 'actionStatus': 'Incomplete', 'userComments': 'why '})
+        client = _client(monkeypatch, [_response(200, {'actionId': 8})],
+                         reader=_FakeReader(before, after))
+        result = client.add_action(900001, 'Extension', request_number='EXAM0001',
+                                   xa_user='pi-user', user_comments='why')
+        assert result.verified is True
+        assert _calls(client)[0][2]['params'] == {'actionType': 'Extension',
+                                                  'userComments': 'why'}
+
+    def test_comments_that_did_not_stick_are_not_verified(self, monkeypatch):
+        after = _reports_with(resources=[])
+        after['actions'].append({'actionId': 8, 'actionType': 'Extension',
+                                 'actionStatus': 'Incomplete', 'userComments': None})
+        client = _client(monkeypatch, [_response(200, {'actionId': 8})],
+                         reader=_FakeReader(_reports_with(resources=[]), after))
+        assert client.add_action(900001, 'Extension', request_number='EXAM0001',
+                                 xa_user='pi-user', user_comments='why').verified is False
+
+    def test_renew_carries_the_opportunity_and_the_new_lines_action(self, monkeypatch):
+        renewed = _draft(requestId=1439800, requestType='Renewal')
+        client = _client(monkeypatch, [_response(200, renewed)],
+                         reader=_FakeReader(_reports_with(resources=[])))
+        result = client.renew_request(900001, request_number='EXAM0001',
+                                      xa_user='pi-user', opportunity_id=532221)
+        assert result.verified is True and result.extra['action_id'] == 373018
+        assert _calls(client)[0][2]['params'] == {'opportunityId': 532221}

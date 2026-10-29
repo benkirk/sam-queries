@@ -54,9 +54,10 @@ submit_armed()
 - One `logger.info` per step: submission id, step, op, request and action ids, status.
 - PI door: `xa_user = actor`. Admin door: `xa_user = resolve_pi(roster)`, `created_by = operator`.
 - `_editor_op` on an unnumbered draft passes `refresh=lambda: True`: nothing is in the index to
-  patch. Verification for a write with no report read is **response-verified**: `verified=True`
-  only when the body carries the id the step needs, with `verify_detail` saying so. A deleted
-  draft verifies by the by-id read answering 401; a deleted action by `isDeleted: true`.
+  patch. The submission verbs verify through `get_draft` (`GET /v1/requests/<rid>` as the
+  role-holder, 200 on XRAS-dev and production), which needs no number: a create by its new id
+  reading back with its action, a deleted draft by that read answering 401, a deleted action by
+  `isDeleted: true`.
 - The EULA is required on every action: `request_action(eula=(sha, accepted_at))` stamps the row.
 
 ### `XrasSubmission` (`sam/integration/xras_submission.py`)
@@ -141,10 +142,10 @@ handler's transaction; the other handlers get the same epilogue through one `sta
 | Lever | Read by | dev | prod |
 |---|---|---|---|
 | `XRAS_SUBMIT_ENABLED` | `XrasApiConfig.submit_enabled`, `xras_submit_configured()`; webapp only, never `tasks.env` | "1" | "0" |
-| `XRAS_SUBMIT_ACTION_TYPES` | the routing; parsed like `parse_enabled_action_types` | unset (all) | `Extension,Supplement` at the first prod flip |
+| `XRAS_SUBMIT_ACTION_TYPES` | `XrasApiConfig.submit_action_types` (`parse_submit_action_types`), then the routing | `all` | `Extension,Supplement`, shipped with the lever off so the first flip cannot expose New or Renewal |
 | `SUBMISSION_DOCUMENT_MAX_BYTES`, `SUBMISSION_DOCUMENT_MAX_PAGES` | the document helper | unset | unset |
 
-Pins: `tests/unit/gates/test_xras_admin_client.py` (prod off, cronjob never names it, dev on),
+Pins: `tests/unit/gates/test_xras_admin_client.py` (prod off and narrowed, no `tasks.env` and no CronJob names it, dev on),
 `helm/tests/test-dev-render.sh`, `tests/conftest.py`.
 
 ## 4. DDL, spoon-fed
