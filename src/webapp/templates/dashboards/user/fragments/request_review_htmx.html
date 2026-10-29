@@ -1,10 +1,12 @@
-{#- The review of an Extension or Supplement: what it asks for, SAM's preflight, the agreement,
-    then Back (stage=edit) or Submit (stage=submit). Context: the form's, plus data
-    (the loaded form: end_date | amounts, user_comments, verdict, review_error). -#}
+{#- The review of an Extension, Supplement or Renewal: what it asks for, SAM's preflight, the
+    documents the rule book names (a Renewal), the agreement, then Back (stage=edit) or Submit
+    (stage=submit). Context: the form's, plus data (the loaded form: end_date | amounts,
+    user_comments | abstract and begin_date, verdict, review_error). -#}
 {% from 'dashboards/fragments/modals.html' import modal_title %}
 {% from 'dashboards/user/partials/request_bits.html' import agreement, verdict_note %}
 {{ modal_title('xrasRequestModalLabel', 'Review the ' ~ action_type, 'paper-plane', meta=project.projcode) }}
 <form hx-post="{{ post_url }}" hx-target="#xrasRequestModalBody" hx-swap="innerHTML"
+      {%- if documents %} hx-encoding="multipart/form-data"{% endif %}
       hx-disabled-elt="find button[type='submit']" hx-disinherit="hx-disabled-elt" novalidate>
     <div class="modal-body">
         <dl class="row small mb-2">
@@ -14,15 +16,32 @@
             <dt class="col-sm-4">New end date</dt>
             <dd class="col-sm-8">{{ data.end_date | fmt_date }}{% if floor %} <span class="text-muted">(from {{ floor | fmt_date }})</span>{% endif %}</dd>
             {% else %}
+            {% if action_type == 'Renewal' %}
+            <dt class="col-sm-4">Window</dt>
+            <dd class="col-sm-8">{{ data.begin_date | fmt_date }} to {{ data.end_date | fmt_date }}</dd>
+            {% endif %}
             {% for r in resources if r.resource_id in data.amounts %}
             <dt class="col-sm-4">{{ r.name }}</dt>
             <dd class="col-sm-8">{{ data.amounts[r.resource_id] | fmt_number }} {{ r.units }}</dd>
             {% endfor %}
             {% endif %}
+            {% if action_type == 'Renewal' %}
+            <dt class="col-sm-4">Abstract</dt>
+            <dd class="col-sm-8 text-break">{{ data.abstract | truncate(300) }}</dd>
+            {% else %}
             <dt class="col-sm-4">Why</dt>
             <dd class="col-sm-8 text-break">{{ data.user_comments }}</dd>
+            {% endif %}
         </dl>
         {{ verdict_note(data.verdict) }}
+        {% for d in documents %}
+        <div class="mb-2">
+            <label for="xrasRequestDoc{{ loop.index }}" class="form-label small mb-1">{{ d.label }} <span class="text-danger">*</span>
+                <span class="text-muted">(PDF{% if d.hard_page_limit %}, at most {{ d.hard_page_limit }} pages{% endif %})</span></label>
+            <input type="file" class="form-control form-control-sm" id="xrasRequestDoc{{ loop.index }}"
+                   name="document_{{ d.code }}" accept="application/pdf,.pdf">
+        </div>
+        {% endfor %}
         <p class="small text-muted mb-2">Submitting sends this to XRAS for review. You can follow it
             on My Requests.</p>
         {% if action_type == 'Extension' %}
@@ -30,7 +49,13 @@
         {% else %}
         {% for rid, amount in data.amounts.items() %}<input type="hidden" name="amount_{{ rid }}" value="{{ '%g' | format(amount) }}">{% endfor %}
         {% endif %}
+        {% if action_type == 'Renewal' %}
+        <input type="hidden" name="begin_date" value="{{ data.begin_date.isoformat() }}">
+        <input type="hidden" name="end_date" value="{{ data.end_date.isoformat() }}">
+        <input type="hidden" name="abstract" value="{{ data.abstract }}">
+        {% else %}
         <input type="hidden" name="user_comments" value="{{ data.user_comments }}">
+        {% endif %}
         {{ agreement(eula_sha, error=data.review_error) }}
     </div>
     <div class="modal-footer">

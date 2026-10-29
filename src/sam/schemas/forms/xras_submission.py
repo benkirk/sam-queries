@@ -14,7 +14,7 @@ from . import HtmxFormSchema
 from .xras_remediation import _LONGTEXT_MAX, _clean
 
 __all__ = ['XrasAgreementMixin', 'XrasExtensionRequestForm', 'XrasSupplementRequestForm',
-           'XrasAddActionAgreementForm', 'SUBMISSION_STAGES']
+           'XrasRenewalRequestForm', 'XrasAddActionAgreementForm', 'SUBMISSION_STAGES']
 
 #: ``review`` renders the summary and the agreement; ``submit`` files; ``edit`` goes back.
 SUBMISSION_STAGES = ('edit', 'review', 'submit')
@@ -50,6 +50,29 @@ class XrasExtensionRequestForm(XrasAgreementMixin):
         return data
 
 
+def _parse_amounts(raw: dict) -> dict:
+    """``{resource id: amount}`` from the typed amounts; blank and zero ask for none."""
+    amounts, errors = {}, {}
+    for rid, text in raw.items():
+        text = (text or '').replace(',', '').strip()
+        if not text:
+            continue
+        try:
+            value = float(text)
+        except ValueError:
+            errors[f'amount_{rid}'] = ['Enter a number.']
+            continue
+        if value < 0:
+            errors[f'amount_{rid}'] = ['Enter zero or more.']
+        elif value > 0:
+            amounts[rid] = value
+    if errors:
+        raise ValidationError(errors)
+    if not amounts:
+        raise ValidationError('Ask for an amount on at least one resource.')
+    return amounts
+
+
 class XrasSupplementRequestForm(XrasAgreementMixin):
     """A Supplement: ``amounts`` maps an XRAS resource id to its typed amount (blank asks none).
 
@@ -67,25 +90,27 @@ class XrasSupplementRequestForm(XrasAgreementMixin):
         if len(data['user_comments']) < _COMMENTS_MIN:
             raise ValidationError({'user_comments': [
                 'Say what the extra resources are for, in a sentence or two.']})
-        amounts, errors = {}, {}
-        for rid, text in data['amounts'].items():
-            text = (text or '').replace(',', '').strip()
-            if not text:
-                continue
-            try:
-                value = float(text)
-            except ValueError:
-                errors[f'amount_{rid}'] = ['Enter a number.']
-                continue
-            if value < 0:
-                errors[f'amount_{rid}'] = ['Enter zero or more.']
-            elif value > 0:
-                amounts[rid] = value
-        if errors:
-            raise ValidationError(errors)
-        if not amounts:
-            raise ValidationError('Ask for an amount on at least one resource.')
-        data['amounts'] = amounts
+        data['amounts'] = _parse_amounts(data['amounts'])
+        return data
+
+
+class XrasRenewalRequestForm(XrasAgreementMixin):
+    """A Renewal: the abstract (``/renew`` does not copy it), the window, an amount per resource."""
+
+    abstract = f.Str(required=True, validate=v.Length(max=_LONGTEXT_MAX),
+                     error_messages={'required': 'The renewal needs an abstract.'})
+    begin_date = f.Date(required=True, error_messages={'required': 'Choose the start date.'})
+    end_date = f.Date(required=True, error_messages={'required': 'Choose the end date.'})
+    amounts = f.Dict(keys=f.Int(), values=f.Str(), load_default=dict)
+
+    @post_load
+    def _renewal(self, data, **kwargs):
+        data['abstract'] = _clean(data.get('abstract'))
+        if len(data['abstract']) < _COMMENTS_MIN:
+            raise ValidationError({'abstract': ['Describe the work for the coming period.']})
+        if data['end_date'] <= data['begin_date']:
+            raise ValidationError({'end_date': ['The end date must follow the start date.']})
+        data['amounts'] = _parse_amounts(data['amounts'])
         return data
 
 

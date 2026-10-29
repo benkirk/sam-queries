@@ -25,9 +25,12 @@ class Readout:
 
 
 def action_readout(action_status: Optional[str], log=None,
-                   entered: Optional[date] = None) -> Readout:
-    """What one XRAS action is waiting on, from its log row when XRAS posted it."""
+                   entered: Optional[date] = None, push_state: Optional[str] = None) -> Readout:
+    """What one XRAS action is waiting on: its log row once posted, else the sweep's push state,
+    else XRAS's own status. ``applied_inferred`` is the sweep finding SAM already holds it."""
     from sam.queries.xras_requests import IN_FLIGHT_ACTION_STATUSES, XRAS_REPOINTED_ON
+    if log is None and push_state == 'applied_inferred':
+        return Readout('Applied', 'success')
     if log is not None:
         if log.status == 'processed':
             return Readout('Applied', 'success', log.processed_time)
@@ -130,7 +133,8 @@ def my_requests(session, username: str,
         rows.append(dict(kind='xras', request_number=number,
                          action_type=action.get('action_type'),
                          readout=action_readout(action.get('action_status'),
-                                                logs.get(action['action_id']), entered),
+                                                logs.get(action['action_id']), entered,
+                                                (action.get('preflight') or {}).get('push_state')),
                          when=entered, submission=None, open=False))
     rows.sort(key=lambda r: (not r['open'], -_ordinal(r['when'])))
     return rows

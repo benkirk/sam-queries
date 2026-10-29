@@ -291,6 +291,7 @@ from .xras_remediation import (
 from .xras_submission import (
     XrasAddActionAgreementForm,
     XrasExtensionRequestForm,
+    XrasRenewalRequestForm,
     XrasSupplementRequestForm,
 )
 # XRAS action ingest — plain marshmallow, deliberately NOT HtmxFormSchema
@@ -413,7 +414,8 @@ __all__ = [
     'XrasActionFieldsForm',
     'XrasAddActionForm',
     'XrasRequestOverrideForm',
-    'XrasExtensionRequestForm', 'XrasSupplementRequestForm', 'XrasAddActionAgreementForm',
+    'XrasExtensionRequestForm', 'XrasSupplementRequestForm', 'XrasRenewalRequestForm',
+    'XrasAddActionAgreementForm',
     'XrasActionSchema',
     'XrasActionResourceSchema',
     'XrasActionRoleSchema',

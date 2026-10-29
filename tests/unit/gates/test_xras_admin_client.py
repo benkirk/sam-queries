@@ -1145,12 +1145,25 @@ class TestDraftReads:
                  'actionTypeId': 500021, 'resourceIdsAvailableForAction': [530902]}
         opportunities = [{'opportunityId': 532220, 'rules': {'availableActionRequests': []}},
                          {'opportunityId': 532221, 'opportunityName': 'Exploratory',
+                          'allocationTypeInfo': {'allocationTypeId': 500847,
+                                                 'allocationType': 'Exploratory'},
+                          'defaultAllocationAwardPeriod': 12,
+                          'attributeSets': [{'attributeSetName': 'the NWSC End User Agreement',
+                                             'attributes': [{'opportunityAttributeId': 539638,
+                                                             'isRequired': True}]}],
+                          'resources': [{'resourceId': 530902,
+                                         'displayResourceName': 'NSF NCAR Derecho',
+                                         'resourceUnits': 'Core-hours'}],
                           'rules': {'availableActionRequests': [offer]}}]
         client = _client(monkeypatch, [_response(200, opportunities)])
         assert client.available_action_requests('pi-user') == [{
             'opportunity_id': 532221, 'opportunity_name': 'Exploratory',
+            'allocation_type_id': 500847, 'allocation_type': 'Exploratory', 'award_months': 12,
+            'eua_attribute_id': 539638,
             'request_id': 1449367, 'request_number': 'UHSS0001', 'action_type': 'Renewal',
-            'resource_ids': [530902]}]
+            'resource_ids': [530902], 'resources': [{'resource_id': 530902,
+                                                     'name': 'NSF NCAR Derecho',
+                                                     'units': 'Core-hours'}]}]
         method, url, kwargs = _calls(client)[0]
         assert url.endswith('/v1/opportunities') and kwargs['headers']['XA-USER'] == 'pi-user'
 
@@ -1333,3 +1346,69 @@ class TestExtendedVerbs:
                                       xa_user='pi-user', opportunity_id=532221)
         assert result.verified is True and result.extra['action_id'] == 373018
         assert _calls(client)[0][2]['params'] == {'opportunityId': 532221}
+
+
+class TestReadingADraft:
+    """``reading_draft``: the reused editor verbs verify a line SAM minted by id, as the PI."""
+
+    def test_a_resource_write_verifies_by_id_not_by_number(self, monkeypatch):
+        reader = _FakeReader(AssertionError('the reports family must not be read'))
+        before = _draft()
+        after = _draft()
+        after['actions'][0]['resources'] = [{'resourceId': 530902, 'type': 'Requested',
+                                            'amount': 1000}]
+        client = _client(monkeypatch, [_response(200, before), _response(200, {}),
+                                       _response(200, after)], reader=reader)
+        with client.reading_draft(1439704, 'pi-user'):
+            result = client.update_resource_amount(
+                1439704, 373018, 530902, 1000, request_number='UHSS0002', xa_user='pi-user')
+        assert result.verified is True
+        reads = [c for c in _calls(client) if c[0] == 'GET']
+        assert [c[1].split('/v1')[1] for c in reads] == ['/requests/1439704'] * 2
+        assert all(c[2]['headers']['XA-USER'] == 'pi-user' for c in reads)
+
+    def test_the_scope_ends_with_the_block(self, monkeypatch):
+        client = _client(monkeypatch, [])
+        with client.reading_draft(1, 'pi-user'):
+            assert client._draft_scope == (1, 'pi-user')
+        assert client._draft_scope is None
+
+
+class TestTheRuleBook:
+
+    @staticmethod
+    def _reader(fields=None, documents=None, fail=False):
+        from sam.integration.xras_api.base import XrasSourceUnavailable
+        reader = MagicMock()
+        if fail:
+            reader.required_fields.side_effect = XrasSourceUnavailable('down')
+        reader.required_fields.return_value = fields
+        reader.get_document_types.return_value = documents
+        return reader
+
+    def test_the_required_fields_and_documents_for_the_pair(self):
+        from sam.integration.xras_api.rule_book import rule_book
+        fields = {'requiredFields': {'request': {'abstract': {'required': True},
+                                                 'grants': {'required': True},
+                                                 'keywords': {'required': False}}}}
+        documents = [{'documentType': 'Main_Doc', 'displayDocumentType': 'Main Document',
+                      'allocationActionTypes': [{'allocationTypeId': 500023, 'actionTypes': [
+                          {'actionType': 'Renewal', 'hardPageLimit': 10, 'isRequired': True}]}]},
+                     {'documentType': 'Advisor_Letter', 'allocationActionTypes': [
+                         {'allocationTypeId': 500847, 'actionTypes': [
+                             {'actionType': 'Renewal', 'isRequired': True}]}]}]
+        book = rule_book(self._reader(fields, documents), 500023, 'Renewal')
+        assert book.required == ('abstract', 'grants') and book.wants_grants
+        assert [(d.code, d.hard_page_limit) for d in book.documents] == [('Main_Doc', 10)]
+
+    def test_an_outage_falls_back_by_type_name(self):
+        from sam.integration.xras_api.rule_book import rule_book
+        book = rule_book(self._reader(fail=True), 500847, 'Renewal',
+                         allocation_type_name='Exploratory')
+        assert book.source == 'fallback' and not book.wants_grants
+        assert [d.code for d in book.documents] == ['Advisor_Letter']
+
+    def test_an_unknown_type_with_no_answer_names_nothing(self):
+        from sam.integration.xras_api.rule_book import rule_book
+        book = rule_book(self._reader(fail=True), 1, 'Renewal', allocation_type_name='Nope')
+        assert (book.source, book.required, book.documents) == ('none', (), ())

@@ -9,6 +9,8 @@ Design: ``docs/plans/XRAS_SUBMISSION_SPRINT1.md`` § 2.
 
 from __future__ import annotations
 
+import os
+import re
 from datetime import date, datetime
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
@@ -105,3 +107,32 @@ def preflight_draft(session, line: Mapping[str, Any], draft, *,
     return preflight_action(session, dict(line), draft_action(draft),
                             resource_keys=resource_keys, opportunities=opportunities,
                             enabled=None)
+
+
+_PAGE_OBJECT = re.compile(rb'/Type\s*/Page(?![a-zA-Z])')
+
+
+def _env_int(name: str) -> Optional[int]:
+    raw = (os.environ.get(name) or '').strip()
+    return int(raw) if raw.isdigit() else None
+
+
+def document_refusal(filename: str, content: bytes) -> Optional[str]:
+    """Why SAM refuses an upload, or ``None``. The PDF check always runs; the size and page
+    hooks (``SUBMISSION_DOCUMENT_MAX_BYTES``, ``_MAX_PAGES``) are dark unless set.
+
+    NOTE: pages are counted from ``/Type /Page`` objects, which a compressed object stream
+    hides; a count of zero passes and XRAS's own 400 is the backstop.
+    """
+    if not content:
+        return f'{filename} is empty.'
+    if not content.startswith(b'%PDF-'):
+        return f'{filename} is not a PDF.'
+    max_bytes = _env_int('SUBMISSION_DOCUMENT_MAX_BYTES')
+    if max_bytes and len(content) > max_bytes:
+        return f'{filename} is larger than {max_bytes // 1_000_000} MB.'
+    max_pages = _env_int('SUBMISSION_DOCUMENT_MAX_PAGES')
+    pages = len(_PAGE_OBJECT.findall(content)) if max_pages else 0
+    if max_pages and pages > max_pages:
+        return f'{filename} has {pages} pages; the limit is {max_pages}.'
+    return None

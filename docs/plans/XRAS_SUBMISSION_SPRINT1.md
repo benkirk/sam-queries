@@ -134,6 +134,17 @@ production, 2026-10-28) feed the picker and the resource lists.
   catalog key to SAM's resource. An impersonating session cannot file. The terms open at
   `/user/requests/agreement` (the `/register` blueprint is unmounted on production). Resume and
   Discard answer `HX-Refresh`.
+- The Renewal (1c) opens from XRAS's offer for the line (`available_action_requests` carries
+  its opportunity, allocation type, award period, named resources and the required End User
+  Agreement attribute, which the draft echoes with a null value). The rule book
+  (`sam/integration/xras_api/rule_book.py`: `required_fields` plus `/types/documents`, memoised
+  a day, `RULE_BOOK_FALLBACK` by type name) names the documents; each required one is a PDF
+  upload on the review, checked by `document_refusal`. The form pre-fills the abstract from the
+  line (`/renew` does not copy it) and the window from the day after the current end for the
+  award period. A rule book that wants grants refuses the form until the grant step (2a).
+- Lines SAM mints (New, Renewal) are drafts: their populate and submit steps verify by id
+  (`XrasAdminClient.reading_draft`, a `get_draft` re-read as the PI) instead of the reports
+  family by number.
 - The admin Add-action files Extension and Supplement through `request_action(door='admin',
   submit=False)` and asks the same agreement tick; Transfer, Adjustment, New and Renewal keep
   the editor's direct `add_action`.
@@ -287,8 +298,8 @@ imports from `sam.integration`, never `sam.queries.__init__`).
   keeps it dark on production after the lever flips.
 - The LFS blob conflicts with any concurrent regen: regenerate once, last.
 - The editor verbs the flow reuses (attributes, resources, dates, roles, submit) verify through
-  the reports family by number. A New draft has no number, so 2a gives them the by-id read
-  (`get_draft`); 1c checks whether a renewal's draft line reads back in its family.
+  the reports family by number; on a line SAM minted the flow scopes them to the by-id read
+  (`reading_draft`, 1c), which a New's unnumbered draft needs too.
 - `require_project_permission(EDIT_PROJECTS)` admits stewards by design (§ 4.4).
 
 ## 9. Probe record (2026-10-27)

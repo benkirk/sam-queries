@@ -290,3 +290,38 @@ class TestThePayload:
                               resources=(ResourceAmount(1, 2.0, 'why'),),
                               sam=SamRefs(project_id=4, contract_id=5))
         assert ActionRequest.from_payload(draft.to_payload()) == draft
+
+
+class TestTheRenewal:
+
+    def test_renew_then_populate_by_id_on_the_new_line(self, factory):
+        client = _client()
+        old, rid, aid = next(_IDS), next(_IDS), next(_IDS)
+        client.renew_request.return_value = _ok(
+            'renew_request', renewal_request_id=rid, action_id=aid, response={'requestId': rid})
+        for verb, op in (('update_request_attributes', 'update_attributes'),
+                         ('update_resource_amount', 'update_resource_amount'),
+                         ('set_opportunity_attributes', 'set_opp_attributes'),
+                         ('upload_document', 'upload_document')):
+            getattr(client, verb).return_value = _ok(op)
+        draft = ActionRequest(
+            action_type='Renewal', request_number='UHSS0002', request_id=old,
+            opportunity_id=532221, abstract='Year two.', eua_attribute_id=539638,
+            resources=(ResourceAmount(530902, 1000.0),),
+            dates=(date(2027, 11, 1), date(2028, 10, 31)),
+            documents=(SubmissionDocument('Advisor_Letter', 'letter.pdf', b'%PDF-1.7 x'),))
+        out = flow.request_action(factory, draft, actor='pi1', xa_user='pi1', eula=EULA,
+                                  client=client)
+
+        assert out.succeeded and out.state == 'submitted'
+        row = _row(factory, out.submission_id)
+        assert (row.request_id, row.action_id, row.request_type) == (rid, aid, 'Renewal')
+        client.renew_request.assert_called_once_with(old, request_number='UHSS0002',
+                                                     xa_user='pi1', opportunity_id=532221)
+        assert _event_ops(factory, row) == {
+            'mint': 'renew_request', 'attributes': 'update_attributes',
+            'resource:530902': 'update_resource_amount', 'dates': 'set_action_dates',
+            'opp_attributes': 'set_opp_attributes', 'document:letter.pdf': 'upload_document',
+            'submit': 'submit_action'}
+        scopes = {c.args for c in client.reading_draft.call_args_list}
+        assert scopes == {(rid, 'pi1')} and client.reading_draft.call_count == 6

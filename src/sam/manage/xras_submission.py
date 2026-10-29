@@ -273,6 +273,14 @@ def _minted_keys(operation: str, result) -> Dict[str, Any]:
     return {'action_id': extra.get('action_id')}
 
 
+def _by_id(dispatch: Callable, xa_user: str) -> Callable:
+    """*dispatch* with its verify reading the line by id: a line SAM minted is a draft."""
+    def scoped(admin, keys):
+        with admin.reading_draft(keys['request_id'], xa_user):
+            return dispatch(admin, keys)
+    return scoped
+
+
 def _run_step(session_factory, view, step, operation, dispatch, admin) -> RemediationOutcome:
     """One audited write, then its event id on the row; keys from a mint are kept either way."""
     keys = {k: view[k] for k in ('request_id', 'action_id', 'request_number')}
@@ -314,10 +322,12 @@ def _drive(session_factory, draft: ActionRequest, view, *, submit: bool,
     statuses = _step_statuses(session_factory, view['steps'])
     done = {step for step, status in statuses.items() if status == 'verified'}
 
-    def run(phase):
+    def run(phase, by_id=False):
         for step, operation, dispatch in phase:
             if step in done:
                 continue
+            if by_id:
+                dispatch = _by_id(dispatch, view['xa_user'])
             if operation in ADDING_OPERATIONS and statuses.get(step) not in (None, 'rejected'):
                 return _stop(session_factory, view, step, reason=(
                     f'{step} may have reached XRAS ({statuses[step]}); check the request '
@@ -340,8 +350,9 @@ def _drive(session_factory, draft: ActionRequest, view, *, submit: bool,
     if view['state'] == 'created' and missing:
         return _stop(session_factory, view, f'document:{missing[0]}',
                      reason=f'attach {", ".join(missing)} again to continue')
+    minted = draft.action_type in LINE_MINTING_TYPES
     if view['state'] == 'created' and populate:
-        stopped = run(populate)
+        stopped = run(populate, by_id=minted)
         if stopped:
             return stopped
         _advance(session_factory, view, 'populated')
@@ -349,7 +360,7 @@ def _drive(session_factory, draft: ActionRequest, view, *, submit: bool,
     if submit and view['state'] in ('created', 'populated'):
         stopped = run([('submit', 'submit_action', lambda a, k: a.submit_action(
             k['request_id'], k['action_id'], request_number=k['request_number'],
-            xa_user=view['xa_user'], preflight=True))])
+            xa_user=view['xa_user'], preflight=True))], by_id=minted)
         if stopped:
             return stopped
         _advance(session_factory, view, 'submitted')

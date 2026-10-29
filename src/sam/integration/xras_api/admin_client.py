@@ -39,6 +39,7 @@ happened to verify.
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 from urllib.parse import quote
@@ -302,13 +303,37 @@ class XrasAdminClient(_XrasTransport):
 
     # verification helpers
 
+    #: ``(request_id, xa_user)`` while ``reading_draft`` is active, else ``None``.
+    _draft_scope: Optional[Tuple[int, str]] = None
+
+    @contextmanager
+    def reading_draft(self, request_id: int, xa_user: str):
+        """Verify reads inside answer from this one line by id, as *xa_user*.
+
+        A line SAM just minted (a New, a Renewal) is a draft: the reports family by number
+        may not carry it yet, so the reused editor verbs re-read it with ``get_draft``.
+        """
+        previous, self._draft_scope = self._draft_scope, (int(request_id), xa_user)
+        try:
+            yield self
+        finally:
+            self._draft_scope = previous
+
+    def _family(self, request_number: Optional[str]) -> List[Dict[str, Any]]:
+        """The lines a verify reads: the reports family, or the scoped draft by id."""
+        if self._draft_scope is not None:
+            request_id, xa_user = self._draft_scope
+            draft = self.get_draft(request_id, xa_user=xa_user)
+            return [draft] if draft else []
+        return self.reader.get_request_family_by_number(request_number) or []
+
     def _actions(self, request_number: str) -> List[Dict[str, Any]]:
         """Every action across the **reports** family (report context).
 
         ``actionId`` is globally unique, so a by-id lookup needs no line
         selection -- and a verify must not miss an action on a sibling line.
         """
-        family = self.reader.get_request_family_by_number(request_number) or []
+        family = self._family(request_number)
         return [a for line in family if isinstance(line, dict)
                 for a in (line.get('actions') or []) if isinstance(a, dict)]
 
@@ -321,7 +346,7 @@ class XrasAdminClient(_XrasTransport):
         absence is the answer, and it reads the line directly.
         """
         from sam.queries.xras_requests import line_by_id, primary_line
-        family = self.reader.get_request_family_by_number(request_number) or []
+        family = self._family(request_number)
         line = line_by_id(family, request_id) if request_id is not None else None
         return line or primary_line(family) or {}
 
@@ -1134,18 +1159,40 @@ class XrasAdminClient(_XrasTransport):
             if isinstance(result, list) else []
 
     def available_action_requests(self, xa_user: str) -> List[Dict[str, Any]]:
-        """The actions XRAS offers *xa_user* on existing lines, flattened across the open opportunities."""
+        """The actions XRAS offers *xa_user* on existing lines, flattened across the open opportunities.
+
+        Each carries its opportunity's allocation type, award period, named resources and the
+        required End User Agreement attribute (``eua_attribute_id``), which a renewal echoes.
+        """
         result = self._get('/v1/opportunities', xa_user=xa_user)
         out = []
         for opp in result if isinstance(result, list) else ():
             rules = opp.get('rules') if isinstance(opp, dict) else None
+            kind = opp.get('allocationTypeInfo') or {} if isinstance(opp, dict) else {}
+            named = {r.get('resourceId'): r for r in opp.get('resources') or ()
+                     if isinstance(r, dict)} if isinstance(opp, dict) else {}
+            eua = next((a.get('opportunityAttributeId')
+                        for group in opp.get('attributeSets') or ()
+                        if 'End User Agreement' in (group.get('attributeSetName') or '')
+                        for a in group.get('attributes') or () if a.get('isRequired')),
+                       None) if isinstance(opp, dict) else None
             for offer in (rules or {}).get('availableActionRequests') or ():
+                ids = offer.get('resourceIdsAvailableForAction') or []
                 out.append({'opportunity_id': opp.get('opportunityId'),
                             'opportunity_name': opp.get('opportunityName'),
+                            'allocation_type_id': kind.get('allocationTypeId'),
+                            'allocation_type': kind.get('allocationType'),
+                            'award_months': opp.get('defaultAllocationAwardPeriod'),
+                            'eua_attribute_id': eua,
                             'request_id': offer.get('requestId'),
                             'request_number': offer.get('requestNumber'),
                             'action_type': offer.get('actionType'),
-                            'resource_ids': offer.get('resourceIdsAvailableForAction') or []})
+                            'resource_ids': ids,
+                            'resources': [{'resource_id': rid,
+                                           'name': (named.get(rid) or {}).get('displayResourceName')
+                                           or f'resource {rid}',
+                                           'units': (named.get(rid) or {}).get('resourceUnits') or ''}
+                                          for rid in ids]})
         return out
 
     def _reread(self, request_id: int, xa_user: str

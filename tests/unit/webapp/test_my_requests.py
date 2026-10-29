@@ -25,7 +25,9 @@ def armed(monkeypatch):
                      submit_enabled=True,
                      submit_action_types=('Extension', 'Supplement', 'Renewal', 'New'))
     monkeypatch.setattr(requests_routes, '_config', lambda: config)
-    fakes = type('Fakes', (), {'family': [], 'available': [], 'reads': [], 'catalog': []})()
+    fakes = type('Fakes', (), {'family': [], 'available': [], 'reads': [], 'catalog': [],
+                               'required': {'requiredFields': {'request': {}}},
+                               'documents': []})()
 
     class Reader:
         def get_request_family_by_number(self, number):
@@ -34,6 +36,12 @@ def armed(monkeypatch):
 
         def get_resources(self):
             return fakes.catalog
+
+        def required_fields(self, allocation_type_id, action_type):
+            return fakes.required
+
+        def get_document_types(self):
+            return fakes.documents
 
     class Admin:
         def available_action_requests(self, username):
@@ -117,7 +125,7 @@ class TestThePicker:
         armed.available = [{'opportunity_id': 532221, 'request_number': 'UHSS0001',
                             'action_type': 'Renewal', 'resource_ids': [530902]}]
         html = auth_client.get(_picker('UHSS0001')).get_data(as_text=True)
-        assert 'Renewal available' in html
+        assert 'Request renewal' in html
 
     def test_an_outage_degrades_in_place(self, auth_client, armed, monkeypatch):
         from sam.integration.xras_api import XrasSourceUnavailable
@@ -335,3 +343,90 @@ class TestTheAgreementPage:
     def test_renders_the_terms(self, auth_client):
         html = auth_client.get('/user/requests/agreement').get_data(as_text=True)
         assert 'terms of use' in html.lower()
+
+
+# 1c: the renewal
+
+REN = '/user/requests/UHSS0001/renewal'
+_LETTER = [{'documentType': 'Advisor_Letter', 'displayDocumentType': 'Advisor Letter',
+            'allocationActionTypes': [{'allocationTypeId': 500847, 'actionTypes': [
+                {'actionType': 'Renewal', 'isRequired': True, 'hardPageLimit': 2}]}]}]
+
+
+@pytest.fixture
+def renewable(on_roster):
+    from sam.integration.xras_api import cache as xras_cache
+    xras_cache._CACHE.reset_for_tests()
+    on_roster.available = [{
+        'opportunity_id': 532221, 'opportunity_name': 'Exploratory Allocation (University)',
+        'allocation_type_id': 500847, 'allocation_type': 'Exploratory', 'award_months': 12,
+        'eua_attribute_id': 539638, 'request_id': 1449367, 'request_number': 'UHSS0001',
+        'action_type': 'Renewal', 'resource_ids': [530902],
+        'resources': [{'resource_id': 530902, 'name': 'NSF NCAR Derecho', 'units': 'Core-hours'}]}]
+    on_roster.documents = _LETTER
+    on_roster.family[0]['abstract'] = 'Year one of the ensemble.'
+    on_roster.family[0]['fos'] = [{'fosTypeId': 500003, 'fosNum': '1', 'isPrimary': True}]
+    yield on_roster
+    xras_cache._CACHE.reset_for_tests()
+
+
+def _ren(stage='review', **extra):
+    return dict(stage=stage, abstract='Year two of the ensemble runs.',
+                begin_date='2027-11-01', end_date='2028-10-31', amount_530902='1000', **extra)
+
+
+class TestTheRenewalForm:
+
+    def test_the_picker_offers_the_renewal_as_a_button(self, auth_client, renewable):
+        html = auth_client.get(_picker('UHSS0001')).get_data(as_text=True)
+        assert 'Request renewal' in html and '/user/requests/UHSS0001/renewal' in html
+
+    def test_no_offer_no_form(self, auth_client, on_roster):
+        on_roster.available = []
+        assert 'offers no renewal' in auth_client.get(REN).get_data(as_text=True)
+
+    def test_a_rule_book_wanting_grants_waits_for_the_grant_step(self, auth_client, renewable):
+        renewable.required = {'requiredFields': {'request': {'grants': {'required': True}}}}
+        assert 'supporting grants' in auth_client.get(REN).get_data(as_text=True)
+
+    def test_the_form_prefills_the_abstract_and_the_window(self, auth_client, renewable, floor):
+        from datetime import timedelta
+        html = auth_client.get(REN).get_data(as_text=True)
+        assert 'Year one of the ensemble.' in html and 'name="amount_530902"' in html
+        assert (floor + timedelta(days=1)).isoformat() in html
+        assert 'Advisor Letter at the review' in html
+
+    def test_the_review_asks_for_the_letter(self, auth_client, renewable, filed):
+        html = auth_client.post(REN, data=_ren()).get_data(as_text=True)
+        assert 'Review the Renewal' in html and 'name="document_Advisor_Letter"' in html
+        assert 'multipart/form-data' in html and 'at most 2 pages' in html and not filed
+
+    def test_a_submit_without_the_letter_returns_to_the_review(self, auth_client, renewable,
+                                                              filed):
+        html = auth_client.post(REN, data=_ren('submit', eula_sha=_sha(), agree='1')).get_data(
+            as_text=True)
+        assert 'Attach the Advisor Letter' in html and not filed
+
+    def test_a_non_pdf_is_refused(self, auth_client, renewable, filed):
+        from io import BytesIO
+        html = auth_client.post(REN, data=_ren(
+            'submit', eula_sha=_sha(), agree='1',
+            document_Advisor_Letter=(BytesIO(b'plain text'), 'letter.txt')),
+            content_type='multipart/form-data').get_data(as_text=True)
+        assert 'not a PDF' in html and not filed
+
+    def test_submit_files_the_renewal_with_its_letter(self, auth_client, renewable, filed):
+        from datetime import date
+        from io import BytesIO
+        html = auth_client.post(REN, data=_ren(
+            'submit', eula_sha=_sha(), agree='1',
+            document_Advisor_Letter=(BytesIO(b'%PDF-1.7 letter'), 'letter.pdf')),
+            content_type='multipart/form-data').get_data(as_text=True)
+        assert 'Renewal filed' in html
+        draft, kw = filed[0]
+        assert (draft.action_type, draft.request_id, draft.opportunity_id,
+                draft.eua_attribute_id) == ('Renewal', 1449367, 532221, 539638)
+        assert draft.dates == (date(2027, 11, 1), date(2028, 10, 31))
+        assert [(d.document_type, d.filename) for d in draft.documents] == \
+            [('Advisor_Letter', 'letter.pdf')]
+        assert draft.abstract == 'Year two of the ensemble runs.'

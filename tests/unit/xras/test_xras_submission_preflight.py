@@ -86,3 +86,22 @@ class TestTheVerdict:
             action_type='Extension', request_number='UHSS0001',
             dates=(None, extension_floor(uhss0001) + timedelta(days=365))))
         assert verdict.status == 'rechecked' and verdict.service == 'extend'
+
+
+class TestTheDocumentCheck:
+
+    def test_a_pdf_passes_and_anything_else_is_refused(self):
+        from sam.xras.submission_preflight import document_refusal
+        assert document_refusal('a.pdf', b'%PDF-1.7 body') is None
+        assert 'not a PDF' in document_refusal('a.txt', b'hello')
+        assert 'empty' in document_refusal('a.pdf', b'')
+
+    def test_the_size_and_page_hooks_are_dark_until_set(self, monkeypatch):
+        from sam.xras.submission_preflight import document_refusal
+        pdf = b'%PDF-1.7 ' + b'<< /Type /Page >> ' * 3 + b'<< /Type /Pages >>'
+        assert document_refusal('a.pdf', pdf) is None
+        monkeypatch.setenv('SUBMISSION_DOCUMENT_MAX_PAGES', '2')
+        assert 'has 3 pages' in document_refusal('a.pdf', pdf)
+        monkeypatch.setenv('SUBMISSION_DOCUMENT_MAX_PAGES', '')
+        monkeypatch.setenv('SUBMISSION_DOCUMENT_MAX_BYTES', '10')
+        assert 'larger than' in document_refusal('a.pdf', pdf)

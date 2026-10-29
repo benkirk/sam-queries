@@ -3244,14 +3244,14 @@
   ],
   [
     "user_dashboard.my_request_form",
-    "/user/requests/<projcode>/<any(extension, supplement):kind>",
+    "/user/requests/<projcode>/<any(extension, supplement, renewal):kind>",
     [
       "GET"
     ]
   ],
   [
     "user_dashboard.my_request_post",
-    "/user/requests/<projcode>/<any(extension, supplement):kind>",
+    "/user/requests/<projcode>/<any(extension, supplement, renewal):kind>",
     [
       "POST"
     ]

@@ -419,6 +419,10 @@ class XrasApiClient(_XrasTransport):
             f'/v1/allocation_types/{int(allocation_type_id)}'
             f'/action_types/{action_type_id(action_type)}/required_fields'))
 
+    def get_document_types(self) -> Optional[List[Dict[str, Any]]]:
+        """``GET /v1/types/documents``: each type with the allocation x action types that require it."""
+        return _as_list(self._get('/v1/types/documents'))
+
     def get_panels(self) -> Optional[List[Dict[str, Any]]]:
         """The review-panel catalog — ``GET /v1/panels``.
 
