@@ -367,7 +367,8 @@ def renewable(on_roster):
     on_roster.family[0]['abstract'] = 'Year one of the ensemble.'
     on_roster.family[0]['fos'] = [{'fosTypeId': 500003, 'fosNum': '1', 'isPrimary': True}]
     yield on_roster
-    xras_cache._CACHE.reset_for_tests()
+    # disabled=False: the default would leave every XRAS bucket off for the worker's later tests.
+    xras_cache._CACHE.reset_for_tests(disabled=False)
 
 
 def _ren(stage='review', **extra):
