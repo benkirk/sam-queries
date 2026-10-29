@@ -114,6 +114,18 @@ class TestTheNew:
                                    'fundingAgency': 'National Science Foundation'}]
         assert line['fos'] == [{'fosTypeId': 500003, 'fosNum': '1', 'isPrimary': True}]
 
+    def test_a_grant_with_dates_still_synthesizes(self):
+        from sam.xras.preflight import synthesize_action
+        draft = self._draft(grants=({'grantNumber': '2441755', 'fundingAgencyId': 1,
+                                     'beginDate': date(2025, 9, 1),
+                                     'endDate': date(2030, 8, 31)},))
+        line = new_request_line(draft, pi_username='pi1', opportunity=_EXPLORATORY,
+                                fos={'fosTypeId': 500003, 'fosNum': '1'})
+        assert line['grants'][0]['beginDate'] == '2025-09-01'
+        out = synthesize_action(line, draft_action(draft), resource_keys={530902: 1},
+                                opportunities=None)
+        assert 'schema_invalid' not in out.gaps and out.action is not None
+
     def test_the_ladder_readout_and_the_verdict_speak_the_same_words(self, session):
         from sam.core.users import User
         from sam.integration.xras import XrasResourceRepositoryKeyResource

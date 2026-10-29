@@ -136,8 +136,8 @@ def new_request_line(draft, *, pi_username: str, opportunity: Mapping[str, Any],
     if draft.admin_username:
         roles.append({'person': {'username': draft.admin_username},
                       'roles': [{'role': 'Allocation Manager'}]})
-    grants = [{**{k: v for k, v in g.items() if k != 'fundingAgencyId'},
-               'fundingAgency': _NSF_NAME} for g in draft.grants]
+    grants = [{**{k: _wire_date(v) if isinstance(v, date) else v for k, v in g.items()
+                  if k != 'fundingAgencyId'}, 'fundingAgency': _NSF_NAME} for g in draft.grants]
     return {**_wire_opportunity(opportunity), 'requestId': None, 'requestType': 'New',
             'requestStatus': 'Incomplete', 'title': draft.title, 'abstract': draft.abstract,
             'roles': roles, 'fos': [dict(fos, isPrimary=True)] if fos else [],

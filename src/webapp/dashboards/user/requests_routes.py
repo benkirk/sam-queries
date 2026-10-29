@@ -727,8 +727,7 @@ def my_requests_award_lookup():
     except AwardSourceUnavailable:
         record, note = None, 'NSF is not answering. Type the grant\'s details, or try again.'
     if record is not None:
-        found = {'grant_number': record.contract_number or number,
-                 'grant_title': record.title, 'grant_begin_date': record.start_date,
+        found = {'grant_title': record.title, 'grant_begin_date': record.start_date,
                  'grant_end_date': record.end_date,
                  'grant_pi_name': record.pi.name if record.pi else None,
                  'grant_officer_name': record.monitor.name if record.monitor else None,

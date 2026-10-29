@@ -662,7 +662,7 @@ class TestThePickers:
     def test_the_award_lookup_fills_the_grant_from_nsf(self, auth_client, monkeypatch):
         from datetime import date
         from sam.integration.awards.base import AwardRecord, PersonRef
-        record = AwardRecord('nsf', contract_number='2345678', title='Ensembles',
+        record = AwardRecord('nsf', contract_number='AGS-2345678', title='Ensembles',
                              start_date=date(2026, 1, 1), end_date=date(2028, 12, 31),
                              pi=PersonRef('B. Kirk'), monitor=PersonRef('P. Officer', 'po@nsf.gov'))
         monkeypatch.setattr('sam.integration.awards.registry.resolve_award',
@@ -670,6 +670,7 @@ class TestThePickers:
         html = auth_client.get('/user/requests/htmx/award-lookup?grant_number=2345678'
                                '&grant_required=title,programOfficerEmail').get_data(as_text=True)
         assert 'value="Ensembles"' in html and 'value="po@nsf.gov"' in html
+        assert 'value="2345678"' in html and 'AGS-2345678' not in html  # the number typed
         assert 'value="2026-01-01"' in html and 'Filled from NSF' in html
 
     def test_an_unknown_award_says_so(self, auth_client, monkeypatch):
