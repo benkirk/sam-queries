@@ -37,7 +37,7 @@
             {% endif %}
             {% for r in resources if r.resource_id in data.amounts %}
             <dt class="col-sm-4">{{ r.name }}</dt>
-            <dd class="col-sm-8">{% if (r.units or '') | replace(' ', '') | lower == 'yes/no' %}Yes{% else %}{{ data.amounts[r.resource_id] | fmt_number }} {{ r.units }}{% endif %}</dd>
+            <dd class="col-sm-8">{% if (r.units or '') | replace(' ', '') | lower == 'yes/no' %}Yes{% else %}{{ data.amounts[r.resource_id] | fmt_number(raw=True) }} {{ r.units }}{% endif %}</dd>
             {% endfor %}
             {% endif %}
             {{ grant_facts(data.grant) }}
@@ -63,7 +63,7 @@
         {% if action_type == 'Extension' %}
         <input type="hidden" name="end_date" value="{{ data.end_date.isoformat() }}">
         {% else %}
-        {% for rid, amount in data.amounts.items() %}<input type="hidden" name="amount_{{ rid }}" value="{{ '%g' | format(amount) }}">{% endfor %}
+        {% for rid, amount in data.amounts.items() %}<input type="hidden" name="amount_{{ rid }}" value="{{ '%.15g' | format(amount) }}">{% endfor %}
         {% endif %}
         {% if _new %}
         {{ carry(form, carry_fields) }}

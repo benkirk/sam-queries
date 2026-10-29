@@ -66,7 +66,7 @@
                 {% else %}
                 <input type="text" inputmode="decimal" class="form-control form-control-sm text-end ctl-w-sm{{ ' is-invalid' if _err }}"
                        id="xrasRequestAmount{{ r.resource_id }}" name="{{ _name }}"
-                       value="{{ form.get(_name) if form and form.get(_name) is not none else ('%g' | format(_default) if _default != '' else '') }}">
+                       value="{{ form.get(_name) if form and form.get(_name) is not none else ('%.15g' | format(_default) if _default != '' else '') }}">
                 {% endif %}
                 {% if _err %}<div class="invalid-feedback d-block text-start">{{ _err[0] }}</div>{% endif %}
             </td>

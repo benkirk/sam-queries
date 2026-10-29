@@ -1,7 +1,7 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
 {% from 'dashboards/fragments/modals.html' import modal_title %}
 {% from 'dashboards/fragments/form_fields.html' import number_field, checkbox_field with context %}
-{%- macro _d(limit, name) -%}{%- set v = limit[name] if limit else none -%}{{ '%g' | format(v) if v is not none else '' }}{%- endmacro -%}
+{%- macro _d(limit, name) -%}{%- set v = limit[name] if limit else none -%}{{ '%.15g' | format(v) if v is not none else '' }}{%- endmacro -%}
 {# htmx: Edit request limit (loaded into #editAllocationLimitFormContainer). The pair is fixed. #}
 {% set _p = 'editAllocationLimit' %}
 {{ modal_title('editAllocationLimitModalLabel',

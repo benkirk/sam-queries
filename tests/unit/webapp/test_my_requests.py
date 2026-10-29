@@ -299,6 +299,21 @@ class TestTheSupplementForm:
         assert 'Review the Supplement' in html
         assert 'name="amount_530902" value="1500"' in html
 
+    def test_a_seven_digit_amount_survives_review_back_and_submit(self, auth_client,
+                                                                   on_roster, filed):
+        """The review's hidden fields and the figure it shows keep every digit: a '%g'
+        there filed 1,234,567 as 1,234,570."""
+        body = {'amount_530902': '1,234,567', 'user_comments': 'GPU work for the paper.'}
+        html = auth_client.post(SUP, data=body).get_data(as_text=True)
+        assert 'name="amount_530902" value="1234567"' in html and '1,234,567' in html
+        back = auth_client.post(SUP, data=dict(body, amount_530902='1234567', stage='edit')
+                                ).get_data(as_text=True)
+        assert 'name="amount_530902"' in back and 'value="1234567"' in back
+        auth_client.post(SUP, data=dict(body, amount_530902='1234567', stage='submit',
+                                        eula_sha=_sha(), agree='1'))
+        (draft, _), = filed
+        assert [(r.resource_id, r.amount) for r in draft.resources] == [(530902, 1234567.0)]
+
 
 class TestResumeAndDiscard:
 
@@ -545,6 +560,17 @@ class TestTheRenewalForm:
         assert re.search(r'name="amount_530902"\s+value="5000"', html)
         casper = html.split('name="amount_530275"')[1][:120]
         assert 'value=""' in casper
+
+    def test_a_seven_digit_default_fills_the_box_whole(self, auth_client, renewable,
+                                                      monkeypatch):
+        import sam.xras.submission_preflight as pre
+        limit = type('L', (), {'default_amount': 2_000_000.0, 'max_amount': 4_000_000.0})()
+        monkeypatch.setattr(pre, 'sam_resources_by_xras_id', lambda s, ids, k: {
+            530902: type('R', (), {'resource_name': 'Derecho'})()})
+        monkeypatch.setattr('sam.accounting.allocation_type_limits.limits_for_allocation_type',
+                            lambda s, t: {'Derecho': limit})
+        html = auth_client.get(REN).get_data(as_text=True)
+        assert 'value="2000000"' in html and '2e+06' not in html
 
     def test_the_form_prefills_the_abstract_and_the_window(self, auth_client, renewable, floor):
         from datetime import timedelta
