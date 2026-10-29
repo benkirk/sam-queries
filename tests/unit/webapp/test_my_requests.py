@@ -348,6 +348,49 @@ class TestResumeAndDiscard:
             conn.execute(delete(XrasSubmission).where(XrasSubmission.xras_submission_id == sid))
 
     @pytest.fixture
+    def refused_letter_row(self, engine):
+        """A New whose letter XRAS refused (400): the step exists, its event is rejected."""
+        from datetime import datetime
+        from sqlalchemy import delete
+        from sqlalchemy.orm import Session
+        from sam.integration.xras import XrasRemediationEvent
+        from sam.integration.xras_submission import XrasSubmission
+        letter = {'document_type': 'Advisor_Letter', 'filename': 'letter.pdf',
+                  'title': 'Advisor Letter', 'bytes': 13, 'sha256': None}
+        with Session(engine) as s:
+            event = XrasRemediationEvent.create(s, operation='upload_document',
+                                                created_by='benkirk', xa_user='benkirk',
+                                                status='rejected')
+            row = XrasSubmission.create(
+                s, action_type='New', created_by='benkirk', xa_user='benkirk',
+                payload={'documents': [letter]}, eula_sha='a' * 40,
+                eula_accepted_at=datetime.now())
+            row.advance('created')
+            row.record_step('document:letter.pdf', event.xras_remediation_event_id)
+            row.stop({'step': 'document:letter.pdf', 'reason': 'rejected'})
+            s.commit()
+            sid, eid = row.xras_submission_id, event.xras_remediation_event_id
+        yield sid
+        with engine.begin() as conn:
+            conn.execute(delete(XrasSubmission).where(XrasSubmission.xras_submission_id == sid))
+            conn.execute(delete(XrasRemediationEvent).where(
+                XrasRemediationEvent.xras_remediation_event_id == eid))
+
+    def test_a_refused_letter_is_asked_for_again(self, auth_client, refused_letter_row,
+                                                 resumed):
+        from io import BytesIO
+        html = auth_client.get(PAGE).get_data(as_text=True)
+        assert f'hx-get="/user/requests/{refused_letter_row}/resume"' in html
+        modal = auth_client.get(f'/user/requests/{refused_letter_row}/resume').get_data(
+            as_text=True)
+        assert 'name="document_Advisor_Letter"' in modal
+        auth_client.post(f'/user/requests/{refused_letter_row}/resume', data={
+            'document_Advisor_Letter': (BytesIO(b'%PDF-1.7 fixed'), 'letter.pdf')},
+            content_type='multipart/form-data')
+        (sid, kw), = resumed
+        assert [d.content for d in kw['documents']] == [b'%PDF-1.7 fixed']
+
+    @pytest.fixture
     def resumed(self, monkeypatch):
         from sam.manage import xras_submission as flow
         seen = []

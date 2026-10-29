@@ -769,7 +769,7 @@ def _resume_documents(row):
     from sam.queries.xras_my_requests import missing_documents
     from sam.xras.submission_preflight import document_refusal
     documents, notes = [], []
-    for wanted in missing_documents(row):
+    for wanted in missing_documents(db.session, row):
         label = wanted.get('title') or wanted['document_type']
         upload = request.files.get(f"document_{wanted['document_type']}")
         if upload is None or not upload.filename:
@@ -792,7 +792,8 @@ def my_request_resume_fragment(submission_id):
     """The documents a stopped row needs again, into ``#xrasRequestModalBody``."""
     from sam.queries.xras_my_requests import missing_documents
     row = _owned_submission(submission_id)
-    return render_template(_RESUME, row=row, missing=missing_documents(row), error=None)
+    return render_template(_RESUME, row=row, missing=missing_documents(db.session, row),
+                           error=None)
 
 
 @bp.route('/requests/<int:submission_id>/resume', methods=['POST'])
@@ -803,11 +804,11 @@ def my_request_resume(submission_id):
     row = _owned_submission(submission_id)
     door = 'pi' if current_user.username == row.xa_user else 'admin'
     documents, notes = (), []
-    if missing_documents(row):
+    if missing_documents(db.session, row):
         documents, error, notes = _resume_documents(row)
         if error:
-            return render_template(_RESUME, row=row, missing=missing_documents(row),
-                                   error=error)
+            return render_template(_RESUME, row=row,
+                                   missing=missing_documents(db.session, row), error=error)
     try:
         flow.resume_submission(_session_factory, submission_id, actor=current_user.username,
                                door=door, documents=tuple(documents))

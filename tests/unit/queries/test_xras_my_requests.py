@@ -131,10 +131,22 @@ class TestMissingDocuments:
     def _row(self, documents, steps):
         return SimpleNamespace(payload_dict={'documents': documents}, steps=steps)
 
-    def test_a_row_without_documents_needs_none(self):
-        assert missing_documents(self._row([], {'mint': 1})) == []
+    def test_a_row_without_documents_needs_none(self, session):
+        assert missing_documents(session, self._row([], {'mint': 1})) == []
 
-    def test_a_document_never_sent_is_needed_again(self):
+    def test_a_document_never_sent_is_needed_again(self, session):
         letter = [{'filename': 'letter.pdf', 'document_type': 'Advisor_Letter'}]
-        assert missing_documents(self._row(letter, {'mint': 1, 'attributes': 2})) == letter
-        assert missing_documents(self._row(letter, {'document:letter.pdf': 3})) == []
+        assert missing_documents(session, self._row(letter, {'mint': 1, 'attributes': 2})) == \
+            letter
+
+    @pytest.mark.parametrize('status, needed', [
+        ('rejected', True), ('verified', False), ('unverified', False), ('error', False)])
+    def test_only_a_refused_upload_is_needed_again(self, session, status, needed):
+        """XRAS stored nothing on a refusal; an unknown outcome may have landed, so the
+        flow will not re-send it and the page must not ask for it."""
+        from sam.integration.xras import XrasRemediationEvent
+        event = XrasRemediationEvent.create(session, operation='upload_document',
+                                            created_by='pi9', xa_user='pi9', status=status)
+        letter = [{'filename': 'letter.pdf', 'document_type': 'Advisor_Letter'}]
+        row = self._row(letter, {'document:letter.pdf': event.xras_remediation_event_id})
+        assert missing_documents(session, row) == (letter if needed else [])
