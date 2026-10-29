@@ -24,10 +24,12 @@ XRAS_SUBMISSION_STATES = ('draft', 'created', 'populated', 'submitted', 'aborted
 #: The flow's own in-flight states: resume continues from these, abort ends them.
 OPEN_STATES = ('draft', 'created', 'populated')
 
+#: ``applied`` from ``created`` or ``populated``: an operator's unsubmitted action that was
+#: submitted in XRAS instead, then approved and posted.
 _NEXT = {
     'draft': ('created', 'aborted'),
-    'created': ('populated', 'submitted', 'aborted'),
-    'populated': ('submitted', 'aborted'),
+    'created': ('populated', 'submitted', 'aborted', 'applied'),
+    'populated': ('submitted', 'aborted', 'applied'),
     'submitted': ('applied',),
     'aborted': (),
     'applied': (),
@@ -211,6 +213,12 @@ def lookup_submission_by_request_id(session, request_id) -> Optional[XrasSubmiss
             .filter(XrasSubmission.state != 'aborted')
             .order_by(XrasSubmission.xras_submission_id.desc())
             .first())
+
+
+def consult_submission(session, request_id) -> Optional[XrasSubmission]:
+    """The New SAM filed on line *request_id*, whose resolved state presets the New handler."""
+    row = lookup_submission_by_request_id(session, request_id)
+    return row if row is not None and row.action_type == 'New' else None
 
 
 def submission_by_action_id(session, action_id) -> Optional[XrasSubmission]:

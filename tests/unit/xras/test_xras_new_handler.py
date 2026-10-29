@@ -14,6 +14,7 @@ arrives as a reviewable 422 rather than an opaque 500.
 See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *New*.
 """
 
+import itertools
 import json
 import os
 from datetime import datetime
@@ -612,3 +613,69 @@ class TestTheRegistration:
         result = dispatch_action(session, payload)
         assert result.status == 'processed'
         assert result.service == 'add'
+
+
+#: action_id is unique and xdist workers share one database: ids per process.
+_SUBMISSION_IDS = itertools.count((os.getpid() % 10_000) * 1_000)
+
+
+class TestTheSubmissionRow:
+    """A New SAM filed: its row presets the code letters, and the post stamps it applied."""
+
+    def _filed(self, session, creatable, mnemonic_code_id, *, request_id=None, action_id=None):
+        from sam.integration.xras_submission import XrasSubmission
+        seq = next(_SUBMISSION_IDS)
+        request_id = request_id or 950_000_000 + seq
+        action_id = action_id or 960_000_000 + seq
+        row = XrasSubmission.create(
+            session, action_type='New', created_by=creatable['pi'].username,
+            xa_user=creatable['pi'].username, payload={}, eula_sha='a' * 40,
+            eula_accepted_at=datetime.now(), request_id=request_id, action_id=action_id,
+            request_type='New', mnemonic_code_id=mnemonic_code_id)
+        row.advance('created').advance('submitted')
+        return row
+
+    def test_the_row_presets_the_code_over_the_ladder(self, committing, creatable,
+                                                     mapped_resource):
+        from factories import make_mnemonic_code
+        session = committing
+        chosen = make_mnemonic_code(session)
+        row = self._filed(session, creatable, chosen.mnemonic_code_id)
+        result = handle_new(session, action_for(
+            creatable, wire_resource(mapped_resource.xras_key),
+            requestId=row.request_id, actionId=row.action_id))
+        assert chosen.code in result.projcode
+        assert creatable['mnemonic'].code not in result.projcode
+
+    def test_the_post_stamps_the_row_applied_with_the_project(self, committing, creatable,
+                                                             mapped_resource):
+        session = committing
+        row = self._filed(session, creatable, None)
+        result = handle_new(session, action_for(
+            creatable, wire_resource(mapped_resource.xras_key),
+            requestId=row.request_id, actionId=row.action_id))
+        project = Project.get_by_projcode(session, result.projcode)
+        assert (row.state, row.project_id) == ('applied', project.project_id)
+        assert row.applied_time is not None
+
+    def test_a_retired_preset_falls_back_to_the_ladder(self, committing, creatable,
+                                                      mapped_resource):
+        from factories import make_mnemonic_code
+        session = committing
+        retired = make_mnemonic_code(session, active=False)
+        row = self._filed(session, creatable, retired.mnemonic_code_id)
+        result = handle_new(session, action_for(
+            creatable, wire_resource(mapped_resource.xras_key),
+            requestId=row.request_id, actionId=row.action_id))
+        assert creatable['mnemonic'].code in result.projcode
+
+    def test_a_validate_only_run_reads_the_preset_and_stamps_nothing(self, session, creatable,
+                                                                    mapped_resource):
+        from factories import make_mnemonic_code
+        chosen = make_mnemonic_code(session)
+        row = self._filed(session, creatable, chosen.mnemonic_code_id)
+        result = handle_new(session, action_for(
+            creatable, wire_resource(mapped_resource.xras_key),
+            requestId=row.request_id, actionId=row.action_id), validate_only=True)
+        assert result.status == 'rechecked' and result.resolved['mnemonic_code'] == chosen.code
+        assert row.state == 'submitted'

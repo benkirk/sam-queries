@@ -598,13 +598,13 @@ to phase 2.
    renamed. Rules 2 and 3 of item 2 cover the moments before the rename and any action parked
    earlier.
 4. **The `New` handler's consult point** (phase 2). It sits at the top of `NewHandler.assemble`
-   (`sam/xras/handlers/new.py`), keyed on the payload's `requestId`. It pre-sets the mnemonic,
-   allocation type, contracts and area of interest from the stored FKs, with the ladder as the
-   fallback. That is either three branches in the shape of the two `lookup_request_override`
-   branches, or one `_consult_submission()` first statement. Either way it only pre-sets inputs
-   and reports nothing, so the error order the tests pin (title, roster, area, allocation type,
-   mnemonic, contracts, dates, resources) is untouched. `NewHandler.execute` stamps `applied`
-   and `project_id` after `Project.create`.
+   (`sam/xras/handlers/new.py`), keyed on the payload's `requestId`, and pre-sets the mnemonic
+   from the stored id, with the ladder as the fallback; the allocation type, contracts and area
+   of interest come from the push, which carries what the form sent (built in 2b,
+   `XRAS_SUBMISSION_SPRINT1.md` § 2). It only pre-sets inputs and reports nothing, so the error
+   order the tests pin (title, roster, area, allocation type, mnemonic, contracts, dates,
+   resources) is untouched. Every handler stamps `applied` (and a New's `project_id`) inside
+   its own transaction.
 
 ## 5. Gaps and open questions
 

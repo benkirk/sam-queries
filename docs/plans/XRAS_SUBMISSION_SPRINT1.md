@@ -167,8 +167,8 @@ production, 2026-10-28) feed the picker and the resource lists.
   science (`/types/fos`, selectable rows) and an optional project admin (a live SAM user with an
   XRAS person); the opportunity reveals its facts, the code letters and the grant. The letters
   come from the New handler's own ladder (`new_request_sam_state`); where it misses, the PI picks
-  a code and the review drops the ladder's miss from the verdict until 2b's presets make the
-  handler honor it. Page two is the window (the first of next month for the award period) and the
+  a code, which the handler takes from the row (2b) and the review's verdict takes in place of
+  the ladder's miss. Page two is the window (the first of next month for the award period) and the
   amounts; the review adds the document and the agreement. A stopped New is discarded with
   `delete_request`.
 - Documents: PDF magic always; `SUBMISSION_DOCUMENT_MAX_BYTES` and `SUBMISSION_DOCUMENT_MAX_PAGES`
@@ -183,12 +183,16 @@ production, 2026-10-28) feed the picker and the resource lists.
 
 ### The incoming consult point (commit 2b)
 
-`NewHandler.assemble` starts with `consult_submission(session, action)` keyed on `requestId`;
-`resolve_allocation_type`, `resolve_mnemonic_code`, `plan_contracts` and
-`resolve_area_of_interest` take a `preset=` id and use it when it resolves to a live row, else
-the ladder, in the shape of the `lookup_request_override` branch. The pinned error order is
-untouched. `execute()` calls `mark_applied(project_id)` after `Project.create`, inside the
-handler's transaction; the other handlers get the same epilogue through one `stamp_applied`.
+`NewHandler.assemble` starts with `consult_submission(session, requestId)`, the New row SAM
+filed on that line. `resolve_mnemonic_code(preset=)` takes the row's `mnemonic_code_id` when it
+is still active, after an operator override and before the ladder; the pinned error order is
+untouched. Only the code is preset: the allocation type, contracts and field of science come
+from the push, which carries the opportunity and grants the form sent, and an allocation-type
+preset would split from `auth_at_panel_meeting`, which re-derives the pair. `ActionHandler.run`
+calls `stamp_applied()` after `execute()`, inside the one transaction, for every handler: the
+row with this `actionId` (from `created`, `populated` or `submitted`) reads `applied`, with
+the project a New created. The review runs before the row exists, so a code the PI chose
+stands in for the ladder's miss in its verdict.
 
 ## 3. Levers
 

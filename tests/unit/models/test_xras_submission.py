@@ -56,6 +56,11 @@ class TestLifecycle:
         assert (row.state, row.project_id) == ('applied', 4242)
         assert row.applied_time is not None
 
+    def test_an_unsubmitted_operator_row_may_still_be_applied(self, session):
+        row = _open(session).advance('created').advance('populated')
+        row.mark_applied(project_id=7)
+        assert row.state == 'applied' and row.submitted_time is None
+
     @pytest.mark.parametrize('path', [('submitted',), ('created', 'draft'),
                                       ('aborted', 'created'), ('applied',)])
     def test_an_illegal_step_is_refused(self, session, path):

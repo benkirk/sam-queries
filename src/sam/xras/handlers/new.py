@@ -92,6 +92,8 @@ class NewHandler(ActionHandler):
         action creates lives on :attr:`created_project`, deliberately under a different
         name — see ``ActionHandler.project``.
         """
+        from sam.integration.xras_submission import consult_submission
+        self.submission = consult_submission(self.session, self.get('requestId'))
         self.title = title(self.action, self.errors)
         self.roster = resolve_roster(self.session, self.action, self.errors)
         fos_warnings: list = []
@@ -101,7 +103,8 @@ class NewHandler(ActionHandler):
             self.session, self.action, self.errors)
         self.mnemonic = resolve_mnemonic_code(
             self.session, self.action, self.errors,
-            pi_username=self.roster.pi_username, pi=self.roster.pi)
+            pi_username=self.roster.pi_username, pi=self.roster.pi,
+            preset=self.submission.mnemonic_code_id if self.submission else None)
         self.contracts, contract_warnings, self.unresolved_grants = plan_contracts(
             self.session, self.action, self.errors)
 

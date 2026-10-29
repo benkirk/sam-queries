@@ -630,8 +630,8 @@ class _NewRequestForm(_RequestForm):
             db.session, line, data['draft'], resource_keys=ctx['resource_keys'],
             opportunities={opportunity['opportunity_id']: {
                 'allocationType': opportunity['allocation_type']}})
-        # NOTE: until the New handler takes the row's presets (2b), drop the ladder's
-        # mnemonic miss when the PI chose a code.
+        # NOTE: the review runs before the row exists, so the handler cannot consult it yet;
+        # a code the PI chose stands in for the ladder's miss, as the handler will use it.
         skip = set(ctx['sam_state']['mnemonic_errors']) if data['mnemonic_code_id'] else set()
         if verdict.status == 'failed' and skip:
             left = tuple(m for m in verdict.messages if m not in skip)
