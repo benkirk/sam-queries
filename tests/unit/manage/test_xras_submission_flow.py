@@ -176,6 +176,23 @@ class TestAStepThatFails:
         assert not again.succeeded and 'abort rather than resume' in again.error
         assert client.add_action.call_count == 1
 
+    def test_a_step_whose_audit_row_was_lost_is_never_resent(self, factory):
+        """``_open_event`` returning ``None`` records the step with no id; the write may
+        have landed, so a resume stops there as it does for an unverified add."""
+        client = _client()
+        client.set_action_dates.return_value = _ok('set_action_dates', verified=False)
+        out = flow.request_action(factory, _extension(), actor='pi1', xa_user='pi1',
+                                  eula=EULA, client=client)
+        assert out.step == 'dates'
+        with factory() as s:
+            s.get(XrasSubmission, out.submission_id).record_step('dates', None)
+            s.commit()
+
+        again = flow.resume_submission(factory, out.submission_id, actor='pi1',
+                                       client=client)
+        assert not again.succeeded and 'dates may have reached XRAS (unknown)' in again.error
+        assert client.set_action_dates.call_count == 1
+
     def test_abort_deletes_the_action(self, factory):
         client = _client()
         client.submit_action.side_effect = XrasWriteRejected('no', status=400)

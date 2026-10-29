@@ -11,7 +11,7 @@ DDL: ``scripts/sql/create_xras_submission.sql`` and its ``_pg`` twin. Design:
 
 import json
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import Column, DateTime, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -37,6 +37,11 @@ _NEXT = {
 
 _STAMP = {'submitted': 'submitted_time', 'applied': 'applied_time',
           'aborted': 'aborted_time'}
+
+#: The status of a recorded step whose audit row cannot be read: the audit write failed
+#: (``_open_event`` logs and returns ``None``) or the row is gone. The write may have
+#: landed, so a resume treats it like an unverified one.
+UNKNOWN_STEP = 'unknown'
 
 
 def _dumps(value: Any) -> Optional[str]:
@@ -202,6 +207,28 @@ _KEY_COLUMNS = frozenset({
     'action_id', 'request_id', 'request_number', 'project_id', 'request_type',
     'opportunity_id', 'user_id', 'admin_user_id', 'facility_id', 'mnemonic_code_id',
     'allocation_type_id', 'contract_id', 'registration_id'})
+
+
+def step_statuses(session, steps: Dict[str, Optional[int]]) -> Dict[str, str]:
+    """``{step: audit status}`` for every recorded step, in one query; see ``UNKNOWN_STEP``."""
+    from sam.integration.xras import XrasRemediationEvent
+    ids = [i for i in steps.values() if i]
+    found: Dict[int, str] = {}
+    if ids:
+        found = dict(session.query(XrasRemediationEvent.xras_remediation_event_id,
+                                   XrasRemediationEvent.status)
+                     .filter(XrasRemediationEvent.xras_remediation_event_id.in_(ids)))
+    return {step: found.get(i, UNKNOWN_STEP) if i else UNKNOWN_STEP
+            for step, i in steps.items()}
+
+
+def documents_to_reattach(statuses: Dict[str, str], filenames) -> List[str]:
+    """The *filenames* a resume must be handed again: never sent, or refused by XRAS (which
+    then stored nothing). SAM keeps a document's name and digest, never its bytes. One whose
+    outcome is unknown is not among them: the flow will not re-send it, as it may have landed.
+    """
+    return [name for name in filenames
+            if statuses.get(f'document:{name}') in (None, 'rejected')]
 
 
 def lookup_submission_by_request_id(session, request_id) -> Optional[XrasSubmission]:

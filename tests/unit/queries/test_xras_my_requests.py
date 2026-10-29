@@ -160,3 +160,7 @@ class TestMissingDocuments:
         letter = [{'filename': 'letter.pdf', 'document_type': 'Advisor_Letter'}]
         row = self._row(letter, {'document:letter.pdf': event.xras_remediation_event_id})
         assert missing_documents(session, row) == (letter if needed else [])
+
+    def test_an_upload_whose_audit_row_was_lost_is_not_asked_for(self, session):
+        letter = [{'filename': 'letter.pdf', 'document_type': 'Advisor_Letter'}]
+        assert missing_documents(session, self._row(letter, {'document:letter.pdf': None})) == []

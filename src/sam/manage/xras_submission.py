@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from sam.integration.xras_submission import documents_to_reattach
 from sam.manage.xras_remediation import RemediationOutcome, _client, _editor_op
 
 logger = logging.getLogger(__name__)
@@ -176,16 +177,11 @@ def _row_view(row) -> Dict[str, Any]:
 
 
 def _step_statuses(session_factory, steps: Dict[str, Optional[int]]) -> Dict[str, str]:
-    """``{step: audit status}`` for every step that opened an event."""
-    from sam.integration.xras import XrasRemediationEvent
-    ids = [i for i in steps.values() if i]
-    if not ids:
+    from sam.integration.xras_submission import step_statuses
+    if not steps:
         return {}
     with session_factory() as session:
-        status = dict(session.query(XrasRemediationEvent.xras_remediation_event_id,
-                                    XrasRemediationEvent.status)
-                      .filter(XrasRemediationEvent.xras_remediation_event_id.in_(ids)))
-    return {step: status[i] for step, i in steps.items() if i in status}
+        return step_statuses(session, steps)
 
 
 def _error_text(outcome: RemediationOutcome) -> Dict[str, Any]:
@@ -349,9 +345,8 @@ def _drive(session_factory, draft: ActionRequest, view, *, submit: bool,
         _advance(session_factory, view, 'created')
 
     populate = _plan(draft, view)
-    missing = [d.filename for d in draft.documents
-               if not d.content
-               and statuses.get(f'document:{d.filename}') in (None, 'rejected')]
+    missing = documents_to_reattach(statuses, [d.filename for d in draft.documents
+                                               if not d.content])
     if view['state'] == 'created' and missing:
         return _stop(session_factory, view, f'document:{missing[0]}',
                      reason=f'attach {", ".join(missing)} again to continue')

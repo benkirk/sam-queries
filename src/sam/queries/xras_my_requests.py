@@ -58,31 +58,15 @@ def stopped_step(row) -> Optional[str]:
         return 'a step'
 
 
-def document_step_statuses(session, row) -> Dict[str, str]:
-    """``{step: audit status}`` for the document steps *row* recorded, in one query."""
-    from sam.integration.xras import XrasRemediationEvent
-    by_id = {i: step for step, i in row.steps.items() if i and step.startswith('document:')}
-    if not by_id:
-        return {}
-    rows = (session.query(XrasRemediationEvent.xras_remediation_event_id,
-                          XrasRemediationEvent.status)
-            .filter(XrasRemediationEvent.xras_remediation_event_id.in_(by_id)))
-    return {by_id[i]: status for i, status in rows}
-
-
 def missing_documents(session, row) -> List[Dict[str, Any]]:
-    """The documents a resume must be handed again: never sent, or refused by XRAS (which
-    then stored nothing). SAM keeps a document's name and digest, never its bytes. One whose
-    outcome is unknown is not among them: the flow will not re-send it, as it may have landed.
-    """
-    steps = row.steps
-    statuses = document_step_statuses(session, row)
-    out = []
-    for d in row.payload_dict.get('documents') or ():
-        key = f"document:{d.get('filename')}"
-        if key not in steps or statuses.get(key) == 'rejected':
-            out.append(d)
-    return out
+    """The payload documents a resume must be handed again (``documents_to_reattach``)."""
+    from sam.integration.xras_submission import documents_to_reattach, step_statuses
+    documents = row.payload_dict.get('documents') or ()
+    if not documents:
+        return []
+    wanted = set(documents_to_reattach(step_statuses(session, row.steps),
+                                       [d.get('filename') for d in documents]))
+    return [d for d in documents if d.get('filename') in wanted]
 
 
 def submission_readout(row, log=None, action_status: Optional[str] = None) -> Readout:

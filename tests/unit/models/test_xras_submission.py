@@ -5,7 +5,9 @@ from datetime import datetime
 import pytest
 
 from sam.integration.xras_submission import (
+    UNKNOWN_STEP,
     XrasSubmission,
+    documents_to_reattach,
     lookup_submission_by_request_id,
     open_submission_for,
     open_submissions_for_user,
@@ -88,6 +90,28 @@ class TestLifecycle:
         assert row.snapshot_dict == {'rules': {}} and row.action_id == 98_700_101
         row.set_keys(request_number='NCAR9999')
         assert (row.request_id, row.request_number) == (_LINE, 'NCAR9999')
+
+
+class TestStepStatuses:
+    """One reader for the flow and the page: a step with no readable audit row is unknown."""
+
+    def test_a_recorded_event_reads_its_status_and_a_lost_one_is_unknown(self, session):
+        from sam.integration.xras import XrasRemediationEvent
+        from sam.integration.xras_submission import step_statuses
+        event = XrasRemediationEvent.create(session, operation='add_action', created_by='p',
+                                            xa_user='p', status='verified')
+        statuses = step_statuses(session, {'mint': event.xras_remediation_event_id,
+                                           'dates': None, 'grant:1': 1})
+        assert statuses == {'mint': 'verified', 'dates': UNKNOWN_STEP, 'grant:1': UNKNOWN_STEP}
+        assert step_statuses(session, {}) == {}
+
+    @pytest.mark.parametrize('status, needed', [
+        (None, True), ('rejected', True), ('verified', False), ('unverified', False),
+        ('error', False), (UNKNOWN_STEP, False)])
+    def test_only_a_never_sent_or_refused_document_is_reattached(self, status, needed):
+        statuses = {} if status is None else {'document:letter.pdf': status}
+        assert documents_to_reattach(statuses, ['letter.pdf']) == (
+            ['letter.pdf'] if needed else [])
 
 
 class TestLookups:
