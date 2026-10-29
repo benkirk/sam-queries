@@ -339,6 +339,8 @@ class TestResumeAndDiscard:
         html = auth_client.get(PAGE).get_data(as_text=True)
         assert 'Stopped at submit' in html
         assert f'/user/requests/{a_row}/resume' in html and f'/user/requests/{a_row}/abort' in html
+        # The Date column repeats an applied row's date; phones keep the width for Resume/Discard.
+        assert '<th class="col-shrink d-none d-md-table-cell">Date</th>' in html
 
     @pytest.fixture
     def lettered_row(self, engine):

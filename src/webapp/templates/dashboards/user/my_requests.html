@@ -41,7 +41,7 @@
                     <th class="col-shrink">Request</th>
                     <th class="col-shrink">Action</th>
                     <th>Status</th>
-                    <th class="col-shrink">Date</th>
+                    <th class="col-shrink d-none d-md-table-cell">Date</th>
                     <th class="col-shrink" aria-label="Actions"></th>
                 </tr>
             </thead>
@@ -56,7 +56,7 @@
                         {% endif %}
                         {% if r.kind == 'filed' %}<span class="small text-muted ms-1">filed through SAM</span>{% endif %}
                     </td>
-                    <td class="col-shrink text-nowrap small text-muted">{{ r.when | fmt_date }}</td>
+                    <td class="col-shrink text-nowrap small text-muted d-none d-md-table-cell">{{ r.when | fmt_date }}</td>
                     <td class="text-end text-nowrap">
                     {%- set sub = r.submission -%}
                     {%- if sub and r.open and (can_manage_xras or user.username in (sub.created_by, sub.xa_user)) %}
