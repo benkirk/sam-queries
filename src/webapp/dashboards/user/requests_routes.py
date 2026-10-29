@@ -673,7 +673,7 @@ class _NewRequestForm(_RequestForm):
 
 @bp.route('/requests/new')
 @login_required
-def my_request_new():
+def my_request_new_fragment():
     """Page one of a New, into ``#xrasRequestModalBody``; a refusal renders as a message."""
     handler = _NewRequestForm()
     try:
@@ -691,7 +691,7 @@ def my_request_new_post():
 
 @bp.route('/requests/new/opportunity')
 @login_required
-def my_request_new_opportunity():
+def my_request_new_opportunity_fragment():
     """Page one's reveal for the chosen opportunity: its rule book, the code letters, the grant."""
     try:
         ctx = _NewRequestForm().gate()

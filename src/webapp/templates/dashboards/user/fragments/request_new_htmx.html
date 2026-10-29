@@ -12,7 +12,7 @@
                     options=opportunity_options,
                     placeholder='Choose the allocation you are applying for',
                     default=opportunity.opportunity_id if opportunity else '',
-                    hx_get=url_for('user_dashboard.my_request_new_opportunity'),
+                    hx_get=url_for('user_dashboard.my_request_new_opportunity_fragment'),
                     hx_target='#xrasNewOpportunity', hx_trigger='change', hx_include='this') }}
     <div id="xrasNewOpportunity">{% include 'dashboards/user/fragments/request_new_opportunity_htmx.html' %}</div>
     {{ text_field('title', 'Project title', required=True, maxlength=500, id='xrasNewTitle') }}

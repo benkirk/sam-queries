@@ -3250,14 +3250,14 @@
     ]
   ],
   [
-    "user_dashboard.my_request_new",
+    "user_dashboard.my_request_new_fragment",
     "/user/requests/new",
     [
       "GET"
     ]
   ],
   [
-    "user_dashboard.my_request_new_opportunity",
+    "user_dashboard.my_request_new_opportunity_fragment",
     "/user/requests/new/opportunity",
     [
       "GET"

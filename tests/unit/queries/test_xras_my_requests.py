@@ -12,6 +12,7 @@ from sam.queries.xras_my_requests import (
     action_readout,
     led_projects,
     my_requests,
+    resumable,
     submission_readout,
 )
 
@@ -123,3 +124,17 @@ class TestLedProjects:
         assert all(p.is_active for p in found)
         assert all(user.user_id in (p.project_lead_user_id, p.project_admin_user_id)
                    for p in found)
+
+
+class TestResumable:
+
+    def _row(self, documents, steps):
+        return SimpleNamespace(payload_dict={'documents': documents}, steps=steps)
+
+    def test_a_row_without_documents_resumes(self):
+        assert resumable(self._row([], {'mint': 1}))
+
+    def test_a_document_never_sent_cannot_resume(self):
+        letter = [{'filename': 'letter.pdf'}]
+        assert not resumable(self._row(letter, {'mint': 1, 'attributes': 2}))
+        assert resumable(self._row(letter, {'mint': 1, 'document:letter.pdf': 3}))

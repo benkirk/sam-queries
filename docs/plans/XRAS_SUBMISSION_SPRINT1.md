@@ -183,8 +183,8 @@ production, 2026-10-28) feed the picker and the resource lists.
 
 ### The incoming consult point (commit 2b)
 
-`NewHandler.assemble` starts with `consult_submission(session, requestId)`, the New row SAM
-filed on that line. `resolve_mnemonic_code(preset=)` takes the row's `mnemonic_code_id` when it
+`NewHandler.assemble` starts by looking up the New row SAM filed on the action's `requestId`
+(`new_submissions_by_request_id`, one read memoized for a whole validate-only worklist). `resolve_mnemonic_code(preset=)` takes the row's `mnemonic_code_id` when it
 is still active, after an operator override and before the ladder; the pinned error order is
 untouched. Only the code is preset: the allocation type, contracts and field of science come
 from the push, which carries the opportunity and grants the form sent, and an allocation-type

@@ -860,6 +860,15 @@ class TestMetadataVerbs:
             900001, request_number='EXAM0001', xa_user='pi-user', isSupportedByGrants='true')
         assert result.verified is True
 
+    def test_keywords_read_back_without_the_spaces_xras_strips(self, monkeypatch):
+        before = self._attr_payload(keywords=None)
+        after = self._attr_payload(keywords='sam,xras,proof')
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(before, after))
+        result = client.update_request_attributes(
+            900001, request_number='EXAM0001', xa_user='pi-user', keywords='sam, xras, proof')
+        assert result.verified is True
+
     def test_update_action_puts_to_the_action_and_verifies(self, monkeypatch):
         before = _reports_with(resources=[])
         before['actions'][0]['userComments'] = 'old'

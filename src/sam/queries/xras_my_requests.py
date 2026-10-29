@@ -58,6 +58,13 @@ def stopped_step(row) -> Optional[str]:
         return 'a step'
 
 
+def resumable(row) -> bool:
+    """Resume can finish *row*: every document it names has gone up (the bytes are never kept)."""
+    steps = row.steps
+    return all(f"document:{d.get('filename')}" in steps
+               for d in row.payload_dict.get('documents') or ())
+
+
 def submission_readout(row, log=None, action_status: Optional[str] = None) -> Readout:
     if row.state == 'applied':
         return Readout('Applied', 'success', row.applied_time)
@@ -124,7 +131,7 @@ def my_requests(session, username: str,
         rows.append(dict(kind='filed', request_number=sub.request_number,
                          action_type=sub.action_type, readout=readout,
                          when=sub.submitted_time or sub.creation_time, submission=sub,
-                         open=sub.is_active))
+                         open=sub.is_active, resumable=sub.is_active and resumable(sub)))
     for number in numbers:
         action = latest.get(number)
         if action is None or action['action_id'] in shown:
@@ -135,7 +142,7 @@ def my_requests(session, username: str,
                          readout=action_readout(action.get('action_status'),
                                                 logs.get(action['action_id']), entered,
                                                 (action.get('preflight') or {}).get('push_state')),
-                         when=entered, submission=None, open=False))
+                         when=entered, submission=None, open=False, resumable=False))
     rows.sort(key=lambda r: (not r['open'], -_ordinal(r['when'])))
     return rows
 

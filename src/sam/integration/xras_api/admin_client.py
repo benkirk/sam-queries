@@ -39,6 +39,7 @@ happened to verify.
 from __future__ import annotations
 
 import logging
+import re
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Tuple
@@ -121,11 +122,13 @@ def _date_str(value: Any) -> Optional[str]:
     return str(value)[:10]
 
 
-def _read_text(value: Any) -> str:
-    """A read-back field as sent text: a JSON boolean reads ``true``/``false``."""
+def _read_text(value: Any, key: str = '') -> str:
+    """A field as comparable text: a JSON boolean reads ``true``/``false``, and ``keywords``
+    drop the spaces around commas, which XRAS strips on store (2026-10-29)."""
     if isinstance(value, bool):
         return 'true' if value else 'false'
-    return str(value or '').strip()
+    text = str(value or '').strip()
+    return re.sub(r'\s*,\s*', ',', text) if key == 'keywords' else text
 
 
 def _first_action_id(payload: Any) -> Optional[int]:
@@ -900,7 +903,7 @@ class XrasAdminClient(_XrasTransport):
         """
         if source is None:
             return False
-        return all(_read_text(source.get(k)) == v.strip() for k, v in params.items())
+        return all(_read_text(source.get(k), k) == _read_text(v, k) for k, v in params.items())
 
     def update_request_attributes(self, request_id: int, *,
                                   request_number: str, xa_user: str,

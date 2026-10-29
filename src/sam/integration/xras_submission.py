@@ -215,10 +215,16 @@ def lookup_submission_by_request_id(session, request_id) -> Optional[XrasSubmiss
             .first())
 
 
-def consult_submission(session, request_id) -> Optional[XrasSubmission]:
-    """The New SAM filed on line *request_id*, whose resolved state presets the New handler."""
-    row = lookup_submission_by_request_id(session, request_id)
-    return row if row is not None and row.action_type == 'New' else None
+def new_submissions_by_request_id(session) -> Dict[int, XrasSubmission]:
+    """``{request_id: row}`` for every non-aborted New SAM filed, newest winning, in one query."""
+    out: Dict[int, XrasSubmission] = {}
+    for row in (session.query(XrasSubmission)
+                .filter(XrasSubmission.action_type == 'New')
+                .filter(XrasSubmission.state != 'aborted')
+                .filter(XrasSubmission.request_id.isnot(None))
+                .order_by(XrasSubmission.xras_submission_id)):
+        out[row.request_id] = row
+    return out
 
 
 def submission_by_action_id(session, action_id) -> Optional[XrasSubmission]:

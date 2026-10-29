@@ -40,6 +40,7 @@ from ..extractors import (
     resolve_area_of_interest,
     resolve_mnemonic_code,
 )
+from ..lookups import cached
 from ..roster import resolve_roster
 from ._allocations import auth_at_panel_meeting, create_window_from_action_dates
 from ._plans import PlannedCreate
@@ -92,8 +93,11 @@ class NewHandler(ActionHandler):
         action creates lives on :attr:`created_project`, deliberately under a different
         name — see ``ActionHandler.project``.
         """
-        from sam.integration.xras_submission import consult_submission
-        self.submission = consult_submission(self.session, self.get('requestId'))
+        from sam.integration.xras_submission import new_submissions_by_request_id
+        # One read for the whole worklist: the validate-only memo keeps the map.
+        filed = cached(self.session, ('xras_submission', 'New'),
+                       lambda: new_submissions_by_request_id(self.session))
+        self.submission = filed.get(self.get('requestId'))
         self.title = title(self.action, self.errors)
         self.roster = resolve_roster(self.session, self.action, self.errors)
         fos_warnings: list = []

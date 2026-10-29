@@ -55,13 +55,16 @@
                         <span class="small text-muted ms-1">{{ r.readout.when | fmt_date }}</span>
                         {% endif %}
                         {% if r.kind == 'filed' %}<span class="small text-muted ms-1">filed through SAM</span>{% endif %}
+                        {% if r.open and r.submission.last_error and not r.resumable %}
+                        <span class="small text-muted d-block">Its document never reached XRAS: discard it and file again.</span>
+                        {% endif %}
                     </td>
                     <td class="col-shrink text-nowrap small text-muted">{{ r.when | fmt_date }}</td>
                     <td class="text-end text-nowrap">
                     {%- set sub = r.submission -%}
                     {%- if sub and r.open and (can_manage_xras or user.username in (sub.created_by, sub.xa_user)) %}
                         <span class="row-actions">
-                        {%- if sub.last_error %}
+                        {%- if sub.last_error and r.resumable %}
                             <button type="button" class="btn btn-row btn-row-primary" title="Resume: send the steps that did not complete"
                                     aria-label="Resume" hx-post="{{ url_for('user_dashboard.my_request_resume', submission_id=sub.xras_submission_id) }}"
                                     hx-swap="none">Resume</button>
@@ -69,7 +72,7 @@
                             <button type="button" class="btn btn-row btn-row-danger" title="Discard: delete what SAM added in XRAS"
                                     aria-label="Discard" hx-post="{{ url_for('user_dashboard.my_request_abort', submission_id=sub.xras_submission_id) }}"
                                     hx-swap="none"
-                                    hx-confirm="Discard this {{ r.action_type }}? SAM deletes the action it added in XRAS.">Discard</button>
+                                    hx-confirm="Discard this {{ r.action_type }}? SAM deletes the {{ 'request it started' if r.action_type in ('New', 'Renewal') else 'action it added' }} in XRAS.">Discard</button>
                         </span>
                     {%- endif %}
                     </td>
@@ -88,7 +91,7 @@
         {% if new_enabled %}
         <button type="button" class="btn btn-sm btn-primary ms-auto" id="xrasNewRequestOpen"
                 data-bs-toggle="modal" data-bs-target="#xrasRequestModal"
-                hx-get="{{ url_for('user_dashboard.my_request_new') }}"
+                hx-get="{{ url_for('user_dashboard.my_request_new_fragment') }}"
                 hx-target="#xrasRequestModalBody" hx-swap="innerHTML">
             <i class="fa-solid fa-plus me-1"></i>New request</button>
         {% else %}

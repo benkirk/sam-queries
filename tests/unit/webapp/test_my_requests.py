@@ -325,6 +325,30 @@ class TestResumeAndDiscard:
         assert 'Stopped at submit' in html
         assert f'/user/requests/{a_row}/resume' in html and f'/user/requests/{a_row}/abort' in html
 
+    def test_a_row_whose_document_never_went_up_offers_only_discard(self, auth_client,
+                                                                   engine):
+        from datetime import datetime
+        from sqlalchemy import delete
+        from sqlalchemy.orm import Session
+        from sam.integration.xras_submission import XrasSubmission
+        with Session(engine) as s:
+            row = XrasSubmission.create(
+                s, action_type='New', created_by='benkirk', xa_user='benkirk',
+                payload={'documents': [{'filename': 'letter.pdf'}]}, eula_sha='a' * 40,
+                eula_accepted_at=datetime.now())
+            row.stop({'step': 'attributes', 'reason': 'unverified'})
+            s.commit()
+            sid = row.xras_submission_id
+        try:
+            html = auth_client.get(PAGE).get_data(as_text=True)
+            assert f'/user/requests/{sid}/abort' in html
+            assert f'/user/requests/{sid}/resume' not in html
+            assert 'discard it and file again' in html and 'the request it started' in html
+        finally:
+            with engine.begin() as conn:
+                conn.execute(delete(XrasSubmission).where(
+                    XrasSubmission.xras_submission_id == sid))
+
     def test_resume_runs_the_flow_and_refreshes(self, auth_client, a_row, monkeypatch):
         from sam.manage import xras_submission as flow
         seen = []
