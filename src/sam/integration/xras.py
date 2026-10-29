@@ -625,6 +625,14 @@ XRAS_REMEDIATION_OPERATIONS = (
     'add_action',              # add an action to a request
     # SAM's own step after a New lands (XRAS_CLOSED_LOOP.md): NCAR#### -> projcode.
     'rename_request',
+    # A user's own request (XRAS_SUBMISSION.md): create, populate, abort.
+    'create_request',          # a new line under an opportunity (New)
+    'delete_action',           # soft-delete one action (abort)
+    'upload_document',         # attach a PDF to an action
+    'set_opp_attributes',      # the opportunity attributes (the EUA echo)
+    'add_grant',
+    'update_grant',
+    'set_fos',                 # a field of science on the request
 )
 
 #: The only operations a ``task:`` operator may open: the rename's backstop task.

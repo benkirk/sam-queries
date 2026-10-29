@@ -32,9 +32,11 @@ ActionRequest(action_type, request_number, request_id, opportunity_id, title, ab
               eua_attribute_id, admin_username, sam=SamRefs(project_id, facility_id,
               mnemonic_code_id, allocation_type_id, contract_id))   # frozen; the row's payload
 request_action(session_factory, draft, *, actor, xa_user, eula, submit=True, resume_id=None,
-               client=None) -> SubmissionOutcome
+               door='pi', client=None) -> SubmissionOutcome
+resume_submission(session_factory, submission_id, *, actor, submit=True, documents=(),
+                  door='pi', client=None) -> SubmissionOutcome
 abort_submission(session_factory, submission_id, *, actor, client=None)
-submit_armed()
+submit_armed(action_type=None)
 ```
 
 | Step | Ops through `_editor_op` (`xras_remediation.py`) | Row state after |
@@ -51,8 +53,15 @@ submit_armed()
   `errors[]` whole, and leaves the state where it was; **no automatic abort**. Resume reloads the
   payload and skips every step whose event is `verified`. A second open row on the same
   `(request_id, action_type)` for the same actor is refused.
+- A resume never re-sends a write that adds a row in XRAS (`create_request renew_request
+  add_action add_role set_action_dates add_grant upload_document`) once its event is anything
+  but `verified` or `rejected`: it may have landed, and a second Extension action is the
+  UNVR0027 duplicate. The row stops with that reason; the remedy is abort. A document's bytes
+  never reach the payload, so a resume asks for the file again.
 - One `logger.info` per step: submission id, step, op, request and action ids, status.
-- PI door: `xa_user = actor`. Admin door: `xa_user = resolve_pi(roster)`, `created_by = operator`.
+- PI door (`door='pi'`): `xa_user = actor`, and the lever with the type armed. Admin door
+  (`door='admin'`): `xa_user = resolve_pi(roster)`, `created_by = operator`, the write lever
+  alone. Abort needs only the write lever.
 - `_editor_op` on an unnumbered draft passes `refresh=lambda: True`: nothing is in the index to
   patch. The submission verbs verify through `get_draft` (`GET /v1/requests/<rid>` as the
   role-holder, 200 on XRAS-dev and production), which needs no number: a create by its new id
@@ -221,7 +230,7 @@ numbers are a proposal from the data, not policy.
 
 ## 5. Items left for Thursday
 
-1. Ben reviews the proposed seed (§ 4): medians from the snapshot as defaults, published caps or a multiple as the limit, no defaults for CHAP and NSC.
+1. Done 2026-10-29: Ben approved the seed as proposed (§ 4): medians from the snapshot as defaults, published caps or a multiple as the limit, no defaults for CHAP and NSC.
 2. Done 2026-10-28: the production read as benkirk (§ 9); the fixtures
    `tests/fixtures/xras/outgoing/create_request_*.json`.
 3. Before the phase-2 proof: open a Large and an NSC opportunity in `xras-admin-demo`.
@@ -257,8 +266,9 @@ imports from `sam.integration`, never `sam.queries.__init__`).
 - The New form is the unprototyped half: it ships last (2a), and `XRAS_SUBMIT_ACTION_TYPES`
   keeps it dark on production after the lever flips.
 - The LFS blob conflicts with any concurrent regen: regenerate once, last.
-- Verification reads for an unnumbered draft are 401 on production: the response-verified
-  convention is explicit in the audit row rather than every New reading `unverified`.
+- The editor verbs the flow reuses (attributes, resources, dates, roles, submit) verify through
+  the reports family by number. A New draft has no number, so 2a gives them the by-id read
+  (`get_draft`); 1c checks whether a renewal's draft line reads back in its family.
 - `require_project_permission(EDIT_PROJECTS)` admits stewards by design (§ 4.4).
 
 ## 9. Probe record (2026-10-27)

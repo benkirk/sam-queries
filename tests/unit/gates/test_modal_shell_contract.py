@@ -207,6 +207,9 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/admin/fragments/contracts_table_htmx.html': [
         'contractDetailsModalBody', 'createContractFormContainer', 'createContractModal',
         'createContractSourceFormContainer', 'createContractSourceModal'],
+    # Loaded only into admin/configuration.html, which ships both limit shells.
+    'dashboards/admin/fragments/allocation_limits_card.html': [
+        'createAllocationLimitFormContainer', 'createAllocationLimitModal'],
     'dashboards/admin/fragments/disk_root_directories_section.html': [
         'addDiskRootFormContainer', 'addDiskRootModal'],
     'dashboards/admin/fragments/facility_card.html': [

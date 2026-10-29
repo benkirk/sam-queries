@@ -45,7 +45,10 @@ class TestTheVocabularies:
             # The destructive lifecycle (Part C).
             'delete_request', 'renew_request', 'add_action',
             # SAM's own rename after a New lands (XRAS_CLOSED_LOOP.md).
-            'rename_request'}
+            'rename_request',
+            # A user's own request (XRAS_SUBMISSION.md).
+            'create_request', 'delete_action', 'upload_document',
+            'set_opp_attributes', 'add_grant', 'update_grant', 'set_fos'}
 
     def test_every_operation_fits_the_column(self):
         """``operation`` is VARCHAR(24) — a longer verb truncates or errors."""

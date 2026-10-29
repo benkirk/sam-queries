@@ -463,6 +463,48 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_allocation_limit_create",
+    "/admin/htmx/allocation-limit-create",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_allocation_limit_create_form",
+    "/admin/htmx/allocation-limit-create-form",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_allocation_limit_delete",
+    "/admin/htmx/allocation-limit-delete/<int:allocation_type_resource_limit_id>",
+    [
+      "DELETE"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_allocation_limit_edit",
+    "/admin/htmx/allocation-limit-edit/<int:allocation_type_resource_limit_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_allocation_limit_edit_form",
+    "/admin/htmx/allocation-limit-edit-form/<int:allocation_type_resource_limit_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_allocation_limits_card",
+    "/admin/htmx/allocation-limits",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_allocation_type_create",
     "/admin/htmx/allocation-type-create",
     [

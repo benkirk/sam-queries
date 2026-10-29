@@ -485,6 +485,10 @@ _BOOTSTRAP_TABLES = (
      'sam.security.samuel_roles:SamuelRolePermission'),
     ('samuel_role_grant', 'create_samuel_roles.sql',
      'sam.security.samuel_roles:SamuelRoleGrant'),
+    ('xras_submission', 'create_xras_submission.sql',
+     'sam.integration.xras_submission:XrasSubmission'),
+    ('allocation_type_resource_limit', 'create_allocation_type_resource_limit.sql',
+     'sam.accounting.allocation_type_limits:AllocationTypeResourceLimit'),
 )
 
 
