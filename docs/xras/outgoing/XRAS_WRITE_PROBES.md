@@ -269,7 +269,7 @@ client, not in each caller.
 | Remove role | `DELETE /v1/requests/<rid>/roles/<roleId>` | ✅ role-scoped |
 | Role types | `GET /v1/types/roles` | ✅ both contexts |
 | Roles by projcode | `POST\|DELETE /v1/roles/<requestNumber>/<roleTypeId>/<u>` | ⚠️ provisioned, unverified — needs a live request to test |
-| Request detail / `rules{}` | `GET /v1/requests/<rid>` | ❌ 401 route-wide, every context, on production 2026-08-21 (P1). XRAS-dev 2026-10-13 answered **200 with `rules{}`** to a role-holder on a new request ([`XRAS_DEV_PROBES.md`](XRAS_DEV_PROBES.md) § 2); a read-only production re-probe as a role-holder would settle which holds |
+| Request detail / `rules{}` | `GET /v1/requests/<rid>` | ❌ 401 route-wide, every context, on production 2026-08-21 (P1). XRAS-dev 2026-10-13 answered **200 with `rules{}`** to a role-holder on a new request ([`XRAS_DEV_PROBES.md`](XRAS_DEV_PROBES.md) § 2); a read-only production re-probe as a role-holder would settle which holds **Production 2026-10-28:** 200 as a role-holder (benkirk on UHSS0001, `rules{allowedActions}` included), so the 401 was for an identity with no role on the line |
 | Un-reconcile | `POST /v1/people/<u>` `isReconciled=false` | ❌ 200 and silently ignored on an existing person. On **create** the flag sticks (XRAS-dev 2026-10-13, `XRAS_DEV_PROBES.md` § 3) |
 | Delete request | `DELETE /v1/requests/<rid>` | ❌ 401 for every `XA-USER` on a 2015 `Approved` line held by another PI (production, 2026-08-20). XRAS-dev 2026-10-13: **200, soft** (`isDeleted: true`) on one's own `Incomplete` draft. Untested on production for one's own line |
 

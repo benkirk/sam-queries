@@ -422,6 +422,12 @@ webapp:
     # after the production backfill; pinned in tests/unit/gates/test_xras_admin_client.py,
     # so a flip is a reviewed change to both files. Needs XRAS_WRITE_ENABLED.
     XRAS_RENAME_ENABLED: "1"
+    # Authoring a request for a user from My Requests (docs/plans/XRAS_SUBMISSION.md § 3.4).
+    # Webapp only, never tasks.env; needs XRAS_WRITE_ENABLED. ACTION_TYPES narrows it:
+    # all | none | a list of Extension,Supplement,Renewal,New. Pinned in
+    # tests/unit/gates/test_xras_admin_client.py.
+    XRAS_SUBMIT_ENABLED: "0"
+    XRAS_SUBMIT_ACTION_TYPES: "Extension,Supplement"
     # Activate the project a New creates, right after its post applies (docs/plans/
     # XRAS_POST_AUTOMATION.md § 3 B); "0" leaves it to the card's Activate. Armed after the
     # samuel-dev smoke (#828), NUSD told; pinned in tests/unit/gates/test_xras_admin_client.py.

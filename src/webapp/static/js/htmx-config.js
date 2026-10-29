@@ -147,6 +147,9 @@ document.body.addEventListener('reloadContractsCard', function() {
 document.body.addEventListener('reloadResourcesCard', function() {
     _reloadAdminCard('resourcesSection', 'resourcesCardActiveOnly');
 });
+document.body.addEventListener('reloadAllocationLimitsCard', function() {
+    _reloadAdminCard('allocationLimitsSection', 'allocationLimitsCardActiveOnly');
+});
 
 // Reload the cross-project Project Directories table after an edit/deactivate.
 // Honors the canonical "Active only" toggle (active_only=1 when checked).

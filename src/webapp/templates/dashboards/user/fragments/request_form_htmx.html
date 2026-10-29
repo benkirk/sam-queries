@@ -1,0 +1,48 @@
+{#- An Extension, Supplement or Renewal form, into #xrasRequestModalBody (GET, and every error
+    or Back). Context: project, action_type, decision, floor, resources [{resource_id, name,
+    units, sam_name, limit}], post_url, eula_sha, errors, field_errors, form; a Renewal adds
+    offer, rules (the grant when it wants one), documents, default_begin, default_end,
+    line_abstract. -#}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{% from 'dashboards/fragments/form_fields.html' import date_field, textarea_field with context %}
+{% from 'dashboards/user/partials/request_bits.html' import amounts_table %}
+{{ modal_title('xrasRequestModalLabel', action_type ~ ' request', 'paper-plane', meta=project.projcode) }}
+{% call htmx_form(post_url, '#xrasRequestModalBody', 'Review', submit_icon='arrow-right',
+                  errors=errors, disabled=not decision) %}
+    <input type="hidden" name="stage" value="review">
+    {% if decision %}
+    <div class="modal-facts small mb-3">
+        XRAS request <span class="font-monospace">{{ decision.request_number }}</span>
+        {%- if action_type == 'Extension' and floor %}; the project's allocations end {{ floor | fmt_date }}{% endif %}
+        {%- if action_type == 'Renewal' and offer %}; renews under {{ offer.opportunity_name }}{% endif %}.
+        {%- if action_type == 'Renewal' and documents %}
+        <span class="d-block">You attach the {{ documents | map(attribute='label') | join(' and ') }} at the review.</span>
+        {%- endif %}
+    </div>
+    {% endif %}
+    {% if action_type == 'Extension' %}
+        {{ date_field('end_date', 'New end date', required=True, id='xrasRequestEnd', min=end_min,
+                      help='Every allocation on the project moves to this date.') }}
+        {{ textarea_field('user_comments', 'Why the project needs more time', required=True,
+                          rows=4, id='xrasRequestComments') }}
+    {% else %}
+        {% if action_type == 'Renewal' %}
+        {{ textarea_field('abstract', 'Abstract for the coming period', required=True, rows=6,
+                          default=line_abstract, id='xrasRequestAbstract',
+                          help='The renewal copies the title, keywords and field of science, but not the abstract.') }}
+        <div class="row g-2">
+            <div class="col-sm-6">{{ date_field('begin_date', 'Start', required=True, default=default_begin, id='xrasRequestBegin') }}</div>
+            <div class="col-sm-6">{{ date_field('end_date', 'End', required=True, default=default_end, id='xrasRequestEnd') }}</div>
+        </div>
+        {% if rules and rules.wants_grants %}
+        {% with required=rules.grant_fields %}{% include 'dashboards/user/fragments/request_grant_htmx.html' %}{% endwith %}
+        {% endif %}
+        {% endif %}
+        {{ amounts_table(resources, form, field_errors) }}
+        {% if action_type == 'Supplement' %}
+        {{ textarea_field('user_comments', 'What the extra resources are for', required=True,
+                          rows=4, id='xrasRequestComments') }}
+        {% endif %}
+    {% endif %}
+{% endcall %}

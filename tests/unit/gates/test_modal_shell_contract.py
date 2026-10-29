@@ -207,6 +207,16 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/admin/fragments/contracts_table_htmx.html': [
         'contractDetailsModalBody', 'createContractFormContainer', 'createContractModal',
         'createContractSourceFormContainer', 'createContractSourceModal'],
+    # Loaded only into user/my_requests.html, which ships #xrasRequestModal. The picker is
+    # on the page (it opens the shell); the review swaps inside the open body, no toggle.
+    'dashboards/user/fragments/request_actions_htmx.html': [
+        'xrasRequestModal', 'xrasRequestModalBody'],
+    'dashboards/user/fragments/request_review_htmx.html': ['xrasRequestModalBody'],
+    'dashboards/user/fragments/request_new_amounts_htmx.html': ['xrasRequestModalBody'],
+    'dashboards/user/fragments/request_resume_htmx.html': ['xrasRequestModalBody'],
+    # Loaded only into admin/configuration.html, which ships both limit shells.
+    'dashboards/admin/fragments/allocation_limits_card.html': [
+        'createAllocationLimitFormContainer', 'createAllocationLimitModal'],
     'dashboards/admin/fragments/disk_root_directories_section.html': [
         'addDiskRootFormContainer', 'addDiskRootModal'],
     'dashboards/admin/fragments/facility_card.html': [
@@ -476,6 +486,7 @@ PAGES_WITH_PROJECT_MODAL = {
     '/user/jobs': 'dashboards/user/my_jobs.html',
     '/user/data': 'dashboards/user/my_data.html',
     '/user/events': 'dashboards/user/my_events.html',
+    '/user/requests': 'dashboards/user/my_requests.html',
     '/admin/projects': 'dashboards/admin/projects.html',
     '/admin/projects/directories': 'dashboards/admin/projects_directories.html',
     '/admin/organizations': 'dashboards/admin/organizations.html',

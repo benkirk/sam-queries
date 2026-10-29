@@ -1,0 +1,42 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import number_field, select_field with context %}
+{%- macro _d(limit, name) -%}{%- set v = limit[name] if limit else none -%}{{ '%.15g' | format(v) if v is not none else '' }}{%- endmacro -%}
+{# htmx: Create request limit (loaded into #createAllocationLimitFormContainer). #}
+{% set _p = 'createAllocationLimit' %}
+{% set limit = none %}
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_allocation_limit_create'),
+    '#createAllocationLimitFormContainer',
+    'Create',
+    submit_icon='plus',
+    errors=errors
+) %}
+        {%- set ns = namespace(types=[], resources=[]) %}
+        {%- for at in allocation_types %}{% set ns.types = ns.types + [(at.allocation_type_id, at.allocation_type ~ (' (' ~ at.panel.panel_name ~ ')' if at.panel else ''))] %}{% endfor %}
+        {%- for r in resources %}{% set ns.resources = ns.resources + [(r.resource_id, r.resource_name)] %}{% endfor %}
+        <div class="row g-2">
+            <div class="col-md-6">
+                {{ select_field('allocation_type_id', 'Allocation type', options=ns.types, required=True,
+                                placeholder='— Select —', id='createAllocationLimitType') }}
+            </div>
+            <div class="col-md-6">
+                {{ select_field('resource_id', 'Resource', options=ns.resources, required=True,
+                                placeholder='— Select —', id='createAllocationLimitResource') }}
+            </div>
+        </div>
+        <div class="row g-2">
+            <div class="col-md-4">
+                {{ number_field('min_amount', 'Minimum', min=0, step='any', optional_text='', default=_d(limit, 'min_amount'),
+                                placeholder='No floor', id=_p ~ 'Min') }}
+            </div>
+            <div class="col-md-4">
+                {{ number_field('default_amount', 'Default', min=0, step='any', optional_text='', default=_d(limit, 'default_amount'),
+                                placeholder='No pre-fill', id=_p ~ 'Default') }}
+            </div>
+            <div class="col-md-4">
+                {{ number_field('max_amount', 'Maximum', min=0, step='any', optional_text='', default=_d(limit, 'max_amount'),
+                                placeholder='No ceiling', id=_p ~ 'Max') }}
+            </div>
+        </div>
+        <p class="form-text mb-2">In the resource's own unit. An empty bound is no bound.</p>
+{% endcall %}

@@ -216,7 +216,8 @@ placeholder scenario needs a fresh person, named `<x>-user-<y>` so SAM classes i
 - **Bed:** samuel-dev on the branch image (check `kubectl -n sam-queries-dev get pods` shows the
   expected `sha-`; a staging merge re-pins `cirrus-dev` to staging, and
   `gh workflow run "Publish Images and CIRRUS Deploy" --ref <branch>` restores it). State left
-  on XRAS-dev: `XRAS_DEV_PROBES.md` § 8.
+  on XRAS-dev: `XRAS_DEV_PROBES.md` § 8. The demo has **no open Large or NSC opportunity**
+  (2026-10-27): open one of each in `xras-admin-demo` before a Large or NSC New is proven there.
 - **Writes:** a scratchpad helper as in § 2 (one call per invocation, demo host asserted, JSONL
   log, no key written). The New recipe that validates on Exploratory: create, `roles/PI`,
   attributes (title, abstract, keywords, `isSupportedByGrants=false`), Derecho resource, a

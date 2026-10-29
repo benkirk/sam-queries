@@ -1,0 +1,36 @@
+{#- One supporting grant: the award number with a Look up (NSF); its details show once looked up
+    or posted, filled where NSF had them. Included by the New and Renewal forms; the lookup
+    swaps it whole. Context: form (the values), required (the wire names the rule book
+    requires), note, field_errors. -#}
+{% from 'dashboards/fragments/form_fields.html' import text_field, date_field with context %}
+{% set _req = required or [] %}
+{% set _err = (field_errors or {}).get('grant_number') %}
+<div id="xrasRequestGrant" class="mb-3">
+    <input type="hidden" name="grant_required" value="{{ _req | join(',') }}">
+    <label for="xrasGrantNumber" class="form-label">Supporting grant <span class="text-danger">*</span></label>
+    <div class="input-group has-validation">
+        <input type="text" class="form-control{{ ' is-invalid' if _err }}" id="xrasGrantNumber" name="grant_number"
+               value="{{ form.get('grant_number') or '' if form else '' }}" placeholder="NSF award number"
+               {%- if _err %} aria-invalid="true" aria-describedby="xrasGrantNumber-error"{% endif %}>
+        <button type="button" class="btn btn-outline-secondary" data-grant-lookup
+                hx-get="{{ url_for('user_dashboard.my_requests_award_lookup') }}"
+                hx-include="#xrasRequestGrant" hx-target="#xrasRequestGrant" hx-swap="outerHTML">
+            <i class="fa-solid fa-magnifying-glass me-1"></i>Look up</button>
+        {% if _err %}<div class="invalid-feedback" id="xrasGrantNumber-error">{{ _err[0] }}</div>{% endif %}
+    </div>
+    <small class="form-text text-muted">{{ note or 'SAM fills the grant\'s details from NSF; type any it lacks.' }}</small>
+    {% if form and form.get('grant_number') %}
+    <div class="modal-facts mt-2 pb-0">
+        {{ text_field('grant_title', 'Grant title', required='title' in _req, id='xrasGrantTitle') }}
+        {{ text_field('grant_pi_name', 'Grant PI', required='piName' in _req, id='xrasGrantPi') }}
+        <div class="row g-2">
+            <div class="col-sm-6">{{ date_field('grant_begin_date', 'Begins', required='beginDate' in _req, id='xrasGrantBegin') }}</div>
+            <div class="col-sm-6">{{ date_field('grant_end_date', 'Ends', required='endDate' in _req, id='xrasGrantEnd') }}</div>
+        </div>
+        <div class="row g-2">
+            <div class="col-sm-6">{{ text_field('grant_officer_name', 'Program officer', required='programOfficerName' in _req, id='xrasGrantOfficer') }}</div>
+            <div class="col-sm-6">{{ text_field('grant_officer_email', 'Officer email', required='programOfficerEmail' in _req, id='xrasGrantOfficerEmail', type='email') }}</div>
+        </div>
+    </div>
+    {% endif %}
+</div>

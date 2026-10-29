@@ -28,6 +28,7 @@ is an empty modal with no explanation. The degraded body says what happened.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 from flask import current_app, render_template, request, url_for
 from flask_login import current_user, login_required
@@ -46,6 +47,7 @@ from sam.integration.xras_api import (
 )
 from sam.manage import management_transaction
 from sam.manage import xras_remediation as remediation
+from sam.projects.projects import Project
 from sam.queries.mnemonic_console import search_mnemonic_codes
 from sam.dates import parse_wire_date
 from sam.queries.xras_accounts import live_actions
@@ -53,6 +55,7 @@ from sam.queries.xras_requests import is_pending_work, projcode_series, row_bloc
 from sam.schemas.forms import (
     XrasActionDatesForm,
     XrasActionFieldsForm,
+    XrasAddActionAgreementForm,
     XrasAddActionForm,
     XrasMergeForm,
     XrasRemediationReasonForm,
@@ -1926,9 +1929,16 @@ def xras_request_renew(request_number: str):
         'Check XRAS — the attempt is recorded in the remediation log.'))
 
 
+#: Added through the submission flow, so the action gains an ``xras_submission`` row.
+_FLOW_ACTION_TYPES = ('Extension', 'Supplement')
+
+
 def _safe_add_action_form_context(request_number):
+    from webapp.register.eula import eula_sha
     return {
         'request_number': request_number,
+        'flow_action_types': _FLOW_ACTION_TYPES,
+        'eula_sha': eula_sha(),
         # (value, label) pairs for select_field — Jinja has no comprehension.
         'action_type_options': [(t, t) for t in XRAS_ACTION_TYPES],
         'write_enabled': xras_write_configured(),
@@ -1955,20 +1965,49 @@ class _XrasAddActionHandler(_XrasRemediationHandler):
     success_message = 'Action added in XRAS.'
 
     def clean(self, data):
+        from webapp.register.eula import eula_sha
         self._request_id, self._xa_user = _editor_target(self.request_number)
+        if data['action_type'] in _FLOW_ACTION_TYPES:
+            agreement = XrasAddActionAgreementForm().load(request.form)
+            if not agreement['agree'] or agreement['eula_sha'] != eula_sha():
+                raise FormError('Confirm the request is filed under the terms of use.')
+            data['eula'] = (agreement['eula_sha'], datetime.now())
         return data
 
     def perform(self, data):
-        outcome = remediation.add_action(
-            _session_factory, request_number=self.request_number,
-            request_id=self._request_id, action_type=data['action_type'],
-            pi_username=self._xa_user, operator=current_user.username)
-        return self._finish(outcome, verb='Adding the action')
+        if 'eula' not in data:
+            outcome = remediation.add_action(
+                _session_factory, request_number=self.request_number,
+                request_id=self._request_id, action_type=data['action_type'],
+                pi_username=self._xa_user, operator=current_user.username)
+            return self._finish(outcome, verb='Adding the action')
+        from sam.manage import xras_submission as flow
+        project = Project.get_by_projcode(db.session, self.request_number)
+        draft = flow.ActionRequest(
+            action_type=data['action_type'], request_number=self.request_number,
+            request_id=self._request_id,
+            sam=flow.SamRefs(project_id=project.project_id if project else None))
+        try:
+            filed = flow.request_action(
+                _session_factory, draft, actor=current_user.username,
+                xa_user=self._xa_user, eula=data['eula'], submit=False, door='admin')
+        except flow.SubmissionRefused as exc:
+            raise FormError(str(exc))
+        if not filed.succeeded and filed.step_outcome is not None:
+            self._finish(filed.step_outcome, verb='Adding the action')
+        if not filed.succeeded:
+            raise FormError(f'Adding the action stopped: {filed.error}')
+        return filed
 
     def on_success(self, result):
+        article = 'an' if self.added_type[:1] in 'AEIOU' else 'a'
         return _render_detail(
-            self.request_number,
-            flash=f'Added a {result.result.extra.get("action_type")} action.')
+            self.request_number, flash=f'Added {article} {self.added_type} action.')
+
+    def load(self, raw):
+        data = super().load(raw)
+        self.added_type = data['action_type']
+        return data
 
     def context(self):
         return _safe_add_action_form_context(self.request_number)
