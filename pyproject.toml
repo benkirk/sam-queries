@@ -75,7 +75,8 @@ hpc = [
     "hpc-scheduling-tools @ git+ssh://git@github.com/NCAR/hpc-scheduling-tools.git",
 ]
 test = [
-    "pytest",
+    # NOTE: pytest-benchmark 5.3.0 reads Item._nodeid, which pytest 9.2 removed; lift the cap when it ships a fix.
+    "pytest<9.2",
     "pytest-benchmark", # benchmarking
     "pytest-cov",       # --cov=src coverage reports (CI: sam-ci-docker.yaml)
     "pytest-timeout",   # pytest.ini timeout = 300
