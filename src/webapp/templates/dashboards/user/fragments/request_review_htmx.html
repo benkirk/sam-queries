@@ -37,7 +37,7 @@
             {% endif %}
             {% for r in resources if r.resource_id in data.amounts %}
             <dt class="col-sm-4">{{ r.name }}</dt>
-            <dd class="col-sm-8">{{ data.amounts[r.resource_id] | fmt_number }} {{ r.units }}</dd>
+            <dd class="col-sm-8">{% if (r.units or '') | replace(' ', '') | lower == 'yes/no' %}Yes{% else %}{{ data.amounts[r.resource_id] | fmt_number }} {{ r.units }}{% endif %}</dd>
             {% endfor %}
             {% endif %}
             {{ grant_facts(data.grant) }}

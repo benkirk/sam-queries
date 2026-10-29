@@ -628,6 +628,20 @@ class TestTheNewForm:
         assert 'type="hidden" name="title" value="Ensemble downscaling"' in html
         assert 'value="describe"' in html          # Back
 
+    def test_a_yes_no_resource_is_a_checkbox_that_asks_for_one(self, auth_client, newable,
+                                                              lettered, filed):
+        newable.opportunities[0]['resources'].append(
+            {'resource_id': 530999, 'name': 'NCAR Data Access', 'units': 'Yes / No'})
+        html = auth_client.post(NEW, data=_new()).get_data(as_text=True)
+        box = html.split('name="amount_530999"')[0].rsplit('<input', 1)[1]
+        assert 'type="checkbox"' in box and 'value="1"' in box
+        assert 'yes or no' in html
+        html = auth_client.post(NEW, data=_new_review(amount_530999='1')).get_data(as_text=True)
+        assert 'NCAR Data Access' in html and '>Yes<' in html
+        assert 'name="amount_530999" value="1"' in html
+        unticked = auth_client.post(NEW, data=_new_review()).get_data(as_text=True)
+        assert 'NCAR Data Access</dt>' not in unticked
+
     def test_the_review_asks_for_the_letter_and_the_terms(self, auth_client, newable, lettered,
                                                          filed):
         html = auth_client.post(NEW, data=_new_review()).get_data(as_text=True)

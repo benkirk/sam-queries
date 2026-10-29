@@ -46,22 +46,32 @@
         <tr><th>Resource</th><th class="col-num">Amount</th><th class="col-shrink">Limit</th></tr>
     </thead>
     <tbody>
+    {#- Whether this table was posted before: only then does an unticked box mean "none". -#}
+    {% set _posted = form and ' amount_' in ' ' ~ form.keys() | join(' ') %}
     {% for r in resources %}
         {% set _name = 'amount_' ~ r.resource_id %}
         {% set _err = (field_errors or {}).get(_name) %}
         {% set _default = r.limit.default_amount if r.limit and r.limit.default_amount is not none
                           and r.prefill is not false else '' %}
+        {% set _yes_no = (r.units or '') | replace(' ', '') | lower == 'yes/no' %}
         <tr>
             <td><label for="xrasRequestAmount{{ r.resource_id }}" class="mb-0">{{ r.name }}</label>
-                {% if r.units %}<span class="small text-muted">{{ r.units }}</span>{% endif %}</td>
+                {% if r.units and not _yes_no %}<span class="small text-muted">{{ r.units }}</span>{% endif %}</td>
             <td class="col-num">
+                {% if _yes_no %}
+                {#- Ticked sends 1 (yes); unticked sends nothing, which asks for none. -#}
+                {% set _on = form.get(_name) if _posted else (_default != '' and _default >= 1) %}
+                <input type="checkbox" class="form-check-input{{ ' is-invalid' if _err }}" value="1"
+                       id="xrasRequestAmount{{ r.resource_id }}" name="{{ _name }}"{% if _on %} checked{% endif %}>
+                {% else %}
                 <input type="text" inputmode="decimal" class="form-control form-control-sm text-end ctl-w-sm{{ ' is-invalid' if _err }}"
                        id="xrasRequestAmount{{ r.resource_id }}" name="{{ _name }}"
                        value="{{ form.get(_name) if form and form.get(_name) is not none else ('%g' | format(_default) if _default != '' else '') }}">
+                {% endif %}
                 {% if _err %}<div class="invalid-feedback d-block text-start">{{ _err[0] }}</div>{% endif %}
             </td>
             <td class="col-shrink text-nowrap small text-muted">
-                {%- if r.limit and r.limit.max_amount is not none %}up to {{ r.limit.max_amount | fmt_number }}{% else %}—{% endif -%}
+                {%- if _yes_no %}yes or no{% elif r.limit and r.limit.max_amount is not none %}up to {{ r.limit.max_amount | fmt_number }}{% else %}—{% endif -%}
             </td>
         </tr>
     {% else %}
