@@ -783,6 +783,15 @@ class TestTheNewForm:
         assert 'Review the New request' in html and 'name="document_Advisor_Letter"' in html
         assert 'name="agree"' in html and 'value="request"' in html and not filed
 
+    def test_submit_waits_for_the_letter_and_the_terms(self, auth_client, newable, lettered):
+        html = auth_client.post(NEW, data=_new_review()).get_data(as_text=True)
+        letter = html.split('name="document_Advisor_Letter"')[1].split('>', 1)[0]
+        assert 'data-gate-check' in letter and 'attach the Advisor Letter' in letter
+        agree = html.split('name="agree"')[1].split('>', 1)[0]
+        assert 'data-gate-check' in agree and 'accept the terms' in agree
+        submit = html.split('value="submit"')[1].split('>', 1)[0]
+        assert 'data-gate-submit' in submit and 'data-busy=' in submit
+
     def test_page_two_starts_with_nothing_selected(self, auth_client, newable, lettered):
         html = auth_client.post(NEW, data=_new()).get_data(as_text=True)
         selected, available = html.split('data-amount-group="available"')

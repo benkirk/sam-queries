@@ -52,7 +52,8 @@
         {{ verdict_note(data.verdict) }}
         {% for d in documents %}
         {{ document_field('xrasRequestDoc' ~ loop.index, 'document_' ~ d.code, d.label,
-                          'PDF' ~ (', at most ' ~ d.hard_page_limit ~ ' pages' if d.hard_page_limit else '')) }}
+                          'PDF' ~ (', at most ' ~ d.hard_page_limit ~ ' pages' if d.hard_page_limit else ''),
+                          gate=True) }}
         {% endfor %}
         <p class="small text-muted mb-2">Submitting sends this to XRAS for review. You can follow it
             on My Requests.</p>
@@ -73,13 +74,15 @@
         {% else %}
         <input type="hidden" name="user_comments" value="{{ data.user_comments }}">
         {% endif %}
-        {{ agreement(eula_sha, error=data.review_error) }}
+        {{ agreement(eula_sha, error=data.review_error, gate=True) }}
     </div>
     <div class="modal-footer">
+        <span class="small text-muted me-auto" data-gate-hint role="status"></span>
         <button type="submit" name="stage" value="{{ 'request' if _new else 'edit' }}" class="btn btn-secondary">
             <i class="fa-solid fa-arrow-left"></i> Back</button>
-        <button type="submit" name="stage" value="submit" class="btn btn-primary"
-                {% if data.verdict.status == 'failed' %}disabled title="SAM could not apply this; go back and change it"{% endif %}>
-            <i class="fa-solid fa-paper-plane"></i> Submit</button>
+        <button type="submit" name="stage" value="submit" class="btn btn-primary" data-gate-submit
+                data-busy="Sending to XRAS. This can take a few seconds."
+                {% if data.verdict.status == 'failed' %}data-gate-blocked disabled title="SAM could not apply this; go back and change it"{% endif %}>
+            <span class="spinner-border spinner-border-sm busy-spinner" aria-hidden="true"></span><i class="fa-solid fa-paper-plane busy-icon"></i> Submit</button>
     </div>
 </form>

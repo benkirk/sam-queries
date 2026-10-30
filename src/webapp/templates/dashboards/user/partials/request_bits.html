@@ -115,11 +115,12 @@
 {%- endmacro %}
 
 {#- One PDF to attach: a file input the review and the resume share. -#}
-{% macro document_field(id, name, label, note) -%}
+{% macro document_field(id, name, label, note, gate=False) -%}
 <div class="mb-2">
     <label for="{{ id }}" class="form-label small mb-1">{{ label }} <span class="text-danger">*</span>
         <span class="text-muted">({{ note }})</span></label>
-    <input type="file" class="form-control form-control-sm" id="{{ id }}" name="{{ name }}" accept="application/pdf,.pdf">
+    <input type="file" class="form-control form-control-sm" id="{{ id }}" name="{{ name }}" accept="application/pdf,.pdf"
+           {%- if gate %} data-gate-check data-gate-label="attach the {{ label }}"{% endif %}>
 </div>
 {%- endmacro %}
 
