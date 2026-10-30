@@ -17,7 +17,7 @@ from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from sam.dates import format_ymd, parse_wire_date
-from sam.integration.xras_submission import documents_to_reattach
+from sam.integration.xras_submission import OPEN_STATES, documents_to_reattach
 from sam.manage.xras_remediation import RemediationOutcome, admin_client, audited_write
 
 logger = logging.getLogger(__name__)
@@ -446,7 +446,7 @@ def resume_submission(session_factory, submission_id: int, *, actor: str,
     ``submit=None`` honors what the row was opened with.
     """
     view = {**_with_row(session_factory, submission_id, _row_view), 'actor': actor}
-    if view['state'] not in ('draft', 'created', 'populated'):
+    if view['state'] not in OPEN_STATES:
         raise SubmissionRefused(f'submission {submission_id} is {view["state"]}')
     if door == 'pi' and not submit_armed(view['action_type']):
         raise SubmissionRefused(f'filing a {view["action_type"]} through SAM is not enabled here')
@@ -466,7 +466,7 @@ def abort_submission(session_factory, submission_id: int, *, actor: str,
     (an operator ending a row they opened, or any row) needs only the write lever.
     """
     view = {**_with_row(session_factory, submission_id, _row_view), 'actor': actor}
-    if view['state'] not in ('draft', 'created', 'populated'):
+    if view['state'] not in OPEN_STATES:
         raise SubmissionRefused(f'submission {submission_id} is {view["state"]}')
     if door == 'pi' and not submit_armed(view['action_type']):
         raise SubmissionRefused(

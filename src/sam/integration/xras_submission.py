@@ -128,11 +128,14 @@ class XrasSubmission(Base, SessionMixin):
         session.flush()
         return row
 
+    def can_advance(self, state: str) -> bool:
+        return state in _NEXT.get(self.state, ())
+
     def advance(self, state: str) -> 'XrasSubmission':
         """Move to *state*, stamping its time and clearing ``last_error``; ``ValueError`` if illegal."""
         if state not in XRAS_SUBMISSION_STATES:
             raise ValueError(f'unknown xras_submission state {state!r}')
-        if state not in _NEXT[self.state]:
+        if not self.can_advance(state):
             raise ValueError(f'xras_submission {self.xras_submission_id}: '
                              f'{self.state} -> {state} is not a legal step')
         now = datetime.now()
