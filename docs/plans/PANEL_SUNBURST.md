@@ -8,7 +8,7 @@ rim (`UserPanelSunburst`, By User) is `implemented/JOBS_USER_SUNBURST.md`.
 As-built record (2026-10-03). The two-ring sunbursts on Allocations and on Status →
 Job History → By Project open a fullscreen three-ring view: facilities inside,
 allocation panels in the middle, every project on the rim with radial labels.
-It depends on the hover layer (`CHART_HOVER_LAYER.md` stage 1), because most rim
+It depends on the hover layer (`implemented/CHART_HOVER_LAYER.md` stage 1), because most rim
 wedges are too thin to label.
 
 ## Decisions (Ben, 2026-10-03)

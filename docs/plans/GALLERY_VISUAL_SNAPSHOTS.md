@@ -28,7 +28,7 @@ That's real but rare, and we have no prod incident of it on record.
 
 ## Middle ground — built
 
-`scripts/ui_snapshots.py` (with the admin-table polish, `ADMIN_TABLE_POLISH.md`)
+`scripts/ui_snapshots.py` (with the admin-table polish, `implemented/ADMIN_TABLE_POLISH.md`)
 covers this and takes any page list, not only the gallery. The rest of this
 section is the original sketch.
 

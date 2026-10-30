@@ -1,7 +1,7 @@
 # Chart hover layer: per-mark tooltips on server-rendered SVG
 
-**Status:** rollout steps 1 to 3 built (step 1 in #695 to #731, steps 2 and 3 in the charts
-sweep, 2026-10-05). Step 4, the styled tooltip, is unbuilt and optional. Where the build
+**Status:** built. Steps 1 to 3 landed (step 1 in #695 to #731, steps 2 and 3 in the charts
+sweep, 2026-10-05); step 4, the styled tooltip, is not planned (2026-10-29). Where the build
 departed from this plan is marked **As built** below.
 
 ## Why
@@ -131,4 +131,4 @@ and the server code does not change. CSP is unaffected (no inline script and no
 - [x] 1. Base mechanism + two-ring pies
 - [x] 2. Single-ring pies
 - [x] 3. Histograms, stacked charts (and area bands, Pace, and project titles)
-- [ ] 4. Styled tooltip (optional)
+- [x] 4. Styled tooltip: not planned (2026-10-29); the native title does the job

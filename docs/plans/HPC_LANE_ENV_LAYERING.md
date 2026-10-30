@@ -10,7 +10,7 @@
 
 **See also:**
 - `containers/ncar-hpc-deploy/README.md` (§ Lanes, § Install);
-- `JOBHIST_WRITER_ROLE.md`, the role-creation precedent;
+- `implemented/JOBHIST_WRITER_ROLE.md`, the role-creation precedent;
 - ledger entry 20 (`UNPLANNED_CITY_LEDGER.md`): the CLI sweep and the timings.
 
 ## 1. Where we started (2026-10-09)

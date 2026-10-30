@@ -1,6 +1,6 @@
 """The chart hover layer: `BaseChart.tooltip` -> a native SVG ``<title>`` per mark.
 
-Design record: docs/plans/CHART_HOVER_LAYER.md.
+Design record: docs/plans/implemented/CHART_HOVER_LAYER.md.
 """
 
 import html
