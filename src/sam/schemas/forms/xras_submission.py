@@ -10,8 +10,10 @@ import marshmallow.fields as f
 import marshmallow.validate as v
 from marshmallow import ValidationError, post_load
 
+from sam.text import strip_or_none
+
 from . import HtmxFormSchema
-from .xras_remediation import _LONGTEXT_MAX, _TITLE_MAX, _clean
+from .xras_remediation import XRAS_LONGTEXT_MAX, XRAS_TITLE_MAX, clean_text
 
 __all__ = ['XrasAgreementMixin', 'XrasExtensionRequestForm', 'XrasSupplementRequestForm',
            'XrasRenewalRequestForm', 'XrasNewRequestForm', 'XrasGrantMixin',
@@ -48,12 +50,12 @@ class XrasExtensionRequestForm(XrasAgreementMixin):
     """An Extension: the new end date and why (XRAS's rule book requires both)."""
 
     end_date = f.Date(required=True, error_messages={'required': 'Choose the new end date.'})
-    user_comments = f.Str(required=True, validate=v.Length(max=_LONGTEXT_MAX),
+    user_comments = f.Str(required=True, validate=v.Length(max=XRAS_LONGTEXT_MAX),
                           error_messages={'required': 'Say why the project needs more time.'})
 
     @post_load
     def _comments(self, data, **kwargs):
-        data['user_comments'] = _clean(data.get('user_comments'))
+        data['user_comments'] = clean_text(data.get('user_comments'))
         if len(data['user_comments']) < _COMMENTS_MIN:
             raise ValidationError({'user_comments': [
                 'Say why the project needs more time, in a sentence or two.']})
@@ -91,12 +93,12 @@ class XrasSupplementRequestForm(XrasAgreementMixin):
     """
 
     amounts = f.Dict(keys=f.Int(), values=f.Str(), load_default=dict)
-    user_comments = f.Str(required=True, validate=v.Length(max=_LONGTEXT_MAX),
+    user_comments = f.Str(required=True, validate=v.Length(max=XRAS_LONGTEXT_MAX),
                           error_messages={'required': 'Say what the extra resources are for.'})
 
     @post_load
     def _amounts(self, data, **kwargs):
-        data['user_comments'] = _clean(data.get('user_comments'))
+        data['user_comments'] = clean_text(data.get('user_comments'))
         if len(data['user_comments']) < _COMMENTS_MIN:
             raise ValidationError({'user_comments': [
                 'Say what the extra resources are for, in a sentence or two.']})
@@ -111,7 +113,7 @@ class XrasGrantMixin(HtmxFormSchema):
     """
 
     grant_number = f.Str(load_default=None, validate=v.Length(max=64))
-    grant_title = f.Str(load_default=None, validate=v.Length(max=_TITLE_MAX))
+    grant_title = f.Str(load_default=None, validate=v.Length(max=XRAS_TITLE_MAX))
     grant_pi_name = f.Str(load_default=None, validate=v.Length(max=255))
     grant_begin_date = f.Date(load_default=None)
     grant_end_date = f.Date(load_default=None)
@@ -121,7 +123,7 @@ class XrasGrantMixin(HtmxFormSchema):
     @post_load
     def _grant(self, data, **kwargs):
         for name in ('grant_number', 'grant_title', 'grant_pi_name', 'grant_officer_name'):
-            data[name] = _clean(data.get(name)) or None
+            data[name] = strip_or_none(data.get(name))
         begin, end = data.get('grant_begin_date'), data.get('grant_end_date')
         if begin and end and end < begin:
             raise ValidationError({'grant_end_date': ['The grant ends before it begins.']})
@@ -133,7 +135,7 @@ class XrasGrantMixin(HtmxFormSchema):
 class XrasRenewalRequestForm(XrasGrantMixin, XrasAgreementMixin):
     """A Renewal: the abstract (``/renew`` does not copy it), the window, an amount per resource."""
 
-    abstract = f.Str(required=True, validate=v.Length(max=_LONGTEXT_MAX),
+    abstract = f.Str(required=True, validate=v.Length(max=XRAS_LONGTEXT_MAX),
                      error_messages={'required': 'The renewal needs an abstract.'})
     begin_date = f.Date(required=True, error_messages={'required': 'Choose the start date.'})
     end_date = f.Date(required=True, error_messages={'required': 'Choose the end date.'})
@@ -141,7 +143,7 @@ class XrasRenewalRequestForm(XrasGrantMixin, XrasAgreementMixin):
 
     @post_load
     def _renewal(self, data, **kwargs):
-        data['abstract'] = _clean(data.get('abstract'))
+        data['abstract'] = clean_text(data.get('abstract'))
         if len(data['abstract']) < _COMMENTS_MIN:
             raise ValidationError({'abstract': ['Describe the work for the coming period.']})
         if data['end_date'] <= data['begin_date']:
@@ -156,9 +158,9 @@ class XrasNewRequestForm(XrasGrantMixin, XrasAgreementMixin):
 
     stage = f.Str(load_default='request', validate=v.OneOf(NEW_REQUEST_STAGES))
     opportunity_id = f.Int(required=True, error_messages={'required': 'Choose an opportunity.'})
-    title = f.Str(required=True, validate=v.Length(max=_TITLE_MAX),
+    title = f.Str(required=True, validate=v.Length(max=XRAS_TITLE_MAX),
                   error_messages={'required': 'The project needs a title.'})
-    abstract = f.Str(required=True, validate=v.Length(max=_LONGTEXT_MAX),
+    abstract = f.Str(required=True, validate=v.Length(max=XRAS_LONGTEXT_MAX),
                      error_messages={'required': 'The project needs an abstract.'})
     keywords = f.Str(load_default=None, validate=v.Length(max=500))
     fos_type_id = f.Int(required=True,
@@ -171,10 +173,10 @@ class XrasNewRequestForm(XrasGrantMixin, XrasAgreementMixin):
 
     @post_load
     def _new(self, data, **kwargs):
-        data['title'] = _clean(data.get('title'))
-        data['abstract'] = _clean(data.get('abstract'))
-        data['keywords'] = _clean(data.get('keywords')) or None
-        data['admin_username'] = _clean(data.get('admin_username')) or None
+        data['title'] = clean_text(data.get('title'))
+        data['abstract'] = clean_text(data.get('abstract'))
+        data['keywords'] = strip_or_none(data.get('keywords'))
+        data['admin_username'] = strip_or_none(data.get('admin_username'))
         errors = {}
         if not data['title']:
             errors['title'] = ['The project needs a title.']
