@@ -464,12 +464,23 @@ class TestResumeAndDiscard:
         assert resp.headers.get('HX-Refresh') == 'true'
         assert seen == [(a_row, {'actor': 'benkirk', 'door': 'pi', 'documents': ()})]
 
-    def test_abort_runs_the_flow(self, auth_client, a_row, monkeypatch):
+    def test_abort_runs_the_flow_through_the_rows_door(self, auth_client, a_row, monkeypatch):
         from sam.manage import xras_submission as flow
         seen = []
-        monkeypatch.setattr(flow, 'abort_submission', lambda f, sid, **kw: seen.append(sid))
+        monkeypatch.setattr(flow, 'abort_submission',
+                            lambda f, sid, **kw: seen.append((sid, kw['door'])))
         assert auth_client.post(f'/user/requests/{a_row}/abort').status_code == 204
-        assert seen == [a_row]
+        assert seen == [(a_row, 'pi')]
+
+    def test_a_pi_sees_the_controls_only_while_the_type_is_armed(self, auth_client, a_row,
+                                                                 monkeypatch):
+        monkeypatch.setattr(requests_routes, 'has_permission', lambda *a, **k: False)
+        html = auth_client.get(PAGE).get_data(as_text=True)
+        assert 'Stopped at submit' in html and f'/user/requests/{a_row}/abort' not in html
+
+    def test_a_manager_sees_them_with_the_lever_off(self, auth_client, a_row):
+        html = auth_client.get(PAGE).get_data(as_text=True)
+        assert f'/user/requests/{a_row}/abort' in html
 
     def test_someone_elses_row_is_refused(self, non_admin_client, a_row):
         assert non_admin_client.post(f'/user/requests/{a_row}/abort').status_code == 403

@@ -202,6 +202,12 @@ stands in for the ladder's miss in its verdict.
 | `XRAS_SUBMIT_ACTION_TYPES` | `XrasApiConfig.submit_action_types` (`parse_submit_action_types`), then the routing | `all` | `Extension,Supplement`, shipped with the lever off so the first flip cannot expose New or Renewal |
 | `SUBMISSION_DOCUMENT_MAX_BYTES`, `SUBMISSION_DOCUMENT_MAX_PAGES` | the document helper | unset | unset |
 
+The admin door runs under `XRAS_WRITE_ENABLED` alone: the Remediations card's Add-action opens
+`xras_submission` rows on production with the submit lever off. On such a row the PI's Resume
+and Discard need `XRAS_SUBMIT_ENABLED` with the type armed (the page hides them otherwise), and a
+resume honors the `submit` the row was opened with, so it never submits what the operator
+left unsubmitted.
+
 Pins: `tests/unit/gates/test_xras_admin_client.py` (prod off and narrowed, no `tasks.env` and no CronJob names it, dev on),
 `helm/tests/test-dev-render.sh`, `tests/conftest.py`.
 

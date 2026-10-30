@@ -405,9 +405,12 @@ def request_action(session_factory, draft: Optional[ActionRequest], *, actor: st
                                action_type=draft.action_type, created_by=actor):
             raise SubmissionRefused(
                 f'a {draft.action_type} on this request is already in progress')
+        # The row remembers whether it was opened to submit: an operator's unsubmitted
+        # Add-action must not be submitted by the resume that completes it.
         row = XrasSubmission.create(
             session, action_type=draft.action_type, created_by=actor, xa_user=xa_user,
-            eula_sha=sha, eula_accepted_at=accepted_at, payload=draft.to_payload(),
+            eula_sha=sha, eula_accepted_at=accepted_at,
+            payload={**draft.to_payload(), 'submit': submit},
             request_id=draft.request_id, request_number=draft.request_number,
             opportunity_id=draft.opportunity_id,
             request_type=draft.action_type if draft.action_type in LINE_MINTING_TYPES else None,
@@ -420,14 +423,20 @@ def request_action(session_factory, draft: Optional[ActionRequest], *, actor: st
 
 
 def resume_submission(session_factory, submission_id: int, *, actor: str,
-                      submit: bool = True, documents: Tuple[SubmissionDocument, ...] = (),
+                      submit: Optional[bool] = None,
+                      documents: Tuple[SubmissionDocument, ...] = (),
                       door: str = 'pi', client=None) -> SubmissionOutcome:
-    """Continue a stopped submission from its payload, skipping every verified step."""
+    """Continue a stopped submission from its payload, skipping every verified step.
+
+    ``submit=None`` honors what the row was opened with.
+    """
     view = {**_with_row(session_factory, submission_id, _row_view), 'actor': actor}
     if view['state'] not in ('draft', 'created', 'populated'):
         raise SubmissionRefused(f'submission {submission_id} is {view["state"]}')
     if door == 'pi' and not submit_armed(view['action_type']):
         raise SubmissionRefused(f'filing a {view["action_type"]} through SAM is not enabled here')
+    if submit is None:
+        submit = (view['payload'] or {}).get('submit', True)
     draft = ActionRequest.from_payload(view['payload'], documents)
     logger.info('xras submission %s: resumed by %s at %s', submission_id, actor,
                 view['state'])
@@ -435,11 +444,18 @@ def resume_submission(session_factory, submission_id: int, *, actor: str,
 
 
 def abort_submission(session_factory, submission_id: int, *, actor: str,
-                     client=None) -> SubmissionOutcome:
-    """End an in-flight submission: delete the line SAM minted, else the action; then ``aborted``."""
+                     door: str = 'pi', client=None) -> SubmissionOutcome:
+    """End an in-flight submission: delete the line SAM minted, else the action; then ``aborted``.
+
+    The PI door needs the submit lever with the type armed, as filing does; the admin door
+    (an operator ending a row they opened, or any row) needs only the write lever.
+    """
     view = {**_with_row(session_factory, submission_id, _row_view), 'actor': actor}
     if view['state'] not in ('draft', 'created', 'populated'):
         raise SubmissionRefused(f'submission {submission_id} is {view["state"]}')
+    if door == 'pi' and not submit_armed(view['action_type']):
+        raise SubmissionRefused(
+            f'discarding a {view["action_type"]} through SAM is not enabled here')
     xa = view['xa_user']
     # A row opens on the line it acts on (a Renewal: the line it renews), so only an id
     # that differs is a line SAM minted. A refused renew leaves the original's id behind,

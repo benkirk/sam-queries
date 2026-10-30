@@ -101,6 +101,7 @@ def my_requests_page():
         projects=[(p, route_for(_type_name(p))) for p in projects],
         open_projcode=(request.args.get('projcode') or '').strip().upper() or None,
         submit_configured=config.submit_configured, new_enabled=config.submit_allows('New'),
+        submit_allows=config.submit_allows,
         can_manage_xras=has_permission(current_user, Permission.MANAGE_XRAS),
         **ctx)
 
@@ -752,6 +753,13 @@ def _owned_submission(submission_id):
     return row
 
 
+def _door(row):
+    """The PI door for the row's own PI; an operator who opened it, or any manager, the admin door."""
+    if current_user.username == row.xa_user:
+        return 'pi'
+    return 'admin'
+
+
 def _refresh():
     """Reload the page: both cards change, and the picker's pending reason with them."""
     resp = make_response('', 204)
@@ -802,7 +810,7 @@ def my_request_resume(submission_id):
     from sam.manage import xras_submission as flow
     from sam.queries.xras_my_requests import missing_documents
     row = _owned_submission(submission_id)
-    door = 'pi' if current_user.username == row.xa_user else 'admin'
+    door = _door(row)
     documents, notes = (), []
     if missing_documents(db.session, row):
         documents, error, notes = _resume_documents(row)
@@ -824,9 +832,10 @@ def my_request_resume(submission_id):
 @login_required
 def my_request_abort(submission_id):
     from sam.manage import xras_submission as flow
-    _owned_submission(submission_id)
+    row = _owned_submission(submission_id)
     try:
-        flow.abort_submission(_session_factory, submission_id, actor=current_user.username)
+        flow.abort_submission(_session_factory, submission_id, actor=current_user.username,
+                              door=_door(row))
     except (flow.SubmissionRefused, LookupError, XrasSourceUnavailable) as exc:
         current_app.logger.warning('my requests abort %s: %s', submission_id, exc)
         flash(str(exc), 'warning')

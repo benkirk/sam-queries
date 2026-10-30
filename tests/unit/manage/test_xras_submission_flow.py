@@ -134,6 +134,38 @@ class TestTheExtension:
 
 class TestAStepThatFails:
 
+    def test_resume_honors_the_rows_submit(self, factory):
+        """An operator's Add-action opens the row with ``submit=False``; the resume that
+        completes it stops before the submit too, and an explicit ``submit=`` overrides."""
+        client = _client()
+        client.set_action_dates.side_effect = XrasWriteRejected('bad date', status=400,
+                                                                errors=['End date'])
+        out = flow.request_action(factory, _extension(), actor='op1', xa_user='pi1',
+                                  eula=EULA, submit=False, door='admin', client=client)
+        assert out.step == 'dates'
+        client.set_action_dates.side_effect = None
+        again = flow.resume_submission(factory, out.submission_id, actor='op1', door='admin',
+                                       client=client)
+        assert again.succeeded and again.state == 'populated'
+        assert client.submit_action.call_count == 0
+        last = flow.resume_submission(factory, out.submission_id, actor='op1', door='admin',
+                                      submit=True, client=client)
+        assert last.state == 'submitted' and client.submit_action.call_count == 1
+
+    def test_the_lever_off_refuses_the_pi_doors_abort_only(self, factory, monkeypatch):
+        client = _client()
+        client.add_action.return_value = _ok('add_action', verified=False,
+                                             action_id=client.action_id)
+        out = flow.request_action(factory, _extension(), actor='pi1', xa_user='pi1',
+                                  eula=EULA, client=client)
+        monkeypatch.setattr(flow, 'submit_armed', lambda *a, **k: False)
+        with pytest.raises(SubmissionRefused, match='not enabled'):
+            flow.abort_submission(factory, out.submission_id, actor='pi1', client=client)
+        assert client.delete_action.call_count == 0
+        ended = flow.abort_submission(factory, out.submission_id, actor='op1', door='admin',
+                                      client=client)
+        assert ended.state == 'aborted' and client.delete_action.call_count == 1
+
     def test_a_rejection_stops_and_keeps_the_state(self, factory):
         client = _client()
         client.submit_action.side_effect = XrasWriteRejected(
