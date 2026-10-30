@@ -17,6 +17,7 @@ from sqlalchemy import Column, DateTime, Index, Integer, String, Text, UniqueCon
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from sam.base import Base, SessionMixin
+from sam.integration.xras import as_json_text
 
 #: Every legal ``state``. A bare ``VARCHAR`` in both dialects, so this tuple is the check.
 XRAS_SUBMISSION_STATES = ('draft', 'created', 'populated', 'submitted', 'aborted', 'applied')
@@ -42,10 +43,6 @@ _STAMP = {'submitted': 'submitted_time', 'applied': 'applied_time',
 #: (``_open_event`` logs and returns ``None``) or the row is gone. The write may have
 #: landed, so a resume treats it like an unverified one.
 UNKNOWN_STEP = 'unknown'
-
-
-def _dumps(value: Any) -> Optional[str]:
-    return None if value is None else json.dumps(value, default=str, sort_keys=True)
 
 
 class XrasSubmission(Base, SessionMixin):
@@ -125,7 +122,7 @@ class XrasSubmission(Base, SessionMixin):
         row = cls(action_type=action_type, created_by=str(created_by)[:35],
                   xa_user=str(xa_user), eula_sha=eula_sha,
                   eula_accepted_at=eula_accepted_at, state='draft',
-                  payload=_dumps(payload), step_events=_dumps({}),
+                  payload=as_json_text(payload), step_events=as_json_text({}),
                   creation_time=now, modified_time=now, **keys)
         session.add(row)
         session.flush()
@@ -151,7 +148,7 @@ class XrasSubmission(Base, SessionMixin):
         """Remember the ``xras_remediation_event`` row behind *step*."""
         events = self.steps
         events[step] = event_id
-        self.step_events = _dumps(events)
+        self.step_events = as_json_text(events)
         self.modified_time = datetime.now()
         self.session.flush()
         return self
@@ -164,14 +161,14 @@ class XrasSubmission(Base, SessionMixin):
             if value is not None:
                 setattr(self, name, value)
         if snapshot is not None:
-            self.xras_snapshot = _dumps(snapshot)
+            self.xras_snapshot = as_json_text(snapshot)
         self.modified_time = datetime.now()
         self.session.flush()
         return self
 
     def stop(self, error: Any) -> 'XrasSubmission':
         """Stamp why a step stopped; the state stays where it was, so resume can continue."""
-        self.last_error = error if isinstance(error, str) else _dumps(error)
+        self.last_error = as_json_text(error)
         self.modified_time = datetime.now()
         self.session.flush()
         return self

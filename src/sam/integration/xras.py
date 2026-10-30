@@ -832,7 +832,7 @@ class XrasRemediationEvent(Base, SessionMixin):
             xa_user=xa_user,
             created_by=str(created_by)[:35],
             comment=comment,
-            before_state=_as_json_text(before_state),
+            before_state=as_json_text(before_state),
             creation_time=datetime.now(),
         )
         session.add(event)
@@ -871,9 +871,9 @@ class XrasRemediationEvent(Base, SessionMixin):
         if outcome_reason:
             event.outcome_reason = str(outcome_reason)[:255]
         if before_state is not None:
-            event.before_state = _as_json_text(before_state)
+            event.before_state = as_json_text(before_state)
         if after_state is not None:
-            event.after_state = _as_json_text(after_state)
+            event.after_state = as_json_text(after_state)
         if role_id is not None:
             event.role_id = role_id
         event.completed_time = datetime.now()
@@ -890,7 +890,7 @@ class XrasRemediationEvent(Base, SessionMixin):
                 f"created_by={self.created_by!r})>")
 
 
-def _as_json_text(value):
+def as_json_text(value):
     """Serialize a capture for storage, leaving an existing string alone.
 
     ``default=str`` so a stray datetime in a payload cannot turn an audit write
