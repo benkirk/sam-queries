@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from sam.dates import format_ymd, parse_wire_date
 from sam.integration.xras_submission import documents_to_reattach
 from sam.manage.xras_remediation import RemediationOutcome, admin_client, audited_write
 
@@ -97,7 +98,7 @@ class ActionRequest:
             'title': self.title, 'abstract': self.abstract, 'keywords': self.keywords,
             'user_comments': self.user_comments,
             'resources': [vars(r) for r in self.resources],
-            'dates': [_iso(d) for d in self.dates] if self.dates else None,
+            'dates': [format_ymd(d) for d in self.dates] if self.dates else None,
             'grants': [dict(g) for g in self.grants], 'fos_type_id': self.fos_type_id,
             'documents': [d.to_payload() for d in self.documents],
             'eua_attribute_id': self.eua_attribute_id,
@@ -118,7 +119,7 @@ class ActionRequest:
             title=payload.get('title'), abstract=payload.get('abstract'),
             keywords=payload.get('keywords'), user_comments=payload.get('user_comments'),
             resources=tuple(ResourceAmount(**r) for r in payload.get('resources') or ()),
-            dates=tuple(_from_iso(d) for d in dates) if dates else None,
+            dates=tuple(parse_wire_date(d) for d in dates) if dates else None,
             grants=tuple(payload.get('grants') or ()),
             fos_type_id=payload.get('fos_type_id'),
             documents=tuple(by_name.get(d['filename']) or SubmissionDocument(
@@ -143,14 +144,6 @@ class SubmissionOutcome:
     @property
     def succeeded(self) -> bool:
         return self.error is None
-
-
-def _iso(value) -> Optional[str]:
-    return value.isoformat() if hasattr(value, 'isoformat') else value
-
-
-def _from_iso(value) -> Optional[date]:
-    return date.fromisoformat(value[:10]) if isinstance(value, str) else value
 
 
 def submit_armed(action_type: Optional[str] = None, config=None) -> bool:

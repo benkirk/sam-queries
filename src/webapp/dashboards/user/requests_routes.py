@@ -22,6 +22,7 @@ from flask import (
 )
 from flask_login import current_user, login_required
 
+from sam.dates import add_months, first_of_next_month
 from sam.integration.xras_api import XrasSourceUnavailable
 from sam.queries.xras_my_requests import led_projects, my_requests
 from sam.schemas.forms import (
@@ -206,7 +207,7 @@ class _RequestForm(HtmxFormHandler):
                           allocation_type_name=offer['allocation_type'])
         begin = floor + timedelta(days=1) if floor else datetime.now().date()
         months = offer.get('award_months') or 12
-        end = _add_months(begin, months) - timedelta(days=1)
+        end = add_months(begin, months) - timedelta(days=1)
         held = {r['resource_id'] for r in line_resources(decision.line)}
         resources = [dict(r, prefill=r['resource_id'] in held) for r in offer['resources']]
         return {'floor': floor, 'offer': offer, 'rules': rules,
@@ -370,15 +371,6 @@ class _RequestForm(HtmxFormHandler):
         return render_template(_OUTCOME, outcome=data['outcome'], **ctx)
 
 
-def _add_months(day, months):
-    """*day* moved *months* ahead, clamped to the target month's last day."""
-    import calendar
-    month = day.month - 1 + months
-    year, month = day.year + month // 12, month % 12 + 1
-    return day.replace(year=year, month=month,
-                       day=min(day.day, calendar.monthrange(year, month)[1]))
-
-
 def _form_type(kind):
     action_type = _FORM_TYPES.get(kind)
     if action_type is None:
@@ -462,10 +454,6 @@ def _mnemonic_label(mnemonic_code_id):
     return code.code if code is not None else ''
 
 
-def _first_of_next_month(day):
-    return (day.replace(day=1) + timedelta(days=32)).replace(day=1)
-
-
 class _NewRequestForm(_RequestForm):
     """A New through describe -> request -> review -> submit; nothing reaches XRAS before submit."""
 
@@ -515,8 +503,8 @@ class _NewRequestForm(_RequestForm):
         opportunity, state = self._ctx['opportunity'], self._ctx['sam_state']
         if opportunity is None:
             return {'resources': [], 'resource_keys': None, 'documents': []}
-        begin = _first_of_next_month(datetime.now().date())
-        end = _add_months(begin, opportunity.get('award_months') or 12) - timedelta(days=1)
+        begin = first_of_next_month(datetime.now().date())
+        end = add_months(begin, opportunity.get('award_months') or 12) - timedelta(days=1)
         type_name = state['allocation_type'].allocation_type if state['allocation_type'] else None
         resources = [dict(r) for r in opportunity['resources']]
         return {'default_begin': begin, 'default_end': end, 'sam_type_name': type_name,

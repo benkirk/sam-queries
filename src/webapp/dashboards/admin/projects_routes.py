@@ -4,7 +4,6 @@ Admin dashboard — Project management routes.
 Covers: Project creation (Phase A).  Edit/allocation management (Phase B).
 """
 
-import calendar
 from datetime import datetime
 from sam.dates import parse_ymd, parse_ymd_end_of_day, parse_ymd_or
 
@@ -1094,8 +1093,8 @@ def _add_allocation_context(project) -> dict:
     all_rows = [row for g in resource_groups for row in g['rows']]
     optional_count = sum(row['optional'] for row in all_rows)
 
+    from sam.dates import add_months, end_of_month
     now = datetime.now()
-    last_day = calendar.monthrange(now.year + 1, now.month)[1]
     return {
         'project': project,
         'resource_groups': resource_groups,
@@ -1105,7 +1104,7 @@ def _add_allocation_context(project) -> dict:
         'show_all_default': optional_count == len(all_rows),
         'today': now.strftime('%Y-%m-%d'),
         # Last day of the same month, one year out (2026-04-13 -> 2027-04-30).
-        'default_end_date': f'{now.year + 1:04d}-{now.month:02d}-{last_day:02d}',
+        'default_end_date': end_of_month(add_months(now, 12)).strftime('%Y-%m-%d'),
         'project_has_children': project.has_children,
         'child_count': len([d for d in project.get_descendants() if d.active]),
     }
@@ -1728,12 +1727,9 @@ def _snap_to_end_of_month(d):
     shift lands exactly on the next period's first day (e.g. a Jan 1 ->
     Dec 31 source shifted 2 years gives Jan 1, which should be Dec 31).
     """
-    import calendar
     from datetime import timedelta
-    if d.day == 1:
-        return d - timedelta(days=1)
-    last_day = calendar.monthrange(d.year, d.month)[1]
-    return d.replace(day=last_day)
+    from sam.dates import end_of_month
+    return d - timedelta(days=1) if d.day == 1 else end_of_month(d)
 
 
 def _propose_renew_dates(source_allocs):
