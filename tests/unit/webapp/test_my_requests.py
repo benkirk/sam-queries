@@ -666,6 +666,14 @@ def lettered(monkeypatch):
     monkeypatch.setattr(pre, 'new_request_sam_state', state)
 
 
+@pytest.fixture
+def other_user(session):
+    """An active snapshot user who is not the logged-in PI."""
+    from sam.core.users import User
+    return (session.query(User).filter(User.is_active, User.username != 'benkirk')
+            .order_by(User.user_id).first())
+
+
 def _new(stage='request', **extra):
     return {**dict(stage=stage, opportunity_id='532221', title='Ensemble downscaling',
                    abstract='Regional runs for the next three summers.', fos_type_id='500003'),
@@ -712,9 +720,17 @@ class TestTheNewForm:
         assert 'You already have one' in html
 
     def test_an_unknown_admin_is_refused(self, auth_client, newable, lettered):
-        html = auth_client.post(NEW, data=_new(admin_username='nosuchuser9')).get_data(
+        html = auth_client.post(NEW, data=_new(admin_user_id='999999999')).get_data(
             as_text=True)
-        assert 'SAM has no active user nosuchuser9' in html
+        assert 'Choose an active SAM user.' in html
+
+    def test_the_admin_is_picked_and_shown_on_the_review(self, auth_client, newable, lettered,
+                                                         other_user):
+        newable.people = {other_user.username}
+        html = auth_client.post(NEW, data=_new_review(admin_user_id=str(other_user.user_id))
+                                ).get_data(as_text=True)
+        assert f'{other_user.display_name} ({other_user.username})' in html
+        assert f'name="admin_user_id" value="{other_user.user_id}"' in html
 
     def test_the_grant_is_required_where_the_rule_book_wants_one(self, auth_client, newable,
                                                                 lettered):
@@ -820,6 +836,20 @@ class TestThePickers:
         html = auth_client.get('/user/requests/htmx/award-lookup?grant_number=9').get_data(
             as_text=True)
         assert 'NSF is not answering' in html
+
+    def test_the_admin_suggest_finds_users_but_never_the_pi(self, auth_client, newable,
+                                                            other_user):
+        url = '/user/requests/htmx/admin-suggest?q='
+        html = auth_client.get(url + other_user.username).get_data(as_text=True)
+        assert f'data-fk-id="{other_user.user_id}"' in html
+        assert 'data-fk-label="' in html and '(benkirk)' not in auth_client.get(
+            url + 'benkirk').get_data(as_text=True)
+
+    def test_the_admin_suggest_is_empty_unless_a_new_may_be_filed(self, auth_client,
+                                                                  other_user):
+        html = auth_client.get('/user/requests/htmx/admin-suggest?q=' + other_user.username
+                               ).get_data(as_text=True)
+        assert 'data-fk-id' not in html
 
     def test_the_mnemonic_suggest_needs_two_letters(self, auth_client, session):
         from sam.core.organizations import MnemonicCode

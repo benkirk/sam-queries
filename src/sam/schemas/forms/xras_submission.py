@@ -170,7 +170,7 @@ class XrasNewRequestForm(XrasGrantMixin, XrasAgreementMixin):
     keywords = f.Str(load_default=None, validate=v.Length(max=500))
     fos_type_id = f.Int(required=True,
                         error_messages={'required': 'Choose the field of science.'})
-    admin_username = f.Str(load_default=None, validate=v.Length(max=35))
+    admin_user_id = f.Int(load_default=None)
     mnemonic_code_id = f.Int(load_default=None)
     begin_date = f.Date(load_default=None)
     end_date = f.Date(load_default=None)
@@ -181,7 +181,6 @@ class XrasNewRequestForm(XrasGrantMixin, XrasAgreementMixin):
         data['title'] = clean_text(data.get('title'))
         data['abstract'] = clean_text(data.get('abstract'))
         data['keywords'] = strip_or_none(data.get('keywords'))
-        data['admin_username'] = strip_or_none(data.get('admin_username'))
         errors = {}
         if not data['title']:
             errors['title'] = ['The project needs a title.']

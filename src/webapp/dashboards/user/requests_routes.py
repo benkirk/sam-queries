@@ -411,7 +411,7 @@ _NEW_AMOUNTS = 'dashboards/user/fragments/request_new_amounts_htmx.html'
 _GRANT = 'dashboards/user/fragments/request_grant_htmx.html'
 #: The page-one inputs a later page carries in hidden fields, and whose errors land on page one.
 _DESCRIBE_FIELDS = ('opportunity_id', 'title', 'abstract', 'keywords', 'fos_type_id',
-                    'admin_username', 'mnemonic_code_id') + tuple(GRANT_INPUTS)
+                    'admin_user_id', 'mnemonic_code_id') + tuple(GRANT_INPUTS)
 
 
 def _new_opportunities(config):
@@ -458,6 +458,12 @@ def _mnemonic_label(mnemonic_code_id):
     return code.code if code is not None else ''
 
 
+def _user_label(user_id):
+    from sam.core.users import User
+    user = db.session.get(User, user_id) if user_id else None
+    return f'{user.display_name} ({user.username})' if user is not None else ''
+
+
 class _NewRequestForm(_RequestForm):
     """A New through describe -> request -> review -> submit; nothing reaches XRAS before submit."""
 
@@ -487,6 +493,7 @@ class _NewRequestForm(_RequestForm):
                          fos_choices=[(r['fosTypeId'], r.get('fosName')) for r in fos],
                          chosen_mnemonic=_mnemonic_label(request.values.get(
                              'mnemonic_code_id', type=int)),
+                         chosen_admin=_user_label(request.values.get('admin_user_id', type=int)),
                          carry_fields=_DESCRIBE_FIELDS,
                          **_opportunity_context(config, chosen))
         self._ctx.update(self._amounts_context(config))
@@ -512,6 +519,7 @@ class _NewRequestForm(_RequestForm):
             return dict(project=None, action_type='New', decision=None, opportunities=[],
                         opportunity_options=[], fos_options=[], fos_choices=[],
                         opportunity=None, rules=None, sam_state=None, chosen_mnemonic='',
+                        chosen_admin='',
                         carry_fields=_DESCRIBE_FIELDS, resources=[], documents=[],
                         eula_sha=None, post_url=url_for('user_dashboard.my_request_new_post'))
 
@@ -525,6 +533,7 @@ class _NewRequestForm(_RequestForm):
     def clean(self, data):
         from marshmallow import ValidationError
         ctx = self.gate()
+        data['admin_username'] = None
         if data['stage'] == 'describe':
             return data
         errors = self._describe_errors(data, ctx)
@@ -549,15 +558,16 @@ class _NewRequestForm(_RequestForm):
                                         or 'XRAS does not take a new request from you here.']
         if data['fos_type_id'] not in {r.get('fosTypeId') for r in ctx['fos_options']}:
             errors['fos_type_id'] = ['Choose the field of science.']
-        admin = data['admin_username']
-        if admin:
-            found = User.get_by_username(db.session, admin)
-            if found is None or not found.is_active:
-                errors['admin_username'] = [f'SAM has no active user {admin}.']
-            elif admin.casefold() == current_user.username.casefold():
-                errors['admin_username'] = ['You are the PI; name someone else, or no one.']
-            elif not self._in_xras(admin):
-                errors['admin_username'] = [f'{admin} has no XRAS account yet.']
+        if data['admin_user_id']:
+            admin = db.session.get(User, data['admin_user_id'])
+            if admin is None or not admin.is_active:
+                errors['admin_user_id'] = ['Choose an active SAM user.']
+            elif admin.username.casefold() == current_user.username.casefold():
+                errors['admin_user_id'] = ['You are the PI; name someone else, or no one.']
+            elif not self._in_xras(admin.username):
+                errors['admin_user_id'] = [f'{admin.username} has no XRAS account yet.']
+            else:
+                data['admin_username'] = admin.username
         if data['mnemonic_code_id']:
             code = db.session.get(MnemonicCode, data['mnemonic_code_id'])
             if code is None or not code.is_active:
@@ -665,6 +675,22 @@ def my_request_new_opportunity_fragment():
 def _search_mnemonic_codes(q, active_only):
     from sam.queries.mnemonic_console import search_mnemonic_codes
     return search_mnemonic_codes(db.session, q, limit=10)
+
+
+def _search_admins(q, active_only):
+    from sam.queries.users import search_users_by_pattern
+    if not _config().submit_allows('New'):
+        return []
+    return search_users_by_pattern(db.session, q, limit=15, active_only=True,
+                                   exclude_user_ids=[current_user.user_id])
+
+
+register_typeahead(
+    bp, rule='/requests/htmx/admin-suggest', endpoint='my_requests_admin_suggest',
+    permission=None,                    # any user who may file a New picks its admin
+    search=_search_admins,
+    template='dashboards/admin/fragments/user_search_results_fk_htmx.html',
+    ctx_key='users')
 
 
 register_typeahead(

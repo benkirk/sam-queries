@@ -21,7 +21,7 @@
                 <span class="text-muted">letters; XRAS numbers the request when you submit</span></dd>
             {% if data.admin_username %}
             <dt class="col-sm-4">Project admin</dt>
-            <dd class="col-sm-8">{{ data.admin_username }}</dd>
+            <dd class="col-sm-8">{{ chosen_admin or data.admin_username }}</dd>
             {% endif %}
             {% else %}
             <dt class="col-sm-4">XRAS request</dt>
