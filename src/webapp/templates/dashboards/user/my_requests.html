@@ -8,6 +8,10 @@
    [(project, route)], open_projcode (a deep link opens that picker), submit_configured,
    new_enabled (the New opener), can_manage_xras (Resume/Discard on anyone's open row). #}
 {% block title %}My Requests - SAM{% endblock %}
+{% block extra_css %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/xras.css') }}">
+{% endblock %}
 
 {% set _ROUTES = {'xras': 'Through XRAS', 'staff': 'CISL staff'} %}
 
@@ -59,7 +63,8 @@
                     <td class="col-shrink text-nowrap small text-muted d-none d-md-table-cell">{{ r.when | fmt_date }}</td>
                     <td class="text-end text-nowrap">
                     {%- set sub = r.submission -%}
-                    {%- if sub and r.open and (can_manage_xras or user.username in (sub.created_by, sub.xa_user)) %}
+                    {#- A PI resumes or discards only while the lever arms the type; a manager always may. #}
+                    {%- if sub and r.open and (can_manage_xras or (user.username in (sub.created_by, sub.xa_user) and submit_allows(r.action_type))) %}
                         <span class="row-actions">
                         {%- if sub.last_error and r.needs_documents %}
                             <button type="button" class="btn btn-row btn-row-primary" title="Resume: attach the document again, then send the steps that did not complete"

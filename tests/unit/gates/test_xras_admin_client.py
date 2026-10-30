@@ -54,7 +54,6 @@ from sam.integration.xras_api.config import (
 )
 from sam.integration.xras_api.vocabulary import (
     ACTION_TYPES,
-    REQUEST_TYPES,
     SUBMIT_ACTION_TYPES,
     action_type_id,
     action_type_name,
@@ -1100,7 +1099,6 @@ class TestActionAndRequestTypes:
                                              'Adjustment', 'Date Adjustment')} == {
             'Supplement': 500020, 'Extension': 500017, 'Renewal': 500021, 'New': 500019,
             'Adjustment': 500168, 'Date Adjustment': 500334}
-        assert REQUEST_TYPES == {'New': 6, 'Renewal': 7}
 
     def test_every_submit_type_has_an_id(self):
         assert all(t in ACTION_TYPES for t in SUBMIT_ACTION_TYPES)

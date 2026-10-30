@@ -26,6 +26,7 @@ from sam.schemas.forms import (
     AccountRequestEventEditForm, AccountRequestEventForm, RosterPasteForm,
 )
 from sam.schemas.forms.account_requests import PAST_DEADLINE_MSG, deadline_notice
+from webapp.auth.impersonation import acting_username
 from webapp.extensions import cache, db
 from webapp.utils.email_preview import render_email_preview, render_preview_info
 from webapp.utils.form_handler import FormError, HtmxFormHandler
@@ -99,7 +100,7 @@ def create_event(data, project):
         extra_sponsor_user_id=sponsor.user_id if sponsor else None,
         listed=data.get('listed', False),
         invite_only=data.get('invite_only', False),
-        created_by=current_user.username)
+        created_by=acting_username())
 
 
 def date_floor(event=None) -> str:

@@ -3,9 +3,9 @@
     Context: opportunity_options, fos_choices [(value, label)], opportunity, rules, sam_state,
     chosen_mnemonic, post_url, errors, field_errors, form. -#}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
-{% from 'dashboards/fragments/modals.html' import modal_title %}
+{% from 'dashboards/user/partials/request_bits.html' import request_title %}
 {% from 'dashboards/fragments/form_fields.html' import select_field, text_field, textarea_field with context %}
-{{ modal_title('xrasRequestModalLabel', 'New request', 'paper-plane') }}
+{{ request_title('New request') }}
 {% call htmx_form(post_url, '#xrasRequestModalBody', 'Next', submit_icon='arrow-right', errors=errors) %}
     <input type="hidden" name="stage" value="request">
     {{ select_field('opportunity_id', 'Opportunity', required=True, id='xrasNewOpportunitySelect',

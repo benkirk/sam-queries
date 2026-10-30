@@ -70,10 +70,10 @@ class EditAllocationLimitForm(HtmxFormSchema):
 
     @validates_schema
     def _bounds_in_order(self, data, **kwargs):
-        from sam.accounting.allocation_type_limits import _validate
+        from sam.accounting.allocation_type_limits import AllocationTypeResourceLimit
         try:
-            _validate(data.get('min_amount'), data.get('default_amount'),
-                      data.get('max_amount'))
+            AllocationTypeResourceLimit.check_bounds(
+                data.get('min_amount'), data.get('default_amount'), data.get('max_amount'))
         except ValueError as exc:
             raise ValidationError(str(exc))
 

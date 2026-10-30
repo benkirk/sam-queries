@@ -1,21 +1,17 @@
 {#- After Submit: filed, or stopped at a step (the row keeps the reason; Resume or Discard
     from My Requests). Context: the form's, plus outcome (SubmissionOutcome). -#}
-{% from 'dashboards/fragments/modals.html' import modal_title %}
-{{ modal_title('xrasRequestModalLabel', action_type ~ (' request' if action_type == 'New' else '') ~ (' filed' if outcome.succeeded else ' stopped'), 'paper-plane', meta=project.projcode if project else None) }}
+{% from 'dashboards/fragments/xras_bits.html' import outcome as outcome_block %}
+{% from 'dashboards/user/partials/request_bits.html' import request_title %}
+{{ request_title(action_type ~ (' request' if action_type == 'New' else '') ~ (' filed' if outcome.succeeded else ' stopped'), meta=project.projcode if project else None) }}
 <div class="modal-body">
     {% if outcome.succeeded %}
-    <p class="mb-0 text-success-emphasis"><i class="fa-solid fa-circle-check me-1"></i>
-        {%- if action_type == 'New' %}
-        XRAS has your new request for review. Once approved, SAM creates the project and names
-        it; My Requests shows where it is.
-        {%- else %}
-        XRAS has your {{ action_type }} on <span class="font-monospace">{{ decision.request_number }}</span>
-        for review. My Requests shows where it is.
-        {%- endif %}</p>
+    {% call outcome_block('success', 'XRAS has your ' ~ ('new request' if action_type == 'New' else action_type ~ ' on ' ~ decision.request_number) ~ ' for review.') %}
+    <p class="mb-0 small text-muted">{% if action_type == 'New' %}Once approved, SAM creates the project and names it; {% endif %}My Requests shows where it is.</p>
+    {% endcall %}
     {% else %}
-    <p class="mb-1 text-warning-emphasis"><i class="fa-solid fa-triangle-exclamation me-1"></i>
-        The request stopped at <strong>{{ outcome.step }}</strong>{% if outcome.error %}: {{ outcome.error }}{% endif %}.</p>
+    {% call outcome_block('warning', 'The request stopped at ' ~ outcome.step ~ (': ' ~ outcome.error if outcome.error else '') ~ '.') %}
     <p class="mb-0 small text-muted">Nothing was undone. Resume or Discard it from My Requests.</p>
+    {% endcall %}
     {% endif %}
 </div>
 <div class="modal-footer">

@@ -103,15 +103,14 @@ def _fallback(allocation_type_name: Optional[str], action_type: str) -> RuleBook
 def rule_book(reader, allocation_type_id: Optional[int], action_type: str, *,
               allocation_type_name: Optional[str] = None) -> RuleBook:
     """The rule book for *allocation_type_id* x *action_type*; the fallback when XRAS cannot answer."""
-    from sam.integration.xras_api.cache import _CACHE
+    from sam.integration.xras_api.cache import cached_document_types, cached_required_fields
     if allocation_type_id is None:
         return _fallback(allocation_type_name, action_type)
     try:
-        fields = _CACHE.get_or_compute(
-            'lookups', f'required_fields:{allocation_type_id}:{action_type}',
+        fields = cached_required_fields(
+            allocation_type_id, action_type,
             lambda: reader.required_fields(allocation_type_id, action_type))
-        documents = _CACHE.get_or_compute('lookups', 'document_types',
-                                          reader.get_document_types)
+        documents = cached_document_types(reader.get_document_types)
     except XrasSourceUnavailable:
         return _fallback(allocation_type_name, action_type)
     if fields is None:

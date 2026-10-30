@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/action_buttons.html' import impersonate_button with context %}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_former_projects, g_former_affiliations with context %}
 {% macro render_user_card(sam_user, is_admin=False, user_groups=None, primary_group_name=None,
@@ -482,17 +483,7 @@
 
     {% if is_admin and has_permission(Permission.IMPERSONATE_USERS) %}
     <div class="card-footer">
-        <form method="POST" action="{{ url_for('admin_dashboard.impersonate') }}"
-              data-action-submit="confirm-submit"
-              data-confirm-title="Impersonate user"
-              data-confirm-message="Impersonate {{ sam_user.display_name }} ({{ sam_user.username }})?"
-              data-confirm-variant="warning" data-confirm-label="Impersonate">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="username" value="{{ sam_user.username }}">
-            <button type="submit" class="btn btn-sm btn-primary">
-                <i class="fa-solid fa-user-secret"></i> Impersonate {{ sam_user.username }}
-            </button>
-        </form>
+        {{ impersonate_button(sam_user, label='Impersonate ' ~ sam_user.username, cls='btn btn-sm btn-primary') }}
     </div>
     {% endif %}
 </div>

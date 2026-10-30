@@ -1,22 +1,15 @@
 {#- My Requests: one readout (sam.queries.xras_my_requests.Readout) as a badge. -#}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+
+{#- The request dialog's header: every body swapped into #xrasRequestModal titles itself here. -#}
+{% macro request_title(title, meta=None) -%}
+{{ modal_title('xrasRequestModalLabel', title, 'paper-plane', meta=meta) }}
+{%- endmacro %}
+
 {%- set _TONES = {'success': 'bg-success', 'info': 'bg-info', 'attention': 'bg-warning',
                   'danger': 'bg-danger', 'muted': 'state-tag'} -%}
 {% macro readout_badge(readout, title='') -%}
 <span class="badge {{ _TONES.get(readout.tone, 'state-tag') }}"{% if title %} title="{{ title }}"{% endif %}>{{ readout.label }}</span>
-{%- endmacro %}
-
-{#- The gentle agreement: a checkbox beside the submit, the text one click away (a new tab). -#}
-{% macro agreement(eula_sha, checked=False, error=None, id='xrasRequestAgree') -%}
-<input type="hidden" name="eula_sha" value="{{ eula_sha }}">
-<div class="form-check mb-0">
-    <input type="checkbox" class="form-check-input{{ ' is-invalid' if error }}" id="{{ id }}"
-           name="agree" value="1"{% if checked %} checked{% endif %}>
-    <label class="form-check-label" for="{{ id }}">
-        I accept the <a href="{{ url_for('user_dashboard.my_requests_agreement') }}" target="_blank"
-                        rel="noopener">NSF NCAR HPC terms of use</a> for this request.
-    </label>
-    {%- if error %}<div class="invalid-feedback d-block">{{ error }}</div>{% endif %}
-</div>
 {%- endmacro %}
 
 {#- A preflight verdict (sam.xras.preflight.Verdict) in the requester's words. -#}
@@ -26,11 +19,11 @@
     <span class="text-success-emphasis"><i class="fa-solid fa-circle-check me-1"></i>SAM checked this:
         once XRAS approves it, SAM can apply it.</span>
 {%- elif verdict.status == 'failed' %}
-    <span class="text-danger-emphasis"><i class="fa-solid fa-circle-exclamation me-1"></i>SAM could not
+    <span class="text-danger-emphasis"><i class="fa-solid fa-triangle-exclamation me-1"></i>SAM could not
         apply this once approved:</span>
     <ul class="mb-0 text-danger-emphasis">{% for m in verdict.messages %}<li>{{ m }}</li>{% endfor %}</ul>
 {%- elif verdict.status == 'manual' %}
-    <span><i class="fa-solid fa-user-gear me-1"></i>Once approved, CISL staff apply this one by hand.</span>
+    <span><i class="fa-solid fa-circle-pause me-1"></i>Once approved, CISL staff apply this one by hand.</span>
 {%- else %}
     <span><i class="fa-solid fa-circle-info me-1"></i>SAM could not check this in advance; XRAS
         reviews it as usual.</span>
@@ -53,12 +46,11 @@
         {% set _err = (field_errors or {}).get(_name) %}
         {% set _default = r.limit.default_amount if r.limit and r.limit.default_amount is not none
                           and r.prefill is not false else '' %}
-        {% set _yes_no = (r.units or '') | replace(' ', '') | lower == 'yes/no' %}
         <tr>
             <td><label for="xrasRequestAmount{{ r.resource_id }}" class="mb-0">{{ r.name }}</label>
-                {% if r.units and not _yes_no %}<span class="small text-muted">{{ r.units }}</span>{% endif %}</td>
+                {% if r.units and not r.yes_no %}<span class="small text-muted">{{ r.units }}</span>{% endif %}</td>
             <td class="col-num">
-                {% if _yes_no %}
+                {% if r.yes_no %}
                 {#- Ticked sends 1 (yes); unticked sends nothing, which asks for none. -#}
                 {% set _on = form.get(_name) if _posted else (_default != '' and _default >= 1) %}
                 <input type="checkbox" class="form-check-input{{ ' is-invalid' if _err }}" value="1"
@@ -66,12 +58,12 @@
                 {% else %}
                 <input type="text" inputmode="decimal" class="form-control form-control-sm text-end ctl-w-sm{{ ' is-invalid' if _err }}"
                        id="xrasRequestAmount{{ r.resource_id }}" name="{{ _name }}"
-                       value="{{ form.get(_name) if form and form.get(_name) is not none else ('%.15g' | format(_default) if _default != '' else '') }}">
+                       value="{{ form.get(_name) if form and form.get(_name) is not none else (_default | fmt_input if _default != '' else '') }}">
                 {% endif %}
                 {% if _err %}<div class="invalid-feedback d-block text-start">{{ _err[0] }}</div>{% endif %}
             </td>
             <td class="col-shrink text-nowrap small text-muted">
-                {%- if _yes_no %}yes or no{% elif r.limit and r.limit.max_amount is not none %}up to {{ r.limit.max_amount | fmt_number }}{% else %}—{% endif -%}
+                {%- if r.yes_no %}yes or no{% elif r.limit and r.limit.max_amount is not none %}up to {{ r.limit.max_amount | fmt_number }}{% else %}—{% endif -%}
             </td>
         </tr>
     {% else %}
@@ -93,5 +85,21 @@
 <dt class="col-sm-4">Grant</dt>
 <dd class="col-sm-8"><span class="font-monospace">{{ grant.grantNumber }}</span>{% if grant.title %}, {{ grant.title }}{% endif %}
     {%- if grant.beginDate or grant.endDate %} <span class="text-muted">({{ grant.beginDate | fmt_date }} to {{ grant.endDate | fmt_date }})</span>{% endif %}</dd>
+{%- endif %}
+{%- endmacro %}
+
+{#- One PDF to attach: a file input the review and the resume share. -#}
+{% macro document_field(id, name, label, note) -%}
+<div class="mb-2">
+    <label for="{{ id }}" class="form-label small mb-1">{{ label }} <span class="text-danger">*</span>
+        <span class="text-muted">({{ note }})</span></label>
+    <input type="file" class="form-control form-control-sm" id="{{ id }}" name="{{ name }}" accept="application/pdf,.pdf">
+</div>
+{%- endmacro %}
+
+{#- The line that warns a form's first page what the review will ask for. -#}
+{% macro attach_note(documents) -%}
+{%- if documents %}
+<span class="d-block">You attach the {{ documents | map(attribute='label') | join(' and ') }} at the review.</span>
 {%- endif %}
 {%- endmacro %}

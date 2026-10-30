@@ -350,7 +350,7 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
 /* ===================================================================
    Data tables: column roles and the row-action strip
    Every column but one is .col-shrink, so the .cell-truncate column
-   takes the slack. Design record: docs/plans/ADMIN_TABLE_POLISH.md.
+   takes the slack. Design record: docs/plans/implemented/ADMIN_TABLE_POLISH.md.
    =================================================================== */
 .table .col-shrink,
 .table .col-num {

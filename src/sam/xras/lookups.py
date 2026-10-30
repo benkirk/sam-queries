@@ -4,7 +4,7 @@
 worklist (``records_from_action_log``) opens it around its whole loop, so the keyed
 reads the handlers repeat per action (resource key, opportunity map, allocation type,
 area of interest, request overrides, users, projects) run once per key. A miss is kept
-too: nothing writes on that path. Live posts never open one and query exactly as before.
+too: nothing writes on that path. Live posts never open one.
 """
 
 from contextlib import contextmanager

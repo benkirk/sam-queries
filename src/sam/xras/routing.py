@@ -104,6 +104,8 @@ def request_routing(session, project, family: Optional[List[Dict[str, Any]]],
 
 
 #: The actions the picker offers on an existing project, in display order.
+#: Kept as a literal: the inbound boundary gate keeps ``xras_api.vocabulary`` out of
+#: ``sam.xras``; ``test_xras_routing`` pins it to ``SUBMIT_ACTION_TYPES`` minus ``New``.
 PICKER_ACTION_TYPES = ('Extension', 'Supplement', 'Renewal')
 
 

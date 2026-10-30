@@ -10,6 +10,7 @@ from flask import abort, current_app, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from webapp.api.xras.recheck import recheck_action
+from webapp.auth.impersonation import acting_username
 from webapp.extensions import db
 from webapp.utils.htmx import (
     handle_htmx_form_post, htmx_not_found, htmx_success,
@@ -85,7 +86,7 @@ def _record_activation_event(project, event_type, *, comment=None,
         db.session,
         project_id=project.project_id,
         event_type=event_type,
-        created_by=current_user.username,
+        created_by=acting_username(),
         comment=comment,
         notified_to=notified_to,
         # `action_log_id` names the action the operator acted on. It defaults
@@ -109,7 +110,7 @@ def _xras_messages(project, people, *, action=None):
     never disagree about what has already been sent.
     """
     return build_xras_messages(db.session, project, people, action=action,
-                               requested_by=current_user.username,
+                               requested_by=acting_username(),
                                approver_comment=approver_comment_for_action(action),
                                site_url=public_url_root())
 
@@ -303,7 +304,7 @@ def xras_activate(project_id: int):
             f'{project.projcode} is already active.',
             detail='Nothing to do.')
 
-    activate_project(db.session, project, by=current_user.username)
+    activate_project(db.session, project, by=acting_username())
 
     return htmx_success_message(
         {'refreshXrasTab': {}},
@@ -499,7 +500,7 @@ def xras_recheck(action_id: int):
     ``webapp/api/xras/recheck.py``.
     """
     try:
-        new_id, status = recheck_action(action_id, actor=current_user.username)
+        new_id, status = recheck_action(action_id, actor=acting_username())
     except LookupError:
         return htmx_not_found('Action')
     except Exception:                              # pragma: no cover - defensive

@@ -9,8 +9,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from xras_commit_helpers import tracking_factory, write_result
+
 from sam.integration.xras import XrasRemediationEvent
-from sam.integration.xras_api.admin_client import XrasWriteResult
 from sam.integration.xras_api.base import XrasSourceUnavailable, XrasWriteRejected
 from sam.integration.xras_submission import XrasSubmission
 from sam.manage import xras_submission as flow
@@ -29,39 +30,14 @@ _IDS = itertools.count(900_000_000 + (os.getpid() % 10_000) * 1_000)
 
 
 def _ok(operation, verified=True, **extra):
-    return XrasWriteResult(operation=operation, method='POST', path='/p',
-                           http_status=200, verified=verified,
-                           verify_detail='detail', extra=extra)
+    return write_result(operation, verified=verified, extra=extra)
 
 
 @pytest.fixture
 def factory(engine):
     """A real session factory; the rows it commits are deleted at teardown by id."""
-    from sqlalchemy import delete, event
-    from sqlalchemy.orm import Session
-
-    events, rows = [], []
-
-    def make():
-        session = Session(engine)
-
-        @event.listens_for(session, 'after_flush')
-        def _track(sess, _ctx):
-            for o in sess.new:
-                if isinstance(o, XrasRemediationEvent):
-                    events.append(o.xras_remediation_event_id)
-                elif isinstance(o, XrasSubmission):
-                    rows.append(o.xras_submission_id)
-        return session
-
-    yield make
-    with engine.begin() as conn:
-        if events:
-            conn.execute(delete(XrasRemediationEvent).where(
-                XrasRemediationEvent.xras_remediation_event_id.in_(events)))
-        if rows:
-            conn.execute(delete(XrasSubmission).where(
-                XrasSubmission.xras_submission_id.in_(rows)))
+    with tracking_factory(engine, XrasSubmission, XrasRemediationEvent) as make:
+        yield make
 
 
 @pytest.fixture(autouse=True)
@@ -123,6 +99,23 @@ class TestTheExtension:
         args = client.set_action_dates.call_args
         assert args.args == (draft.request_id, client.action_id, None, date(2027, 9, 30))
 
+    def test_the_row_records_the_pis_and_the_admins_user_ids(self, factory):
+        from sam.core.users import User
+        from sam.projects.projects import Project
+        with factory() as s:
+            project = (s.query(Project).filter(Project.project_admin_user_id.isnot(None))
+                       .order_by(Project.project_id).first())
+            pi = s.get(User, project.project_lead_user_id)
+            pid, username = project.project_id, pi.username
+            expected = (pi.user_id, project.project_admin_user_id)
+        draft = ActionRequest(action_type='Extension', request_number='UHSS0001',
+                              request_id=next(_IDS), dates=(None, date(2027, 9, 30)),
+                              sam=SamRefs(project_id=pid))
+        out = flow.request_action(factory, draft, actor=username, xa_user=username,
+                                  eula=EULA, client=_client())
+        row = _row(factory, out.submission_id)
+        assert (row.user_id, row.admin_user_id) == expected
+
     def test_submit_false_stops_at_populated(self, factory):
         client = _client()
         out = flow.request_action(factory, _extension(), actor='op', xa_user='pi1',
@@ -133,6 +126,38 @@ class TestTheExtension:
 
 
 class TestAStepThatFails:
+
+    def test_resume_honors_the_rows_submit(self, factory):
+        """An operator's Add-action opens the row with ``submit=False``; the resume that
+        completes it stops before the submit too, and an explicit ``submit=`` overrides."""
+        client = _client()
+        client.set_action_dates.side_effect = XrasWriteRejected('bad date', status=400,
+                                                                errors=['End date'])
+        out = flow.request_action(factory, _extension(), actor='op1', xa_user='pi1',
+                                  eula=EULA, submit=False, door='admin', client=client)
+        assert out.step == 'dates'
+        client.set_action_dates.side_effect = None
+        again = flow.resume_submission(factory, out.submission_id, actor='op1', door='admin',
+                                       client=client)
+        assert again.succeeded and again.state == 'populated'
+        assert client.submit_action.call_count == 0
+        last = flow.resume_submission(factory, out.submission_id, actor='op1', door='admin',
+                                      submit=True, client=client)
+        assert last.state == 'submitted' and client.submit_action.call_count == 1
+
+    def test_the_lever_off_refuses_the_pi_doors_abort_only(self, factory, monkeypatch):
+        client = _client()
+        client.add_action.return_value = _ok('add_action', verified=False,
+                                             action_id=client.action_id)
+        out = flow.request_action(factory, _extension(), actor='pi1', xa_user='pi1',
+                                  eula=EULA, client=client)
+        monkeypatch.setattr(flow, 'submit_armed', lambda *a, **k: False)
+        with pytest.raises(SubmissionRefused, match='not enabled'):
+            flow.abort_submission(factory, out.submission_id, actor='pi1', client=client)
+        assert client.delete_action.call_count == 0
+        ended = flow.abort_submission(factory, out.submission_id, actor='op1', door='admin',
+                                      client=client)
+        assert ended.state == 'aborted' and client.delete_action.call_count == 1
 
     def test_a_rejection_stops_and_keeps_the_state(self, factory):
         client = _client()
@@ -175,6 +200,23 @@ class TestAStepThatFails:
                                        client=client)
         assert not again.succeeded and 'abort rather than resume' in again.error
         assert client.add_action.call_count == 1
+
+    def test_a_step_whose_audit_row_was_lost_is_never_resent(self, factory):
+        """``_open_event`` returning ``None`` records the step with no id; the write may
+        have landed, so a resume stops there as it does for an unverified add."""
+        client = _client()
+        client.set_action_dates.return_value = _ok('set_action_dates', verified=False)
+        out = flow.request_action(factory, _extension(), actor='pi1', xa_user='pi1',
+                                  eula=EULA, client=client)
+        assert out.step == 'dates'
+        with factory() as s:
+            s.get(XrasSubmission, out.submission_id).record_step('dates', None)
+            s.commit()
+
+        again = flow.resume_submission(factory, out.submission_id, actor='pi1',
+                                       client=client)
+        assert not again.succeeded and 'dates may have reached XRAS (unknown)' in again.error
+        assert client.set_action_dates.call_count == 1
 
     def test_abort_deletes_the_action(self, factory):
         client = _client()

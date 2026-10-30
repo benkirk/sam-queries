@@ -1,7 +1,7 @@
 """File a user's XRAS action (Extension, Supplement, Renewal, New) as audited steps.
 
 The ``xras_submission`` row is committed before any write. Each step then runs through
-``_editor_op`` (its own audit row, committed before the write) and records that row's id
+``audited_write`` (its own audit row, committed before the write) and records that row's id
 on the submission. A rejected, errored or unverified step stops the flow, stamps
 ``last_error`` and leaves the state where it was: there is **no automatic abort**. Resume
 skips every step whose event is ``verified``; abort deletes what SAM minted. Flask-free.
@@ -16,7 +16,9 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from sam.manage.xras_remediation import RemediationOutcome, _client, _editor_op
+from sam.dates import format_ymd, parse_wire_date
+from sam.integration.xras_submission import OPEN_STATES, documents_to_reattach
+from sam.manage.xras_remediation import RemediationOutcome, admin_client, audited_write
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +37,11 @@ class SubmissionRefused(ValueError):
 
 @dataclass(frozen=True)
 class SamRefs:
+    """The SAM rows a submission resolves to; ``request_action`` fills the two user ids it can."""
+
     project_id: Optional[int] = None
+    user_id: Optional[int] = None
+    admin_user_id: Optional[int] = None
     facility_id: Optional[int] = None
     mnemonic_code_id: Optional[int] = None
     allocation_type_id: Optional[int] = None
@@ -92,7 +98,7 @@ class ActionRequest:
             'title': self.title, 'abstract': self.abstract, 'keywords': self.keywords,
             'user_comments': self.user_comments,
             'resources': [vars(r) for r in self.resources],
-            'dates': [_iso(d) for d in self.dates] if self.dates else None,
+            'dates': [format_ymd(d) for d in self.dates] if self.dates else None,
             'grants': [dict(g) for g in self.grants], 'fos_type_id': self.fos_type_id,
             'documents': [d.to_payload() for d in self.documents],
             'eua_attribute_id': self.eua_attribute_id,
@@ -113,7 +119,7 @@ class ActionRequest:
             title=payload.get('title'), abstract=payload.get('abstract'),
             keywords=payload.get('keywords'), user_comments=payload.get('user_comments'),
             resources=tuple(ResourceAmount(**r) for r in payload.get('resources') or ()),
-            dates=tuple(_from_iso(d) for d in dates) if dates else None,
+            dates=tuple(parse_wire_date(d) for d in dates) if dates else None,
             grants=tuple(payload.get('grants') or ()),
             fos_type_id=payload.get('fos_type_id'),
             documents=tuple(by_name.get(d['filename']) or SubmissionDocument(
@@ -138,14 +144,6 @@ class SubmissionOutcome:
     @property
     def succeeded(self) -> bool:
         return self.error is None
-
-
-def _iso(value) -> Optional[str]:
-    return value.isoformat() if hasattr(value, 'isoformat') else value
-
-
-def _from_iso(value) -> Optional[date]:
-    return date.fromisoformat(value[:10]) if isinstance(value, str) else value
 
 
 def submit_armed(action_type: Optional[str] = None, config=None) -> bool:
@@ -176,16 +174,11 @@ def _row_view(row) -> Dict[str, Any]:
 
 
 def _step_statuses(session_factory, steps: Dict[str, Optional[int]]) -> Dict[str, str]:
-    """``{step: audit status}`` for every step that opened an event."""
-    from sam.integration.xras import XrasRemediationEvent
-    ids = [i for i in steps.values() if i]
-    if not ids:
+    from sam.integration.xras_submission import step_statuses
+    if not steps:
         return {}
     with session_factory() as session:
-        status = dict(session.query(XrasRemediationEvent.xras_remediation_event_id,
-                                    XrasRemediationEvent.status)
-                      .filter(XrasRemediationEvent.xras_remediation_event_id.in_(ids)))
-    return {step: status[i] for step, i in steps.items() if i in status}
+        return step_statuses(session, steps)
 
 
 def _error_text(outcome: RemediationOutcome) -> Dict[str, Any]:
@@ -286,7 +279,7 @@ def _by_id(dispatch: Callable, xa_user: str) -> Callable:
 def _run_step(session_factory, view, step, operation, dispatch, admin) -> RemediationOutcome:
     """One audited write, then its event id on the row; keys from a mint are kept either way."""
     keys = {k: view[k] for k in ('request_id', 'action_id', 'request_number')}
-    outcome = _editor_op(
+    outcome = audited_write(
         operation, session_factory, lambda a: dispatch(a, keys),
         open_fields=dict(created_by=view['actor'], xa_user=view['xa_user'],
                          request_number=view['request_number'],
@@ -349,9 +342,8 @@ def _drive(session_factory, draft: ActionRequest, view, *, submit: bool,
         _advance(session_factory, view, 'created')
 
     populate = _plan(draft, view)
-    missing = [d.filename for d in draft.documents
-               if not d.content
-               and statuses.get(f'document:{d.filename}') in (None, 'rejected')]
+    missing = documents_to_reattach(statuses, [d.filename for d in draft.documents
+                                               if not d.content])
     if view['state'] == 'created' and missing:
         return _stop(session_factory, view, f'document:{missing[0]}',
                      reason=f'attach {", ".join(missing)} again to continue')
@@ -376,11 +368,29 @@ def _drive(session_factory, draft: ActionRequest, view, *, submit: bool,
 def _patch_card(session_factory, view) -> None:
     """One best-effort Remediations-card patch per run, for a numbered line."""
     if view['request_number']:
-        from sam.manage.xras_remediation import _refresh_index_entry
-        _refresh_index_entry(view['request_number'], session_factory=session_factory)
+        from sam.manage.xras_remediation import refresh_index_entry
+        refresh_index_entry(view['request_number'], session_factory=session_factory)
 
 
 # the entry points
+
+def _resolved_refs(session, draft: ActionRequest, xa_user: str) -> Dict[str, Optional[int]]:
+    """``vars(draft.sam)`` with the PI's and the admin's user ids filled where the form left them."""
+    from sam.core.users import User
+    from sam.projects.projects import Project
+    refs = dict(vars(draft.sam))
+    if refs.get('user_id') is None:
+        pi = User.get_by_username(session, xa_user)
+        refs['user_id'] = pi.user_id if pi else None
+    if refs.get('admin_user_id') is None:
+        if draft.admin_username:
+            admin = User.get_by_username(session, draft.admin_username)
+            refs['admin_user_id'] = admin.user_id if admin else None
+        elif refs.get('project_id'):
+            project = session.get(Project, refs['project_id'])
+            refs['admin_user_id'] = project.project_admin_user_id if project else None
+    return refs
+
 
 def request_action(session_factory, draft: Optional[ActionRequest], *, actor: str,
                    xa_user: str, eula: Tuple[str, datetime], submit: bool = True,
@@ -403,20 +413,23 @@ def request_action(session_factory, draft: Optional[ActionRequest], *, actor: st
     sha, accepted_at = eula or (None, None)
     if not sha or accepted_at is None:
         raise SubmissionRefused('the agreement must be accepted first')
-    admin = _client(client)
+    admin = admin_client(client)
 
     with session_factory() as session:
         if open_submission_for(session, request_id=draft.request_id,
                                action_type=draft.action_type, created_by=actor):
             raise SubmissionRefused(
                 f'a {draft.action_type} on this request is already in progress')
+        # The row remembers whether it was opened to submit: an operator's unsubmitted
+        # Add-action must not be submitted by the resume that completes it.
         row = XrasSubmission.create(
             session, action_type=draft.action_type, created_by=actor, xa_user=xa_user,
-            eula_sha=sha, eula_accepted_at=accepted_at, payload=draft.to_payload(),
+            eula_sha=sha, eula_accepted_at=accepted_at,
+            payload={**draft.to_payload(), 'submit': submit},
             request_id=draft.request_id, request_number=draft.request_number,
             opportunity_id=draft.opportunity_id,
             request_type=draft.action_type if draft.action_type in LINE_MINTING_TYPES else None,
-            **vars(draft.sam))
+            **_resolved_refs(session, draft, xa_user))
         session.commit()
         view = {**_row_view(row), 'actor': actor}
     logger.info('xras submission %s: opened %s for %s by %s', view['id'],
@@ -425,26 +438,39 @@ def request_action(session_factory, draft: Optional[ActionRequest], *, actor: st
 
 
 def resume_submission(session_factory, submission_id: int, *, actor: str,
-                      submit: bool = True, documents: Tuple[SubmissionDocument, ...] = (),
+                      submit: Optional[bool] = None,
+                      documents: Tuple[SubmissionDocument, ...] = (),
                       door: str = 'pi', client=None) -> SubmissionOutcome:
-    """Continue a stopped submission from its payload, skipping every verified step."""
+    """Continue a stopped submission from its payload, skipping every verified step.
+
+    ``submit=None`` honors what the row was opened with.
+    """
     view = {**_with_row(session_factory, submission_id, _row_view), 'actor': actor}
-    if view['state'] not in ('draft', 'created', 'populated'):
+    if view['state'] not in OPEN_STATES:
         raise SubmissionRefused(f'submission {submission_id} is {view["state"]}')
     if door == 'pi' and not submit_armed(view['action_type']):
         raise SubmissionRefused(f'filing a {view["action_type"]} through SAM is not enabled here')
+    if submit is None:
+        submit = (view['payload'] or {}).get('submit', True)
     draft = ActionRequest.from_payload(view['payload'], documents)
     logger.info('xras submission %s: resumed by %s at %s', submission_id, actor,
                 view['state'])
-    return _drive(session_factory, draft, view, submit=submit, admin=_client(client))
+    return _drive(session_factory, draft, view, submit=submit, admin=admin_client(client))
 
 
 def abort_submission(session_factory, submission_id: int, *, actor: str,
-                     client=None) -> SubmissionOutcome:
-    """End an in-flight submission: delete the line SAM minted, else the action; then ``aborted``."""
+                     door: str = 'pi', client=None) -> SubmissionOutcome:
+    """End an in-flight submission: delete the line SAM minted, else the action; then ``aborted``.
+
+    The PI door needs the submit lever with the type armed, as filing does; the admin door
+    (an operator ending a row they opened, or any row) needs only the write lever.
+    """
     view = {**_with_row(session_factory, submission_id, _row_view), 'actor': actor}
-    if view['state'] not in ('draft', 'created', 'populated'):
+    if view['state'] not in OPEN_STATES:
         raise SubmissionRefused(f'submission {submission_id} is {view["state"]}')
+    if door == 'pi' and not submit_armed(view['action_type']):
+        raise SubmissionRefused(
+            f'discarding a {view["action_type"]} through SAM is not enabled here')
     xa = view['xa_user']
     # A row opens on the line it acts on (a Renewal: the line it renews), so only an id
     # that differs is a line SAM minted. A refused renew leaves the original's id behind,
@@ -461,7 +487,7 @@ def abort_submission(session_factory, submission_id: int, *, actor: str,
     else:
         step = None
     if step is not None:
-        outcome = _run_step(session_factory, view, *step, _client(client))
+        outcome = _run_step(session_factory, view, *step, admin_client(client))
         if not outcome.succeeded:
             return _stop(session_factory, view, 'abort', outcome)
     _advance(session_factory, view, 'aborted')

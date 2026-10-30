@@ -37,6 +37,7 @@ from webapp.api.access_control import (
     require_event_sponsor_access, require_project_facility_permission,
     require_project_permission,
 )
+from webapp.auth.impersonation import acting_username
 from webapp.dashboards.event_lifecycle import (
     EVENT_FORM, ROSTER_FORM, EventCreateHandler, EventEditHandler, RosterHandler,
     can_skip_link, date_floor, roster_preview, sponsor_context, switch_event,
@@ -181,9 +182,9 @@ class _InviteUserHandler(HtmxFormHandler):
         if outcome != OUTCOME_QUEUED:
             return
         if self.send_invite:
-            self.invite, = send_invite_links([obj], requested_by=current_user.username)
+            self.invite, = send_invite_links([obj], requested_by=acting_username())
         else:
-            send_ticket(obj, requested_by=current_user.username)
+            send_ticket(obj, requested_by=acting_username())
 
     def context(self):
         events = _project_events(self.project)
@@ -283,7 +284,7 @@ def htmx_invite_preview(project):
     if not data.get('send_invite') and can_skip_link():
         notes.append('The box is unticked: Invite queues the request and sends no email.')
     return render_email_preview(
-        invite_messages(rows, sent_at=datetime.now(), requested_by=current_user.username,
+        invite_messages(rows, sent_at=datetime.now(), requested_by=acting_username(),
                         link_for=placeholder_link),
         id_prefix='invitePreview', pane_id='invitePreviewPane', notes=notes)
 
@@ -305,7 +306,7 @@ def htmx_resend_invite_preview(project, request_id):
                   'when you send this one.'] if row.invite_sent_at else [])
         pane = email_preview_context(
             invite_messages([row], sent_at=datetime.now(),
-                            requested_by=current_user.username,
+                            requested_by=acting_username(),
                             link_for=placeholder_link),
             id_prefix='resendPreview', pane_id='resendPreviewPane', notes=notes)
     return render_template(_RESEND_PREVIEW, project=project, row=row, **(pane or {}))
@@ -321,7 +322,7 @@ def htmx_resend_invite(project, request_id):
         return htmx_not_found('Invitation')
     if not can_send_invite(row):
         return _toast_error(f'{row.email} cannot be sent an invitation link now.')
-    result, = send_invite_links([row], requested_by=current_user.username)
+    result, = send_invite_links([row], requested_by=acting_username())
     logger.info('invite link for request %s: %s by %s', row.account_request_id,
                 result.status, current_user.username)
     if result.status in DELIVERED:

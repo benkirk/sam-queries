@@ -31,7 +31,8 @@ import logging
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, FrozenSet, Optional
 
-from sam.integration._config import (config_bool as _config_bool,
+from sam.integration._config import (parse_action_types,
+                                     config_bool as _config_bool,
                                     config_float as _config_float,
                                     config_int as _config_int,
                                     config_str as _config_str)
@@ -65,21 +66,8 @@ def parse_submit_action_types(value: Optional[str]) -> FrozenSet[str]:
 
     An unknown token is logged and dropped, so a typo leaves that type disabled.
     """
-    text = (value or '').strip()
-    if not text or text.lower() == 'all':
-        return frozenset(SUBMIT_ACTION_TYPES)
-    if text.lower() == 'none':
-        return frozenset()
-    by_fold = {t.casefold(): t for t in SUBMIT_ACTION_TYPES}
-    chosen = set()
-    for token in (t.strip() for t in text.split(',')):
-        if not token:
-            continue
-        if token.casefold() in by_fold:
-            chosen.add(by_fold[token.casefold()])
-        else:
-            logger.warning('XRAS_SUBMIT_ACTION_TYPES: unknown type %r dropped', token)
-    return frozenset(chosen)
+    return parse_action_types(value, SUBMIT_ACTION_TYPES, setting='XRAS_SUBMIT_ACTION_TYPES',
+                              logger=logger)
 
 
 @dataclass(frozen=True)

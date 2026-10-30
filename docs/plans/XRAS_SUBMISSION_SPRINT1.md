@@ -1,6 +1,7 @@
 # XRAS submission sprint 1: the build plan
 
-**Status: starts 2026-10-29. Issue #871; one PR to `staging`, commits grouped per phase.** Lands
+**Status: shipped 2026-10-29 in #874 (squash `5cf3eebe`), every phase proven on samuel-dev ↔
+XRAS-dev; production stays dark behind `XRAS_SUBMIT_ENABLED` (§ 3). Sprint 2 is #872.** Landed
 phases 0, 1, 1b and 2 of [`XRAS_SUBMISSION.md`](XRAS_SUBMISSION.md): a lead files an Extension,
 Supplement, Renewal or New request from a My Requests tab on SAMuel's user dashboard. Sprint 2
 (#872) adds the registration-linked New. The decisions are `XRAS_SUBMISSION.md` § 3.5; the probe
@@ -11,7 +12,7 @@ record behind them is § 9. Every UI step loads the
 
 | # | Commit | Phase |
 |---|---|---|
-| 0a | write client: `_write(json=)`; verbs `create_request`, `delete_action`, `upload_document`, `set_opportunity_attributes`, `add_grant`, `update_grant`, `set_fos`; reads `required_fields`, `required_documents_status`, `get_draft`; `renew_request(opportunity_id=)`, `add_action(user_comments=)`. `vocabulary.py`: `ACTION_TYPES`, `REQUEST_TYPES` ids. Levers `XRAS_SUBMIT_ENABLED` (dev "1", prod "0") and `XRAS_SUBMIT_ACTION_TYPES`, with their manifest pins | 0 |
+| 0a | write client: `_write(json=)`; verbs `create_request`, `delete_action`, `upload_document`, `set_opportunity_attributes`, `add_grant`, `update_grant`, `set_fos`; reads `required_fields`, `required_documents_status`, `get_draft`; `renew_request(opportunity_id=)`, `add_action(user_comments=)`. `vocabulary.py`: the `ACTION_TYPES` ids. Levers `XRAS_SUBMIT_ENABLED` (dev "1", prod "0") and `XRAS_SUBMIT_ACTION_TYPES`, with their manifest pins | 0 |
 | 0b | `XrasSubmission` and `AllocationTypeResourceLimit` models, DDL in two dialects, seed, `_BOOTSTRAP_TABLES`, LFS blob (once, last); flow layer `sam/manage/xras_submission.py`; routing `sam/xras/routing.py`; limits CrudSpec card | 0 |
 | 1a | My Requests tab: page, status readout, per-project action picker, own modal shell, project-card link | 1 |
 | 1b | Extension and Supplement forms through the flow; EULA on every action; abort and resume; admin Add-action modal re-pointed | 1 |
@@ -45,7 +46,7 @@ submit_armed(action_type=None)
 | mint | Extension and Supplement: `add_action(user_comments=)`. Renewal: `renew_request(opportunity_id=)`, then the new line's first action from the family read. New: `create_request`, then `add_role(PI, xa_user)` (the creator is only the Allocation Manager) and the optional admin role | `created` |
 | populate | each only when the draft carries it: `update_attributes`, `set_fos`, `update_resource_amount` per resource, `set_action_dates` (Extension: end date alone), `add_grant` per grant, `set_opportunity_attributes` (the EUA echo, while an opportunity carries the set), `upload_document` per document | `populated` |
 | submit | `submit_action(preflight=True)`, which validates as the PI first | `submitted` |
-| abort | `delete_action` on an existing line; `delete_request` for a New draft | `aborted` |
+| abort | `delete_action` on an existing line; `delete_request` for a line SAM minted (a New draft, or a Renewal's new line once its id differs from the one it renews) | `aborted` |
 
 - New op names, all within `operation`'s 24 characters: `create_request delete_action
   upload_document set_opp_attributes add_grant update_grant set_fos`.
@@ -81,8 +82,8 @@ submit_armed(action_type=None)
 | Evidence | `payload` (the draft), `xras_snapshot` (the create or renew response), `step_events` (step → `xras_remediation_event` id) |
 
 `create()`, `advance(state)`, `record_step()`, `set_keys()`, `mark_applied(project_id)`;
-module-level `lookup_submission_by_request_id`, `open_submissions_for_user`,
-`submission_by_action_id`. Index names never match a table name (Postgres shares the
+module-level `submission_by_action_id`, `new_submissions_by_request_id`, `open_submission_for`,
+`step_statuses`, `documents_to_reattach`. Index names never match a table name (Postgres shares the
 namespace). `anonymize_sam_db.py` purges the table.
 
 ### `AllocationTypeResourceLimit` (`sam/accounting/allocation_type_limits.py`)
@@ -202,6 +203,12 @@ stands in for the ladder's miss in its verdict.
 | `XRAS_SUBMIT_ACTION_TYPES` | `XrasApiConfig.submit_action_types` (`parse_submit_action_types`), then the routing | `all` | `Extension,Supplement`, shipped with the lever off so the first flip cannot expose New or Renewal |
 | `SUBMISSION_DOCUMENT_MAX_BYTES`, `SUBMISSION_DOCUMENT_MAX_PAGES` | the document helper | unset | unset |
 
+The admin door runs under `XRAS_WRITE_ENABLED` alone: the Remediations card's Add-action opens
+`xras_submission` rows on production with the submit lever off. On such a row the PI's Resume
+and Discard need `XRAS_SUBMIT_ENABLED` with the type armed (the page hides them otherwise), and a
+resume honors the `submit` the row was opened with, so it never submits what the operator
+left unsubmitted.
+
 Pins: `tests/unit/gates/test_xras_admin_client.py` (prod off and narrowed, no `tasks.env` and no CronJob names it, dev on),
 `helm/tests/test-dev-render.sh`, `tests/conftest.py`.
 
@@ -223,7 +230,7 @@ Per roll:
    `pytest tests/integration/test_schema_validation.py` and `make pytest-pg`.
 2. `psql -h csg-postgres.k8s.ucar.edu -d sam_dev -f scripts/sql/create_…_pg.sql` (Ben), or a
    `make refresh-dev`, which rebuilds the schema from the ORM.
-3. Production MySQL at convergence (Ben): `mysql -u <hpc-writer> -h <host> -p sam < …`.
+3. Done 2026-10-29 (Ben): production MySQL, 38 seed rows, utf8mb4 on the prose columns.
 
 House shape (`create_external_ticket.sql`, `create_account_request.sql`): no foreign keys,
 utf8mb4 on prose and echoed columns, app-clock timestamps, NO DROP, verification SELECTs at the
@@ -273,10 +280,10 @@ the first transaction as the initial award:
 | | Campaign_Store | — | — | — | — | **— / 2,000** |
 
 WRAP, Divisional and Staff route by email or to staff (§ 4.4 of the design) and get no rows. A
-pair with no row means "no limit, says so". Ben reviews the bold column on Thursday; the
-numbers are a proposal from the data, not policy.
+pair with no row means "no limit, says so". Ben approved the bold column 2026-10-29 (§ 5); the
+numbers came from the data, not policy.
 
-## 5. Items left for Thursday
+## 5. The Thursday review
 
 1. Done 2026-10-29: Ben approved the seed as proposed (§ 4): medians from the snapshot as defaults, published caps or a multiple as the limit, no defaults for CHAP and NSC.
 2. Done 2026-10-28: the production read as benkirk (§ 9); the fixtures

@@ -10,7 +10,9 @@ read client hardcodes ``XA-CONTEXT: report``; every write here needs ``submit``,
 and the Reports family 401s under ``submit``. So verification reads that need a
 roster or an action state are delegated to a read client
 (:attr:`XrasAdminClient.reader`). ``GET /v1/people/<u>`` is the one route
-answering under both, which is what lets merge verify itself on this connection.
+answering under both, which is what lets merge verify itself on this connection;
+``GET /v1/requests/<rid>`` answers under ``submit`` for a role-holder only, which is
+how a draft SAM minted verifies by id (:meth:`get_draft`) before it has a number.
 
 Three facts from the 2026-08-21 production probe shape this module and are not
 obvious from the published docs (``docs/xras/outgoing/XRAS_WRITE_PROBES.md``):
@@ -71,6 +73,7 @@ DOCUMENT_MAX_BYTES = 25 * 1024 * 1024
 # so the read path can import the one authoritative table without pulling in
 # this write client. Re-exported here because the package ``__init__`` and
 # several callers import these names from ``admin_client``.
+from sam.xras.wire import resource_label  # noqa: E402
 from sam.integration.xras_api.vocabulary import (  # noqa: E402
     PI_ROLE_TYPE_ID,
     ROLE_TYPES,
@@ -213,8 +216,9 @@ class XrasAdminClient(_XrasTransport):
         super().__init__(config)
         #: Report-context reads used for verification. A separate object
         #: because the Reports family 401s under ``submit`` — see the module
-        #: docstring. PRIVILEGE(#2): a key that could read
-        #: ``GET /v1/requests/<rid>`` would delete this whole delegate.
+        #: docstring. PRIVILEGE(#2): ``GET /v1/requests/<rid>`` answers under
+        #: ``submit`` for a role-holder only (``get_draft``), so a line SAM holds
+        #: no role on still needs this delegate.
         self.reader = reader or XrasApiClient(self.config)
 
     @classmethod
@@ -1211,8 +1215,7 @@ class XrasAdminClient(_XrasTransport):
 
             def resources(ids, named=named):
                 return [{'resource_id': rid,
-                         'name': (named.get(rid) or {}).get('displayResourceName')
-                         or f'resource {rid}',
+                         'name': resource_label(named.get(rid), rid),
                          'units': (named.get(rid) or {}).get('resourceUnits') or ''}
                         for rid in ids]
             yield opp, {'opportunity_id': opp.get('opportunityId'),

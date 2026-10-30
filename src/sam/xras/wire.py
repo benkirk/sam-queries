@@ -1,6 +1,6 @@
-"""Reading one field off an XRAS action payload.
+"""Pure helpers over an XRAS wire payload: one field, one resource's label.
 
-One function, in its own module, because five others wanted it and each grew its own
+``get_field`` got its own module because five others wanted it and each grew its own
 copy — ``dispatch``, ``extractors``, ``roster``, ``handlers.extension``, plus an
 inlined fifth in ``handlers.transfer``. Four of the five were byte-identical and the
 fifth differed only in a parameter name, which is the shape duplication takes when
@@ -11,7 +11,7 @@ are not handlers, and it deliberately imports nothing — every other module in 
 package can depend on it without creating a cycle.
 """
 
-__all__ = ['get_field']
+__all__ = ['get_field', 'resource_label']
 
 
 def get_field(obj, key: str):
@@ -29,3 +29,11 @@ def get_field(obj, key: str):
     if isinstance(obj, dict):
         return obj.get(key)
     return getattr(obj, key, None)
+
+
+def resource_label(resource, resource_id=None) -> str:
+    """A resource row's display name, else its name, else ``resource <id>``."""
+    row = resource or {}
+    rid = resource_id if resource_id is not None else row.get('resourceId')
+    return (row.get('displayResourceName') or row.get('resourceName')
+            or (f'resource {rid}' if rid is not None else 'resource'))

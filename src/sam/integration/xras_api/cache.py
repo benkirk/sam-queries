@@ -43,9 +43,8 @@ _CACHE = BucketedTTLCache('xras_api', 'xras_api', {
         ttl_key='XRAS_RESOURCES_CACHE_TTL', ttl_default=86400,   # 1 day
         size_key='XRAS_RESOURCES_CACHE_SIZE', size_default=8,
     ),
-    # FoS catalog (one key) + opportunity detail (per-id). Both slow-changing
-    # reference data the modals resolve names from. Sized for the FoS row plus
-    # every opportunity the process has ever run.
+    # Slow-changing reference data: the FoS catalog and the document types (one
+    # key each), opportunity detail and the rule book's required fields (per id).
     'lookups': BucketSpec(
         name='xras_lookups',
         ttl_key='XRAS_LOOKUPS_CACHE_TTL', ttl_default=86400,     # 1 day
@@ -150,6 +149,18 @@ def cached_opportunity(opportunity_id, compute: Callable[[], Any]) -> Optional[A
     """Memoise one opportunity's detail. Definite negatives cache too — a 404
     for an id is a real answer and re-asking costs a round trip per modal."""
     return _CACHE.get_or_compute('lookups', f'opp:{opportunity_id}', compute)
+
+
+def cached_required_fields(allocation_type_id, action_type: str,
+                           compute: Callable[[], Any]) -> Optional[Any]:
+    """Memoise XRAS's required fields for one (allocation type, action type)."""
+    return _CACHE.get_or_compute('lookups', f'required_fields:{allocation_type_id}:{action_type}',
+                                 compute)
+
+
+def cached_document_types(compute: Callable[[], Any]) -> Optional[Any]:
+    """Memoise the document-type catalog. One key, the whole list."""
+    return _CACHE.get_or_compute('lookups', 'document_types', compute)
 
 
 def store_pending_worklist(payload: Any) -> str:

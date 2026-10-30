@@ -17,11 +17,11 @@ from flask import (
     make_response,
     render_template,
     request,
-    session,
     url_for,
 )
 from flask_login import current_user, login_required
 
+from sam.dates import add_months, first_of_next_month
 from sam.integration.xras_api import XrasSourceUnavailable
 from sam.queries.xras_my_requests import led_projects, my_requests
 from sam.schemas.forms import (
@@ -33,8 +33,17 @@ from sam.schemas.forms import (
 from sam.schemas.forms.xras_submission import GRANT_INPUTS
 from sam.xras.routing import action_offers, request_routing, route_for
 from webapp.api.access_control import require_project_permission
+from webapp.auth.impersonation import acting_username, is_impersonating
 from webapp.extensions import db
 from webapp.utils.form_handler import FormError, HtmxFormHandler
+from webapp.utils.htmx import register_typeahead
+from webapp.utils.xras import (
+    admin_client,
+    interactive_config,
+    read_client,
+    requests_index,
+    session_factory,
+)
 from webapp.utils.rbac import Permission, has_permission
 
 from .blueprint import _page_context, bp
@@ -49,29 +58,17 @@ _SCHEMAS = {'Extension': XrasExtensionRequestForm, 'Supplement': XrasSupplementR
             'Renewal': XrasRenewalRequestForm}
 
 
-def _config():
-    from sam.integration.xras_api.config import XrasApiConfig
-    return XrasApiConfig.from_environment().interactive()
-
-
-def _session_factory():
-    """Private sessions for the flow's rows: a request rollback must never erase an audit row."""
-    from sqlalchemy.orm import Session
-    return Session(db.engine)
+#: The module's seam for the tests; the plumbing itself is ``webapp.utils.xras``.
+_config = interactive_config
+_session_factory = session_factory
 
 
 def _index_rows():
-    from sam.integration.xras_api.cache import load_requests_index
-    return (load_requests_index() or {}).get('rows') or []
+    return (requests_index() or {}).get('rows') or []
 
 
 def _type_name(project):
     return project.allocation_type.allocation_type if project.allocation_type else None
-
-
-def _reader(config):
-    from sam.integration.xras_api import XrasApiClient
-    return XrasApiClient.from_environment(config)
 
 
 def _decide(project, config):
@@ -79,7 +76,7 @@ def _decide(project, config):
     family = None
     if config.submit_configured and route_for(_type_name(project)) == 'xras':
         try:
-            family = _reader(config).get_request_family_by_number(project.projcode)
+            family = read_client(config).get_request_family_by_number(project.projcode)
         except XrasSourceUnavailable as exc:
             current_app.logger.warning('my requests family read %s: %s', project.projcode, exc)
             return None, 'XRAS is not answering, so this project\'s requests cannot be offered now.'
@@ -101,6 +98,7 @@ def my_requests_page():
         projects=[(p, route_for(_type_name(p))) for p in projects],
         open_projcode=(request.args.get('projcode') or '').strip().upper() or None,
         submit_configured=config.submit_configured, new_enabled=config.submit_allows('New'),
+        submit_allows=config.submit_allows,
         can_manage_xras=has_permission(current_user, Permission.MANAGE_XRAS),
         **ctx)
 
@@ -110,14 +108,13 @@ def my_requests_page():
 @require_project_permission(Permission.EDIT_PROJECTS)
 def my_requests_actions(project):
     """One project's offers, each enabled or disabled with its reason."""
-    from sam.integration.xras_api.admin_client import XrasAdminClient
 
     config = _config()
     decision, outage = _decide(project, config)
     available = []
     if decision is not None and decision.allowed:
         try:
-            available = XrasAdminClient.from_environment(config).available_action_requests(
+            available = admin_client(config).available_action_requests(
                 current_user.username)
         except XrasSourceUnavailable as exc:
             current_app.logger.warning('my requests offers read %s: %s',
@@ -134,6 +131,25 @@ def my_requests_actions(project):
 
 def _message(title, message, variant='warning'):
     return render_template(_MESSAGE, title=title, message=message, variant=variant)
+
+
+def _refuse_unless_armed(config, action_type):
+    """``FormError`` unless this session may file *action_type* here."""
+    if is_impersonating():
+        raise FormError('You are viewing SAM as another user. They file their own '
+                        'requests, under their own agreement.')
+    if not config.submit_allows(action_type):
+        raise FormError(f'{action_type} requests through SAM are not enabled here.')
+
+
+def _read_upload(field, label):
+    """``(filename, content, why not)`` for the PDF posted as *field*."""
+    from sam.xras.submission_preflight import document_refusal
+    upload = request.files.get(field)
+    if upload is None or not upload.filename:
+        return None, None, f'Attach the {label}.'
+    content = upload.read()
+    return upload.filename, content, document_refusal(upload.filename, content)
 
 
 class _RequestForm(HtmxFormHandler):
@@ -161,18 +177,14 @@ class _RequestForm(HtmxFormHandler):
             return self._ctx
         from webapp.register.eula import eula_sha
         config = _config()
-        if session.get('impersonator_id'):
-            raise FormError('You are viewing SAM as another user. They file their own '
-                            'requests, under their own agreement.')
-        if not config.submit_allows(self.action_type):
-            raise FormError(f'{self.action_type} requests through SAM are not enabled here.')
+        _refuse_unless_armed(config, self.action_type)
         decision, outage = _decide(self.project, config)
         if outage:
             raise FormError(outage)
         if not decision.allowed:
             raise FormError(decision.message)
         self._ctx = dict(project=self.project, action_type=self.action_type,
-                         decision=decision, eula_sha=eula_sha(),
+                         decision=decision, eula_sha=eula_sha(), grant_inputs=list(GRANT_INPUTS),
                          post_url=request.path, **self._type_context(config, decision))
         return self._ctx
 
@@ -188,11 +200,10 @@ class _RequestForm(HtmxFormHandler):
 
     def _renewal_context(self, config, decision, floor):
         """XRAS's renewal offer for the line (opportunity, resources, award period) and its rule book."""
-        from sam.integration.xras_api.admin_client import XrasAdminClient
         from sam.integration.xras_api.rule_book import rule_book
         from sam.xras.submission_preflight import line_resources
         try:
-            offers = XrasAdminClient.from_environment(config).available_action_requests(
+            offers = admin_client(config).available_action_requests(
                 current_user.username)
         except XrasSourceUnavailable:
             raise FormError('XRAS is not answering, so the renewal cannot be offered now.')
@@ -200,11 +211,11 @@ class _RequestForm(HtmxFormHandler):
                       and o['request_number'] == decision.request_number), None)
         if offer is None:
             raise FormError('XRAS offers no renewal for this project right now.')
-        rules = rule_book(_reader(config), offer['allocation_type_id'], 'Renewal',
+        rules = rule_book(read_client(config), offer['allocation_type_id'], 'Renewal',
                           allocation_type_name=offer['allocation_type'])
         begin = floor + timedelta(days=1) if floor else datetime.now().date()
         months = offer.get('award_months') or 12
-        end = _add_months(begin, months) - timedelta(days=1)
+        end = add_months(begin, months) - timedelta(days=1)
         held = {r['resource_id'] for r in line_resources(decision.line)}
         resources = [dict(r, prefill=r['resource_id'] in held) for r in offer['resources']]
         return {'floor': floor, 'offer': offer, 'rules': rules,
@@ -219,7 +230,7 @@ class _RequestForm(HtmxFormHandler):
         from sam.integration.xras_api.people import resource_key_map
         from sam.xras.submission_preflight import sam_resources_by_xras_id
         try:
-            catalog = _reader(config).get_resources()
+            catalog = read_client(config).get_resources()
         except XrasSourceUnavailable:
             catalog = None
         keys = resource_key_map(catalog) if catalog else None
@@ -230,6 +241,8 @@ class _RequestForm(HtmxFormHandler):
             resource = sam.get(r['resource_id'])
             r['sam_name'] = resource.resource_name if resource is not None else None
             r['limit'] = limits.get(r['sam_name']) if r['sam_name'] else None
+            # XRAS's "Yes/No" unit is a checkbox, not an amount.
+            r['yes_no'] = (r.get('units') or '').replace(' ', '').lower() == 'yes/no'
         return {'resources': resources, 'resource_keys': keys}
 
     def context(self):
@@ -261,7 +274,6 @@ class _RequestForm(HtmxFormHandler):
 
     def clean(self, data):
         from marshmallow import ValidationError
-        from sam.xras.submission_preflight import limit_refusals, preflight_draft
         ctx = self.gate()
         if data['stage'] == 'edit':
             return data
@@ -275,31 +287,43 @@ class _RequestForm(HtmxFormHandler):
                 errors = self._grant_errors(data, ctx['rules'])
                 if errors:
                     raise ValidationError(errors)
-            by_id = {r['resource_id']: r for r in ctx['resources']}
-            unknown = [rid for rid in data['amounts'] if rid not in by_id]
-            if unknown:
-                raise FormError('XRAS does not offer one of those resources here; '
-                                'reopen the form.')
-            named = {by_id[rid]['sam_name']: amt for rid, amt in data['amounts'].items()
-                     if by_id[rid]['sam_name']}
-            refused = limit_refusals(db.session, _type_name(self.project), named)
-            errors = {f'amount_{rid}': [refused[by_id[rid]['sam_name']]]
-                      for rid in data['amounts'] if by_id[rid]['sam_name'] in refused}
-            if errors:
-                raise ValidationError(errors)
+            self._check_limits(data, ctx, _type_name(self.project))
+        return self._assemble(data, ctx)
+
+    def _check_limits(self, data, ctx, type_name):
+        """Every amount names a resource XRAS offers here, within SAM's limits for *type_name*."""
+        from marshmallow import ValidationError
+        from sam.xras.submission_preflight import limit_refusals
+        by_id = {r['resource_id']: r for r in ctx['resources']}
+        if any(rid not in by_id for rid in data['amounts']):
+            raise FormError('XRAS does not offer one of those resources here; reopen the form.')
+        named = {by_id[rid]['sam_name']: amt for rid, amt in data['amounts'].items()
+                 if by_id[rid]['sam_name']}
+        refused = limit_refusals(db.session, type_name, named)
+        errors = {f'amount_{rid}': [refused[by_id[rid]['sam_name']]]
+                  for rid in data['amounts'] if by_id[rid]['sam_name'] in refused}
+        if errors:
+            raise ValidationError(errors)
+
+    def _assemble(self, data, ctx):
+        """Review and submit share this tail: the documents, the draft, the verdict, back to review."""
         if data['stage'] == 'submit' and ctx.get('documents'):
             data['documents'], data['document_error'] = self._attached(ctx['documents'])
         data['draft'] = self.draft(data)
-        offer = ctx.get('offer')
-        data['verdict'] = preflight_draft(
-            db.session, ctx['decision'].line, data['draft'], resource_keys=ctx['resource_keys'],
-            opportunities={offer['opportunity_id']: {'allocationType': offer['allocation_type']}}
-            if offer else None)
+        data['verdict'] = self._verdict(data, ctx)
         if data['stage'] == 'submit':
             back = self._back_to_review(data)
             if back:
                 data.update(stage='review', review_error=back)
         return data
+
+    def _verdict(self, data, ctx):
+        from sam.xras.submission_preflight import preflight_draft
+        offer = ctx.get('offer')
+        return preflight_draft(
+            db.session, ctx['decision'].line, data['draft'], resource_keys=ctx['resource_keys'],
+            opportunities={offer['opportunity_id']: {'allocationType': offer['allocation_type']}}
+            if offer else None)
 
     @staticmethod
     def _grant_errors(data, rules):
@@ -320,18 +344,12 @@ class _RequestForm(HtmxFormHandler):
     def _attached(rules):
         """``(documents, why not)`` for the uploads the rule book requires."""
         from sam.manage.xras_submission import SubmissionDocument
-        from sam.xras.submission_preflight import document_refusal
         documents = []
         for rule in rules:
-            upload = request.files.get(f'document_{rule.code}')
-            if upload is None or not upload.filename:
-                return [], f'Attach the {rule.label}.'
-            content = upload.read()
-            why = document_refusal(upload.filename, content)
+            filename, content, why = _read_upload(f'document_{rule.code}', rule.label)
             if why:
                 return [], why
-            documents.append(SubmissionDocument(rule.code, upload.filename, content,
-                                                title=rule.label))
+            documents.append(SubmissionDocument(rule.code, filename, content, title=rule.label))
         return documents, None
 
     def _back_to_review(self, data):
@@ -340,21 +358,18 @@ class _RequestForm(HtmxFormHandler):
             return 'SAM could not apply this once approved. Go back and change it.'
         if data.get('document_error'):
             return data['document_error']
-        if data['eula_sha'] != self._ctx['eula_sha']:
-            return 'The terms changed since this page opened. Read them and accept again.'
-        if not data['agree']:
-            return 'Accept the terms of use to file this request.'
-        return None
+        from webapp.register.eula import agreement_problem
+        return agreement_problem(data['eula_sha'], data['agree'], shown_sha=self._ctx['eula_sha'])
 
     def perform(self, data):
         if data['stage'] != 'submit':
             return data
         from sam.manage import xras_submission as flow
-        username = current_user.username
+        from webapp.register.eula import accepted
         try:
             data['outcome'] = flow.request_action(
-                _session_factory, data['draft'], actor=username, xa_user=username,
-                eula=(data['eula_sha'], datetime.now()), door='pi')
+                _session_factory, data['draft'], actor=acting_username(),
+                xa_user=current_user.username, eula=accepted(data['eula_sha']), door='pi')
         except flow.SubmissionRefused as exc:
             raise FormError(str(exc))
         return data
@@ -368,28 +383,12 @@ class _RequestForm(HtmxFormHandler):
         return render_template(_OUTCOME, outcome=data['outcome'], **ctx)
 
 
-def _add_months(day, months):
-    """*day* moved *months* ahead, clamped to the target month's last day."""
-    import calendar
-    month = day.month - 1 + months
-    year, month = day.year + month // 12, month % 12 + 1
-    return day.replace(year=year, month=month,
-                       day=min(day.day, calendar.monthrange(year, month)[1]))
-
-
-def _form_type(kind):
-    action_type = _FORM_TYPES.get(kind)
-    if action_type is None:
-        abort(404)
-    return action_type
-
-
 @bp.route('/requests/<projcode>/<any(extension, supplement, renewal):kind>')
 @login_required
 @require_project_permission(Permission.EDIT_PROJECTS)
 def my_request_form(project, kind):
     """The request form, into ``#xrasRequestModalBody``; a refusal renders as a message."""
-    handler = _RequestForm(project=project, action_type=_form_type(kind))
+    handler = _RequestForm(project=project, action_type=_FORM_TYPES[kind])
     try:
         ctx = handler.gate()
     except FormError as exc:
@@ -401,7 +400,7 @@ def my_request_form(project, kind):
 @login_required
 @require_project_permission(Permission.EDIT_PROJECTS)
 def my_request_post(project, kind):
-    return _RequestForm(project=project, action_type=_form_type(kind)).handle()
+    return _RequestForm(project=project, action_type=_FORM_TYPES[kind]).handle()
 
 
 # the New request: describe -> request -> review -> submit
@@ -417,9 +416,8 @@ _DESCRIBE_FIELDS = ('opportunity_id', 'title', 'abstract', 'keywords', 'fos_type
 
 def _new_opportunities(config):
     """The open opportunities as the current user sees them; ``FormError`` on an outage."""
-    from sam.integration.xras_api.admin_client import XrasAdminClient
     try:
-        return XrasAdminClient.from_environment(config).new_request_opportunities(
+        return admin_client(config).new_request_opportunities(
             current_user.username)
     except XrasSourceUnavailable as exc:
         current_app.logger.warning('my requests opportunities %s: %s', current_user.username, exc)
@@ -443,7 +441,7 @@ def _opportunity_context(config, opportunity):
     from sam.xras.submission_preflight import new_request_sam_state
     if opportunity is None:
         return {'opportunity': None, 'rules': None, 'sam_state': None}
-    rules = rule_book(_reader(config), opportunity['allocation_type_id'], 'New',
+    rules = rule_book(read_client(config), opportunity['allocation_type_id'], 'New',
                       allocation_type_name=opportunity['allocation_type'])
     pi = User.get_by_username(db.session, current_user.username)
     return {'opportunity': opportunity, 'rules': rules,
@@ -460,10 +458,6 @@ def _mnemonic_label(mnemonic_code_id):
     return code.code if code is not None else ''
 
 
-def _first_of_next_month(day):
-    return (day.replace(day=1) + timedelta(days=32)).replace(day=1)
-
-
 class _NewRequestForm(_RequestForm):
     """A New through describe -> request -> review -> submit; nothing reaches XRAS before submit."""
 
@@ -474,22 +468,12 @@ class _NewRequestForm(_RequestForm):
         HtmxFormHandler.__init__(self, project=None, action_type='New')
         self._ctx = None
 
-    def form_input(self):
-        raw = request.form.to_dict()
-        raw['amounts'] = {k[len('amount_'):]: v for k, v in request.form.items()
-                          if k.startswith('amount_')}
-        return raw
-
     def gate(self):
         if self._ctx is not None:
             return self._ctx
         from webapp.register.eula import eula_sha
         config = _config()
-        if session.get('impersonator_id'):
-            raise FormError('You are viewing SAM as another user. They file their own '
-                            'requests, under their own agreement.')
-        if not config.submit_allows('New'):
-            raise FormError('New requests through SAM are not enabled here.')
+        _refuse_unless_armed(config, 'New')
         opportunities = _new_opportunities(config)
         chosen = _chosen(opportunities, request.values.get('opportunity_id', type=int))
         fos = _fos_options()
@@ -513,8 +497,8 @@ class _NewRequestForm(_RequestForm):
         opportunity, state = self._ctx['opportunity'], self._ctx['sam_state']
         if opportunity is None:
             return {'resources': [], 'resource_keys': None, 'documents': []}
-        begin = _first_of_next_month(datetime.now().date())
-        end = _add_months(begin, opportunity.get('award_months') or 12) - timedelta(days=1)
+        begin = first_of_next_month(datetime.now().date())
+        end = add_months(begin, opportunity.get('award_months') or 12) - timedelta(days=1)
         type_name = state['allocation_type'].allocation_type if state['allocation_type'] else None
         resources = [dict(r) for r in opportunity['resources']]
         return {'default_begin': begin, 'default_end': end, 'sam_type_name': type_name,
@@ -548,19 +532,8 @@ class _NewRequestForm(_RequestForm):
             raise ValidationError(errors)
         if data['stage'] == 'request':
             return data
-        by_id = {r['resource_id']: r for r in ctx['resources']}
-        if any(rid not in by_id for rid in data['amounts']):
-            raise FormError('XRAS does not offer one of those resources here; start again.')
-        self._check_limits(data, by_id, ctx.get('sam_type_name'))
-        if data['stage'] == 'submit' and ctx['documents']:
-            data['documents'], data['document_error'] = self._attached(ctx['documents'])
-        data['draft'] = self.draft(data)
-        data['verdict'] = self._verdict(data, ctx)
-        if data['stage'] == 'submit':
-            back = self._back_to_review(data)
-            if back:
-                data.update(stage='review', review_error=back)
-        return data
+        self._check_limits(data, ctx, ctx.get('sam_type_name'))
+        return self._assemble(data, ctx)
 
     def _describe_errors(self, data, ctx):
         """Page one's checks against XRAS and SAM, as ``{field: [message]}``."""
@@ -597,25 +570,13 @@ class _NewRequestForm(_RequestForm):
 
     @staticmethod
     def _in_xras(username):
-        from sam.integration.xras_api.admin_client import XrasAdminClient
         from sam.integration.xras_api.base import XrasWriteRejected
         try:
-            return XrasAdminClient.from_environment(_config()).get_person(username) is not None
+            return admin_client(_config()).get_person(username) is not None
         except XrasWriteRejected:
             return False
         except XrasSourceUnavailable:
             return True        # the add_role step is the backstop
-
-    def _check_limits(self, data, by_id, type_name):
-        from marshmallow import ValidationError
-        from sam.xras.submission_preflight import limit_refusals
-        named = {by_id[rid]['sam_name']: amt for rid, amt in data['amounts'].items()
-                 if by_id[rid]['sam_name']}
-        refused = limit_refusals(db.session, type_name, named)
-        errors = {f'amount_{rid}': [refused[by_id[rid]['sam_name']]]
-                  for rid in data['amounts'] if by_id[rid]['sam_name'] in refused}
-        if errors:
-            raise ValidationError(errors)
 
     def _verdict(self, data, ctx):
         """The preflight on the draft; a code the PI chose stands in for the ladder's miss."""
@@ -701,16 +662,17 @@ def my_request_new_opportunity_fragment():
     return render_template(_NEW_OPPORTUNITY, form=None, field_errors={}, oob=True, **ctx)
 
 
-@bp.route('/requests/htmx/mnemonic-suggest')
-@login_required
-def my_requests_mnemonic_suggest():
+def _search_mnemonic_codes(q, active_only):
     from sam.queries.mnemonic_console import search_mnemonic_codes
-    q = (request.args.get('q') or '').strip()
-    if len(q) < 2:
-        return ''
-    return render_template(
-        'dashboards/allocations/partials/mnemonic_code_search_results_fk_htmx.html',
-        q=q, codes=search_mnemonic_codes(db.session, q, limit=10))
+    return search_mnemonic_codes(db.session, q, limit=10)
+
+
+register_typeahead(
+    bp, rule='/requests/htmx/mnemonic-suggest', endpoint='my_requests_mnemonic_suggest',
+    permission=None,                    # any user may pick the letters for a New
+    search=_search_mnemonic_codes,
+    template='dashboards/allocations/partials/mnemonic_code_search_results_fk_htmx.html',
+    ctx_key='codes')
 
 
 @bp.route('/requests/htmx/award-lookup')
@@ -752,6 +714,13 @@ def _owned_submission(submission_id):
     return row
 
 
+def _door(row):
+    """The PI door for the row's own PI; an operator who opened it, or any manager, the admin door."""
+    if current_user.username == row.xa_user:
+        return 'pi'
+    return 'admin'
+
+
 def _refresh():
     """Reload the page: both cards change, and the picker's pending reason with them."""
     resp = make_response('', 204)
@@ -767,15 +736,10 @@ def _resume_documents(row):
     import hashlib
     from sam.manage.xras_submission import SubmissionDocument
     from sam.queries.xras_my_requests import missing_documents
-    from sam.xras.submission_preflight import document_refusal
     documents, notes = [], []
     for wanted in missing_documents(db.session, row):
         label = wanted.get('title') or wanted['document_type']
-        upload = request.files.get(f"document_{wanted['document_type']}")
-        if upload is None or not upload.filename:
-            return [], f'Attach the {label}.', []
-        content = upload.read()
-        why = document_refusal(upload.filename, content)
+        _, content, why = _read_upload(f"document_{wanted['document_type']}", label)
         if why:
             return [], why, []
         if wanted.get('sha256') and hashlib.sha256(content).hexdigest() != wanted['sha256']:
@@ -793,7 +757,7 @@ def my_request_resume_fragment(submission_id):
     from sam.queries.xras_my_requests import missing_documents
     row = _owned_submission(submission_id)
     return render_template(_RESUME, row=row, missing=missing_documents(db.session, row),
-                           error=None)
+                           errors=[])
 
 
 @bp.route('/requests/<int:submission_id>/resume', methods=['POST'])
@@ -802,15 +766,15 @@ def my_request_resume(submission_id):
     from sam.manage import xras_submission as flow
     from sam.queries.xras_my_requests import missing_documents
     row = _owned_submission(submission_id)
-    door = 'pi' if current_user.username == row.xa_user else 'admin'
+    door = _door(row)
     documents, notes = (), []
     if missing_documents(db.session, row):
         documents, error, notes = _resume_documents(row)
         if error:
             return render_template(_RESUME, row=row,
-                                   missing=missing_documents(db.session, row), error=error)
+                                   missing=missing_documents(db.session, row), errors=[error])
     try:
-        flow.resume_submission(_session_factory, submission_id, actor=current_user.username,
+        flow.resume_submission(_session_factory, submission_id, actor=acting_username(),
                                door=door, documents=tuple(documents))
     except (flow.SubmissionRefused, LookupError, XrasSourceUnavailable) as exc:
         current_app.logger.warning('my requests resume %s: %s', submission_id, exc)
@@ -824,9 +788,10 @@ def my_request_resume(submission_id):
 @login_required
 def my_request_abort(submission_id):
     from sam.manage import xras_submission as flow
-    _owned_submission(submission_id)
+    row = _owned_submission(submission_id)
     try:
-        flow.abort_submission(_session_factory, submission_id, actor=current_user.username)
+        flow.abort_submission(_session_factory, submission_id, actor=acting_username(),
+                              door=_door(row))
     except (flow.SubmissionRefused, LookupError, XrasSourceUnavailable) as exc:
         current_app.logger.warning('my requests abort %s: %s', submission_id, exc)
         flash(str(exc), 'warning')

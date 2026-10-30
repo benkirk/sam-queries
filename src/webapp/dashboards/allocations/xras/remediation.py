@@ -65,6 +65,7 @@ from sam.schemas.forms import (
     XrasRoleForm,
 )
 from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
+from webapp.auth.impersonation import acting_username
 from webapp.extensions import db
 from webapp.utils.fk_validation import FKValidationError, validate_fk_existence
 from webapp.utils.form_handler import FormError, HtmxFormHandler
@@ -362,7 +363,7 @@ def xras_set_override():
     with management_transaction(db.session):
         XrasRequestOverride.set(
             db.session, request_number=request_number, kind=data['kind'],
-            created_by=current_user.username,
+            created_by=acting_username(),
             mnemonic_code_id=data.get('mnemonic_code_id'),
             request_id=_form_request_id(), comment=data.get('comment'))
     remediation.recheck_readiness(request_number, session=db.session)
@@ -813,7 +814,7 @@ class _XrasMergeHandler(_XrasRemediationHandler):
         outcome = remediation.merge_placeholder(
             _session_factory, source_username=self.username,
             target_username=data['target_username'],
-            operator=current_user.username, comment=data.get('comment'))
+            operator=acting_username(), comment=data.get('comment'))
         self._target = data['target_username']
         return self._finish(outcome, verb='The merge')
 
@@ -967,7 +968,7 @@ class _XrasWithdrawHandler(_XrasRemediationHandler):
             _session_factory, request_number=self.request_number,
             request_id=self._context['request_id'], action_id=self.action_id,
             pi_username=self._context['xa_user'],
-            operator=current_user.username, comment=data['comment'])
+            operator=acting_username(), comment=data['comment'])
         return self._finish(outcome, verb='The withdrawal')
 
     def detail(self, result):
@@ -1025,11 +1026,9 @@ def xras_resubmit_form(request_number: str, action_id: int):
     try:
         context = _action_context(request_number, action_id, mode='resubmit')
         if context and context['xa_user'] and context['request_id']:
-            from sam.integration.xras_api.admin_client import XrasAdminClient
-            from sam.integration.xras_api.config import XrasApiConfig
+            from webapp.utils.xras import admin_client
             try:
-                admin = XrasAdminClient.from_environment(
-                    XrasApiConfig.from_environment().interactive())
+                admin = admin_client()
                 context['validation'] = admin.validate_action(
                     context['request_id'], action_id,
                     xa_user=context['xa_user'])
@@ -1090,7 +1089,7 @@ def xras_resubmit(request_number: str, action_id: int):
         outcome = remediation.resubmit_action(
             _session_factory, request_number=request_number,
             request_id=context['request_id'], action_id=action_id,
-            pi_username=context['xa_user'], operator=current_user.username)
+            pi_username=context['xa_user'], operator=acting_username())
     except XrasWriteNotConfigured:
         return _dialog_message('XRAS writes are switched off for this deployment. '
                                'Nothing was sent.')
@@ -1206,7 +1205,7 @@ class _XrasRoleAddHandler(_XrasRemediationHandler):
         outcome = remediation.change_role(
             _session_factory, add=True, request_number=self.request_number,
             request_id=self._context['request_id'], username=data['username'],
-            operator=current_user.username, xa_user=self._context['xa_user'],
+            operator=acting_username(), xa_user=self._context['xa_user'],
             role=data['role_type'], comment=data.get('comment'))
         return self._finish(outcome, verb='The role change')
 
@@ -1282,7 +1281,7 @@ def xras_role_remove(request_number: str, role_id: int):
         outcome = remediation.change_role(
             _session_factory, add=False, request_number=request_number,
             request_id=context['request_id'], username=target.get('username'),
-            operator=current_user.username, xa_user=context['xa_user'],
+            operator=acting_username(), xa_user=context['xa_user'],
             role_id=role_id)
     except XrasWriteNotConfigured:
         return _render_detail(
@@ -1449,7 +1448,7 @@ class _XrasResourceAmountHandler(_XrasRemediationHandler):
             _session_factory, request_number=self.request_number,
             request_id=self._request_id, action_id=self.action_id,
             resource_id=self.resource_id, amount=data['amount'],
-            pi_username=self._xa_user, operator=current_user.username,
+            pi_username=self._xa_user, operator=acting_username(),
             comment=data.get('comment'), context=context)
         return self._finish(outcome, verb='The amount change')
 
@@ -1496,7 +1495,7 @@ def xras_resource_remove(request_number: str, action_id: int,
             _session_factory, request_number=request_number,
             request_id=request_id, action_id=action_id,
             resource_id=resource_id, pi_username=xa_user,
-            operator=current_user.username)
+            operator=acting_username())
     except XrasWriteNotConfigured:
         return _render_detail(request_number, flash_error='XRAS writes are '
                               'switched off for this deployment. Nothing was sent.')
@@ -1586,14 +1585,14 @@ class _XrasActionDatesHandler(_XrasRemediationHandler):
                 request_id=self._request_id, action_id=self.action_id,
                 allocation_date_id=self.allocation_date_id,
                 begin_date=data['begin_date'], end_date=data['end_date'],
-                pi_username=self._xa_user, operator=current_user.username,
+                pi_username=self._xa_user, operator=acting_username(),
                 comment=data.get('comment'))
         else:
             outcome = remediation.set_action_dates(
                 _session_factory, request_number=self.request_number,
                 request_id=self._request_id, action_id=self.action_id,
                 begin_date=data['begin_date'], end_date=data['end_date'],
-                pi_username=self._xa_user, operator=current_user.username,
+                pi_username=self._xa_user, operator=acting_username(),
                 comment=data.get('comment'))
         return self._finish(outcome, verb='The date change')
 
@@ -1634,7 +1633,7 @@ def xras_dates_remove(request_number: str, action_id: int,
             _session_factory, request_number=request_number,
             request_id=request_id, action_id=action_id,
             allocation_date_id=allocation_date_id, pi_username=xa_user,
-            operator=current_user.username)
+            operator=acting_username())
     except XrasWriteNotConfigured:
         return _render_detail(request_number, flash_error='XRAS writes are '
                               'switched off for this deployment. Nothing was sent.')
@@ -1718,7 +1717,7 @@ class _XrasAttributesHandler(_XrasRemediationHandler):
         outcome = remediation.update_request_attributes(
             _session_factory, request_number=self.request_number,
             request_id=self._request_id, fields=fields,
-            pi_username=self._xa_user, operator=current_user.username)
+            pi_username=self._xa_user, operator=acting_username())
         return self._finish(outcome, verb='The attribute change')
 
     def on_success(self, result):
@@ -1808,7 +1807,7 @@ class _XrasActionFieldsHandler(_XrasRemediationHandler):
             _session_factory, request_number=self.request_number,
             request_id=self._request_id, action_id=self.action_id,
             fields=fields, pi_username=self._xa_user,
-            operator=current_user.username)
+            operator=acting_username())
         return self._finish(outcome, verb='The action field change')
 
     def on_success(self, result):
@@ -1869,7 +1868,7 @@ def xras_request_delete(request_number: str):
             outcome = remediation.delete_request(
                 _session_factory, request_number=request_number,
                 request_id=request_id, pi_username=xa_user,
-                operator=current_user.username)
+                operator=acting_username())
         except XrasWriteNotConfigured:
             return _dialog_message('XRAS writes are switched off for this '
                                  'deployment. Nothing was sent.')
@@ -1914,7 +1913,7 @@ def xras_request_renew(request_number: str):
         outcome = remediation.renew_request(
             _session_factory, request_number=request_number,
             request_id=request_id, pi_username=xa_user,
-            operator=current_user.username)
+            operator=acting_username())
     except XrasWriteNotConfigured:
         return _render_detail(request_number, flash_error='XRAS writes are '
                               'switched off for this deployment. Nothing was sent.')
@@ -1965,13 +1964,14 @@ class _XrasAddActionHandler(_XrasRemediationHandler):
     success_message = 'Action added in XRAS.'
 
     def clean(self, data):
-        from webapp.register.eula import eula_sha
+        from webapp.register.eula import accepted, agreement_problem
         self._request_id, self._xa_user = _editor_target(self.request_number)
         if data['action_type'] in _FLOW_ACTION_TYPES:
             agreement = XrasAddActionAgreementForm().load(request.form)
-            if not agreement['agree'] or agreement['eula_sha'] != eula_sha():
-                raise FormError('Confirm the request is filed under the terms of use.')
-            data['eula'] = (agreement['eula_sha'], datetime.now())
+            problem = agreement_problem(agreement['eula_sha'], agreement['agree'])
+            if problem:
+                raise FormError(problem)
+            data['eula'] = accepted(agreement['eula_sha'])
         return data
 
     def perform(self, data):
@@ -1979,7 +1979,7 @@ class _XrasAddActionHandler(_XrasRemediationHandler):
             outcome = remediation.add_action(
                 _session_factory, request_number=self.request_number,
                 request_id=self._request_id, action_type=data['action_type'],
-                pi_username=self._xa_user, operator=current_user.username)
+                pi_username=self._xa_user, operator=acting_username())
             return self._finish(outcome, verb='Adding the action')
         from sam.manage import xras_submission as flow
         project = Project.get_by_projcode(db.session, self.request_number)
@@ -1989,7 +1989,7 @@ class _XrasAddActionHandler(_XrasRemediationHandler):
             sam=flow.SamRefs(project_id=project.project_id if project else None))
         try:
             filed = flow.request_action(
-                _session_factory, draft, actor=current_user.username,
+                _session_factory, draft, actor=acting_username(),
                 xa_user=self._xa_user, eula=data['eula'], submit=False, door='admin')
         except flow.SubmissionRefused as exc:
             raise FormError(str(exc))

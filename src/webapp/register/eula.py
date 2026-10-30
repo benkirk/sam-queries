@@ -78,3 +78,19 @@ def eula_text() -> str:
         else:
             out.append(_fill(line))
     return '\n'.join(out).strip() + '\n'
+
+
+def agreement_problem(posted_sha, agreed, shown_sha=None):
+    """Why a posted agreement does not count, or ``None``: the text changed under the form, or
+    the box is unticked. *shown_sha* is the sha the form rendered (the live one by default)."""
+    if posted_sha != (shown_sha or eula_sha()):
+        return 'The terms changed since this page opened. Read them and accept again.'
+    if not agreed:
+        return 'Accept the terms of use to file this request.'
+    return None
+
+
+def accepted(sha):
+    """The ``(sha, accepted_at)`` pair a submission records."""
+    from datetime import datetime
+    return sha, datetime.now()

@@ -4,10 +4,9 @@
     offer, rules (the grant when it wants one), documents, default_begin, default_end,
     line_abstract. -#}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
-{% from 'dashboards/fragments/modals.html' import modal_title %}
 {% from 'dashboards/fragments/form_fields.html' import date_field, textarea_field with context %}
-{% from 'dashboards/user/partials/request_bits.html' import amounts_table %}
-{{ modal_title('xrasRequestModalLabel', action_type ~ ' request', 'paper-plane', meta=project.projcode) }}
+{% from 'dashboards/user/partials/request_bits.html' import request_title, amounts_table, attach_note %}
+{{ request_title(action_type ~ ' request', meta=project.projcode) }}
 {% call htmx_form(post_url, '#xrasRequestModalBody', 'Review', submit_icon='arrow-right',
                   errors=errors, disabled=not decision) %}
     <input type="hidden" name="stage" value="review">
@@ -16,9 +15,7 @@
         XRAS request <span class="font-monospace">{{ decision.request_number }}</span>
         {%- if action_type == 'Extension' and floor %}; the project's allocations end {{ floor | fmt_date }}{% endif %}
         {%- if action_type == 'Renewal' and offer %}; renews under {{ offer.opportunity_name }}{% endif %}.
-        {%- if action_type == 'Renewal' and documents %}
-        <span class="d-block">You attach the {{ documents | map(attribute='label') | join(' and ') }} at the review.</span>
-        {%- endif %}
+        {%- if action_type == 'Renewal' %}{{ attach_note(documents) }}{% endif %}
     </div>
     {% endif %}
     {% if action_type == 'Extension' %}

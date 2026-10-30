@@ -5,10 +5,10 @@ from datetime import datetime
 import pytest
 
 from sam.integration.xras_submission import (
+    UNKNOWN_STEP,
     XrasSubmission,
-    lookup_submission_by_request_id,
+    documents_to_reattach,
     open_submission_for,
-    open_submissions_for_user,
     submission_by_action_id,
 )
 
@@ -90,29 +90,34 @@ class TestLifecycle:
         assert (row.request_id, row.request_number) == (_LINE, 'NCAR9999')
 
 
-class TestLookups:
+class TestStepStatuses:
+    """One reader for the flow and the page: a step with no readable audit row is unknown."""
 
-    def test_by_request_id_skips_aborted_and_prefers_the_newest(self, session):
-        _open(session).advance('aborted')
-        older = _open(session, action_type='Supplement')
-        newer = _open(session, action_type='Extension', by='xsub-other')
-        assert lookup_submission_by_request_id(session, _LINE) is newer
-        newer.advance('aborted')
-        assert lookup_submission_by_request_id(session, _LINE) is older
-        assert lookup_submission_by_request_id(session, None) is None
+    def test_a_recorded_event_reads_its_status_and_a_lost_one_is_unknown(self, session):
+        from sam.integration.xras import XrasRemediationEvent
+        from sam.integration.xras_submission import step_statuses
+        event = XrasRemediationEvent.create(session, operation='add_action', created_by='p',
+                                            xa_user='p', status='verified')
+        statuses = step_statuses(session, {'mint': event.xras_remediation_event_id,
+                                           'dates': None, 'grant:1': 1})
+        assert statuses == {'mint': 'verified', 'dates': UNKNOWN_STEP, 'grant:1': UNKNOWN_STEP}
+        assert step_statuses(session, {}) == {}
+
+    @pytest.mark.parametrize('status, needed', [
+        (None, True), ('rejected', True), ('verified', False), ('unverified', False),
+        ('error', False), (UNKNOWN_STEP, False)])
+    def test_only_a_never_sent_or_refused_document_is_reattached(self, status, needed):
+        statuses = {} if status is None else {'document:letter.pdf': status}
+        assert documents_to_reattach(statuses, ['letter.pdf']) == (
+            ['letter.pdf'] if needed else [])
+
+
+class TestLookups:
 
     def test_by_action_id(self, session):
         row = _open(session, action_id=98_700_102)
         assert submission_by_action_id(session, 98_700_102) is row
         assert submission_by_action_id(session, 98_700_103) is None
-
-    def test_open_rows_for_a_user_cover_both_doors(self, session):
-        mine = _open(session)
-        on_my_behalf = XrasSubmission.create(
-            session, action_type='Supplement', created_by='xsub-operator',
-            xa_user='xsub-pi', payload={}, request_id=_LINE, **_EULA)
-        _open(session, action_type='Renewal').advance('aborted')
-        assert set(open_submissions_for_user(session, 'xsub-pi')) == {mine, on_my_behalf}
 
     def test_the_second_open_guard_is_per_actor_line_and_type(self, session):
         row = _open(session)

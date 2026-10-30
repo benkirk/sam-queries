@@ -1,9 +1,8 @@
 # jobhist-sync writer role — narrowing the ingest off the Postgres superuser
 
-**Status:** in rollout, 2026-09-28. §2 merged as hpc-usage-queries#119 and is in
-`:staging` (sam-queries#654 made the build pick it up). The `jobhist_writer` role exists
-with the §3 grants, and the soak's prod-lane override uses it (§6). Prod swaps once a
-`:main` carrying #119 is current (§5 steps 2 and 4). **See also:**
+**Status:** done. §2 merged as hpc-usage-queries#119 (sam-queries#654 made the build pick it
+up); the `jobhist_writer` role exists with the §3 grants, and every lane runs the ingest as it
+since 2026-10-09 (`HPC_LANE_ENV_LAYERING.md`, steps 2 and 4). **See also:**
 `containers/ncar-hpc-deploy/README.md` (lanes, env overlays), PR #645.
 **Goal:** the routine `jobhist-sync` ingest runs as a DML-only role; schema work becomes an
 explicit, rare step run by the DB owner.

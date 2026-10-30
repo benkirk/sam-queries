@@ -105,9 +105,6 @@ ACTION_TYPES = {
     'Adjustment': 500168, 'Final Report': 500022, 'Date Adjustment': 500334,
 }
 
-#: ``GET /v1/types/all`` ``requestTypes``: NCAR has these two only.
-REQUEST_TYPES = {'New': 6, 'Renewal': 7}
-
 #: The action types SAM files for a user, in the order the picker offers them.
 SUBMIT_ACTION_TYPES = ('Extension', 'Supplement', 'Renewal', 'New')
 

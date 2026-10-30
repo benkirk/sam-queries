@@ -12,6 +12,9 @@ from __future__ import annotations
 import os
 import re
 from datetime import date, datetime
+
+from sam.dates import format_ymd
+from sam.xras.wire import resource_label
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 
@@ -25,8 +28,7 @@ def line_resources(line: Optional[Mapping[str, Any]]) -> List[Dict[str, Any]]:
             if rid is None or rid in seen:
                 continue
             seen[rid] = {'resource_id': rid,
-                         'name': res.get('displayResourceName') or res.get('resourceName')
-                         or f'resource {rid}',
+                         'name': resource_label(res, rid),
                          'units': res.get('resourceUnits') or ''}
     return sorted(seen.values(), key=lambda r: r['name'])
 
@@ -80,10 +82,6 @@ def limit_refusals(session, allocation_type_name: Optional[str],
     return out
 
 
-def _wire_date(value) -> Optional[str]:
-    return value.isoformat() if value is not None else None
-
-
 def draft_action(draft) -> Dict[str, Any]:
     """The reports-shaped action *draft* (an ``ActionRequest``) would become."""
     begin, end = draft.dates if draft.dates else (None, None)
@@ -94,8 +92,8 @@ def draft_action(draft) -> Dict[str, Any]:
                       for r in draft.resources]}
     if begin or end:
         action['allocationDates'] = [{'allocationDateType': 'Requested',
-                                      'beginDate': _wire_date(begin),
-                                      'endDate': _wire_date(end)}]
+                                      'beginDate': format_ymd(begin),
+                                      'endDate': format_ymd(end)}]
     return action
 
 
@@ -125,8 +123,9 @@ def new_request_sam_state(session, opportunity: Mapping[str, Any], pi) -> Dict[s
             'affiliation': getattr(where, 'name', None), 'mnemonic_errors': list(mnemonic_errors)}
 
 
-#: The push spells the agency by name; ``add_grant`` sends its id.
-_NSF_NAME = 'National Science Foundation'
+#: The push spells the agency by name; ``add_grant`` sends ``vocabulary.NSF_FUNDING_AGENCY_ID``.
+#: Not imported from there: the inbound boundary gate keeps ``xras_api`` out of ``sam.xras``.
+NSF_FUNDING_AGENCY_NAME = 'National Science Foundation'
 
 
 def new_request_line(draft, *, pi_username: str, opportunity: Mapping[str, Any],
@@ -136,8 +135,8 @@ def new_request_line(draft, *, pi_username: str, opportunity: Mapping[str, Any],
     if draft.admin_username:
         roles.append({'person': {'username': draft.admin_username},
                       'roles': [{'role': 'Allocation Manager'}]})
-    grants = [{**{k: _wire_date(v) if isinstance(v, date) else v for k, v in g.items()
-                  if k != 'fundingAgencyId'}, 'fundingAgency': _NSF_NAME} for g in draft.grants]
+    grants = [{**{k: format_ymd(v) if isinstance(v, date) else v for k, v in g.items()
+                  if k != 'fundingAgencyId'}, 'fundingAgency': NSF_FUNDING_AGENCY_NAME} for g in draft.grants]
     return {**_wire_opportunity(opportunity), 'requestId': None, 'requestType': 'New',
             'requestStatus': 'Incomplete', 'title': draft.title, 'abstract': draft.abstract,
             'roles': roles, 'fos': [dict(fos, isPrimary=True)] if fos else [],

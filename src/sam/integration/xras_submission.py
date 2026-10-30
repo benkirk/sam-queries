@@ -11,12 +11,13 @@ DDL: ``scripts/sql/create_xras_submission.sql`` and its ``_pg`` twin. Design:
 
 import json
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import Column, DateTime, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from sam.base import Base, SessionMixin
+from sam.integration.xras import as_json_text
 
 #: Every legal ``state``. A bare ``VARCHAR`` in both dialects, so this tuple is the check.
 XRAS_SUBMISSION_STATES = ('draft', 'created', 'populated', 'submitted', 'aborted', 'applied')
@@ -38,9 +39,10 @@ _NEXT = {
 _STAMP = {'submitted': 'submitted_time', 'applied': 'applied_time',
           'aborted': 'aborted_time'}
 
-
-def _dumps(value: Any) -> Optional[str]:
-    return None if value is None else json.dumps(value, default=str, sort_keys=True)
+#: The status of a recorded step whose audit row cannot be read: the audit write failed
+#: (``_open_event`` logs and returns ``None``) or the row is gone. The write may have
+#: landed, so a resume treats it like an unverified one.
+UNKNOWN_STEP = 'unknown'
 
 
 class XrasSubmission(Base, SessionMixin):
@@ -120,17 +122,20 @@ class XrasSubmission(Base, SessionMixin):
         row = cls(action_type=action_type, created_by=str(created_by)[:35],
                   xa_user=str(xa_user), eula_sha=eula_sha,
                   eula_accepted_at=eula_accepted_at, state='draft',
-                  payload=_dumps(payload), step_events=_dumps({}),
+                  payload=as_json_text(payload), step_events=as_json_text({}),
                   creation_time=now, modified_time=now, **keys)
         session.add(row)
         session.flush()
         return row
 
+    def can_advance(self, state: str) -> bool:
+        return state in _NEXT.get(self.state, ())
+
     def advance(self, state: str) -> 'XrasSubmission':
         """Move to *state*, stamping its time and clearing ``last_error``; ``ValueError`` if illegal."""
         if state not in XRAS_SUBMISSION_STATES:
             raise ValueError(f'unknown xras_submission state {state!r}')
-        if state not in _NEXT[self.state]:
+        if not self.can_advance(state):
             raise ValueError(f'xras_submission {self.xras_submission_id}: '
                              f'{self.state} -> {state} is not a legal step')
         now = datetime.now()
@@ -146,7 +151,7 @@ class XrasSubmission(Base, SessionMixin):
         """Remember the ``xras_remediation_event`` row behind *step*."""
         events = self.steps
         events[step] = event_id
-        self.step_events = _dumps(events)
+        self.step_events = as_json_text(events)
         self.modified_time = datetime.now()
         self.session.flush()
         return self
@@ -159,14 +164,14 @@ class XrasSubmission(Base, SessionMixin):
             if value is not None:
                 setattr(self, name, value)
         if snapshot is not None:
-            self.xras_snapshot = _dumps(snapshot)
+            self.xras_snapshot = as_json_text(snapshot)
         self.modified_time = datetime.now()
         self.session.flush()
         return self
 
     def stop(self, error: Any) -> 'XrasSubmission':
         """Stamp why a step stopped; the state stays where it was, so resume can continue."""
-        self.last_error = error if isinstance(error, str) else _dumps(error)
+        self.last_error = as_json_text(error)
         self.modified_time = datetime.now()
         self.session.flush()
         return self
@@ -204,15 +209,26 @@ _KEY_COLUMNS = frozenset({
     'allocation_type_id', 'contract_id', 'registration_id'})
 
 
-def lookup_submission_by_request_id(session, request_id) -> Optional[XrasSubmission]:
-    """The newest non-aborted row on line *request_id*, or ``None``: the New handler's consult key."""
-    if not request_id:
-        return None
-    return (session.query(XrasSubmission)
-            .filter(XrasSubmission.request_id == int(request_id))
-            .filter(XrasSubmission.state != 'aborted')
-            .order_by(XrasSubmission.xras_submission_id.desc())
-            .first())
+def step_statuses(session, steps: Dict[str, Optional[int]]) -> Dict[str, str]:
+    """``{step: audit status}`` for every recorded step, in one query; see ``UNKNOWN_STEP``."""
+    from sam.integration.xras import XrasRemediationEvent
+    ids = [i for i in steps.values() if i]
+    found: Dict[int, str] = {}
+    if ids:
+        found = dict(session.query(XrasRemediationEvent.xras_remediation_event_id,
+                                   XrasRemediationEvent.status)
+                     .filter(XrasRemediationEvent.xras_remediation_event_id.in_(ids)))
+    return {step: found.get(i, UNKNOWN_STEP) if i else UNKNOWN_STEP
+            for step, i in steps.items()}
+
+
+def documents_to_reattach(statuses: Dict[str, str], filenames) -> List[str]:
+    """The *filenames* a resume must be handed again: never sent, or refused by XRAS (which
+    then stored nothing). SAM keeps a document's name and digest, never its bytes. One whose
+    outcome is unknown is not among them: the flow will not re-send it, as it may have landed.
+    """
+    return [name for name in filenames
+            if statuses.get(f'document:{name}') in (None, 'rejected')]
 
 
 def new_submissions_by_request_id(session) -> Dict[int, XrasSubmission]:
@@ -232,16 +248,6 @@ def submission_by_action_id(session, action_id) -> Optional[XrasSubmission]:
         return None
     return (session.query(XrasSubmission)
             .filter(XrasSubmission.action_id == int(action_id)).one_or_none())
-
-
-def open_submissions_for_user(session, username: str):
-    """In-flight rows *username* filed or is impersonated on, newest first."""
-    return (session.query(XrasSubmission)
-            .filter(XrasSubmission.is_active)
-            .filter((XrasSubmission.created_by == username)
-                    | (XrasSubmission.xa_user == username))
-            .order_by(XrasSubmission.xras_submission_id.desc())
-            .all())
 
 
 def open_submission_for(session, *, request_id, action_type: str,

@@ -45,6 +45,8 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-14 | `50bda35a` + sweep 27 (XRAS soft-deleted records) | 51 / 63 / 26 | 1 (2) | 16 / 52 | 20 (20), 2 kept | 5,245 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
 | 2026-10-15 | `034fff4a` + sweep 28 (quota reconcile), py only | 52 / 64 / 26 | 1 (2) | 16 / 52 | — | — | — | — | — | — | — | 6 |
 | 2026-10-23 | `bfb58fd8` + sweep 30 (XRAS validate-only lookups), py only | 52 / 64 / 26 | 1 (2) | 21 / 67 | — | — | — | — | — | — | — | 6 |
+| 2026-10-29 | `5cf3eebe` (#874 as merged), before sweep 31 | 61 / 73 / 26 | 1 (2) | 21 / 68 | 20 (20), 2 kept | 5,250 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
+| 2026-10-29 | `5cf3eebe` + sweep 31 (the submission window and impersonation) | 53 / 65 / 26 | 1 (2) | 21 / 67 | 20 (20), 2 kept | 5,250 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -2036,6 +2038,92 @@ identity map. #861's perf test seeded only Extensions and so never measured the 
   same way if a real worklist grows them.
 - [ ] `resolve_project`'s `logged_projcode` read stays per action, for a project-scoped
   number that is not a projcode (not seen in the measured windows).
+
+## 31. 2026-10-29: window sweep, XRAS submission sprint 1 (#874) and impersonation
+
+**Mode:** window, `bfb58fd8..origin/staging` (`5cf3eebe`, four squash commits, 110 files,
++8,464 lines; nearly all #874). **End commit:** `5cf3eebe`. The window added nine `_private`
+cross-module imports (the submission modules borrowing the remediation service's helpers) and
+wrote its upload reader, limit check, step-status query and newest-log query twice each.
+Three findings were on the default route: the operator's Add-action already opens
+`xras_submission` rows on production under the write lever, and that row carried a Discard
+no lever checked and a Resume that would have submitted it; a step whose audit write failed
+read as "never sent" to the flow (the UNVR0027 re-send) and as "sent" to the page; and,
+read across the whole webapp at Ben's ask, session impersonation had an impersonate button
+dead since 2026-06 (its form was gone), a key no logout or login cleared (the next login on
+that browser could "stop impersonating" into the admin's account), and an audit actor that
+named the impersonated user. Ben decided: Resume and Discard stay open under impersonation
+(an admin corrects a stuck submission), so the record must name the admin.
+
+**Done** (one commit each, PR on `sweep-xras-submission-2026-10`):
+
+- [x] S1, drift: `step_statuses` + `documents_to_reattach` on `sam/integration/xras_submission.py`;
+  a step recorded with no event id is `UNKNOWN_STEP`, which stops a resume like an unverified add.
+- [x] D1, default route: the row records `submit`; `resume_submission(submit=None)` honors it;
+  `abort_submission(door=)` refuses the PI door with the lever off; the page hides Resume and
+  Discard from a PI whose type is not armed; SPRINT1 § 3 names the admin door's lever.
+- [x] S13, drift: `SamRefs.user_id` / `admin_user_id` filled by `request_action` (the dead
+  `(user_id, state)` index indexes rows now).
+- [x] I2, security: `webapp/auth/impersonation.py` owns the key; logout and both logins `end()` it.
+- [x] I3, drift: `acting_username()`; the audit line reads `user=<admin> as=<target>` while
+  impersonating; 23 `actor= / operator= / created_by=` sites use it; `xa_user` stays the PI.
+- [x] I1 + I5: `action_buttons.impersonate_button` replaces three forms and the dead JS branch.
+- [x] S2, S3, S7, S8, S12: `audited_write` / `admin_client` / `refresh_index_entry`,
+  `cached_required_fields` / `cached_document_types`, `clean_text` / `XRAS_*_MAX` /
+  `strip_or_none`, `AllocationTypeResourceLimit.check_bounds`, `as_json_text`: public, in place.
+- [x] S6 + W12, lift: `sam.dates.add_months` / `end_of_month` / `first_of_next_month` (two route
+  copies and `_snap_to_end_of_month` folded, unit-tested); `format_ymd` / `parse_wire_date`
+  replace `_iso` / `_from_iso` / `_wire_date`.
+- [x] W2, lift: `webapp/utils/xras.py` (`session_factory` with its 2026-08-25 WARNING restored,
+  `interactive_config`, `read_client`, `admin_client`, `requests_index`); `_shared` aliases.
+- [x] W3 + W10, consolidate: the New form inherits `form_input`, `_check_limits`, `_assemble`,
+  `_refuse_unless_armed`; `_read_upload` serves the review and the resume; the dead 404 went.
+- [x] S4, S10, S11, S14: `latest_action_logs` (three copies), `resource_label` (three, one short a
+  step), `parse_action_types` (two levers, one grammar; `PICKER_ACTION_TYPES` derives),
+  `can_advance` / `OPEN_STATES` (three restated tuples).
+- [x] W11: `register_typeahead(permission=None)`; the mnemonic picker registers like its peer.
+- [x] S5b, delete: `lookup_submission_by_request_id`, `open_submissions_for_user` (no callers).
+- [x] T1, tests: `tests/xras_commit_helpers.py` (`tracking_factory`, `write_result`) for the
+  three suites that commit for real.
+- [x] W4, propagate: `xras_bits.agreement`, `eula.agreement_problem` / `accepted`,
+  `XrasAgreementFields`; the Add-action and the review share all three.
+- [x] W6a (the Renewal review's hardcoded grant list, now `GRANT_INPUTS`), W6b (`document_field`,
+  `attach_note`, `r.yes_no` set once, `form_errors_panel` on the two red-text pages), W8 (the
+  limits forms' `bounds_row` partial, `fmt_input` for the four `'%.15g'`).
+- [x] W5 + W7: `request_title` for the seven dialog headers; `xras_bits.outcome` in the two
+  message dialogs (My Requests loads `xras.css`); the verdict icons match `_VERDICTS`.
+- [x] Prose: the admin client's privilege note and docstring (`get_draft` reads by id as a
+  role-holder), both plans' Status lines, the abort row, the probe table's External row,
+  `REQUEST_TYPES` deleted, `NSF_FUNDING_AGENCY_NAME` beside its id.
+- [x] Plans: `ADMIN_TABLE_POLISH`, `CHART_HOVER_LAYER` (step 4 not planned) and
+  `JOBHIST_WRITER_ROLE` (Status was stale) to `implemented/`; `SAM_LDAP_SYNCD_REFERENCE` stays.
+
+**Tried and dropped:** W1 as proposed (refuse Resume and Discard under impersonation): Ben
+keeps them open on purpose; I3 is what that needs.
+
+**Open:**
+
+- [ ] I4: "am I impersonating" is still read three ways (`requests_routes._refuse_unless_armed`,
+  `_page_context`'s field, `base.html`'s `session.impersonator_id`); a context processor
+  exposing `impersonator` would fold them.
+- [ ] S5a: the second-open guard has two scopes (routing: any active row on the project;
+  service: `(request_id, action_type, created_by)`), so an operator's Add-action passes while
+  a PI's row is open. Likely intended; decide if it bites.
+- [ ] A4: `XRAS_SUBMIT_ACTION_TYPES` unset or empty means every type; the prod pin is the only guard.
+- [ ] A5: with the lever off a lead's project card still links "Request time" to a picker
+  offering nothing; gate it on `submit_configured`.
+- [ ] A6: `award-lookup` and `mnemonic-suggest` are login-only, so any user can drive NSF reads.
+- [ ] Untested flow branches: the admin door with the lever off (the autouse `armed` fixture
+  forces it on), abort whose delete fails, abort with no `action_id`, resume of a non-open row.
+- [ ] W9: the limits card gates on `SYSTEM_ADMIN` / `VIEW_SYSTEM_CONFIG` where its peers gate on
+  domain permissions, and sits on the read-only Configuration page.
+- [ ] W13: the ownership rule (`created_by` or `xa_user` or `MANAGE_XRAS`) is in
+  `_owned_submission` and `my_requests.html`; a per-row flag.
+- [ ] S15: `_same_value` vs `_read_text` normalisation in the admin client's grant verify.
+- [ ] `htmx-config.js`: six `_reloadAdminCard` listeners, one per admin card; a table.
+- [ ] Browser proof: the request dialogs (W4-W7) need the submit lever and XRAS, which the local
+  stub server does not have; they were proven by the rendered-HTML tests and want a look on
+  samuel-dev after the roll.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

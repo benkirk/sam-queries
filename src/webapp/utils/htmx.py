@@ -412,7 +412,8 @@ def register_typeahead(bp, *, rule, endpoint, permission, search, template,
     Args:
         rule / endpoint: URL rule and endpoint name — passed explicitly so
                          existing template ``hx-get`` URLs stay stable.
-        permission:      Permission gating the endpoint.
+        permission:      Permission gating the endpoint; ``None`` means any
+                         logged-in user (a picker on the user dashboard).
         any_facility:    use ``require_permission_any_facility`` instead of
                          ``require_permission`` (scoped-manager pickers).
         search:          callable ``(q, active_only) -> list`` running the
@@ -442,8 +443,11 @@ def register_typeahead(bp, *, rule, endpoint, permission, search, template,
         return render_template(template, q=q, **{ctx_key: search(q, active_only)})
 
     view.__name__ = endpoint
-    gate = (require_permission_any_facility(permission) if any_facility
-            else require_permission(permission))
+    if permission is None:
+        gate = (lambda f: f)
+    else:
+        gate = (require_permission_any_facility(permission) if any_facility
+                else require_permission(permission))
     bp.add_url_rule(rule, endpoint=endpoint,
                     view_func=login_required(gate(view)))
 

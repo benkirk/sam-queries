@@ -94,6 +94,8 @@ class TestTheOffers:
 
     def test_a_refused_decision_disables_every_offer_with_its_reason(self):
         from sam.xras.routing import PICKER_ACTION_TYPES, RoutingDecision, action_offers
+        from sam.integration.xras_api.vocabulary import SUBMIT_ACTION_TYPES
+        assert PICKER_ACTION_TYPES == tuple(t for t in SUBMIT_ACTION_TYPES if t != 'New')
         offers = action_offers(RoutingDecision('xras', reason='not_on_roster'), [],
                                lambda t: True)
         assert [o.action_type for o in offers] == list(PICKER_ACTION_TYPES)
