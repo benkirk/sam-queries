@@ -45,6 +45,7 @@ from sam.queries.notifications import get_expiration_notice_status
 from sam.queries.users import get_abandoned_usernames, get_primary_emails, get_user_directory
 from system_status.queries.last_seen import get_last_seen_by_user
 from system_status.timeutil import utcnow_naive
+from webapp.auth import impersonation
 from webapp.auth.models import AuthUser
 from sam.core.users import User
 from webapp.utils.rbac import (
@@ -297,10 +298,7 @@ def impersonate():
         )
         return redirect(url_for('admin_dashboard.index'))
 
-    # Store current user in session to be able to go back
-    session['impersonator_id'] = impersonator_id
-
-    # Log in as the other user
+    impersonation.begin(impersonator_id)
     login_user(user_to_impersonate)
 
     flash(f'You are now impersonating {user_to_impersonate.display_name}', 'success')
@@ -313,25 +311,18 @@ def stop_impersonating():
     """
     Stops impersonating and returns to the original user.
     """
-    impersonator_id = session.get('impersonator_id')
-
-    if not impersonator_id:
+    if not impersonation.is_impersonating():
         flash('You are not currently impersonating anyone', 'warning')
         return redirect(url_for('admin_dashboard.index'))
 
-    sam_impersonator = db.session.query(User).filter_by(user_id=impersonator_id).first()
-
+    sam_impersonator = impersonation.impersonator()
     if not sam_impersonator:
         flash('Could not find original user to restore session', 'error')
-        # Clear the impersonation session key and send to login
-        session.pop('impersonator_id', None)
+        impersonation.end()
         return redirect(url_for('auth.login'))
 
-    impersonator = AuthUser(sam_impersonator)
-
-    # Log back in as the original user
-    login_user(impersonator)
-    session.pop('impersonator_id', None)
+    login_user(AuthUser(sam_impersonator))
+    impersonation.end()
 
     flash('You have stopped impersonating and returned to your account', 'success')
     return redirect(url_for('admin_dashboard.index'))
