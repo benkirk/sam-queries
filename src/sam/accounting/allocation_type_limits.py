@@ -18,20 +18,20 @@ from sqlalchemy.orm import relationship
 from sam.base import ActiveFlagMixin, Base, SessionMixin
 
 
-def _validate(min_amount, default_amount, max_amount) -> None:
-    """``0 <= min <= default <= max`` over the bounds that are set; ``ValueError`` otherwise."""
-    present = [(n, v) for n, v in (('minimum', min_amount), ('default', default_amount),
-                                   ('maximum', max_amount)) if v is not None]
-    for name, value in present:
-        if value < 0:
-            raise ValueError(f'The {name} must not be negative.')
-    for (low_name, low), (high_name, high) in zip(present, present[1:]):
-        if low > high:
-            raise ValueError(f'The {low_name} ({low:,g}) exceeds the {high_name} ({high:,g}).')
-
-
 class AllocationTypeResourceLimit(Base, SessionMixin, ActiveFlagMixin):
     """The request bounds for one (allocation type, resource) pair."""
+
+    @staticmethod
+    def check_bounds(min_amount, default_amount, max_amount) -> None:
+        """``0 <= min <= default <= max`` over the bounds that are set; ``ValueError`` otherwise."""
+        present = [(n, v) for n, v in (('minimum', min_amount), ('default', default_amount),
+                                       ('maximum', max_amount)) if v is not None]
+        for name, value in present:
+            if value < 0:
+                raise ValueError(f'The {name} must not be negative.')
+        for (low_name, low), (high_name, high) in zip(present, present[1:]):
+            if low > high:
+                raise ValueError(f'The {low_name} ({low:,g}) exceeds the {high_name} ({high:,g}).')
 
     __tablename__ = 'allocation_type_resource_limit'
     __table_args__ = (
@@ -64,7 +64,7 @@ class AllocationTypeResourceLimit(Base, SessionMixin, ActiveFlagMixin):
                min_amount: Optional[float] = None, default_amount: Optional[float] = None,
                max_amount: Optional[float] = None) -> 'AllocationTypeResourceLimit':
         """Raises ``ValueError`` when the bounds are out of order or the pair already has a row."""
-        _validate(min_amount, default_amount, max_amount)
+        cls.check_bounds(min_amount, default_amount, max_amount)
         if session.query(cls.allocation_type_resource_limit_id).filter_by(
                 allocation_type_id=allocation_type_id, resource_id=resource_id).first():
             raise ValueError('this allocation type and resource already have a limit; edit it')
@@ -85,7 +85,7 @@ class AllocationTypeResourceLimit(Base, SessionMixin, ActiveFlagMixin):
         bounds = {'min_amount': min_amount, 'default_amount': default_amount,
                   'max_amount': max_amount}
         merged = {k: getattr(self, k) if v is self._UNSET else v for k, v in bounds.items()}
-        _validate(merged['min_amount'], merged['default_amount'], merged['max_amount'])
+        self.check_bounds(merged['min_amount'], merged['default_amount'], merged['max_amount'])
         for name, value in merged.items():
             setattr(self, name, value)
         if active is not None:
