@@ -3271,6 +3271,13 @@
     ]
   ],
   [
+    "user_dashboard.my_request_notes",
+    "/user/requests/<number>/notes",
+    [
+      "GET"
+    ]
+  ],
+  [
     "user_dashboard.my_request_post",
     "/user/requests/<projcode>/<any(extension, supplement, renewal):kind>",
     [

@@ -1,0 +1,18 @@
+{#- The comments XRAS holds on one action, into a "Your requests" drill row
+    (GET /user/requests/<number>/notes). Context: outage, approver, yours. -#}
+{% if outage %}
+<p class="small text-warning-emphasis mb-0"><i class="fa-solid fa-triangle-exclamation me-1"></i>XRAS is not answering, so its comments cannot be shown now.</p>
+{% elif not approver and not yours %}
+<p class="small text-muted mb-0">No comments from XRAS yet.</p>
+{% else %}
+<dl class="small mb-0 request-notes">
+    {% if approver %}
+    <dt>From the approver</dt>
+    <dd class="request-note">{{ approver }}</dd>
+    {% endif %}
+    {% if yours %}
+    <dt>Your comment</dt>
+    <dd class="request-note text-muted">{{ yours }}</dd>
+    {% endif %}
+</dl>
+{% endif %}

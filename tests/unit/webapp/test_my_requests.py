@@ -99,6 +99,65 @@ class TestThePage:
         assert client.get(PAGE).status_code in (302, 401)
 
 
+def _indexed(number='UHSS0003', action_id=373148, username='benkirk'):
+    return [{'request_number': number, 'roster': [{'username': username}],
+             'actions': [{'action_id': action_id, 'action_type': 'Extension',
+                          'action_status': 'Submitted'}]}]
+
+
+class TestTheComments:
+
+    @pytest.fixture
+    def indexed(self, monkeypatch):
+        monkeypatch.setattr(requests_routes, '_index_rows', lambda: _indexed())
+
+    def _family(self, **action):
+        return [{'requestNumber': 'UHSS0003', 'actions': [
+            {'actionId': 373148, 'actionType': 'Extension', **action}]}]
+
+    def test_each_xras_row_gets_a_comments_drill(self, auth_client, indexed):
+        html = auth_client.get(PAGE).get_data(as_text=True)
+        assert 'Show comments' in html
+        assert '/user/requests/UHSS0003/notes?action_id=373148' in html
+
+    def test_the_approvers_note_and_the_pis_comment(self, auth_client, armed, indexed):
+        armed.family = self._family(adminComments='Approved to March.\r\n\r\n\r\nThanks.',
+                                    userComments='Needed for the ensemble.')
+        html = auth_client.get('/user/requests/UHSS0003/notes?action_id=373148').get_data(
+            as_text=True)
+        assert 'From the approver' in html and 'Approved to March.\n\nThanks.' in html
+        assert 'Your comment' in html and 'Needed for the ensemble.' in html
+
+    def test_no_comments_says_so(self, auth_client, armed, indexed):
+        armed.family = self._family()
+        html = auth_client.get('/user/requests/UHSS0003/notes?action_id=373148').get_data(
+            as_text=True)
+        assert 'No comments from XRAS yet.' in html
+
+    def test_an_outage_says_so(self, auth_client, armed, indexed, monkeypatch):
+        from sam.integration.xras_api import XrasSourceUnavailable
+
+        def down(self, number):
+            raise XrasSourceUnavailable('down')
+        monkeypatch.setattr(type(requests_routes.read_client()), 'get_request_family_by_number',
+                            down)
+        html = auth_client.get('/user/requests/UHSS0003/notes?action_id=373148').get_data(
+            as_text=True)
+        assert 'XRAS is not answering' in html
+
+    def test_a_request_the_user_does_not_see_is_not_found(self, auth_client, armed, indexed):
+        assert auth_client.get('/user/requests/UHSS0099/notes?action_id=373148').status_code == 404
+        assert auth_client.get('/user/requests/UHSS0003/notes?action_id=1').status_code == 404
+        assert auth_client.get('/user/requests/UHSS0003/notes').status_code == 404
+        assert armed.reads == []
+
+    def test_the_comment_is_escaped(self, auth_client, armed, indexed):
+        armed.family = self._family(adminComments='<script>x</script>')
+        html = auth_client.get('/user/requests/UHSS0003/notes?action_id=373148').get_data(
+            as_text=True)
+        assert '<script>x' not in html and '&lt;script&gt;' in html
+
+
 class TestThePicker:
 
     def test_the_lever_off_disables_everything_without_reading_xras(self, auth_client,

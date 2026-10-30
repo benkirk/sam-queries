@@ -91,8 +91,8 @@ def my_requests(session, username: str,
                 index_rows: Optional[Sequence[Mapping[str, Any]]]) -> List[Dict[str, Any]]:
     """Every request row for *username*: SAM's filings, then the index's lines not already shown.
 
-    Each row: ``kind`` (filed | xras), ``request_number``, ``action_type``, ``readout``,
-    ``when``, ``submission`` (the row, or ``None``). Open and stopped rows sort first.
+    Each row: ``kind`` (filed | xras), ``request_number``, ``action_id``, ``action_type``,
+    ``readout``, ``when``, ``submission`` (the row, or ``None``). Open and stopped rows sort first.
     """
     from sam.integration.xras import latest_action_logs
     from sam.integration.xras_submission import XrasSubmission
@@ -124,7 +124,7 @@ def my_requests(session, username: str,
         # A New's row never learns a number (the stamp records the project); name that instead.
         rows.append(dict(kind='filed',
                          request_number=sub.request_number or projcodes.get(sub.project_id),
-                         action_type=sub.action_type, readout=readout,
+                         action_id=sub.action_id, action_type=sub.action_type, readout=readout,
                          when=sub.submitted_time or sub.creation_time, submission=sub,
                          open=sub.is_active,
                          needs_documents=missing_documents(session, sub) if sub.is_active else []))
@@ -133,7 +133,7 @@ def my_requests(session, username: str,
         if action is None or action['action_id'] in shown:
             continue
         entered = action.get('entry_date') or action.get('submit_date')
-        rows.append(dict(kind='xras', request_number=number,
+        rows.append(dict(kind='xras', request_number=number, action_id=action['action_id'],
                          action_type=action.get('action_type'),
                          readout=action_readout(action.get('action_status'),
                                                 logs.get(action['action_id']), entered,

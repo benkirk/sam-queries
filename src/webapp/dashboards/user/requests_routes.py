@@ -129,6 +129,28 @@ def my_requests_actions(project):
 
 # the Extension, Supplement and Renewal forms
 
+@bp.route('/requests/<number>/notes')
+@login_required
+def my_request_notes(number):
+    """The comments XRAS holds on one action of a row the user sees, read live on first open."""
+    from sam.integration.xras_api.comments import find_action, normalize_comment
+    action_id = request.args.get('action_id', type=int)
+    # The read client does not carry the PI as XA-USER, so SAM decides who may read the line.
+    if action_id is None or not any(
+            r['request_number'] == number and r['action_id'] == action_id
+            for r in my_requests(db.session, current_user.username, _index_rows())):
+        abort(404)
+    try:
+        action = find_action(read_client(_config()).get_request_family_by_number(number),
+                             action_id) or {}
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('my requests notes %s/%s: %s', number, action_id, exc)
+        return render_template('dashboards/user/fragments/request_notes_htmx.html', outage=True)
+    return render_template('dashboards/user/fragments/request_notes_htmx.html', outage=False,
+                           approver=normalize_comment(action.get('adminComments')),
+                           yours=normalize_comment(action.get('userComments')))
+
+
 def _message(title, message, variant='warning'):
     return render_template(_MESSAGE, title=title, message=message, variant=variant)
 
