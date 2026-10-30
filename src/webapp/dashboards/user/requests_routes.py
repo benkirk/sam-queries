@@ -134,6 +134,25 @@ def _message(title, message, variant='warning'):
     return render_template(_MESSAGE, title=title, message=message, variant=variant)
 
 
+def _refuse_unless_armed(config, action_type):
+    """``FormError`` unless this session may file *action_type* here."""
+    if session.get('impersonator_id'):
+        raise FormError('You are viewing SAM as another user. They file their own '
+                        'requests, under their own agreement.')
+    if not config.submit_allows(action_type):
+        raise FormError(f'{action_type} requests through SAM are not enabled here.')
+
+
+def _read_upload(field, label):
+    """``(filename, content, why not)`` for the PDF posted as *field*."""
+    from sam.xras.submission_preflight import document_refusal
+    upload = request.files.get(field)
+    if upload is None or not upload.filename:
+        return None, None, f'Attach the {label}.'
+    content = upload.read()
+    return upload.filename, content, document_refusal(upload.filename, content)
+
+
 class _RequestForm(HtmxFormHandler):
     """One request through edit -> review -> submit; every stage re-checks the gate live."""
 
@@ -159,11 +178,7 @@ class _RequestForm(HtmxFormHandler):
             return self._ctx
         from webapp.register.eula import eula_sha
         config = _config()
-        if session.get('impersonator_id'):
-            raise FormError('You are viewing SAM as another user. They file their own '
-                            'requests, under their own agreement.')
-        if not config.submit_allows(self.action_type):
-            raise FormError(f'{self.action_type} requests through SAM are not enabled here.')
+        _refuse_unless_armed(config, self.action_type)
         decision, outage = _decide(self.project, config)
         if outage:
             raise FormError(outage)
@@ -258,7 +273,6 @@ class _RequestForm(HtmxFormHandler):
 
     def clean(self, data):
         from marshmallow import ValidationError
-        from sam.xras.submission_preflight import limit_refusals, preflight_draft
         ctx = self.gate()
         if data['stage'] == 'edit':
             return data
@@ -272,31 +286,43 @@ class _RequestForm(HtmxFormHandler):
                 errors = self._grant_errors(data, ctx['rules'])
                 if errors:
                     raise ValidationError(errors)
-            by_id = {r['resource_id']: r for r in ctx['resources']}
-            unknown = [rid for rid in data['amounts'] if rid not in by_id]
-            if unknown:
-                raise FormError('XRAS does not offer one of those resources here; '
-                                'reopen the form.')
-            named = {by_id[rid]['sam_name']: amt for rid, amt in data['amounts'].items()
-                     if by_id[rid]['sam_name']}
-            refused = limit_refusals(db.session, _type_name(self.project), named)
-            errors = {f'amount_{rid}': [refused[by_id[rid]['sam_name']]]
-                      for rid in data['amounts'] if by_id[rid]['sam_name'] in refused}
-            if errors:
-                raise ValidationError(errors)
+            self._check_limits(data, ctx, _type_name(self.project))
+        return self._assemble(data, ctx)
+
+    def _check_limits(self, data, ctx, type_name):
+        """Every amount names a resource XRAS offers here, within SAM's limits for *type_name*."""
+        from marshmallow import ValidationError
+        from sam.xras.submission_preflight import limit_refusals
+        by_id = {r['resource_id']: r for r in ctx['resources']}
+        if any(rid not in by_id for rid in data['amounts']):
+            raise FormError('XRAS does not offer one of those resources here; reopen the form.')
+        named = {by_id[rid]['sam_name']: amt for rid, amt in data['amounts'].items()
+                 if by_id[rid]['sam_name']}
+        refused = limit_refusals(db.session, type_name, named)
+        errors = {f'amount_{rid}': [refused[by_id[rid]['sam_name']]]
+                  for rid in data['amounts'] if by_id[rid]['sam_name'] in refused}
+        if errors:
+            raise ValidationError(errors)
+
+    def _assemble(self, data, ctx):
+        """Review and submit share this tail: the documents, the draft, the verdict, back to review."""
         if data['stage'] == 'submit' and ctx.get('documents'):
             data['documents'], data['document_error'] = self._attached(ctx['documents'])
         data['draft'] = self.draft(data)
-        offer = ctx.get('offer')
-        data['verdict'] = preflight_draft(
-            db.session, ctx['decision'].line, data['draft'], resource_keys=ctx['resource_keys'],
-            opportunities={offer['opportunity_id']: {'allocationType': offer['allocation_type']}}
-            if offer else None)
+        data['verdict'] = self._verdict(data, ctx)
         if data['stage'] == 'submit':
             back = self._back_to_review(data)
             if back:
                 data.update(stage='review', review_error=back)
         return data
+
+    def _verdict(self, data, ctx):
+        from sam.xras.submission_preflight import preflight_draft
+        offer = ctx.get('offer')
+        return preflight_draft(
+            db.session, ctx['decision'].line, data['draft'], resource_keys=ctx['resource_keys'],
+            opportunities={offer['opportunity_id']: {'allocationType': offer['allocation_type']}}
+            if offer else None)
 
     @staticmethod
     def _grant_errors(data, rules):
@@ -317,18 +343,12 @@ class _RequestForm(HtmxFormHandler):
     def _attached(rules):
         """``(documents, why not)`` for the uploads the rule book requires."""
         from sam.manage.xras_submission import SubmissionDocument
-        from sam.xras.submission_preflight import document_refusal
         documents = []
         for rule in rules:
-            upload = request.files.get(f'document_{rule.code}')
-            if upload is None or not upload.filename:
-                return [], f'Attach the {rule.label}.'
-            content = upload.read()
-            why = document_refusal(upload.filename, content)
+            filename, content, why = _read_upload(f'document_{rule.code}', rule.label)
             if why:
                 return [], why
-            documents.append(SubmissionDocument(rule.code, upload.filename, content,
-                                                title=rule.label))
+            documents.append(SubmissionDocument(rule.code, filename, content, title=rule.label))
         return documents, None
 
     def _back_to_review(self, data):
@@ -365,19 +385,12 @@ class _RequestForm(HtmxFormHandler):
         return render_template(_OUTCOME, outcome=data['outcome'], **ctx)
 
 
-def _form_type(kind):
-    action_type = _FORM_TYPES.get(kind)
-    if action_type is None:
-        abort(404)
-    return action_type
-
-
 @bp.route('/requests/<projcode>/<any(extension, supplement, renewal):kind>')
 @login_required
 @require_project_permission(Permission.EDIT_PROJECTS)
 def my_request_form(project, kind):
     """The request form, into ``#xrasRequestModalBody``; a refusal renders as a message."""
-    handler = _RequestForm(project=project, action_type=_form_type(kind))
+    handler = _RequestForm(project=project, action_type=_FORM_TYPES[kind])
     try:
         ctx = handler.gate()
     except FormError as exc:
@@ -389,7 +402,7 @@ def my_request_form(project, kind):
 @login_required
 @require_project_permission(Permission.EDIT_PROJECTS)
 def my_request_post(project, kind):
-    return _RequestForm(project=project, action_type=_form_type(kind)).handle()
+    return _RequestForm(project=project, action_type=_FORM_TYPES[kind]).handle()
 
 
 # the New request: describe -> request -> review -> submit
@@ -457,22 +470,12 @@ class _NewRequestForm(_RequestForm):
         HtmxFormHandler.__init__(self, project=None, action_type='New')
         self._ctx = None
 
-    def form_input(self):
-        raw = request.form.to_dict()
-        raw['amounts'] = {k[len('amount_'):]: v for k, v in request.form.items()
-                          if k.startswith('amount_')}
-        return raw
-
     def gate(self):
         if self._ctx is not None:
             return self._ctx
         from webapp.register.eula import eula_sha
         config = _config()
-        if session.get('impersonator_id'):
-            raise FormError('You are viewing SAM as another user. They file their own '
-                            'requests, under their own agreement.')
-        if not config.submit_allows('New'):
-            raise FormError('New requests through SAM are not enabled here.')
+        _refuse_unless_armed(config, 'New')
         opportunities = _new_opportunities(config)
         chosen = _chosen(opportunities, request.values.get('opportunity_id', type=int))
         fos = _fos_options()
@@ -531,19 +534,8 @@ class _NewRequestForm(_RequestForm):
             raise ValidationError(errors)
         if data['stage'] == 'request':
             return data
-        by_id = {r['resource_id']: r for r in ctx['resources']}
-        if any(rid not in by_id for rid in data['amounts']):
-            raise FormError('XRAS does not offer one of those resources here; start again.')
-        self._check_limits(data, by_id, ctx.get('sam_type_name'))
-        if data['stage'] == 'submit' and ctx['documents']:
-            data['documents'], data['document_error'] = self._attached(ctx['documents'])
-        data['draft'] = self.draft(data)
-        data['verdict'] = self._verdict(data, ctx)
-        if data['stage'] == 'submit':
-            back = self._back_to_review(data)
-            if back:
-                data.update(stage='review', review_error=back)
-        return data
+        self._check_limits(data, ctx, ctx.get('sam_type_name'))
+        return self._assemble(data, ctx)
 
     def _describe_errors(self, data, ctx):
         """Page one's checks against XRAS and SAM, as ``{field: [message]}``."""
@@ -587,17 +579,6 @@ class _NewRequestForm(_RequestForm):
             return False
         except XrasSourceUnavailable:
             return True        # the add_role step is the backstop
-
-    def _check_limits(self, data, by_id, type_name):
-        from marshmallow import ValidationError
-        from sam.xras.submission_preflight import limit_refusals
-        named = {by_id[rid]['sam_name']: amt for rid, amt in data['amounts'].items()
-                 if by_id[rid]['sam_name']}
-        refused = limit_refusals(db.session, type_name, named)
-        errors = {f'amount_{rid}': [refused[by_id[rid]['sam_name']]]
-                  for rid in data['amounts'] if by_id[rid]['sam_name'] in refused}
-        if errors:
-            raise ValidationError(errors)
 
     def _verdict(self, data, ctx):
         """The preflight on the draft; a code the PI chose stands in for the ladder's miss."""
@@ -757,15 +738,10 @@ def _resume_documents(row):
     import hashlib
     from sam.manage.xras_submission import SubmissionDocument
     from sam.queries.xras_my_requests import missing_documents
-    from sam.xras.submission_preflight import document_refusal
     documents, notes = [], []
     for wanted in missing_documents(db.session, row):
         label = wanted.get('title') or wanted['document_type']
-        upload = request.files.get(f"document_{wanted['document_type']}")
-        if upload is None or not upload.filename:
-            return [], f'Attach the {label}.', []
-        content = upload.read()
-        why = document_refusal(upload.filename, content)
+        _, content, why = _read_upload(f"document_{wanted['document_type']}", label)
         if why:
             return [], why, []
         if wanted.get('sha256') and hashlib.sha256(content).hexdigest() != wanted['sha256']:
