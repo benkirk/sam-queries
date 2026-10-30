@@ -17,7 +17,6 @@ from flask import (
     make_response,
     render_template,
     request,
-    session,
     url_for,
 )
 from flask_login import current_user, login_required
@@ -34,7 +33,7 @@ from sam.schemas.forms import (
 from sam.schemas.forms.xras_submission import GRANT_INPUTS
 from sam.xras.routing import action_offers, request_routing, route_for
 from webapp.api.access_control import require_project_permission
-from webapp.auth.impersonation import acting_username
+from webapp.auth.impersonation import acting_username, is_impersonating
 from webapp.extensions import db
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import register_typeahead
@@ -136,7 +135,7 @@ def _message(title, message, variant='warning'):
 
 def _refuse_unless_armed(config, action_type):
     """``FormError`` unless this session may file *action_type* here."""
-    if session.get('impersonator_id'):
+    if is_impersonating():
         raise FormError('You are viewing SAM as another user. They file their own '
                         'requests, under their own agreement.')
     if not config.submit_allows(action_type):
