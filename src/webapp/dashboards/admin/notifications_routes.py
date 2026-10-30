@@ -253,7 +253,7 @@ def _project_audience(row, args):
     if project is None:
         return None, [], 'Unknown project.'
     messages = messages_for_project(db.session, row['kind'], project,
-                                    requested_by=current_user.username)
+                                    requested_by=acting_username())
     if not messages:
         why = ('no allocation with an end date' if row['kind'] == 'expiration'
                else 'no lead or admin with an email address')
@@ -305,9 +305,9 @@ class _SaveTemplateHandler(FlattenedFieldErrors, HtmxFormHandler):
         if existing is None:
             NotificationTemplateOverride.create(
                 db.session, name=name, body=data['body'],
-                modified_by=current_user.username)
+                modified_by=acting_username())
         else:
-            existing.update(body=data['body'], modified_by=current_user.username)
+            existing.update(body=data['body'], modified_by=acting_username())
         return data['body']
 
     def context(self):

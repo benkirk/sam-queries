@@ -14,6 +14,7 @@ from webapp.utils.htmx import (htmx_success, htmx_success_message,
 from webapp.utils.fk_validation import FKValidationError, validate_fk_existence
 from flask_login import login_required, current_user
 
+from webapp.auth.impersonation import acting_username
 from webapp.extensions import db
 from flask import abort, current_app
 from webapp.utils.rbac import (
@@ -1904,7 +1905,7 @@ def _renewal_messages(root, *, action, new_end, active_at, touched, comment=None
         touched_allocations=touched,
         operator_comment=comment,
         site_url=public_url_root(),
-        requested_by=current_user.username,
+        requested_by=acting_username(),
         url_builder=lambda pc: public_url_for(
             'admin_dashboard.edit_project_page', projcode=pc,
             active_at=stamp, tab='allocations'),
@@ -2518,7 +2519,7 @@ def htmx_notify_project_preview(project):
     item = notice.item_for(action) if notice else None
     messages = build_lifecycle_messages(
         db.session, per_project=[item],
-        requested_by=current_user.username,
+        requested_by=acting_username(),
         url_builder=_notify_url_builder(),
         operator_comment=request.args.get('operator_comment', '')[:1000],
         site_url=_public_root()) if item is not None else []
@@ -2577,7 +2578,7 @@ def htmx_notify_project(project):
             return []
         msgs = build_lifecycle_messages(
             db.session, per_project=items,
-            requested_by=current_user.username, url_builder=url_builder,
+            requested_by=acting_username(), url_builder=url_builder,
             operator_comment=comment, site_url=_public_root())
         return get_notifier().send_many(msgs, force=force) if msgs else []
 

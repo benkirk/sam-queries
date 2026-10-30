@@ -110,7 +110,7 @@ def _xras_messages(project, people, *, action=None):
     never disagree about what has already been sent.
     """
     return build_xras_messages(db.session, project, people, action=action,
-                               requested_by=current_user.username,
+                               requested_by=acting_username(),
                                approver_comment=approver_comment_for_action(action),
                                site_url=public_url_root())
 
@@ -304,7 +304,7 @@ def xras_activate(project_id: int):
             f'{project.projcode} is already active.',
             detail='Nothing to do.')
 
-    activate_project(db.session, project, by=current_user.username)
+    activate_project(db.session, project, by=acting_username())
 
     return htmx_success_message(
         {'refreshXrasTab': {}},
