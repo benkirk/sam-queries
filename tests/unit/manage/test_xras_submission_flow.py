@@ -9,8 +9,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from xras_commit_helpers import tracking_factory, write_result
+
 from sam.integration.xras import XrasRemediationEvent
-from sam.integration.xras_api.admin_client import XrasWriteResult
 from sam.integration.xras_api.base import XrasSourceUnavailable, XrasWriteRejected
 from sam.integration.xras_submission import XrasSubmission
 from sam.manage import xras_submission as flow
@@ -29,39 +30,14 @@ _IDS = itertools.count(900_000_000 + (os.getpid() % 10_000) * 1_000)
 
 
 def _ok(operation, verified=True, **extra):
-    return XrasWriteResult(operation=operation, method='POST', path='/p',
-                           http_status=200, verified=verified,
-                           verify_detail='detail', extra=extra)
+    return write_result(operation, verified=verified, extra=extra)
 
 
 @pytest.fixture
 def factory(engine):
     """A real session factory; the rows it commits are deleted at teardown by id."""
-    from sqlalchemy import delete, event
-    from sqlalchemy.orm import Session
-
-    events, rows = [], []
-
-    def make():
-        session = Session(engine)
-
-        @event.listens_for(session, 'after_flush')
-        def _track(sess, _ctx):
-            for o in sess.new:
-                if isinstance(o, XrasRemediationEvent):
-                    events.append(o.xras_remediation_event_id)
-                elif isinstance(o, XrasSubmission):
-                    rows.append(o.xras_submission_id)
-        return session
-
-    yield make
-    with engine.begin() as conn:
-        if events:
-            conn.execute(delete(XrasRemediationEvent).where(
-                XrasRemediationEvent.xras_remediation_event_id.in_(events)))
-        if rows:
-            conn.execute(delete(XrasSubmission).where(
-                XrasSubmission.xras_submission_id.in_(rows)))
+    with tracking_factory(engine, XrasSubmission, XrasRemediationEvent) as make:
+        yield make
 
 
 @pytest.fixture(autouse=True)

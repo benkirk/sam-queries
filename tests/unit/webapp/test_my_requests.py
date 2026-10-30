@@ -8,6 +8,8 @@ from dataclasses import replace
 
 import pytest
 
+from xras_commit_helpers import tracking_factory
+
 from sam.integration.xras_api.config import XrasApiConfig
 from webapp.dashboards.user import requests_routes
 
@@ -320,20 +322,16 @@ class TestResumeAndDiscard:
     @pytest.fixture
     def a_row(self, engine):
         from datetime import datetime
-        from sqlalchemy import delete
-        from sqlalchemy.orm import Session
         from sam.integration.xras_submission import XrasSubmission
-        with Session(engine) as s:
-            row = XrasSubmission.create(s, action_type='Extension', created_by='benkirk',
-                                        xa_user='benkirk', payload={}, eula_sha='a' * 40,
-                                        eula_accepted_at=datetime.now())
-            row.stop({'step': 'submit', 'reason': 'timeout'})
-            s.commit()
-            sid = row.xras_submission_id
-        yield sid
-        with engine.begin() as conn:
-            conn.execute(delete(XrasSubmission).where(
-                XrasSubmission.xras_submission_id == sid))
+        with tracking_factory(engine, XrasSubmission) as make:
+            with make() as s:
+                row = XrasSubmission.create(s, action_type='Extension', created_by='benkirk',
+                                            xa_user='benkirk', payload={}, eula_sha='a' * 40,
+                                            eula_accepted_at=datetime.now())
+                row.stop({'step': 'submit', 'reason': 'timeout'})
+                s.commit()
+                sid = row.xras_submission_id
+            yield sid
 
     def test_the_stopped_row_offers_both(self, auth_client, a_row):
         html = auth_client.get(PAGE).get_data(as_text=True)
@@ -346,52 +344,44 @@ class TestResumeAndDiscard:
     def lettered_row(self, engine):
         import hashlib
         from datetime import datetime
-        from sqlalchemy import delete
-        from sqlalchemy.orm import Session
         from sam.integration.xras_submission import XrasSubmission
         letter = {'document_type': 'Advisor_Letter', 'filename': 'letter.pdf',
                   'title': 'Advisor Letter', 'bytes': 13,
                   'sha256': hashlib.sha256(b'%PDF-1.7 body').hexdigest()}
-        with Session(engine) as s:
-            row = XrasSubmission.create(
-                s, action_type='New', created_by='benkirk', xa_user='benkirk',
-                payload={'documents': [letter]}, eula_sha='a' * 40,
-                eula_accepted_at=datetime.now())
-            row.stop({'step': 'attributes', 'reason': 'unverified'})
-            s.commit()
-            sid = row.xras_submission_id
-        yield sid
-        with engine.begin() as conn:
-            conn.execute(delete(XrasSubmission).where(XrasSubmission.xras_submission_id == sid))
+        with tracking_factory(engine, XrasSubmission) as make:
+            with make() as s:
+                row = XrasSubmission.create(
+                    s, action_type='New', created_by='benkirk', xa_user='benkirk',
+                    payload={'documents': [letter]}, eula_sha='a' * 40,
+                    eula_accepted_at=datetime.now())
+                row.stop({'step': 'attributes', 'reason': 'unverified'})
+                s.commit()
+                sid = row.xras_submission_id
+            yield sid
 
     @pytest.fixture
     def refused_letter_row(self, engine):
         """A New whose letter XRAS refused (400): the step exists, its event is rejected."""
         from datetime import datetime
-        from sqlalchemy import delete
-        from sqlalchemy.orm import Session
         from sam.integration.xras import XrasRemediationEvent
         from sam.integration.xras_submission import XrasSubmission
         letter = {'document_type': 'Advisor_Letter', 'filename': 'letter.pdf',
                   'title': 'Advisor Letter', 'bytes': 13, 'sha256': None}
-        with Session(engine) as s:
-            event = XrasRemediationEvent.create(s, operation='upload_document',
-                                                created_by='benkirk', xa_user='benkirk',
-                                                status='rejected')
-            row = XrasSubmission.create(
-                s, action_type='New', created_by='benkirk', xa_user='benkirk',
-                payload={'documents': [letter]}, eula_sha='a' * 40,
-                eula_accepted_at=datetime.now())
-            row.advance('created')
-            row.record_step('document:letter.pdf', event.xras_remediation_event_id)
-            row.stop({'step': 'document:letter.pdf', 'reason': 'rejected'})
-            s.commit()
-            sid, eid = row.xras_submission_id, event.xras_remediation_event_id
-        yield sid
-        with engine.begin() as conn:
-            conn.execute(delete(XrasSubmission).where(XrasSubmission.xras_submission_id == sid))
-            conn.execute(delete(XrasRemediationEvent).where(
-                XrasRemediationEvent.xras_remediation_event_id == eid))
+        with tracking_factory(engine, XrasSubmission, XrasRemediationEvent) as make:
+            with make() as s:
+                event = XrasRemediationEvent.create(s, operation='upload_document',
+                                                    created_by='benkirk', xa_user='benkirk',
+                                                    status='rejected')
+                row = XrasSubmission.create(
+                    s, action_type='New', created_by='benkirk', xa_user='benkirk',
+                    payload={'documents': [letter]}, eula_sha='a' * 40,
+                    eula_accepted_at=datetime.now())
+                row.advance('created')
+                row.record_step('document:letter.pdf', event.xras_remediation_event_id)
+                row.stop({'step': 'document:letter.pdf', 'reason': 'rejected'})
+                s.commit()
+                sid = row.xras_submission_id
+            yield sid
 
     def test_a_refused_letter_is_asked_for_again(self, auth_client, refused_letter_row,
                                                  resumed):

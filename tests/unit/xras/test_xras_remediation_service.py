@@ -19,11 +19,12 @@ from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
+
+from xras_commit_helpers import tracking_factory, write_result
 from factories import make_xras_remediation_event  # noqa: F401  (fixture parity)
 
 from sam.integration.xras import XrasRemediationEvent
 from sam.integration.xras_api import cache as xras_cache
-from sam.integration.xras_api.admin_client import XrasWriteResult
 from sam.integration.xras_api.base import (
     XrasSourceUnavailable,
     XrasWriteRejected,
@@ -56,38 +57,15 @@ def _payload(number='EXAM0001', status='Approved', action_status='Approved'):
 def _result(operation='withdraw_action', verified=True, **kw):
     kw.setdefault('before', 'Approved')
     kw.setdefault('after', 'Incomplete')
-    return XrasWriteResult(operation=operation, method='DELETE', path='/p',
-                           http_status=200, verified=verified,
-                           verify_detail='detail', **kw)
+    return write_result(operation, method='DELETE', verified=verified, **kw)
 
 
 @pytest.fixture
 def factory(engine):
-    """A real session factory — the service opens and commits its own.
-
-    Those commits outlive the per-test SAVEPOINT, so every event row the
-    sessions flush is tracked by id and deleted at teardown: the shared test
-    DB must stay as the blob left it (`make regen-lfs-blob` dumps it).
-    """
-    from sqlalchemy import delete, event
-    from sqlalchemy.orm import Session
-
-    created = []
-
-    def make():
-        session = Session(engine)
-
-        @event.listens_for(session, 'after_flush')
-        def _track(sess, _ctx):
-            created.extend(o.xras_remediation_event_id for o in sess.new
-                           if isinstance(o, XrasRemediationEvent))
-        return session
-
-    yield make
-    if created:
-        with engine.begin() as conn:
-            conn.execute(delete(XrasRemediationEvent).where(
-                XrasRemediationEvent.xras_remediation_event_id.in_(created)))
+    """A real session factory: the service commits its own sessions, so the shared test DB
+    must be left as the blob had it (`make regen-lfs-blob` dumps it)."""
+    with tracking_factory(engine, XrasRemediationEvent) as make:
+        yield make
 
 
 @pytest.fixture(autouse=True)
