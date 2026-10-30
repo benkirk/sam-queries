@@ -100,6 +100,6 @@
 {#- The line that warns a form's first page what the review will ask for. -#}
 {% macro attach_note(documents) -%}
 {%- if documents %}
-<span class="d-block">You attach the {{ documents | map(attribute='label') | join(' and ') }} at the review.</span>
+<span class="d-block">You'll attach the {{ documents | map(attribute='label') | join(' and ') }} on the review page.</span>
 {%- endif %}
 {%- endmacro %}

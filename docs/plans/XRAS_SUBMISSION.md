@@ -312,8 +312,8 @@ modal has the same gap: it creates a bare action and stops.
 The user dashboard gains a sixth URL-driven tab, **My Requests**, beside My Accounts. It lists
 every XRAS request the user holds a role on (the sweep index, `request_numbers_by_username`)
 and every submission SAM filed for them (`xras_submission`), each with its status: the sweep's
-`is_pending_work` reading ("In review", "Approved, being applied"; `manual` and `failed` read
-"being reviewed by CISL"), and "Applied on …" from `xras_action_log`. A stopped submission
+`is_pending_work` reading ("In review", "Approved, awaiting post", "Approved, in processing"; `manual` and `failed` read
+"In review by CISL"), and "Applied on …" from `xras_action_log`. A stopped submission
 reads "stopped at <step>" with Resume and Discard. Below the list, each project the user leads
 or administers offers its actions through the routing of § 4.4, enabled or disabled with the
 reason, never hidden; "New request" sits at the top. Every form of § 4.1 opens from this tab in

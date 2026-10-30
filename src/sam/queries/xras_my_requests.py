@@ -35,16 +35,16 @@ def action_readout(action_status: Optional[str], log=None,
         if log.status == 'processed':
             return Readout('Applied', 'success', log.processed_time)
         if log.status in ('manual', 'failed'):
-            return Readout('Being reviewed by CISL', 'attention')
+            return Readout('In review by CISL', 'attention')
         if log.status == 'received':
-            return Readout('Approved, being applied', 'info')
+            return Readout('Approved, in processing', 'info')
     if action_status in IN_FLIGHT_ACTION_STATUSES:
         return Readout('In review', 'info')
     if action_status == 'Approved':
         # Before the repoint legacy SAM took the post, and this log never saw it.
         if entered is not None and entered < XRAS_REPOINTED_ON:
             return Readout('Approved', 'success')
-        return Readout('Approved, being applied', 'info')
+        return Readout('Approved, awaiting post', 'info')
     return Readout(action_status or 'Unknown', 'muted')
 
 

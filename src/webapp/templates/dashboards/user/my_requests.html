@@ -13,7 +13,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/xras.css') }}">
 {% endblock %}
 
-{% set _ROUTES = {'xras': 'Through XRAS', 'staff': 'CISL staff'} %}
+{% set _ROUTES = {'xras': 'XRAS', 'staff': 'CISL staff'} %}
 
 {% block user_content %}
 <div class="mb-3">
@@ -58,7 +58,7 @@
                         {% if r.readout.when and r.readout.tone == 'success' %}
                         <span class="small text-muted ms-1">{{ r.readout.when | fmt_date }}</span>
                         {% endif %}
-                        {% if r.kind == 'filed' %}<span class="small text-muted ms-1">filed through SAM</span>{% endif %}
+                        {% if r.kind == 'filed' %}<span class="small text-muted ms-1">via SAM</span>{% endif %}
                     </td>
                     <td class="col-shrink text-nowrap small text-muted d-none d-md-table-cell">{{ r.when | fmt_date }}</td>
                     <td class="text-end text-nowrap">
@@ -119,7 +119,7 @@
                     <th class="col-shrink">Project</th>
                     <th>Title</th>
                     <th class="col-shrink d-none d-md-table-cell">Type</th>
-                    <th class="col-shrink">Requests&nbsp;go</th>
+                    <th class="col-shrink">Filed&nbsp;through</th>
                 </tr>
             </thead>
             <tbody>
@@ -128,12 +128,12 @@
                 {% set is_open = project.projcode == open_projcode %}
                 <tr>
                     <td class="col-shrink text-nowrap">
-                        {{ drill_toggle(rid ~ '-row', label='Show the actions', expanded=is_open) }}{{ project_link(project.projcode, True) }}
+                        {{ drill_toggle(rid ~ '-row', label='Show what you can request', expanded=is_open) }}{{ project_link(project.projcode, True) }}
                     </td>
                     <td class="cell-truncate" title="{{ project.title }}">{{ project.title }}</td>
                     <td class="col-shrink text-nowrap small d-none d-md-table-cell">{{ project.allocation_type.allocation_type if project.allocation_type else '—' }}</td>
                     <td class="col-shrink text-nowrap small">
-                        {%- if route.startswith('email:') %}By email{% else %}{{ _ROUTES.get(route, route) }}{% endif -%}
+                        {%- if route.startswith('email:') %}Email{% else %}{{ _ROUTES.get(route, route) }}{% endif -%}
                     </td>
                 </tr>
                 {{ lazy_drill_row(rid, url_for('user_dashboard.my_requests_actions', projcode=project.projcode),

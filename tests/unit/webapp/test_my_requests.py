@@ -580,7 +580,7 @@ class TestTheRenewalForm:
         html = auth_client.get(REN).get_data(as_text=True)
         assert 'Year one of the ensemble.' in html and 'name="amount_530902"' in html
         assert (floor + timedelta(days=1)).isoformat() in html
-        assert 'Advisor Letter at the review' in html
+        assert 'Advisor Letter on the review page' in html
 
     def test_the_review_asks_for_the_letter(self, auth_client, renewable, filed):
         html = auth_client.post(REN, data=_ren()).get_data(as_text=True)
@@ -695,7 +695,7 @@ class TestTheNewForm:
 
     def test_the_reveal_names_the_letter_and_the_code(self, auth_client, newable, lettered):
         html = auth_client.get(NEW + '/opportunity?opportunity_id=532221').get_data(as_text=True)
-        assert 'Advisor Letter at the review' in html
+        assert 'Advisor Letter on the review page' in html
         assert 'project code starts with' in html and 'name="grant_number"' not in html
 
     def test_a_grant_wanting_type_reveals_the_grant(self, auth_client, newable, lettered):

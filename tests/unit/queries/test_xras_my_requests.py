@@ -27,21 +27,21 @@ class TestActionReadout:
 
     @pytest.mark.parametrize('status, label', [
         ('Submitted', 'In review'), ('Under Review', 'In review'),
-        ('Approved', 'Approved, being applied'), ('Rejected', 'Rejected')])
+        ('Approved', 'Approved, awaiting post'), ('Rejected', 'Rejected')])
     def test_xras_status_without_a_post(self, status, label):
         assert action_readout(status).label == label
 
     def test_the_sweep_finding_it_applied_reads_applied(self):
         assert action_readout('Approved', push_state='applied_inferred').label == 'Applied'
         assert action_readout('Approved', push_state='pending').label == \
-            'Approved, being applied'
+            'Approved, awaiting post'
 
     def test_an_approval_before_the_repoint_was_legacy_sams(self):
         assert action_readout('Approved', entered=date(2025, 1, 1)).label == 'Approved'
 
     @pytest.mark.parametrize('status, label', [
-        ('processed', 'Applied'), ('manual', 'Being reviewed by CISL'),
-        ('failed', 'Being reviewed by CISL'), ('received', 'Approved, being applied')])
+        ('processed', 'Applied'), ('manual', 'In review by CISL'),
+        ('failed', 'In review by CISL'), ('received', 'Approved, in processing')])
     def test_the_log_row_decides_once_xras_posted(self, status, label):
         when = datetime(2026, 10, 1)
         out = action_readout('Approved', _log(status, when))
