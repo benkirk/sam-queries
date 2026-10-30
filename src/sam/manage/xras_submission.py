@@ -36,7 +36,11 @@ class SubmissionRefused(ValueError):
 
 @dataclass(frozen=True)
 class SamRefs:
+    """The SAM rows a submission resolves to; ``request_action`` fills the two user ids it can."""
+
     project_id: Optional[int] = None
+    user_id: Optional[int] = None
+    admin_user_id: Optional[int] = None
     facility_id: Optional[int] = None
     mnemonic_code_id: Optional[int] = None
     allocation_type_id: Optional[int] = None
@@ -377,6 +381,24 @@ def _patch_card(session_factory, view) -> None:
 
 # the entry points
 
+def _resolved_refs(session, draft: ActionRequest, xa_user: str) -> Dict[str, Optional[int]]:
+    """``vars(draft.sam)`` with the PI's and the admin's user ids filled where the form left them."""
+    from sam.core.users import User
+    from sam.projects.projects import Project
+    refs = dict(vars(draft.sam))
+    if refs.get('user_id') is None:
+        pi = User.get_by_username(session, xa_user)
+        refs['user_id'] = pi.user_id if pi else None
+    if refs.get('admin_user_id') is None:
+        if draft.admin_username:
+            admin = User.get_by_username(session, draft.admin_username)
+            refs['admin_user_id'] = admin.user_id if admin else None
+        elif refs.get('project_id'):
+            project = session.get(Project, refs['project_id'])
+            refs['admin_user_id'] = project.project_admin_user_id if project else None
+    return refs
+
+
 def request_action(session_factory, draft: Optional[ActionRequest], *, actor: str,
                    xa_user: str, eula: Tuple[str, datetime], submit: bool = True,
                    resume_id: Optional[int] = None, door: str = 'pi',
@@ -414,7 +436,7 @@ def request_action(session_factory, draft: Optional[ActionRequest], *, actor: st
             request_id=draft.request_id, request_number=draft.request_number,
             opportunity_id=draft.opportunity_id,
             request_type=draft.action_type if draft.action_type in LINE_MINTING_TYPES else None,
-            **vars(draft.sam))
+            **_resolved_refs(session, draft, xa_user))
         session.commit()
         view = {**_row_view(row), 'actor': actor}
     logger.info('xras submission %s: opened %s for %s by %s', view['id'],

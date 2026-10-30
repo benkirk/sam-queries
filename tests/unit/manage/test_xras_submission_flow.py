@@ -123,6 +123,23 @@ class TestTheExtension:
         args = client.set_action_dates.call_args
         assert args.args == (draft.request_id, client.action_id, None, date(2027, 9, 30))
 
+    def test_the_row_records_the_pis_and_the_admins_user_ids(self, factory):
+        from sam.core.users import User
+        from sam.projects.projects import Project
+        with factory() as s:
+            project = (s.query(Project).filter(Project.project_admin_user_id.isnot(None))
+                       .order_by(Project.project_id).first())
+            pi = s.get(User, project.project_lead_user_id)
+            pid, username = project.project_id, pi.username
+            expected = (pi.user_id, project.project_admin_user_id)
+        draft = ActionRequest(action_type='Extension', request_number='UHSS0001',
+                              request_id=next(_IDS), dates=(None, date(2027, 9, 30)),
+                              sam=SamRefs(project_id=pid))
+        out = flow.request_action(factory, draft, actor=username, xa_user=username,
+                                  eula=EULA, client=_client())
+        row = _row(factory, out.submission_id)
+        assert (row.user_id, row.admin_user_id) == expected
+
     def test_submit_false_stops_at_populated(self, factory):
         client = _client()
         out = flow.request_action(factory, _extension(), actor='op', xa_user='pi1',
