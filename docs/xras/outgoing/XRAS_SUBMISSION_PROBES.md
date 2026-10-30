@@ -188,7 +188,7 @@ last two rows were read on XRAS-dev 2026-10-27, `XRAS_SUBMISSION_SPRINT1.md` § 
 | Exploratory 500847 | none | same | `title`, `abstract` | `title`, `abstract` |
 | NCAR Strategic Computing 500088 | none | none | `title`, `abstract` | `title`, `abstract` |
 | Data Analysis 500848 | none | same as Large | `title`, `abstract` | `title`, `abstract` |
-| NCAR External Projects 501276 | none | none | `title`, `abstract` | `title`, `abstract`, `grants` (no program officer) |
+| NCAR External Projects 501276 | none | none | `title`, `abstract` | `title`, `abstract`, `grants` (no program officer, no title) |
 
 `grants` means the sub-fields XRAS validates: grant number, funding agency, PI name, title,
 begin and end date, and on Large and Small the program officer's name and email.

@@ -10,7 +10,9 @@ read client hardcodes ``XA-CONTEXT: report``; every write here needs ``submit``,
 and the Reports family 401s under ``submit``. So verification reads that need a
 roster or an action state are delegated to a read client
 (:attr:`XrasAdminClient.reader`). ``GET /v1/people/<u>`` is the one route
-answering under both, which is what lets merge verify itself on this connection.
+answering under both, which is what lets merge verify itself on this connection;
+``GET /v1/requests/<rid>`` answers under ``submit`` for a role-holder only, which is
+how a draft SAM minted verifies by id (:meth:`get_draft`) before it has a number.
 
 Three facts from the 2026-08-21 production probe shape this module and are not
 obvious from the published docs (``docs/xras/outgoing/XRAS_WRITE_PROBES.md``):
@@ -214,8 +216,9 @@ class XrasAdminClient(_XrasTransport):
         super().__init__(config)
         #: Report-context reads used for verification. A separate object
         #: because the Reports family 401s under ``submit`` — see the module
-        #: docstring. PRIVILEGE(#2): a key that could read
-        #: ``GET /v1/requests/<rid>`` would delete this whole delegate.
+        #: docstring. PRIVILEGE(#2): ``GET /v1/requests/<rid>`` answers under
+        #: ``submit`` for a role-holder only (``get_draft``), so a line SAM holds
+        #: no role on still needs this delegate.
         self.reader = reader or XrasApiClient(self.config)
 
     @classmethod

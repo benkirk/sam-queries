@@ -1,6 +1,6 @@
 # Reimplementing XRAS submission from SAMuel
 
-**Status: sprint 1 (phases 0, 1, 1b and 2) starts 2026-10-29 as one PR, issue #871, build plan
+**Status: sprint 1 (phases 0, 1, 1b and 2) shipped 2026-10-29 in #874, issue #871, build plan
 [`XRAS_SUBMISSION_SPRINT1.md`](XRAS_SUBMISSION_SPRINT1.md); sprint 2 (phase 3) is issue #872.
 The incoming half (§ 4.6 items 1-3) and every phase of
 [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md) this plan waited on are live in
@@ -161,7 +161,7 @@ SAM is the only gate.
   `returnedForCorrections: true` (`XRAS_DEV_PROBES.md` § 6.1).
 
 `sam/integration/xras_api/vocabulary.py` holds the role types and the action and request type
-ids (`ACTION_TYPES`, `REQUEST_TYPES`), because the rule-book endpoints take them.
+ids (`ACTION_TYPES`), because the rule-book endpoint takes them.
 
 **The rule book is exact** (every type, including New, read 2026-10-27).
 - A Supplement requires **nothing**.
@@ -303,7 +303,7 @@ modal has the same gap: it creates a bare action and stops.
 | **Upload limits are hooks, dark at rollout**: `SUBMISSION_DOCUMENT_MAX_BYTES` and `SUBMISSION_DOCUMENT_MAX_PAGES`, unset means no SAM-side bound; the PDF check and XRAS's own refusal are the real bounds, the rule book's page limit is shown as advice | XRAS took a 15 MB PDF |
 | **Logging is enough to diagnose, not pedantic**: one log line per flow step and XRAS's `errors[]` kept whole on the row | |
 | **Grants are lookup-then-confirm**: the award number goes to the registry, the six fields XRAS validates are prefilled from `AwardRecord`, and only the unavailable ones are typed. NSF only (2a, 2026-10-29): USAspending lacks the program officer validate demands, so any other award is typed | |
-| **Rollout**: the PR branch rolls to samuel-dev by workflow dispatch as often as needed; Ben applies the Postgres DDL to `sam_dev` by hand; staging and production MySQL follow at convergence | DDL ships in two dialects (§ 4.2) |
+| **Rollout**: the PR branch rolls to samuel-dev by workflow dispatch as often as needed; Ben applies the Postgres DDL to `sam_dev` by hand; production MySQL got it 2026-10-29 | DDL ships in two dialects (§ 4.2) |
 
 ## 4. The design
 
@@ -432,9 +432,9 @@ webapp/dashboards/user/…                webapp/dashboards/allocations/xras/…
   xa_user = current_user                  xa_user = PI, created_by = operator
             \                                       /
              sam/manage/xras_submission.py        (new)
-               request_action(session_factory, *, line, action_type, resources,
-                              dates, comments, actor, xa_user, submit=True)
-               each step = an existing xras_remediation op through _editor_op
+               request_action(session_factory, draft: ActionRequest, *, actor,
+                              xa_user, eula, submit=True, door='pi')
+               each step = an existing xras_remediation op through audited_write
                state in the xras_submission row; abort = soft-delete the action;
                resume = continue from state
                                 |
@@ -615,7 +615,7 @@ to phase 2.
 | **Write client gaps** | `_write` takes params only; create request, person-create, opportunity attributes, document upload, action delete, field of science, grants and publications are unbuilt. Action delete is the abort of § 4.3, so phase 1 needs it before the flow layer | sprint 1, commit 0a |
 | **DDL is two-dialect** | samuel-dev runs Postgres, production MySQL; `load_postgres.py` streams every ORM table from the local MySQL clone | one MySQL and one Postgres script per table (§ 4.2) |
 | **Large and NSC on the demo** | XRAS-dev has no open Large or NSC opportunity (its five are the University four and External), so the Main Document and the officer-bearing grants have no target there | open one of each in `xras-admin-demo` before the phase-2 proof |
-| **The seed values** | proposed from the snapshot's medians and the published caps (`XRAS_SUBMISSION_SPRINT1.md` § 4) | Ben reviews the proposal Thursday |
+| **The seed values** | proposed from the snapshot's medians and the published caps (`XRAS_SUBMISSION_SPRINT1.md` § 4) | approved 2026-10-29 (`XRAS_SUBMISSION_SPRINT1.md` § 5) |
 | **Grant lookup depth** | validate wants the program officer; NSF's API carries it, USAspending does not | NSF first; decide USAspending when the step is built (§ 3.5) |
 | **Placeholders SAM mints** (phase 3) | SAM classifies a placeholder by its username shape alone (`PLACEHOLDER_USERNAME_RE`, `^\S+-user-\S+$`, `sam/queries/xras_accounts.py`), and fulfills an `account_request` by email. A merge into an account under a different email leaves the sweep's row open in NUSD's queue (`XRAS_DEV_PROBES.md` § 6.1, scenario 6) | SAM names its placeholders `<x>-user-<y>`; `merge_placeholder` closes the source's rows (`XRAS_POST_AUTOMATION.md` phase D, item 6) |
 | **A parked action answers 200** (§ 4.6 item 2) | XRAS shows the operator a successful post, and phase D's tickets cover New and Renewal only | ask whether a parked action opens the request's ticket too, when phase D is built |

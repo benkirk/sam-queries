@@ -14,7 +14,7 @@ import re
 from datetime import date, datetime
 
 from sam.dates import format_ymd
-from sam.integration.xras_api.vocabulary import resource_label
+from sam.integration.xras_api.vocabulary import NSF_FUNDING_AGENCY_NAME, resource_label
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 
@@ -123,10 +123,6 @@ def new_request_sam_state(session, opportunity: Mapping[str, Any], pi) -> Dict[s
             'affiliation': getattr(where, 'name', None), 'mnemonic_errors': list(mnemonic_errors)}
 
 
-#: The push spells the agency by name; ``add_grant`` sends its id.
-_NSF_NAME = 'National Science Foundation'
-
-
 def new_request_line(draft, *, pi_username: str, opportunity: Mapping[str, Any],
                      fos: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
     """The reports-shaped line a New *draft* would become: no ids, the roster SAM will add."""
@@ -135,7 +131,7 @@ def new_request_line(draft, *, pi_username: str, opportunity: Mapping[str, Any],
         roles.append({'person': {'username': draft.admin_username},
                       'roles': [{'role': 'Allocation Manager'}]})
     grants = [{**{k: format_ymd(v) if isinstance(v, date) else v for k, v in g.items()
-                  if k != 'fundingAgencyId'}, 'fundingAgency': _NSF_NAME} for g in draft.grants]
+                  if k != 'fundingAgencyId'}, 'fundingAgency': NSF_FUNDING_AGENCY_NAME} for g in draft.grants]
     return {**_wire_opportunity(opportunity), 'requestId': None, 'requestType': 'New',
             'requestStatus': 'Incomplete', 'title': draft.title, 'abstract': draft.abstract,
             'roles': roles, 'fos': [dict(fos, isPrimary=True)] if fos else [],
