@@ -1,4 +1,11 @@
 {#- My Requests: one readout (sam.queries.xras_my_requests.Readout) as a badge. -#}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+
+{#- The request dialog's header: every body swapped into #xrasRequestModal titles itself here. -#}
+{% macro request_title(title, meta=None) -%}
+{{ modal_title('xrasRequestModalLabel', title, 'paper-plane', meta=meta) }}
+{%- endmacro %}
+
 {%- set _TONES = {'success': 'bg-success', 'info': 'bg-info', 'attention': 'bg-warning',
                   'danger': 'bg-danger', 'muted': 'state-tag'} -%}
 {% macro readout_badge(readout, title='') -%}
@@ -12,11 +19,11 @@
     <span class="text-success-emphasis"><i class="fa-solid fa-circle-check me-1"></i>SAM checked this:
         once XRAS approves it, SAM can apply it.</span>
 {%- elif verdict.status == 'failed' %}
-    <span class="text-danger-emphasis"><i class="fa-solid fa-circle-exclamation me-1"></i>SAM could not
+    <span class="text-danger-emphasis"><i class="fa-solid fa-triangle-exclamation me-1"></i>SAM could not
         apply this once approved:</span>
     <ul class="mb-0 text-danger-emphasis">{% for m in verdict.messages %}<li>{{ m }}</li>{% endfor %}</ul>
 {%- elif verdict.status == 'manual' %}
-    <span><i class="fa-solid fa-user-gear me-1"></i>Once approved, CISL staff apply this one by hand.</span>
+    <span><i class="fa-solid fa-circle-pause me-1"></i>Once approved, CISL staff apply this one by hand.</span>
 {%- else %}
     <span><i class="fa-solid fa-circle-info me-1"></i>SAM could not check this in advance; XRAS
         reviews it as usual.</span>

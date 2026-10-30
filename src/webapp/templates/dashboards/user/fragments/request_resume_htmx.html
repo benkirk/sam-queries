@@ -2,9 +2,8 @@
     document's name and digest, never its bytes, so the PI attaches each again. Context: row
     (XrasSubmission), missing (payload document entries), errors. -#}
 {% from 'dashboards/fragments/form_fields.html' import form_errors_panel with context %}
-{% from 'dashboards/fragments/modals.html' import modal_title %}
-{% from 'dashboards/user/partials/request_bits.html' import document_field %}
-{{ modal_title('xrasRequestModalLabel', 'Resume the ' ~ row.action_type ~ (' request' if row.action_type == 'New' else ''), 'paper-plane', meta=row.request_number) }}
+{% from 'dashboards/user/partials/request_bits.html' import request_title, document_field %}
+{{ request_title('Resume the ' ~ row.action_type ~ (' request' if row.action_type == 'New' else ''), meta=row.request_number) }}
 <form hx-post="{{ url_for('user_dashboard.my_request_resume', submission_id=row.xras_submission_id) }}"
       hx-target="#xrasRequestModalBody" hx-swap="innerHTML" hx-encoding="multipart/form-data"
       hx-disabled-elt="find button[type='submit']" hx-disinherit="hx-disabled-elt" novalidate>

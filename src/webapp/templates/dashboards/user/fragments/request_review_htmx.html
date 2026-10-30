@@ -2,11 +2,10 @@
     (a Renewal or New), the agreement, then Back (stage=edit, a New's stage=request) or Submit
     (stage=submit). Context: the form's, plus data (the loaded form: end_date | amounts,
     user_comments | abstract and begin_date, grant, verdict, review_error). -#}
-{% from 'dashboards/fragments/modals.html' import modal_title %}
 {% from 'dashboards/fragments/xras_bits.html' import agreement %}
-{% from 'dashboards/user/partials/request_bits.html' import carry, document_field, grant_facts, verdict_note %}
+{% from 'dashboards/user/partials/request_bits.html' import request_title, carry, document_field, grant_facts, verdict_note %}
 {% set _new = action_type == 'New' %}
-{{ modal_title('xrasRequestModalLabel', 'Review the ' ~ action_type ~ (' request' if _new else ''), 'paper-plane', meta=project.projcode if project else None) }}
+{{ request_title('Review the ' ~ action_type ~ (' request' if _new else ''), meta=project.projcode if project else None) }}
 <form hx-post="{{ post_url }}" hx-target="#xrasRequestModalBody" hx-swap="innerHTML"
       {%- if documents %} hx-encoding="multipart/form-data"{% endif %}
       hx-disabled-elt="find button[type='submit']" hx-disinherit="hx-disabled-elt" novalidate>

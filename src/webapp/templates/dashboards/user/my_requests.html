@@ -8,6 +8,10 @@
    [(project, route)], open_projcode (a deep link opens that picker), submit_configured,
    new_enabled (the New opener), can_manage_xras (Resume/Discard on anyone's open row). #}
 {% block title %}My Requests - SAM{% endblock %}
+{% block extra_css %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/xras.css') }}">
+{% endblock %}
 
 {% set _ROUTES = {'xras': 'Through XRAS', 'staff': 'CISL staff'} %}
 

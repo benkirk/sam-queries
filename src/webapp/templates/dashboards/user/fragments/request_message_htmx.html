@@ -1,8 +1,9 @@
 {#- Why a request form cannot open, into #xrasRequestModalBody. Context: title, message, variant. -#}
-{% from 'dashboards/fragments/modals.html' import modal_title %}
-{{ modal_title('xrasRequestModalLabel', title, 'paper-plane') }}
+{% from 'dashboards/fragments/xras_bits.html' import outcome %}
+{% from 'dashboards/user/partials/request_bits.html' import request_title %}
+{{ request_title(title) }}
 <div class="modal-body">
-    <p class="mb-0 text-{{ variant }}-emphasis"><i class="fa-solid fa-circle-info me-1"></i>{{ message }}</p>
+    {% call outcome(variant, message) %}{% endcall %}
 </div>
 <div class="modal-footer">
     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>

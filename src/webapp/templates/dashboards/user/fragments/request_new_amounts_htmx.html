@@ -2,10 +2,9 @@
     opportunity offers, page one's answers carried in hidden fields; Back (stage=describe) or
     Review. Context: the handler's (opportunity, resources, documents, default_begin,
     default_end, sam_state, carry_fields), errors, field_errors, form. -#}
-{% from 'dashboards/fragments/modals.html' import modal_title %}
 {% from 'dashboards/fragments/form_fields.html' import date_field, form_errors_panel with context %}
-{% from 'dashboards/user/partials/request_bits.html' import amounts_table, attach_note, carry %}
-{{ modal_title('xrasRequestModalLabel', 'New request: resources', 'paper-plane') }}
+{% from 'dashboards/user/partials/request_bits.html' import request_title, amounts_table, attach_note, carry %}
+{{ request_title('New request: resources') }}
 <form hx-post="{{ post_url }}" hx-target="#xrasRequestModalBody" hx-swap="innerHTML"
       hx-disabled-elt="find button[type='submit']" hx-disinherit="hx-disabled-elt" novalidate>
     <div class="modal-body">
