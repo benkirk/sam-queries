@@ -170,22 +170,13 @@ def _actual_log_outcomes(action_ids):
     Read straight from ``db.session`` (committed rows), keyed by ``action_id``:
     the modal shows the prediction beside what actually happened when XRAS pushed.
     """
-    from sam.integration.xras import XrasActionLog
-
-    ids = [i for i in action_ids if i is not None]
-    if not ids:
-        return {}
-    outcomes = {}
-    for row in (db.session.query(XrasActionLog)
-                .filter(XrasActionLog.action_id.in_(set(ids)))
-                .order_by(XrasActionLog.xras_action_log_id.asc()).all()):
-        # Ascending id, so the last write for an action_id wins.
-        outcomes[row.action_id] = {'status': row.status,
-                                   'http_status': row.http_status,
-                                   'error_messages': row.error_messages,
-                                   'received_time': row.received_time,
-                                   'raw_payload': row.raw_payload}
-    return outcomes
+    from sam.integration.xras import latest_action_logs
+    return {action_id: {'status': row.status,
+                        'http_status': row.http_status,
+                        'error_messages': row.error_messages,
+                        'received_time': row.received_time,
+                        'raw_payload': row.raw_payload}
+            for action_id, row in latest_action_logs(db.session, action_ids).items()}
 
 
 def _detail_context(request_number, *, flash=None, flash_error=None):

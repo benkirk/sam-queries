@@ -890,6 +890,23 @@ class XrasRemediationEvent(Base, SessionMixin):
                 f"created_by={self.created_by!r})>")
 
 
+def latest_action_logs(session, action_ids) -> Dict[int, 'XrasActionLog']:
+    """The newest ``xras_action_log`` row per action id, in one query.
+
+    Ordered by id so the highest row wins: a failed post followed by a re-post
+    reports the re-post.
+    """
+    wanted = sorted({int(a) for a in action_ids if a is not None})
+    if not wanted:
+        return {}
+    out: Dict[int, XrasActionLog] = {}
+    for row in (session.query(XrasActionLog)
+                .filter(XrasActionLog.action_id.in_(wanted))
+                .order_by(XrasActionLog.xras_action_log_id)):
+        out[row.action_id] = row
+    return out
+
+
 def as_json_text(value):
     """Serialize a capture for storage, leaving an existing string alone.
 

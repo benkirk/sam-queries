@@ -82,20 +82,6 @@ def submission_readout(row, log=None, action_status: Optional[str] = None) -> Re
     return Readout('Not submitted', 'info', row.modified_time)
 
 
-def _latest_logs(session, action_ids: Iterable[int]) -> Dict[int, Any]:
-    """The newest ``xras_action_log`` row per action id, in one query."""
-    from sam.integration.xras import XrasActionLog
-    wanted = sorted({int(a) for a in action_ids if a})
-    if not wanted:
-        return {}
-    out: Dict[int, Any] = {}
-    for log in (session.query(XrasActionLog)
-                .filter(XrasActionLog.action_id.in_(wanted))
-                .order_by(XrasActionLog.xras_action_log_id)):
-        out[log.action_id] = log
-    return out
-
-
 def _latest_action(entries: Sequence[Mapping[str, Any]]) -> Optional[Dict[str, Any]]:
     actions = [a for e in entries for a in e.get('actions') or ()]
     return max(actions, key=lambda a: a.get('action_id') or 0) if actions else None
@@ -108,6 +94,7 @@ def my_requests(session, username: str,
     Each row: ``kind`` (filed | xras), ``request_number``, ``action_type``, ``readout``,
     ``when``, ``submission`` (the row, or ``None``). Open and stopped rows sort first.
     """
+    from sam.integration.xras import latest_action_logs
     from sam.integration.xras_submission import XrasSubmission
     from sam.queries.xras_requests import request_numbers_by_username
 
@@ -123,7 +110,7 @@ def my_requests(session, username: str,
         if entry.get('request_number') in numbers:
             by_number.setdefault(entry['request_number'], []).append(entry)
     latest = {n: _latest_action(e) for n, e in by_number.items()}
-    logs = _latest_logs(session, [r.action_id for r in filed]
+    logs = latest_action_logs(session, [r.action_id for r in filed]
                         + [a['action_id'] for a in latest.values() if a])
     statuses = {a['action_id']: a.get('action_status') for a in latest.values() if a}
     projcodes = _projcodes(session, [r.project_id for r in filed
