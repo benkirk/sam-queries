@@ -37,6 +37,7 @@ from webapp.api.access_control import require_project_permission
 from webapp.auth.impersonation import acting_username
 from webapp.extensions import db
 from webapp.utils.form_handler import FormError, HtmxFormHandler
+from webapp.utils.htmx import register_typeahead
 from webapp.utils.rbac import Permission, has_permission
 
 from .blueprint import _page_context, bp
@@ -691,16 +692,17 @@ def my_request_new_opportunity_fragment():
     return render_template(_NEW_OPPORTUNITY, form=None, field_errors={}, oob=True, **ctx)
 
 
-@bp.route('/requests/htmx/mnemonic-suggest')
-@login_required
-def my_requests_mnemonic_suggest():
+def _search_mnemonic_codes(q, active_only):
     from sam.queries.mnemonic_console import search_mnemonic_codes
-    q = (request.args.get('q') or '').strip()
-    if len(q) < 2:
-        return ''
-    return render_template(
-        'dashboards/allocations/partials/mnemonic_code_search_results_fk_htmx.html',
-        q=q, codes=search_mnemonic_codes(db.session, q, limit=10))
+    return search_mnemonic_codes(db.session, q, limit=10)
+
+
+register_typeahead(
+    bp, rule='/requests/htmx/mnemonic-suggest', endpoint='my_requests_mnemonic_suggest',
+    permission=None,                    # any user may pick the letters for a New
+    search=_search_mnemonic_codes,
+    template='dashboards/allocations/partials/mnemonic_code_search_results_fk_htmx.html',
+    ctx_key='codes')
 
 
 @bp.route('/requests/htmx/award-lookup')
