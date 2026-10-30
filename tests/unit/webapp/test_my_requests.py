@@ -558,11 +558,12 @@ class TestTheRenewalForm:
             for rid, name in ((530902, 'Derecho'), (530275, 'Casper'))})
         monkeypatch.setattr('sam.accounting.allocation_type_limits.limits_for_allocation_type',
                             lambda s, t: {'Derecho': limit, 'Casper': limit})
-        import re
         html = auth_client.get(REN).get_data(as_text=True)
-        assert re.search(r'name="amount_530902"\s+value="5000"', html)
-        casper = html.split('name="amount_530275"')[1][:120]
-        assert 'value=""' in casper
+        selected, available = html.split('data-amount-group="available"')
+        derecho = selected.split('name="amount_530902"')[1].split('>', 1)[0]
+        assert 'value="5000"' in derecho and 'disabled' not in derecho
+        casper = available.split('name="amount_530275"')[1].split('>', 1)[0]
+        assert 'value=""' in casper and 'disabled' in casper and 'data-suggest="5000"' in casper
 
     def test_a_seven_digit_default_fills_the_box_whole(self, auth_client, renewable,
                                                       monkeypatch):
@@ -762,13 +763,13 @@ class TestTheNewForm:
         assert 'type="hidden" name="title" value="Ensemble downscaling"' in html
         assert 'value="describe"' in html          # Back
 
-    def test_a_yes_no_resource_is_a_checkbox_that_asks_for_one(self, auth_client, newable,
-                                                              lettered, filed):
+    def test_a_yes_no_resource_asks_for_one_once_selected(self, auth_client, newable,
+                                                          lettered, filed):
         newable.opportunities[0]['resources'].append(
             {'resource_id': 530999, 'name': 'NCAR Data Access', 'units': 'Yes / No'})
         html = auth_client.post(NEW, data=_new()).get_data(as_text=True)
-        box = html.split('name="amount_530999"')[0].rsplit('<input', 1)[1]
-        assert 'type="checkbox"' in box and 'value="1"' in box
+        box = html.split('name="amount_530999"')[1].split('>', 1)[0]
+        assert 'value="1"' in box and 'disabled' in box
         assert 'yes or no' in html
         html = auth_client.post(NEW, data=_new_review(amount_530999='1')).get_data(as_text=True)
         assert 'NCAR Data Access' in html and '>Yes<' in html
@@ -781,6 +782,23 @@ class TestTheNewForm:
         html = auth_client.post(NEW, data=_new_review()).get_data(as_text=True)
         assert 'Review the New request' in html and 'name="document_Advisor_Letter"' in html
         assert 'name="agree"' in html and 'value="request"' in html and not filed
+
+    def test_page_two_starts_with_nothing_selected(self, auth_client, newable, lettered):
+        html = auth_client.post(NEW, data=_new()).get_data(as_text=True)
+        selected, available = html.split('data-amount-group="available"')
+        assert 'data-amount-row' not in selected and 'Nothing selected yet' in selected
+        box = available.split('name="amount_530902"')[1].split('>', 1)[0]
+        assert 'disabled' in box and 'value=""' in box
+
+    def test_a_posted_amount_comes_back_selected(self, auth_client, newable, lettered):
+        html = auth_client.post(NEW, data=_new(stage='review', amount_530902='',
+                                                begin_date='2026-12-01', end_date='2027-11-30')
+                                ).get_data(as_text=True)
+        assert 'Add at least one resource.' in html
+        html = auth_client.post(NEW, data=_new_review(amount_530902='750', end_date='2026-11-01')
+                                ).get_data(as_text=True)
+        selected = html.split('data-amount-group="available"')[0]
+        assert 'name="amount_530902"' in selected and 'value="750"' in selected
 
     def test_submit_files_the_new_through_the_pi_door(self, auth_client, newable, lettered,
                                                      filed):

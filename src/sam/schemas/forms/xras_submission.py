@@ -86,7 +86,7 @@ def _parse_amounts(raw: dict) -> dict:
     if errors:
         raise ValidationError(errors)
     if not amounts:
-        raise ValidationError('Ask for an amount on at least one resource.')
+        raise ValidationError('Add at least one resource.')
     return amounts
 
 

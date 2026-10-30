@@ -12,6 +12,10 @@
 {{ super() }}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/xras.css') }}">
 {% endblock %}
+{% block extra_js %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/request-amounts.js') }}"></script>
+{% endblock %}
 
 {% set _ROUTES = {'xras': 'XRAS', 'staff': 'CISL staff'} %}
 

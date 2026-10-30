@@ -338,14 +338,14 @@ fields that choice requires, and nothing else.
 | Action | The page asks for | What drives the reveal |
 |---|---|---|
 | Extension | the new end date (a real date input, ISO) and comments. The floor is the end the handler will compare against: the account's **latest** allocation by end date (`latest_allocation`, `sam/xras/handlers/_allocations.py`), which after a Renewal posts is the renewal's future window, so an earlier date is refused at the handoff (`XRAS_DEV_PROBES.md` § 6.1, scenario 7) | rule book: end date and comments required; no amounts, no document |
-| Supplement | an amount per resource, pre-filled with the default and bounded by § 4.5, and comments | rule book: nothing required; the limits table. **Which window it lands on** is open: a Supplement filed after a Renewal posts applies to the renewal's future window (legacy's max-end-date rule, `XRAS_INGEST_IMPROVEMENTS.md` § 4). The form names the window it will reach, or the ingest rule changes first |
+| Supplement | an amount per resource the PI selects (opt-in: every resource starts under Available, its default shown; selecting one fills the default), bounded by § 4.5, and comments | rule book: nothing required; the limits table. **Which window it lands on** is open: a Supplement filed after a Renewal posts applies to the renewal's future window (legacy's max-end-date rule, `XRAS_INGEST_IMPROVEMENTS.md` § 4). The form names the window it will reach, or the ingest rule changes first |
 | Renewal | `/renew` copies the roster, title, keywords and field of science; the form asks for the abstract, grants on Large and Small, the agreement (below), and the Main Document or Progress Report the document rule names | the rule book and the document rules per allocation type |
 | New, page 1 — *Describe* | the opportunity (everything below keys on it); title, abstract, keywords; field of science; PI = `current_user`, pre-filled, with an optional admin; affiliation → the mnemonic suggestor, failing visibly when the `user_institution` row is end-dated; the award picker, revealed when the opportunity's rule book wants grants | the opportunity's `rules{}`, `required_fields` |
 | New, page 2 — *Request* | resources = `rules.resourceIdsAvailableForNewRequest` ∩ mapped, each showing its default, minimum and maximum; **the NWSC end-user agreement**, SAMuel's own vendored text shown in full and accepted on every request SAM files (New and Renewal), the way the registration gate asks it (`webapp/register/eula.py`); the document upload when a document rule names the pair; the preflight readout; submit | `rules{}`, § 4.5, the agreement (always; the XRAS attribute row is written from it when the opportunity carries one), `required_documents_status` |
 
 What this fixes, against the baseline of § 3.2:
 - the lead is pre-filled, and the role vocabulary is XRAS's own;
-- amounts are defaulted and bounded, with the limit shown;
+- amounts are opt-in (Selected over Available; a Renewal starts with the held lines selected), defaulted on selection and bounded, with the limit shown;
 - the date input is a date input;
 - a required field says so inline instead of moving focus;
 - dates and grants are asked only where the rule book asks for them.
