@@ -12,6 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from sam.integration.xras_api.vocabulary import SUBMIT_ACTION_TYPES
+
 #: Route per SAM allocation-type name. An unlisted name routes ``staff``.
 XRAS_REQUEST_ROUTES: Dict[str, str] = {
     'CHAP': 'xras',
@@ -104,7 +106,7 @@ def request_routing(session, project, family: Optional[List[Dict[str, Any]]],
 
 
 #: The actions the picker offers on an existing project, in display order.
-PICKER_ACTION_TYPES = ('Extension', 'Supplement', 'Renewal')
+PICKER_ACTION_TYPES = tuple(t for t in SUBMIT_ACTION_TYPES if t != 'New')
 
 
 @dataclass(frozen=True)

@@ -58,3 +58,28 @@ def config_float(key: str, default: float) -> float:
     except (TypeError, ValueError):
         return default
     return parsed if parsed > 0 else default
+
+
+def parse_action_types(value, known, *, setting, canonical=None, logger=None):
+    """A comma list of XRAS action types: unset, empty or ``all`` is every *known* type,
+    ``none`` is none. An unknown token is logged and dropped, so a typo leaves that type
+    disabled rather than refusing to start. *canonical* folds aliases (``Adjust``)."""
+    import logging
+    log = logger or logging.getLogger(__name__)
+    text = (value or '').strip()
+    if not text or text.lower() == 'all':
+        return frozenset(known)
+    if text.lower() == 'none':
+        return frozenset()
+    by_fold = {t.casefold(): t for t in known}
+    chosen = set()
+    for token in (t.strip() for t in text.split(',')):
+        if not token:
+            continue
+        name = canonical(token) if canonical else token
+        if name is not None and name.casefold() in by_fold:
+            chosen.add(by_fold[name.casefold()])
+        else:
+            log.warning('%s lists an unknown action type %r; ignoring it, so that type stays '
+                        'DISABLED. Known types: %s', setting, token, ', '.join(sorted(known)))
+    return frozenset(chosen)
