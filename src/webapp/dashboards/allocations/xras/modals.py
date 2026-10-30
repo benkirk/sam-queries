@@ -36,7 +36,7 @@ from sam.queries.xras_requests import (
 from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from sam.dates import parse_wire_date
 from sam.text import strip_or_none
-from sam.integration.xras_api.vocabulary import resource_label
+from sam.xras.wire import resource_label
 from webapp.extensions import db
 from webapp.utils.downloads import document_response
 from webapp.utils.htmx import read_flag

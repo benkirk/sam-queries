@@ -110,8 +110,6 @@ SUBMIT_ACTION_TYPES = ('Extension', 'Supplement', 'Renewal', 'New')
 
 #: ``GET /v1/funding_agencies``: NSF, the one agency SAM looks a grant up for (XRAS_DEV_PROBES § 2).
 NSF_FUNDING_AGENCY_ID = 1
-#: The push spells the agency by name; ``add_grant`` sends its id.
-NSF_FUNDING_AGENCY_NAME = 'National Science Foundation'
 
 _ACTION_BY_NAME = {name.casefold(): name for name in ACTION_TYPES}
 
@@ -149,11 +147,3 @@ def document_type_label(code: Any) -> str:
         return 'Document'
     text = str(code)
     return DOCUMENT_TYPE_LABELS.get(text) or text.replace('_', ' ').capitalize()
-
-
-def resource_label(resource, resource_id=None) -> str:
-    """A resource row's display name, else its name, else ``resource <id>``."""
-    row = resource or {}
-    rid = resource_id if resource_id is not None else row.get('resourceId')
-    return (row.get('displayResourceName') or row.get('resourceName')
-            or (f'resource {rid}' if rid is not None else 'resource'))

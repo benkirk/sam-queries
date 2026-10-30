@@ -73,9 +73,9 @@ DOCUMENT_MAX_BYTES = 25 * 1024 * 1024
 # so the read path can import the one authoritative table without pulling in
 # this write client. Re-exported here because the package ``__init__`` and
 # several callers import these names from ``admin_client``.
+from sam.xras.wire import resource_label  # noqa: E402
 from sam.integration.xras_api.vocabulary import (  # noqa: E402
     PI_ROLE_TYPE_ID,
-    resource_label,
     ROLE_TYPES,
     RoleType,
     role_type,

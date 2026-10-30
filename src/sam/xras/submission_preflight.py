@@ -14,7 +14,7 @@ import re
 from datetime import date, datetime
 
 from sam.dates import format_ymd
-from sam.integration.xras_api.vocabulary import NSF_FUNDING_AGENCY_NAME, resource_label
+from sam.xras.wire import resource_label
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 
@@ -121,6 +121,11 @@ def new_request_sam_state(session, opportunity: Mapping[str, Any], pi) -> Dict[s
     where = (best_institution(pi) or best_organization(pi)) if pi else None
     return {'allocation_type': allocation_type, 'mnemonic': mnemonic,
             'affiliation': getattr(where, 'name', None), 'mnemonic_errors': list(mnemonic_errors)}
+
+
+#: The push spells the agency by name; ``add_grant`` sends ``vocabulary.NSF_FUNDING_AGENCY_ID``.
+#: Not imported from there: the inbound boundary gate keeps ``xras_api`` out of ``sam.xras``.
+NSF_FUNDING_AGENCY_NAME = 'National Science Foundation'
 
 
 def new_request_line(draft, *, pi_username: str, opportunity: Mapping[str, Any],
