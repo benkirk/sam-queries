@@ -71,3 +71,23 @@ class TestWhoActs:
             assert responsible_user() == f'benkirk as={target.username}'
             impersonation.end()
             assert responsible_user() == target.username
+
+
+class TestTheButton:
+    """One macro renders every impersonate control; the abandoned-users one posted to a form
+    no template had rendered since 2026-06, so its click died in the console."""
+
+    def test_the_search_results_carry_the_confirmed_form(self, auth_client, target):
+        html = auth_client.get(f'/admin/htmx/search/users?context=impersonate'
+                               f'&q={target.username}').get_data(as_text=True)
+        assert 'action="/admin/impersonate"' in html
+        assert 'data-action-submit="confirm-submit"' in html
+        assert f'name="username" value="{target.username}"' in html
+
+    def test_the_abandoned_users_table_renders_without_the_dead_button(self, auth_client):
+        resp = auth_client.get('/admin/expirations?view=abandoned&time_range=31days')
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert 'impersonate-user-btn' not in html
+        if 'name="username"' in html:
+            assert 'action="/admin/impersonate"' in html
