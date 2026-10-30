@@ -1,7 +1,7 @@
 """File a user's XRAS action (Extension, Supplement, Renewal, New) as audited steps.
 
 The ``xras_submission`` row is committed before any write. Each step then runs through
-``_editor_op`` (its own audit row, committed before the write) and records that row's id
+``audited_write`` (its own audit row, committed before the write) and records that row's id
 on the submission. A rejected, errored or unverified step stops the flow, stamps
 ``last_error`` and leaves the state where it was: there is **no automatic abort**. Resume
 skips every step whose event is ``verified``; abort deletes what SAM minted. Flask-free.
@@ -17,7 +17,7 @@ from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from sam.integration.xras_submission import documents_to_reattach
-from sam.manage.xras_remediation import RemediationOutcome, _client, _editor_op
+from sam.manage.xras_remediation import RemediationOutcome, admin_client, audited_write
 
 logger = logging.getLogger(__name__)
 
@@ -286,7 +286,7 @@ def _by_id(dispatch: Callable, xa_user: str) -> Callable:
 def _run_step(session_factory, view, step, operation, dispatch, admin) -> RemediationOutcome:
     """One audited write, then its event id on the row; keys from a mint are kept either way."""
     keys = {k: view[k] for k in ('request_id', 'action_id', 'request_number')}
-    outcome = _editor_op(
+    outcome = audited_write(
         operation, session_factory, lambda a: dispatch(a, keys),
         open_fields=dict(created_by=view['actor'], xa_user=view['xa_user'],
                          request_number=view['request_number'],
@@ -375,8 +375,8 @@ def _drive(session_factory, draft: ActionRequest, view, *, submit: bool,
 def _patch_card(session_factory, view) -> None:
     """One best-effort Remediations-card patch per run, for a numbered line."""
     if view['request_number']:
-        from sam.manage.xras_remediation import _refresh_index_entry
-        _refresh_index_entry(view['request_number'], session_factory=session_factory)
+        from sam.manage.xras_remediation import refresh_index_entry
+        refresh_index_entry(view['request_number'], session_factory=session_factory)
 
 
 # the entry points
@@ -420,7 +420,7 @@ def request_action(session_factory, draft: Optional[ActionRequest], *, actor: st
     sha, accepted_at = eula or (None, None)
     if not sha or accepted_at is None:
         raise SubmissionRefused('the agreement must be accepted first')
-    admin = _client(client)
+    admin = admin_client(client)
 
     with session_factory() as session:
         if open_submission_for(session, request_id=draft.request_id,
@@ -462,7 +462,7 @@ def resume_submission(session_factory, submission_id: int, *, actor: str,
     draft = ActionRequest.from_payload(view['payload'], documents)
     logger.info('xras submission %s: resumed by %s at %s', submission_id, actor,
                 view['state'])
-    return _drive(session_factory, draft, view, submit=submit, admin=_client(client))
+    return _drive(session_factory, draft, view, submit=submit, admin=admin_client(client))
 
 
 def abort_submission(session_factory, submission_id: int, *, actor: str,
@@ -494,7 +494,7 @@ def abort_submission(session_factory, submission_id: int, *, actor: str,
     else:
         step = None
     if step is not None:
-        outcome = _run_step(session_factory, view, *step, _client(client))
+        outcome = _run_step(session_factory, view, *step, admin_client(client))
         if not outcome.succeeded:
             return _stop(session_factory, view, 'abort', outcome)
     _advance(session_factory, view, 'aborted')

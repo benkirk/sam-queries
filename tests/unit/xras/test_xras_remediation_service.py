@@ -311,7 +311,7 @@ class TestMerge:
     def test_it_refreshes_every_request_naming_the_placeholder(
             self, factory, published, monkeypatch):
         refreshed = []
-        monkeypatch.setattr(service, '_refresh_index_entry',
+        monkeypatch.setattr(service, 'refresh_index_entry',
                             lambda n, **kw: refreshed.append(n) or True)
         monkeypatch.setattr(xras_cache, 'invalidate_person', lambda _u: None)
 
@@ -503,7 +503,7 @@ class TestTheSnapshotPatch:
     def test_no_patch_is_attempted_when_the_write_did_not_verify(
             self, factory, published, monkeypatch):
         called = []
-        monkeypatch.setattr(service, '_refresh_index_entry',
+        monkeypatch.setattr(service, 'refresh_index_entry',
                             lambda n, **kw: called.append(n) or True)
         client = MagicMock()
         client.withdraw_action.return_value = _result(verified=False)
@@ -520,7 +520,7 @@ class TestRoleChanges:
 
     def test_an_add_learns_its_role_id_at_completion(self, factory, session,
                                                      monkeypatch):
-        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        monkeypatch.setattr(service, 'refresh_index_entry', lambda n, **kw: True)
         client = MagicMock()
         client.add_role.return_value = _result('add_role',
                                                extra={'role_id': 580030})
@@ -534,7 +534,7 @@ class TestRoleChanges:
 
     def test_a_removal_records_the_role_id_it_was_given(self, factory, session,
                                                         monkeypatch):
-        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        monkeypatch.setattr(service, 'refresh_index_entry', lambda n, **kw: True)
         client = MagicMock()
         client.remove_role.return_value = _result('remove_role')
         outcome = service.change_role(
@@ -568,7 +568,7 @@ class TestTheEditorOps:
     def test_an_amount_edit_is_recorded_and_patched_on_success(
             self, factory, session, monkeypatch):
         seen = []
-        monkeypatch.setattr(service, '_refresh_index_entry',
+        monkeypatch.setattr(service, 'refresh_index_entry',
                             lambda n, **kw: seen.append(n) or True)
         client = MagicMock()
         client.update_resource_amount.return_value = _result(
@@ -590,7 +590,7 @@ class TestTheEditorOps:
         assert (row.xa_user, row.created_by) == ('pi-user', 'benkirk')
 
     def test_the_context_reaches_the_client(self, factory, monkeypatch):
-        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        monkeypatch.setattr(service, 'refresh_index_entry', lambda n, **kw: True)
         client = MagicMock()
         client.update_resource_amount.return_value = _result(
             'update_resource_amount', verified=True, before=[], after=[])
@@ -603,7 +603,7 @@ class TestTheEditorOps:
     def test_a_rejected_amount_is_recorded_and_not_patched(
             self, factory, session, monkeypatch):
         called = []
-        monkeypatch.setattr(service, '_refresh_index_entry',
+        monkeypatch.setattr(service, 'refresh_index_entry',
                             lambda n, **kw: called.append(n) or True)
         client = MagicMock()
         client.update_resource_amount.side_effect = XrasWriteRejected(
@@ -621,7 +621,7 @@ class TestTheEditorOps:
 
     def test_an_unverified_amount_is_not_reported_as_success(
             self, factory, session, monkeypatch):
-        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        monkeypatch.setattr(service, 'refresh_index_entry', lambda n, **kw: True)
         client = MagicMock()
         client.update_resource_amount.return_value = _result(
             'update_resource_amount', verified=False, before=[], after=[])
@@ -633,7 +633,7 @@ class TestTheEditorOps:
 
     def test_remove_resource_records_its_operation(self, factory, session,
                                                    monkeypatch):
-        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        monkeypatch.setattr(service, 'refresh_index_entry', lambda n, **kw: True)
         client = MagicMock()
         client.remove_resource.return_value = _result(
             'remove_resource', verified=True,
@@ -648,7 +648,7 @@ class TestTheEditorOps:
     def test_set_and_remove_dates_record_their_operations(
             self, factory, session, monkeypatch):
         import datetime as dt
-        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        monkeypatch.setattr(service, 'refresh_index_entry', lambda n, **kw: True)
         client = MagicMock()
         client.set_action_dates.return_value = _result(
             'set_action_dates', verified=True, before=[],
@@ -674,7 +674,7 @@ class TestTheEditorOps:
 
     def test_update_attributes_records_and_passes_wire_fields(
             self, factory, session, monkeypatch):
-        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        monkeypatch.setattr(service, 'refresh_index_entry', lambda n, **kw: True)
         client = MagicMock()
         client.update_request_attributes.return_value = _result(
             'update_attributes', verified=True, before={'title': 'Old'},
@@ -691,7 +691,7 @@ class TestTheEditorOps:
 
     def test_update_action_records_and_passes_wire_fields(
             self, factory, session, monkeypatch):
-        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        monkeypatch.setattr(service, 'refresh_index_entry', lambda n, **kw: True)
         client = MagicMock()
         client.update_action.return_value = _result(
             'update_action', verified=True, before={'userComments': None},
@@ -707,7 +707,7 @@ class TestTheEditorOps:
     def test_delete_request_records_and_patches_on_success(
             self, factory, session, monkeypatch):
         seen = []
-        monkeypatch.setattr(service, '_refresh_index_entry',
+        monkeypatch.setattr(service, 'refresh_index_entry',
                             lambda n, **kw: seen.append(n) or True)
         client = MagicMock()
         client.delete_request.return_value = _result(
@@ -723,7 +723,7 @@ class TestTheEditorOps:
 
     def test_renew_and_add_action_record_their_operations(
             self, factory, session, monkeypatch):
-        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        monkeypatch.setattr(service, 'refresh_index_entry', lambda n, **kw: True)
         client = MagicMock()
         client.renew_request.return_value = _result(
             'renew_request', verified=True, before={}, after={})
@@ -795,7 +795,7 @@ class TestTheRefreshRerunsThePreflight:
             service, '_preflight_verdicts',
             lambda r, s, p: ({7: {'status': 'failed', 'messages': ['x']}},
                              {'failed': 1}))
-        assert service._refresh_index_entry('EXAM0001', reader=reader,
+        assert service.refresh_index_entry('EXAM0001', reader=reader,
                                             session_factory=factory) is True
         row = xras_cache.load_requests_index()['rows'][0]
         assert row['preflight_rollup'] == 'failed'
@@ -805,7 +805,7 @@ class TestTheRefreshRerunsThePreflight:
                                                    monkeypatch):
         seen = []
         monkeypatch.setattr(
-            service, '_refresh_index_entry',
+            service, 'refresh_index_entry',
             lambda n, **kw: seen.append(kw.get('session_factory')) or True)
         client = MagicMock()
         client.merge_person.return_value = _result('merge_person')
@@ -823,7 +823,7 @@ class TestDeletedLinesAreNotTheRequest:
         deleted['isDeleted'] = True
         reader = MagicMock()
         reader.get_request_family_by_number.return_value = [deleted]
-        service._refresh_index_entry('EXAM0001', reader=reader)
+        service.refresh_index_entry('EXAM0001', reader=reader)
         assert xras_cache.load_requests_index()['rows'] == []
 
     def test_a_recheck_reads_the_live_line_past_a_newer_deleted_one(
@@ -867,7 +867,7 @@ class TestTheRename:
 
     def test_it_renames_as_the_pi_and_records_a_task_row(
             self, factory, session, rekeyed, monkeypatch):
-        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        monkeypatch.setattr(service, 'refresh_index_entry', lambda n, **kw: True)
         client = self._client('NCAR0001')
         outcome = self._rename(factory, client)
         assert outcome.status == 'verified'
@@ -901,7 +901,7 @@ class TestTheRename:
 
     def test_the_allocation_manager_stands_in_for_a_missing_pi(self, factory, rekeyed,
                                                                 monkeypatch):
-        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        monkeypatch.setattr(service, 'refresh_index_entry', lambda n, **kw: True)
         client = self._client('NCAR0001')
         client.reader.get_request_by_id.return_value['roles'] = [
             {'person': {'username': 'am-user'},
@@ -917,7 +917,7 @@ class TestTheRename:
 
     def test_an_unverified_rename_moves_nothing(self, factory, rekeyed, monkeypatch):
         refreshed = []
-        monkeypatch.setattr(service, '_refresh_index_entry',
+        monkeypatch.setattr(service, 'refresh_index_entry',
                             lambda n, **kw: refreshed.append(n) or True)
         client = self._client('NCAR0001')
         client.rename_request.return_value = _result('rename_request', verified=False)
