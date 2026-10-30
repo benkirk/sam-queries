@@ -3,7 +3,8 @@
     (stage=submit). Context: the form's, plus data (the loaded form: end_date | amounts,
     user_comments | abstract and begin_date, grant, verdict, review_error). -#}
 {% from 'dashboards/fragments/modals.html' import modal_title %}
-{% from 'dashboards/user/partials/request_bits.html' import agreement, carry, grant_facts, verdict_note %}
+{% from 'dashboards/fragments/xras_bits.html' import agreement %}
+{% from 'dashboards/user/partials/request_bits.html' import carry, grant_facts, verdict_note %}
 {% set _new = action_type == 'New' %}
 {{ modal_title('xrasRequestModalLabel', 'Review the ' ~ action_type ~ (' request' if _new else ''), 'paper-plane', meta=project.projcode if project else None) }}
 <form hx-post="{{ post_url }}" hx-target="#xrasRequestModalBody" hx-swap="innerHTML"

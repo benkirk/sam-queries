@@ -357,21 +357,18 @@ class _RequestForm(HtmxFormHandler):
             return 'SAM could not apply this once approved. Go back and change it.'
         if data.get('document_error'):
             return data['document_error']
-        if data['eula_sha'] != self._ctx['eula_sha']:
-            return 'The terms changed since this page opened. Read them and accept again.'
-        if not data['agree']:
-            return 'Accept the terms of use to file this request.'
-        return None
+        from webapp.register.eula import agreement_problem
+        return agreement_problem(data['eula_sha'], data['agree'], shown_sha=self._ctx['eula_sha'])
 
     def perform(self, data):
         if data['stage'] != 'submit':
             return data
         from sam.manage import xras_submission as flow
+        from webapp.register.eula import accepted
         try:
             data['outcome'] = flow.request_action(
                 _session_factory, data['draft'], actor=acting_username(),
-                xa_user=current_user.username,
-                eula=(data['eula_sha'], datetime.now()), door='pi')
+                xa_user=current_user.username, eula=accepted(data['eula_sha']), door='pi')
         except flow.SubmissionRefused as exc:
             raise FormError(str(exc))
         return data

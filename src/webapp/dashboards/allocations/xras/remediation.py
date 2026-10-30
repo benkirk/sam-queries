@@ -1964,13 +1964,14 @@ class _XrasAddActionHandler(_XrasRemediationHandler):
     success_message = 'Action added in XRAS.'
 
     def clean(self, data):
-        from webapp.register.eula import eula_sha
+        from webapp.register.eula import accepted, agreement_problem
         self._request_id, self._xa_user = _editor_target(self.request_number)
         if data['action_type'] in _FLOW_ACTION_TYPES:
             agreement = XrasAddActionAgreementForm().load(request.form)
-            if not agreement['agree'] or agreement['eula_sha'] != eula_sha():
-                raise FormError('Confirm the request is filed under the terms of use.')
-            data['eula'] = (agreement['eula_sha'], datetime.now())
+            problem = agreement_problem(agreement['eula_sha'], agreement['agree'])
+            if problem:
+                raise FormError(problem)
+            data['eula'] = accepted(agreement['eula_sha'])
         return data
 
     def perform(self, data):

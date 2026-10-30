@@ -5,20 +5,6 @@
 <span class="badge {{ _TONES.get(readout.tone, 'state-tag') }}"{% if title %} title="{{ title }}"{% endif %}>{{ readout.label }}</span>
 {%- endmacro %}
 
-{#- The gentle agreement: a checkbox beside the submit, the text one click away (a new tab). -#}
-{% macro agreement(eula_sha, checked=False, error=None, id='xrasRequestAgree') -%}
-<input type="hidden" name="eula_sha" value="{{ eula_sha }}">
-<div class="form-check mb-0">
-    <input type="checkbox" class="form-check-input{{ ' is-invalid' if error }}" id="{{ id }}"
-           name="agree" value="1"{% if checked %} checked{% endif %}>
-    <label class="form-check-label" for="{{ id }}">
-        I accept the <a href="{{ url_for('user_dashboard.my_requests_agreement') }}" target="_blank"
-                        rel="noopener">NSF NCAR HPC terms of use</a> for this request.
-    </label>
-    {%- if error %}<div class="invalid-feedback d-block">{{ error }}</div>{% endif %}
-</div>
-{%- endmacro %}
-
 {#- A preflight verdict (sam.xras.preflight.Verdict) in the requester's words. -#}
 {% macro verdict_note(verdict) -%}
 <div class="modal-facts small mb-2">

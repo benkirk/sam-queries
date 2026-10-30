@@ -34,16 +34,21 @@ GRANT_INPUTS = {'grant_number': 'grantNumber', 'grant_title': 'title',
 _COMMENTS_MIN = 10
 
 
-class XrasAgreementMixin(HtmxFormSchema):
-    """The stage, and the agreement: its checkbox and the sha of the text shown.
+class XrasAgreementFields(HtmxFormSchema):
+    """The agreement: its checkbox and the sha of the text shown.
 
-    Not refused here: a submit without the tick goes back to the review, which the
-    handler renders from the rest of the body (``clean``).
+    Not refused here: the handler decides (a submit without the tick goes back to the
+    review; the operator's Add-action refuses).
     """
 
-    stage = f.Str(load_default='review', validate=v.OneOf(SUBMISSION_STAGES))
     eula_sha = f.Str(load_default=None, validate=v.Length(equal=40))
     agree = f.Bool(load_default=False)
+
+
+class XrasAgreementMixin(XrasAgreementFields):
+    """The agreement and the stage of a request form."""
+
+    stage = f.Str(load_default='review', validate=v.OneOf(SUBMISSION_STAGES))
 
 
 class XrasExtensionRequestForm(XrasAgreementMixin):
@@ -199,8 +204,5 @@ class XrasNewRequestForm(XrasGrantMixin, XrasAgreementMixin):
         return data
 
 
-class XrasAddActionAgreementForm(HtmxFormSchema):
+class XrasAddActionAgreementForm(XrasAgreementFields):
     """The operator Add-action modal's agreement, when the action is filed through the flow."""
-
-    eula_sha = f.Str(load_default=None, validate=v.Length(equal=40))
-    agree = f.Bool(load_default=False)
