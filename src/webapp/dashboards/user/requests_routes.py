@@ -33,6 +33,7 @@ from sam.schemas.forms import (
 from sam.schemas.forms.xras_submission import GRANT_INPUTS
 from sam.xras.routing import action_offers, request_routing, route_for
 from webapp.api.access_control import require_project_permission
+from webapp.auth.impersonation import acting_username
 from webapp.extensions import db
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.rbac import Permission, has_permission
@@ -351,10 +352,10 @@ class _RequestForm(HtmxFormHandler):
         if data['stage'] != 'submit':
             return data
         from sam.manage import xras_submission as flow
-        username = current_user.username
         try:
             data['outcome'] = flow.request_action(
-                _session_factory, data['draft'], actor=username, xa_user=username,
+                _session_factory, data['draft'], actor=acting_username(),
+                xa_user=current_user.username,
                 eula=(data['eula_sha'], datetime.now()), door='pi')
         except flow.SubmissionRefused as exc:
             raise FormError(str(exc))
@@ -818,7 +819,7 @@ def my_request_resume(submission_id):
             return render_template(_RESUME, row=row,
                                    missing=missing_documents(db.session, row), error=error)
     try:
-        flow.resume_submission(_session_factory, submission_id, actor=current_user.username,
+        flow.resume_submission(_session_factory, submission_id, actor=acting_username(),
                                door=door, documents=tuple(documents))
     except (flow.SubmissionRefused, LookupError, XrasSourceUnavailable) as exc:
         current_app.logger.warning('my requests resume %s: %s', submission_id, exc)
@@ -834,7 +835,7 @@ def my_request_abort(submission_id):
     from sam.manage import xras_submission as flow
     row = _owned_submission(submission_id)
     try:
-        flow.abort_submission(_session_factory, submission_id, actor=current_user.username,
+        flow.abort_submission(_session_factory, submission_id, actor=acting_username(),
                               door=_door(row))
     except (flow.SubmissionRefused, LookupError, XrasSourceUnavailable) as exc:
         current_app.logger.warning('my requests abort %s: %s', submission_id, exc)

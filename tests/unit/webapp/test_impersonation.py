@@ -51,3 +51,23 @@ class TestTheKeyLifecycle:
         auth_client.post('/auth/login', data={'username': target.username, 'password': 'x'})
         with auth_client.session_transaction() as sess:
             assert 'impersonator_id' not in sess and sess['_user_id'] == str(target.user_id)
+
+
+class TestWhoActs:
+
+    def test_writes_name_the_admin_and_the_audit_says_as_whom(self, app, session, target):
+        from flask_login import login_user
+        from webapp.audit.events import responsible_user
+        from webapp.auth import impersonation
+        from webapp.auth.impersonation import acting_username
+        from webapp.auth.models import AuthUser
+        admin = User.get_by_username(session, 'benkirk')
+        with app.test_request_context('/'):
+            login_user(AuthUser(target))
+            assert acting_username() == target.username
+            assert responsible_user() == target.username
+            impersonation.begin(admin.user_id)
+            assert acting_username() == 'benkirk'
+            assert responsible_user() == f'benkirk as={target.username}'
+            impersonation.end()
+            assert responsible_user() == target.username

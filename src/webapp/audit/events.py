@@ -16,7 +16,8 @@ _AUDIT_EVENTS_REGISTERED = False
 
 def responsible_user():
     """The actor: ``g.audit_actor`` (work after the reply), else the API-key name
-    (an XRAS push, a collector), else the logged-in user, else "anonymous" (CLI)."""
+    (an XRAS push, a collector), else the logged-in user, else "anonymous" (CLI).
+    While an admin impersonates, the admin, with ``as=<impersonated>`` appended."""
     try:
         from flask import g
         from flask_login import current_user
@@ -28,7 +29,11 @@ def responsible_user():
         if api_user:
             return api_user
         if current_user and current_user.is_authenticated:
-            return current_user.username
+            from webapp.auth.impersonation import acting_username, is_impersonating
+            actor = acting_username()
+            if is_impersonating() and actor != current_user.username:
+                return f'{actor} as={current_user.username}'
+            return actor
     except RuntimeError:
         # No Flask request context (CLI, background job)
         pass

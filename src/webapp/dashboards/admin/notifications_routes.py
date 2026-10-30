@@ -49,6 +49,7 @@ from sam.queries.notifications import (
     get_template_overrides,
     summarize_notifications,
 )
+from webapp.auth.impersonation import acting_username
 from webapp.extensions import db
 from webapp.utils.faceted_log import build_facet_strip, parse_window
 from webapp.utils.form_handler import FlattenedFieldErrors, FormError, HtmxFormHandler
@@ -493,7 +494,7 @@ def notification_addressing_add(family: str):
             raise ValueError(f"{data['address']} is already a {data['field']} "
                              f"for {scope_label(data['scope'])}")
         return NotificationAddressing.create(
-            db.session, created_by=current_user.username, **data)
+            db.session, created_by=acting_username(), **data)
 
     return handle_htmx_form_post(
         schema_cls=AddAddressingForm,

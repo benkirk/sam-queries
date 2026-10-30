@@ -35,3 +35,13 @@ def impersonator():
     from webapp.extensions import db
     uid = impersonator_id()
     return db.session.get(User, uid) if uid else None
+
+
+def acting_username() -> str:
+    """Who really acts: the impersonator's username while impersonating, else ``current_user``'s.
+
+    Writes record this as their actor (audit rows, XRAS ``created_by``); what they act *as*
+    (the PI a request is filed for, ``xa_user``) stays ``current_user``.
+    """
+    admin = impersonator()
+    return admin.username if admin is not None else current_user.username
