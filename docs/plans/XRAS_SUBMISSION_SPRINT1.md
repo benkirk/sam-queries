@@ -81,8 +81,8 @@ submit_armed(action_type=None)
 | Evidence | `payload` (the draft), `xras_snapshot` (the create or renew response), `step_events` (step → `xras_remediation_event` id) |
 
 `create()`, `advance(state)`, `record_step()`, `set_keys()`, `mark_applied(project_id)`;
-module-level `lookup_submission_by_request_id`, `open_submissions_for_user`,
-`submission_by_action_id`. Index names never match a table name (Postgres shares the
+module-level `submission_by_action_id`, `new_submissions_by_request_id`, `open_submission_for`,
+`step_statuses`, `documents_to_reattach`. Index names never match a table name (Postgres shares the
 namespace). `anonymize_sam_db.py` purges the table.
 
 ### `AllocationTypeResourceLimit` (`sam/accounting/allocation_type_limits.py`)

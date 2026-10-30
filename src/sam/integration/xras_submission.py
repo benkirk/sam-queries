@@ -231,17 +231,6 @@ def documents_to_reattach(statuses: Dict[str, str], filenames) -> List[str]:
             if statuses.get(f'document:{name}') in (None, 'rejected')]
 
 
-def lookup_submission_by_request_id(session, request_id) -> Optional[XrasSubmission]:
-    """The newest non-aborted row on line *request_id*, or ``None``: the New handler's consult key."""
-    if not request_id:
-        return None
-    return (session.query(XrasSubmission)
-            .filter(XrasSubmission.request_id == int(request_id))
-            .filter(XrasSubmission.state != 'aborted')
-            .order_by(XrasSubmission.xras_submission_id.desc())
-            .first())
-
-
 def new_submissions_by_request_id(session) -> Dict[int, XrasSubmission]:
     """``{request_id: row}`` for every non-aborted New SAM filed, newest winning, in one query."""
     out: Dict[int, XrasSubmission] = {}
@@ -259,16 +248,6 @@ def submission_by_action_id(session, action_id) -> Optional[XrasSubmission]:
         return None
     return (session.query(XrasSubmission)
             .filter(XrasSubmission.action_id == int(action_id)).one_or_none())
-
-
-def open_submissions_for_user(session, username: str):
-    """In-flight rows *username* filed or is impersonated on, newest first."""
-    return (session.query(XrasSubmission)
-            .filter(XrasSubmission.is_active)
-            .filter((XrasSubmission.created_by == username)
-                    | (XrasSubmission.xa_user == username))
-            .order_by(XrasSubmission.xras_submission_id.desc())
-            .all())
 
 
 def open_submission_for(session, *, request_id, action_type: str,

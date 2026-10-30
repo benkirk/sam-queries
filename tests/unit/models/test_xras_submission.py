@@ -8,9 +8,7 @@ from sam.integration.xras_submission import (
     UNKNOWN_STEP,
     XrasSubmission,
     documents_to_reattach,
-    lookup_submission_by_request_id,
     open_submission_for,
-    open_submissions_for_user,
     submission_by_action_id,
 )
 
@@ -116,27 +114,10 @@ class TestStepStatuses:
 
 class TestLookups:
 
-    def test_by_request_id_skips_aborted_and_prefers_the_newest(self, session):
-        _open(session).advance('aborted')
-        older = _open(session, action_type='Supplement')
-        newer = _open(session, action_type='Extension', by='xsub-other')
-        assert lookup_submission_by_request_id(session, _LINE) is newer
-        newer.advance('aborted')
-        assert lookup_submission_by_request_id(session, _LINE) is older
-        assert lookup_submission_by_request_id(session, None) is None
-
     def test_by_action_id(self, session):
         row = _open(session, action_id=98_700_102)
         assert submission_by_action_id(session, 98_700_102) is row
         assert submission_by_action_id(session, 98_700_103) is None
-
-    def test_open_rows_for_a_user_cover_both_doors(self, session):
-        mine = _open(session)
-        on_my_behalf = XrasSubmission.create(
-            session, action_type='Supplement', created_by='xsub-operator',
-            xa_user='xsub-pi', payload={}, request_id=_LINE, **_EULA)
-        _open(session, action_type='Renewal').advance('aborted')
-        assert set(open_submissions_for_user(session, 'xsub-pi')) == {mine, on_my_behalf}
 
     def test_the_second_open_guard_is_per_actor_line_and_type(self, session):
         row = _open(session)
