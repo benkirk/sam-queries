@@ -73,6 +73,7 @@ DOCUMENT_MAX_BYTES = 25 * 1024 * 1024
 # several callers import these names from ``admin_client``.
 from sam.integration.xras_api.vocabulary import (  # noqa: E402
     PI_ROLE_TYPE_ID,
+    resource_label,
     ROLE_TYPES,
     RoleType,
     role_type,
@@ -1211,8 +1212,7 @@ class XrasAdminClient(_XrasTransport):
 
             def resources(ids, named=named):
                 return [{'resource_id': rid,
-                         'name': (named.get(rid) or {}).get('displayResourceName')
-                         or f'resource {rid}',
+                         'name': resource_label(named.get(rid), rid),
                          'units': (named.get(rid) or {}).get('resourceUnits') or ''}
                         for rid in ids]
             yield opp, {'opportunity_id': opp.get('opportunityId'),

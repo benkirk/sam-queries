@@ -150,3 +150,11 @@ def document_type_label(code: Any) -> str:
         return 'Document'
     text = str(code)
     return DOCUMENT_TYPE_LABELS.get(text) or text.replace('_', ' ').capitalize()
+
+
+def resource_label(resource, resource_id=None) -> str:
+    """A resource row's display name, else its name, else ``resource <id>``."""
+    row = resource or {}
+    rid = resource_id if resource_id is not None else row.get('resourceId')
+    return (row.get('displayResourceName') or row.get('resourceName')
+            or (f'resource {rid}' if rid is not None else 'resource'))

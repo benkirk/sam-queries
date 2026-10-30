@@ -14,6 +14,7 @@ import re
 from datetime import date, datetime
 
 from sam.dates import format_ymd
+from sam.integration.xras_api.vocabulary import resource_label
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 
@@ -27,8 +28,7 @@ def line_resources(line: Optional[Mapping[str, Any]]) -> List[Dict[str, Any]]:
             if rid is None or rid in seen:
                 continue
             seen[rid] = {'resource_id': rid,
-                         'name': res.get('displayResourceName') or res.get('resourceName')
-                         or f'resource {rid}',
+                         'name': resource_label(res, rid),
                          'units': res.get('resourceUnits') or ''}
     return sorted(seen.values(), key=lambda r: r['name'])
 

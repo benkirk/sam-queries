@@ -36,6 +36,7 @@ from sam.queries.xras_requests import (
 from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from sam.dates import parse_wire_date
 from sam.text import strip_or_none
+from sam.integration.xras_api.vocabulary import resource_label
 from webapp.extensions import db
 from webapp.utils.downloads import document_response
 from webapp.utils.htmx import read_flag
@@ -90,9 +91,7 @@ def _detail_actions(payload):
             raw = res.get('type')
             stage = raw if raw in _RESOURCE_STAGES else 'Other'
             rid = res.get('resourceId')
-            name = (res.get('displayResourceName') or res.get('resourceName')
-                    or (('resource ' + str(rid)) if rid is not None
-                        else 'resource'))
+            name = resource_label(res, rid)
             # Key on the resource-type id (unique per resource); fall back to
             # the name only when a payload omits the id.
             key = rid if rid is not None else name
