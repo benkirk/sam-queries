@@ -1026,11 +1026,9 @@ def xras_resubmit_form(request_number: str, action_id: int):
     try:
         context = _action_context(request_number, action_id, mode='resubmit')
         if context and context['xa_user'] and context['request_id']:
-            from sam.integration.xras_api.admin_client import XrasAdminClient
-            from sam.integration.xras_api.config import XrasApiConfig
+            from webapp.utils.xras import admin_client
             try:
-                admin = XrasAdminClient.from_environment(
-                    XrasApiConfig.from_environment().interactive())
+                admin = admin_client()
                 context['validation'] = admin.validate_action(
                     context['request_id'], action_id,
                     xa_user=context['xa_user'])

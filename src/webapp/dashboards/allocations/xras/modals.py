@@ -352,15 +352,14 @@ def xras_document(request_number: str, action_id: int, document_id: int):
     The type is decided from the bytes, never from XRAS's header
     (``document_response``).
     """
-    from sam.integration.xras_api.admin_client import XrasAdminClient
-    from sam.integration.xras_api.config import XrasApiConfig
+    from webapp.utils.xras import admin_client
 
     try:
         line, doc = _find_document(_live_family(request_number), action_id, document_id)
         if doc is None:
             return _plain('No such document on this request.', 404)
         xa_user, _, _ = _impersonation(None, live=line)
-        client = XrasAdminClient.from_environment(XrasApiConfig.from_environment().interactive())
+        client = admin_client()
         fetched = client.get_document(line.get('requestId'), action_id, document_id,
                                       xa_user=xa_user)
     except XrasSourceUnavailable as exc:

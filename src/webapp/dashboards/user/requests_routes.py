@@ -38,6 +38,13 @@ from webapp.auth.impersonation import acting_username
 from webapp.extensions import db
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import register_typeahead
+from webapp.utils.xras import (
+    admin_client,
+    interactive_config,
+    read_client,
+    requests_index,
+    session_factory,
+)
 from webapp.utils.rbac import Permission, has_permission
 
 from .blueprint import _page_context, bp
@@ -52,29 +59,17 @@ _SCHEMAS = {'Extension': XrasExtensionRequestForm, 'Supplement': XrasSupplementR
             'Renewal': XrasRenewalRequestForm}
 
 
-def _config():
-    from sam.integration.xras_api.config import XrasApiConfig
-    return XrasApiConfig.from_environment().interactive()
-
-
-def _session_factory():
-    """Private sessions for the flow's rows: a request rollback must never erase an audit row."""
-    from sqlalchemy.orm import Session
-    return Session(db.engine)
+#: The module's seam for the tests; the plumbing itself is ``webapp.utils.xras``.
+_config = interactive_config
+_session_factory = session_factory
 
 
 def _index_rows():
-    from sam.integration.xras_api.cache import load_requests_index
-    return (load_requests_index() or {}).get('rows') or []
+    return (requests_index() or {}).get('rows') or []
 
 
 def _type_name(project):
     return project.allocation_type.allocation_type if project.allocation_type else None
-
-
-def _reader(config):
-    from sam.integration.xras_api import XrasApiClient
-    return XrasApiClient.from_environment(config)
 
 
 def _decide(project, config):
@@ -82,7 +77,7 @@ def _decide(project, config):
     family = None
     if config.submit_configured and route_for(_type_name(project)) == 'xras':
         try:
-            family = _reader(config).get_request_family_by_number(project.projcode)
+            family = read_client(config).get_request_family_by_number(project.projcode)
         except XrasSourceUnavailable as exc:
             current_app.logger.warning('my requests family read %s: %s', project.projcode, exc)
             return None, 'XRAS is not answering, so this project\'s requests cannot be offered now.'
@@ -114,14 +109,13 @@ def my_requests_page():
 @require_project_permission(Permission.EDIT_PROJECTS)
 def my_requests_actions(project):
     """One project's offers, each enabled or disabled with its reason."""
-    from sam.integration.xras_api.admin_client import XrasAdminClient
 
     config = _config()
     decision, outage = _decide(project, config)
     available = []
     if decision is not None and decision.allowed:
         try:
-            available = XrasAdminClient.from_environment(config).available_action_requests(
+            available = admin_client(config).available_action_requests(
                 current_user.username)
         except XrasSourceUnavailable as exc:
             current_app.logger.warning('my requests offers read %s: %s',
@@ -192,11 +186,10 @@ class _RequestForm(HtmxFormHandler):
 
     def _renewal_context(self, config, decision, floor):
         """XRAS's renewal offer for the line (opportunity, resources, award period) and its rule book."""
-        from sam.integration.xras_api.admin_client import XrasAdminClient
         from sam.integration.xras_api.rule_book import rule_book
         from sam.xras.submission_preflight import line_resources
         try:
-            offers = XrasAdminClient.from_environment(config).available_action_requests(
+            offers = admin_client(config).available_action_requests(
                 current_user.username)
         except XrasSourceUnavailable:
             raise FormError('XRAS is not answering, so the renewal cannot be offered now.')
@@ -204,7 +197,7 @@ class _RequestForm(HtmxFormHandler):
                       and o['request_number'] == decision.request_number), None)
         if offer is None:
             raise FormError('XRAS offers no renewal for this project right now.')
-        rules = rule_book(_reader(config), offer['allocation_type_id'], 'Renewal',
+        rules = rule_book(read_client(config), offer['allocation_type_id'], 'Renewal',
                           allocation_type_name=offer['allocation_type'])
         begin = floor + timedelta(days=1) if floor else datetime.now().date()
         months = offer.get('award_months') or 12
@@ -223,7 +216,7 @@ class _RequestForm(HtmxFormHandler):
         from sam.integration.xras_api.people import resource_key_map
         from sam.xras.submission_preflight import sam_resources_by_xras_id
         try:
-            catalog = _reader(config).get_resources()
+            catalog = read_client(config).get_resources()
         except XrasSourceUnavailable:
             catalog = None
         keys = resource_key_map(catalog) if catalog else None
@@ -412,9 +405,8 @@ _DESCRIBE_FIELDS = ('opportunity_id', 'title', 'abstract', 'keywords', 'fos_type
 
 def _new_opportunities(config):
     """The open opportunities as the current user sees them; ``FormError`` on an outage."""
-    from sam.integration.xras_api.admin_client import XrasAdminClient
     try:
-        return XrasAdminClient.from_environment(config).new_request_opportunities(
+        return admin_client(config).new_request_opportunities(
             current_user.username)
     except XrasSourceUnavailable as exc:
         current_app.logger.warning('my requests opportunities %s: %s', current_user.username, exc)
@@ -438,7 +430,7 @@ def _opportunity_context(config, opportunity):
     from sam.xras.submission_preflight import new_request_sam_state
     if opportunity is None:
         return {'opportunity': None, 'rules': None, 'sam_state': None}
-    rules = rule_book(_reader(config), opportunity['allocation_type_id'], 'New',
+    rules = rule_book(read_client(config), opportunity['allocation_type_id'], 'New',
                       allocation_type_name=opportunity['allocation_type'])
     pi = User.get_by_username(db.session, current_user.username)
     return {'opportunity': opportunity, 'rules': rules,
@@ -588,10 +580,9 @@ class _NewRequestForm(_RequestForm):
 
     @staticmethod
     def _in_xras(username):
-        from sam.integration.xras_api.admin_client import XrasAdminClient
         from sam.integration.xras_api.base import XrasWriteRejected
         try:
-            return XrasAdminClient.from_environment(_config()).get_person(username) is not None
+            return admin_client(_config()).get_person(username) is not None
         except XrasWriteRejected:
             return False
         except XrasSourceUnavailable:
