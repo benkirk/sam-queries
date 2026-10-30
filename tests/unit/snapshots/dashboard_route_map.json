@@ -3334,6 +3334,13 @@
     ]
   ],
   [
+    "user_dashboard.my_requests_offers",
+    "/user/requests/offers",
+    [
+      "GET"
+    ]
+  ],
+  [
     "user_dashboard.my_requests_page",
     "/user/requests",
     [

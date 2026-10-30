@@ -9,6 +9,7 @@ from sam.integration.xras_submission import XrasSubmission
 from sam.xras.routing import (
     ROUTING_REASONS,
     XRAS_REQUEST_ROUTES,
+    inline_offers,
     request_routing,
     route_for,
 )
@@ -82,6 +83,54 @@ class TestTheGates:
                               project_id=-4242)
         d = request_routing(session, project, [_line()], 'pi1', armed=True)
         assert d.reason == 'pending'
+
+
+
+class TestTheInlineOffers:
+    """The row buttons: the index roster and SAM's pending check, no family read."""
+
+    def _p(self, projcode, type_name='Small', project_id=-4243):
+        return SimpleNamespace(projcode=projcode, project_id=project_id,
+                               allocation_type=SimpleNamespace(allocation_type=type_name))
+
+    def _index(self, number='UHSS0001', user='pi1', active=True):
+        return [{'request_number': number, 'roster': [{'username': user, 'active': active}]}]
+
+    def _offers(self, session, projects, index, available=(), allows=lambda t: True,
+                armed=True):
+        return inline_offers(session, projects, 'PI1', index, list(available), allows,
+                             armed=armed)
+
+    def test_on_the_roster_offers_extension_and_supplement(self, session):
+        got = self._offers(session, [self._p('UHSS0001')], self._index())
+        assert got == {'UHSS0001': ['Extension', 'Supplement']}
+
+    def test_a_renewal_needs_xrass_offer(self, session):
+        offer = {'action_type': 'Renewal', 'request_number': 'UHSS0001'}
+        got = self._offers(session, [self._p('UHSS0001')], self._index(), [offer])
+        assert got == {'UHSS0001': ['Extension', 'Supplement', 'Renewal']}
+
+    def test_the_lever_narrows_the_types(self, session):
+        got = self._offers(session, [self._p('UHSS0001')], self._index(),
+                           allows=lambda t: t == 'Extension')
+        assert got == {'UHSS0001': ['Extension']}
+
+    @pytest.mark.parametrize('index', [[], [{'request_number': 'UHSS0001', 'roster': [
+        {'username': 'someone'}]}], [{'request_number': 'UHSS0001', 'roster': [
+        {'username': 'pi1', 'active': False}]}]])
+    def test_off_the_roster_offers_nothing(self, session, index):
+        assert self._offers(session, [self._p('UHSS0001')], index) == {}
+
+    def test_staff_routes_and_the_lever_off_offer_nothing(self, session):
+        assert self._offers(session, [self._p('UHSS0001', 'Staff')], self._index()) == {}
+        assert self._offers(session, [self._p('UHSS0001')], self._index(), armed=False) == {}
+
+    def test_a_pending_request_offers_nothing(self, session):
+        XrasSubmission.create(session, action_type='Extension', created_by='pi1',
+                              xa_user='pi1', eula_sha='a' * 40,
+                              eula_accepted_at=datetime.now(), payload={},
+                              project_id=-4243)
+        assert self._offers(session, [self._p('UHSS0001')], self._index()) == {}
 
 
 class TestTheOffers:

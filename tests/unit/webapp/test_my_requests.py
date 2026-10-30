@@ -158,6 +158,56 @@ class TestTheComments:
         assert '<script>x' not in html and '&lt;script&gt;' in html
 
 
+
+class TestTheRowButtons:
+
+    OFFERS = '/user/requests/offers'
+
+    @pytest.fixture
+    def rostered(self, monkeypatch):
+        monkeypatch.setattr(requests_routes, '_index_rows', lambda: [
+            {'request_number': 'UHSS0001', 'roster': [{'username': 'benkirk', 'active': True}]}])
+
+    def test_the_lever_off_draws_no_column_and_reads_nothing(self, auth_client, monkeypatch):
+        monkeypatch.setattr('sam.integration.xras_api.admin_client.XrasAdminClient.from_environment',
+                            classmethod(lambda *a, **k: pytest.fail('read XRAS')))
+        html = auth_client.get(PAGE).get_data(as_text=True)
+        assert 'Request</th>' not in html and self.OFFERS not in html
+        assert auth_client.get(self.OFFERS).get_data() == b''
+
+    def test_armed_the_page_loads_the_buttons_once(self, auth_client, armed):
+        html = auth_client.get(PAGE).get_data(as_text=True)
+        assert 'Request</th>' in html and 'id="req-offers-UHSS0001"' in html
+        assert html.count(f'hx-get="{self.OFFERS}"') == 1
+
+    def test_the_buttons_open_the_forms(self, auth_client, armed, rostered):
+        armed.available = [{'action_type': 'Renewal', 'request_number': 'UHSS0001'}]
+        html = auth_client.get(self.OFFERS).get_data(as_text=True)
+        cell = html.split('id="req-offers-UHSS0001"')[1].split('</span>\n', 1)[0]
+        assert 'hx-swap-oob' in html.split('id="req-offers-UHSS0001"')[1][:40]
+        for kind, word in (('extension', 'Extend'), ('supplement', 'Supplement'),
+                           ('renewal', 'Renew')):
+            assert f'/user/requests/UHSS0001/{kind}' in cell and f'>{word}</span>' in cell
+        assert armed.reads.count(('offers', 'benkirk')) == 1
+
+    def test_an_outage_still_offers_extension_and_supplement(self, auth_client, armed, rostered,
+                                                             monkeypatch):
+        from sam.integration.xras_api import XrasSourceUnavailable
+
+        def down(self, username):
+            raise XrasSourceUnavailable('down')
+        monkeypatch.setattr(type(requests_routes.admin_client()), 'available_action_requests',
+                            down)
+        cell = auth_client.get(self.OFFERS).get_data(as_text=True).split(
+            'id="req-offers-UHSS0001"')[1].split('</span>\n', 1)[0]
+        assert '/extension' in cell and '/supplement' in cell and '/renewal' not in cell
+
+    def test_off_the_roster_the_cell_is_emptied(self, auth_client, armed):
+        html = auth_client.get(self.OFFERS).get_data(as_text=True)
+        cell = html.split('id="req-offers-UHSS0001"')[1].split('</span>', 1)[0]
+        assert 'button' not in cell
+
+
 class TestThePicker:
 
     def test_the_lever_off_disables_everything_without_reading_xras(self, auth_client,

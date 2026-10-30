@@ -121,6 +121,37 @@ class Offer:
         return self.reason is None
 
 
+def inline_offers(session, projects, username: str, index_rows, available, allows,
+                  *, armed: bool) -> Dict[str, List[str]]:
+    """``{projcode: [action types]}`` a project row may open, without a family read per row.
+
+    The roster comes from the sweep's index and the pending check from SAM, so a row can be a
+    day stale; the form's own gate (``request_routing`` on a live read) stays the authority.
+    """
+    from sam.integration.xras_submission import XrasSubmission
+    if not armed:
+        return {}
+    on_roster = {row.get('request_number') for row in index_rows or ()
+                 if any((p.get('username') or '').casefold() == username.casefold()
+                        and p.get('active', True) for p in row.get('roster') or ())}
+    candidates = [p for p in projects if p.projcode in on_roster and route_for(
+        p.allocation_type.allocation_type if p.allocation_type else None) == 'xras']
+    if not candidates:
+        return {}
+    pending = {pid for (pid,) in session.query(XrasSubmission.project_id)
+               .filter(XrasSubmission.is_active)
+               .filter(XrasSubmission.project_id.in_([p.project_id for p in candidates]))}
+    renewable = {a.get('request_number') for a in available or ()
+                 if a.get('action_type') == 'Renewal'}
+    out = {}
+    for project in candidates:
+        if project.project_id in pending:
+            continue
+        out[project.projcode] = [t for t in PICKER_ACTION_TYPES if allows(t) and (
+            t != 'Renewal' or project.projcode in renewable)]
+    return out
+
+
 def action_offers(decision: RoutingDecision, available: Optional[List[Dict[str, Any]]],
                   allows) -> List[Offer]:
     """One offer per picker action, disabled with its reason, never hidden.
