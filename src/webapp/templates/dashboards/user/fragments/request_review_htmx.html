@@ -4,7 +4,7 @@
     user_comments | abstract and begin_date, grant, verdict, review_error). -#}
 {% from 'dashboards/fragments/modals.html' import modal_title %}
 {% from 'dashboards/fragments/xras_bits.html' import agreement %}
-{% from 'dashboards/user/partials/request_bits.html' import carry, grant_facts, verdict_note %}
+{% from 'dashboards/user/partials/request_bits.html' import carry, document_field, grant_facts, verdict_note %}
 {% set _new = action_type == 'New' %}
 {{ modal_title('xrasRequestModalLabel', 'Review the ' ~ action_type ~ (' request' if _new else ''), 'paper-plane', meta=project.projcode if project else None) }}
 <form hx-post="{{ post_url }}" hx-target="#xrasRequestModalBody" hx-swap="innerHTML"
@@ -38,7 +38,7 @@
             {% endif %}
             {% for r in resources if r.resource_id in data.amounts %}
             <dt class="col-sm-4">{{ r.name }}</dt>
-            <dd class="col-sm-8">{% if (r.units or '') | replace(' ', '') | lower == 'yes/no' %}Yes{% else %}{{ data.amounts[r.resource_id] | fmt_number(raw=True) }} {{ r.units }}{% endif %}</dd>
+            <dd class="col-sm-8">{% if r.yes_no %}Yes{% else %}{{ data.amounts[r.resource_id] | fmt_number(raw=True) }} {{ r.units }}{% endif %}</dd>
             {% endfor %}
             {% endif %}
             {{ grant_facts(data.grant) }}
@@ -52,26 +52,22 @@
         </dl>
         {{ verdict_note(data.verdict) }}
         {% for d in documents %}
-        <div class="mb-2">
-            <label for="xrasRequestDoc{{ loop.index }}" class="form-label small mb-1">{{ d.label }} <span class="text-danger">*</span>
-                <span class="text-muted">(PDF{% if d.hard_page_limit %}, at most {{ d.hard_page_limit }} pages{% endif %})</span></label>
-            <input type="file" class="form-control form-control-sm" id="xrasRequestDoc{{ loop.index }}"
-                   name="document_{{ d.code }}" accept="application/pdf,.pdf">
-        </div>
+        {{ document_field('xrasRequestDoc' ~ loop.index, 'document_' ~ d.code, d.label,
+                          'PDF' ~ (', at most ' ~ d.hard_page_limit ~ ' pages' if d.hard_page_limit else '')) }}
         {% endfor %}
         <p class="small text-muted mb-2">Submitting sends this to XRAS for review. You can follow it
             on My Requests.</p>
         {% if action_type == 'Extension' %}
         <input type="hidden" name="end_date" value="{{ data.end_date.isoformat() }}">
         {% else %}
-        {% for rid, amount in data.amounts.items() %}<input type="hidden" name="amount_{{ rid }}" value="{{ '%.15g' | format(amount) }}">{% endfor %}
+        {% for rid, amount in data.amounts.items() %}<input type="hidden" name="amount_{{ rid }}" value="{{ amount | fmt_input }}">{% endfor %}
         {% endif %}
         {% if _new %}
         {{ carry(form, carry_fields) }}
         <input type="hidden" name="begin_date" value="{{ data.begin_date.isoformat() }}">
         <input type="hidden" name="end_date" value="{{ data.end_date.isoformat() }}">
         {% elif action_type == 'Renewal' %}
-        {{ carry(form, ['grant_number', 'grant_title', 'grant_pi_name', 'grant_begin_date', 'grant_end_date', 'grant_officer_name', 'grant_officer_email']) }}
+        {{ carry(form, grant_inputs) }}
         <input type="hidden" name="begin_date" value="{{ data.begin_date.isoformat() }}">
         <input type="hidden" name="end_date" value="{{ data.end_date.isoformat() }}">
         <input type="hidden" name="abstract" value="{{ data.abstract }}">

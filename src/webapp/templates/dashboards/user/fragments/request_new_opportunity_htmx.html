@@ -2,6 +2,7 @@
     resources, documents and the project code letters. On the reveal (oob) the inputs it asks
     for follow out of band into #xrasNewOpportunityInputs. Context: opportunity, rules,
     sam_state, chosen_mnemonic, form, field_errors, oob (or outage). -#}
+{% from 'dashboards/user/partials/request_bits.html' import attach_note %}
 {% if outage %}
 <p class="small text-warning-emphasis"><i class="fa-solid fa-triangle-exclamation me-1"></i>{{ outage }}</p>
 {% elif opportunity %}
@@ -12,9 +13,7 @@
     {%- if not opportunity.can_submit %}
     <span class="d-block text-warning-emphasis">{{ opportunity.reason or 'XRAS does not take a new request from you here.' }}</span>
     {%- endif %}
-    {%- if _docs %}
-    <span class="d-block">You attach the {{ _docs | map(attribute='label') | join(' and ') }} at the review.</span>
-    {%- endif %}
+    {{ attach_note(_docs) }}
     {%- if sam_state.mnemonic %}
     <span class="d-block">The project code starts with <span class="font-monospace">{{ sam_state.mnemonic.code }}</span>{% if sam_state.affiliation %}, from {{ sam_state.affiliation }}{% endif %}.</span>
     {%- endif %}

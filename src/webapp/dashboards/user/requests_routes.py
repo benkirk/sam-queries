@@ -185,7 +185,7 @@ class _RequestForm(HtmxFormHandler):
         if not decision.allowed:
             raise FormError(decision.message)
         self._ctx = dict(project=self.project, action_type=self.action_type,
-                         decision=decision, eula_sha=eula_sha(),
+                         decision=decision, eula_sha=eula_sha(), grant_inputs=list(GRANT_INPUTS),
                          post_url=request.path, **self._type_context(config, decision))
         return self._ctx
 
@@ -242,6 +242,8 @@ class _RequestForm(HtmxFormHandler):
             resource = sam.get(r['resource_id'])
             r['sam_name'] = resource.resource_name if resource is not None else None
             r['limit'] = limits.get(r['sam_name']) if r['sam_name'] else None
+            # XRAS's "Yes/No" unit is a checkbox, not an amount.
+            r['yes_no'] = (r.get('units') or '').replace(' ', '').lower() == 'yes/no'
         return {'resources': resources, 'resource_keys': keys}
 
     def context(self):
@@ -756,7 +758,7 @@ def my_request_resume_fragment(submission_id):
     from sam.queries.xras_my_requests import missing_documents
     row = _owned_submission(submission_id)
     return render_template(_RESUME, row=row, missing=missing_documents(db.session, row),
-                           error=None)
+                           errors=[])
 
 
 @bp.route('/requests/<int:submission_id>/resume', methods=['POST'])
@@ -771,7 +773,7 @@ def my_request_resume(submission_id):
         documents, error, notes = _resume_documents(row)
         if error:
             return render_template(_RESUME, row=row,
-                                   missing=missing_documents(db.session, row), error=error)
+                                   missing=missing_documents(db.session, row), errors=[error])
     try:
         flow.resume_submission(_session_factory, submission_id, actor=acting_username(),
                                door=door, documents=tuple(documents))
