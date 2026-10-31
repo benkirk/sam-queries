@@ -128,6 +128,14 @@ Run each pass and collect findings. The examples are real.
   the *default* configuration's path through it: a lever that ships off must not clear the
   record on its way past. Example: #773's reactivation hook cleared `users.deactivate`, the
   undo's key, whether or not `LDAPSYNC_RESTORE_ON_REACTIVATE` had restored anything (sweep 19).
+- **Hosted dialogs.** A fragment is only as good as the scripts its host page loads. When a
+  window puts a dashboard fragment on a page outside `dashboards/base.html` (the visitor's
+  `/request` draft page hosts the My Requests review), list the `data-*` vocabularies the
+  fragment uses (`data-gate-*`, `data-busy`, `data-action`) and grep the host's `<script>` list
+  for each one's driver; a gate like `test_every_request_shell_host_loads_the_submit_gate` pins
+  the hosts once found. And when a page offers to start an aborted flow again, trace the retry
+  against every write the abort left behind: sweep 33's abort deleted the request line and left
+  the minted person, so every refile stopped at `create_person`.
 - **Round trips.** On a surface that runs far from its database (the CLI on Casper: ~4.5 ms per
   statement), count statements per command with a `before_cursor_execute` counter and attribute
   them to source lines before reading code. A property that loads ORM objects to answer a count

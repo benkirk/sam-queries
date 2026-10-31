@@ -48,6 +48,8 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-29 | `5cf3eebe` (#874 as merged), before sweep 31 | 61 / 73 / 26 | 1 (2) | 21 / 68 | 20 (20), 2 kept | 5,250 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
 | 2026-10-29 | `5cf3eebe` + sweep 31 (the submission window and impersonation) | 53 / 65 / 26 | 1 (2) | 21 / 67 | 20 (20), 2 kept | 5,250 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
 | 2026-10-31 | `dfef6f6f` + sweep 32 (the My Requests window, #877) | 53 / 65 / 26 | 1 (2) | 21 / 67 | 20 (20), 2 kept | 5,332 / 53 / 7 | 109 (54) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
+| 2026-10-31 | `283fe47c` (#878-#882 as merged), before sweep 33 | 60 / 73 / 26 | 1 (2) | 28 / 89 | 20 (20), 2 kept | 5,425 / 53 / 7 | 109 (54) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 7 |
+| 2026-10-31 | `283fe47c` + sweep 33 (the sprint-2 window) | 51 / 63 / 26 | 1 (2) | 26 / 83 | 20 (20), 2 kept | 5,425 / 53 / 7 | 109 (54) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 5 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -2208,6 +2210,95 @@ into the sweep task): not picked. F6, one guard for the three login-only helper 
   (Back at y 363, Submit at 417). Fixed in the follow-on PR: an empty hint takes no room, and
   under 576 px it takes its own line (`components.css`), after which Back and Submit share
   one line (both at 392), proven by injecting the rule into the live dialog.
+
+## 33. 2026-10-31: window sweep, XRAS submission sprint 2 and its neighbors (#878-#882)
+
+**Mode:** window, `dfef6f6f..origin/staging` (`283fe47c`: five squashes, #878 sweep 32, #879 the
+footer rule, #880 sprint 2, #881 the blob and fstree parity, #882 the docs cleanup; 252 files,
++5,081). **End commit:** `283fe47c`. Read as one design: the seam `SWEEP_32_HANDOFF.md` worried
+about held (`NewRequestForm` names its override points; the visitor's class overrides those and
+`draft`, copying nothing), and the drift landed in the register package instead, where `/request`
+was built as a copy of `/register` (the terms and institutions views three times byte for byte,
+accept/submit/pending/verify near-copies, seven `_private` gate and rate helpers borrowed across
+modules; every new private import in the window). On the default route: the visitor's review
+dialog carried the submit-gate and busy markup but its page loaded none of the script that
+drives it (only `dashboards/base.html` did), and an aborted visitor row's "Start it again"
+stopped every refile at `create_person`, because abort deletes the line, never the person. #882
+had already retired both sprint plans; a dozen docstrings still described the step before.
+
+**Done** (one commit each, PR on `sweep-33-sprint2-window`):
+
+- [x] A1, default route: `submit-gate.js` (the gate, busy and a hint-borne failure message
+  lifted out of `form-helpers.js`), loaded by `dashboards/base.html` and the visitor's
+  `request_draft.html`; sweep 32's F8 condition (a third gate consumer) was met.
+  `test_every_request_shell_host_loads_the_submit_gate` pins the hosts of `#xrasRequestModalBody`.
+  Proof: headless Chromium on the review footer, disabled until ticked, hint text, recovery
+  after a 500.
+- [x] A2, default route: the visitor door asks XRAS for the placeholder first; an unreconciled
+  hit (ours, from the earlier filing) skips the person step, a reconciled one still refuses.
+  Flow tests: abort then refile succeeds with one `create_person`; a reconciled hit stops.
+- [x] A3, drift: the review's expected refusal is the exact `pi_not_in_database` text, as the
+  release hook reads it (a message merely naming the placeholder fails the review).
+- [x] D5, drift: the guide card's SAM type is a select of the active types; `AUDIENCE_LABELS`
+  is the one audience vocabulary (schema, form, `public_guides`).
+- [x] B1, lift: the gate key and the five gate and rate helpers public in `register/common.py`;
+  the comments say `/register` and `/request` share the gate (one EULA) and the global bucket
+  (Ben, 2026-10-31). Private imports 60 to 53.
+- [x] B2, consolidate: `common.terms_page` / `expired`, `tokens.verify_ttl_hours` / `_seconds`,
+  `VerifyCodeForm.BAD_FORMAT` / `WRONG`, `read_flag` for `sent`. Helper-bypass 7 to 6.
+- [x] B3, consolidate: `register_typeahead(guard=)`; the visitor's letters picker registers
+  through it on the anonymous tier (flask-limiter resolves 30 per minute on `ip_key`, as for
+  `/request/terms`); `mnemonic_code_search` and `message_fragment` public.
+- [x] B4, drift: `NewRequestForm` public; `_RequestForm._sessions()` is the one session seam;
+  the no-op `template` override gone; the base docstring names `draft`.
+- [x] C1, consolidate: `submissions_for_registration` behind the three by-registration queries.
+- [x] C2, lift: `sam.dates.format_iso` for the two identical `_iso` helpers (legacy payloads
+  unchanged: `isoformat()` as before); `format_ymd` for the third.
+- [x] C3, lift: `split_error_messages` public. C4: `active_holders`, the roster's rule in one place.
+- [x] Prose: `xras_rename`'s two false locks, the "webapp only" lever, "hourly" (it is every 15
+  minutes), `is_held`, `xras_activation`, `institution_options`, `webapp.register`,
+  `merges_since_refusal` (an operator's merge earns the comment too); the two rule files; the
+  `XRAS_SUBMISSION.md` § 5 rows and the placeholder shape; the retired sprint-2 record's "as
+  built" line (inline cards, no receipt mail, help desk on a stopped row) and both records'
+  `implemented/` links.
+- [x] Skill: the hosted-dialog script tell and the abort-then-retry trace.
+
+**Tried and dropped:** C5, `paste_roster` for the activation invites: the two loops share
+`invite_user` but differ in source, note, event and return shape (rows, not addresses); folding
+them grows `paste_roster` for one caller. C6 (one query per due row in `merge_fulfilled_visitors`,
+one `session.get` per row in `invite_activated_roster`, `public_guides` re-read per visitor step):
+rows are few; recorded, not built.
+
+**Decided:** `/register` and `/request` keep one gate key and one global POST bucket (B1a).
+W9 stays open, leaning to a page of their own under Allocations for the request limits and the
+guide (Ben, 2026-10-31).
+
+**Open:**
+
+- [ ] D1: the lazy admin card block (header, `active_switch`, `hx-get … load once`, spinner)
+  three times on `admin/configuration.html` and 13 placeholders on 8 pages; a
+  `_config_macros.lazy_card` macro.
+- [ ] D2: `request_new_htmx.html:43-52` hand-writes the roster picker (no results `max-height`,
+  so 15 rows grow the form); `request_roster_results_htmx.html` copies
+  `request_admin_results_htmx.html`; `fk_search_field(append_to=)` and one user-results fragment.
+- [ ] D3: two roster pastes (`request_new_htmx.html`, `project_members/fragments/roster_form_htmx.html`)
+  with disagreeing help; a `roster_field` macro carrying the parser's forms.
+- [ ] D4: `.cursor-pointer` and `.fk-search-result` are one rule; `register.css` repeats its
+  heading, muted-small and bordered-box blocks; `.request-type-cadence` is a fourth pill beside
+  `xras_bits.tag`.
+- [ ] D6: `(request_urls or {}).get('x') or url_for(...)` seven times across the request
+  fragments; `fixed_opportunity` gates three unrelated things; the handler fills the dict.
+- [ ] D7: inline styles 109 to about 100 (`base.html:211` z-index Bootstrap already sets,
+  `w-auto`, `stats-two-col` + `align-content-start` on the group card, a `.text-pre-wrap` utility
+  for seven `white-space:pre-wrap`).
+- [ ] D8, tests: `/request/accept` never driven; `award-lookup` 404-only; guide delete 403-only;
+  roster `ROSTER_MAX`, own address and admin dropped, `_in_xras(unsure=False)`.
+- [ ] A4: `_release_after_refusal` commits the release, then files the ticket; a filing failure
+  leaves the row released with no ticket and nothing retries until XRAS reposts. Not built.
+- [ ] W9 as decided above; S5a, W13, S15 from entry 31 unchanged.
+- [ ] `tests/api/test_xras_access.py::TestDispatchArms` fails three or four tests under `-n 4`
+  on `origin/staging` itself (two runs on a clean worktree) and passes serially: a parallel-order
+  flake, not read further.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
