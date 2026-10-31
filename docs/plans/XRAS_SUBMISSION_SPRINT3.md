@@ -1,7 +1,9 @@
 # XRAS submission sprint 3: the request types under Allocations > XRAS
 
-**Status:** planned, 2026-10-31. Issue #884. Branch `xras-submission-sprint3` from
-`origin/staging`, one PR to `staging`, refactor commits first, one commit per step with its tests.
+**Status:** built 2026-10-31 on `xras-submission-sprint3` (from `origin/staging` at the #883
+merge), one PR to `staging`, issue #884: refactor commits first, one commit per step with its
+tests. The dev proof in § C waits on the merge; this file moves to `implemented/` in the window
+sweep after it.
 Builds on sprint 2 (`docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md`, #880) and sweep 33 (#883).
 
 ## Context
@@ -73,9 +75,9 @@ sequence), no icon per fact beyond the existing four.
 ```
 
 - `full` (the visitor overview): title and cadence, summary, facts, ledger, notes, Start.
-- `pick` (the New dialog): a `label.type-card.type-card-pick.xras-candidate` wrapping a radio, two
-  lines: title, cadence and funding; then the ledger compressed to "Derecho up to 1,000,000 · Casper
-  up to 50,000". A closed card's radio is `disabled` and its reason replaces line two.
+- `pick` (the New dialog): a `label.type-card-pick.xras-candidate` wrapping a radio, two lines:
+  title and cadence; then "NSF award required · Derecho up to 1,000,000 · Casper up to 50,000".
+  A closed card's radio is `disabled`, carries no value, and its reason replaces line two.
 - `admin` (the Configuration page): `full` plus Edit in the head, a pencil per ledger row (the limit
   edit modal), "Add a limit" under the ledger, the audience as a `state_tag`, and the XRAS state as
   the last line. A type with no active guide row is a card tagged "Not on the request page", titled
@@ -101,9 +103,11 @@ offers, annotated with the limits.
 
 **CSS:** the `.request-type*` rules leave `register.css` for `static/css/request-types.css`, renamed
 `.type-card*`, loaded by `base_register.html`, `my_requests.html` and the new page. The pick
-variant shares `.xras-candidate`'s rules by class, no second `:has()` rule. Phone (390 px): the
-ledger stays a table with `.col-num` figures; the pick variant wraps its second line; nothing breaks
-mid-word.
+variant shares `.xras-candidate`'s rules by class, no second `:has()` rule. The open rule is an
+inset `box-shadow`, so open and closed cards keep one width. Phone (390 px): the ledger stays a
+table with right-aligned tabular figures; a pick card holds two lines, its second (funding, each
+amount's ceiling, the access-only resources) cut with an ellipsis and whole in `title`; nothing
+breaks mid-word.
 
 **Copy (sentence case, active):** "Request Small"; "Not open for requests now."; "Other allocation
 types"; "Not on the request page"; "Publish on the request page"; "Preview as". The admin page's
@@ -129,16 +133,16 @@ search SAM users. The "change" link back to the type stage shows only where a ty
 
 | # | Commit | What |
 |---|---|---|
-| A1 | the page and strip | `GET /allocations/xras/configuration` (`allocations_dashboard.xras_configuration`, `login_required` + `require_permission(VIEW_XRAS)`), `dashboards/allocations/xras_configuration.html` extending `base_allocations.html`; a `page_tabs` sub-strip `Work queue | Configuration` shared by `xras.html` and the new page (`_xras_strip.html`); the XRAS tab gains `active_endpoints` in `base_allocations.html` and `nav.py`. Body: lede, the "Preview as" switch (`btn-check` radios from the registry plus Everyone), the lazy cards section, the four CRUD shells (under `MANAGE_XRAS`). Tests: `tests/unit/xras/test_xras_configuration.py`, `test_nav.py`, route map, the modal-shell page map. |
-| A2 | the CRUD moves | The two `CrudSpec`s re-register on `allocations_dashboard` in `dashboards/allocations/xras/configuration_routes.py` (slugs unchanged; templates under `dashboards/allocations/partials/`), every permission `MANAGE_XRAS`; the four form fragments and `bounds_row` / `guide_fields` move (`git mv`); `allocation_limits_routes.py`, the two table cards, and `configuration.html`'s sections and shells go; the two admin test modules move to `tests/unit/xras/` with the new URLs; `HTMX_FRAGMENT_SHELL_DEPS` repointed. |
-| A3 | the cards fragment | `GET /allocations/xras/configuration/cards?audience=` renders `type_card(variant='admin')` over `allocation_type_overview(..., audiences=..., include_unguided=True)` with the live opportunities (`admin_client(config).new_request_opportunities(None)`); an outage renders every card with "XRAS is not answering" in the state line. Edit opens the guide edit modal, each ledger row the limit edit modal, "Add a limit" the limit create modal preset with the type, an unguided card the guide create modal preset with `allocation_type`. Both reload events reload the one section. Tests: each audience, the unguided card, the presets, buttons hidden without `MANAGE_XRAS`. The fragment joins `test_admin_table_conventions.CARDS`, the page `PAGE_SETS['wraps']`. Perf pin `xras_configuration_cards_route`: one read per list, never per card. |
+| A1 | the page and strip | `GET /allocations/xras/configuration` (`allocations_dashboard.xras_configuration`, `login_required` + `require_permission(VIEW_XRAS)`), `dashboards/allocations/xras_configuration.html` extending `base_allocations.html`; a `page_tabs` sub-strip `Work queue | Configuration` shared by `xras.html` and the new page (`_xras_strip.html`); the XRAS tab gains `active_endpoints` in `base_allocations.html` and `nav.py`. Body: lede, the "Preview as" switch (`btn-check` radios: Everyone, then the registry), the cards section. `view_only_client` lifts to the XRAS conftest. Tests: `tests/unit/xras/test_xras_configuration.py`, route map, the modal-shell page map. |
+| A2 | the CRUD moves | The two `CrudSpec`s re-register on `allocations_dashboard` in `dashboards/allocations/xras/configuration_routes.py` (slugs unchanged; templates under `dashboards/allocations/partials/`), edit and create only, both `MANAGE_XRAS`: the edit form's Active box retires a row, so no delete route. The four form fragments and `bounds_row` / `guide_fields` move (`git mv`); the four shells move to the new page under `MANAGE_XRAS`; `allocation_limits_routes.py`, the two table cards, and `configuration.html`'s sections, shells and reload-map entries go; the two admin test modules move to `tests/unit/xras/` (`test_xras_type_guides.py`, `test_xras_type_limits.py`) with the new URLs. |
+| A3 | the cards fragment | `GET /allocations/xras/configuration/cards?audience=` renders `type_card(variant='admin')` over `allocation_type_overview(..., audiences=..., include_unguided=True)` with the live opportunities; an outage says so once and every card's state line reads "XRAS is not answering." `webapp/utils/xras.py` holds the reads (`report_opportunities`, `type_cards`), shared with the visitor overview and the New dialog. Edit opens the guide edit modal, each ledger row the limit edit modal, "Add a limit" the limit create modal preset with the type's first id, an unguided card the guide create modal preset with `allocation_type` and `title`. The section reloads itself on both reload events, carrying the switch. Tests: each audience, the retired and unguided cards, the presets, an open type, buttons hidden without `MANAGE_XRAS`. The fragment joins `test_admin_table_conventions.CARDS`, the page `PAGE_SETS['wraps']`. Perf pin `xras_configuration_cards_route`: 15 (6 for the cards), flat. |
 
 ### B. Eligibility in the New dialog
 
 | # | Commit | What |
 |---|---|---|
-| B1 | the type stage | `NewRequestForm` gains stage `type` before `describe`: `my_request_new_fragment` renders `request_new_type_htmx.html` (`request_title('New request')`, lede "Choose the type of allocation", `type_card(variant='pick', pick_name='opportunity_id')` per eligible card, closed cards disabled with the reason, the disclosure "Other allocation types" holding the rest, `htmx_form` footer Next). One `allocation_type_overview(session, new_request_opportunities(username), audiences=None)` call, split by `card.audience` against `user_audiences(pi)`, so the two lists cost one read. Posting `stage=type` with a chosen `opportunity_id` renders the describe page with the type fixed and a line "Requesting: Small · Change type" that returns to the type stage. The dropdown and `my_request_new_opportunity_fragment` go. The visitor door is unchanged. |
-| B2 | tests and proof | `TestTheNewForm`: a staff user sees NSC and External and not Small among the eligible; a university user sees Small and not NSC; the disclosure holds the rest; a closed card is disabled with XRAS's reason; choosing posts through to describe with the type fixed and the change link; the `newable` fixture grows guide rows. Perf pin `user_my_requests_new_route`. `ui_snapshots` recipes for the type stage and the admin page in `ui_snapshots_modals.json`. |
+| B1 | the type stage | `NewRequestForm` gains a type stage before `describe`: `my_request_new_fragment` renders `request_new_type_htmx.html` (`request_title('New request')`, lede "Choose the type of allocation.", `type_card(variant='pick', pick_name='opportunity_id')` per eligible card, closed cards disabled with the reason, the `<details>` "Other allocation types" holding the rest, `htmx_form` footer Next). One `type_cards(new_request_opportunities(username), audiences=None)` read, split by `card.audience` against `user_audiences(pi)`. Posting `stage=type` (`choose_type`, answered before the schema: the choice is its only input) renders the describe page with the type fixed and "Requesting Small (University) Change type", or the stage again with "Choose one of the open types." The dropdown, `my_request_new_opportunity_fragment` and its out-of-band inputs go; `names_sam_users` and `_type_url` are the visitor's seams. A separate commit turns the XRAS cache off during each `armed` My Requests test: a cached fake catalog failed a Supplement test once the new tests moved the xdist distribution. |
+| B2 | tests and proof | `TestTheNewForm` on committed guide rows of its own (`committed_guide`, root conftest): a staff PI sees the staff and everyone types first and the university type disclosed; a university PI the reverse; a closed card is disabled with XRAS's reason; the real classifier decides for benkirk; an outage lists the types disabled. Perf pin `user_my_requests_new_route`: 26, flat. `ui_snapshots_modals.json`: `my-requests-new-type`, `xras-configuration-cards`. |
 
 ### C. Close
 
@@ -149,7 +153,7 @@ search SAM users. The "change" link back to the type stage shows only where a ty
 
 ## Gates that will trip
 
-`test_route_map_parity` (new endpoints, 12 renamed), `test_modal_shell_contract` (shells move pages;
+`test_route_map_parity` (10 admin endpoints out, 8 allocations endpoints and the page and fragment in), `test_modal_shell_contract` (shells move pages;
 `HTMX_FRAGMENT_SHELL_DEPS`), `test_template_csp_lint`, `test_css_tokens` / `test_css_dead` (the
 sheet move), `test_static_assets`, `test_nav`, the perf pins, `test_admin_table_conventions`,
 `TestItIsACardNotATab` (untouched), `test_layer_imports` (`sam/xras/` stays Flask-free).

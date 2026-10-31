@@ -3,8 +3,9 @@
 **Status: sprint 1 (phases 0, 1, 1b and 2) shipped 2026-10-29 in #874, issue #871, build plan
 [`implemented/XRAS_SUBMISSION_SPRINT1.md`](implemented/XRAS_SUBMISSION_SPRINT1.md); sprint 2 (phase 3) shipped 2026-10-31 in #880, issue #872, build plan
 [`implemented/XRAS_SUBMISSION_SPRINT2.md`](implemented/XRAS_SUBMISSION_SPRINT2.md) (decisions of 2026-10-31 in its § 0).
-Next: an eligibility filter for the signed-in New (the type overview), which keeps its
-dropdown until then.
+Sprint 3, issue #884, build plan [`XRAS_SUBMISSION_SPRINT3.md`](XRAS_SUBMISSION_SPRINT3.md):
+the request types as editable cards on Allocations → XRAS → Configuration, and a type stage
+filtered by audience as the signed-in New's first step.
 The incoming half (§ 4.6 items 1-3) and every phase of
 [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md) this plan waited on are live in
 production.** The decisions of 2026-10-27 are § 3.5. A project's allocation
@@ -532,7 +533,7 @@ resources; ids are resolved when read.
 | **Applies to** | New, Supplement (the increment), Renewal. Extension carries no amount |
 | **Does not apply to** | the admin request editor: an operator correcting a requested amount is not the case the limit exists for |
 | **Unconfigured pair** | no limit; the form shows the resource without a default and says so |
-| **Where it is edited** | Admin → Configuration, a CrudSpec card in the shape of Notification Addressing |
+| **Where it is edited** | Allocations → XRAS → Configuration (`MANAGE_XRAS`): each type's card carries its limit rows, a pencil per row and "Add a limit" |
 
 XRAS carries the same number types on the wire: each opportunity resource has `numbers[]` with
 `source: allocationType` and the types Default, Minimum and Maximum. But the admin app exposes
