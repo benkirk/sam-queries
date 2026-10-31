@@ -30,11 +30,10 @@ from webapp.limiter import limiter as _rate_limit
 from webapp.utils import human_check
 from webapp.utils.htmx import institution_options, read_flag, register_typeahead
 from webapp.utils.notify import get_notifier
-from webapp.dashboards.user.requests_routes import (_NewRequestForm, award_lookup_fragment,
+from webapp.dashboards.user.requests_routes import (NewRequestForm, award_lookup_fragment,
                                                     message_fragment, mnemonic_code_search)
 from webapp.utils.form_handler import FormError
-from webapp.utils.xras import (admin_client, interactive_config, read_client, resource_keys,
-                               session_factory)
+from webapp.utils.xras import admin_client, interactive_config, read_client, resource_keys
 
 from . import eula, tokens
 from .common import (GATE_KEY, anon_tier as _anon_tier, email_key, email_tier, expired,
@@ -355,13 +354,12 @@ def _to_status(token):
     return redirect(url)
 
 
-class _VisitorNewRequest(_NewRequestForm):
+class _VisitorNewRequest(NewRequestForm):
     """A confirmed visitor's New: the opportunity fixed by the token, no SAM user and no admin.
 
     The PI is the placeholder the row names; the flow mints it in XRAS as its first step.
     """
 
-    template = 'dashboards/user/fragments/request_new_htmx.html'
     roster_private = True
 
     def __init__(self, row, opportunity_id, token):
@@ -422,7 +420,7 @@ class _VisitorNewRequest(_NewRequestForm):
         return replace(draft, sam=replace(draft.sam, registration_id=self.row.account_request_id))
 
     def _file(self, flow, draft, eula):
-        return flow.request_action(session_factory, draft,
+        return flow.request_action(self._sessions(), draft,
                                    actor=f'registration:{self.row.account_request_id}',
                                    xa_user=self.row.xras_username, eula=eula, door='visitor')
 

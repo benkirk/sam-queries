@@ -436,9 +436,14 @@ class _RequestForm(HtmxFormHandler):
             raise FormError(str(exc))
         return data
 
+    @staticmethod
+    def _sessions():
+        """The flow's session factory; the module seam the tests patch."""
+        return _session_factory
+
     def _file(self, flow, draft, eula):
         """Open the submission through the PI door: the signed-in user files as themself."""
-        return flow.request_action(_session_factory, draft, actor=acting_username(),
+        return flow.request_action(self._sessions(), draft, actor=acting_username(),
                                    xa_user=current_user.username, eula=eula, door='pi')
 
     def on_success(self, data):
@@ -532,13 +537,14 @@ def _user_label(user_id):
     return f'{user.username} ({user.display_name})' if user is not None else ''
 
 
-class _NewRequestForm(_RequestForm):
+class NewRequestForm(_RequestForm):
     """A New through describe -> request -> review -> submit; nothing reaches XRAS before submit.
 
     Who files is a seam (``_arm``, ``_opportunities``, ``_chosen_id``, ``_pi``, ``_pi_username``,
     ``_institution_name``, ``_check_admin``, ``_expected_messages``, ``_file``, ``_post_url``,
     ``_pi_email``, ``roster_private``, ``request_urls``): the visitor's New
-    (``webapp/register/allocation_request.py``) overrides those and nothing else.
+    (``webapp/register/allocation_request.py``) overrides those, and ``draft`` to stamp its
+    registration on the ``SamRefs``.
     """
 
     schema_cls = XrasNewRequestForm
@@ -800,7 +806,7 @@ class _NewRequestForm(_RequestForm):
 @login_required
 def my_request_new_fragment():
     """Page one of a New, into ``#xrasRequestModalBody``; a refusal renders as a message."""
-    handler = _NewRequestForm()
+    handler = NewRequestForm()
     try:
         ctx = handler.gate()
     except FormError as exc:
@@ -811,7 +817,7 @@ def my_request_new_fragment():
 @bp.route('/requests/new', methods=['POST'])
 @login_required
 def my_request_new_post():
-    return _NewRequestForm().handle()
+    return NewRequestForm().handle()
 
 
 @bp.route('/requests/new/opportunity')
@@ -819,7 +825,7 @@ def my_request_new_post():
 def my_request_new_opportunity_fragment():
     """Page one's reveal for the chosen opportunity: its rule book, the code letters, the grant."""
     try:
-        ctx = _NewRequestForm().gate()
+        ctx = NewRequestForm().gate()
     except FormError as exc:
         return render_template(_NEW_OPPORTUNITY, outage=' '.join(exc.errors), form=None,
                                field_errors={}, opportunity=None, oob=True)
