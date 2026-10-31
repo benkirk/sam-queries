@@ -56,7 +56,7 @@
             <tbody>
             {% for r in requests %}
                 {% set nid = 'req-note-' ~ loop.index %}
-                {% set has_notes = r.request_number and r.action_id %}
+                {% set has_notes = r.request_number and r.action_id and r.readout.label != 'Discarded' %}
                 <tr>
                     <td class="col-shrink font-monospace text-nowrap">
                         {%- if has_notes %}{{ drill_toggle(nid ~ '-row', label='Show comments') }}{% endif -%}

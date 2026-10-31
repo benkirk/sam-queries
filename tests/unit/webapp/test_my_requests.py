@@ -120,6 +120,21 @@ class TestTheComments:
         assert 'Show comments' in html
         assert '/user/requests/UHSS0003/notes?action_id=373148' in html
 
+    def test_a_discarded_row_has_no_drill(self, auth_client, engine, monkeypatch):
+        from datetime import datetime
+        from sam.integration.xras_submission import XrasSubmission
+        monkeypatch.setattr(requests_routes, '_index_rows', lambda: [])
+        with tracking_factory(engine, XrasSubmission) as make:
+            with make() as s:
+                row = XrasSubmission.create(s, action_type='Extension', created_by='benkirk',
+                                            xa_user='benkirk', payload={}, eula_sha='a' * 40,
+                                            eula_accepted_at=datetime.now())
+                row.set_keys(request_number='UHSS0003', action_id=373_149)
+                row.advance('aborted')
+                s.commit()
+            html = auth_client.get(PAGE).get_data(as_text=True)
+        assert 'Discarded' in html and 'Show comments' not in html
+
     def test_the_approvers_note_and_the_pis_comment(self, auth_client, armed, indexed):
         armed.family = self._family(adminComments='Approved to March.\r\n\r\n\r\nThanks.',
                                     userComments='Needed for the ensemble.')
