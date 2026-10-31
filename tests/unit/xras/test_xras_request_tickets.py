@@ -1,4 +1,4 @@
-"""The refused post's 422 lines and ticket state (docs/plans/XRAS_REQUEST_TICKETS.md § 6)."""
+"""The refused post's 422 lines and ticket state (docs/plans/implemented/XRAS_REQUEST_TICKETS.md § 6)."""
 from datetime import datetime, timedelta
 
 import pytest

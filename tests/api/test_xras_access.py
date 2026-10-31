@@ -937,7 +937,7 @@ class TestDispatchArms:
     @pytest.mark.parametrize('armed', [False, True])
     def test_a_refused_new_says_where_its_ticket_stands_only_when_armed(
             self, app, xras_client, action_log, dispatching, monkeypatch, armed):
-        """docs/plans/XRAS_REQUEST_TICKETS.md § 6: the state line leads, the stored row stays bare."""
+        """docs/plans/implemented/XRAS_REQUEST_TICKETS.md § 6: the state line leads, the stored row stays bare."""
         from sam.xras.errors import ActionErrors
 
         def rejecting(session, action, *, validate_only=False):

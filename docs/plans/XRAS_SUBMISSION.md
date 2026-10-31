@@ -39,7 +39,7 @@ same request: the operator approves and posts, the post does everything SAM can,
 that cannot apply opens one ticket listing what is missing. That covers every request,
 whoever authored it, and it reports a failure after approval. This plan moves resolution
 earlier, to authoring time, for the requests SAM files. Since phase D armed (2026-10-19) a
-refused post is one ticket (`XRAS_REQUEST_TICKETS.md`), so the failure classes below are read
+refused post is one ticket (`implemented/XRAS_REQUEST_TICKETS.md`), so the failure classes below are read
 from those tickets. The case for each phase is different:
 
 - **Phase 1 (an action on an existing project) stands on its own.**
@@ -407,7 +407,7 @@ seeing it happen. A rejected or aborted submission costs one row.
 
 The per-request ticket of post automation phase D needs nothing from this table. It keys
 `external_ticket` on `request_id` and dedups its comments in `notification_log`
-(`XRAS_REQUEST_TICKETS.md` § 4), and it covers ARC-authored requests, which have no row here.
+(`implemented/XRAS_REQUEST_TICKETS.md` § 4), and it covers ARC-authored requests, which have no row here.
 
 **The XRAS-side echo is a soft dependency, not a need.**
 - Attribute sets are ACCESS-configured per opportunity and written with
@@ -675,7 +675,7 @@ Open questions are in § 5.
 | [`XRAS_ARC_BASELINE.md`](../xras/outgoing/XRAS_ARC_BASELINE.md) | W9, 2026-09-15: the ARC form page by page, and one real New and Extension seen from ARC, the admin app, the API, SAM and mail |
 | [`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md) | the XRAS-dev read and write map, the posts to samuel-dev, the rename loop and the Track 2 scenarios |
 | [`XRAS_CLOSED_LOOP.md`](XRAS_CLOSED_LOOP.md) | the rename (§ 4.6 item 3), the production census and backfill, and the test bed |
-| [`XRAS_REQUEST_TICKETS.md`](XRAS_REQUEST_TICKETS.md) | the ticket a blocked post opens (post automation phase D) |
+| [`implemented/XRAS_REQUEST_TICKETS.md`](implemented/XRAS_REQUEST_TICKETS.md) | the ticket a blocked post opens (post automation phase D) |
 | [`ACCOUNT_REGISTRATION.md`](implemented/ACCOUNT_REGISTRATION.md) | the identity step of phase 3, as a product of its own |
 | [`REQUEST_EDITOR.md`](../xras/outgoing/REQUEST_EDITOR.md) | the write client, tiers, levers and stage model the flow layer extends |
 | [`XRAS_WRITE_PROBES.md`](../xras/outgoing/XRAS_WRITE_PROBES.md) | probe methodology, the one authorization rule, the privilege register |

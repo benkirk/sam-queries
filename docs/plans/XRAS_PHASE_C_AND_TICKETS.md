@@ -2,7 +2,7 @@
 
 **Status: Part 1 (§ 4) merged in #845, deploying 2026-10-19; Part 2 (§ 5) built in #848 (letters reviewed), the cutover (§ 6) next.** Tracked by issue #846 (burn-down checklist), PR #845; built on
 branch `xras_incoming_tickets`. Lands phase C of [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md)
-and arms phase D ([`XRAS_REQUEST_TICKETS.md`](XRAS_REQUEST_TICKETS.md)) in production. The
+and arms phase D ([`implemented/XRAS_REQUEST_TICKETS.md`](implemented/XRAS_REQUEST_TICKETS.md)) in production. The
 award-mail checklist it carries out is [`XRAS_NOTICES_CUTOVER.md`](XRAS_NOTICES_CUTOVER.md).
 
 ## 1. Where things stand
@@ -92,7 +92,7 @@ the reviews (the mail points to ARC instead).
 3. **Gates flip, not deletion:** every "production is off" pin becomes a pin of the one grant
    (`tests/unit/gates/test_helm_jira_levers.py`, `tests/unit/tasks/test_task_xras_request_tickets.py`,
    `helm/tests/test-cronjob-render.sh`, `helm/tests/test-dev-render.sh`).
-4. **Docs:** `XRAS_REQUEST_TICKETS.md` § 9, `.claude/rules/notify-and-tasks.md`,
+4. **Docs:** `implemented/XRAS_REQUEST_TICKETS.md` § 9, `.claude/rules/notify-and-tasks.md`,
    `docs/README-k8s.md`, `XRAS_POST_AUTOMATION.md`.
 5. **Before merge:** a production plan read with the floor set, in a task pod
    (`SAM_TASKS_DISABLED= SAM_TASKS_XRAS_TICKETS_SINCE=<date> sam-admin tasks --run xras_request_tickets --dry-run`,

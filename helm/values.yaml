@@ -443,7 +443,7 @@ webapp:
     # helm/tests/test-dev-render.sh): SAMuel mails from 08:00 MT 2026-10-20 (Ben).
     XRAS_AUTO_NOTIFY: "1"
     SAM_TASKS_XRAS_NOTICES_SINCE: "2026-10-20T08:00"
-    # The ticket-state first line on a refused New/Renewal's 422 (docs/plans/XRAS_REQUEST_TICKETS.md
+    # The ticket-state first line on a refused New/Renewal's 422 (docs/plans/implemented/XRAS_REQUEST_TICKETS.md
     # § 6). "1" only together with the xras_request_tickets task, or the 422 promises a ticket.
     # Armed with the task (docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 4). The floor MUST equal
     # tasks.env's: a request first refused before it gets no ticket, so its 422 promises none
@@ -455,7 +455,7 @@ webapp:
     #   JIRA_ENABLED        reads: the hourly learn/status pass and the card.
     #   JIRA_WRITE_ENABLED  creates and comments. Never inherited by the CronJob; the
     #                       xras_request_tickets task gets its own in tasks.env
-    #                       (docs/plans/XRAS_REQUEST_TICKETS.md § 5).
+    #                       (docs/plans/implemented/XRAS_REQUEST_TICKETS.md § 5).
     #   TICKET_PROVIDER     the filing path: "" or "mail" = the NOTIFY_ACCOUNT_TICKET_TO
     #                       mail; "jira-servicedesk" = the JSM API, mail on any failure;
     #                       "dry-run" files nowhere, tasks only. Not inherited either;

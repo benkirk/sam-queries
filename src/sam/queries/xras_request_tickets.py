@@ -1,5 +1,5 @@
 """Reads for the one NUSD ticket a refused XRAS New or Renewal earns
-(docs/plans/XRAS_REQUEST_TICKETS.md): the 422's pointer and state lines, the
+(docs/plans/implemented/XRAS_REQUEST_TICKETS.md): the 422's pointer and state lines, the
 ticket state the webapp shows without any outbound call, and the episodes, keys
 and text the ``xras_request_tickets`` task files from.
 

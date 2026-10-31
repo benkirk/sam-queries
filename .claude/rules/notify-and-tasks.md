@@ -125,7 +125,7 @@ opened; `webapp.env` carries the same value so its 422 promises no ticket, state
 nothing reads it, refused to the webapp) and overrides the write lever and floor off.
 `XRAS_REQUEST_TICKETS_ENABLED` off, or `--dry-run`, reports only: the ledger and link rows commit
 on their own sessions. The webapp's 422 reads the state with no outbound call
-(`sam/queries/xras_request_tickets.py`). Record: `docs/plans/XRAS_REQUEST_TICKETS.md`.
+(`sam/queries/xras_request_tickets.py`). Record: `docs/plans/implemented/XRAS_REQUEST_TICKETS.md`.
 
 ### The `directory_report` task
 

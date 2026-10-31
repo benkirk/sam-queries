@@ -702,7 +702,7 @@ Behavior worth knowing:
   hourly" (reads alone), or "API create, mail fallback".
 - 2026-10-14: find-before-create lives in `sam/integration/tickets/filing.py`,
   shared with the `xras_request_tickets` task; the `xras_request` kind and a
-  filing-only `dry-run` provider (samuel-dev) joined (`../XRAS_REQUEST_TICKETS.md`).
+  filing-only `dry-run` provider (samuel-dev) joined (`XRAS_REQUEST_TICKETS.md`).
 
 Verified live, reads only, 2026-09-26: `check()` authenticates as Ben Kirk;
 `find('SAM-AR-0')` returns RC-40274 and `find('SAM-AR-01')` returns nothing;
