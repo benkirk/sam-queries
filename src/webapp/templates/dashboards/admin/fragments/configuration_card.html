@@ -69,12 +69,9 @@
                             hx-get="{{ url_for('admin_dashboard.htmx_server_card') }}"
                             hx-target="#server-card-body"
                             hx-swap="innerHTML"
-                            hx-indicator="#server-card-spinner"
                             title="Re-poll a worker (likely a different one)">
-                        <i class="fa-solid fa-rotate"></i>
+                        <span class="spinner-border spinner-border-sm busy-spinner" aria-hidden="true"></span><i class="fa-solid fa-rotate busy-icon"></i>
                         <span class="d-none d-sm-inline ms-1">Refresh</span>
-                        <span id="server-card-spinner" class="htmx-indicator spinner-border spinner-border-sm ms-1"
-                              role="status" aria-hidden="true"></span>
                     </button>
                 </div>
                 <div class="card-body" id="server-card-body">

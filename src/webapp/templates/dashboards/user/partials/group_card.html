@@ -165,10 +165,8 @@
             <strong><i class="fa-solid fa-address-book"></i> Directory</strong>
             <button type="button" class="btn btn-sm btn-outline-secondary"
                     hx-get="{{ url_for('admin_dashboard.htmx_group_directory', group_name=group.group_name) }}"
-                    hx-target="#groupDirectoryPanel-{{ group.group_id }}" hx-swap="innerHTML"
-                    hx-indicator="#groupDirectorySpinner-{{ group.group_id }}">
-                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Check directory
-                <span id="groupDirectorySpinner-{{ group.group_id }}" class="htmx-indicator spinner-border spinner-border-sm ms-1" role="status" aria-hidden="true"></span>
+                    hx-target="#groupDirectoryPanel-{{ group.group_id }}" hx-swap="innerHTML">
+                <span class="spinner-border spinner-border-sm busy-spinner" aria-hidden="true"></span><i class="fa-solid fa-magnifying-glass busy-icon" aria-hidden="true"></i> Check directory
             </button>
         </div>
         <div id="groupDirectoryPanel-{{ group.group_id }}">
