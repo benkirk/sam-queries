@@ -84,6 +84,9 @@ def dashboard_page_routes():
         # not have. Endpoint-based classification closes the class instead of
         # chasing names.
         and not endpoint.endswith('_fragment')
+        # The visitor's /request pages 404 unless XRAS_SUBMIT_ANONYMOUS_ENABLED and a write
+        # key arm them, which the prod target has neither of (test_allocation_request.py).
+        and not endpoint.startswith('allocation_request.')
         and rule not in skip
     })
 
