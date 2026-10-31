@@ -69,6 +69,11 @@
     cursor: pointer;
 }
 
+/* A picker's result row (fk-picker.js): the whole row is the target. */
+.fk-search-result {
+    cursor: pointer;
+}
+
 /* ===================================================================
    Spinners
    =================================================================== */
