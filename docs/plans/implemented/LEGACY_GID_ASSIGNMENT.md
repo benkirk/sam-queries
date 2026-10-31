@@ -1,5 +1,10 @@
 # Legacy SAM GID Assignment and Integration
 
+**Status: a record of the investigation (written 2026-04-14 as `docs/integration/NEXT_GID.md`).
+Its finding: legacy SAM never mints a GID; the PDB / ID service assigns one. SAMuel's project
+form takes no GID; the route draws one from a `GidAllocation` block
+(`src/sam/core/groups.py`).**
+
 ## Overview
 During the migration to the new `@project_samuel` architecture, it was observed that the new project creation form allows manual input for a project's `unix_gid`. This approach is fragile and error-prone, as it risks collisions. 
 

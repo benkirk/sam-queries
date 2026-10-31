@@ -1,5 +1,9 @@
 # Editing XRAS requests from SAM — the request editor
 
+**Status: live on the XRAS Remediations card for the Requested stage. The Approved-stage editors
+are built and dark behind `XRAS_ADMIN_CONTEXT_ENABLED` until an admin-provisioned key exists;
+Part B2b (grants, publications, fields of science) is not started (§ 8).**
+
 The **XRAS Remediations** card on *Allocations → XRAS* opens a **project** modal:
 read-only detail, plus in-place editors for resource amounts, allocation dates, and
 request/action text, plus a destructive admin tier. It is a subset of the external
