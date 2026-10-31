@@ -7,7 +7,7 @@ first step is a read-only discrepancy report, built as the directory client's st
 (`user_institution`), then organizations, institutions and adhoc groups. SAM → directory (project
 groups, collaborator end dates) stays with the daemon.
 **Related:** `implemented/LDAP_SYNC_API.md` (§ 10.3 deviations D1-D4, § 10.5 residuals; § 10.7 soak, in PR #777),
-`LDAPSYNC_DEV_SHADOW.md`, `SAM_LDAP_SYNCD_REFERENCE.md` (daemon bugs N17, N21, N24-N26, 1, 7; staging
+`implemented/LDAPSYNC_DEV_SHADOW.md`, `SAM_LDAP_SYNCD_REFERENCE.md` (daemon bugs N17, N21, N24-N26, 1, 7; staging
 § 3.6-3.8).
 
 ## 1. Summary

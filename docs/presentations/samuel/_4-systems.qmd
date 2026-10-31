@@ -297,7 +297,7 @@ sam-queries docs/plans/implemented/LDAP_SYNC_API.md: the daemon keeps its SAM_UR
 /api/protected/admin/{ldapsync,*Purge*,userlifecycle} with the same realm and shapes. The
 reference doc carries a ~30-item census of client-side quirks to preserve or fix. As built:
 LDAP_SYNC_API.md § 10 (PR #773); the dev shadow and its exit criteria:
-docs/plans/LDAPSYNC_DEV_SHADOW.md.
+docs/plans/implemented/LDAPSYNC_DEV_SHADOW.md.
 :::
 
 ## Signing in {.vcenter scale="1.15"}

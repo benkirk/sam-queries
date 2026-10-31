@@ -739,7 +739,7 @@ holds the rest (PII).
 It ended when `make refresh-dev` reloaded the laptop clone (14:41).
 
 **Dev shadow, from T0 = 2026-10-09 14:41 MDT** (`make refresh-dev`: `sam_dev` = prod at T0;
-`docs/plans/LDAPSYNC_DEV_SHADOW.md`). samuel-dev runs `sha-2af6431` with purge and restore
+`docs/plans/implemented/LDAPSYNC_DEV_SHADOW.md`). samuel-dev runs `sha-2af6431` with purge and restore
 on, lifecycle off. Before the repoint: 401 with `Basic realm="Realm"` anonymously, 200 as
 `admin`, the purge permit no longer "disabled", `pendingdeactivations/24` = `[]`; `syncdTest`
 reached dev over verified TLS and read `ldapsync/status` (its LDAP-staging half fails on the

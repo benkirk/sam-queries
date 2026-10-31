@@ -146,7 +146,7 @@ prod and one against SAMuel to see how SAMuel's reads differ from legacy's; the 
 differences are `docs/plans/implemented/LDAP_SYNC_API.md` § 10.3. Lists compare in any order, and
 `--ignore projectGroup.tags,projectGroup.lastModified` drops the two fields that differ
 by design (D14; the daemon's synthetic `all-hpc-users` stamp), so a clean day prints
-`differ=0` for every type and exits 0 (`docs/plans/LDAPSYNC_DEV_SHADOW.md`).
+`differ=0` for every type and exits 0 (`docs/plans/implemented/LDAPSYNC_DEV_SHADOW.md`).
 
 ### Choosing the SAM
 
@@ -154,7 +154,7 @@ by design (D14; the daemon's synthetic `all-hpc-users` stamp), so a clean day pr
 |---|---|
 | `https://sam.ucar.edu:443` + `SAM_READ_PROD=1` | legacy reads, writes stubbed. The guard refuses until the flag is set |
 | `http://host.docker.internal:5050` | SAMuel (`docker compose up samuel-dev`), which serves the LDAP sync API; may take writes |
-| `https://samuel-dev.k8s.ucar.edu` | SAMuel on k8s (prod's data, reloaded by `make refresh-dev`); may take writes. The dev shadow: `docs/plans/LDAPSYNC_DEV_SHADOW.md`. `HTTPS_CA_DIR` must exist, or the Perl client silently stops verifying certificates |
+| `https://samuel-dev.k8s.ucar.edu` | SAMuel on k8s (prod's data, reloaded by `make refresh-dev`); may take writes. The dev shadow: `docs/plans/implemented/LDAPSYNC_DEV_SHADOW.md`. `HTTPS_CA_DIR` must exist, or the Perl client silently stops verifying certificates |
 | `https://test-sam.ucar.edu:443` | unusable: 404 on every path (2026-10-08), and the daemon retries a 404 forever, silently |
 
 Reading from prod has a cost: a syncd start that finds no `/var/data/syncd/sam-data.json`
