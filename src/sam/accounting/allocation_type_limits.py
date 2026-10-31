@@ -140,9 +140,12 @@ def limits_for_allocation_type(session, allocation_type_name: str
     return limits_for_allocation_types(session, [allocation_type_name]).get(allocation_type_name, {})
 
 
-def limits_for_allocation_types(session, allocation_type_names
+def limits_for_allocation_types(session, allocation_type_names, *, active_only: bool = True
                                 ) -> Dict[str, Dict[str, AllocationTypeResourceLimit]]:
-    """:func:`limits_for_allocation_type` for many names in two queries: ``{name: {resource: limit}}``."""
+    """:func:`limits_for_allocation_type` for many names in two queries: ``{name: {resource: limit}}``.
+
+    ``active_only=False`` adds the retired rows (the admin's ledger edits them back).
+    """
     from sam.accounting.allocations import AllocationType
     from sam.resources.resources import Resource
     names = sorted({n for n in allocation_type_names if n})
@@ -156,9 +159,12 @@ def limits_for_allocation_types(session, allocation_type_names
     rows = (session.query(Resource.resource_name, AllocationTypeResourceLimit)
             .join(AllocationTypeResourceLimit,
                   Resource.resource_id == AllocationTypeResourceLimit.resource_id)
-            .filter(AllocationTypeResourceLimit.allocation_type_id.in_(sorted(name_of)))
-            .filter(AllocationTypeResourceLimit.is_active)
-            .order_by(AllocationTypeResourceLimit.allocation_type_id))
+            .filter(AllocationTypeResourceLimit.allocation_type_id.in_(sorted(name_of))))
+    if active_only:
+        rows = rows.filter(AllocationTypeResourceLimit.is_active)
+    # An active row wins the resource's slot, so filtering this map on `active` is the default.
+    rows = rows.order_by(AllocationTypeResourceLimit.active.desc(),
+                         AllocationTypeResourceLimit.allocation_type_id)
     found: Dict[str, Dict[str, AllocationTypeResourceLimit]] = {}
     for resource, limit in rows:
         found.setdefault(name_of[limit.allocation_type_id], {}).setdefault(resource, limit)

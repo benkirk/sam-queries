@@ -74,10 +74,11 @@ def _opportunities(config):
 def _cards(config):
     from sam.integration.xras_api.rule_book import rule_book
     from sam.xras.allocation_overview import allocation_type_overview
+    from sam.xras.audiences import VISITOR_AUDIENCES
     opportunities, outage = _opportunities(config)
     reader = read_client(config) if opportunities else None
     cards = allocation_type_overview(
-        db.session, opportunities,
+        db.session, opportunities, audiences=VISITOR_AUDIENCES,
         rules_for=lambda type_id, name: rule_book(reader, type_id, 'New',
                                                   allocation_type_name=name),
         resource_keys=resource_keys(config) if opportunities else None)

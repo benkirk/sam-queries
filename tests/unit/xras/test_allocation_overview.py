@@ -1,12 +1,14 @@
-"""The request page's overview: guided types only, open or not (XRAS_SUBMISSION_SPRINT2.md § 0)."""
+"""The request types' cards: guided types, open or not, by audience (XRAS_SUBMISSION_SPRINT3.md)."""
 
 import secrets
 
 import pytest
 
 from sam.accounting.allocation_type_guide import AllocationTypeGuide
+from sam.accounting.allocation_type_limits import AllocationTypeResourceLimit
 from sam.integration.xras_api.rule_book import RuleBook
 from sam.xras.allocation_overview import allocation_type_overview
+from sam.xras.audiences import VISITOR_AUDIENCES
 
 
 @pytest.fixture
@@ -27,9 +29,10 @@ def _opp(type_id, *, can_submit=True, name='Opp', reason=None, description=None)
             'reason': reason, 'resource_ids': [], 'resources': []}
 
 
-def _cards(session, opps, ids, **kw):
+def _cards(session, opps, ids, audiences=VISITOR_AUDIENCES, **kw):
     rules = RuleBook(required=('title', 'abstract', 'grants'))
-    cards = allocation_type_overview(session, opps, rules_for=lambda *_: rules, **kw)
+    cards = allocation_type_overview(session, opps, rules_for=lambda *_: rules,
+                                     audiences=audiences, **kw)
     return {c.xras_allocation_type_id: c for c in cards if c.xras_allocation_type_id in ids}
 
 
@@ -66,11 +69,73 @@ class TestTheCards:
 
 class TestWhoSeesWhat:
 
-    def test_unguided_staff_and_ineligible_types_stay_off(self, session, type_id):
-        _guide(session, type_id, title='Shown')
+    @pytest.fixture
+    def three(self, session, type_id):
+        _guide(session, type_id, title='Everyone')
         _guide(session, type_id + 1, audience='ncar')
-        _guide(session, type_id + 2, title='Filtered')
-        opps = [_opp(type_id + n) for n in range(4)]                 # + 3 has no guide
-        ids = {type_id + n for n in range(4)}
-        cards = _cards(session, opps, ids, eligible=lambda g: g.title != 'Filtered')
-        assert set(cards) == {type_id}
+        _guide(session, type_id + 2, audience='university')
+        _guide(session, type_id + 3, title='Retired').update(active=False)
+        return {type_id + n for n in range(5)}                       # + 4 has no guide
+
+    def _opps(self, ids):
+        return [_opp(i) for i in sorted(ids)]
+
+    def test_a_visitor_sees_every_audience_but_staff(self, session, type_id, three):
+        cards = _cards(session, self._opps(three), three)
+        assert set(cards) == {type_id, type_id + 2}
+
+    def test_staff_see_their_types_and_everyones(self, session, type_id, three):
+        cards = _cards(session, self._opps(three), three, audiences={'ncar'})
+        assert set(cards) == {type_id, type_id + 1}
+        assert cards[type_id + 1].audience == 'ncar' and cards[type_id + 1].published
+
+    def test_a_user_in_two_audiences_sees_both(self, session, type_id, three):
+        cards = _cards(session, self._opps(three), three, audiences={'ncar', 'university'})
+        assert set(cards) == {type_id, type_id + 1, type_id + 2}
+
+    def test_none_is_every_audience(self, session, type_id, three):
+        assert set(_cards(session, self._opps(three), three, audiences=None)) == {
+            type_id, type_id + 1, type_id + 2}
+
+    def test_the_admin_view_adds_the_retired_row_last(self, session, type_id, three):
+        cards = _cards(session, self._opps(three), three, audiences={'ncar'},
+                       include_unguided=True)
+        assert set(cards) == {type_id, type_id + 1, type_id + 3}
+        assert not cards[type_id + 3].published and cards[type_id + 3].guide is not None
+
+
+class TestTheUnguidedTypes:
+
+    @pytest.fixture
+    def limited(self, session):
+        """An active SAM type with a retired limit and no guide row naming it."""
+        from tests.factories import make_allocation_type, make_resource
+        sam_type = make_allocation_type(session)
+        limit = AllocationTypeResourceLimit.create(
+            session, allocation_type_id=sam_type.allocation_type_id,
+            resource_id=make_resource(session).resource_id, created_by='t', max_amount=500)
+        limit.update(active=False)
+        return sam_type, limit
+
+    def _named(self, session, name, **kw):
+        cards = allocation_type_overview(session, [], rules_for=lambda *_: None, **kw)
+        return [c for c in cards if c.allocation_type == name]
+
+    def test_a_type_with_limits_and_no_guide_is_a_card_for_the_admin(self, session, limited):
+        sam_type, limit = limited
+        (card,) = self._named(session, sam_type.allocation_type, audiences=None,
+                              include_unguided=True)
+        assert card.guide is None and not card.published and card.title == sam_type.allocation_type
+        assert card.anchor.startswith('type-sam-') and card.reason == 'Not on the request page.'
+        assert [r['limit'] for r in card.limits] == [limit]       # the retired row, to edit back
+        assert card.resources == ()                               # it bounds nothing
+
+    def test_the_visitor_never_sees_it(self, session, limited):
+        assert self._named(session, limited[0].allocation_type, audiences=VISITOR_AUDIENCES) == []
+
+    def test_a_guide_naming_the_type_takes_its_place(self, session, type_id, limited):
+        sam_type, _ = limited
+        _guide(session, type_id, allocation_type=sam_type.allocation_type)
+        (card,) = self._named(session, sam_type.allocation_type, audiences=None,
+                              include_unguided=True)
+        assert card.guide is not None and card.xras_allocation_type_id == type_id

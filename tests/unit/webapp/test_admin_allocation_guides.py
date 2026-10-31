@@ -10,6 +10,7 @@ import pytest
 
 from sam.accounting.allocation_type_guide import AllocationTypeGuide
 from sam.schemas.forms import EditAllocationTypeGuideForm
+from sam.xras.audiences import AUDIENCE_LABELS
 from webapp.utils.rbac import Permission
 
 CARD = '/admin/htmx/allocation-guides'
@@ -90,7 +91,7 @@ class TestTheForms:
         html = auth_client.get('/admin/htmx/allocation-guide-create-form').get_data(as_text=True)
         select = html[html.index('name="allocation_type"'):]
         select = select[:select.index('</select>')]
-        assert f'<option value="{a_name}"' in select and 'NCAR staff only' in html
+        assert f'<option value="{a_name}"' in select and AUDIENCE_LABELS['ncar'] in html
 
     @pytest.mark.parametrize('data, says', [
         ({'title': ''}, 'title'), ({'title': 'T', 'audience': 'everyone'}, 'audience')])

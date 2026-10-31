@@ -41,9 +41,9 @@
 {%- endmacro %}
 
 {% macro type_card(card, variant='full', pick_name=None, start_url=None, admin=None) %}
-<section class="type-card{{ ' is-closed' if not card.is_open }}" aria-labelledby="type-{{ card.xras_allocation_type_id }}">
+<section class="type-card{{ ' is-closed' if not card.is_open }}" aria-labelledby="{{ card.anchor }}">
     <div class="type-card-head">
-        <h2 id="type-{{ card.xras_allocation_type_id }}">{{ card.title }}</h2>
+        <h2 id="{{ card.anchor }}">{{ card.title }}</h2>
         {% if card.cadence %}<span class="type-card-cadence">{{ card.cadence }}</span>{% endif %}
     </div>
     {% if card.summary %}<p class="mb-2">{{ card.summary }}</p>{% endif %}
