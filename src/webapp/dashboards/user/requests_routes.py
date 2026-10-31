@@ -783,15 +783,16 @@ def my_requests_award_lookup():
     found, note = {}, None
     try:
         # Exact numbers only away from NSF: USAspending's keyword fallback can return another award.
-        # USAspending answered the cluster in 1-16 s (2026-10-31), so it gets one short attempt.
+        # USAspending answered the cluster in 1-16 s (2026-10-31): ten seconds in all, as the
+        # help says.
         record = (resolve_award('NSF', number) if nsf else resolve_award(
             None, number, exact=True,
-            providers=build_providers(AwardHttpClient(timeout=6, max_retries=1)))
+            providers=build_providers(AwardHttpClient(timeout=10, max_retries=1, budget=10)))
         ) if number else None
     except AwardSourceUnavailable:
         record, note = None, ('NSF is not answering. Type the grant\'s details, or try again.' if nsf
-                              else 'USAspending is slow to answer right now. Type the grant\'s '
-                                   'details.')
+                              else 'USAspending did not answer within ten seconds. Type the '
+                                   'grant\'s details, or try again.')
     if record is not None:
         found = {'grant_title': record.title, 'grant_begin_date': record.start_date,
                  'grant_end_date': record.end_date,

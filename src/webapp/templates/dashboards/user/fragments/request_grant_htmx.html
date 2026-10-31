@@ -34,7 +34,7 @@
     </div>
     </div>
     </div>
-    <small class="form-text text-muted">{{ note or 'Look up fills the details from NSF, or from USAspending for another federal agency; type any it lacks.' }}</small>
+    <small class="form-text text-muted">{{ note or 'Look up fills the details from NSF, or from USAspending for another federal agency (USAspending can take up to ten seconds); type any it lacks.' }}</small>
     {% if form and form.get('grant_number') %}
     <div class="modal-facts mt-2 pb-0">
         {{ text_field('grant_title', 'Grant title', required='title' in _req, id='xrasGrantTitle') }}

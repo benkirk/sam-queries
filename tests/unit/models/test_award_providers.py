@@ -334,6 +334,19 @@ class TestAwardHttpClient:
             client.get_json('https://example.test/a')
         assert client.session.request.call_count == 3
 
+    def test_the_budget_cuts_each_timeout_and_then_refuses(self, monkeypatch):
+        clock = iter([100.0, 107.0, 111.0])
+        monkeypatch.setattr('sam.integration.awards.client.time.monotonic', lambda: next(clock))
+        client = AwardHttpClient(timeout=10, max_retries=1, budget=10)
+        monkeypatch.setattr(client.session, 'request',
+                            MagicMock(return_value=self._response(200, {'ok': True})))
+        client.get_json('https://example.test/a')
+        client.get_json('https://example.test/b')
+        assert [c.kwargs['timeout'] for c in client.session.request.call_args_list] == [10, 3]
+        with pytest.raises(AwardSourceUnavailable, match='budget is spent'):
+            client.get_json('https://example.test/c')
+        assert client.session.request.call_count == 2
+
     def test_network_error_retries(self, monkeypatch):
         client = self._client(monkeypatch, [
             requests.ConnectionError('down'),

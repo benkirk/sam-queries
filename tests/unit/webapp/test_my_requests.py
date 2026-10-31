@@ -1030,7 +1030,8 @@ class TestThePickers:
 
         def resolve(source, number, exact=False, providers=None):
             calls.append((source, number, exact))
-            assert {(p.client.timeout, p.client.max_retries) for p in providers} == {(6, 1)}
+            assert {(p.client.timeout, p.client.max_retries, p.client.budget)
+                    for p in providers} == {(10, 1, 10)}
             return AwardRecord(provenance='USAspending', title='Dust modeling',
                                start_date=date(2021, 7, 16), end_date=date(2027, 7, 15))
         monkeypatch.setattr('sam.integration.awards.registry.resolve_award', resolve)
@@ -1052,7 +1053,7 @@ class TestThePickers:
         monkeypatch.setattr('sam.integration.awards.registry.resolve_award', slow)
         html = auth_client.get('/user/requests/htmx/award-lookup?grant_agency_id=14'
                                '&grant_number=80NSSC21K1305').get_data(as_text=True)
-        assert 'USAspending is slow to answer right now' in html
+        assert 'USAspending did not answer within ten seconds' in html
 
     def test_an_unknown_award_says_so(self, auth_client, monkeypatch):
         monkeypatch.setattr('sam.integration.awards.registry.resolve_award', lambda s, n: None)
