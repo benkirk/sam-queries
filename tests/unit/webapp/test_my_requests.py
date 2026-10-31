@@ -22,7 +22,11 @@ def _picker(projcode):
 
 @pytest.fixture
 def armed(monkeypatch):
-    """The submit lever on, every type armed; returns the fakes the picker builds."""
+    """The submit lever on, every type armed; returns the fakes the picker builds. The XRAS
+    cache is off during the test (a fake catalog cached by one test fed the next one's
+    preflight) and back to its configured state after it."""
+    from sam.integration.xras_api import cache as xras_cache
+    xras_cache._CACHE.reset_for_tests()
     config = replace(XrasApiConfig(enabled=True, write_enabled=True, api_key='k'),
                      submit_enabled=True,
                      submit_action_types=('Extension', 'Supplement', 'Renewal', 'New'))
@@ -61,7 +65,8 @@ def armed(monkeypatch):
                         classmethod(lambda cls, *a, **k: Reader()))
     monkeypatch.setattr('sam.integration.xras_api.admin_client.XrasAdminClient.from_environment',
                         classmethod(lambda cls, *a, **k: Admin()))
-    return fakes
+    yield fakes
+    xras_cache._CACHE.reset_for_tests(disabled=False)
 
 
 def _line(number, username='benkirk'):
