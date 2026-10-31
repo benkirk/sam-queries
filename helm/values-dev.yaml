@@ -60,7 +60,7 @@ webapp:
     XRAS_RENAME_ENABLED: "1"              # the after-reply rename (prod: "1" too; both gated)
     XRAS_SUBMIT_ENABLED: "1"              # My Requests files to the demo (prod: "0"); webapp only
     XRAS_SUBMIT_ACTION_TYPES: "all"       # prod narrows to Extension,Supplement; unset is none
-    XRAS_SUBMIT_ANONYMOUS_ENABLED: "1"    # a visitor's New at /request/ (prod: "0"); webapp only
+    XRAS_SUBMIT_ANONYMOUS_ENABLED: "1"    # a visitor's New at /request/ (prod: "0"); tasks.env too
     XRAS_AUTO_ACTIVATE: "1"               # a New that applies activates its project (prod: "1" too)
     XRAS_AUTO_NOTIFY: "1"                 # then mails it; NOTIFY_ENABLED=0 keeps that a no-send
     SAM_TASKS_XRAS_NOTICES_SINCE: ""      # no cutover floor on dev
@@ -117,9 +117,12 @@ tasks:
     SAM_API_BASE: "https://samuel-dev.k8s.ucar.edu"
     # xras_sweep runs: it and XRAS_OUTGOING_ENABLED are one decision.
     SAM_TASKS_DISABLED: "expiration_notices,xras_notices,account_requests_reconcile,account_queue_digest"
-    # Arms xras_rename against XRAS-dev, the one task write (values.yaml's
+    # Arms xras_rename against XRAS-dev, and the placeholder merge below (values.yaml's
     # XRAS_WRITE_ENABLED warning).
     XRAS_WRITE_ENABLED: "1"
+    # Arms account_requests_reconcile's merge of a fulfilled /request placeholder (the
+    # task is in SAM_TASKS_DISABLED above; Reconcile now runs the same pass). Prod: absent.
+    XRAS_SUBMIT_ANONYMOUS_ENABLED: "1"
     # xras_request_tickets runs end to end but posts nothing: dry-run logs each ticket
     # and comment and mints DRY-<handle> keys. No Jira write lever, no token, no floor
     # (values.yaml's tasks.env carries all three for production).

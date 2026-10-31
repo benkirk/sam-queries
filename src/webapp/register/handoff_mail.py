@@ -68,26 +68,6 @@ def send_ticket(row: AccountRequest, *, requested_by: str = CREATED_BY_SELF
     return _mail_ticket(row, requested_by)
 
 
-def comment_request_tickets(request_ids, text: str) -> int:
-    """An internal comment on each XRAS request's ticket SAM filed; best-effort, a count."""
-    from sam.integration.tickets.queries import tickets_for
-    from sam.queries.xras_request_tickets import ENTITY_TYPE
-    provider = ticket_provider()
-    if provider is None or not request_ids:
-        return 0
-    linked = tickets_for(db.session, ENTITY_TYPE, list(request_ids))
-    done = 0
-    for rid in request_ids:
-        if rid not in linked:
-            continue
-        try:
-            provider.comment(linked[rid][-1].ticket_key, text, internal=True)
-            done += 1
-        except Exception as exc:                        # noqa: BLE001
-            logger.warning('request %s: comment failed: %s', rid, exc)
-    return done
-
-
 def ticket_provider() -> Optional[TicketProvider]:
     """The provider armed for filing, or ``None`` for the mail path. Built once
     per request (a roster files many, on one HTTP session); after one outage

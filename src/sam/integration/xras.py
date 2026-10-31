@@ -637,8 +637,9 @@ XRAS_REMEDIATION_OPERATIONS = (
     'create_person',
 )
 
-#: The only operations a ``task:`` operator may open: the rename's backstop task.
-TASK_WRITABLE_OPERATIONS = ('rename_request',)
+#: The only operations a ``task:`` operator may open: the rename's backstop task, and the
+#: reconcile's merge of a ``/request`` placeholder into its new account (XRAS_SUBMISSION_SPRINT2.md 3b).
+TASK_WRITABLE_OPERATIONS = ('rename_request', 'merge_person')
 
 #: ``xras_remediation_event.status``. Five values, and the distinctions matter:
 #:

@@ -269,3 +269,24 @@ class TestTheLifecycle:
         _refused(session, when=SLOT - timedelta(hours=1))
         assert mod.xras_request_tickets(ctx()).detail['provider'] == 'dry-run'
         assert _tickets(session) == [('dry-run', f'DRY-SAM-XR-{RID}', 'created')]
+
+
+class TestTheMergedComment:
+    """XRAS_SUBMISSION_SPRINT2.md 3b: a blocked placeholder merged since the refusal asks for
+    the repost, once, whoever merged it."""
+
+    PLACEHOLDER = 'samr7-user-a1b2c3'
+
+    def test_a_merge_after_the_refusal_comments_once(self, ctx, session, provider):
+        from factories import make_xras_remediation_event
+        _refused(session, when=SLOT - timedelta(hours=2),
+                 errors=(f'PI {self.PLACEHOLDER} is not in database',))
+        mod.xras_request_tickets(ctx())
+        assert mod.xras_request_tickets(ctx()).detail['unchanged'] == 1
+        make_xras_remediation_event(session, status='verified', username=self.PLACEHOLDER,
+                                    target_username='real', by='task:account_requests_reconcile',
+                                    when=SLOT - timedelta(hours=1))
+        assert mod.xras_request_tickets(ctx()).detail['merged'] == 1
+        key, text, internal = provider.comments[-1]
+        assert internal and f'merged {self.PLACEHOLDER} into real' in text and 'Repost' in text
+        assert mod.xras_request_tickets(ctx()).detail['unchanged'] == 1, 'once'

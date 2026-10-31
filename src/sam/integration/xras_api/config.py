@@ -185,6 +185,12 @@ class XrasApiConfig:
         """True when a visitor with no SAM account may file a New: its lever, with New armed."""
         return bool(self.submit_anonymous_enabled and self.submit_allows('New'))
 
+    @property
+    def visitor_merge_configured(self) -> bool:
+        """True when a fulfilled visitor's placeholder may be merged: its lever and the write
+        lever, so the task pod (no submit levers) can arm it too."""
+        return bool(self.submit_anonymous_enabled and self.write_configured)
+
     def summary(self) -> Dict[str, Any]:
         """Config for the Admin -> Configuration card. **Never** the key.
 

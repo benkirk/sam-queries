@@ -273,7 +273,7 @@ modal has the same gap: it creates a bare action and stops.
 - **A separate lever, `XRAS_SUBMIT_ENABLED`**, distinct from `XRAS_WRITE_ENABLED`, because
   authoring a request has a different blast radius from correcting one:
   - webapp-only, never the tasks CronJob. The write lever itself is on both manifests since
-    #819, because `xras_rename` is the one task write; this lever stays on the webapp's alone;
+    #819, because `xras_rename` writes from a task; this lever stays on the webapp's alone;
   - asserted per manifest, like the write lever;
   - when off, the control renders disabled with its reason.
 - **The end-user agreement is SAMuel's gate** (Ben, 2026-10-14). The form shows the vendored

@@ -1142,13 +1142,22 @@ class TestTheVisitorLever:
         assert config.visitor_submit_configured is expected
         assert config.summary()['visitor_submit_configured'] is expected
 
-    def test_prod_ships_it_dark_dev_arms_it_and_no_task_pod_carries_it(self):
+    def test_prod_ships_it_dark_and_dev_arms_it_in_both_pods(self):
         def values(name):
             return yaml.safe_load((REPO_ROOT / 'helm' / name).read_text())
-        assert str(values('values.yaml')['webapp']['env']['XRAS_SUBMIT_ANONYMOUS_ENABLED']) == '0'
-        assert values('values-dev.yaml')['webapp']['env']['XRAS_SUBMIT_ANONYMOUS_ENABLED'] == '1'
-        for name in ('values.yaml', 'values-dev.yaml'):
-            assert 'XRAS_SUBMIT_ANONYMOUS' not in str((values(name).get('tasks') or {}).get('env'))
+        prod, dev = values('values.yaml'), values('values-dev.yaml')
+        assert str(prod['webapp']['env']['XRAS_SUBMIT_ANONYMOUS_ENABLED']) == '0'
+        assert 'XRAS_SUBMIT_ANONYMOUS' not in str(prod['tasks']['env']), 'the merge ships dark'
+        assert dev['webapp']['env']['XRAS_SUBMIT_ANONYMOUS_ENABLED'] == '1'
+        assert dev['tasks']['env']['XRAS_SUBMIT_ANONYMOUS_ENABLED'] == '1'
+
+    @pytest.mark.parametrize('write, anonymous, expected', [
+        (True, True, True), (False, True, False), (True, False, False)])
+    def test_the_merge_needs_its_lever_and_the_write_lever_not_new(self, write, anonymous,
+                                                                  expected):
+        config = XrasApiConfig(enabled=True, write_enabled=write, api_key='k',
+                               submit_anonymous_enabled=anonymous)
+        assert config.visitor_merge_configured is expected
 
 
 class TestHelmSubmitLever:

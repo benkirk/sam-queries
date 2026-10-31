@@ -214,20 +214,16 @@ class TestGuards:
                                                                      monkeypatch):
         from sam.integration.xras_api.config import XrasApiConfig
         from sam.manage import xras_remediation
-        calls, comments = [], []
+        calls = []
         monkeypatch.setattr(xras_remediation, 'merge_fulfilled_visitors', lambda f, **kw: (
             calls.append(kw) or {'due': 1, 'waiting': 0, 'failed': 0,
                                  'merged': [('samr1-user-a1b2c3', 'real', [55])]}))
-        monkeypatch.setattr('webapp.register.handoff_mail.comment_request_tickets',
-                            lambda ids, text: comments.append((ids, text)))
         auth_client.post('/admin/account-requests/reconcile')
         assert calls == [], 'the lever off merges nothing'
-        monkeypatch.setattr(XrasApiConfig, 'visitor_submit_configured', True)
+        monkeypatch.setattr(XrasApiConfig, 'visitor_merge_configured', True)
         html = auth_client.post('/admin/account-requests/reconcile').get_data(as_text=True)
         assert calls[0]['operator'] == 'benkirk'
         assert '1 placeholder(s) merged into their new account' in html
-        (ids, text), = comments
-        assert ids == [55] and 'samr1-user-a1b2c3 into real' in text and 'Repost' in text
 
 
 class TestRejectNotice:

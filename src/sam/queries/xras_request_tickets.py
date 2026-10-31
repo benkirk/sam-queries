@@ -230,6 +230,39 @@ def applied_key(request_id: int) -> str:
     return f'xras_ticket:{request_id}:applied'
 
 
+def merged_key(request_id: int, placeholder: str) -> str:
+    return f'xras_ticket:{request_id}:merged:{placeholder.lower()}'
+
+
+def merges_since_refusal(session: Session, episodes: Sequence[Episode]
+                         ) -> Dict[int, List[Tuple[str, str]]]:
+    """``request_id -> [(placeholder, target)]``: verified merges of a placeholder the
+    latest refusal blocked on, made after it, so the request may now post. One query."""
+    from sqlalchemy import func
+
+    from sam.integration.xras import XrasRemediationEvent
+    from sam.queries.xras_accounts import is_placeholder
+    blocked = {e.request_id: {g['username'].lower() for g in blocker_groups(e.messages)[0]
+                              if is_placeholder(g['username'])}
+               for e in episodes if e.applied_at is None}
+    names = set().union(*blocked.values()) if blocked else set()
+    if not names:
+        return {}
+    rows = (session.query(XrasRemediationEvent.username, XrasRemediationEvent.target_username,
+                          XrasRemediationEvent.creation_time)
+            .filter(XrasRemediationEvent.operation == 'merge_person',
+                    XrasRemediationEvent.status == 'verified',
+                    func.lower(XrasRemediationEvent.username).in_(sorted(names)))
+            .order_by(XrasRemediationEvent.creation_time).all())
+    out: Dict[int, List[Tuple[str, str]]] = {}
+    for episode in episodes:
+        for username, target, when in rows:
+            if username.lower() in blocked.get(episode.request_id, ()) \
+                    and when >= episode.latest_refused:
+                out.setdefault(episode.request_id, []).append((username, target))
+    return out
+
+
 # -- What the ticket says -------------------------------------------------------
 
 
@@ -328,8 +361,8 @@ def changed_comment(episode: Episode) -> str:
 
 
 def merged_comment(placeholder: str, target: str) -> str:
-    return (f"The PI's NCAR account exists: SAM merged {placeholder} into {target} in XRAS. "
-            'Repost the request; XRAS never retries a post on its own.')
+    return (f'SAM merged {placeholder} into {target} in XRAS, so the request may now post. '
+            'Repost it; XRAS never retries a post on its own.')
 
 
 def applied_comment(episode: Episode) -> str:

@@ -413,21 +413,18 @@ def account_requests_reconcile():
 
 
 def _merge_visitors():
-    """Merge the fulfilled ``/request`` placeholders, behind the visitor lever; the toast's line."""
+    """Merge the fulfilled ``/request`` placeholders, behind the visitor lever; the toast's
+    line. The request ticket's "repost" comment is the ``xras_request_tickets`` task's."""
     from sam.integration.xras_api.config import XrasApiConfig
     from sam.manage.xras_remediation import merge_fulfilled_visitors
-    from sam.queries.xras_request_tickets import merged_comment
-    from webapp.register.handoff_mail import comment_request_tickets
     from webapp.utils.xras import session_factory
-    if not XrasApiConfig.from_environment().visitor_submit_configured:
+    if not XrasApiConfig.from_environment().visitor_merge_configured:
         return None
     try:
         out = merge_fulfilled_visitors(session_factory, operator=acting_username())
     except Exception:                                   # noqa: BLE001
         logger.exception('reconcile: the visitor merge pass failed')
         return 'The XRAS merge of new accounts failed; see the log.'
-    for source, target, lines in out['merged']:
-        comment_request_tickets(lines, merged_comment(source, target))
     if not out['due']:
         return None
     return (f"XRAS: {len(out['merged'])} placeholder(s) merged into their new account, "

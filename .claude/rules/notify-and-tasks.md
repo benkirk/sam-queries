@@ -103,9 +103,9 @@ so `webapp.env` and `tasks.env` carry one value (pinned by `test-dev-render.sh`)
 
 `src/scheduling/tasks/xras_rename.py`, hourly :20: renames a request line still under its
 `NCAR####` token to its projcode, the backstop to the `/actions` route's after-reply rename.
-⚠️ **The one task that writes to XRAS**: `TASK_WRITABLE_OPERATIONS` in
-`sam/integration/xras.py` is the only `task:` operation the audit table accepts. Both envs
-arm it through `XRAS_WRITE_ENABLED` in `tasks.env` (pinned by `test_xras_admin_client.py`);
+⚠️ **Task writes to XRAS**: `TASK_WRITABLE_OPERATIONS` in `sam/integration/xras.py`
+(this rename, and `account_requests_reconcile`'s `/request` placeholder merge) are the only
+`task:` operations the audit table accepts. Both envs arm the rename through `XRAS_WRITE_ENABLED` in `tasks.env` (pinned by `test_xras_admin_client.py`);
 removing that key, or naming the task in `SAM_TASKS_DISABLED`, disarms it.
 `--dry-run` reads only; `SAM_TASKS_XRAS_RENAME_SINCE` widens the window for the backfill.
 The `/actions` route's own rename has a separate lever, `XRAS_RENAME_ENABLED` (`"1"` in both).
@@ -139,9 +139,11 @@ an unreadable directory fails the run. Rule: `.claude/rules/directory.md`.
 
 ### The account-request tasks
 
-`account_requests_reconcile` (every 15 min, DB-only, **live in prod**: stamps fulfilled
+`account_requests_reconcile` (every 15 min, **live in prod**: stamps fulfilled
 requests, enrolls inside a savepoint so one project without accounts cannot fail the
-pass, purges unverified public rows past `SAM_TASKS_ACCOUNT_PURGE_DAYS`) and
+pass, purges unverified public rows past `SAM_TASKS_ACCOUNT_PURGE_DAYS`; its one XRAS
+write, merging a fulfilled `/request` placeholder, needs `XRAS_SUBMIT_ANONYMOUS_ENABLED`
+in `tasks.env`, which only dev carries) and
 `account_queue_digest` (Mon 08:00 MT, one message, reconciles first, `SAM_TASKS_ACCOUNT_MAX`
 on the row count, an empty queue sends nothing; **ships named in `SAM_TASKS_DISABLED`**).
 
