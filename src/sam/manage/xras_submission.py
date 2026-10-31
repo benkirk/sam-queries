@@ -360,16 +360,39 @@ def _drive(session_factory, draft: ActionRequest, view, *, submit: bool,
         if stopped:
             return stopped
         _advance(session_factory, view, 'submitted')
+        if not view['request_number']:
+            _learn_number(session_factory, view, admin)
 
     _patch_card(session_factory, view)
     return SubmissionOutcome(view['id'], view['state'])
 
 
+def _learn_number(session_factory, view, admin) -> None:
+    """A New's number, minted by the submit: one by-id read, best-effort (the sweep backstops)."""
+    try:
+        line = admin.get_draft(view['request_id'], xa_user=view['xa_user'])
+    except Exception as exc:                            # noqa: BLE001
+        logger.warning('xras submission %s: could not read the minted number (%s)',
+                       view['id'], exc)
+        return
+    number = str(line.get('requestNumber') or '').strip() if isinstance(line, dict) else ''
+    if number:
+        view.update(_with_row(session_factory, view['id'],
+                              lambda row: _row_view(row.set_keys(request_number=number))))
+
+
 def _patch_card(session_factory, view) -> None:
-    """One best-effort Remediations-card patch per run, for a numbered line."""
+    """One best-effort Remediations-card patch per run, for a numbered line.
+
+    A run that just submitted inserts the row: the index otherwise lacks SAM's filing until the
+    daily full sweep. ``pending_push`` is explicit, since an absent row defaults to pending.
+    """
     if view['request_number']:
         from sam.manage.xras_remediation import refresh_index_entry
-        refresh_index_entry(view['request_number'], session_factory=session_factory)
+        submitted = view['state'] == 'submitted'
+        refresh_index_entry(view['request_number'], session_factory=session_factory,
+                            insert=submitted,
+                            pending_push=(view['action_type'] == 'New') if submitted else None)
 
 
 # the entry points
