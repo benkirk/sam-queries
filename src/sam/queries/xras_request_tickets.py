@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from sam.integration.tickets.models import ExternalTicket
 from sam.integration.xras import XrasActionLog
 from sam.notify.models import NotificationLog
-from sam.queries.xras_actions import _split_errors
+from sam.queries.xras_actions import split_error_messages
 from sam.queries.xras_requests import message_kind, person_username
 
 #: ``external_ticket.entity_type``; ``entity_id`` is the XRAS ``requestId``,
@@ -198,7 +198,7 @@ def ticket_episodes(session: Session, *, since: datetime, until: datetime) -> Li
             action_type=latest.action_type or '', first_refused=first,
             refusals=len(rows), latest_log_id=latest.xras_action_log_id,
             latest_refused=latest.received_time,
-            messages=tuple(_split_errors(latest.error_messages)),
+            messages=tuple(split_error_messages(latest.error_messages)),
             payload=_payload(latest.raw_payload),
             applied_at=applied.received_time if applied else None,
             projcode=applied.projcode_result if applied else None))
