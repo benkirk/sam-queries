@@ -23,11 +23,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from sam import Queue, Resource
-
-
-def _iso(value) -> Optional[str]:
-    """Render a datetime as an ISO-8601 string, passing through None."""
-    return value.isoformat() if value is not None else None
+from sam.dates import format_iso
 
 
 def get_queue_data(
@@ -67,8 +63,8 @@ def get_queue_data(
         by_resource.setdefault(rname, []).append({
             'queueName':           queue.queue_name,
             'wallClockHoursLimit': queue.wall_clock_hours_limit,
-            'startDate':           _iso(queue.start_date),
-            'endDate':             _iso(queue.end_date),
+            'startDate':           format_iso(queue.start_date),
+            'endDate':             format_iso(queue.end_date),
             'cosId':               queue.cos_id,
         })
 

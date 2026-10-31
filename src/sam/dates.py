@@ -36,6 +36,11 @@ def format_ymd(value) -> Optional[str]:
     return None if value is None else value.strftime(YMD)
 
 
+def format_iso(value) -> Optional[str]:
+    """``isoformat()`` of a date or datetime; None stays None."""
+    return None if value is None else value.isoformat()
+
+
 def parse_ymd_or(s, default=None, at_end_of_day=False):
     """``parse_ymd`` (or ``parse_ymd_end_of_day``), else ``default`` for a missing or malformed string."""
     try:

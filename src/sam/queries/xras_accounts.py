@@ -38,7 +38,7 @@ from sqlalchemy.orm import Session
 
 from sam.core.account_requests import AccountRequest
 from sam.core.users import EmailAddress, User
-from sam.dates import parse_wire_date
+from sam.dates import format_ymd, parse_wire_date
 from sam.integration.xras import XrasActionLog, XrasRemediationEvent
 from sam.queries.projects import project_ids_by_code
 from sam.queries.users import users_by_username_ci
@@ -544,10 +544,6 @@ def report_activity_date(payload: dict) -> Optional[date]:
     return max(dates) if dates else parse_wire_date(payload.get('submitDate'))
 
 
-def _iso(value: Optional[date]) -> Optional[str]:
-    return value.isoformat() if value else None
-
-
 def pending_in_window(row: Mapping[str, Any], since, *, first_seen=None) -> bool:
     """Was this Feed-B person first seen approved within the window?
 
@@ -622,7 +618,7 @@ def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]
                           received_time=None,
                           submit_date=(str(payload.get('submitDate'))[:10]
                                        if payload.get('submitDate') else None),
-                          entry_date=_iso(report_activity_date(payload)),
+                          entry_date=format_ymd(report_activity_date(payload)),
                           source=SOURCE_REPORTS),
             usernames=tuple(usernames),
             roles_by_username={k: tuple(v) for k, v in roles.items()},
