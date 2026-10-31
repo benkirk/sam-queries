@@ -1,0 +1,71 @@
+{% from 'dashboards/fragments/action_buttons.html' import edit_modal_button, delete_row_button with context %}
+{% from 'dashboards/fragments/table_bits.html' import pane_toolbar, state_tag %}
+{#
+  Admin -> Configuration: the request page's card per XRAS allocation type. NCAR-staff
+  rows stay off the public page; an empty summary falls back to XRAS's description.
+#}
+<div class="card-body p-0" id="allocation-guides-pane">
+    {% call pane_toolbar(guides | length | fmt_plural('type', 'types')) %}
+        {% if has_permission(Permission.SYSTEM_ADMIN) %}
+        <button type="button" class="btn btn-sm btn-primary"
+                data-bs-toggle="modal"
+                data-bs-target="#createAllocationGuideModal"
+                hx-get="{{ url_for('admin_dashboard.htmx_allocation_guide_create_form') }}"
+                hx-target="#createAllocationGuideFormContainer"
+                hx-trigger="click">
+            <i class="fa-solid fa-plus me-1"></i>Type
+        </button>
+        {% endif %}
+    {% endcall %}
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead class="table-subtle">
+                <tr>
+                    <th class="col-num">Order</th>
+                    <th>Title</th>
+                    <th class="col-shrink">XRAS type</th>
+                    <th class="col-shrink">SAM type</th>
+                    <th class="col-shrink">Review</th>
+                    <th class="col-shrink">Funding</th>
+                    <th class="col-shrink">Audience</th>
+                    <th class="col-shrink text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for g in guides %}
+                <tr class="{{ 'row-inactive' if not g.active }}">
+                    <td class="col-num">{{ g.display_order }}</td>
+                    <td class="cell-truncate" title="{{ g.summary or '' }}">{{ g.title }}
+                        {%- if not g.active %}{{ state_tag('inactive') }}{% endif %}
+                        {%- if not g.summary %} <span class="text-muted small">(XRAS's description)</span>{% endif %}</td>
+                    <td class="col-shrink text-muted small">{{ g.xras_allocation_type_id }}</td>
+                    <td class="col-shrink text-nowrap">{{ g.allocation_type or '—' }}</td>
+                    <td class="col-shrink text-nowrap small">{{ g.cadence or '—' }}</td>
+                    <td class="col-shrink text-nowrap small">{{ g.funding or '—' }}</td>
+                    <td class="col-shrink small">{{ 'NCAR staff' if g.audience == 'ncar' else (g.audience or 'Everyone') | capitalize }}</td>
+                    <td class="text-end text-nowrap">
+                        <span class="row-actions">
+                        {{ edit_modal_button(
+                            url_for('admin_dashboard.htmx_allocation_guide_edit_form', allocation_type_guide_id=g.allocation_type_guide_id),
+                            modal_id='editAllocationGuideModal',
+                            target_id='editAllocationGuideFormContainer',
+                            title='Edit type',
+                            permission=Permission.SYSTEM_ADMIN) }}
+                        {% if g.active %}
+                        {{ delete_row_button(
+                            url_for('admin_dashboard.htmx_allocation_guide_delete', allocation_type_guide_id=g.allocation_type_guide_id),
+                            confirm='Deactivate this type? It leaves the request page.',
+                            title='Deactivate type',
+                            reload_event='reloadAllocationGuidesCard',
+                            permission=Permission.SYSTEM_ADMIN) }}
+                        {% endif %}
+                        </span>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="8" class="text-muted fst-italic small px-3">No types: the request page lists none.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>

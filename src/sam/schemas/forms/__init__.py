@@ -174,6 +174,8 @@ from .facilities import (
     CreateAllocationTypeForm,
     EditAllocationLimitForm,
     CreateAllocationLimitForm,
+    EditAllocationTypeGuideForm,
+    CreateAllocationTypeGuideForm,
 )
 from .resources import (
     EditResourceForm,
@@ -322,6 +324,7 @@ __all__ = [
     'CreateFacilityForm',
     'CreatePanelForm',
     'EditAllocationTypeForm', 'EditAllocationLimitForm', 'CreateAllocationLimitForm',
+    'EditAllocationTypeGuideForm', 'CreateAllocationTypeGuideForm',
     'CreateAllocationTypeForm',
     # Resources
     'EditResourceForm',

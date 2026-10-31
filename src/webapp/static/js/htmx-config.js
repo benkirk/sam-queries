@@ -141,6 +141,7 @@ var ADMIN_CARD_RELOADS = {
     reloadContractsCard: ['contractsTableSection', 'contractsTableActiveOnly'],
     reloadResourcesCard: ['resourcesSection', 'resourcesCardActiveOnly'],
     reloadAllocationLimitsCard: ['allocationLimitsSection', 'allocationLimitsCardActiveOnly'],
+    reloadAllocationGuidesCard: ['allocationGuidesSection', 'allocationGuidesCardActiveOnly'],
     reloadProjectDirectoriesCard: ['projectDirectoriesSection', 'projectDirectoriesActiveOnly']
 };
 Object.keys(ADMIN_CARD_RELOADS).forEach(function(event) {

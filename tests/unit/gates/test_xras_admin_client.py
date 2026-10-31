@@ -1239,6 +1239,20 @@ class TestDraftReads:
         assert client.required_documents_status(1, 3, xa_user='pi-user') == []
         assert _calls(client)[0][1].endswith('/requests/1/actions/2/required_documents_status')
 
+    def test_a_visitor_reads_new_opportunities_in_the_report_context(self, monkeypatch):
+        """No XRAS person yet: the report read carries the same rules (XRAS-dev, 2026-10-31)."""
+        opportunity = {'opportunityId': 532221, 'opportunityName': 'Exploratory',
+                       'allocationTypeInfo': {'allocationTypeId': 500847,
+                                              'allocationType': 'Exploratory',
+                                              'description': 'For new faculty'},
+                       'resources': [], 'rules': {'canSubmitNewRequest': True,
+                                                  'resourceIdsAvailableForNewRequest': []}}
+        reader = type('Reader', (), {'get_open_opportunities': lambda self: [opportunity]})()
+        client = _client(monkeypatch, [], reader=reader)
+        [view] = client.new_request_opportunities(None)
+        assert view['can_submit'] is True and view['description'] == 'For new faculty'
+        assert client.session.request.call_count == 0, 'no submit-context read'
+
     def test_available_action_requests_flattens_the_opportunity_rules(self, monkeypatch):
         offer = {'requestId': 1449367, 'requestNumber': 'UHSS0001', 'actionType': 'Renewal',
                  'actionTypeId': 500021, 'resourceIdsAvailableForAction': [530902]}
@@ -1257,7 +1271,8 @@ class TestDraftReads:
         client = _client(monkeypatch, [_response(200, opportunities)])
         assert client.available_action_requests('pi-user') == [{
             'opportunity_id': 532221, 'opportunity_name': 'Exploratory',
-            'allocation_type_id': 500847, 'allocation_type': 'Exploratory', 'award_months': 12,
+            'allocation_type_id': 500847, 'allocation_type': 'Exploratory', 'description': None,
+            'award_months': 12,
             'eua_attribute_id': 539638,
             'request_id': 1449367, 'request_number': 'UHSS0001', 'action_type': 'Renewal',
             'resource_ids': [530902], 'resources': [{'resource_id': 530902,

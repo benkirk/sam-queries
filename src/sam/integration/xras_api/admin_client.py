@@ -1245,9 +1245,13 @@ class XrasAdminClient(_XrasTransport):
                                 resources=named(ids)))
         return out
 
-    def new_request_opportunities(self, xa_user: str) -> List[Dict[str, Any]]:
+    def new_request_opportunities(self, xa_user: Optional[str]) -> List[Dict[str, Any]]:
         """The open opportunities as *xa_user* sees them for a New: whether XRAS lets them
-        file one (``can_submit``, else ``reason``) and the resources it offers there."""
+        file one (``can_submit``, else ``reason``) and the resources it offers there.
+
+        ``None`` reads them in the report context, for a visitor with no XRAS person; it
+        answers the same ``rules{}`` (XRAS-dev, 2026-10-31).
+        """
         out = []
         for opp, view, named in self._opportunities(xa_user):
             rules = opp.get('rules') or {}
@@ -1259,7 +1263,8 @@ class XrasAdminClient(_XrasTransport):
 
     def _opportunities(self, xa_user: str):
         """``(opportunity, view, named(ids))`` per open opportunity, read as *xa_user* (rules are per user)."""
-        result = self._get('/v1/opportunities', xa_user=xa_user)
+        result = (self._get('/v1/opportunities', xa_user=xa_user) if xa_user
+                  else self.reader.get_open_opportunities())
         for opp in result if isinstance(result, list) else ():
             if not isinstance(opp, dict):
                 continue
@@ -1280,6 +1285,7 @@ class XrasAdminClient(_XrasTransport):
                         'opportunity_name': opp.get('opportunityName'),
                         'allocation_type_id': kind.get('allocationTypeId'),
                         'allocation_type': kind.get('allocationType'),
+                        'description': kind.get('description'),
                         'award_months': opp.get('defaultAllocationAwardPeriod'),
                         'eua_attribute_id': eua}, resources
 

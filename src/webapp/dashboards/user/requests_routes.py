@@ -297,23 +297,10 @@ class _RequestForm(HtmxFormHandler):
 
     def _with_limits(self, config, resources, type_name=None):
         """*resources* with their SAM resource and type limit, through the catalog key."""
-        from sam.accounting.allocation_type_limits import limits_for_allocation_type
-        from sam.integration.xras_api.people import resource_key_map
-        from sam.xras.submission_preflight import sam_resources_by_xras_id
-        try:
-            catalog = read_client(config).get_resources()
-        except XrasSourceUnavailable:
-            catalog = None
-        keys = resource_key_map(catalog) if catalog else None
-        sam = sam_resources_by_xras_id(db.session, [r['resource_id'] for r in resources], keys)
+        from sam.xras.submission_preflight import resources_with_limits
+        keys = resource_keys(config)
         name = type_name or (_type_name(self.project) if self.project else None)
-        limits = limits_for_allocation_type(db.session, name) if name else {}
-        for r in resources:
-            resource = sam.get(r['resource_id'])
-            r['sam_name'] = resource.resource_name if resource is not None else None
-            r['limit'] = limits.get(r['sam_name']) if r['sam_name'] else None
-            # XRAS's "Yes/No" unit is a checkbox, not an amount.
-            r['yes_no'] = (r.get('units') or '').replace(' ', '').lower() == 'yes/no'
+        resources_with_limits(db.session, resources, keys, name)
         return {'resources': resources, 'resource_keys': keys}
 
     def context(self):
@@ -487,6 +474,16 @@ _GRANT = 'dashboards/user/fragments/request_grant_htmx.html'
 #: The page-one inputs a later page carries in hidden fields, and whose errors land on page one.
 _DESCRIBE_FIELDS = ('opportunity_id', 'title', 'abstract', 'keywords', 'fos_type_id',
                     'admin_user_id', 'mnemonic_code_id') + tuple(GRANT_INPUTS)
+
+
+def resource_keys(config):
+    """XRAS ``resourceId`` -> repository key from the catalog, or ``None`` when XRAS is not answering."""
+    from sam.integration.xras_api.people import resource_key_map
+    try:
+        catalog = read_client(config).get_resources()
+    except XrasSourceUnavailable:
+        return None
+    return resource_key_map(catalog) if catalog else None
 
 
 def _new_opportunities(config):

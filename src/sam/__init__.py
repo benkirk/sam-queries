@@ -115,6 +115,7 @@ from .accounting.allocations import (
     AllocationType
 )
 from .accounting.allocation_type_limits import AllocationTypeResourceLimit
+from .accounting.allocation_type_guide import AllocationTypeGuide
 from .accounting.adjustments import (
     ChargeAdjustment,
     ChargeAdjustmentType
@@ -277,6 +278,7 @@ __all__ = [
     'Account', 'AccountUser', 'ResponsibleParty',
     'Allocation', 'AllocationTransaction', 'AllocationTransactionType', 'AllocationType',
     'AllocationTypeResourceLimit',
+    'AllocationTypeGuide',
     'ChargeAdjustment', 'ChargeAdjustmentType',
     # Activity
     'CompJob', 'CompActivity', 'CompActivityChargeView',

@@ -48,6 +48,22 @@ def sam_resources_by_xras_id(session, resource_ids: Iterable[int],
     return {rid: by_key[key] for rid, key in wanted.items() if key in by_key}
 
 
+def resources_with_limits(session, resources: List[Dict[str, Any]],
+                          keys: Optional[Mapping[int, int]],
+                          type_name: Optional[str]) -> List[Dict[str, Any]]:
+    """Annotate XRAS resource views in place: ``sam_name``, the type's ``limit``, ``yes_no``."""
+    from sam.accounting.allocation_type_limits import limits_for_allocation_type
+    sam = sam_resources_by_xras_id(session, [r['resource_id'] for r in resources], keys)
+    limits = limits_for_allocation_type(session, type_name) if type_name else {}
+    for r in resources:
+        resource = sam.get(r['resource_id'])
+        r['sam_name'] = resource.resource_name if resource is not None else None
+        r['limit'] = limits.get(r['sam_name']) if r['sam_name'] else None
+        # XRAS's "Yes/No" unit is a checkbox, not an amount.
+        r['yes_no'] = (r.get('units') or '').replace(' ', '').lower() == 'yes/no'
+    return resources
+
+
 def extension_floor(project) -> Optional[date]:
     """The earliest end an Extension may ask for: the latest end across the extendable accounts."""
     from sam.xras.handlers._allocations import (

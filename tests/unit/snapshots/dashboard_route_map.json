@@ -463,6 +463,48 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_allocation_guide_create",
+    "/admin/htmx/allocation-guide-create",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_allocation_guide_create_form",
+    "/admin/htmx/allocation-guide-create-form",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_allocation_guide_delete",
+    "/admin/htmx/allocation-guide-delete/<int:allocation_type_guide_id>",
+    [
+      "DELETE"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_allocation_guide_edit",
+    "/admin/htmx/allocation-guide-edit/<int:allocation_type_guide_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_allocation_guide_edit_form",
+    "/admin/htmx/allocation-guide-edit-form/<int:allocation_type_guide_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_allocation_guides_card",
+    "/admin/htmx/allocation-guides",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_allocation_limit_create",
     "/admin/htmx/allocation-limit-create",
     [
