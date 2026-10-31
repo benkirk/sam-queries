@@ -1262,6 +1262,23 @@ class TestDraftReads:
         assert view['can_submit'] is True and view['description'] == 'For new faculty'
         assert client.session.request.call_count == 0, 'no submit-context read'
 
+    def test_the_report_context_read_is_memoised_and_a_users_is_not(self, monkeypatch):
+        """A visitor's refreshes cost one XRAS read a minute (the ``xras_opportunities`` bucket)."""
+        from sam.integration.xras_api import cache as xras_cache
+        reads = []
+        reader = type('Reader', (), {'get_open_opportunities':
+                                     lambda self: reads.append(1) or []})()
+        client = _client(monkeypatch, [_response(200, []), _response(200, [])], reader=reader)
+        xras_cache._CACHE.reset_for_tests(disabled=False)
+        try:
+            client.new_request_opportunities(None)
+            client.new_request_opportunities(None)
+            client.new_request_opportunities('pi-user')
+            client.new_request_opportunities('pi-user')
+        finally:
+            xras_cache._CACHE.reset_for_tests(disabled=False)
+        assert len(reads) == 1 and client.session.request.call_count == 2
+
     def test_available_action_requests_flattens_the_opportunity_rules(self, monkeypatch):
         offer = {'requestId': 1449367, 'requestNumber': 'UHSS0001', 'actionType': 'Renewal',
                  'actionTypeId': 500021, 'resourceIdsAvailableForAction': [530902]}

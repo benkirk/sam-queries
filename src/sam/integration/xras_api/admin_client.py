@@ -1263,8 +1263,9 @@ class XrasAdminClient(_XrasTransport):
 
     def _opportunities(self, xa_user: str):
         """``(opportunity, view, named(ids))`` per open opportunity, read as *xa_user* (rules are per user)."""
+        from sam.integration.xras_api.cache import cached_open_opportunities
         result = (self._get('/v1/opportunities', xa_user=xa_user) if xa_user
-                  else self.reader.get_open_opportunities())
+                  else cached_open_opportunities(self.reader.get_open_opportunities))
         for opp in result if isinstance(result, list) else ():
             if not isinstance(opp, dict):
                 continue
