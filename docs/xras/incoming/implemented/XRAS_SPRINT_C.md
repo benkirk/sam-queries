@@ -18,7 +18,7 @@
 >   `sam.xras.wire.get_field`, and `management_transaction` has one import site rather
 >   than five. It also fixed six defects this sprint shipped — including an Adjustment
 >   that computed the panel-authorisation flag and never applied it.
-> - [`XRAS_STRESS_AND_SCHEMA.md`](XRAS_STRESS_AND_SCHEMA.md) (C.1b) found that
+> - [`../../../plans/implemented/XRAS_STRESS_AND_SCHEMA.md`](../../../plans/implemented/XRAS_STRESS_AND_SCHEMA.md) (C.1b) found that
 >   `resolve_resource` read `resources[].key` — **a field XRAS has never sent**, and one
 >   this repo's own wire documentation names correctly as `resourceRepositoryKey`
 >   (`XRAS_REIMPLEMENTATION.md` § 3.1). Every Supplement, Adjustment, New and Update
@@ -1261,7 +1261,7 @@ failed every run, forever — a gate that is always red is not a gate.
 It now exits non-zero only on a **dangling key** (a mapping row pointing at no resource),
 which is the one genuinely broken state. The unmapped list is a *diagnostic*: it matters
 when a resource that **should** be allocatable appears in it, and only a human can tell
-those two cases apart. See `XRAS_STRESS_AND_SCHEMA.md` § *--validate-mapping*.
+those two cases apart. See `../../../plans/implemented/XRAS_STRESS_AND_SCHEMA.md` § *--validate-mapping*.
 
 A test pins the documented set, so a change to it still fails loudly — that remains the
 signal a parity run needs repeating, because `resourceRepositoryKey` is omitted when

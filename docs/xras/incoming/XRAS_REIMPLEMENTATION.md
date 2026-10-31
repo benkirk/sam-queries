@@ -51,14 +51,14 @@ up, which pushes SMTP to D.
 | **B** — Operator surface | Phase 4: the 4th Allocations tab, `sam-admin xras`, replay, `VIEW_XRAS`/`MANAGE_XRAS`, the activation worklist | ✅ shipped — [`XRAS_SPRINT_B.md`](../../plans/implemented/XRAS_SPRINT_B.md) |
 | **C** — Handlers | Phase 3: the dispatcher and all six handler paths, and the replay-and-diff oracle that verifies them | ✅ shipped — [`XRAS_SPRINT_C.md`](implemented/XRAS_SPRINT_C.md). Suite 4,708 → **5,213** |
 | **C.1a** — Handler refactor | The `ActionHandler` base class the six handlers should have shared. Six bugs the duplication produced, one of them live | ✅ shipped — [`XRAS_HANDLER_REFACTOR.md`](../../plans/implemented/XRAS_HANDLER_REFACTOR.md) § *Deviations*. Suite 5,213 → **5,223** |
-| **C.1b** — Stress + schema | Stress the handlers with the **audit row** as the assertion target, then decide the remaining `xras_action_log` columns | ✅ shipped — [`XRAS_STRESS_AND_SCHEMA.md`](implemented/XRAS_STRESS_AND_SCHEMA.md) § *Verdicts*. Found a live wire-contract bug; **3 columns built** — the ticket is a transcription of `zz-90` |
+| **C.1b** — Stress + schema | Stress the handlers with the **audit row** as the assertion target, then decide the remaining `xras_action_log` columns | ✅ shipped — [`XRAS_STRESS_AND_SCHEMA.md`](../../plans/implemented/XRAS_STRESS_AND_SCHEMA.md) § *Verdicts*. Found a live wire-contract bug; **3 columns built** — the ticket is a transcription of `zz-90` |
 | **D** — SMTP | Phase 0.2: lift `EmailNotificationService` out of the CLI into a channel-agnostic `src/sam/notify/`, plus the delivery ledger both consumers lack | ✅ **built** on `smtp_notify` — [`NOTIFICATION_FRAMEWORK.md`](../../plans/implemented/NOTIFICATION_FRAMEWORK.md) § *As built*. **ONE** more table (`notification_log`), not two: the subscription table was cut. `zz-92` joins PR #424's DBA ticket, which is now this work's only external dependency |
 | **Cutover** | The five remaining gates, none of them code | ☐ — [`XRAS_CUTOVER_RUNBOOK.md`](XRAS_CUTOVER_RUNBOOK.md) |
 
 **Both follow-ups are done, and the DBA ticket is a transcription rather than a
 design question.** Three columns — `action_id`, `service`, `outcome_reason` — are
 built end to end: `zz-90`, the ORM, `_record`/`_finish` and the query layer, each with
-written evidence in [`XRAS_STRESS_AND_SCHEMA.md`](implemented/XRAS_STRESS_AND_SCHEMA.md)
+written evidence in [`XRAS_STRESS_AND_SCHEMA.md`](../../plans/implemented/XRAS_STRESS_AND_SCHEMA.md)
 § *Verdicts*. A fourth candidate (`warnings`) was declined with reasons, and two more
 gaps were closed in code rather than schema.
 
@@ -98,7 +98,7 @@ in parallel, not after:
   Sprint B's definition-of-done condition for filing it is met.
 
   ⚠️ **`zz-90` grew three columns in C.1b** — `action_id`, `service`, `outcome_reason` —
-  each with written evidence in [`XRAS_STRESS_AND_SCHEMA.md`](implemented/XRAS_STRESS_AND_SCHEMA.md)
+  each with written evidence in [`XRAS_STRESS_AND_SCHEMA.md`](../../plans/implemented/XRAS_STRESS_AND_SCHEMA.md)
   § *Verdicts*. They are built end to end and the ticket is a transcription of the
   current file, not a design question. File the file, not an older copy of it. Nothing can be captured
   or cut over until it lands, and it is the only item here with a third party's

@@ -825,7 +825,7 @@ class TestDispatchArms:
         ``log_id``, which only the route has.
 
         Where warnings ultimately *belong* is a schema question — see
-        ``docs/xras/incoming/implemented/XRAS_STRESS_AND_SCHEMA.md``'s ``warnings`` column candidate. This
+        ``docs/plans/implemented/XRAS_STRESS_AND_SCHEMA.md``'s ``warnings`` column candidate. This
         pins only that they stop vanishing.
         """
         dispatching.register('extend', lambda s, a, *, validate_only=False: dispatching.DispatchResult(

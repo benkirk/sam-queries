@@ -53,7 +53,7 @@ from its plan, and the measurements behind the decisions.
 | [`XRAS_SPRINT_B.md`](../plans/implemented/XRAS_SPRINT_B.md) | The operator surface — the 4th Allocations tab, replay, `sam-admin xras`, the activation worklist |
 | [`XRAS_SPRINT_C.md`](incoming/implemented/XRAS_SPRINT_C.md) | The handlers — all six paths, and the replay-and-diff oracle that proves them |
 | [`XRAS_HANDLER_REFACTOR.md`](../plans/implemented/XRAS_HANDLER_REFACTOR.md) | The `ActionHandler` base class the six handlers should have shared, and the six bugs the duplication produced |
-| [`XRAS_STRESS_AND_SCHEMA.md`](incoming/implemented/XRAS_STRESS_AND_SCHEMA.md) | Stressing the handlers with the audit row as the assertion target; the remaining `xras_action_log` columns |
+| [`XRAS_STRESS_AND_SCHEMA.md`](../plans/implemented/XRAS_STRESS_AND_SCHEMA.md) | Stressing the handlers with the audit row as the assertion target; the remaining `xras_action_log` columns |
 | [`XRAS_PRE_DEPLOY_SMOKE.md`](../plans/implemented/XRAS_PRE_DEPLOY_SMOKE.md) | End-to-end smoke on a local stack, incoming action → email |
 | [`XRAS_PRE_CUTOVER_TIDY.md`](../plans/implemented/XRAS_PRE_CUTOVER_TIDY.md) | What the stacked sprints left behind |
 
