@@ -6,7 +6,7 @@ opportunities table; the limits shown beside it come from ``allocation_type_reso
 through ``allocation_type``, a SAM type **name** resolved at read time. ``audience``
 ``'ncar'`` keeps a type off the public page. No foreign keys (two dialects). DDL and seed:
 ``scripts/sql/create_allocation_type_guide.sql`` and ``seed_allocation_type_guide.sql``,
-each with a ``_pg`` twin. Design: ``docs/plans/XRAS_SUBMISSION_SPRINT2.md``.
+each with a ``_pg`` twin. Design: ``docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md``.
 """
 
 from datetime import datetime

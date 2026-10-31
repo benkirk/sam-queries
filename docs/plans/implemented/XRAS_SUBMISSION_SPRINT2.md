@@ -1,7 +1,7 @@
 # XRAS submission sprint 2: the build plan
 
-**Status: planned 2026-10-31; issue #872. The guide table's DDL is applied locally (3306, 3307,
-the test Postgres); `sam_dev` and production wait on Ben (§ 4).** Builds phase 3 of
+**Status: shipped 2026-10-31 in #880 (`2098adce`), issue #872; dev-proven twice (UCUB0208,
+UCUB0209); the guide table's DDL is applied in production.** Builds phase 3 of
 [`XRAS_SUBMISSION.md`](XRAS_SUBMISSION.md): someone with no SAM account files a New from SAMuel,
 and the New form gains an optional roster. Sprint 1's build plan,
 [`implemented/XRAS_SUBMISSION_SPRINT1.md`](implemented/XRAS_SUBMISSION_SPRINT1.md), is the shape this one follows. Every UI

@@ -427,7 +427,7 @@ def create_app(*, config_overrides: dict | None = None):
     if app.config.get('ACCOUNT_REGISTRATION_ENABLED', False):
         from webapp.register.blueprint import bp as register_bp
         app.register_blueprint(register_bp)
-        # A visitor's New at /request (docs/plans/XRAS_SUBMISSION_SPRINT2.md): mounted with
+        # A visitor's New at /request (docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md): mounted with
         # the form it shares a gate with; each route 404s unless XRAS_SUBMIT_ANONYMOUS_ENABLED.
         from webapp.register.allocation_request import bp as allocation_request_bp
         app.register_blueprint(allocation_request_bp)

@@ -633,7 +633,7 @@ def _activate_after_reply(response, result, log_id) -> None:
 def _release_after_refusal(response, action, messages) -> None:
     """A visitor's New refused for its SAM-minted PI was approved: hand the registration
     to NUSD (``requested_at`` releases it) and file its account ticket, once the reply has
-    gone (docs/plans/XRAS_SUBMISSION_SPRINT2.md 3a). ``send_ticket`` files once per row.
+    gone (docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md 3a). ``send_ticket`` files once per row.
     No ticket when one active SAM user already holds the address: reconcile fulfills the
     released row by that match and the merge follows."""
     from sam.manage.account_requests import refused_visitor_registration
