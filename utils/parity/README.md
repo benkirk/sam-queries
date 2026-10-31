@@ -60,7 +60,7 @@ SCSG0001 and NCIS0001; `--sample-size`, `--heuv-projects`), the usernames on the
 usage reports (cap 60), and the inactive projects those users are assigned to. Every
 ported route is fetched from both stacks (`--workers` concurrent requests, default 4,
 ~2 minutes) and compared as raw bytes after **only** the named fixes F1-F9 of
-`docs/plans/HEUV_API_PORT.md` §6 are applied to legacy. Any other difference fails.
+`docs/plans/implemented/HEUV_API_PORT.md` §6 are applied to legacy. Any other difference fails.
 Row sets are compared in both directions, and an informational check prints the §7
 ruleset counters (group surplus, status pairs, charge deltas by hierarchy, threshold
 amounts, holdings). Each route also reports p50 latency on both stacks.

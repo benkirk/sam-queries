@@ -1,6 +1,6 @@
 # HEUV API port: `/api/protected/heuv/v1` on SAMuel
 
-**Status:** implemented 2026-10-10 on PR #786 and deployed to prod (`sha-d5ec2e3`); the cutover (§12) is Ben's.
+**Status:** implemented 2026-10-10 on PR #786 and deployed to prod (`sha-d5ec2e3`); ARC fully cut over 2026-10-23 (§12).
 **Branch:** `heuv-api` from `origin/staging`; one PR to `staging`, one commit per Progress step, every commit green.
 
 On approval of this plan (planning session, 2026-10-10) this file is committed verbatim as
