@@ -21,7 +21,7 @@ from flask import (
 )
 from flask_login import current_user, login_required
 
-from sam.dates import add_months, first_of_next_month
+from sam.dates import add_months, first_of_next_month, parse_wire_date
 from sam.integration.xras_api import XrasSourceUnavailable
 from sam.integration.xras_api.lookups import funding_agency_choices
 from sam.queries.xras_my_requests import led_projects, my_requests
@@ -266,7 +266,23 @@ class _RequestForm(HtmxFormHandler):
                 'documents': [d for d in rules.documents if d.required],
                 'default_begin': begin, 'default_end': end,
                 'line_abstract': (decision.line or {}).get('abstract') or '',
+                'grant_defaults': self._line_grant(decision.line),
                 **self._with_limits(config, resources)}
+
+    @staticmethod
+    def _line_grant(line):
+        """The grant fieldset's values from the line's first numbered grant; XRAS spells the agency by name."""
+        grant = next((g for g in (line or {}).get('grants') or ()
+                      if isinstance(g, dict) and (g.get('grantNumber') or '').strip()), None)
+        if grant is None:
+            return None
+        agencies = {name: agency_id for agency_id, name in funding_agency_choices()}
+        values = {name: grant.get(wire) for name, wire in GRANT_INPUTS.items()
+                  if name != 'grant_agency_id'}
+        values['grant_agency_id'] = agencies.get(grant.get('fundingAgency'))
+        for name in ('grant_begin_date', 'grant_end_date'):
+            values[name] = parse_wire_date(values[name])
+        return {k: v for k, v in values.items() if v}
 
     def _with_limits(self, config, resources, type_name=None):
         """*resources* with their SAM resource and type limit, through the catalog key."""

@@ -2,7 +2,7 @@
     or Back). Context: project, action_type, decision, floor, resources [{resource_id, name,
     units, sam_name, limit}], post_url, eula_sha, errors, field_errors, form; a Renewal adds
     offer, rules (the grant when it wants one), documents, default_begin, default_end,
-    line_abstract. -#}
+    line_abstract, grant_defaults (the line's grant, until the form is posted). -#}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
 {% from 'dashboards/fragments/form_fields.html' import date_field, textarea_field with context %}
 {% from 'dashboards/user/partials/request_bits.html' import request_title, amounts_table, attach_note %}
@@ -33,7 +33,7 @@
             <div class="col-sm-6">{{ date_field('end_date', 'End', required=True, default=default_end, id='xrasRequestEnd') }}</div>
         </div>
         {% if rules and rules.wants_grants %}
-        {% with required=rules.grant_fields %}{% include 'dashboards/user/fragments/request_grant_htmx.html' %}{% endwith %}
+        {% with required=rules.grant_fields, form=form or grant_defaults %}{% include 'dashboards/user/fragments/request_grant_htmx.html' %}{% endwith %}
         {% endif %}
         {% endif %}
         {{ amounts_table(resources, form, field_errors) }}

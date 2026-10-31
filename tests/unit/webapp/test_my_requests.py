@@ -656,6 +656,22 @@ class TestTheRenewalForm:
         assert draft.grants[0]['fundingAgencyId'] == 1
         assert draft.grants[0]['programOfficerEmail'] == 'po@nsf.gov'
 
+    def test_the_lines_grant_prefills_the_renewal(self, auth_client, renewable, monkeypatch):
+        monkeypatch.setattr(requests_routes, 'funding_agency_choices',
+                            lambda: [(1, 'National Science Foundation'), (14, 'NASA (and centers)')])
+        renewable.required = {'requiredFields': {'request': {'grants': {'required': True}}}}
+        renewable.family[0]['grants'] = [
+            {'fundingAgency': 'NASA (and centers)', 'grantNumber': None},
+            {'fundingAgency': 'NASA (and centers)', 'grantNumber': '80NSSC21K1305',
+             'title': 'Dust modeling', 'beginDate': '2021-07-16', 'endDate': '2027-07-15',
+             'piName': None, 'programOfficerEmail': 'po@nasa.gov'}]
+        html = auth_client.get(REN).get_data(as_text=True)
+        assert 'value="80NSSC21K1305"' in html and 'value="Dust modeling"' in html
+        assert 'value="2021-07-16"' in html and 'value="po@nasa.gov"' in html
+        assert '<option value="14" selected>' in html
+        posted = auth_client.post(REN, data=_ren('edit')).get_data(as_text=True)
+        assert '80NSSC21K1305' not in posted                    # a posted form keeps its own
+
     def test_another_agencys_grant_keeps_its_agency(self, auth_client, renewable, filed,
                                                     monkeypatch):
         from io import BytesIO
