@@ -633,6 +633,8 @@ XRAS_REMEDIATION_OPERATIONS = (
     'add_grant',
     'update_grant',
     'set_fos',                 # a field of science on the request
+    # A visitor's New (XRAS_SUBMISSION_SPRINT2.md): the unreconciled PI SAM mints.
+    'create_person',
 )
 
 #: The only operations a ``task:`` operator may open: the rename's backstop task.

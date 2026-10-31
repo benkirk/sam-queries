@@ -406,6 +406,8 @@
                         {{ stat('XRAS_SUBMIT_ENABLED', 'Yes' if xr.submit_enabled else 'No') }}
                         {{ stat('Submit action types', xr.submit_action_types | join(', ') if xr.submit_action_types else 'none') }}
                         {{ stat('Users may file', 'Yes' if xr.submit_configured else 'No') }}
+                        {{ stat('XRAS_SUBMIT_ANONYMOUS_ENABLED', 'Yes' if xr.submit_anonymous_enabled else 'No') }}
+                        {{ stat('Visitors may file a New', 'Yes' if xr.visitor_submit_configured else 'No') }}
                         <dt class="fw-normal text-muted">API key</dt>
                         <dd>{{ mask_badge('set' if xr.api_key_set else 'unset') }}</dd>
                         {{ stat('Base URL', xr.base_url) }}

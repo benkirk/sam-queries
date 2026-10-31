@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import secrets
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -73,6 +74,15 @@ VALIDATE_STATUSES: Tuple[str, ...] = ('received', 'failed', 'manual')
 #: for every unreconciled person, and it resolves fully through
 #: ``GET /v1/people/<username>``, which is what makes the detail sheet possible.
 PLACEHOLDER_USERNAME_RE = re.compile(r'^\S+-user-\S+$')
+
+
+def sam_placeholder_username(registration_id: int) -> str:
+    """The XRAS username SAM mints for a registration's PI: ``samr<id>-user-<hex6>``.
+
+    The ``-user-`` shape makes :func:`is_placeholder` class it; the id names the
+    ``account_request`` row that will merge it.
+    """
+    return f'samr{int(registration_id)}-user-{secrets.token_hex(3)}'
 
 #: Wire role strings, spaced -- the *inbound* vocabulary. Verified live: the
 #: NCAR process defines exactly these three role types (13 PI / 14 Allocation

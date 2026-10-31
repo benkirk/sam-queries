@@ -460,6 +460,58 @@ class XrasAdminClient(_XrasTransport):
             verified=verified, verify_detail=detail, write_error=error,
             extra={'source': source, 'target': target})
 
+    #: ``create_person`` keyword -> the XRAS person field it sets.
+    _PERSON_PARAMS = (('first_name', 'firstName'), ('middle_name', 'middleName'),
+                      ('last_name', 'lastName'), ('email', 'email'), ('phone', 'phone'),
+                      ('organization', 'organization'),
+                      ('academic_status', 'academicStatus'),
+                      ('residence_country', 'residenceCountry'))
+
+    def create_person(self, username: str, *, first_name: str, last_name: str, email: str,
+                      **person: Optional[str]) -> XrasWriteResult:
+        """Create an **unreconciled** person under *username*, the PI a visitor's New is filed as.
+
+        WARNING: a ``POST`` on a name that already resolves answers 200 and **overwrites** that
+        person's names and email (XRAS-dev, 2026-10-31), so a name that resolves is refused
+        before the write. Verified by the re-read carrying every field sent and
+        ``isReconciled: false``. *person* takes the other ``_PERSON_PARAMS`` keywords.
+        """
+        unknown = set(person) - {k for k, _ in self._PERSON_PARAMS}
+        if unknown:
+            raise TypeError(f'unknown person fields: {", ".join(sorted(unknown))}')
+        values = dict(person, first_name=first_name, last_name=last_name, email=email)
+        params = {wire: str(values[k]).strip() for k, wire in self._PERSON_PARAMS
+                  if values.get(k) not in (None, '')}
+        params['isReconciled'] = 'false'
+        path = f'/v1/people/{quote(str(username), safe="")}'
+        if self.get_person(username) is not None:
+            raise XrasWriteRejected(
+                f'{username!r} already exists in XRAS; a create there would overwrite it',
+                status=409)
+
+        status, _, message, error = self._write('POST', path, params=params)
+
+        try:
+            after = self.get_person(username)
+            if after is None:
+                verified, detail = False, f'{username} does not resolve after the create'
+            else:
+                wrong = [w for w, v in params.items() if w != 'isReconciled'
+                         and not _same_value(w, v, after.get(w))]
+                if after.get('isReconciled') is not False:
+                    wrong.append('isReconciled')
+                verified = not wrong
+                detail = (f'{username} reads back unreconciled with every field' if verified
+                          else f'{username} reads back with {", ".join(wrong)} not as sent')
+        except XrasSourceUnavailable as exc:
+            after, verified, detail = None, None, f'verify read failed: {exc}'
+
+        return XrasWriteResult(
+            operation='create_person', method='POST', path=path,
+            http_status=status, message=message, before=None, after=after,
+            verified=verified, verify_detail=detail, write_error=error,
+            extra={'username': username})
+
     # actions
 
     def validate_action(self, request_id: int, action_id: int, *,
@@ -594,8 +646,8 @@ class XrasAdminClient(_XrasTransport):
         person* when the username is unknown — and ``isReconciled`` there
         defaults to **true**, which is precisely the bug that mints
         already-reconciled placeholders nobody ever merges. Omitting the
-        parameters means an unknown username is XRAS's problem, not a new
-        broken identity. Callers should confirm the person resolves first.
+        parameters is not enough: an unknown username still mints a bare,
+        reconciled person, so one that does not resolve is refused here.
 
         The role travels as its **name** (``User``), not its id — this family
         400s on the numeric form. :func:`role_type` normalizes either input.
@@ -603,6 +655,12 @@ class XrasAdminClient(_XrasTransport):
         chosen = role_type(role)
         path = (f'/v1/requests/{int(request_id)}/roles/'
                 f'{quote(chosen.name, safe="")}/{quote(str(username), safe="")}')
+        # An unknown username here mints a bare person, reconciled and empty (XRAS-dev,
+        # 2026-10-31), so the person must resolve first.
+        if self.get_person(username) is None:
+            raise XrasWriteRejected(
+                f'{username!r} is not an XRAS person; adding a role would create one',
+                status=404)
         before = self.roster(request_number, request_id)
         status, result, message, error = self._write('POST', path, xa_user=xa_user)
         role_id = result.get('roleId') if isinstance(result, dict) else None

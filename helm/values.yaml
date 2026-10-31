@@ -428,6 +428,10 @@ webapp:
     # tests/unit/gates/test_xras_admin_client.py.
     XRAS_SUBMIT_ENABLED: "0"
     XRAS_SUBMIT_ACTION_TYPES: "Extension,Supplement"
+    # A New filed at /request/ by a visitor with no SAM account (docs/plans/
+    # XRAS_SUBMISSION_SPRINT2.md). Webapp only; needs XRAS_SUBMIT_ENABLED with New armed.
+    # Pinned in tests/unit/gates/test_xras_admin_client.py.
+    XRAS_SUBMIT_ANONYMOUS_ENABLED: "0"
     # Activate the project a New creates, right after its post applies (docs/plans/
     # XRAS_POST_AUTOMATION.md § 3 B); "0" leaves it to the card's Activate. Armed after the
     # samuel-dev smoke (#828), NUSD told; pinned in tests/unit/gates/test_xras_admin_client.py.

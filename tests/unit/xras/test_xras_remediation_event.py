@@ -48,7 +48,9 @@ class TestTheVocabularies:
             'rename_request',
             # A user's own request (XRAS_SUBMISSION.md).
             'create_request', 'delete_action', 'upload_document',
-            'set_opp_attributes', 'add_grant', 'update_grant', 'set_fos'}
+            'set_opp_attributes', 'add_grant', 'update_grant', 'set_fos',
+            # A visitor's New (XRAS_SUBMISSION_SPRINT2.md).
+            'create_person'}
 
     def test_every_operation_fits_the_column(self):
         """``operation`` is VARCHAR(24) — a longer verb truncates or errors."""

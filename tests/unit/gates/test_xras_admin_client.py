@@ -544,7 +544,8 @@ class TestRoles:
         reader = _FakeReader(
             _reports_request(roster=_DEFAULT_ROSTER),
             _reports_request(roster=_DEFAULT_ROSTER + (('new-user', 3, 'User', 19),)))
-        client = _client(monkeypatch, [_response(200, {'roleId': 3})],
+        client = _client(monkeypatch, [_response(200, _person('new-user')),
+                                       _response(200, {'roleId': 3})],
                          reader=reader)
         result = client.add_role(1, 19, 'new-user', request_number='EXAM0001',
                                  xa_user='pi-user')
@@ -557,12 +558,22 @@ class TestRoles:
     def test_add_sends_no_person_parameters_ever(self, monkeypatch):
         """They would create the person — with isReconciled defaulting TRUE."""
         reader = _FakeReader(_reports_request(roster=_DEFAULT_ROSTER))
-        client = _client(monkeypatch, [_response(200, {'roleId': 3})],
+        client = _client(monkeypatch, [_response(200, _person('new-user')),
+                                       _response(200, {'roleId': 3})],
                          reader=reader)
         client.add_role(1, 'User', 'new-user', request_number='EXAM0001',
                         xa_user='pi-user')
         _, kwargs = client.session.request.call_args
         assert kwargs['params'] is None
+
+    def test_add_refuses_a_username_xras_does_not_know(self, monkeypatch):
+        """XRAS would mint a bare person for it, reconciled and empty (2026-10-31)."""
+        client = _client(monkeypatch, [_response(404)])
+        with pytest.raises(XrasWriteRejected) as caught:
+            client.add_role(1, 'User', 'nobody', request_number='EXAM0001',
+                            xa_user='pi-user')
+        assert caught.value.status == 404
+        assert client.session.request.call_count == 1, 'the read only; nothing posted'
 
     def test_remove_is_keyed_on_role_id_not_username(self, monkeypatch):
         """One person can hold two roles; remove exactly the one named."""
@@ -1066,6 +1077,78 @@ class TestTheSubmitLever:
                                 submit_action_types=frozenset({'Supplement'})).summary()
         assert summary['submit_enabled'] is True and summary['submit_configured'] is True
         assert summary['submit_action_types'] == ['Supplement']
+
+
+class TestCreatePerson:
+    """The visitor's PI: created unreconciled, never over a name that already resolves."""
+
+    _FIELDS = dict(first_name='Ada', last_name='Invented', email='samr7-user-a1b2c3@example.invalid',
+                   organization='Example University', academic_status='Graduate Student',
+                   residence_country='United States')
+
+    def test_it_sends_the_fields_and_verifies_them_unreconciled(self, monkeypatch):
+        client = _client(monkeypatch, [_response(404), _response(200),
+                                       _response(200, _person('samr7-user-a1b2c3', reconciled=False))])
+        result = client.create_person('samr7-user-a1b2c3', **self._FIELDS)
+        params = _calls(client)[1][2]['params']
+        assert params['isReconciled'] == 'false' and params['firstName'] == 'Ada'
+        assert 'middleName' not in params, 'an unset field is not sent'
+        assert result.verified is True and result.operation == 'create_person'
+
+    def test_a_name_that_resolves_is_refused_before_any_write(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200, _person('samr7-user-a1b2c3'))])
+        with pytest.raises(XrasWriteRejected) as caught:
+            client.create_person('samr7-user-a1b2c3', **self._FIELDS)
+        assert caught.value.status == 409 and client.session.request.call_count == 1
+
+    def test_a_reconciled_read_back_is_not_verified(self, monkeypatch):
+        client = _client(monkeypatch, [_response(404), _response(200),
+                                       _response(200, _person('samr7-user-a1b2c3', reconciled=True))])
+        result = client.create_person('samr7-user-a1b2c3', **self._FIELDS)
+        assert result.verified is False and 'isReconciled' in result.verify_detail
+
+    def test_an_unknown_field_is_a_type_error(self, monkeypatch):
+        client = _client(monkeypatch, [])
+        with pytest.raises(TypeError):
+            client.create_person('u-user-x', colour='blue', **self._FIELDS)
+
+    def test_the_operation_fits_the_audit_column(self):
+        from sam.integration.xras import XRAS_REMEDIATION_OPERATIONS as ops
+        assert "create_person" in ops and len('create_person') <= 24
+
+
+class TestThePlaceholderName:
+
+    def test_sam_names_its_placeholder_in_the_shape_sam_classes(self):
+        from sam.queries.xras_accounts import is_placeholder, sam_placeholder_username
+        name = sam_placeholder_username(42)
+        assert name.startswith('samr42-user-') and is_placeholder(name)
+        assert name != sam_placeholder_username(42), 'a random tail'
+
+
+class TestTheVisitorLever:
+    """A fifth lever, off by default, meaningful only with New armed."""
+
+    def test_off_by_default(self, monkeypatch):
+        monkeypatch.delenv('XRAS_SUBMIT_ANONYMOUS_ENABLED', raising=False)
+        assert XrasApiConfig.from_environment().submit_anonymous_enabled is False
+
+    @pytest.mark.parametrize('types, expected', [
+        (frozenset({'New'}), True), (frozenset({'Extension', 'Supplement'}), False)])
+    def test_it_needs_new_armed(self, types, expected):
+        config = XrasApiConfig(enabled=True, write_enabled=True, submit_enabled=True,
+                               submit_anonymous_enabled=True, api_key='k',
+                               submit_action_types=types)
+        assert config.visitor_submit_configured is expected
+        assert config.summary()['visitor_submit_configured'] is expected
+
+    def test_prod_ships_it_dark_dev_arms_it_and_no_task_pod_carries_it(self):
+        def values(name):
+            return yaml.safe_load((REPO_ROOT / 'helm' / name).read_text())
+        assert str(values('values.yaml')['webapp']['env']['XRAS_SUBMIT_ANONYMOUS_ENABLED']) == '0'
+        assert values('values-dev.yaml')['webapp']['env']['XRAS_SUBMIT_ANONYMOUS_ENABLED'] == '1'
+        for name in ('values.yaml', 'values-dev.yaml'):
+            assert 'XRAS_SUBMIT_ANONYMOUS' not in str((values(name).get('tasks') or {}).get('env'))
 
 
 class TestHelmSubmitLever:

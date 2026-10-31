@@ -95,6 +95,8 @@ class XrasApiConfig:
     submit_enabled: bool = False
     submit_action_types: FrozenSet[str] = field(
         default_factory=lambda: frozenset(SUBMIT_ACTION_TYPES))
+    #: Fifth lever: a New filed by a visitor with no SAM account (/request/). Webapp only.
+    submit_anonymous_enabled: bool = False
     api_key: str = ''
     base_url: str = DEFAULT_BASE_URL
     allocations_process: str = DEFAULT_ALLOCATIONS_PROCESS
@@ -114,6 +116,7 @@ class XrasApiConfig:
             submit_enabled=_config_bool('XRAS_SUBMIT_ENABLED', False),
             submit_action_types=parse_submit_action_types(
                 _config_str('XRAS_SUBMIT_ACTION_TYPES', '')),
+            submit_anonymous_enabled=_config_bool('XRAS_SUBMIT_ANONYMOUS_ENABLED', False),
             api_key=_config_str('XRAS_API_KEY', ''),
             base_url=(_config_str('XRAS_API_BASE', DEFAULT_BASE_URL)
                       or DEFAULT_BASE_URL).rstrip('/'),
@@ -177,6 +180,11 @@ class XrasApiConfig:
         """Whether filing *action_type* is armed here (the lever and the type list)."""
         return self.submit_configured and action_type in self.submit_action_types
 
+    @property
+    def visitor_submit_configured(self) -> bool:
+        """True when a visitor with no SAM account may file a New: its lever, with New armed."""
+        return bool(self.submit_anonymous_enabled and self.submit_allows('New'))
+
     def summary(self) -> Dict[str, Any]:
         """Config for the Admin -> Configuration card. **Never** the key.
 
@@ -190,6 +198,7 @@ class XrasApiConfig:
             'submit_enabled': self.submit_enabled,
             'submit_action_types': [t for t in SUBMIT_ACTION_TYPES
                                     if t in self.submit_action_types],
+            'submit_anonymous_enabled': self.submit_anonymous_enabled,
             'api_key_set': bool(self.api_key),
             'base_url': self.base_url,
             'allocations_process': self.allocations_process,
@@ -201,6 +210,7 @@ class XrasApiConfig:
             'write_configured': self.write_configured,
             'admin_context_available': self.admin_context_available,
             'submit_configured': self.submit_configured,
+            'visitor_submit_configured': self.visitor_submit_configured,
         }
 
 
