@@ -1264,18 +1264,24 @@ class TestTheVisitorApproval:
             s.commit()
 
     def _post(self, xras_client, dispatching, monkeypatch, held, messages, found=True,
-              holder=None):
+              holder=None, real_ticket=False):
         from types import SimpleNamespace
         from sam.manage import account_requests as manage
         from sam.xras.errors import XrasActionRejected
         tickets = []
         monkeypatch.setattr(manage, 'refused_visitor_registration', lambda s, rid, m: (
             SimpleNamespace(account_request_id=held) if found and m == messages else None))
+        if real_ticket:
+            import webapp.register.handoff_mail as handoff
+            real = handoff.send_ticket
+            monkeypatch.setattr(handoff, 'send_ticket', lambda row, **kw: (
+                tickets.append((row.account_request_id, kw)), real(row, **kw))[1])
         if holder:
             monkeypatch.setattr(manage, 'release_visitor_registration',
                                 lambda s, row, **kw: row.mark_requested() and holder)
-        monkeypatch.setattr('webapp.register.handoff_mail.send_ticket',
-                            lambda row, **kw: tickets.append((row.account_request_id, kw)))
+        if not real_ticket:
+            monkeypatch.setattr('webapp.register.handoff_mail.send_ticket',
+                                lambda row, **kw: tickets.append((row.account_request_id, kw)))
 
         def refuse(s, a, *, validate_only=False):
             raise XrasActionRejected(messages)
@@ -1308,6 +1314,21 @@ class TestTheVisitorApproval:
                                    ['Missing pi role'], found=False)
         assert resp.status_code == 422 and tickets == []
         assert self._requested_at(app, held) is None
+
+    def test_the_ticket_builds_its_link_after_the_reply(
+            self, app, xras_client, action_log, dispatching, monkeypatch, held, caplog):
+        """The real ticket path runs on close and files once. The test client keeps the
+        request context alive through close, so the no-request case is test_public_url's."""
+        import logging
+        monkeypatch.setitem(app.config, 'PUBLIC_BASE_URL', 'https://sam.hpc.ucar.edu')
+        with caplog.at_level(logging.INFO, logger='webapp.run'):
+            resp, tickets = self._post(xras_client, dispatching, monkeypatch, held,
+                                       ['PI samr1-user-a1b2c3 is not in database'],
+                                       real_ticket=True)
+        assert resp.status_code == 422 and len(tickets) == 1
+        lines = [r.getMessage() for r in caplog.records if 'visitor New' in r.getMessage()]
+        assert lines and all('failed' not in line for line in lines), lines
+        assert self._requested_at(app, held) is not None
 
     def test_an_address_an_active_account_holds_is_released_without_a_ticket(
             self, app, xras_client, action_log, dispatching, monkeypatch, held):
