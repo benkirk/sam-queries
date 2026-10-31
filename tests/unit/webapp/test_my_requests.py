@@ -446,8 +446,8 @@ class TestResumeAndDiscard:
         html = auth_client.get(PAGE).get_data(as_text=True)
         assert 'Stopped at submit' in html
         assert f'/user/requests/{a_row}/resume' in html and f'/user/requests/{a_row}/abort' in html
-        # The Date column repeats an applied row's date; phones keep the width for Resume/Discard.
-        assert '<th class="col-shrink d-none d-md-table-cell">Date</th>' in html
+        # The Filed column repeats an applied row's date; phones keep the width for Resume/Discard.
+        assert '<th class="col-shrink d-none d-md-table-cell">Filed</th>' in html
 
     @pytest.fixture
     def lettered_row(self, engine):
@@ -498,6 +498,7 @@ class TestResumeAndDiscard:
         html = auth_client.get(PAGE).get_data(as_text=True)
         assert f'hx-get="/user/requests/{refused_letter_row}/resume"' in html
         assert 'title="XRAS numbers a new request when it is submitted' in html  # no number yet
+        assert '>Filed</th>' in html
         modal = auth_client.get(f'/user/requests/{refused_letter_row}/resume').get_data(
             as_text=True)
         assert 'name="document_Advisor_Letter"' in modal
