@@ -620,10 +620,28 @@ def _activate_after_reply(response, result, log_id) -> None:
                         session, projcode, get_notifier(), by=actor, xras_action_log_id=log_id,
                         site_url=app.config.get('PUBLIC_BASE_URL') or None)
                     app.logger.info('XRAS notify after activation: %s %s', projcode, sent)
+                if outcome == 'activated':
+                    _invite_after_activation(session, projcode, actor)
         except Exception:                               # noqa: BLE001
             app.logger.exception('XRAS activate/notify after reply failed: %s', projcode)
 
     response.call_on_close(activate)
+
+
+def _invite_after_activation(session, projcode, actor) -> None:
+    """Invite the people the New named that XRAS could not hold; its failure is only logged."""
+    from sam.projects.projects import Project
+    from webapp.register.invite_mail import invite_activated_roster
+    project = Project.get_by_projcode(session, projcode)
+    if project is None:
+        return
+    try:
+        rows = invite_activated_roster(session, project, by=actor)
+        current_app.logger.info('XRAS roster invites after activation: %s %d', projcode,
+                                len(rows))
+    except Exception:                                   # noqa: BLE001
+        current_app.logger.exception('XRAS roster invites after activation failed: %s',
+                                     projcode)
 
 
 def _rename_after_reply(response, action, projcode) -> None:

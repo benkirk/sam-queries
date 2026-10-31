@@ -7,11 +7,14 @@ Behind ``XRAS_AUTO_NOTIFY`` the route then sends the New's award mail (phase C).
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from sam.integration.xras import XrasActivationEvent
 from sam.manage.transaction import management_transaction
+
+logger = logging.getLogger(__name__)
 
 
 def auto_activate_armed() -> bool:
@@ -80,6 +83,42 @@ def activate_project(session, project, *, by: str,
         return XrasActivationEvent.create(session, project_id=project.project_id,
                                           event_type='activated', created_by=by,
                                           xras_action_log_id=xras_action_log_id)
+
+
+def invite_submission_roster(session, project, *, by: str, clock=None) -> List:
+    """Invite the people a New filed through SAM named but XRAS could not hold
+    (``ActionRequest.invitees``), sponsored by the lead; returns the rows queued.
+
+    A known address joins at once and an open request is a duplicate, so a second
+    call writes nothing. One that cannot be added is logged and skipped.
+    """
+    from sam.integration.xras_submission import XrasSubmission
+    from sam.manage.account_requests import OUTCOME_QUEUED, invite_user
+    from sam.manage.xras_submission import ActionRequest
+    rows = session.query(XrasSubmission).filter(
+        XrasSubmission.project_id == project.project_id,
+        XrasSubmission.action_type == 'New').all()
+    invitees = [e for row in rows for e in ActionRequest.from_payload(row.payload_dict).invitees]
+    if not invitees or project.lead is None:
+        return []
+    queued = []
+    with management_transaction(session):
+        for entry in invitees:
+            try:
+                outcome, held = invite_user(
+                    session, project_id=project.project_id, sponsor=project.lead,
+                    email=entry['email'], first_name=entry['first_name'],
+                    last_name=entry['last_name'], clock=clock,
+                    note=f'Named on the {project.projcode} allocation request.')
+            except ValueError as exc:
+                logger.warning('roster invite on %s skipped %s: %s', project.projcode,
+                               entry['email'], exc)
+                continue
+            if outcome == OUTCOME_QUEUED:
+                queued.append(held)
+    logger.info('roster invites on %s by %s: %d named, %d queued', project.projcode, by,
+                len(invitees), len(queued))
+    return queued
 
 
 def activate_posted_project(session, projcode: str, *, by: str,

@@ -305,11 +305,23 @@ def xras_activate(project_id: int):
             detail='Nothing to do.')
 
     activate_project(db.session, project, by=acting_username())
+    invited = _invite_roster(project)
 
     return htmx_success_message(
         {'refreshXrasTab': {}},
         f'Activated {project.projcode}.',
-        detail=project.title or None)
+        detail=' '.join(filter(None, (project.title, f'Invited {invited} people named on the '
+                                      'request.' if invited else None))) or None)
+
+
+def _invite_roster(project) -> int:
+    """The New's invitees once it is active; a failure is logged, never the activation's."""
+    from webapp.register.invite_mail import invite_activated_roster
+    try:
+        return len(invite_activated_roster(db.session, project, by=acting_username()))
+    except Exception:                                   # noqa: BLE001
+        current_app.logger.exception('roster invites after activating %s', project.projcode)
+        return 0
 
 
 @bp.route('/xras_dismiss_form/<int:project_id>')

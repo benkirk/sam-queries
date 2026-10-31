@@ -88,3 +88,13 @@ def send_invite_links(rows: Sequence[AccountRequest], *, requested_by: str) -> L
             for row in delivered:
                 row.mark_invite_sent(sent_at)
     return results
+
+
+def invite_activated_roster(session, project, *, by: str) -> List[AccountRequest]:
+    """At activation: queue a New's unrostered people and, where links are mounted, mail them."""
+    from sam.manage.xras_activation import invite_submission_roster
+    rows = invite_submission_roster(session, project, by=by)
+    if rows and current_app.config.get('ACCOUNT_INVITATIONS_ENABLED'):
+        send_invite_links([db.session.get(AccountRequest, r.account_request_id) for r in rows],
+                          requested_by=by)
+    return rows

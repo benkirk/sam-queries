@@ -1217,6 +1217,20 @@ class TestActivateAfterReply:
         self._post(xras_client, dispatching, 'add')
         assert activations == []
 
+    @pytest.mark.parametrize('outcome, invites', [('activated', 1), ('already active', 0)])
+    def test_an_activation_invites_the_requests_unrostered_people(
+            self, xras_client, action_log, dispatching, activations, monkeypatch,
+            outcome, invites):
+        from sam.manage import xras_activation
+        from webapp.api.xras import actions
+        monkeypatch.setattr(xras_activation, 'activate_posted_project', lambda *a, **k: outcome)
+        calls = []
+        monkeypatch.setattr(actions, '_invite_after_activation',
+                            lambda session, projcode, actor: calls.append((projcode, actor)))
+        self._post(xras_client, dispatching, 'add')
+        assert len(calls) == invites
+        assert all(p == 'UXYZ0001' and a.startswith('xras:') for p, a in calls)
+
     def test_a_failing_activation_never_reaches_the_reply(
             self, xras_client, action_log, dispatching, activations, monkeypatch):
         from sam.manage import xras_activation
