@@ -137,17 +137,29 @@ def lookup_resource_limit(session, *, allocation_type_name: str,
 def limits_for_allocation_type(session, allocation_type_name: str
                                ) -> Dict[str, AllocationTypeResourceLimit]:
     """``{resource_name: limit}`` for every active limit of the named type (first id wins on a duplicate)."""
+    return limits_for_allocation_types(session, [allocation_type_name]).get(allocation_type_name, {})
+
+
+def limits_for_allocation_types(session, allocation_type_names
+                                ) -> Dict[str, Dict[str, AllocationTypeResourceLimit]]:
+    """:func:`limits_for_allocation_type` for many names in two queries: ``{name: {resource: limit}}``."""
+    from sam.accounting.allocations import AllocationType
     from sam.resources.resources import Resource
-    type_ids = _type_ids(session, allocation_type_name)
-    if not type_ids:
+    names = sorted({n for n in allocation_type_names if n})
+    if not names:
+        return {}
+    name_of = {i: n for i, n in session.query(AllocationType.allocation_type_id,
+                                               AllocationType.allocation_type)
+               .filter(AllocationType.allocation_type.in_(names))}
+    if not name_of:
         return {}
     rows = (session.query(Resource.resource_name, AllocationTypeResourceLimit)
             .join(AllocationTypeResourceLimit,
                   Resource.resource_id == AllocationTypeResourceLimit.resource_id)
-            .filter(AllocationTypeResourceLimit.allocation_type_id.in_(type_ids))
+            .filter(AllocationTypeResourceLimit.allocation_type_id.in_(sorted(name_of)))
             .filter(AllocationTypeResourceLimit.is_active)
             .order_by(AllocationTypeResourceLimit.allocation_type_id))
-    found: Dict[str, AllocationTypeResourceLimit] = {}
-    for name, limit in rows:
-        found.setdefault(name, limit)
+    found: Dict[str, Dict[str, AllocationTypeResourceLimit]] = {}
+    for resource, limit in rows:
+        found.setdefault(name_of[limit.allocation_type_id], {}).setdefault(resource, limit)
     return found

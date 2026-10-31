@@ -528,3 +528,65 @@ def test_heuv_group(app, client, monkeypatch, route_count_queries, multi_project
 def test_user_my_requests_route(auth_client, route_count_queries):
     _route_within("user_my_requests_route", auth_client, route_count_queries,
                   '/user/requests')
+
+
+# ---------------------------------------------------------------------------
+# The public /request overview: the guide rows, the resource map and the type limits each
+# read once for every card, never per card (XRAS_SUBMISSION_SPRINT2.md § 6).
+# ---------------------------------------------------------------------------
+
+#: XRAS resource id -> repository key, for the SAM resources a card lists.
+_OVERVIEW_KEYS = {1: 145575, 2: 145576, 3: 144650, 4: 146036, 5: 144646, 6: 145145}
+
+
+@pytest.fixture
+def visitor_overview(app, monkeypatch):
+    """The visitor lever on; every public guide type open with six resources, no XRAS call."""
+    from dataclasses import replace
+
+    from sam.accounting.allocation_type_guide import AllocationTypeGuide
+    from sam.integration.xras_api import cache as xras_cache
+    from sam.integration.xras_api.config import XrasApiConfig
+    from webapp.extensions import db
+    from webapp.register import allocation_request as mod
+    config = replace(XrasApiConfig(enabled=True, write_enabled=True, api_key='k'),
+                     submit_enabled=True, submit_anonymous_enabled=True,
+                     submit_action_types=frozenset({'New'}))
+    with app.app_context():
+        types = [g.xras_allocation_type_id for g in db.session.query(AllocationTypeGuide)]
+    if not types:
+        pytest.skip('no allocation_type_guide rows in this snapshot')
+    opportunities = [{'opportunity_id': 700000 + n, 'opportunity_name': f'Type {t}',
+                      'allocation_type_id': t, 'allocation_type': f'Type {t}',
+                      'description': None, 'award_months': 12, 'can_submit': True,
+                      'reason': None, 'eua_attribute_id': None,
+                      'resources': [{'resource_id': rid, 'name': f'R{rid}', 'units': 'Hours'}
+                                    for rid in _OVERVIEW_KEYS]}
+                     for n, t in enumerate(types)]
+
+    class Reader:
+        def required_fields(self, *a):
+            return {}
+
+        def get_document_types(self):
+            return []
+
+    xras_cache._CACHE.reset_for_tests()
+    monkeypatch.setattr(mod, 'interactive_config', lambda: config)
+    monkeypatch.setattr(mod, '_opportunities', lambda c: (opportunities, False))
+    monkeypatch.setattr(mod, 'read_client', lambda c=None: Reader())
+    monkeypatch.setattr(mod, 'resource_keys', lambda c=None: dict(_OVERVIEW_KEYS))
+    yield len(types)
+    xras_cache._CACHE.reset_for_tests(disabled=False)
+
+
+def test_request_overview_route(client, route_count_queries, visitor_overview):
+    baseline = get_baseline('request_overview_route')
+    with route_count_queries() as stats:
+        response = client.get('/request/')
+    assert response.status_code == 200, f'GET /request/ returned {response.status_code}'
+    html = response.get_data(as_text=True)
+    assert html.count('request-type-limits') >= 2, 'the cards carry their SAM limits'
+    assert stats.count <= baseline, (
+        f'/request overview: {stats.count} queries > {baseline} baseline '
+        f'({visitor_overview} guide rows). {stats.summary()}')

@@ -37,14 +37,16 @@ def sam_resources_by_xras_id(session, resource_ids: Iterable[int],
                              keys: Optional[Mapping[int, int]]) -> Dict[int, Any]:
     """XRAS ``resourceId`` -> SAM ``Resource``, through *keys* (``resource_key_map``) and the mapping table."""
     from sam.integration.xras import XrasResourceRepositoryKeyResource
+    from sam.resources.resources import Resource
     keys = keys or {}
     wanted = {rid: keys[rid] for rid in resource_ids if rid in keys}
     if not wanted:
         return {}
-    rows = (session.query(XrasResourceRepositoryKeyResource)
+    rows = (session.query(XrasResourceRepositoryKeyResource.resource_repository_key, Resource)
+            .join(Resource, Resource.resource_id == XrasResourceRepositoryKeyResource.resource_id)
             .filter(XrasResourceRepositoryKeyResource.resource_repository_key.in_(
                 set(wanted.values()))).all())
-    by_key = {r.resource_repository_key: r.resource for r in rows}
+    by_key = dict(rows)
     return {rid: by_key[key] for rid, key in wanted.items() if key in by_key}
 
 
@@ -55,6 +57,12 @@ def resources_with_limits(session, resources: List[Dict[str, Any]],
     from sam.accounting.allocation_type_limits import limits_for_allocation_type
     sam = sam_resources_by_xras_id(session, [r['resource_id'] for r in resources], keys)
     limits = limits_for_allocation_type(session, type_name) if type_name else {}
+    return annotate_resources(resources, sam, limits)
+
+
+def annotate_resources(resources: List[Dict[str, Any]], sam: Mapping[int, Any],
+                       limits: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    """:func:`resources_with_limits` on maps already read, for a page of many lists."""
     for r in resources:
         resource = sam.get(r['resource_id'])
         r['sam_name'] = resource.resource_name if resource is not None else None

@@ -72,14 +72,10 @@ def _pick(opportunities: Sequence[Mapping[str, Any]]) -> Dict[int, Dict[str, Any
     return chosen
 
 
-def _sam_limits(session, type_name: Optional[str]) -> Tuple[Dict[str, Any], ...]:
+def _sam_limits(limits: Mapping[str, Any]) -> Tuple[Dict[str, Any], ...]:
     """A closed type's resources: its SAM limits by resource name."""
-    from sam.accounting.allocation_type_limits import limits_for_allocation_type
-    if not type_name:
-        return ()
     return tuple({'resource_id': None, 'name': name, 'units': '', 'sam_name': name,
-                  'limit': limit, 'yes_no': False}
-                 for name, limit in sorted(limits_for_allocation_type(session, type_name).items()))
+                  'limit': limit, 'yes_no': False} for name, limit in sorted(limits.items()))
 
 
 def allocation_type_overview(session, opportunities: Sequence[Mapping[str, Any]], *,
@@ -91,21 +87,27 @@ def allocation_type_overview(session, opportunities: Sequence[Mapping[str, Any]]
 
     *opportunities* are ``new_request_opportunities`` views; *rules_for(type_id, type_name)*
     returns the New rule book; *eligible* narrows the public rows (the logged-in filter).
+    The resource map and every type's limits are read once for all the cards.
     """
-    from sam.xras.submission_preflight import resources_with_limits
+    from sam.accounting.allocation_type_limits import limits_for_allocation_types
+    from sam.xras.submission_preflight import annotate_resources, sam_resources_by_xras_id
     by_type = _pick(opportunities)
+    guides = [g for g in public_guides(session) if eligible is None or eligible(g)]
+    limits = limits_for_allocation_types(session, [g.allocation_type for g in guides])
+    sam = sam_resources_by_xras_id(session, {
+        r['resource_id'] for g in guides
+        for r in (by_type.get(g.xras_allocation_type_id) or {}).get('resources') or ()},
+        resource_keys)
     cards = []
-    for guide in public_guides(session):
-        if eligible is not None and not eligible(guide):
-            continue
+    for guide in guides:
         opp = by_type.get(guide.xras_allocation_type_id)
+        type_limits = limits.get(guide.allocation_type, {})
         if opp is not None:
-            resources = _ordered(resources_with_limits(
-                session, [dict(r) for r in opp.get('resources') or ()], resource_keys,
-                guide.allocation_type))
+            resources = _ordered(annotate_resources(
+                [dict(r) for r in opp.get('resources') or ()], sam, type_limits))
             rules = rules_for(opp.get('allocation_type_id'), opp.get('allocation_type'))
         else:
-            resources, rules = _ordered(_sam_limits(session, guide.allocation_type)), None
+            resources, rules = _ordered(_sam_limits(type_limits)), None
         reason = None
         if opp is None:
             reason = 'Not open for requests now.'
