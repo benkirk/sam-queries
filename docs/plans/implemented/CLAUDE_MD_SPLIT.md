@@ -1,5 +1,8 @@
 # CLAUDE.md split: a lean root plus path-scoped rules
 
+**Status: done in #797 (merged 2026-10-11): the root `CLAUDE.md` and `.claude/rules/` are the
+result.**
+
 ## Context
 
 `CLAUDE.md` is 1,067 lines / 65 KB (~16k tokens) and loads into every session,
