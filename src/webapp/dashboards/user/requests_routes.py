@@ -23,6 +23,7 @@ from flask_login import current_user, login_required
 
 from sam.dates import add_months, first_of_next_month
 from sam.integration.xras_api import XrasSourceUnavailable
+from sam.integration.xras_api.lookups import funding_agency_choices
 from sam.queries.xras_my_requests import led_projects, my_requests
 from sam.schemas.forms import (
     XrasExtensionRequestForm,
@@ -227,6 +228,7 @@ class _RequestForm(HtmxFormHandler):
             raise FormError(decision.message)
         self._ctx = dict(project=self.project, action_type=self.action_type,
                          decision=decision, eula_sha=eula_sha(), grant_inputs=list(GRANT_INPUTS),
+                         grant_agencies=funding_agency_choices(),
                          post_url=request.path, **self._type_context(config, decision))
         return self._ctx
 
@@ -372,14 +374,18 @@ class _RequestForm(HtmxFormHandler):
         """``{field: [message]}`` for the grant fields the rule book requires and the form lacks."""
         if not data['grant_number']:
             return {'grant_number': ['This request needs a supporting grant.']}
-        wire_to_input = {w: n for n, w in GRANT_INPUTS.items()}
-        return {wire_to_input[w]: ['Required for the grant.'] for w in rules.grant_fields
-                if w in wire_to_input and data.get(wire_to_input[w]) is None}
+        wire_to_input = {w: n for n, w in GRANT_INPUTS.items() if n != 'grant_agency_id'}
+        errors = {wire_to_input[w]: ['Required for the grant.'] for w in rules.grant_fields
+                  if w in wire_to_input and data.get(wire_to_input[w]) is None}
+        agency = data.get('grant_agency_id')
+        if agency is not None and agency not in dict(funding_agency_choices()):
+            errors['grant_agency_id'] = ['Choose one of the agencies listed.']
+        return errors
 
     @staticmethod
     def _grants(data):
         from sam.integration.xras_api.vocabulary import NSF_FUNDING_AGENCY_ID
-        return ((dict(data['grant'], fundingAgencyId=NSF_FUNDING_AGENCY_ID),)
+        return ((dict({'fundingAgencyId': NSF_FUNDING_AGENCY_ID}, **data['grant']),)
                 if data.get('grant') else ())
 
     @staticmethod
@@ -536,6 +542,7 @@ class _NewRequestForm(_RequestForm):
                          chosen_mnemonic=_mnemonic_label(request.values.get(
                              'mnemonic_code_id', type=int)),
                          chosen_admin=_user_label(request.values.get('admin_user_id', type=int)),
+                         grant_agencies=funding_agency_choices(),
                          carry_fields=_DESCRIBE_FIELDS,
                          **_opportunity_context(config, chosen))
         self._ctx.update(self._amounts_context(config))
@@ -746,27 +753,39 @@ register_typeahead(
 @bp.route('/requests/htmx/award-lookup')
 @login_required
 def my_requests_award_lookup():
-    """The grant fieldset, filled from NSF's record of the number typed."""
+    """The grant fieldset, filled from NSF's record, or USAspending's for another agency."""
     from sam.integration.awards.base import AwardSourceUnavailable
     from sam.integration.awards.registry import resolve_award
+    from sam.integration.xras_api.vocabulary import NSF_FUNDING_AGENCY_ID
     number = (request.args.get('grant_number') or '').strip()
+    agency = request.args.get('grant_agency_id', type=int) or NSF_FUNDING_AGENCY_ID
     required = [w for w in (request.args.get('grant_required') or '').split(',') if w]
+    nsf = agency == NSF_FUNDING_AGENCY_ID
+    source = 'NSF' if nsf else 'USAspending'
     found, note = {}, None
     try:
-        record = resolve_award('NSF', number) if number else None
+        # Exact numbers only away from NSF: USAspending's keyword fallback can return another award.
+        record = (resolve_award('NSF', number) if nsf else resolve_award(None, number, exact=True)
+                  ) if number else None
     except AwardSourceUnavailable:
-        record, note = None, 'NSF is not answering. Type the grant\'s details, or try again.'
+        record, note = None, f'{source} is not answering. Type the grant\'s details, or try again.'
     if record is not None:
         found = {'grant_title': record.title, 'grant_begin_date': record.start_date,
                  'grant_end_date': record.end_date,
                  'grant_pi_name': record.pi.name if record.pi else None,
                  'grant_officer_name': record.monitor.name if record.monitor else None,
                  'grant_officer_email': record.monitor.email if record.monitor else None}
-        note = 'Filled from NSF. Check each field, and type any NSF left blank.'
+        note = (f'Filled from {source}. Check each field, and type any {source} left blank.' if nsf
+                else 'Filled from USAspending: the title and dates. It has no PI or program '
+                     'officer; type them.')
     elif number and note is None:
-        note = f'NSF has no award {number}. Check the number, or type the details.'
-    values = {'grant_number': number, **{k: v for k, v in found.items() if v}}
-    return render_template(_GRANT, form=values, required=required, note=note, field_errors={})
+        note = (f'NSF has no award {number}. Check the number, or type the details.' if nsf
+                else f'USAspending has no federal award numbered exactly {number}. Check the '
+                     'number, or type the details.')
+    values = {'grant_agency_id': agency, 'grant_number': number,
+              **{k: v for k, v in found.items() if v}}
+    return render_template(_GRANT, form=values, required=required, note=note, field_errors={},
+                           grant_agencies=funding_agency_choices())
 
 
 # a stopped row: resume or discard

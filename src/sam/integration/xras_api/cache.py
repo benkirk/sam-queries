@@ -145,6 +145,11 @@ def cached_fos_types(compute: Callable[[], Any]) -> Optional[Any]:
     return _CACHE.get_or_compute('lookups', 'fos_types', compute)
 
 
+def cached_funding_agencies(compute: Callable[[], Any]) -> Optional[Any]:
+    """Memoise the grant-agency list. One key, the whole list."""
+    return _CACHE.get_or_compute('lookups', 'funding_agencies', compute)
+
+
 def cached_opportunity(opportunity_id, compute: Callable[[], Any]) -> Optional[Any]:
     """Memoise one opportunity's detail. Definite negatives cache too — a 404
     for an id is a real answer and re-asking costs a round trip per modal."""

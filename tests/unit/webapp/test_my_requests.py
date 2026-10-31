@@ -656,6 +656,25 @@ class TestTheRenewalForm:
         assert draft.grants[0]['fundingAgencyId'] == 1
         assert draft.grants[0]['programOfficerEmail'] == 'po@nsf.gov'
 
+    def test_another_agencys_grant_keeps_its_agency(self, auth_client, renewable, filed,
+                                                    monkeypatch):
+        from io import BytesIO
+        monkeypatch.setattr(requests_routes, 'funding_agency_choices',
+                            lambda: [(1, 'National Science Foundation'), (14, 'NASA (and centers)')])
+        renewable.required = {'requiredFields': {'request': {'grants': {'required': True}}}}
+        auth_client.post(REN, data=_ren('submit', eula_sha=_sha(), agree='1', **_GRANT,
+                                        grant_agency_id='14',
+                                        document_Advisor_Letter=(BytesIO(b'%PDF-1.7 x'), 'l.pdf')),
+                         content_type='multipart/form-data')
+        draft, _ = filed[0]
+        assert draft.grants[0]['fundingAgencyId'] == 14
+
+    def test_an_agency_xras_does_not_list_is_refused(self, auth_client, renewable, filed):
+        renewable.required = {'requiredFields': {'request': {'grants': {'required': True}}}}
+        html = auth_client.post(REN, data=_ren(**_GRANT, grant_agency_id='999')).get_data(
+            as_text=True)
+        assert 'Choose one of the agencies listed.' in html and not filed
+
     def test_only_the_resources_the_line_holds_are_prefilled(self, auth_client, renewable,
                                                              monkeypatch):
         import sam.xras.submission_preflight as pre
@@ -956,6 +975,26 @@ class TestThePickers:
         assert 'value="Ensembles"' in html and 'value="po@nsf.gov"' in html
         assert 'value="2345678"' in html and 'AGS-2345678' not in html  # the number typed
         assert 'value="2026-01-01"' in html and 'Filled from NSF' in html
+
+    def test_another_agency_looks_up_usaspending_by_exact_number(self, auth_client, monkeypatch):
+        from datetime import date
+        from sam.integration.awards.base import AwardRecord
+        calls = []
+
+        def resolve(source, number, exact=False):
+            calls.append((source, number, exact))
+            return AwardRecord(provenance='USAspending', title='Dust modeling',
+                               start_date=date(2021, 7, 16), end_date=date(2027, 7, 15))
+        monkeypatch.setattr('sam.integration.awards.registry.resolve_award', resolve)
+        html = auth_client.get('/user/requests/htmx/award-lookup?grant_agency_id=14'
+                               '&grant_number=80NSSC21K1305').get_data(as_text=True)
+        assert calls == [(None, '80NSSC21K1305', True)]
+        assert 'value="Dust modeling"' in html and 'no PI or program officer' in html
+        monkeypatch.setattr('sam.integration.awards.registry.resolve_award',
+                            lambda s, n, exact=False: None)
+        html = auth_client.get('/user/requests/htmx/award-lookup?grant_agency_id=14'
+                               '&grant_number=014421').get_data(as_text=True)
+        assert 'no federal award numbered exactly 014421' in html
 
     def test_an_unknown_award_says_so(self, auth_client, monkeypatch):
         monkeypatch.setattr('sam.integration.awards.registry.resolve_award', lambda s, n: None)

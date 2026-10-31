@@ -67,9 +67,12 @@ def providers_for(source_name: Optional[str],
             + [p for p in eligible if p.source is None])
 
 
-def resolve_award(source_name: Optional[str],
-                  contract_number: Optional[str]) -> Optional[AwardRecord]:
+def resolve_award(source_name: Optional[str], contract_number: Optional[str], *,
+                  exact: bool = False) -> Optional[AwardRecord]:
     """Look *contract_number* up, returning the first provider that knows it.
+
+    *exact* forbids each provider's fuzzy fallback; its answers are cached apart, so a fuzzy
+    hit cached for the operator's form is never served to an exact caller.
 
     Returns:
         The record, or ``None`` when no provider can serve this source /
@@ -86,8 +89,9 @@ def resolve_award(source_name: Optional[str],
         return None
 
     for provider in providers_for(source_name, number):
-        record = cached_lookup(provider.name, number,
-                               lambda p=provider: p.fetch(number))
+        record = cached_lookup(provider.name + (':exact' if exact else ''), number,
+                               lambda p=provider: (p.fetch(number, exact=True) if exact
+                                                   else p.fetch(number)))
         if record is not None:
             return record
         logger.debug('award lookup: %s has no record for %r',

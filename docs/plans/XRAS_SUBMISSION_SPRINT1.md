@@ -157,10 +157,11 @@ production, 2026-10-28) feed the picker and the resource lists.
   resolution ladder (roster, mnemonic, allocation type, contracts) run while the submitter is
   present. The Extension review names the window it reaches and floors the date on
   `latest_allocation`; Supplement and New amounts are re-checked against the limits table.
-- Grants are lookup-then-confirm: the award number goes to `resolve_award('NSF', …)`;
-  `AwardRecord` fills title, begin and end date, PI name and the program officer (`monitor`),
-  and the PI types what NSF lacks. NSF only (`fundingAgencyId` 1): USAspending carries no program
-  officer, so any other award is typed. The rule book's grant fields (`GRANT_FIELDS`, External
+- Grants are lookup-then-confirm: the PI picks the agency (`funding_agency_choices`, XRAS's
+  list, NSF default), and the number goes to `resolve_award('NSF', …)` for NSF, which fills title,
+  dates, PI name and the program officer (`monitor`), or to `resolve_award(None, …, exact=True)`
+  (USAspending) for any other, which fills title and dates. The PI types what is missing; the
+  grant carries its agency's `fundingAgencyId`. The rule book's grant fields (`GRANT_FIELDS`, External
   without officer or title) are required by the handler; the draft sets `isSupportedByGrants`.
 - The New (2a) re-reads the user's opportunities (`new_request_opportunities`: `canSubmitNewRequest`,
   `resourceIdsAvailableForNewRequest`) at every stage and writes nothing before submit, so its

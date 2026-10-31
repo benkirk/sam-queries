@@ -26,7 +26,8 @@ SUBMISSION_STAGES = ('edit', 'review', 'submit')
 NEW_REQUEST_STAGES = ('describe', 'request', 'review', 'submit')
 
 #: Form input -> the wire name ``add_grant`` sends.
-GRANT_INPUTS = {'grant_number': 'grantNumber', 'grant_title': 'title',
+GRANT_INPUTS = {'grant_agency_id': 'fundingAgencyId', 'grant_number': 'grantNumber',
+                'grant_title': 'title',
                 'grant_pi_name': 'piName', 'grant_begin_date': 'beginDate',
                 'grant_end_date': 'endDate', 'grant_officer_name': 'programOfficerName',
                 'grant_officer_email': 'programOfficerEmail'}
@@ -117,6 +118,7 @@ class XrasGrantMixin(HtmxFormSchema):
     Which fields the type requires is the rule book's, so the handler checks them.
     """
 
+    grant_agency_id = f.Int(load_default=None)     # XRAS's fundingAgencyId; the handler checks it
     grant_number = f.Str(load_default=None, validate=v.Length(max=64))
     grant_title = f.Str(load_default=None, validate=v.Length(max=XRAS_TITLE_MAX))
     grant_pi_name = f.Str(load_default=None, validate=v.Length(max=255))

@@ -106,10 +106,11 @@
 {%- endmacro %}
 
 {#- One supporting grant on a review. -#}
-{% macro grant_facts(grant) -%}
+{% macro grant_facts(grant, agencies=none) -%}
 {%- if grant %}
+{%- set _agency = (agencies or []) | selectattr(0, 'equalto', grant.fundingAgencyId) | map(attribute=1) | first %}
 <dt class="col-sm-4">Grant</dt>
-<dd class="col-sm-8"><span class="font-monospace">{{ grant.grantNumber }}</span>{% if grant.title %}, {{ grant.title }}{% endif %}
+<dd class="col-sm-8">{% if _agency %}{{ _agency }} {% endif %}<span class="font-monospace">{{ grant.grantNumber }}</span>{% if grant.title %}, {{ grant.title }}{% endif %}
     {%- if grant.beginDate or grant.endDate %} <span class="text-muted">({{ grant.beginDate | fmt_date }} to {{ grant.endDate | fmt_date }})</span>{% endif %}</dd>
 {%- endif %}
 {%- endmacro %}

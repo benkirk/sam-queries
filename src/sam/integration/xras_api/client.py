@@ -396,6 +396,11 @@ class XrasApiClient(_XrasTransport):
         """
         return _as_list(self._get('/v1/types/fos'))
 
+    def get_funding_agencies(self) -> Optional[List[Dict[str, Any]]]:
+        """The grant agencies, ``GET /v1/funding_agencies``: ``{fundingAgencyId, fundingAgencyName,
+        fundingAgencyAbbr, relativeOrder}``, 19 rows, the same ids on the demo and production."""
+        return _as_list(self._get('/v1/funding_agencies'))
+
     def get_role_types(self) -> Optional[List[Dict[str, Any]]]:
         """The process role-type vocabulary — ``GET /v1/types/roles``.
 

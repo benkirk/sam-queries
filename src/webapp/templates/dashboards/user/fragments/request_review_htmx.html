@@ -40,7 +40,7 @@
             <dd class="col-sm-8">{% if r.yes_no %}Yes{% else %}{{ data.amounts[r.resource_id] | fmt_number(raw=True) }} {{ r.units }}{% endif %}</dd>
             {% endfor %}
             {% endif %}
-            {{ grant_facts(data.grant) }}
+            {{ grant_facts(data.grant, grant_agencies) }}
             {% if action_type in ('Renewal', 'New') %}
             <dt class="col-sm-4">Abstract</dt>
             <dd class="col-sm-8 text-break">{{ data.abstract | truncate(300) }}</dd>

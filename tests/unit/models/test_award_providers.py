@@ -270,6 +270,15 @@ class TestUsaSpendingProvider:
         last_filters = client.post_json.call_args[0][1]['filters']
         assert last_filters['keywords'] == ['NA18NWS4620043']
 
+    def test_exact_never_falls_back_to_keywords(self):
+        """A PI's form: the keyword fallback's first hit can be another award entirely."""
+        provider, client = _provider(nsf=False)
+        client.post_json.side_effect = [{'results': []}, {'results': []},
+                                        {'results': [{'generated_internal_id': 'MEALS'}]}]
+        assert provider.fetch('014421', exact=True) is None
+        assert client.post_json.call_count == 2
+        assert all('keywords' not in c[0][1]['filters'] for c in client.post_json.call_args_list)
+
     def test_no_hit_anywhere_is_not_found(self):
         provider, client = _provider(nsf=False)
         client.post_json.return_value = {'results': []}
