@@ -1,6 +1,7 @@
 /* My Requests amounts table (request_bits.amounts_table): a click on an Available row moves it
  * to Selected, enabling its inputs and filling its box with the default; Remove moves it back.
- * An Available row's inputs are disabled, so it posts nothing. CSP: script-src 'self'. */
+ * An Available row's inputs are disabled, so it posts nothing. Selecting a row hides the last
+ * post's error panel, which no longer describes the form. CSP: script-src 'self'. */
 (function () {
     'use strict';
 
@@ -30,6 +31,8 @@
         if (box && !box.value) { box.value = box.dataset.suggest || ''; }
         place(group(table, 'selected'), row);
         refresh(table);
+        var form = row.closest('form');
+        if (form) { form.querySelectorAll('.alert-danger').forEach(function (a) { a.hidden = true; }); }
         row.classList.remove('amount-row-arrived');
         void row.offsetWidth;               // restart the arrival tint
         row.classList.add('amount-row-arrived');
