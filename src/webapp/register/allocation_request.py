@@ -337,11 +337,9 @@ def draft_row(token):
 
 def _filed(row):
     """The newest submission under *row* that still stands (any state but aborted), else None."""
-    from sam.integration.xras_submission import XrasSubmission
-    return (db.session.query(XrasSubmission)
-            .filter(XrasSubmission.registration_id == row.account_request_id,
-                    XrasSubmission.state != 'aborted')
-            .order_by(XrasSubmission.xras_submission_id.desc()).first())
+    from sam.integration.xras_submission import submissions_for_registration
+    rows = submissions_for_registration(db.session, row.account_request_id)
+    return rows[0] if rows else None
 
 
 def _to_status(token):
@@ -504,13 +502,12 @@ def award_lookup(token):
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def status(token):
     """Where a visitor's request stands: the confirmation, then the filing SAM made."""
-    from sam.integration.xras_submission import XrasSubmission
+    from sam.integration.xras_submission import submissions_for_registration
     row, opportunity_id = draft_row(token)
     if row is None:
         return _expired()
-    submission = (db.session.query(XrasSubmission)
-                  .filter(XrasSubmission.registration_id == row.account_request_id)
-                  .order_by(XrasSubmission.xras_submission_id.desc()).first())
+    rows = submissions_for_registration(db.session, row.account_request_id, include_aborted=True)
+    submission = rows[0] if rows else None
     from sam.projects.projects import Project
     from sam.queries.xras_accounts import active_holder
     project = (db.session.get(Project, submission.project_id)
