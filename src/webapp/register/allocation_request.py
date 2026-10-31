@@ -432,8 +432,8 @@ class _VisitorNewRequest(_NewRequestForm):
 def draft(token):
     """Step 5: the request itself, for a confirmed visitor; the form loads into its panel.
 
-    A request already filed (Back from the outcome) goes to its status: a second filing
-    would mint nothing and stop on the placeholder that now resolves.
+    A request already filed (Back from the outcome) goes to its status rather than filing
+    twice; only an aborted one may be filed again.
     """
     row, opportunity_id = draft_row(token)
     if row is None:
