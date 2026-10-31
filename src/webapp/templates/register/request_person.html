@@ -1,0 +1,15 @@
+{% extends 'register/form.html' %}
+{# /request step 3: who the request is from. Context: form.html's, plus opportunity, step. #}
+{% block title %}Request an NCAR allocation{% endblock %}
+{% block step %}{% include 'register/_request_step.html' %}{% endblock %}
+{% block heading %}
+<h1>About you</h1>
+{% include 'register/_request_chosen.html' %}
+{% include 'register/_preview_banner.html' %}
+<p class="register-lede">
+    You will be the request's lead (its PI). We'll email you a link and a code to
+    confirm the address; nothing is sent to the allocations team until you do and
+    then finish the request. An NCAR account is created for you only if the
+    request is approved.
+</p>
+{% endblock %}

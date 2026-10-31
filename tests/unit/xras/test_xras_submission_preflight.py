@@ -103,14 +103,16 @@ class TestTheNew:
 
     def test_the_line_carries_the_roster_sam_will_add_and_the_grant_by_name(self):
         draft = self._draft(admin_username='adm1',
-                            grants=({'grantNumber': '2345678', 'fundingAgencyId': 1},))
+                            grants=({'grantNumber': '2345678', 'fundingAgencyId': 1},),
+                            roster=({'email': 'u@x.edu', 'username': 'usr1'},
+                                    {'email': 'new@x.edu', 'username': None}))
         line = new_request_line(draft, pi_username='pi1', opportunity=_EXPLORATORY,
                                 fos={'fosTypeId': 500003, 'fosNum': '1'},
                                 agency_names={1: 'National Science Foundation', 14: 'NASA'})
         assert (line['requestNumber'], line['requestType'], line['opportunityId']) == \
             (None, 'New', 532221)
         assert [(r['person']['username'], r['roles'][0]['role']) for r in line['roles']] == \
-            [('pi1', 'PI'), ('adm1', 'Allocation Manager')]
+            [('pi1', 'PI'), ('adm1', 'Allocation Manager'), ('usr1', 'User')]
         assert line['grants'] == [{'grantNumber': '2345678',
                                    'fundingAgency': 'National Science Foundation'}]
         assert line['fos'] == [{'fosTypeId': 500003, 'fosNum': '1', 'isPrimary': True}]
@@ -174,3 +176,20 @@ class TestTheDocumentCheck:
         monkeypatch.setenv('SUBMISSION_DOCUMENT_MAX_PAGES', '')
         monkeypatch.setenv('SUBMISSION_DOCUMENT_MAX_BYTES', '10')
         assert 'larger than' in document_refusal('a.pdf', pdf)
+
+
+class TestTheVisitorsCodeLetters:
+    """A visitor has no SAM user: the institution they typed stands in (XRAS_SUBMISSION_SPRINT2.md 1c)."""
+
+    def test_a_coded_institution_named_exactly_gives_its_code(self, session):
+        from factories.core import make_institution, make_mnemonic_code
+        from sam.xras.submission_preflight import institution_mnemonic
+        inst = make_institution(session, name='Probe Institute of Visitors')
+        code = make_mnemonic_code(session, description=inst.name)
+        found = institution_mnemonic(session, '  PROBE INSTITUTE OF VISITORS ')
+        assert found is not None and found.code == code.code
+
+    @pytest.mark.parametrize('name', ['', None, 'No Such Institution Anywhere', '%'])
+    def test_anything_else_gives_none(self, session, name):
+        from sam.xras.submission_preflight import institution_mnemonic
+        assert institution_mnemonic(session, name) is None

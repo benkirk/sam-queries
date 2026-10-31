@@ -48,7 +48,9 @@ class TestTheVocabularies:
             'rename_request',
             # A user's own request (XRAS_SUBMISSION.md).
             'create_request', 'delete_action', 'upload_document',
-            'set_opp_attributes', 'add_grant', 'update_grant', 'set_fos'}
+            'set_opp_attributes', 'add_grant', 'update_grant', 'set_fos',
+            # A visitor's New (XRAS_SUBMISSION_SPRINT2.md).
+            'create_person'}
 
     def test_every_operation_fits_the_column(self):
         """``operation`` is VARCHAR(24) — a longer verb truncates or errors."""
@@ -75,7 +77,7 @@ class TestTheVocabularies:
 
 
 class TestNoTaskMayWriteOne:
-    """Nothing under ``src/scheduling/`` writes to XRAS but the rename.
+    """Nothing under ``src/scheduling/`` writes to XRAS but the rename and the visitor merge.
 
     Asserted here because this is the table a task would have to write a row to
     in order to do it — the closest thing to a chokepoint the design has.
@@ -83,19 +85,21 @@ class TestNoTaskMayWriteOne:
 
     def test_a_task_operator_is_refused(self, session):
         with pytest.raises(ValueError, match='scheduled task'):
-            make_xras_remediation_event(session, by='task:xras_sweep')
+            make_xras_remediation_event(session, operation='withdraw_action',
+                                        by='task:xras_sweep')
 
     @pytest.mark.parametrize('operation', sorted(
-        set(XRAS_REMEDIATION_OPERATIONS) - {'rename_request'}))
-    def test_a_task_may_open_nothing_but_the_rename(self, session, operation):
+        set(XRAS_REMEDIATION_OPERATIONS) - {'rename_request', 'merge_person'}))
+    def test_a_task_may_open_nothing_but_the_rename_and_the_merge(self, session, operation):
         with pytest.raises(ValueError, match='scheduled task'):
             make_xras_remediation_event(session, operation=operation, by='task:xras_rename')
 
-    def test_the_rename_is_the_one_task_write(self, session):
-        assert TASK_WRITABLE_OPERATIONS == ('rename_request',)
-        event = make_xras_remediation_event(session, operation='rename_request',
-                                            by='task:xras_rename')
-        assert event.created_by == 'task:xras_rename'
+    @pytest.mark.parametrize('operation, by', [
+        ('rename_request', 'task:xras_rename'),
+        ('merge_person', 'task:account_requests_reconcile')])
+    def test_the_rename_and_the_visitor_merge_are_the_task_writes(self, session, operation, by):
+        assert TASK_WRITABLE_OPERATIONS == ('rename_request', 'merge_person')
+        assert make_xras_remediation_event(session, operation=operation, by=by).created_by == by
 
     def test_a_human_operator_is_fine(self, session):
         assert make_xras_remediation_event(session, by='benkirk').created_by \

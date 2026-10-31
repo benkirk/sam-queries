@@ -3,7 +3,7 @@
     (stage=submit). Context: the form's, plus data (the loaded form: end_date | amounts,
     user_comments | abstract and begin_date, grant, verdict, review_error). -#}
 {% from 'dashboards/fragments/xras_bits.html' import agreement %}
-{% from 'dashboards/user/partials/request_bits.html' import request_title, carry, document_field, grant_facts, verdict_note %}
+{% from 'dashboards/user/partials/request_bits.html' import request_title, carry, document_field, grant_facts, roster_facts, verdict_note %}
 {% set _new = action_type == 'New' %}
 {{ request_title('Review the ' ~ action_type ~ (' request' if _new else ''), meta=project.projcode if project else None) }}
 <form hx-post="{{ post_url }}" hx-target="#xrasRequestModalBody" hx-swap="innerHTML"
@@ -23,6 +23,7 @@
             <dt class="col-sm-4">Project admin</dt>
             <dd class="col-sm-8">{{ chosen_admin or data.admin_username }}</dd>
             {% endif %}
+            {{ roster_facts(data.draft.roster if data.draft else none, roster_private) }}
             {% else %}
             <dt class="col-sm-4">XRAS request</dt>
             <dd class="col-sm-8 font-monospace">{{ decision.request_number }}</dd>
@@ -56,7 +57,7 @@
                           gate=True) }}
         {% endfor %}
         <p class="small text-muted mb-2">Submitting sends this to XRAS for review. You can follow it
-            on My Requests.</p>
+            on {{ (request_urls or {}).get('where') or 'My Requests' }}.</p>
         {% if action_type == 'Extension' %}
         <input type="hidden" name="end_date" value="{{ data.end_date.isoformat() }}">
         {% else %}
@@ -74,7 +75,8 @@
         {% else %}
         <input type="hidden" name="user_comments" value="{{ data.user_comments }}">
         {% endif %}
-        {{ agreement(eula_sha, error=data.review_error, gate=True) }}
+        {{ agreement(eula_sha, error=data.review_error, gate=True,
+                     terms_url=(request_urls or {}).get('terms')) }}
     </div>
     <div class="modal-footer">
         <span class="small text-muted me-auto" data-gate-hint role="status"></span>

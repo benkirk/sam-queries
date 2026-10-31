@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from flask import current_app, request, url_for
+from flask import current_app, has_request_context, request, url_for
 from sqlalchemy.orm import Session
 
 from sam.notify import Notifier, NotifyConfig
@@ -30,13 +30,28 @@ logger = logging.getLogger(__name__)
 def public_url_root() -> str:
     """Root for links in outgoing mail: PUBLIC_BASE_URL, else this request's
     host. An operator on the cluster hostname must not mail that name to PIs."""
-    base = current_app.config.get('PUBLIC_BASE_URL') or request.url_root
+    base = current_app.config.get('PUBLIC_BASE_URL')
+    if not base:
+        if not has_request_context():
+            raise RuntimeError('PUBLIC_BASE_URL is unset and no request names the host')
+        base = request.url_root
     return base.rstrip('/') + '/'
 
 
 def public_url_for(endpoint: str, **values) -> str:
-    """``url_for`` rooted at :func:`public_url_root`."""
-    return public_url_root() + url_for(endpoint, **values).lstrip('/')
+    """``url_for`` rooted at :func:`public_url_root`.
+
+    The XRAS after-reply hooks (the visitor's account ticket, the roster invitations)
+    run on response close with no request, where ``url_for`` alone raises; the path is
+    then built against the public root, which must be set.
+    """
+    root = public_url_root()
+    if has_request_context():
+        path = url_for(endpoint, **values)
+    else:
+        with current_app.test_request_context(base_url=root):
+            path = url_for(endpoint, **values)
+    return root + path.lstrip('/')
 
 
 def get_notifier(*, read_only: bool = False) -> Notifier:

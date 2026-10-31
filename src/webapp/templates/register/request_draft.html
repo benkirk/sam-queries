@@ -1,0 +1,37 @@
+{% extends 'register/base_register.html' %}
+{#
+  /request step 5: the New form for a confirmed visitor. Hosts the My Requests New fragments
+  (dashboards/user/fragments/request_new_*) in a panel carrying the ids they target, so the
+  stages swap in place as they do in the modal; page one loads from form_url. Context: row,
+  opportunity (None once closed), form_url, overview_url, step.
+#}
+{% block title %}Your allocation request{% endblock %}
+{% block sheet_class %} register-sheet-wide{% endblock %}
+{% block head_extra %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/xras.css') }}">
+{% endblock %}
+{% block step %}{% include 'register/_request_step.html' %}{% endblock %}
+{% block content %}
+<h1>Your request</h1>
+{% if opportunity %}
+{% include 'register/_request_chosen.html' %}
+<p class="register-lede">Your email address is confirmed, {{ row.first_name }}. Describe the
+    work, then choose what to request; the review shows what CISL will see before you submit.</p>
+<div class="request-panel" hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'>
+    <h5 class="request-panel-title" id="xrasRequestModalLabel">New request</h5>
+    <div id="xrasRequestModalBody" hx-get="{{ form_url }}" hx-trigger="load" hx-swap="innerHTML">
+        <div class="p-3 text-muted" role="status"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Loading the form…</div>
+    </div>
+</div>
+{% else %}
+<div class="register-callout warn">
+    <p><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+    That allocation is no longer open. <a href="{{ overview_url }}">See the allocations open now</a>.</p>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts_extra %}
+<script src="{{ url_for('static', filename='js/fk-picker.js') }}"></script>
+<script src="{{ url_for('static', filename='js/request-amounts.js') }}"></script>
+{% endblock %}

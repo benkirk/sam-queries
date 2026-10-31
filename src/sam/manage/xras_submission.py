@@ -28,7 +28,10 @@ LINE_MINTING_TYPES = ('New', 'Renewal')
 #: Writes that add a row in XRAS. One that may have landed (not verified, not rejected)
 #: is never re-sent by a resume: a second Extension action is the UNVR0027 duplicate.
 ADDING_OPERATIONS = ('create_request', 'renew_request', 'add_action', 'add_role',
-                     'set_action_dates', 'add_grant', 'upload_document')
+                     'set_action_dates', 'add_grant', 'upload_document', 'create_person')
+
+#: The steps that run before a minted line exists, so never read it by id.
+PRE_MINT_STEPS = ('person', 'mint')
 
 
 class SubmissionRefused(ValueError):
@@ -46,6 +49,7 @@ class SamRefs:
     mnemonic_code_id: Optional[int] = None
     allocation_type_id: Optional[int] = None
     contract_id: Optional[int] = None
+    registration_id: Optional[int] = None     # a visitor's account_request (/request)
 
 
 @dataclass(frozen=True)
@@ -89,7 +93,18 @@ class ActionRequest:
     documents: Tuple[SubmissionDocument, ...] = ()
     eua_attribute_id: Optional[int] = None
     admin_username: Optional[str] = None
+    #: A New's other people: ``{first_name, last_name, email, username}``. ``username`` is set
+    #: for an active SAM user XRAS knows (an XRAS User role); the rest are invited at activation.
+    roster: Tuple[Dict[str, Any], ...] = ()
     sam: SamRefs = SamRefs()
+
+    @property
+    def roster_usernames(self) -> Tuple[str, ...]:
+        return tuple(e['username'] for e in self.roster if e.get('username'))
+
+    @property
+    def invitees(self) -> Tuple[Dict[str, Any], ...]:
+        return tuple(e for e in self.roster if not e.get('username'))
 
     def to_payload(self) -> Dict[str, Any]:
         return {
@@ -102,7 +117,8 @@ class ActionRequest:
             'grants': [dict(g) for g in self.grants], 'fos_type_id': self.fos_type_id,
             'documents': [d.to_payload() for d in self.documents],
             'eua_attribute_id': self.eua_attribute_id,
-            'admin_username': self.admin_username, 'sam': vars(self.sam),
+            'admin_username': self.admin_username,
+            'roster': [dict(e) for e in self.roster], 'sam': vars(self.sam),
         }
 
     @classmethod
@@ -127,6 +143,7 @@ class ActionRequest:
                 for d in payload.get('documents') or ()),
             eua_attribute_id=payload.get('eua_attribute_id'),
             admin_username=payload.get('admin_username'),
+            roster=tuple(payload.get('roster') or ()),
             sam=SamRefs(**(payload.get('sam') or {})),
         )
 
@@ -153,6 +170,17 @@ def submit_armed(action_type: Optional[str] = None, config=None) -> bool:
     return config.submit_allows(action_type) if action_type else config.submit_configured
 
 
+def _door_armed(door: str, action_type: str) -> bool:
+    """The admin door needs only the write lever; the PI door its type; a visitor its own lever."""
+    from sam.integration.xras_api.config import XrasApiConfig
+    if door == 'admin':
+        return True
+    if door == 'visitor':
+        return (action_type == 'New'
+                and XrasApiConfig.from_environment().visitor_submit_configured)
+    return submit_armed(action_type)
+
+
 # the row, touched on short sessions of its own
 
 def _with_row(session_factory, submission_id: int, fn: Callable) -> Any:
@@ -170,7 +198,8 @@ def _row_view(row) -> Dict[str, Any]:
     return {'id': row.xras_submission_id, 'state': row.state, 'action_type': row.action_type,
             'request_id': row.request_id, 'action_id': row.action_id,
             'request_number': row.request_number, 'request_type': row.request_type,
-            'xa_user': row.xa_user, 'steps': row.steps, 'payload': row.payload_dict}
+            'xa_user': row.xa_user, 'steps': row.steps, 'payload': row.payload_dict,
+            'registration_id': row.registration_id}
 
 
 def _step_statuses(session_factory, steps: Dict[str, Optional[int]]) -> Dict[str, str]:
@@ -234,18 +263,38 @@ def _plan(draft: ActionRequest, view: Dict[str, Any]) -> List[Tuple[str, str, Ca
     return steps
 
 
-def _mint_steps(draft: ActionRequest, view: Dict[str, Any]) -> List[Tuple[str, str, Callable]]:
+def _visitor_person(session_factory, registration_id: int) -> Dict[str, Any]:
+    """The ``create_person`` fields from the visitor's ``account_request`` row."""
+    from sam.core.account_requests import AccountRequest
+    with session_factory() as session:
+        row = session.get(AccountRequest, registration_id)
+        if row is None:
+            raise SubmissionRefused(f'registration {registration_id} is gone')
+        return {'first_name': row.first_name, 'last_name': row.last_name, 'email': row.email,
+                'middle_name': row.middle_name, 'phone': row.phone,
+                'organization': row.organization, 'academic_status': row.academic_status,
+                'residence_country': row.residence_country}
+
+
+def _mint_steps(draft: ActionRequest, view: Dict[str, Any],
+                person: Optional[Dict[str, Any]] = None) -> List[Tuple[str, str, Callable]]:
     xa = view['xa_user']
     kind = draft.action_type
     if kind == 'New':
-        steps = [('mint', 'create_request', lambda a, k: a.create_request(
-            draft.opportunity_id, xa_user=xa, request_type='New'))]
+        # A visitor's PI is a person SAM mints, unreconciled, before the line.
+        steps = [('person', 'create_person', lambda a, k: a.create_person(xa, **person))] \
+            if person else []
+        steps.append(('mint', 'create_request', lambda a, k: a.create_request(
+            draft.opportunity_id, xa_user=xa, request_type='New')))
         steps.append(('role:PI', 'add_role', lambda a, k: a.add_role(
             k['request_id'], 'PI', xa, request_number=k['request_number'], xa_user=xa)))
         if draft.admin_username:
             steps.append(('role:Admin', 'add_role', lambda a, k: a.add_role(
                 k['request_id'], 'Allocation Manager', draft.admin_username,
                 request_number=k['request_number'], xa_user=xa)))
+        for username in draft.roster_usernames:
+            steps.append((f'role:User:{username}', 'add_role', lambda a, k, u=username: a.add_role(
+                k['request_id'], 'User', u, request_number=k['request_number'], xa_user=xa)))
         return steps
     if kind == 'Renewal':
         return [('mint', 'renew_request', lambda a, k: a.renew_request(
@@ -324,7 +373,7 @@ def _drive(session_factory, draft: ActionRequest, view, *, submit: bool,
             if step in done:
                 continue
             # The mint has no line to read yet; every later step on a minted line is a draft's.
-            if minted and step != 'mint':
+            if minted and step not in PRE_MINT_STEPS:
                 dispatch = _by_id(dispatch, view['xa_user'])
             if operation in ADDING_OPERATIONS and statuses.get(step) not in (None, 'rejected'):
                 return _stop(session_factory, view, step, reason=(
@@ -336,7 +385,9 @@ def _drive(session_factory, draft: ActionRequest, view, *, submit: bool,
         return None
 
     if view['state'] == 'draft':
-        stopped = run(_mint_steps(draft, view))
+        person = (_visitor_person(session_factory, view['registration_id'])
+                  if view.get('registration_id') else None)
+        stopped = run(_mint_steps(draft, view, person))
         if stopped:
             return stopped
         _advance(session_factory, view, 'created')
@@ -422,7 +473,8 @@ def request_action(session_factory, draft: Optional[ActionRequest], *, actor: st
     """Open (or resume) a submission and run its steps; ``submit=False`` stops before submit.
 
     The PI door (``xa_user == actor``) needs the submit lever and the type armed; the
-    admin door (``door='admin'``, xa_user the request's PI) needs only the write lever.
+    admin door (``door='admin'``, xa_user the request's PI) needs only the write lever; the
+    visitor door (a New whose ``draft.sam.registration_id`` names its PI) needs its own.
     Raises :class:`SubmissionRefused` before any write.
     """
     from sam.integration.xras_submission import XrasSubmission, open_submission_for
@@ -431,8 +483,10 @@ def request_action(session_factory, draft: Optional[ActionRequest], *, actor: st
         return resume_submission(session_factory, resume_id, actor=actor, submit=submit,
                                  documents=draft.documents if draft else (), door=door,
                                  client=client)
-    if door == 'pi' and not submit_armed(draft.action_type):
+    if not _door_armed(door, draft.action_type):
         raise SubmissionRefused(f'filing a {draft.action_type} through SAM is not enabled here')
+    if (door == 'visitor') != bool(draft.sam.registration_id):
+        raise SubmissionRefused('a visitor files under a registration, and only a visitor does')
     sha, accepted_at = eula or (None, None)
     if not sha or accepted_at is None:
         raise SubmissionRefused('the agreement must be accepted first')
@@ -471,7 +525,7 @@ def resume_submission(session_factory, submission_id: int, *, actor: str,
     view = {**_with_row(session_factory, submission_id, _row_view), 'actor': actor}
     if view['state'] not in OPEN_STATES:
         raise SubmissionRefused(f'submission {submission_id} is {view["state"]}')
-    if door == 'pi' and not submit_armed(view['action_type']):
+    if not _door_armed(door, view['action_type']):
         raise SubmissionRefused(f'filing a {view["action_type"]} through SAM is not enabled here')
     if submit is None:
         submit = (view['payload'] or {}).get('submit', True)
@@ -491,7 +545,7 @@ def abort_submission(session_factory, submission_id: int, *, actor: str,
     view = {**_with_row(session_factory, submission_id, _row_view), 'actor': actor}
     if view['state'] not in OPEN_STATES:
         raise SubmissionRefused(f'submission {submission_id} is {view["state"]}')
-    if door == 'pi' and not submit_armed(view['action_type']):
+    if not _door_armed(door, view['action_type']):
         raise SubmissionRefused(
             f'discarding a {view["action_type"]} through SAM is not enabled here')
     xa = view['xa_user']

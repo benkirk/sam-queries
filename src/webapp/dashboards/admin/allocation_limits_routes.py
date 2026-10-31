@@ -1,18 +1,21 @@
-"""Admin -> Configuration: the request limits per allocation type per resource.
+"""Admin -> Configuration: what a request may ask for, and what the request page says.
 
-Read with ``VIEW_SYSTEM_CONFIG``, edited with ``SYSTEM_ADMIN``. The rows bound the
-amounts a user may request through the My Requests tab; a pair with no active row has
-no limit. Model: ``sam/accounting/allocation_type_limits.py``.
+Read with ``VIEW_SYSTEM_CONFIG``, edited with ``SYSTEM_ADMIN``. The limits bound the
+amounts a user may request (a pair with no active row has no limit); the guide rows are
+the request page's card per XRAS allocation type. Models:
+``sam/accounting/allocation_type_limits.py``, ``sam/accounting/allocation_type_guide.py``.
 """
 
 from flask import render_template, request
 from flask_login import login_required
 from sqlalchemy.orm import joinedload
 
+from sam.accounting.allocation_type_guide import AllocationTypeGuide
 from sam.accounting.allocation_type_limits import AllocationTypeResourceLimit
 from sam.accounting.allocations import AllocationType
 from sam.resources.resources import Resource
-from sam.schemas.forms import CreateAllocationLimitForm, EditAllocationLimitForm
+from sam.schemas.forms import (CreateAllocationLimitForm, CreateAllocationTypeGuideForm,
+                               EditAllocationLimitForm, EditAllocationTypeGuideForm)
 from webapp.extensions import db
 from webapp.utils.htmx import modal_triggers, read_active_only
 from webapp.utils.rbac import Permission, require_permission
@@ -66,6 +69,40 @@ register_crud(bp, CrudSpec(
         'created_by': _actor()},
     create_context=_create_context,
     triggers=modal_triggers('reloadAllocationLimitsCard'),
+    edit_permission=Permission.SYSTEM_ADMIN,
+    create_permission=Permission.SYSTEM_ADMIN,
+    delete_permission=Permission.SYSTEM_ADMIN,
+))
+
+
+_GUIDE_FIELDS = ('title', 'allocation_type', 'summary', 'funding', 'cadence', 'notes',
+                 'audience', 'display_order')
+
+
+@bp.route('/htmx/allocation-guides', methods=['GET'])
+@login_required
+@require_permission(Permission.VIEW_SYSTEM_CONFIG)
+def htmx_allocation_guides_card():
+    """The request page's cards, in display order."""
+    active_only = read_active_only(request.args)
+    q = db.session.query(AllocationTypeGuide)
+    if active_only:
+        q = q.filter(AllocationTypeGuide.is_active)
+    guides = q.order_by(AllocationTypeGuide.display_order, AllocationTypeGuide.title).all()
+    return render_template('dashboards/admin/fragments/allocation_guides_card.html',
+                           guides=guides, active_only=active_only)
+
+
+register_crud(bp, CrudSpec(
+    slug='allocation-guide', name='Allocation type guide',
+    model=AllocationTypeGuide, id_param='allocation_type_guide_id',
+    context_key='guide',
+    edit_schema=EditAllocationTypeGuideForm, create_schema=CreateAllocationTypeGuideForm,
+    edit_fields=_GUIDE_FIELDS + ('active',),
+    create_kwargs=lambda data: {
+        **{k: data[k] for k in ('xras_allocation_type_id',) + _GUIDE_FIELDS},
+        'created_by': _actor()},
+    triggers=modal_triggers('reloadAllocationGuidesCard'),
     edit_permission=Permission.SYSTEM_ADMIN,
     create_permission=Permission.SYSTEM_ADMIN,
     delete_permission=Permission.SYSTEM_ADMIN,

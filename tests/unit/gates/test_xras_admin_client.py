@@ -544,7 +544,8 @@ class TestRoles:
         reader = _FakeReader(
             _reports_request(roster=_DEFAULT_ROSTER),
             _reports_request(roster=_DEFAULT_ROSTER + (('new-user', 3, 'User', 19),)))
-        client = _client(monkeypatch, [_response(200, {'roleId': 3})],
+        client = _client(monkeypatch, [_response(200, _person('new-user')),
+                                       _response(200, {'roleId': 3})],
                          reader=reader)
         result = client.add_role(1, 19, 'new-user', request_number='EXAM0001',
                                  xa_user='pi-user')
@@ -557,12 +558,22 @@ class TestRoles:
     def test_add_sends_no_person_parameters_ever(self, monkeypatch):
         """They would create the person — with isReconciled defaulting TRUE."""
         reader = _FakeReader(_reports_request(roster=_DEFAULT_ROSTER))
-        client = _client(monkeypatch, [_response(200, {'roleId': 3})],
+        client = _client(monkeypatch, [_response(200, _person('new-user')),
+                                       _response(200, {'roleId': 3})],
                          reader=reader)
         client.add_role(1, 'User', 'new-user', request_number='EXAM0001',
                         xa_user='pi-user')
         _, kwargs = client.session.request.call_args
         assert kwargs['params'] is None
+
+    def test_add_refuses_a_username_xras_does_not_know(self, monkeypatch):
+        """XRAS would mint a bare person for it, reconciled and empty (2026-10-31)."""
+        client = _client(monkeypatch, [_response(404)])
+        with pytest.raises(XrasWriteRejected) as caught:
+            client.add_role(1, 'User', 'nobody', request_number='EXAM0001',
+                            xa_user='pi-user')
+        assert caught.value.status == 404
+        assert client.session.request.call_count == 1, 'the read only; nothing posted'
 
     def test_remove_is_keyed_on_role_id_not_username(self, monkeypatch):
         """One person can hold two roles; remove exactly the one named."""
@@ -1068,6 +1079,87 @@ class TestTheSubmitLever:
         assert summary['submit_action_types'] == ['Supplement']
 
 
+class TestCreatePerson:
+    """The visitor's PI: created unreconciled, never over a name that already resolves."""
+
+    _FIELDS = dict(first_name='Ada', last_name='Invented', email='samr7-user-a1b2c3@example.invalid',
+                   organization='Example University', academic_status='Graduate Student',
+                   residence_country='United States')
+
+    def test_it_sends_the_fields_and_verifies_them_unreconciled(self, monkeypatch):
+        client = _client(monkeypatch, [_response(404), _response(200),
+                                       _response(200, _person('samr7-user-a1b2c3', reconciled=False))])
+        result = client.create_person('samr7-user-a1b2c3', **self._FIELDS)
+        params = _calls(client)[1][2]['params']
+        assert params['isReconciled'] == 'false' and params['firstName'] == 'Ada'
+        assert 'middleName' not in params, 'an unset field is not sent'
+        assert result.verified is True and result.operation == 'create_person'
+
+    def test_a_name_that_resolves_is_refused_before_any_write(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200, _person('samr7-user-a1b2c3'))])
+        with pytest.raises(XrasWriteRejected) as caught:
+            client.create_person('samr7-user-a1b2c3', **self._FIELDS)
+        assert caught.value.status == 409 and client.session.request.call_count == 1
+
+    def test_a_reconciled_read_back_is_not_verified(self, monkeypatch):
+        client = _client(monkeypatch, [_response(404), _response(200),
+                                       _response(200, _person('samr7-user-a1b2c3', reconciled=True))])
+        result = client.create_person('samr7-user-a1b2c3', **self._FIELDS)
+        assert result.verified is False and 'isReconciled' in result.verify_detail
+
+    def test_an_unknown_field_is_a_type_error(self, monkeypatch):
+        client = _client(monkeypatch, [])
+        with pytest.raises(TypeError):
+            client.create_person('u-user-x', colour='blue', **self._FIELDS)
+
+    def test_the_operation_fits_the_audit_column(self):
+        from sam.integration.xras import XRAS_REMEDIATION_OPERATIONS as ops
+        assert "create_person" in ops and len('create_person') <= 24
+
+
+class TestThePlaceholderName:
+
+    def test_sam_names_its_placeholder_in_the_shape_sam_classes(self):
+        from sam.queries.xras_accounts import is_placeholder, sam_placeholder_username
+        name = sam_placeholder_username(42)
+        assert name.startswith('samr42-user-') and is_placeholder(name)
+        assert name != sam_placeholder_username(42), 'a random tail'
+
+
+class TestTheVisitorLever:
+    """A fifth lever, off by default, meaningful only with New armed."""
+
+    def test_off_by_default(self, monkeypatch):
+        monkeypatch.delenv('XRAS_SUBMIT_ANONYMOUS_ENABLED', raising=False)
+        assert XrasApiConfig.from_environment().submit_anonymous_enabled is False
+
+    @pytest.mark.parametrize('types, expected', [
+        (frozenset({'New'}), True), (frozenset({'Extension', 'Supplement'}), False)])
+    def test_it_needs_new_armed(self, types, expected):
+        config = XrasApiConfig(enabled=True, write_enabled=True, submit_enabled=True,
+                               submit_anonymous_enabled=True, api_key='k',
+                               submit_action_types=types)
+        assert config.visitor_submit_configured is expected
+        assert config.summary()['visitor_submit_configured'] is expected
+
+    def test_prod_ships_it_dark_and_dev_arms_it_in_both_pods(self):
+        def values(name):
+            return yaml.safe_load((REPO_ROOT / 'helm' / name).read_text())
+        prod, dev = values('values.yaml'), values('values-dev.yaml')
+        assert str(prod['webapp']['env']['XRAS_SUBMIT_ANONYMOUS_ENABLED']) == '0'
+        assert 'XRAS_SUBMIT_ANONYMOUS' not in str(prod['tasks']['env']), 'the merge ships dark'
+        assert dev['webapp']['env']['XRAS_SUBMIT_ANONYMOUS_ENABLED'] == '1'
+        assert dev['tasks']['env']['XRAS_SUBMIT_ANONYMOUS_ENABLED'] == '1'
+
+    @pytest.mark.parametrize('write, anonymous, expected', [
+        (True, True, True), (False, True, False), (True, False, False)])
+    def test_the_merge_needs_its_lever_and_the_write_lever_not_new(self, write, anonymous,
+                                                                  expected):
+        config = XrasApiConfig(enabled=True, write_enabled=write, api_key='k',
+                               submit_anonymous_enabled=anonymous)
+        assert config.visitor_merge_configured is expected
+
+
 class TestHelmSubmitLever:
     """Prod ships dark and narrowed, dev armed, and neither CronJob ever carries it."""
 
@@ -1156,6 +1248,37 @@ class TestDraftReads:
         assert client.required_documents_status(1, 3, xa_user='pi-user') == []
         assert _calls(client)[0][1].endswith('/requests/1/actions/2/required_documents_status')
 
+    def test_a_visitor_reads_new_opportunities_in_the_report_context(self, monkeypatch):
+        """No XRAS person yet: the report read carries the same rules (XRAS-dev, 2026-10-31)."""
+        opportunity = {'opportunityId': 532221, 'opportunityName': 'Exploratory',
+                       'allocationTypeInfo': {'allocationTypeId': 500847,
+                                              'allocationType': 'Exploratory',
+                                              'description': 'For new faculty'},
+                       'resources': [], 'rules': {'canSubmitNewRequest': True,
+                                                  'resourceIdsAvailableForNewRequest': []}}
+        reader = type('Reader', (), {'get_open_opportunities': lambda self: [opportunity]})()
+        client = _client(monkeypatch, [], reader=reader)
+        [view] = client.new_request_opportunities(None)
+        assert view['can_submit'] is True and view['description'] == 'For new faculty'
+        assert client.session.request.call_count == 0, 'no submit-context read'
+
+    def test_the_report_context_read_is_memoised_and_a_users_is_not(self, monkeypatch):
+        """A visitor's refreshes cost one XRAS read a minute (the ``xras_opportunities`` bucket)."""
+        from sam.integration.xras_api import cache as xras_cache
+        reads = []
+        reader = type('Reader', (), {'get_open_opportunities':
+                                     lambda self: reads.append(1) or []})()
+        client = _client(monkeypatch, [_response(200, []), _response(200, [])], reader=reader)
+        xras_cache._CACHE.reset_for_tests(disabled=False)
+        try:
+            client.new_request_opportunities(None)
+            client.new_request_opportunities(None)
+            client.new_request_opportunities('pi-user')
+            client.new_request_opportunities('pi-user')
+        finally:
+            xras_cache._CACHE.reset_for_tests(disabled=False)
+        assert len(reads) == 1 and client.session.request.call_count == 2
+
     def test_available_action_requests_flattens_the_opportunity_rules(self, monkeypatch):
         offer = {'requestId': 1449367, 'requestNumber': 'UHSS0001', 'actionType': 'Renewal',
                  'actionTypeId': 500021, 'resourceIdsAvailableForAction': [530902]}
@@ -1174,7 +1297,8 @@ class TestDraftReads:
         client = _client(monkeypatch, [_response(200, opportunities)])
         assert client.available_action_requests('pi-user') == [{
             'opportunity_id': 532221, 'opportunity_name': 'Exploratory',
-            'allocation_type_id': 500847, 'allocation_type': 'Exploratory', 'award_months': 12,
+            'allocation_type_id': 500847, 'allocation_type': 'Exploratory', 'description': None,
+            'award_months': 12,
             'eua_attribute_id': 539638,
             'request_id': 1449367, 'request_number': 'UHSS0001', 'action_type': 'Renewal',
             'resource_ids': [530902], 'resources': [{'resource_id': 530902,

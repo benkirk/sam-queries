@@ -1,0 +1,20 @@
+{#- htmx: the New form's roster picker results (the signed-in door). A pick appends its
+    label, the roster's own "First Last <email>" line, to the paste box (fk-picker.js append
+    mode); a user with no email on file cannot be rostered by it, so the row has no id. -#}
+{% if users %}
+{% for user in users %}
+{% set _line = (user.first_name ~ ' ' ~ user.last_name) ~ ' <' ~ user.primary_email ~ '>' if user.primary_email else none %}
+<div class="list-group-item list-group-item-action p-2{{ ' fk-search-result' if _line else ' text-muted' }}"
+     {% if _line %}data-fk-id="{{ user.user_id }}" data-fk-label="{{ _line }}"{% endif %}>
+    <div class="d-flex justify-content-between align-items-center gap-2">
+        <div>
+            <strong class="font-monospace">{{ user.username }}</strong>
+            <small class="ms-1 text-muted">{{ user.display_name }}</small>
+        </div>
+        <small class="text-muted text-truncate">{{ user.primary_email or 'no email on file' }}</small>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="list-group-item text-muted small py-2">No users found</div>
+{% endif %}

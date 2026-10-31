@@ -402,12 +402,33 @@ def account_requests_reconcile():
     """Reconcile now: the same pass the hourly task runs. No purge here."""
     with management_transaction(db.session):
         counts = reconcile_account_requests(db.session, clock=datetime.now())
+    merged = _merge_visitors()
     return htmx_success_message(
         _TRIGGERS,
         f"Reconciled: {counts['fulfilled']} fulfilled, {counts['enrolled']} "
         f"enrolled, {counts['enroll_failed']} enrollment failure(s).",
-        detail=(f"{counts['checked']} checked; {counts['ambiguous']} ambiguous "
-                f"email(s) left alone."))
+        detail=' '.join(filter(None, (
+            f"{counts['checked']} checked; {counts['ambiguous']} ambiguous "
+            f"email(s) left alone.", merged))))
+
+
+def _merge_visitors():
+    """Merge the fulfilled ``/request`` placeholders, behind the visitor lever; the toast's
+    line. The request ticket's "repost" comment is the ``xras_request_tickets`` task's."""
+    from sam.integration.xras_api.config import XrasApiConfig
+    from sam.manage.xras_remediation import merge_fulfilled_visitors
+    from webapp.utils.xras import session_factory
+    if not XrasApiConfig.from_environment().visitor_merge_configured:
+        return None
+    try:
+        out = merge_fulfilled_visitors(session_factory, operator=acting_username())
+    except Exception:                                   # noqa: BLE001
+        logger.exception('reconcile: the visitor merge pass failed')
+        return 'The XRAS merge of new accounts failed; see the log.'
+    if not out['due']:
+        return None
+    return (f"XRAS: {len(out['merged'])} placeholder(s) merged into their new account, "
+            f"{out['waiting']} waiting for XRAS to know the account, {out['failed']} failed.")
 
 
 def _digest_recipient() -> str:

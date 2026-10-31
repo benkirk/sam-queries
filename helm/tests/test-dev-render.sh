@@ -103,6 +103,9 @@ check_dev() {
   [[ "$(env_value "$deploy" XRAS_AUTO_ACTIVATE)" == "1" ]] || { red "FAIL: XRAS_AUTO_ACTIVATE must be 1 on dev (phase B's test bed)"; return 1; }
   [[ "$(env_value "$deploy" XRAS_SUBMIT_ENABLED)" == "1" ]] || { red "FAIL: XRAS_SUBMIT_ENABLED must be 1 on dev (My Requests files to the demo)"; return 1; }
   [[ -z "$(env_value "$cron" XRAS_SUBMIT_ENABLED)" ]] || { red "FAIL: the dev CronJob must never carry XRAS_SUBMIT_ENABLED (webapp only)"; return 1; }
+  [[ "$(env_value "$deploy" XRAS_SUBMIT_ANONYMOUS_ENABLED)" == "1" ]] || { red "FAIL: XRAS_SUBMIT_ANONYMOUS_ENABLED must be 1 on dev (a visitor's New files to the demo)"; return 1; }
+  [[ "$(env_value "$cron" XRAS_SUBMIT_ANONYMOUS_ENABLED)" == "1" ]] || { red "FAIL: dev tasks must carry XRAS_SUBMIT_ANONYMOUS_ENABLED=1 (the reconcile's placeholder merge)"; return 1; }
+  [[ "$(env_value "$deploy" ACCOUNT_REGISTRATION_LOGIN_REQUIRED)" == "0" ]] || { red "FAIL: dev opens /register and /request to visitors (ACCOUNT_REGISTRATION_LOGIN_REQUIRED=0)"; return 1; }
   # xras_rename's lever reaches the task pod through dev's tasks.env alone.
   [[ "$(env_value "$cron" XRAS_WRITE_ENABLED)" == "1" ]] || { red "FAIL: dev tasks must carry XRAS_WRITE_ENABLED=1 (xras_rename's test bed)"; return 1; }
   [[ "$(env_value "$deploy" XRAS_ACTIONS_CAPTURE_ONLY)" == "0" ]] || { red "FAIL: XRAS_ACTIONS_CAPTURE_ONLY must be 0 on dev (demo posts dispatch)"; return 1; }
@@ -232,6 +235,12 @@ prod_deploy=$(render prod -s templates/deployment.yaml)
   red "FAIL: prod's first submit flip is Extension,Supplement only (XRAS_SUBMIT_ACTION_TYPES)"; exit 1; }
 [[ -z "$(env_value "$prod_cron" XRAS_SUBMIT_ENABLED)" ]] || {
   red "FAIL: the prod CronJob must never carry XRAS_SUBMIT_ENABLED (webapp only)"; exit 1; }
+[[ "$(env_value "$prod_deploy" XRAS_SUBMIT_ANONYMOUS_ENABLED)" == "0" ]] || {
+  red "FAIL: prod must ship the visitor's New dark (XRAS_SUBMIT_ANONYMOUS_ENABLED=0)"; exit 1; }
+[[ -z "$(env_value "$prod_cron" XRAS_SUBMIT_ANONYMOUS_ENABLED)" ]] || {
+  red "FAIL: the prod CronJob must not carry XRAS_SUBMIT_ANONYMOUS_ENABLED (the placeholder merge ships dark)"; exit 1; }
+[[ "$(env_value "$prod_deploy" ACCOUNT_REGISTRATION_LOGIN_REQUIRED)" != "0" ]] || {
+  red "FAIL: prod keeps registration login-gated until client-IP forwarding (ACCOUNT_REGISTRATION_LOGIN_REQUIRED)"; exit 1; }
 [[ -z "$(env_value_names "$prod_deploy" 'RATELIMIT_(AUTHED|M2M|ANON|AUTH_LOGIN)')" ]] || {
   red "FAIL: prod must not carry a RATELIMIT_ tier override (only the dev overlay raises them)"; exit 1; }
 [[ "$(env_value "$prod_deploy" ACCOUNT_REGISTRATION_ENABLED)" == "0" ]] || {
@@ -289,6 +298,9 @@ expect_reject --set webapp.env.NOTIFY_ENABLED=1
 expect_reject --set webapp.env.XRAS_API_BASE=https://api.xras.org
 expect_reject --set-string webapp.env.XRAS_SUBMIT_ENABLED=0
 expect_reject --set-string tasks.env.XRAS_SUBMIT_ENABLED=1
+expect_reject --set-string webapp.env.XRAS_SUBMIT_ANONYMOUS_ENABLED=0
+expect_reject --set-string tasks.env.XRAS_SUBMIT_ANONYMOUS_ENABLED=0
+expect_reject --set-string webapp.env.ACCOUNT_REGISTRATION_LOGIN_REQUIRED=1
 expect_reject --set webapp.xrasApiCredentials.secretPath=csg/xras-api-key
 expect_reject --set webapp.xrasApiCredentials.enabled=false
 expect_reject --set tasks.env.SAM_TASKS_DISABLED=expiration_notices\\,xras_notices\\,xras_sweep
@@ -313,4 +325,4 @@ expect_reject --set tasks.env.SAM_TASKS_DISABLED=xras_notices
 expect_reject --set podDisruptionBudget.enabled=true
 expect_reject --set-string "webapp.env.API_KEYS_COLLECTOR=${prod_hash}"
 
-green "OK: samuel-dev renders authenticated, mute, on XRAS demo, on its own data, disjoint from prod (32 rejections proven)"
+green "OK: samuel-dev renders authenticated, mute, on XRAS demo, on its own data, disjoint from prod (38 rejections proven)"

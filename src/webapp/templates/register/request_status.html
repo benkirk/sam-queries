@@ -1,0 +1,40 @@
+{% extends 'register/base_register.html' %}
+{#
+  /request: where a visitor's request stands; the row's requested_at is the approval (3a).
+  Context: row (account_request), submission
+  (the latest xras_submission under it, or none), project (once applied), existing_account
+  (the address already holds one, so no account is created), draft_url, step.
+#}
+{% block title %}Your allocation request{% endblock %}
+{% block step %}{% include 'register/_request_step.html' %}{% endblock %}
+{% block content %}
+<h1>Your request</h1>
+{% if submission is none %}
+<p class="register-lede">Your email address is confirmed, but the request has not been sent yet.
+    <a href="{{ draft_url }}">Continue the request</a>.</p>
+{% elif submission.state in ('submitted', 'applied') %}
+<div class="register-callout good">
+    <p><i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+    {% if submission.state == 'applied' %}Approved: the project
+    {%- if project %} <span class="font-monospace">{{ project.projcode }}</span>{% endif %} exists.
+    {% elif row.requested_at %}Approved{% if submission.request_number %} ({{ submission.request_number }}){% endif %}:
+    {% if existing_account %}it will appear under your existing NCAR account; sign in to see it, and the project follows.
+    {% else %}the NCAR account team is creating your account, and the project follows.{% endif %}
+    {% else %}CISL has your request{% if submission.request_number %} ({{ submission.request_number }}){% endif %}
+    for review, sent {{ submission.submitted_time | fmt_date }}.{% endif %}</p>
+</div>
+{% if not existing_account %}
+<p class="register-lede">If it is approved, the NCAR account team creates your account and
+    emails you how to sign in; your project's members are invited then.</p>
+{% endif %}
+{% elif submission.state == 'aborted' %}
+<p class="register-lede">This request was withdrawn. <a href="{{ draft_url }}">Start it again</a>.</p>
+{% else %}
+<div class="register-callout warn">
+    <p><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+    The request stopped before it reached CISL. Its details are kept; the help desk can
+    finish it. Write to <a href="mailto:help@ucar.edu">help@ucar.edu</a> and mention
+    request {{ submission.xras_submission_id }}.</p>
+</div>
+{% endif %}
+{% endblock %}

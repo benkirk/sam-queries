@@ -428,6 +428,12 @@ webapp:
     # tests/unit/gates/test_xras_admin_client.py.
     XRAS_SUBMIT_ENABLED: "0"
     XRAS_SUBMIT_ACTION_TYPES: "Extension,Supplement"
+    # A New filed at /request/ by a visitor with no SAM account (docs/plans/
+    # XRAS_SUBMISSION_SPRINT2.md). Needs XRAS_SUBMIT_ENABLED with New armed. In tasks.env
+    # (absent here, so off) it arms account_requests_reconcile's merge of a fulfilled
+    # visitor's placeholder (with XRAS_WRITE_ENABLED). Pinned in
+    # tests/unit/gates/test_xras_admin_client.py and helm/tests/test-dev-render.sh.
+    XRAS_SUBMIT_ANONYMOUS_ENABLED: "0"
     # Activate the project a New creates, right after its post applies (docs/plans/
     # XRAS_POST_AUTOMATION.md § 3 B); "0" leaves it to the card's Activate. Armed after the
     # samuel-dev smoke (#828), NUSD told; pinned in tests/unit/gates/test_xras_admin_client.py.
@@ -740,8 +746,9 @@ tasks:
     # directory_report: the nightly read-only sweep of ldap.ucar.edu against SAM (counts only);
     # named here until its first weeks on dev are read (docs/plans/DIRECTORY_CLIENT_NEXT.md).
     SAM_TASKS_DISABLED: "account_queue_digest,directory_report"
-    # Arms xras_rename, the one task write (the XRAS_WRITE_ENABLED warning in webapp.env).
-    # Removing it disarms the task without a code change.
+    # Arms xras_rename's write (the XRAS_WRITE_ENABLED warning in webapp.env), and with
+    # XRAS_SUBMIT_ANONYMOUS_ENABLED (absent here) the reconcile's placeholder merge.
+    # Removing it disarms both without a code change.
     XRAS_WRITE_ENABLED: "1"
     # xras_request_tickets files on the RC desk's "Allocations" type (18; the list is beside
     # webapp.env JIRA_REQUEST_TYPE_ID), smoked as RC-40559 2026-10-15.

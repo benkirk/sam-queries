@@ -188,3 +188,36 @@ class TestTheTicketPass:
     def test_the_lookup_knob(self, raw, expected):
         env = {} if raw is None else {'SAM_TASKS_TICKET_LOOKUP_MAX': raw}
         assert mod.ticket_lookup_max(env) == expected
+
+
+class TestThePlaceholderMerge:
+    """XRAS_SUBMISSION_SPRINT2.md 3b: the task's one XRAS write, behind its lever."""
+
+    @pytest.fixture
+    def merges(self, monkeypatch):
+        from sam.manage import xras_remediation
+        calls = []
+        monkeypatch.setattr(xras_remediation, 'merge_fulfilled_visitors', lambda f, **kw: (
+            calls.append((f, kw)) or {'due': 1, 'waiting': 0, 'failed': 0,
+                                      'merged': [('samr1-user-a1b2c3', 'real', [55])]}))
+        return calls
+
+    def test_the_lever_off_merges_nothing(self, ctx, merges):
+        result = mod.account_requests_reconcile(ctx())
+        assert merges == [] and result.detail['merges'] == {'skipped': 'lever off'}
+
+    def test_a_dry_run_merges_nothing(self, ctx, merges, monkeypatch):
+        from sam.integration.xras_api.config import XrasApiConfig
+        monkeypatch.setattr(XrasApiConfig, 'visitor_merge_configured', True)
+        assert mod.account_requests_reconcile(ctx(dry_run=True)).detail['merges'] == {
+            'skipped': 'dry run'}
+        assert merges == []
+
+    def test_armed_it_merges_as_the_task(self, ctx, merges, monkeypatch):
+        from sam.integration.xras_api.config import XrasApiConfig
+        monkeypatch.setattr(XrasApiConfig, 'visitor_merge_configured', True)
+        result = mod.account_requests_reconcile(ctx())
+        (factory, kw), = merges
+        assert kw == {'operator': 'task:account_requests_reconcile'} and callable(factory)
+        assert result.detail['merges']['merged'] == [['samr1-user-a1b2c3', 'real']]
+        assert '1 placeholder(s) merged' in result.message

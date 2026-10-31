@@ -1,6 +1,6 @@
 """TTL cache for outbound XRAS lookups.
 
-Two buckets with deliberately different horizons:
+Buckets with deliberately different horizons:
 
 ``xras_people`` (4 h)
     ``isReconciled`` is the **closure signal** for the account-creation
@@ -16,6 +16,9 @@ Two buckets with deliberately different horizons:
     catalog (~39 rows) and per-id opportunity detail (~27 ever). Same slow
     horizon as the resource catalog; separated only so the admin card and
     ``clear()`` name it for what it is.
+
+``xras_opportunities`` (1 min)
+    The report context's open opportunities, which every ``/request`` page reads.
 
 Registered with the webapp caching facade via ``_BUCKETED_CACHE_MODULES`` in
 ``webapp/caching/__init__.py``, which is the one line that buys the Admin card
@@ -49,6 +52,14 @@ _CACHE = BucketedTTLCache('xras_api', 'xras_api', {
         name='xras_lookups',
         ttl_key='XRAS_LOOKUPS_CACHE_TTL', ttl_default=86400,     # 1 day
         size_key='XRAS_LOOKUPS_CACHE_SIZE', size_default=128,
+    ),
+    # The open opportunities in the report context, which every /request page reads: a
+    # minute absorbs a visitor's refreshes; a call that just closed shows open that long,
+    # and XRAS refuses its submit anyway. Per-user reads (the signed-in New) stay live.
+    'opportunities': BucketSpec(
+        name='xras_opportunities',
+        ttl_key='XRAS_OPPORTUNITIES_CACHE_TTL', ttl_default=60,
+        size_key='XRAS_OPPORTUNITIES_CACHE_SIZE', size_default=4,
     ),
     # The Feed-B handoff. Unlike the two above this is NOT a memo of an
     # expensive read — it is a **producer/consumer mailbox**: `xras_sweep`
@@ -154,6 +165,11 @@ def cached_opportunity(opportunity_id, compute: Callable[[], Any]) -> Optional[A
     """Memoise one opportunity's detail. Definite negatives cache too — a 404
     for an id is a real answer and re-asking costs a round trip per modal."""
     return _CACHE.get_or_compute('lookups', f'opp:{opportunity_id}', compute)
+
+
+def cached_open_opportunities(compute: Callable[[], Any]) -> Optional[Any]:
+    """Memoise the report context's open opportunities for a minute. One key."""
+    return _CACHE.get_or_compute('opportunities', 'report', compute)
 
 
 def cached_required_fields(allocation_type_id, action_type: str,

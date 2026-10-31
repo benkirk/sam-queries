@@ -7,7 +7,10 @@ as an HMAC of ``row id : code`` -- constant-time comparison, fixed width,
 and a database read alone cannot validate a code. The brute-force bound is
 the rate limit on the page, not hash cost, so no slow hash is wanted here.
 The INVITE token is its own salt and carries the row's ``invite_sent_at``, so
-a resend (which re-stamps it) invalidates every older link.
+a resend (which re-stamps it) invalidates every older link. The REQUEST tokens
+(``/request``) carry the opportunity a visitor chose beside the row: a page and a
+link token as above, and a DRAFT token bound to ``verified_at`` that admits the
+request form.
 """
 
 from __future__ import annotations
@@ -24,6 +27,9 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 SALT_PAGE = 'account-verify-page'
 SALT_LINK = 'account-verify-link'
 SALT_INVITE = 'account-invite'
+SALT_REQUEST_PAGE = 'allocation-request-page'
+SALT_REQUEST_LINK = 'allocation-request-link'
+SALT_REQUEST_DRAFT = 'allocation-request-draft'
 
 
 def _serializer(salt: str) -> URLSafeTimedSerializer:
@@ -84,6 +90,28 @@ def read_invite_token(token: str) -> Tuple[Optional[int], Optional[str], str]:
     if not isinstance(row_id, int) or not isinstance(sent, str):
         return None, None, 'invalid'
     return row_id, sent, ''
+
+
+def request_token(salt: str, row_id: int, opportunity_id: int, *,
+                  verified_at: Optional[datetime] = None) -> str:
+    payload = {'id': int(row_id), 'opp': int(opportunity_id)}
+    if verified_at is not None:
+        payload['v'] = invite_stamp(verified_at)
+    return _serializer(salt).dumps(payload)
+
+
+def read_request_token(token: str, salt: str, *, max_age: int) -> Optional[Tuple[int, int, Optional[str]]]:
+    """``(row_id, opportunity_id, verified stamp)``, or None when bad or expired."""
+    try:
+        payload = _serializer(salt).loads(token, max_age=max_age)
+    except (SignatureExpired, BadSignature, TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    row_id, opp = payload.get('id'), payload.get('opp')
+    if not isinstance(row_id, int) or not isinstance(opp, int):
+        return None
+    return row_id, opp, payload.get('v')
 
 
 def new_code() -> str:

@@ -230,6 +230,39 @@ def applied_key(request_id: int) -> str:
     return f'xras_ticket:{request_id}:applied'
 
 
+def merged_key(request_id: int, placeholder: str) -> str:
+    return f'xras_ticket:{request_id}:merged:{placeholder.lower()}'
+
+
+def merges_since_refusal(session: Session, episodes: Sequence[Episode]
+                         ) -> Dict[int, List[Tuple[str, str]]]:
+    """``request_id -> [(placeholder, target)]``: verified merges of a placeholder the
+    latest refusal blocked on, made after it, so the request may now post. One query."""
+    from sqlalchemy import func
+
+    from sam.integration.xras import XrasRemediationEvent
+    from sam.queries.xras_accounts import is_placeholder
+    blocked = {e.request_id: {g['username'].lower() for g in blocker_groups(e.messages)[0]
+                              if is_placeholder(g['username'])}
+               for e in episodes if e.applied_at is None}
+    names = set().union(*blocked.values()) if blocked else set()
+    if not names:
+        return {}
+    rows = (session.query(XrasRemediationEvent.username, XrasRemediationEvent.target_username,
+                          XrasRemediationEvent.creation_time)
+            .filter(XrasRemediationEvent.operation == 'merge_person',
+                    XrasRemediationEvent.status == 'verified',
+                    func.lower(XrasRemediationEvent.username).in_(sorted(names)))
+            .order_by(XrasRemediationEvent.creation_time).all())
+    out: Dict[int, List[Tuple[str, str]]] = {}
+    for episode in episodes:
+        for username, target, when in rows:
+            if username.lower() in blocked.get(episode.request_id, ()) \
+                    and when >= episode.latest_refused:
+                out.setdefault(episode.request_id, []).append((username, target))
+    return out
+
+
 # -- What the ticket says -------------------------------------------------------
 
 
@@ -275,6 +308,7 @@ def _people(payload: Mapping[str, Any]) -> Dict[str, dict]:
 def ticket_context(session: Session, episode: Episode, *, card_url: str = '') -> dict:
     """The ``xras_request_ticket`` template's context."""
     from sam.core.account_requests import OPEN_STATES
+    from sam.queries.account_notices import ticket_handle as account_handle
     from sam.queries.account_requests import requests_by_xras_username
     from sam.queries.xras_accounts import is_placeholder, sam_merge_targets
 
@@ -287,7 +321,9 @@ def ticket_context(session: Session, episode: Episode, *, card_url: str = '') ->
     for rows in requests_by_xras_username(session, people).values():
         for row in rows:
             if row.state in OPEN_STATES and not row.is_fulfilled:
-                queued.append({'id': row.account_request_id, 'name': row.display_name,
+                queued.append({'id': row.account_request_id,
+                               'handle': account_handle(row.account_request_id),
+                               'name': row.display_name,
                                'email': row.email, 'purpose': row.purpose,
                                'state': row.state})
 
@@ -322,6 +358,11 @@ def changed_comment(episode: Episode) -> str:
     if pointers:
         lines += ['', 'Where each is fixed:'] + [f'- {p}' for p in pointers]
     return '\n'.join(lines)
+
+
+def merged_comment(placeholder: str, target: str) -> str:
+    return (f'SAM merged {placeholder} into {target} in XRAS, so the request may now post. '
+            'Repost it; XRAS never retries a post on its own.')
 
 
 def applied_comment(episode: Episode) -> str:

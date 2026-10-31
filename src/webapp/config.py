@@ -76,6 +76,8 @@ class SAMWebappConfig(SAMConfig):
     ACCOUNT_VERIFY_TTL_HOURS = int(os.getenv('ACCOUNT_VERIFY_TTL_HOURS', 48))
     # How long a mailed invitation link stays valid, in days.
     ACCOUNT_INVITE_TTL_DAYS = int(os.getenv('ACCOUNT_INVITE_TTL_DAYS', 30))
+    # How long a confirmed visitor's /request draft link stays valid, in days.
+    REQUEST_DRAFT_TTL_DAYS = int(os.getenv('REQUEST_DRAFT_TTL_DAYS', 30))
     # Limit /register to signed-in users (a redirect to login, and a preview
     # banner on the form). ON by default: the form is shared with authenticated
     # testers on dev; switch it off per deployment to open the form to the public.
@@ -559,6 +561,7 @@ class TestingConfig(SAMWebappConfig):
     XRAS_WRITE_ENABLED = False
     XRAS_RENAME_ENABLED = False
     XRAS_SUBMIT_ENABLED = False
+    XRAS_SUBMIT_ANONYMOUS_ENABLED = False
     XRAS_AUTO_ACTIVATE = False
     XRAS_REQUEST_TICKETS_ENABLED = False
     # Pinned for the same reason: tests opt into a destructive lever explicitly.

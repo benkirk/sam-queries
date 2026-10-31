@@ -104,6 +104,22 @@
 {%- for name in names if form and form.get(name) %}<input type="hidden" name="{{ name }}" value="{{ form.get(name) }}">{% endfor -%}
 {%- endmacro %}
 
+{#- A New's people on a review; *private* (a visitor's) shows what was typed, never a match. -#}
+{% macro roster_facts(roster, private=false) -%}
+{%- if roster %}
+<dt class="col-sm-4">People</dt>
+<dd class="col-sm-8">
+    <ul class="list-unstyled mb-0">
+    {%- for p in roster %}
+        <li>{{ p.first_name }} {{ p.last_name }} <span class="text-muted">&lt;{{ p.email }}&gt;</span>
+        {%- if not private %} <span class="text-muted small">{{ 'in XRAS as ' ~ p.username if p.username else 'added when the project starts' }}</span>{% endif %}</li>
+    {%- endfor %}
+    </ul>
+    {%- if private %}<span class="text-muted small">Anyone with an NCAR account joins when the project starts; the others are invited then to request one.</span>{% endif %}
+</dd>
+{%- endif %}
+{%- endmacro %}
+
 {#- One supporting grant on a review. -#}
 {% macro grant_facts(grant, agencies=none) -%}
 {%- if grant %}

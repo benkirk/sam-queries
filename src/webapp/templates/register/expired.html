@@ -8,7 +8,7 @@
     It may have expired, or it may not be a confirmation link at all.</p>
 </div>
 <p class="register-lede">
-    Please <a href="{{ url_for('register.form') }}">register again</a> to receive
+    Please <a href="{{ again_url or url_for('register.form') }}">{{ again_label or 'register again' }}</a> to receive
     a fresh one.
 </p>
 {% endblock %}

@@ -1,0 +1,43 @@
+{#- The text of a request page card; guide is the row (or none), prefix the ids'. -#}
+{% from 'dashboards/fragments/form_fields.html' import text_field, textarea_field, number_field, select_field with context %}
+{% macro guide_fields(guide, prefix) -%}
+<div class="row g-2">
+    <div class="col-md-8">
+        {{ text_field('title', 'Title', required=True, maxlength=64,
+                      default=guide.title if guide else '', id=prefix ~ 'Title') }}
+    </div>
+    <div class="col-md-4">
+        {{ number_field('display_order', 'Order', min=0, step=1, optional_text='',
+                        default=guide.display_order if guide else 0, id=prefix ~ 'Order') }}
+    </div>
+</div>
+{{ textarea_field('summary', 'Who it is for', rows=3, maxlength=4000,
+                  default=guide.summary if guide else '', id=prefix ~ 'Summary',
+                  help="Empty: the page shows XRAS's own description.") }}
+<div class="row g-2">
+    <div class="col-md-6">
+        {{ text_field('funding', 'Funding eligibility', maxlength=128,
+                      default=guide.funding if guide else '', id=prefix ~ 'Funding',
+                      placeholder='NSF award required') }}
+    </div>
+    <div class="col-md-6">
+        {{ text_field('cadence', 'Review', maxlength=64,
+                      default=guide.cadence if guide else '', id=prefix ~ 'Cadence',
+                      placeholder='Continuous') }}
+    </div>
+</div>
+{{ textarea_field('notes', 'Rules the form does not enforce', rows=2, maxlength=4000,
+                  default=guide.notes if guide else '', id=prefix ~ 'Notes') }}
+<div class="row g-2">
+    <div class="col-md-6">
+        {{ text_field('allocation_type', 'SAM allocation type', maxlength=20,
+                      default=guide.allocation_type if guide else '', id=prefix ~ 'SamType',
+                      help='The type whose request limits the card shows.') }}
+    </div>
+    <div class="col-md-6">
+        {{ select_field('audience', 'Audience', options=[('university', 'University'), ('ncar', 'NCAR staff only')],
+                        placeholder='Everyone', default=guide.audience if guide else '',
+                        id=prefix ~ 'Audience') }}
+    </div>
+</div>
+{%- endmacro %}

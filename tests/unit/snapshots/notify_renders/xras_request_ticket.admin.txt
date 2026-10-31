@@ -14,7 +14,7 @@ Where each is fixed:
 - To fix a contract: create it from the seeded form (Admin > Contracts), or waive it with the request's contract override.
 
 Already in SAM's Accounts queue:
-- #41 Ada Lovelace <ada.lovelace@example.edu>, submission, submitted
+- SAM-AR-41 Ada Lovelace <ada.lovelace@example.edu>, submission, submitted
 
 Placeholders to merge (Allocations > XRAS > Pending Users):
 - jane-user-1a2b into jlead

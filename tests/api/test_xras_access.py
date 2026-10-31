@@ -1217,6 +1217,20 @@ class TestActivateAfterReply:
         self._post(xras_client, dispatching, 'add')
         assert activations == []
 
+    @pytest.mark.parametrize('outcome, invites', [('activated', 1), ('already active', 0)])
+    def test_an_activation_invites_the_requests_unrostered_people(
+            self, xras_client, action_log, dispatching, activations, monkeypatch,
+            outcome, invites):
+        from sam.manage import xras_activation
+        from webapp.api.xras import actions
+        monkeypatch.setattr(xras_activation, 'activate_posted_project', lambda *a, **k: outcome)
+        calls = []
+        monkeypatch.setattr(actions, '_invite_after_activation',
+                            lambda session, projcode, actor: calls.append((projcode, actor)))
+        self._post(xras_client, dispatching, 'add')
+        assert len(calls) == invites
+        assert all(p == 'UXYZ0001' and a.startswith('xras:') for p, a in calls)
+
     def test_a_failing_activation_never_reaches_the_reply(
             self, xras_client, action_log, dispatching, activations, monkeypatch):
         from sam.manage import xras_activation
@@ -1224,6 +1238,104 @@ class TestActivateAfterReply:
                             lambda *a, **k: (_ for _ in ()).throw(RuntimeError('boom')))
         resp = self._post(xras_client, dispatching, 'add')
         assert resp.status_code == 200 and action_log.one()['status'] == 'processed'
+
+
+class TestTheVisitorApproval:
+    """XRAS_SUBMISSION_SPRINT2.md 3a: the approved post of a visitor's New, refused for its
+    SAM-minted PI, releases the registration to NUSD and files its account ticket."""
+
+    PATH = TestDispatchArms.PATH
+    dispatching = TestDispatchArms.dispatching
+
+    @pytest.fixture
+    def held(self, app):
+        from sqlalchemy.orm import Session
+        from sam.core.account_requests import AccountRequest
+        from webapp.extensions import db
+        with app.app_context(), Session(db.engine) as s:
+            row = AccountRequest.create(
+                s, email=f'zz.visitor.{next_seq("1")}@example.invalid', first_name='Vis',
+                last_name='Itor', purpose='submission', created_by='self', verified_by='self')
+            s.commit()
+            rid = row.account_request_id
+        yield rid
+        with app.app_context(), Session(db.engine) as s:
+            s.query(AccountRequest).filter_by(account_request_id=rid).delete()
+            s.commit()
+
+    def _post(self, xras_client, dispatching, monkeypatch, held, messages, found=True,
+              holder=None, real_ticket=False):
+        from types import SimpleNamespace
+        from sam.manage import account_requests as manage
+        from sam.xras.errors import XrasActionRejected
+        tickets = []
+        monkeypatch.setattr(manage, 'refused_visitor_registration', lambda s, rid, m: (
+            SimpleNamespace(account_request_id=held) if found and m == messages else None))
+        if real_ticket:
+            import webapp.register.handoff_mail as handoff
+            real = handoff.send_ticket
+            monkeypatch.setattr(handoff, 'send_ticket', lambda row, **kw: (
+                tickets.append((row.account_request_id, kw)), real(row, **kw))[1])
+        if holder:
+            monkeypatch.setattr(manage, 'release_visitor_registration',
+                                lambda s, row, **kw: row.mark_requested() and holder)
+        if not real_ticket:
+            monkeypatch.setattr('webapp.register.handoff_mail.send_ticket',
+                                lambda row, **kw: tickets.append((row.account_request_id, kw)))
+
+        def refuse(s, a, *, validate_only=False):
+            raise XrasActionRejected(messages)
+        dispatching.register('add', refuse)
+        payload = json.loads(_payload('new_ncar4214_ok.json'))
+        payload['requestId'] = payload['actionId'] = int(next_seq('1449'))
+        resp = xras_client.post(self.PATH, data=json.dumps(payload),
+                                content_type='application/json', headers=_auth())
+        resp.close()
+        return resp, tickets
+
+    def _requested_at(self, app, rid):
+        from sam.core.account_requests import AccountRequest
+        from webapp.extensions import db
+        with app.app_context():
+            return db.session.get(AccountRequest, rid).requested_at
+
+    def test_the_refusal_releases_the_row_and_files_its_ticket(
+            self, app, xras_client, action_log, dispatching, monkeypatch, held):
+        resp, tickets = self._post(xras_client, dispatching, monkeypatch, held,
+                                   ['PI samr1-user-a1b2c3 is not in database'])
+        assert resp.status_code == 422
+        assert self._requested_at(app, held) is not None
+        (rid, kw), = tickets
+        assert rid == held and kw['requested_by'].startswith('xras:')
+
+    def test_any_other_refusal_leaves_it_held(
+            self, app, xras_client, action_log, dispatching, monkeypatch, held):
+        resp, tickets = self._post(xras_client, dispatching, monkeypatch, held,
+                                   ['Missing pi role'], found=False)
+        assert resp.status_code == 422 and tickets == []
+        assert self._requested_at(app, held) is None
+
+    def test_the_ticket_builds_its_link_after_the_reply(
+            self, app, xras_client, action_log, dispatching, monkeypatch, held, caplog):
+        """The real ticket path runs on close and files once. The test client keeps the
+        request context alive through close, so the no-request case is test_public_url's."""
+        import logging
+        monkeypatch.setitem(app.config, 'PUBLIC_BASE_URL', 'https://sam.hpc.ucar.edu')
+        with caplog.at_level(logging.INFO, logger='webapp.run'):
+            resp, tickets = self._post(xras_client, dispatching, monkeypatch, held,
+                                       ['PI samr1-user-a1b2c3 is not in database'],
+                                       real_ticket=True)
+        assert resp.status_code == 422 and len(tickets) == 1
+        lines = [r.getMessage() for r in caplog.records if 'visitor New' in r.getMessage()]
+        assert lines and all('failed' not in line for line in lines), lines
+        assert self._requested_at(app, held) is not None
+
+    def test_an_address_an_active_account_holds_is_released_without_a_ticket(
+            self, app, xras_client, action_log, dispatching, monkeypatch, held):
+        resp, tickets = self._post(xras_client, dispatching, monkeypatch, held,
+                                   ['PI samr1-user-a1b2c3 is not in database'], holder='known')
+        assert resp.status_code == 422 and tickets == []
+        assert self._requested_at(app, held) is not None
 
 
 class TestPostActionsErrors:

@@ -1,0 +1,12 @@
+{% extends 'register/gate.html' %}
+{# /request step 2: the terms, then the person. Context: gate.html's, plus opportunity, step. #}
+{% block title %}Before you request an allocation{% endblock %}
+{% block step %}{% include 'register/_request_step.html' %}{% endblock %}
+{% block heading %}
+<h1>Before you request an allocation</h1>
+{% include 'register/_request_chosen.html' %}
+<p class="register-lede">
+    NSF NCAR HPC resources are shared federal research systems. Please read and
+    accept the terms of use to continue.
+</p>
+{% endblock %}

@@ -168,3 +168,84 @@
     .register-body { padding: 1.25rem 1.25rem 0.5rem; }
     .register-footer { padding: 1rem 1.25rem 1.25rem; }
 }
+
+/* /request: the allocation-type overview needs room for its cards' limit tables. */
+.register-sheet.register-sheet-wide { max-width: 880px; }
+
+.request-type-list {
+    display: grid;
+    gap: 1rem;
+    margin: 1.25rem 0;
+}
+.request-type {
+    border: 1px solid var(--border-default);
+    background: var(--surface-raised);
+    padding: 1rem 1.25rem;
+}
+.request-type.is-closed { background: var(--surface-card); }
+.request-type-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.75rem;
+    margin-bottom: 0.5rem;
+}
+.request-type-head h2 {
+    color: var(--text-heading);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-bold);
+    margin: 0;
+}
+.request-type-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.25rem;
+    color: var(--text-secondary);
+    font-size: var(--font-size-xsm);
+    margin: 0 0 0.5rem;
+    padding: 0;
+    list-style: none;
+}
+.request-type-facts i { margin-right: 0.35rem; }
+.request-type-limits { font-size: var(--font-size-xsm); margin-bottom: 0.5rem; }
+.request-type-notes {
+    color: var(--text-secondary);
+    font-size: var(--font-size-xsm);
+    margin-bottom: 0.75rem;
+}
+.request-type-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+.request-type-cadence {
+    border: 1px solid var(--border-default);
+    color: var(--text-secondary);
+    font-size: var(--font-size-xxsm);
+    padding: 0 0.5rem;
+    border-radius: 999px;
+}
+
+/* /request step 5: the My Requests New fragments, hosted in a panel instead of a modal. */
+.request-panel {
+    /* Bootstrap scopes these to .modal; the fragments' .modal-body/.modal-footer need them. */
+    --bs-modal-padding: 1rem;
+    --bs-modal-footer-gap: 0.5rem;
+    --bs-modal-footer-border-width: 1px;
+    --bs-modal-footer-border-color: var(--border-default);
+    border: 1px solid var(--border-default);
+    background: var(--surface-card);
+    margin: 1rem 0 1.5rem;
+}
+/* No modal to dismiss here; Back and the page's own links move between steps. */
+.request-panel [data-bs-dismiss="modal"] { display: none; }
+.request-panel .modal-title,
+.request-panel-title {
+    color: var(--text-heading);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-bold);
+    margin: 0;
+    padding: 0.75rem 1rem 0;
+}

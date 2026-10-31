@@ -494,8 +494,10 @@ def _dispatch(log_id, action):
         # repeatedly.
         _finish(log_id, status='failed', error_messages=exc.messages,
                 http_status=422, service=select_service(db.session, action))
-        return _errors(_refusal_reply(action, exc.messages), 422,
-                       count=len(exc.messages))
+        response = _errors(_refusal_reply(action, exc.messages), 422,
+                           count=len(exc.messages))
+        _release_after_refusal(response, action, exc.messages)
+        return response
     except Exception as exc:
         # A handler that RAISED is not the capture backlog — but without this arm the
         # row keeps `status='received'` / `http_status=200` / `processed_time IS NULL`,
@@ -620,10 +622,68 @@ def _activate_after_reply(response, result, log_id) -> None:
                         session, projcode, get_notifier(), by=actor, xras_action_log_id=log_id,
                         site_url=app.config.get('PUBLIC_BASE_URL') or None)
                     app.logger.info('XRAS notify after activation: %s %s', projcode, sent)
+                if outcome == 'activated':
+                    _invite_after_activation(session, projcode, actor)
         except Exception:                               # noqa: BLE001
             app.logger.exception('XRAS activate/notify after reply failed: %s', projcode)
 
     response.call_on_close(activate)
+
+
+def _release_after_refusal(response, action, messages) -> None:
+    """A visitor's New refused for its SAM-minted PI was approved: hand the registration
+    to NUSD (``requested_at`` releases it) and file its account ticket, once the reply has
+    gone (docs/plans/XRAS_SUBMISSION_SPRINT2.md 3a). ``send_ticket`` files once per row.
+    No ticket when one active SAM user already holds the address: reconcile fulfills the
+    released row by that match and the merge follows."""
+    from sam.manage.account_requests import refused_visitor_registration
+    if action.get('actionType') != 'New':
+        return
+    row = refused_visitor_registration(db.session, _fit_int(action.get('requestId')), messages)
+    if row is None:
+        return
+    app = current_app._get_current_object()
+    actor = f'xras:{get_auth_actor() or "api"}'[:_PROCESSED_BY_WIDTH]
+    row_id = row.account_request_id
+
+    def release():
+        from sam.core.account_requests import AccountRequest
+        from sam.manage import management_transaction
+        from sam.manage.account_requests import release_visitor_registration
+        from webapp.register.handoff_mail import send_ticket
+        try:
+            with _after_reply_context(app, actor):
+                held = db.session.get(AccountRequest, row_id)
+                with management_transaction(db.session):
+                    holder = release_visitor_registration(db.session, held)
+                if holder:
+                    app.logger.info('XRAS approval of a visitor New: request %s released; '
+                                    '%s already holds the address, no ticket', row_id, holder)
+                else:
+                    result = send_ticket(held, requested_by=actor)
+                    app.logger.info('XRAS approval of a visitor New: request %s released; '
+                                    'ticket %s', row_id,
+                                    getattr(result, 'status', 'not configured'))
+        except Exception:                               # noqa: BLE001
+            app.logger.exception('XRAS approval of a visitor New: request %s failed', row_id)
+
+    response.call_on_close(release)
+
+
+def _invite_after_activation(session, projcode, actor) -> None:
+    """Invite the people the New named that XRAS could not hold; its failure is only logged."""
+    from sam.projects.projects import Project
+    from webapp.register.invite_mail import invite_activated_roster
+    project = Project.get_by_projcode(session, projcode)
+    if project is None:
+        return
+    try:
+        rows = invite_activated_roster(session, project, by=actor)
+        current_app.logger.info('XRAS roster invites after activation: %s %d', projcode,
+                                len(rows))
+    except Exception:                                   # noqa: BLE001
+        current_app.logger.exception('XRAS roster invites after activation failed: %s',
+                                     projcode)
 
 
 def _rename_after_reply(response, action, projcode) -> None:

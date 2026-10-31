@@ -260,5 +260,9 @@
     "user_my_requests_route": {
         "queries": 20,
         "notes": "measured 15 (2026-10-29, benkirk, 5 led projects): the user-page context (13 on /user/events) plus one led-projects query with its accounts selectin and one xras_submission read; the action-log IN query runs only when a row carries an action id. Flat in projects"
+    },
+    "request_overview_route": {
+        "queries": 6,
+        "notes": "measured 4 (2026-10-31, 7 guide rows, six resources each): the guide rows, the type ids, the limits for every type, and the resource map joined to its resources, each once for all the cards. 55 before the batching (a map query, six lazy resource loads, a type lookup and a limits query per card). Flat in cards"
     }
 }
