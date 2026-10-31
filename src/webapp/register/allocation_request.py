@@ -412,9 +412,11 @@ class _VisitorNewRequest(_NewRequestForm):
 
     def _expected_messages(self, messages):
         """XRAS will not know the PI until the account exists: its 422 is the approval's step."""
+        from sam.xras.errors import pi_not_in_database
         state = (self._ctx or {}).get('sam_state') or {}
         expected = set(state.get('mnemonic_errors') or ()) if state.get('mnemonic') else set()
-        return [m for m in messages if self._pi_username() in m or m in expected]
+        expected.add(pi_not_in_database(self._pi_username()))
+        return [m for m in messages if m in expected]
 
     def draft(self, data):
         from dataclasses import replace
