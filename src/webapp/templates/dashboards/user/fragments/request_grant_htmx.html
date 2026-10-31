@@ -25,7 +25,7 @@
         <input type="text" class="form-control{{ ' is-invalid' if _err }}" id="xrasGrantNumber" name="grant_number"
                value="{{ form.get('grant_number') or '' if form else '' }}" placeholder="Award number"
                {%- if _err %} aria-invalid="true" aria-describedby="xrasGrantNumber-error"{% endif %}>
-        <button type="button" class="btn btn-outline-secondary" data-grant-lookup
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-grant-lookup
                 hx-get="{{ url_for('user_dashboard.my_requests_award_lookup') }}"
                 hx-include="#xrasRequestGrant" hx-target="#xrasRequestGrant" hx-swap="outerHTML"
                 hx-disabled-elt="this">
