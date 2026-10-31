@@ -700,15 +700,14 @@ class NewRequestForm(_RequestForm):
 
         The PI and the admin are dropped; so is the visitor's own address.
         """
-        from sam.queries.xras_accounts import sam_merge_targets
+        from sam.queries.xras_accounts import active_holders
         entries = data.get('roster_entries') or ()
-        targets = sam_merge_targets(db.session, [e['email'] for e in entries])
+        holders = active_holders(db.session, [e['email'] for e in entries])
         skip = {u.casefold() for u in (self._pi_username(), data['admin_username']) if u}
         own = (self._pi_email() or '').strip().lower()
         roster = []
         for entry in entries:
-            target = targets.get(entry['email']) or {}
-            username = target.get('username') if target.get('active') else None
+            username = holders.get(entry['email'])
             if entry['email'] == own or (username and username.casefold() in skip):
                 continue
             known = username and self._in_xras(username, unsure=False)

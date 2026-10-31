@@ -1084,11 +1084,17 @@ def sam_merge_targets(session: Session, emails: Iterable[str]) -> Dict[str, dict
     return targets
 
 
+def active_holders(session: Session, emails: Iterable[str]) -> Dict[str, str]:
+    """``lower(email) -> username`` for each address one active SAM user holds
+    (:func:`sam_merge_targets`); an inactive, absent or ambiguous holder is left out."""
+    return {email: found['username'] for email, found in sam_merge_targets(session, emails).items()
+            if found.get('active') and found.get('username')}
+
+
 def active_holder(session: Session, email: Optional[str]) -> Optional[str]:
-    """The one active SAM user holding *email* (:func:`sam_merge_targets`), else None."""
+    """The one active SAM user holding *email*, else None."""
     key = (email or '').strip().lower()
-    found = sam_merge_targets(session, [key]).get(key) or {}
-    return found['username'] if found.get('active') else None
+    return active_holders(session, [key]).get(key)
 
 
 def stamp_merge_targets(session: Session, rows: List[Dict[str, Any]]) -> Dict[str, int]:
