@@ -27,7 +27,7 @@
         {% if action_type == 'Renewal' %}
         {{ textarea_field('abstract', 'Abstract for the coming period', required=True, rows=6,
                           default=line_abstract, id='xrasRequestAbstract',
-                          help='The renewal copies the title, keywords and field of science, but not the abstract.') }}
+                          help='XRAS does not carry the abstract into a renewal, so SAM starts you from the last one; update it for the coming period.') }}
         <div class="row g-2">
             <div class="col-sm-6">{{ date_field('begin_date', 'Start', required=True, default=default_begin, id='xrasRequestBegin') }}</div>
             <div class="col-sm-6">{{ date_field('end_date', 'End', required=True, default=default_end, id='xrasRequestEnd') }}</div>

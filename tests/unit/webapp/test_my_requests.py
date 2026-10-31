@@ -667,6 +667,7 @@ class TestTheRenewalForm:
              'piName': None, 'programOfficerEmail': 'po@nasa.gov'}]
         html = auth_client.get(REN).get_data(as_text=True)
         assert 'value="80NSSC21K1305"' in html and 'value="Dust modeling"' in html
+        assert 'SAM starts you from the last one' in html
         assert 'value="2021-07-16"' in html and 'value="po@nasa.gov"' in html
         assert '<option value="14" selected>' in html
         posted = auth_client.post(REN, data=_ren('edit')).get_data(as_text=True)
