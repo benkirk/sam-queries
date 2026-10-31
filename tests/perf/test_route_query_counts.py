@@ -606,3 +606,27 @@ def test_xras_configuration_cards_route(auth_client, route_count_queries, visito
     assert stats.count <= baseline, (
         f'XRAS configuration cards: {stats.count} queries > {baseline} baseline '
         f'({visitor_overview} guide rows). {stats.summary()}')
+
+
+def test_user_my_requests_new_route(auth_client, route_count_queries, visitor_overview,
+                                    monkeypatch):
+    """The New dialog's type stage: the same card reads as the overview, flat in cards."""
+    from dataclasses import replace
+    from sam.integration.xras_api.config import XrasApiConfig
+    from webapp.dashboards.user import requests_routes
+    from webapp.register import allocation_request
+    opportunities = allocation_request.report_opportunities(None)[0]
+    config = replace(XrasApiConfig(enabled=True, write_enabled=True, api_key='k'),
+                     submit_enabled=True, submit_action_types=('New',))
+    admin = type('Admin', (), {'new_request_opportunities': lambda self, u: opportunities})()
+    monkeypatch.setattr(requests_routes, '_config', lambda: config)
+    monkeypatch.setattr(requests_routes, 'admin_client', lambda c=None: admin)
+    baseline = get_baseline('user_my_requests_new_route')
+    with route_count_queries() as stats:
+        response = auth_client.get('/user/requests/new')
+    assert response.status_code == 200, f'the type stage returned {response.status_code}'
+    assert response.get_data(as_text=True).count('type-card-pick ') >= 2
+    assert stats.count <= baseline, (
+        f'New type stage: {stats.count} queries > {baseline} baseline '
+        f'({visitor_overview} guide rows). {stats.summary()}')
+

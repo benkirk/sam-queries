@@ -1254,3 +1254,32 @@ def committed_rows(app):
                 if obj is not None:
                     db.session.delete(obj)
             db.session.commit()
+
+
+@pytest.fixture
+def committed_guide(engine):
+    """Make committed ``allocation_type_guide`` rows on XRAS type ids no seed names (a route
+    reads through ``db.session``); each is deleted after the test."""
+    import secrets
+
+    from sqlalchemy import delete
+    from sqlalchemy.orm import Session
+
+    from sam.accounting.allocation_type_guide import AllocationTypeGuide
+    made = []
+
+    def make(**kw):
+        xras_type = 10_000_000 + secrets.randbelow(10_000_000) * 10
+        kw.setdefault('title', f'Probe {xras_type}')
+        with Session(engine) as s:
+            row = AllocationTypeGuide.create(s, xras_allocation_type_id=xras_type,
+                                             created_by='t', **kw)
+            s.commit()
+            made.append(row.allocation_type_guide_id)
+            return type('Guide', (), {'id': row.allocation_type_guide_id, 'title': row.title,
+                                      'xras_type': xras_type})
+
+    yield make
+    with engine.begin() as conn:
+        conn.execute(delete(AllocationTypeGuide).where(
+            AllocationTypeGuide.allocation_type_guide_id.in_(made)))

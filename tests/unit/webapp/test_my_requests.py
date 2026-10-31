@@ -925,6 +925,66 @@ class TestTheNewForm:
         # The roster's user search, in append mode onto the paste box (the visitor has none).
         assert 'data-fk-append="#xrasNewRoster"' in html and '/htmx/roster-suggest' in html
 
+    @pytest.fixture
+    def by_audience(self, newable, committed_guide):
+        """A guided open type per audience and one closed university type, all offered."""
+        made = {'ncar': committed_guide(audience='ncar'),
+                'university': committed_guide(audience='university'),
+                'everyone': committed_guide(),
+                'closed': committed_guide(audience='university')}
+        for n, (key, guide) in enumerate(made.items()):
+            closed = key == 'closed'
+            newable.opportunities.append(_opportunity(
+                880000 + n, guide.title, guide.xras_type, can_submit=not closed,
+                reason='Opens in March.' if closed else None))
+        return made
+
+    def _split(self, client, monkeypatch, audiences):
+        import sam.xras.audiences as registry
+        monkeypatch.setattr(registry, 'user_audiences', lambda user: frozenset(audiences))
+        html = client.get(NEW).get_data(as_text=True)
+        mine, _, others = html.partition('<details class="type-card-others">')
+        return mine, others
+
+    def test_staff_see_their_types_first_and_the_rest_disclosed(self, auth_client, monkeypatch,
+                                                                 by_audience):
+        mine, others = self._split(auth_client, monkeypatch, {'ncar'})
+        assert by_audience['ncar'].title in mine and by_audience['everyone'].title in mine
+        assert by_audience['university'].title not in mine
+        assert by_audience['university'].title in others
+
+    def test_a_university_pi_sees_theirs_first(self, auth_client, monkeypatch, by_audience):
+        mine, others = self._split(auth_client, monkeypatch, {'university'})
+        assert by_audience['university'].title in mine and by_audience['everyone'].title in mine
+        assert by_audience['ncar'].title not in mine and by_audience['ncar'].title in others
+
+    def test_a_closed_type_is_disabled_with_xrass_reason(self, auth_client, monkeypatch,
+                                                         by_audience):
+        mine, _ = self._split(auth_client, monkeypatch, {'university'})
+        card = mine.split(f'>{by_audience["closed"].title}<')[0].rsplit('<label', 1)[1]
+        assert 'disabled' in card and 'value="' not in card.split('type="radio"')[1].split('>')[0]
+        assert 'Opens in March.' in mine
+
+    def test_the_real_classifier_reads_the_pi(self, auth_client, newable, by_audience, session):
+        from sam.core.users import User
+        from sam.xras.audiences import user_audiences
+        mine = user_audiences(User.get_by_username(session, 'benkirk'))
+        html = auth_client.get(NEW).get_data(as_text=True).partition('<details')[0]
+        assert (by_audience['ncar'].title in html) == ('ncar' in mine)
+
+    def test_an_outage_still_shows_the_types(self, auth_client, newable, monkeypatch,
+                                             by_audience):
+        from sam.integration.xras_api import XrasSourceUnavailable
+
+        def down(self, username):
+            raise XrasSourceUnavailable('down')
+        monkeypatch.setattr(type(requests_routes.admin_client()), 'new_request_opportunities',
+                            down)
+        html = auth_client.get(NEW).get_data(as_text=True)
+        assert 'XRAS is not answering' in html and by_audience['everyone'].title in html
+        assert 'type="radio" name="opportunity_id" id="pick-type-' in html
+        assert ' disabled>' in html
+
     def test_choosing_nothing_or_a_closed_type_returns_to_the_stage(self, auth_client, newable):
         for chosen in ('', 532223):
             html = _choose(auth_client, chosen)

@@ -270,5 +270,21 @@
   "name": "st-outage-create",
   "page": "/status/derecho",
   "modal": "[data-bs-target=\"#createOutageModal\"]:visible"
+ },
+ {
+  "name": "my-requests-new-type",
+  "page": "/user/requests",
+  "steps": [
+   "wait:#xrasNewRequestOpen"
+  ],
+  "modal": "#xrasNewRequestOpen"
+ },
+ {
+  "name": "xras-configuration-cards",
+  "page": "/allocations/xras/configuration",
+  "steps": [
+   "wait:#xrasTypeCardsSection .type-card"
+  ],
+  "full_page": true
  }
 ]
