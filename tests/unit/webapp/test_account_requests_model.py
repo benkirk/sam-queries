@@ -393,3 +393,17 @@ class TestTheVisitorHold:
         assert refused_visitor_registration(session, request_id, refused) is row
         assert refused_visitor_registration(session, request_id, ['Missing pi role']) is None
         assert refused_visitor_registration(session, request_id + 1, refused) is None
+
+    def test_the_release_names_an_active_holder_and_not_a_lapsed_one(self, session):
+        """The account ticket is noise when one active SAM user already holds the address;
+        an inactive holder, or nobody, still gets one."""
+        from factories import make_email_address, make_user
+        from sam.manage.account_requests import release_visitor_registration
+        known, lapsed, fresh = self._row(session), self._row(session), self._row(session)
+        active = make_user(session)
+        make_email_address(session, active, email=known.email)
+        make_email_address(session, make_user(session, active=False), email=lapsed.email)
+        assert release_visitor_registration(session, known) == active.username
+        assert release_visitor_registration(session, lapsed) is None
+        assert release_visitor_registration(session, fresh) is None
+        assert all(r.requested_at is not None for r in (known, lapsed, fresh)), 'all released'

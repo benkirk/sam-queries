@@ -351,6 +351,19 @@ def refused_visitor_registration(session: Session, request_id: Optional[int],
     return None
 
 
+def release_visitor_registration(session: Session, row: AccountRequest, *, clock=None
+                                 ) -> Optional[str]:
+    """Hand a held ``/request`` row to NUSD (``requested_at``); returns the one active SAM
+    user already holding its address, for whom the account ticket would be noise.
+
+    That is the match reconcile fulfills the row by and the merge then folds the
+    placeholder into. An inactive or ambiguous holder is NUSD's call: ``None``, a ticket.
+    """
+    from sam.queries.xras_accounts import active_holder
+    row.mark_requested(clock)
+    return active_holder(session, row.email)
+
+
 def reconcile_account_requests(session: Session, *, clock=None,
                                purge_unverified_days: Optional[int] = None
                                ) -> Dict[str, int]:

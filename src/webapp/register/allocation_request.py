@@ -513,9 +513,14 @@ def status(token):
                   .filter(XrasSubmission.registration_id == row.account_request_id)
                   .order_by(XrasSubmission.xras_submission_id.desc()).first())
     from sam.projects.projects import Project
+    from sam.queries.xras_accounts import active_holder
     project = (db.session.get(Project, submission.project_id)
                if submission is not None and submission.project_id else None)
+    # Released with no ticket: the address already has an account, so the request will
+    # appear under it once the placeholder merges.
+    existing = row.is_fulfilled or (row.requested_at is not None
+                                    and active_holder(db.session, row.email) is not None)
     return render_template('register/request_status.html', row=row, submission=submission,
-                           project=project,
+                           project=project, existing_account=existing,
                            draft_url=url_for('allocation_request.draft', token=token),
                            step=_step(5, 'Your request'))

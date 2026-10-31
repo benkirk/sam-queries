@@ -1088,6 +1088,13 @@ def sam_merge_targets(session: Session, emails: Iterable[str]) -> Dict[str, dict
     return targets
 
 
+def active_holder(session: Session, email: Optional[str]) -> Optional[str]:
+    """The one active SAM user holding *email* (:func:`sam_merge_targets`), else None."""
+    key = (email or '').strip().lower()
+    found = sam_merge_targets(session, [key]).get(key) or {}
+    return found['username'] if found.get('active') else None
+
+
 def stamp_merge_targets(session: Session, rows: List[Dict[str, Any]]) -> Dict[str, int]:
     """Stamp ``merge_target`` on each placeholder row, re-derive ``remedy``, re-sort.
 

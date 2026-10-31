@@ -633,7 +633,9 @@ def _activate_after_reply(response, result, log_id) -> None:
 def _release_after_refusal(response, action, messages) -> None:
     """A visitor's New refused for its SAM-minted PI was approved: hand the registration
     to NUSD (``requested_at`` releases it) and file its account ticket, once the reply has
-    gone (docs/plans/XRAS_SUBMISSION_SPRINT2.md 3a). ``send_ticket`` files once per row."""
+    gone (docs/plans/XRAS_SUBMISSION_SPRINT2.md 3a). ``send_ticket`` files once per row.
+    No ticket when one active SAM user already holds the address: reconcile fulfills the
+    released row by that match and the merge follows."""
     from sam.manage.account_requests import refused_visitor_registration
     if action.get('actionType') != 'New':
         return
@@ -647,15 +649,21 @@ def _release_after_refusal(response, action, messages) -> None:
     def release():
         from sam.core.account_requests import AccountRequest
         from sam.manage import management_transaction
+        from sam.manage.account_requests import release_visitor_registration
         from webapp.register.handoff_mail import send_ticket
         try:
             with _after_reply_context(app, actor):
                 held = db.session.get(AccountRequest, row_id)
                 with management_transaction(db.session):
-                    held.mark_requested()
-                result = send_ticket(held, requested_by=actor)
-                app.logger.info('XRAS approval of a visitor New: request %s ticket %s', row_id,
-                                getattr(result, 'status', 'not configured'))
+                    holder = release_visitor_registration(db.session, held)
+                if holder:
+                    app.logger.info('XRAS approval of a visitor New: request %s released; '
+                                    '%s already holds the address, no ticket', row_id, holder)
+                else:
+                    result = send_ticket(held, requested_by=actor)
+                    app.logger.info('XRAS approval of a visitor New: request %s released; '
+                                    'ticket %s', row_id,
+                                    getattr(result, 'status', 'not configured'))
         except Exception:                               # noqa: BLE001
             app.logger.exception('XRAS approval of a visitor New: request %s failed', row_id)
 

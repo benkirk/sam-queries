@@ -338,7 +338,7 @@ class TestTheVisitorsRequest:
         assert client.get('/request/draft/nope/mnemonic-suggest?q=cub').status_code == 404
         assert client.get('/request/draft/nope/award-lookup?grant_number=1').status_code == 404
 
-    def test_the_status_page_says_approved_once_released(self, client, confirmed):
+    def test_the_status_page_says_approved_once_released(self, client, confirmed, monkeypatch):
         from datetime import datetime
         from sam.core.account_requests import AccountRequest
         from sam.integration.xras_submission import XrasSubmission
@@ -361,6 +361,10 @@ class TestTheVisitorsRequest:
                     db.session.get(AccountRequest, row_id).mark_requested()
             html = client.get(f'/request/status/{token}').get_data(as_text=True)
             assert 'the NCAR account team is creating your account' in html
+            monkeypatch.setattr('sam.queries.xras_accounts.active_holder', lambda s, e: 'known')
+            html = client.get(f'/request/status/{token}').get_data(as_text=True)
+            assert 'under your existing NCAR account' in html
+            assert 'creates your account' not in html, 'released with no ticket'
         finally:
             with client.application.app_context():
                 db.session.query(XrasSubmission).filter_by(xras_submission_id=sid).delete()
