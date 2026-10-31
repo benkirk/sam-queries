@@ -75,6 +75,15 @@ register_crud(bp, CrudSpec(
 ))
 
 
+def _guide_context():
+    """The select options: the active SAM type names, and the audience labels."""
+    from sam.accounting.allocation_type_guide import AUDIENCE_LABELS
+    names = (db.session.query(AllocationType.allocation_type).filter(AllocationType.is_active)
+             .order_by(AllocationType.allocation_type).all())
+    return {'allocation_type_options': [(n, n) for (n,) in names],
+            'audience_options': list(AUDIENCE_LABELS.items())}
+
+
 _GUIDE_FIELDS = ('title', 'allocation_type', 'summary', 'funding', 'cadence', 'notes',
                  'audience', 'display_order')
 
@@ -102,6 +111,7 @@ register_crud(bp, CrudSpec(
     create_kwargs=lambda data: {
         **{k: data[k] for k in ('xras_allocation_type_id',) + _GUIDE_FIELDS},
         'created_by': _actor()},
+    edit_context=_guide_context, create_context=_guide_context,
     triggers=modal_triggers('reloadAllocationGuidesCard'),
     edit_permission=Permission.SYSTEM_ADMIN,
     create_permission=Permission.SYSTEM_ADMIN,

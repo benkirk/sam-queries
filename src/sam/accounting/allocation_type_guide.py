@@ -16,7 +16,10 @@ from sqlalchemy import Column, DateTime, Integer, String, Text, UniqueConstraint
 
 from sam.base import ActiveFlagMixin, Base, SessionMixin
 
-AUDIENCES = ('university', 'ncar')
+#: Audience value -> its label on the admin form; `ncar` keeps a type off the public page.
+AUDIENCE_LABELS = {'university': 'University', 'ncar': 'NCAR staff only'}
+AUDIENCES = tuple(AUDIENCE_LABELS)
+AUDIENCE_NCAR = 'ncar'
 
 
 class AllocationTypeGuide(Base, SessionMixin, ActiveFlagMixin):
@@ -108,6 +111,6 @@ def public_guides(session) -> List[AllocationTypeGuide]:
     return (session.query(AllocationTypeGuide)
             .filter(AllocationTypeGuide.is_active)
             .filter((AllocationTypeGuide.audience.is_(None))
-                    | (AllocationTypeGuide.audience != 'ncar'))
+                    | (AllocationTypeGuide.audience != AUDIENCE_NCAR))
             .order_by(AllocationTypeGuide.display_order, AllocationTypeGuide.title)
             .all())

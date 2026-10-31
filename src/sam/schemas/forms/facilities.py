@@ -8,6 +8,8 @@ import marshmallow.fields as f
 import marshmallow.validate as v
 from marshmallow import ValidationError, post_load, validates_schema
 
+from sam.accounting.allocation_type_guide import AUDIENCES
+
 from . import HtmxFormSchema
 
 
@@ -91,7 +93,7 @@ class EditAllocationTypeGuideForm(HtmxFormSchema):
     funding = f.Str(load_default=None, validate=v.Length(max=128))
     cadence = f.Str(load_default=None, validate=v.Length(max=64))
     notes = f.Str(load_default=None, validate=v.Length(max=4000))
-    audience = f.Str(load_default=None, validate=v.OneOf(('university', 'ncar')))
+    audience = f.Str(load_default=None, validate=v.OneOf(AUDIENCES))
     display_order = f.Int(load_default=0, validate=v.Range(min=0))
     active = f.Bool(load_default=False)
 

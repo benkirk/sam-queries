@@ -30,12 +30,12 @@
                   default=guide.notes if guide else '', id=prefix ~ 'Notes') }}
 <div class="row g-2">
     <div class="col-md-6">
-        {{ text_field('allocation_type', 'SAM allocation type', maxlength=20,
-                      default=guide.allocation_type if guide else '', id=prefix ~ 'SamType',
-                      help='The type whose request limits the card shows.') }}
+        {{ select_field('allocation_type', 'SAM allocation type', options=allocation_type_options,
+                        placeholder='None', default=guide.allocation_type if guide else '',
+                        id=prefix ~ 'SamType', help='The type whose request limits the card shows.') }}
     </div>
     <div class="col-md-6">
-        {{ select_field('audience', 'Audience', options=[('university', 'University'), ('ncar', 'NCAR staff only')],
+        {{ select_field('audience', 'Audience', options=audience_options,
                         placeholder='Everyone', default=guide.audience if guide else '',
                         id=prefix ~ 'Audience') }}
     </div>
