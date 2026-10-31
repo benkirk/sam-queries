@@ -322,6 +322,11 @@ Manage Project page's Add, Extend and Renew stay what they are (allocation mutat
 requests). When `XRAS_SUBMIT_ENABLED` is off the tab renders with every control disabled and
 its reason.
 
+The sweep rebuilds its index only on the daily full slot, so SAM keeps its own filings on it:
+the submit inserts the request's row (`patch_requests_index(insert=True)`), and every sweep slot
+re-reads each filing still `submitted` (`_refresh_own_filings`), so a decision taken in XRAS
+reaches this tab within the hour.
+
 ### 4.1 The form: one to two pages, driven by the rule book
 
 ARC's six pages are each simple, which is the problem: the work is spread across six saves and
@@ -364,7 +369,7 @@ Three identifiers arrive on every `/actions` payload, and they behave differentl
 | | `requestNumber` | `requestId` | `actionId` |
 |---|---|---|---|
 | At create | **`null`**: nothing is minted | assigned, returned with `rules{}` | the first action is minted with the line; a later one is returned by `POST …/actions` |
-| At submit | **minted** (`NCAR4352` appeared on the first `POST …/submit`) | unchanged | unchanged |
+| At submit | **minted** (`NCAR4352` appeared on the first `POST …/submit`); the flow reads the line by id once and records it | unchanged | unchanged |
 | After the New applies | renamed to the projcode by SAM, within a second of the reply (§ 4.6 item 3); the old number stops resolving | unchanged | unchanged |
 | Across a renewal | stable: the family key | a renewal starts a **new** line | new |
 

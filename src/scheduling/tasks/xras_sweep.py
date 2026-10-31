@@ -463,6 +463,37 @@ def _apply_worklist_preflights(enumerated, index_entries) -> None:
                 action['reject_messages'] = list(worst['messages'])
 
 
+def _refresh_own_filings(ctx, client, session, payloads, *, since: date) -> int:
+    """Insert or patch the index row of each SAM filing still ``submitted``; the count patched.
+
+    A row with no number (its submit-time read failed) takes it from this run's payloads by
+    ``requestId``. One family read per request; the handful SAM has open.
+    """
+    import contextlib
+
+    from sam.integration.xras_submission import XrasSubmission
+    from sam.manage.xras_remediation import refresh_index_entry
+
+    try:
+        rows = (session.query(XrasSubmission)
+                .filter(XrasSubmission.state == 'submitted',
+                        XrasSubmission.submitted_time >= datetime.combine(since, time.min))
+                .all())
+    except Exception as exc:                            # noqa: BLE001
+        ctx.logger.warning('xras_sweep: own filings unreadable: %s', exc)
+        return 0
+    numbers_by_id = {p.get('requestId'): p.get('requestNumber') for p in payloads
+                     if isinstance(p, dict) and p.get('requestNumber')}
+    wanted = {}
+    for row in rows:
+        number = row.request_number or numbers_by_id.get(row.request_id)
+        if number:
+            wanted[number] = wanted.get(number, False) or row.action_type == 'New'
+    return sum(bool(refresh_index_entry(number, reader=client, insert=True, pending_push=new,
+                                        session_factory=lambda: contextlib.nullcontext(session)))
+               for number, new in sorted(wanted.items()))
+
+
 def _build_requests_index(ctx, client, session, approved_payloads, detail):
     """Build the Remediations card's request index. Never raises.
 
@@ -1052,6 +1083,11 @@ def xras_sweep(ctx) -> TaskResult:
             })
             detail['index_publish_backend'] = index_backend
             detail['index_published'] = index_backend == 'redis'
+    # 6. SAM's own filings still awaiting XRAS, refreshed every slot: the index above is
+    # rebuilt only on the full slot, and a decision taken in XRAS must reach My Requests.
+    detail['own_filings_refreshed'] = _refresh_own_filings(
+        ctx, client, session, unwindowed, since=window_start)
+
     if backend != 'redis':
         ctx.logger.warning(
             'xras_sweep: worklist went to the %s cache, so the dashboard tab '
