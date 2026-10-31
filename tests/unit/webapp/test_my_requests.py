@@ -904,6 +904,8 @@ class TestTheNewForm:
         assert 'Exploratory (University)' in html and 'Educational (University) (not open to you)' in html
         assert 'Atmospheric Sciences' in html and 'Not offered' not in html
         assert ('opportunities', 'benkirk') in newable.reads
+        # The roster's user search, in append mode onto the paste box (the visitor has none).
+        assert 'data-fk-append="#xrasNewRoster"' in html and '/htmx/roster-suggest' in html
 
     def test_the_reveal_names_the_letter_and_the_code(self, auth_client, newable, lettered):
         html = auth_client.get(NEW + '/opportunity?opportunity_id=532221').get_data(as_text=True)
@@ -1157,6 +1159,18 @@ class TestThePickers:
         html = auth_client.get('/user/requests/htmx/admin-suggest?q=' + other_user.username
                                ).get_data(as_text=True)
         assert 'data-fk-id' not in html
+
+    def test_the_roster_suggest_answers_in_roster_lines(self, auth_client, newable, other_user):
+        """A pick appends 'First Last <email>' to the paste; no email, no pick; never the PI."""
+        url = '/user/requests/htmx/roster-suggest?q='
+        html = auth_client.get(url + other_user.username).get_data(as_text=True)
+        if other_user.primary_email:
+            assert (f'data-fk-label="{other_user.first_name} {other_user.last_name} '
+                    f'&lt;{other_user.primary_email}&gt;"') in html
+            assert f'data-fk-id="{other_user.user_id}"' in html
+        else:
+            assert 'data-fk-id' not in html and 'no email on file' in html
+        assert 'data-fk-id' not in auth_client.get(url + 'benkirk').get_data(as_text=True)
 
     def test_the_mnemonic_suggest_needs_two_letters(self, auth_client, session):
         from sam.core.organizations import MnemonicCode

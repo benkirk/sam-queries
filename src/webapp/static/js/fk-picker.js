@@ -36,6 +36,10 @@
 // Custom events fired (bubbling) for forms that need to react:
 //   fk:selected   — detail: {id, label}
 //   fk:cleared    — detail: {}
+//
+// Append mode: a picker carrying data-fk-append="#textareaId" holds no selection. A pick
+// adds its label as a line to that textarea (a line already there is skipped) and the
+// picker clears itself, so one search box can fill a roster paste.
 
 (function () {
     function reset(picker) {
@@ -67,6 +71,22 @@
             var selectedEl = picker.querySelector('.fk-picker-selected');
             var resultsEl = picker.querySelector('.fk-picker-results');
             var searchEl = picker.querySelector('.fk-picker-search');
+
+            var appendTo = picker.dataset.fkAppend && document.querySelector(picker.dataset.fkAppend);
+            if (appendTo) {
+                var lines = appendTo.value.split('\n').map(function (l) { return l.trim().toLowerCase(); });
+                if (lines.indexOf(labelValue.trim().toLowerCase()) === -1) {
+                    appendTo.value = (appendTo.value.trim() ? appendTo.value.replace(/\s+$/, '') + '\n' : '') + labelValue;
+                    appendTo.dispatchEvent(new Event('input', {bubbles: true}));
+                }
+                if (resultsEl) resultsEl.innerHTML = '';
+                if (searchEl) searchEl.value = '';
+                picker.dispatchEvent(new CustomEvent('fk:selected', {
+                    bubbles: true,
+                    detail: {id: idValue, label: labelValue}
+                }));
+                return;
+            }
 
             if (idEl) idEl.value = idValue;
             if (badgeEl) badgeEl.textContent = labelValue;

@@ -3495,6 +3495,13 @@
     ]
   ],
   [
+    "user_dashboard.my_requests_roster_suggest",
+    "/user/requests/htmx/roster-suggest",
+    [
+      "GET"
+    ]
+  ],
+  [
     "user_dashboard.project_details_modal",
     "/user/project-details-modal/<projcode>",
     [

@@ -845,6 +845,13 @@ register_typeahead(
     template='dashboards/user/fragments/request_admin_results_htmx.html',
     ctx_key='users')
 
+register_typeahead(
+    bp, rule='/requests/htmx/roster-suggest', endpoint='my_requests_roster_suggest',
+    permission=None,                    # the same search, as roster lines; never the visitor's
+    search=_search_admins,
+    template='dashboards/user/fragments/request_roster_results_htmx.html',
+    ctx_key='users')
+
 
 register_typeahead(
     bp, rule='/requests/htmx/mnemonic-suggest', endpoint='my_requests_mnemonic_suggest',

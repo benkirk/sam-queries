@@ -39,5 +39,17 @@
                       help='One person per line, as First Last <email>. Anyone with an NCAR '
                            'account joins the project when it starts; everyone else is invited '
                            'then to request one.') }}
+    {% if not (request_urls and request_urls.get('fixed_opportunity')) %}
+    {# The signed-in door's shortcut: a pick appends its line to the paste above (append mode). #}
+    <div class="mb-3 fk-picker" data-fk-append="#xrasNewRoster">
+        <label class="form-label small text-muted" for="xrasNewRosterSearch">Add someone with an NCAR account</label>
+        <input type="text" class="form-control form-control-sm fk-picker-search" id="xrasNewRosterSearch"
+               name="q" autocomplete="off" placeholder="Search by name, username or email…"
+               hx-get="{{ url_for('user_dashboard.my_requests_roster_suggest') }}"
+               hx-target="next .fk-picker-results" hx-swap="innerHTML"
+               hx-trigger="input changed delay:300ms">
+        <div class="list-group mt-1 fk-picker-results"></div>
+    </div>
+    {% endif %}
     <div id="xrasNewOpportunityInputs">{% include 'dashboards/user/fragments/request_new_inputs_htmx.html' %}</div>
 {% endcall %}

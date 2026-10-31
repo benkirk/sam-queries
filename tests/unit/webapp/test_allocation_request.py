@@ -277,6 +277,7 @@ class TestTheVisitorsRequest:
         html = client.get(f'/request/draft/{token}/form').get_data(as_text=True)
         assert 'name="opportunity_id" value="777001"' in html and 'xrasNewOpportunitySelect' not in html
         assert 'admin_user_id' not in html
+        assert 'roster-suggest' not in html, 'the user search is the signed-in door alone'
         assert f'/request/draft/{token}/mnemonic-suggest' in html, 'the letters picker is its own'
 
     def test_the_review_does_not_count_the_pi_xras_cannot_know_yet(self, client, confirmed,
