@@ -3,7 +3,7 @@
 ``build_facility_trees`` is pure, so its arithmetic is tested on literal rows; the
 rendered page is parsed to hold the wiring a chart click depends on (every drill
 names a facility row in its own Resource pane, and that row opens its tbody).
-Design record: docs/plans/ALLOCATIONS_SUNBURST.md.
+Design record: docs/plans/implemented/ALLOCATIONS_SUNBURST.md.
 """
 import re
 from datetime import datetime
