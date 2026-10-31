@@ -981,8 +981,9 @@ class TestThePickers:
         from sam.integration.awards.base import AwardRecord
         calls = []
 
-        def resolve(source, number, exact=False):
+        def resolve(source, number, exact=False, providers=None):
             calls.append((source, number, exact))
+            assert {(p.client.timeout, p.client.max_retries) for p in providers} == {(6, 1)}
             return AwardRecord(provenance='USAspending', title='Dust modeling',
                                start_date=date(2021, 7, 16), end_date=date(2027, 7, 15))
         monkeypatch.setattr('sam.integration.awards.registry.resolve_award', resolve)
@@ -991,10 +992,20 @@ class TestThePickers:
         assert calls == [(None, '80NSSC21K1305', True)]
         assert 'value="Dust modeling"' in html and 'no PI or program officer' in html
         monkeypatch.setattr('sam.integration.awards.registry.resolve_award',
-                            lambda s, n, exact=False: None)
+                            lambda *a, **k: None)
         html = auth_client.get('/user/requests/htmx/award-lookup?grant_agency_id=14'
                                '&grant_number=014421').get_data(as_text=True)
         assert 'no federal award numbered exactly 014421' in html
+
+    def test_a_slow_usaspending_says_so(self, auth_client, monkeypatch):
+        from sam.integration.awards.base import AwardSourceUnavailable
+
+        def slow(*a, **k):
+            raise AwardSourceUnavailable('timeout')
+        monkeypatch.setattr('sam.integration.awards.registry.resolve_award', slow)
+        html = auth_client.get('/user/requests/htmx/award-lookup?grant_agency_id=14'
+                               '&grant_number=80NSSC21K1305').get_data(as_text=True)
+        assert 'USAspending is slow to answer right now' in html
 
     def test_an_unknown_award_says_so(self, auth_client, monkeypatch):
         monkeypatch.setattr('sam.integration.awards.registry.resolve_award', lambda s, n: None)

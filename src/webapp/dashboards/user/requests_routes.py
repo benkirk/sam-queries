@@ -755,7 +755,8 @@ register_typeahead(
 def my_requests_award_lookup():
     """The grant fieldset, filled from NSF's record, or USAspending's for another agency."""
     from sam.integration.awards.base import AwardSourceUnavailable
-    from sam.integration.awards.registry import resolve_award
+    from sam.integration.awards.client import AwardHttpClient
+    from sam.integration.awards.registry import build_providers, resolve_award
     from sam.integration.xras_api.vocabulary import NSF_FUNDING_AGENCY_ID
     number = (request.args.get('grant_number') or '').strip()
     agency = request.args.get('grant_agency_id', type=int) or NSF_FUNDING_AGENCY_ID
@@ -765,10 +766,15 @@ def my_requests_award_lookup():
     found, note = {}, None
     try:
         # Exact numbers only away from NSF: USAspending's keyword fallback can return another award.
-        record = (resolve_award('NSF', number) if nsf else resolve_award(None, number, exact=True)
-                  ) if number else None
+        # USAspending answered the cluster in 1-16 s (2026-10-31), so it gets one short attempt.
+        record = (resolve_award('NSF', number) if nsf else resolve_award(
+            None, number, exact=True,
+            providers=build_providers(AwardHttpClient(timeout=6, max_retries=1)))
+        ) if number else None
     except AwardSourceUnavailable:
-        record, note = None, f'{source} is not answering. Type the grant\'s details, or try again.'
+        record, note = None, ('NSF is not answering. Type the grant\'s details, or try again.' if nsf
+                              else 'USAspending is slow to answer right now. Type the grant\'s '
+                                   'details.')
     if record is not None:
         found = {'grant_title': record.title, 'grant_begin_date': record.start_date,
                  'grant_end_date': record.end_date,

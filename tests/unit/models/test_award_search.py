@@ -414,3 +414,14 @@ class TestResolveExact:
         assert keys == ['USAspending:exact', 'USAspending']
         assert provider.fetch.call_args_list[0].kwargs == {'exact': True}
         assert provider.fetch.call_args_list[1].kwargs == {}
+
+    def test_providers_overrides_the_pool(self, monkeypatch):
+        default, injected = MagicMock(source=None), MagicMock(source=None)
+        default.name = injected.name = 'USAspending'
+        injected.supports.return_value = True
+        injected.fetch.return_value = AwardRecord(provenance='USAspending')
+        monkeypatch.setattr(registry, '_PROVIDERS', [default])
+        monkeypatch.setattr(registry, 'cached_lookup', lambda name, number, compute: compute())
+
+        assert registry.resolve_award(None, 'X-1', providers=[injected]) is not None
+        default.supports.assert_not_called()

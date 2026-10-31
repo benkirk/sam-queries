@@ -27,8 +27,9 @@
                {%- if _err %} aria-invalid="true" aria-describedby="xrasGrantNumber-error"{% endif %}>
         <button type="button" class="btn btn-outline-secondary" data-grant-lookup
                 hx-get="{{ url_for('user_dashboard.my_requests_award_lookup') }}"
-                hx-include="#xrasRequestGrant" hx-target="#xrasRequestGrant" hx-swap="outerHTML">
-            <i class="fa-solid fa-magnifying-glass me-1"></i>Look up</button>
+                hx-include="#xrasRequestGrant" hx-target="#xrasRequestGrant" hx-swap="outerHTML"
+                hx-disabled-elt="this">
+            <span class="spinner-border spinner-border-sm busy-spinner" aria-hidden="true"></span><i class="fa-solid fa-magnifying-glass me-1 busy-icon"></i>Look up</button>
         {% if _err %}<div class="invalid-feedback" id="xrasGrantNumber-error">{{ _err[0] }}</div>{% endif %}
     </div>
     </div>
