@@ -228,7 +228,7 @@ webapp:
     # Admin > Notifications > Addressing (table notification_addressing),
     # which every Notifier reads from the database, the CronJob included.
     # The XRAS award mail leaves as the help desk, as XRAS's own did (templates 154, 135, 149;
-    # docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 2), with the allocations mailbox on the cc.
+    # docs/plans/implemented/XRAS_PHASE_C_AND_TICKETS.md § 2), with the allocations mailbox on the cc.
     NOTIFY_XRAS_CC: "alloc@ucar.edu"
     NOTIFY_XRAS_BCC: ""
     NOTIFY_XRAS_FROM: "cislhelp@ucar.edu"
@@ -445,7 +445,7 @@ webapp:
     SAM_TASKS_XRAS_NOTICES_SINCE: "2026-10-20T08:00"
     # The ticket-state first line on a refused New/Renewal's 422 (docs/plans/implemented/XRAS_REQUEST_TICKETS.md
     # § 6). "1" only together with the xras_request_tickets task, or the 422 promises a ticket.
-    # Armed with the task (docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 4). The floor MUST equal
+    # Armed with the task (docs/plans/implemented/XRAS_PHASE_C_AND_TICKETS.md § 4). The floor MUST equal
     # tasks.env's: a request first refused before it gets no ticket, so its 422 promises none
     # (pinned equal by helm/tests/test-dev-render.sh).
     XRAS_REQUEST_TICKETS_ENABLED: "1"
@@ -757,12 +757,12 @@ tasks:
     # The CronJob's one ticket writer: these arm xras_request_tickets alone (no other task
     # files; tests/unit/gates/test_helm_jira_levers.py). Removing XRAS_REQUEST_TICKETS_ENABLED
     # makes it a shadow again. The floor: a request first refused before it never gets a
-    # ticket, so arming opens no backlog (docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 4).
+    # ticket, so arming opens no backlog (docs/plans/implemented/XRAS_PHASE_C_AND_TICKETS.md § 4).
     XRAS_REQUEST_TICKETS_ENABLED: "1"
     TICKET_PROVIDER: "jira-servicedesk"
     JIRA_WRITE_ENABLED: "1"
     SAM_TASKS_XRAS_TICKETS_SINCE: "2026-10-19"
     # The phase C cutover floor, naive Mountain: an action received before it was XRAS's to
     # mail, so neither xras_notices nor the New's notice after activation sends it. Equal to
-    # webapp.env's (docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 6).
+    # webapp.env's (docs/plans/implemented/XRAS_PHASE_C_AND_TICKETS.md § 6).
     SAM_TASKS_XRAS_NOTICES_SINCE: "2026-10-20T08:00"

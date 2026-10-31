@@ -17,7 +17,7 @@ is naive **Mountain** — stamped from the app clock precisely because MySQL's
 ``sam/integration/xras.py``). Comparing them raw is a 6-7 hour skew in the
 one predicate that decides whether a PI gets mailed today or tomorrow.
 
-**No delay since phase C** (docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 5.5): an
+**No delay since phase C** (docs/plans/implemented/XRAS_PHASE_C_AND_TICKETS.md § 5.5): an
 action goes out at the next quarter-hour slot in business hours, close to when
 XRAS's own award mail went at Notify. A New is sent by the ``/actions`` route
 right after its activation; this task only backstops it, an hour on, once the

@@ -1,6 +1,6 @@
 # XRAS phase C and production tickets: SAMuel sends the award mail; refused posts ticket NUSD
 
-**Status: Part 1 (§ 4) merged in #845, deploying 2026-10-19; Part 2 (§ 5) built in #848 (letters reviewed), the cutover (§ 6) next.** Tracked by issue #846 (burn-down checklist), PR #845; built on
+**Status: phase C live in production 2026-10-20: Part 1 (§ 4) merged in #845, Part 2 (§ 5) in #848, the cutover (§ 6) done; issue #846 closed 2026-10-20.** Tracked by issue #846 (burn-down checklist), PR #845; built on
 branch `xras_incoming_tickets`. Lands phase C of [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md)
 and arms phase D ([`implemented/XRAS_REQUEST_TICKETS.md`](implemented/XRAS_REQUEST_TICKETS.md)) in production. The
 award-mail checklist it carries out is [`implemented/XRAS_NOTICES_CUTOVER.md`](implemented/XRAS_NOTICES_CUTOVER.md).
