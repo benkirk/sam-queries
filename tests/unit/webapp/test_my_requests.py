@@ -1052,8 +1052,18 @@ class TestThePickers:
             raise AwardSourceUnavailable('timeout')
         monkeypatch.setattr('sam.integration.awards.registry.resolve_award', slow)
         html = auth_client.get('/user/requests/htmx/award-lookup?grant_agency_id=14'
-                               '&grant_number=80NSSC21K1305').get_data(as_text=True)
+                               '&grant_number=80NSSC21K1305&grant_title=Typed+by+hand'
+                               '&grant_pi_name=A.+PI').get_data(as_text=True)
         assert 'USAspending did not answer within ten seconds' in html
+        assert 'value="Typed by hand"' in html and 'value="A. PI"' in html   # kept
+
+    def test_a_found_record_replaces_what_was_typed(self, auth_client, monkeypatch):
+        from sam.integration.awards.base import AwardRecord
+        monkeypatch.setattr('sam.integration.awards.registry.resolve_award',
+                            lambda *a, **k: AwardRecord('nsf', title='Ensembles'))
+        html = auth_client.get('/user/requests/htmx/award-lookup?grant_number=2345678'
+                               '&grant_pi_name=Old+PI').get_data(as_text=True)
+        assert 'value="Ensembles"' in html and 'Old PI' not in html
 
     def test_an_unknown_award_says_so(self, auth_client, monkeypatch):
         monkeypatch.setattr('sam.integration.awards.registry.resolve_award', lambda s, n: None)

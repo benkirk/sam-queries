@@ -806,8 +806,11 @@ def my_requests_award_lookup():
         note = (f'NSF has no award {number}. Check the number, or type the details.' if nsf
                 else f'USAspending has no federal award numbered exactly {number}. Check the '
                      'number, or type the details.')
-    values = {'grant_agency_id': agency, 'grant_number': number,
-              **{k: v for k, v in found.items() if v}}
+    # No record: keep what the user typed. A found record replaces it whole, so no stale PI
+    # rides along.
+    kept = found if record is not None else {k: request.args.get(k) for k in GRANT_INPUTS}
+    values = {**{k: v for k, v in kept.items() if v},
+              'grant_agency_id': agency, 'grant_number': number}
     return render_template(_GRANT, form=values, required=required, note=note, field_errors={},
                            grant_agencies=funding_agency_choices())
 
