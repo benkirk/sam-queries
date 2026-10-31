@@ -3335,7 +3335,7 @@
   ],
   [
     "user_dashboard.my_requests_offers",
-    "/user/requests/offers",
+    "/user/requests/htmx/offers",
     [
       "GET"
     ]

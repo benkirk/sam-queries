@@ -161,7 +161,7 @@ class TestTheComments:
 
 class TestTheRowButtons:
 
-    OFFERS = '/user/requests/offers'
+    OFFERS = '/user/requests/htmx/offers'
 
     @pytest.fixture
     def rostered(self, monkeypatch):

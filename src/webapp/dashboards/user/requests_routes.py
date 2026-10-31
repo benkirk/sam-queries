@@ -130,7 +130,7 @@ def my_requests_actions(project):
 
 # the Extension, Supplement and Renewal forms
 
-@bp.route('/requests/offers')
+@bp.route('/requests/htmx/offers')
 @login_required
 def my_requests_offers():
     """Every project row's request buttons in one response (out-of-band swaps), one XRAS read."""

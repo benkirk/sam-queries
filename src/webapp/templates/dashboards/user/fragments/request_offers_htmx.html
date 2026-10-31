@@ -1,5 +1,5 @@
 {#- Every "Your projects" row's request buttons, swapped out of band into #req-offers-<projcode>
-    (GET /user/requests/offers). Context: projects, offers {projcode: [action types]},
+    (GET /user/requests/htmx/offers). Context: projects, offers {projcode: [action types]},
     form_types {action type: url kind}. Openers for #xrasRequestModal, which the page hosts. -#}
 {%- set _BUTTONS = {'Extension': ('calendar-plus', 'Extend', 'Request an extension'),
                     'Supplement': ('circle-plus', 'Supplement', 'Request a supplement'),
