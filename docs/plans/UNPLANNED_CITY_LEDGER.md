@@ -2198,7 +2198,16 @@ into the sweep task): not picked. F6, one guard for the three login-only helper 
   `test_nhd_env_layers` `test_after_a_signal_to_the_process_group[15]`.
 - [ ] `plans-stale` lists `LDAPSYNC_DIRECTORY_AFFILIATIONS.md` beside the kept syncd reference;
   its Status is a direction agreed, not a build, so it stays.
-- [ ] Browser proof of the request dialogs on samuel-dev (entry 31) still wants the roll.
+- [x] Browser proof of the request dialogs on samuel-dev (entry 31), done 2026-10-31 on
+  `sha-8165c97` (the #878 squash) with a captured OIDC session replayed by Playwright, light
+  and dark, 1200 and 390 px: the Extension form, its review with the agreement unticked (the
+  gate reads "To submit, accept the terms." and Submit is disabled; no error panel, as the
+  gate now precedes the post), and the refusal dialog for a staff-routed project (the
+  outcome block). No stopped row on dev, so the resume dialog is still unshot. One hit: at
+  390 px the footer's gate hint sat beside Back and pushed Submit onto a line of its own
+  (Back at y 363, Submit at 417). Fixed in the follow-on PR: an empty hint takes no room, and
+  under 576 px it takes its own line (`components.css`), after which Back and Submit share
+  one line (both at 392), proven by injecting the rule into the live dialog.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

@@ -934,3 +934,15 @@ tr.collapsing {
     display: inline-block;
     margin-right: 0.25rem;
 }
+
+/* The gate hint beside a footer's buttons; empty it takes no room, and on a phone it takes
+   its own line so Back and Submit stay together below it. */
+.modal-footer [data-gate-hint]:empty {
+    display: none;
+}
+
+@media (max-width: 575.98px) {
+    .modal-footer [data-gate-hint] {
+        flex-basis: 100%;
+    }
+}
