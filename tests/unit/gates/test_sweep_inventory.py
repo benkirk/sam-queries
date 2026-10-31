@@ -106,6 +106,16 @@ def test_inline_styles_counts_per_template(tmp_path):
     assert [(r['file'].rsplit('/', 1)[1], r['count']) for r in inv.inline_styles([busy, clean])] == [('busy.html', 2)]
 
 
+def test_template_dead_imports_names_what_the_source_lacks(tmp_path):
+    root = tmp_path / 'templates'
+    _write(root, 'bits.html', "{% macro row(x) %}{{ x }}{% endmacro %}\n{%- set LIMIT = 3 %}")
+    page = _write(root, 'page.html', "{% from 'bits.html' import row, LIMIT with context %}\n"
+                  "{% from 'bits.html' import gone as g -%}\n{% from 'vendor.html' import anything %}\n"
+                  "{# usage: {% from 'bits.html' import ... %} #}")
+    rows = inv.template_dead_imports([root / 'bits.html', page], root=root)
+    assert [(r['line'], r['name'], r['source']) for r in rows] == [(2, 'gone', 'bits.html')]
+
+
 def test_bs4_classes_skips_classes_our_css_styles(tmp_path):
     page = _write(tmp_path, 'page.html', '<thead class="thead-light">\n<b class="ms-2 ml-2\n  font-weight-bold">'
                   '<i class="float-left"></i>')
@@ -185,7 +195,8 @@ def test_runs_on_the_real_tree(monkeypatch, capsys):
     assert inv.main(['--top', '3']) == 0
     out = capsys.readouterr().out
     for detector in ('private-imports', 'dup-functions', 'py-dup-names', 'css-dead', 'css-shape', 'inline-styles',
-                     'bs4-classes', 'row-buttons', 'modal-alerts', 'js-dup', 'js-dead', 'plans-stale'):
+                     'bs4-classes', 'row-buttons', 'modal-alerts', 'template-dead-imports', 'js-dup',
+                     'js-dead', 'plans-stale'):
         assert f'== {detector}:' in out
 
 
