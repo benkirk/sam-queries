@@ -2,7 +2,7 @@
 
 **Status: shipped 2026-10-29 in #874 (squash `5cf3eebe`), every phase proven on samuel-dev ↔
 XRAS-dev; production stays dark behind `XRAS_SUBMIT_ENABLED` (§ 3). Sprint 2 is #872.** Landed
-phases 0, 1, 1b and 2 of [`XRAS_SUBMISSION.md`](XRAS_SUBMISSION.md): a lead files an Extension,
+phases 0, 1, 1b and 2 of [`XRAS_SUBMISSION.md`](../XRAS_SUBMISSION.md): a lead files an Extension,
 Supplement, Renewal or New request from a My Requests tab on SAMuel's user dashboard. Sprint 2
 (#872) adds the registration-linked New. The decisions are `XRAS_SUBMISSION.md` § 3.5; the probe
 record behind them is § 9. Every UI step loads the

@@ -271,10 +271,10 @@ class TestTheAcceptGate:
 
     def test_a_stale_accept_is_bounced(self, gate_app, monkeypatch):
         from datetime import timedelta
-        from webapp.register import blueprint
+        from webapp.register import common
         client = gate_app.test_client()
         self._accept(client)
-        monkeypatch.setattr(blueprint, '_GATE_TTL', timedelta(seconds=-1))
+        monkeypatch.setattr(common, 'GATE_TTL', timedelta(seconds=-1))
         assert 'Accept and continue' in client.get('/register/').get_data(as_text=True)
 
     def test_an_event_locked_accept_returns_to_the_event_form(self, gate_app,

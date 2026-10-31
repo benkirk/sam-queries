@@ -95,7 +95,8 @@ class XrasApiConfig:
     submit_enabled: bool = False
     submit_action_types: FrozenSet[str] = field(
         default_factory=lambda: frozenset(SUBMIT_ACTION_TYPES))
-    #: Fifth lever: a New filed by a visitor with no SAM account (/request/). Webapp only.
+    #: Fifth lever: a New filed by a visitor with no SAM account (/request/). The webapp mounts
+    #: the door; in the task env it arms the placeholder merge (``visitor_merge_configured``).
     submit_anonymous_enabled: bool = False
     api_key: str = ''
     base_url: str = DEFAULT_BASE_URL

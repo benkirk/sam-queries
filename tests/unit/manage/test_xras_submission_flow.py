@@ -501,6 +501,7 @@ class TestTheVisitorNew:
     def _client(self):
         client = _client()
         rid, aid = next(_IDS), next(_IDS)
+        client.get_person.return_value = None
         client.create_person.return_value = _ok('create_person')
         client.create_request.return_value = _ok(
             'create_request', request_id=rid, action_id=aid, response={'requestId': rid})
@@ -539,6 +540,39 @@ class TestTheVisitorNew:
                                        door='visitor', client=client)
         assert again.step == 'person' and 'may have reached XRAS' in again.error
         assert client.create_person.call_count == 1
+
+    def test_a_refile_after_an_abort_finds_its_placeholder_standing(self, factory, registration,
+                                                                     visitor_armed):
+        """Abort deletes the line, not the person; the second filing skips the person step."""
+        client = self._client()
+        first = flow.request_action(factory, self._draft(registration), actor='registration:1',
+                                    xa_user='samr1-user-a1b2c3', eula=EULA, door='visitor',
+                                    submit=False, client=client)
+        assert first.state == 'populated'
+        gone = flow.abort_submission(factory, first.submission_id, actor='registration:1',
+                                     door='visitor', client=client)
+        assert gone.state == 'aborted' and client.delete_request.call_count == 1
+        client.get_person.return_value = {'username': 'samr1-user-a1b2c3', 'isReconciled': False}
+        client.create_request.return_value = _ok(
+            'create_request', request_id=next(_IDS), action_id=next(_IDS),
+            response={'requestId': 1})
+        again = flow.request_action(factory, self._draft(registration), actor='registration:1',
+                                    xa_user='samr1-user-a1b2c3', eula=EULA, door='visitor',
+                                    client=client)
+        assert again.state == 'submitted', again.error
+        assert client.create_person.call_count == 1
+        assert 'person' not in _event_ops(factory, _row(factory, again.submission_id))
+
+    def test_a_reconciled_person_under_the_placeholder_name_still_refuses(self, factory,
+                                                                           registration,
+                                                                           visitor_armed):
+        client = self._client()
+        client.get_person.return_value = {'username': 'samr1-user-a1b2c3', 'isReconciled': True}
+        client.create_person.side_effect = XrasWriteRejected('exists', status=409)
+        out = flow.request_action(factory, self._draft(registration), actor='registration:1',
+                                  xa_user='samr1-user-a1b2c3', eula=EULA, door='visitor',
+                                  client=client)
+        assert not out.succeeded and out.step == 'person'
 
     def test_the_visitor_door_needs_its_lever(self, factory, registration):
         with pytest.raises(SubmissionRefused, match='not enabled'):

@@ -79,6 +79,18 @@ class TestTheForms:
         html = auth_client.get(f'/admin/htmx/allocation-guide-edit-form/{a_guide.id}').get_data(
             as_text=True)
         assert 'name="summary"' in html and f'XRAS type {a_guide.xras_type}' in html
+        assert 'name="allocation_type"' in html and '<option value="Everyone"' not in html
+
+    def test_the_sam_type_is_a_select_of_the_active_types(self, auth_client):
+        from sam.accounting.allocations import AllocationType
+        from webapp.extensions import db
+        with auth_client.application.app_context():
+            a_name = db.session.query(AllocationType.allocation_type).filter(
+                AllocationType.is_active).order_by(AllocationType.allocation_type).first()[0]
+        html = auth_client.get('/admin/htmx/allocation-guide-create-form').get_data(as_text=True)
+        select = html[html.index('name="allocation_type"'):]
+        select = select[:select.index('</select>')]
+        assert f'<option value="{a_name}"' in select and 'NCAR staff only' in html
 
     @pytest.mark.parametrize('data, says', [
         ({'title': ''}, 'title'), ({'title': 'T', 'audience': 'everyone'}, 'audience')])

@@ -271,6 +271,7 @@ class TestTheVisitorsRequest:
         draft, token, _, _ = confirmed
         html = client.get(draft).get_data(as_text=True)
         assert f'hx-get="/request/draft/{token}/form"' in html and 'X-CSRFToken' in html
+        assert 'js/submit-gate.js' in html, 'the review needs the gate and busy handlers'
 
     def test_page_one_fixes_the_opportunity_and_names_no_admin(self, client, confirmed):
         _, token, _, _ = confirmed
@@ -292,6 +293,20 @@ class TestTheVisitorsRequest:
             end_date='2027-11-30', amount_530902='1000'))
         html = resp.get_data(as_text=True)
         assert 'data-gate-blocked disabled' not in html, 'only the PI message failed it'
+
+    def test_a_message_that_merely_names_the_placeholder_still_counts(self, client, confirmed,
+                                                                       monkeypatch):
+        """The expected refusal is the exact `pi_not_in_database` text, as the release hook reads it."""
+        _, token, _, placeholder = confirmed
+        verdict = _verdict('failed', (f'PI {placeholder} is not in database',
+                                      f'Username {placeholder} is missing'))
+        monkeypatch.setattr('sam.xras.submission_preflight.preflight_draft',
+                            lambda *a, **k: verdict)
+        code = _a_code(client.application)
+        resp = client.post(f'/request/draft/{token}', data=_describe(
+            stage='review', mnemonic_code_id=str(code), begin_date='2026-12-01',
+            end_date='2027-11-30', amount_530902='1000'))
+        assert 'data-gate-blocked disabled' in resp.get_data(as_text=True)
 
     def test_submit_files_through_the_visitor_door(self, client, confirmed, monkeypatch):
         from sam.manage import xras_submission as flow

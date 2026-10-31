@@ -6,7 +6,8 @@ Every quarter hour. It reads the refused posts in ``xras_action_log``
 - comments when the latest refusal's blocker list is new;
 - comments when a placeholder it blocked on is merged since (repost it);
 - comments once a post applies.
-Comments are internal and NUSD closes the ticket. The webapp only answers posts.
+Comments are internal and NUSD closes the ticket. The webapp answers posts and files the
+account ticket a refused visitor New releases; every request-ticket comment is this task's.
 
 ``XRAS_REQUEST_TICKETS_ENABLED`` off, or ``--dry-run``: report, write nothing (the
 ledger and link rows commit on their own sessions, so the runner's rollback cannot

@@ -399,7 +399,7 @@ def account_request_reject(request_id):
 @login_required
 @require_permission(Permission.MANAGE_ACCOUNT_REQUESTS)
 def account_requests_reconcile():
-    """Reconcile now: the same pass the hourly task runs. No purge here."""
+    """Reconcile now: the same pass the scheduled task runs. No purge here."""
     with management_transaction(db.session):
         counts = reconcile_account_requests(db.session, clock=datetime.now())
     merged = _merge_visitors()

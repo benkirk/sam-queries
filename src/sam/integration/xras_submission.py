@@ -252,6 +252,15 @@ def new_submissions_by_request_id(session) -> Dict[int, XrasSubmission]:
     return out
 
 
+def submissions_for_registration(session, registration_id, *,
+                                 include_aborted: bool = False) -> List[XrasSubmission]:
+    """Every row a ``/request`` registration filed, newest first; aborted rows only on request."""
+    q = session.query(XrasSubmission).filter(XrasSubmission.registration_id == registration_id)
+    if not include_aborted:
+        q = q.filter(XrasSubmission.state != 'aborted')
+    return q.order_by(XrasSubmission.xras_submission_id.desc()).all()
+
+
 def submission_by_action_id(session, action_id) -> Optional[XrasSubmission]:
     if not action_id:
         return None

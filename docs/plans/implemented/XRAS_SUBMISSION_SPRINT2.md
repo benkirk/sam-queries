@@ -1,10 +1,13 @@
 # XRAS submission sprint 2: the build plan
 
 **Status: shipped 2026-10-31 in #880 (`2098adce`), issue #872; dev-proven twice (UCUB0208,
-UCUB0209); the guide table's DDL is applied in production.** Builds phase 3 of
-[`XRAS_SUBMISSION.md`](XRAS_SUBMISSION.md): someone with no SAM account files a New from SAMuel,
+UCUB0209); the guide table's DDL is applied in production. As built, three lines of § 2 differ:
+1a's cards are inline in `request_overview.html` (no `allocation_type_cards` macro), 1c sends
+no receipt mail (the status page is reached from the outcome), and 1d's status page offers the
+help desk on a stopped row, not Resume and Discard.** Builds phase 3 of
+[`XRAS_SUBMISSION.md`](../XRAS_SUBMISSION.md): someone with no SAM account files a New from SAMuel,
 and the New form gains an optional roster. Sprint 1's build plan,
-[`implemented/XRAS_SUBMISSION_SPRINT1.md`](implemented/XRAS_SUBMISSION_SPRINT1.md), is the shape this one follows. Every UI
+[`XRAS_SUBMISSION_SPRINT1.md`](XRAS_SUBMISSION_SPRINT1.md), is the shape this one follows. Every UI
 step loads the `wire-dashboard-feature` skill first.
 
 The case: ARC's untracked placeholder PIs are 55% of `New` handoff failures (`XRAS_SUBMISSION.md`
@@ -46,11 +49,11 @@ SAM user at every step:
 | submit | `request_action(xa_user=current_user)` | `create_person`, then `request_action(xa_user=placeholder, door='visitor')` with `registration_id` |
 | ownership | `created_by` or `xa_user` equals the username | a signed token bound to the registration |
 
-The XRAS side is half built: `merge_placeholder` (`sam/manage/xras_remediation.py`) folds a
+The XRAS side, before this sprint, was half built: `merge_placeholder` (`sam/manage/xras_remediation.py`) folds a
 placeholder into a real user and closes its `account_request` rows, but there is no
 `create_person`, `reconcile_account_requests` has no `submission` branch, and the merge leaves
 `xras_submission` alone. `xras_submission` has no `xras_username` column: `xa_user` holds the
-placeholder. `registration_id` exists, unused since sprint 1.
+placeholder. `registration_id` existed, unused since sprint 1.
 
 ## 2. Commit map
 
@@ -58,7 +61,7 @@ placeholder. `registration_id` exists, unused since sprint 1.
 |---|---|---|
 | D | docs | this plan; `XRAS_SUBMISSION.md` § 2, § 4.7, § 5 |
 | P | probes (done 2026-10-31) | § 7. Settled: (1) the person fields all stick, but a second `POST` on a taken name **overwrites** it, so `create_person` refuses unless the name reads 404 first; (2) the report context returns the same `rules{}` as a user, so the visitor pages read opportunities there and **the placeholder is minted at submit**; (3) `add_role(User)` works for a real person, and for an unknown username XRAS **mints a bare reconciled person**, so a roster entry reaches XRAS only once `get_person` resolves it; (4) the merge moving PI and Allocation Manager was measured 2026-10-14 (§ 6.1, scenario 6) and again here. Large and NSC are now open on the demo |
-| 0a | write client, levers | `create_person`, refusing a name that already resolves (probe 1), verified by re-read, op `create_person`; the placeholder namer `samr<registration_id>-user-<hex6>` (`PLACEHOLDER_USERNAME_RE` classes it; accepted by XRAS, probe 1); `add_role` refuses a username `get_person` cannot resolve (probe 3); `XRAS_SUBMIT_ANONYMOUS_ENABLED` (dev "1", prod "0", webapp only) with its manifest pins. The visitor door needs it, `ACCOUNT_REGISTRATION_ENABLED` and New armed |
+| 0a | write client, levers | `create_person`, refusing a name that already resolves (probe 1), verified by re-read, op `create_person`; the placeholder namer `samr<registration_id>-user-<hex6>` (`PLACEHOLDER_USERNAME_RE` classes it; accepted by XRAS, probe 1); `add_role` refuses a username `get_person` cannot resolve (probe 3); `XRAS_SUBMIT_ANONYMOUS_ENABLED` (dev "1", prod "0"; the task env reads it too, for 3b) with its manifest pins. The visitor door needs it, `ACCOUNT_REGISTRATION_ENABLED` and New armed |
 | 0b | the guide | `AllocationTypeGuide` (§ 4); a CrudSpec card beside Request Limits; `allocation_type_overview(session, opportunities, *, eligible=None)` composing the guide row, the limits, the rule book's grants and documents, and the open opportunity. A type with no open opportunity (Large between calls) still shows, without a Start button |
 | 1a | the public page | an anonymous blueprint (`/request/`) under the visitor lever, on the register blueprint's anonymous rate tiers; one `allocation_type_cards` macro; added to `DASHBOARD_BLUEPRINTS` |
 | 1b | about you | `RegisterForm` and `register_request` with `purpose='submission'`, the human check, the agreement, the verify inside the flow. `AccountRequest`: a self-made `submission` may wait for its `xras_username`; `attach_placeholder()`. Verify files no ticket for this purpose. A signed draft token (a new salt, bound to `verified_at`) carries the flow, the resume link and the status page |
@@ -76,7 +79,7 @@ Each commit regenerates the route-map snapshot it changes and lands its own test
 
 | Lever | Read by | dev | prod |
 |---|---|---|---|
-| `XRAS_SUBMIT_ANONYMOUS_ENABLED` | the `/request/` blueprint's mount and every visitor stage | "1" | "0" |
+| `XRAS_SUBMIT_ANONYMOUS_ENABLED` | every `/request/` route (404 when off; the mount is `ACCOUNT_REGISTRATION_ENABLED`), the visitor door of the flow, and in the task env the placeholder merge | "1" | "0" |
 | `ACCOUNT_REGISTRATION_ENABLED` | the same, and `/register` | "1" | "0", until client-IP forwarding (`implemented/ACCOUNT_REGISTRATION.md` § 6.1, item 2) |
 | `ACCOUNT_REGISTRATION_LOGIN_REQUIRED` | `/register` and `/request` | "0" (Ben, 2026-10-31: both open to visitors on dev; Turnstile on, mail off, so an operator's Verify confirms) | unset, so on |
 | `XRAS_SUBMIT_ENABLED`, `XRAS_SUBMIT_ACTION_TYPES` | as in sprint 1; New must be armed | "1", `all` | "0", `Extension,Supplement` |
@@ -98,12 +101,9 @@ One table, `allocation_type_guide`: one row per XRAS allocation type.
 | create | `scripts/sql/create_allocation_type_guide.sql` | `scripts/sql/create_allocation_type_guide_pg.sql` |
 | seed (7 rows, from ARC's table) | `scripts/sql/seed_allocation_type_guide.sql` | `scripts/sql/seed_allocation_type_guide_pg.sql` |
 
-Applied 2026-10-31: local 3306, mysql-test 3307, the test Postgres (5434; the seed re-run is a
-no-op). Still to do:
-
-1. `sam_dev` (Ben): `psql -h csg-postgres.k8s.ucar.edu -d sam_dev -f scripts/sql/create_allocation_type_guide_pg.sql`, then the `_pg` seed; each script ends with its expected counts.
-2. `make -C containers/sam-sql-dev regen-lfs-blob` once, last before the PR.
-3. Production MySQL (Ben), before the visitor lever flips.
+Applied 2026-10-31 everywhere: local 3306, mysql-test 3307, the test Postgres (5434), `sam_dev`
+(`psql -h csg-postgres.k8s.ucar.edu -d sam_dev -f scripts/sql/create_allocation_type_guide_pg.sql`,
+then the `_pg` seed) and production MySQL; the LFS blob was regenerated in #881.
 
 Pinned by `tests/integration/test_schema_validation.py` (`_BOOTSTRAP_TABLES`) and
 `tests/unit/models/test_allocation_type_guide.py` (the two seeds carry the same rows).

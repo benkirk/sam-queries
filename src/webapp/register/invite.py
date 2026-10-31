@@ -26,7 +26,7 @@ from webapp.limiter import limiter as _rate_limit
 from webapp.utils.htmx import institution_options
 
 from . import eula, tokens
-from .common import GATE_TTL, anon_tier, ip_key, person_form_context, post_tier
+from .common import GATE_TTL, anon_tier, ip_key, person_form_context, post_tier, terms_page
 from .handoff_mail import send_completion_mail
 
 logger = logging.getLogger(__name__)
@@ -109,8 +109,8 @@ def _refuse(reason):
 @bp.route('/terms')
 @_rate_limit.limiter.limit(anon_tier, key_func=ip_key)
 def terms():
-    """The agreement on its own page, as ``register.terms`` (which may be unmounted)."""
-    return render_template('register/terms.html', eula_html=eula.eula_html())
+    """As ``register.terms``, which may be unmounted."""
+    return terms_page()
 
 
 @bp.route('/institutions')

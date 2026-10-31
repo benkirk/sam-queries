@@ -463,7 +463,7 @@ def merge_fulfilled_visitors(session_factory, *, operator: str,
     create it. ``merged`` lists ``(placeholder, target, request ids)``.
     """
     from sam.integration.xras_api.base import XrasSourceUnavailable
-    from sam.integration.xras_submission import XrasSubmission
+    from sam.integration.xras_submission import submissions_for_registration
     from sam.queries.account_requests import visitors_to_merge
     with session_factory() as session:
         due = visitors_to_merge(session)
@@ -480,8 +480,8 @@ def merge_fulfilled_visitors(session_factory, *, operator: str,
             out['waiting'] += 1
             continue
         with session_factory() as session:
-            lines = [r.request_id for r in session.query(XrasSubmission).filter(
-                XrasSubmission.registration_id == request_id) if r.request_id]
+            lines = [r.request_id for r in submissions_for_registration(
+                session, request_id, include_aborted=True) if r.request_id]
         outcome = merge_placeholder(
             session_factory, source_username=source, target_username=target,
             operator=operator, client=admin,

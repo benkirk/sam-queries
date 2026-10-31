@@ -4,7 +4,8 @@ The ``xras_submission`` row is committed before any write. Each step then runs t
 ``audited_write`` (its own audit row, committed before the write) and records that row's id
 on the submission. A rejected, errored or unverified step stops the flow, stamps
 ``last_error`` and leaves the state where it was: there is **no automatic abort**. Resume
-skips every step whose event is ``verified``; abort deletes what SAM minted. Flask-free.
+skips every step whose event is ``verified``; abort deletes the line or action SAM minted,
+never a visitor's placeholder person (a refile finds it standing). Flask-free.
 Design: ``docs/plans/implemented/XRAS_SUBMISSION_SPRINT1.md`` § 2.
 """
 
@@ -276,6 +277,18 @@ def _visitor_person(session_factory, registration_id: int) -> Dict[str, Any]:
                 'residence_country': row.residence_country}
 
 
+def _placeholder_minted(admin, username: str) -> bool:
+    """True when *username* already stands in XRAS unreconciled: our placeholder from an earlier
+    filing (abort deletes the line, never the person). A reconciled hit is someone else's and the
+    create step refuses it; an outage reads as not minted and the create step fails, resumably."""
+    from sam.integration.xras_api import XrasSourceUnavailable
+    try:
+        found = admin.get_person(username)
+    except XrasSourceUnavailable:
+        return False
+    return isinstance(found, dict) and found.get('isReconciled') is False
+
+
 def _mint_steps(draft: ActionRequest, view: Dict[str, Any],
                 person: Optional[Dict[str, Any]] = None) -> List[Tuple[str, str, Callable]]:
     xa = view['xa_user']
@@ -385,8 +398,9 @@ def _drive(session_factory, draft: ActionRequest, view, *, submit: bool,
         return None
 
     if view['state'] == 'draft':
-        person = (_visitor_person(session_factory, view['registration_id'])
-                  if view.get('registration_id') else None)
+        person = None
+        if view.get('registration_id') and not _placeholder_minted(admin, view['xa_user']):
+            person = _visitor_person(session_factory, view['registration_id'])
         stopped = run(_mint_steps(draft, view, person))
         if stopped:
             return stopped

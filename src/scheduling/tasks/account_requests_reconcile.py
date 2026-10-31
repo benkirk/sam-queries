@@ -1,4 +1,4 @@
-"""``account_requests_reconcile`` -- act on accounts that now exist, hourly.
+"""``account_requests_reconcile`` -- act on accounts that now exist, every 15 minutes.
 
 The ONE scheduled writer of fulfillment: each open request whose email now
 resolves to exactly one active user is stamped, an ``enrollment`` gets its

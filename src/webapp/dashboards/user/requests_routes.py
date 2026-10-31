@@ -184,7 +184,8 @@ def my_request_notes(number):
                            yours=normalize_comment(action.get('userComments')))
 
 
-def _message(title, message, variant='warning'):
+def message_fragment(title, message, variant='warning'):
+    """A refusal or notice in the request dialog's body."""
     return render_template(_MESSAGE, title=title, message=message, variant=variant)
 
 
@@ -435,9 +436,14 @@ class _RequestForm(HtmxFormHandler):
             raise FormError(str(exc))
         return data
 
+    @staticmethod
+    def _sessions():
+        """The flow's session factory; the module seam the tests patch."""
+        return _session_factory
+
     def _file(self, flow, draft, eula):
         """Open the submission through the PI door: the signed-in user files as themself."""
-        return flow.request_action(_session_factory, draft, actor=acting_username(),
+        return flow.request_action(self._sessions(), draft, actor=acting_username(),
                                    xa_user=current_user.username, eula=eula, door='pi')
 
     def on_success(self, data):
@@ -458,7 +464,7 @@ def my_request_form(project, kind):
     try:
         ctx = handler.gate()
     except FormError as exc:
-        return _message(f'{handler.action_type} unavailable', ' '.join(exc.errors))
+        return message_fragment(f'{handler.action_type} unavailable', ' '.join(exc.errors))
     return render_template(_FORM, errors=[], field_errors={}, form=None, **ctx)
 
 
@@ -531,13 +537,14 @@ def _user_label(user_id):
     return f'{user.username} ({user.display_name})' if user is not None else ''
 
 
-class _NewRequestForm(_RequestForm):
+class NewRequestForm(_RequestForm):
     """A New through describe -> request -> review -> submit; nothing reaches XRAS before submit.
 
     Who files is a seam (``_arm``, ``_opportunities``, ``_chosen_id``, ``_pi``, ``_pi_username``,
     ``_institution_name``, ``_check_admin``, ``_expected_messages``, ``_file``, ``_post_url``,
     ``_pi_email``, ``roster_private``, ``request_urls``): the visitor's New
-    (``webapp/register/allocation_request.py``) overrides those and nothing else.
+    (``webapp/register/allocation_request.py``) overrides those, and ``draft`` to stamp its
+    registration on the ``SamRefs``.
     """
 
     schema_cls = XrasNewRequestForm
@@ -693,15 +700,14 @@ class _NewRequestForm(_RequestForm):
 
         The PI and the admin are dropped; so is the visitor's own address.
         """
-        from sam.queries.xras_accounts import sam_merge_targets
+        from sam.queries.xras_accounts import active_holders
         entries = data.get('roster_entries') or ()
-        targets = sam_merge_targets(db.session, [e['email'] for e in entries])
+        holders = active_holders(db.session, [e['email'] for e in entries])
         skip = {u.casefold() for u in (self._pi_username(), data['admin_username']) if u}
         own = (self._pi_email() or '').strip().lower()
         roster = []
         for entry in entries:
-            target = targets.get(entry['email']) or {}
-            username = target.get('username') if target.get('active') else None
+            username = holders.get(entry['email'])
             if entry['email'] == own or (username and username.casefold() in skip):
                 continue
             known = username and self._in_xras(username, unsure=False)
@@ -799,18 +805,18 @@ class _NewRequestForm(_RequestForm):
 @login_required
 def my_request_new_fragment():
     """Page one of a New, into ``#xrasRequestModalBody``; a refusal renders as a message."""
-    handler = _NewRequestForm()
+    handler = NewRequestForm()
     try:
         ctx = handler.gate()
     except FormError as exc:
-        return _message('New request unavailable', ' '.join(exc.errors))
+        return message_fragment('New request unavailable', ' '.join(exc.errors))
     return render_template(_NEW_DESCRIBE, errors=[], field_errors={}, form=None, **ctx)
 
 
 @bp.route('/requests/new', methods=['POST'])
 @login_required
 def my_request_new_post():
-    return _NewRequestForm().handle()
+    return NewRequestForm().handle()
 
 
 @bp.route('/requests/new/opportunity')
@@ -818,14 +824,15 @@ def my_request_new_post():
 def my_request_new_opportunity_fragment():
     """Page one's reveal for the chosen opportunity: its rule book, the code letters, the grant."""
     try:
-        ctx = _NewRequestForm().gate()
+        ctx = NewRequestForm().gate()
     except FormError as exc:
         return render_template(_NEW_OPPORTUNITY, outage=' '.join(exc.errors), form=None,
                                field_errors={}, opportunity=None, oob=True)
     return render_template(_NEW_OPPORTUNITY, form=None, field_errors={}, oob=True, **ctx)
 
 
-def _search_mnemonic_codes(q, active_only):
+def mnemonic_code_search(q, active_only):
+    """The code-letter picker's search; codes and their institutions are public knowledge."""
     from sam.queries.mnemonic_console import search_mnemonic_codes
     return search_mnemonic_codes(db.session, q, limit=10)
 
@@ -856,7 +863,7 @@ register_typeahead(
 register_typeahead(
     bp, rule='/requests/htmx/mnemonic-suggest', endpoint='my_requests_mnemonic_suggest',
     permission=None,                    # any user may pick the letters for a New
-    search=_search_mnemonic_codes,
+    search=mnemonic_code_search,
     template='dashboards/allocations/partials/mnemonic_code_search_results_fk_htmx.html',
     ctx_key='codes')
 

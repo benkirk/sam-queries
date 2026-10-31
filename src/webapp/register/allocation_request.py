@@ -9,6 +9,7 @@ Mounted with ACCOUNT_REGISTRATION_ENABLED; every route 404s unless the visitor l
 Design: docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md.
 """
 
+import functools
 import logging
 from datetime import datetime, timedelta
 
@@ -27,16 +28,17 @@ from sam.schemas.forms import RegisterForm, RegisterGateForm, VerifyCodeForm
 from webapp.extensions import db
 from webapp.limiter import limiter as _rate_limit
 from webapp.utils import human_check
-from webapp.utils.htmx import institution_options
+from webapp.utils.htmx import institution_options, read_flag, register_typeahead
 from webapp.utils.notify import get_notifier
-from webapp.dashboards.user.requests_routes import _NewRequestForm, award_lookup_fragment
+from webapp.dashboards.user.requests_routes import (NewRequestForm, award_lookup_fragment,
+                                                    message_fragment, mnemonic_code_search)
 from webapp.utils.form_handler import FormError
-from webapp.utils.xras import (admin_client, interactive_config, read_client, resource_keys,
-                               session_factory)
+from webapp.utils.xras import admin_client, interactive_config, read_client, resource_keys
 
 from . import eula, tokens
-from .blueprint import _GATE_KEY, _email_key, _email_tier, _gate_accepted_at, _gate_blocks, _global_key, _global_tier
-from .common import anon_tier as _anon_tier, ip_key as _ip_key, person_form_context, post_tier as _post_tier
+from .common import (GATE_KEY, anon_tier as _anon_tier, email_key, email_tier, expired,
+                     gate_accepted_at, gate_blocks, global_key, global_tier, ip_key as _ip_key,
+                     person_form_context, post_tier as _post_tier, terms_page)
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('allocation_request', __name__, url_prefix='/request')
@@ -54,10 +56,6 @@ def _gates():
             and not current_user.is_authenticated):
         return redirect(url_for('auth.login', next=request.full_path.rstrip('?')))
     return None
-
-
-def _verify_ttl() -> int:
-    return int(current_app.config.get('ACCOUNT_VERIFY_TTL_HOURS', 48)) * 3600
 
 
 def _draft_ttl() -> int:
@@ -117,7 +115,7 @@ def overview():
 @bp.route('/terms')
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def terms():
-    return render_template('register/terms.html', eula_html=eula.eula_html())
+    return terms_page()
 
 
 @bp.route('/institutions')
@@ -164,7 +162,7 @@ def start(opportunity_id):
     opportunity, refusal = _chosen_or_refuse(opportunity_id)
     if refusal:
         return refusal
-    return _render_gate(opportunity) if _gate_blocks() else _render_person(opportunity)
+    return _render_gate(opportunity) if gate_blocks() else _render_person(opportunity)
 
 
 @bp.route('/accept', methods=['POST'], strict_slashes=False)
@@ -183,14 +181,14 @@ def accept():
         field_errors, form_level = RegisterGateForm.split_errors(exc.messages)
         return _render_gate(opportunity, form=request.form, errors=form_level,
                             field_errors=field_errors)
-    session[_GATE_KEY] = datetime.now().isoformat()
+    session[GATE_KEY] = datetime.now().isoformat()
     return redirect(url_for('allocation_request.start', opportunity_id=opportunity_id))
 
 
 @bp.route('/start/<int:opportunity_id>', methods=['POST'])
 @_rate_limit.limiter.limit(_post_tier, key_func=_ip_key, methods=['POST'])
-@_rate_limit.limiter.limit(_email_tier, key_func=_email_key, methods=['POST'])
-@_rate_limit.limiter.limit(_global_tier, key_func=_global_key, methods=['POST'])
+@_rate_limit.limiter.limit(email_tier, key_func=email_key, methods=['POST'])
+@_rate_limit.limiter.limit(global_tier, key_func=global_key, methods=['POST'])
 def submit(opportunity_id):
     raw = request.form
     if (raw.get('website') or '').strip():
@@ -200,7 +198,7 @@ def submit(opportunity_id):
     opportunity, refusal = _chosen_or_refuse(opportunity_id)
     if refusal:
         return refusal
-    if _gate_blocks():
+    if gate_blocks():
         return _render_gate(opportunity)
     try:
         data = RegisterForm().load(raw)
@@ -213,9 +211,9 @@ def submit(opportunity_id):
         return _render_person(opportunity, form=raw, errors=[human_error])
 
     now = datetime.now()
-    ttl = int(current_app.config.get('ACCOUNT_VERIFY_TTL_HOURS', 48))
+    ttl = tokens.verify_ttl_hours()
     code = tokens.new_code()
-    accepted_at = _gate_accepted_at()
+    accepted_at = gate_accepted_at()
     with management_transaction(db.session):
         row = register_request(db.session, purpose=PURPOSE_SUBMISSION, clock=now,
                                source_ip=get_remote_address(),
@@ -232,7 +230,7 @@ def submit(opportunity_id):
     result = get_notifier().send(message)
     logger.info('request registration %s for %s: verification mail %s',
                 row.account_request_id, row.email, result.status)
-    session.pop(_GATE_KEY, None)
+    session.pop(GATE_KEY, None)
     page = tokens.request_token(tokens.SALT_REQUEST_PAGE, row.account_request_id, opportunity_id)
     return redirect(url_for('allocation_request.pending', token=page,
                             sent=int(result.status in ('sent', 'redirected'))))
@@ -250,8 +248,7 @@ def _row(token, salt, max_age):
 
 
 def _expired():
-    return render_template('register/expired.html', again_label='start again',
-                           again_url=url_for('allocation_request.overview')), 200
+    return expired(again_label='start again', again_url=url_for('allocation_request.overview'))
 
 
 def _to_draft(row, opportunity_id):
@@ -282,13 +279,13 @@ def _confirm(row, opportunity_id):
 @bp.route('/pending/<token>')
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def pending(token):
-    row, opportunity_id = _row(token, tokens.SALT_REQUEST_PAGE, _verify_ttl())
+    row, opportunity_id = _row(token, tokens.SALT_REQUEST_PAGE, tokens.verify_ttl_seconds())
     if row is None:
         return _expired()
     if row.is_verified:
         return _to_draft(row, opportunity_id)
     return render_template('register/request_pending.html', row=row, token=token,
-                           mail_sent=request.args.get('sent', '1') == '1', errors=[], form={},
+                           mail_sent=read_flag(request.args, 'sent', True), errors=[], form={},
                            code_action=url_for('allocation_request.pending_code', token=token),
                            again_url=url_for('allocation_request.overview'),
                            again_label='start again', step=_step(4, 'Confirm your email'))
@@ -298,7 +295,7 @@ def pending(token):
 @_rate_limit.limiter.limit('10 per hour', methods=['POST'],
                            key_func=lambda: f'request-verify:{request.view_args.get("token", "")[:64]}')
 def pending_code(token):
-    row, opportunity_id = _row(token, tokens.SALT_REQUEST_PAGE, _verify_ttl())
+    row, opportunity_id = _row(token, tokens.SALT_REQUEST_PAGE, tokens.verify_ttl_seconds())
     if row is None:
         return _expired()
     context = dict(row=row, token=token, mail_sent=True, form=request.form,
@@ -309,17 +306,17 @@ def pending_code(token):
         data = VerifyCodeForm().load(request.form)
     except ValidationError:
         return render_template('register/request_pending.html',
-                               errors=['Enter the six-digit code from the mail.'], **context)
+                               errors=[VerifyCodeForm.BAD_FORMAT], **context)
     if not tokens.code_matches(row, data['code']):
         return render_template('register/request_pending.html',
-                               errors=['That code is wrong or has expired.'], **context)
+                               errors=[VerifyCodeForm.WRONG], **context)
     return _confirm(row, opportunity_id)
 
 
 @bp.route('/verify/<token>')
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def verify(token):
-    row, opportunity_id = _row(token, tokens.SALT_REQUEST_LINK, _verify_ttl())
+    row, opportunity_id = _row(token, tokens.SALT_REQUEST_LINK, tokens.verify_ttl_seconds())
     if row is None:
         return _expired()
     return _confirm(row, opportunity_id)
@@ -340,11 +337,9 @@ def draft_row(token):
 
 def _filed(row):
     """The newest submission under *row* that still stands (any state but aborted), else None."""
-    from sam.integration.xras_submission import XrasSubmission
-    return (db.session.query(XrasSubmission)
-            .filter(XrasSubmission.registration_id == row.account_request_id,
-                    XrasSubmission.state != 'aborted')
-            .order_by(XrasSubmission.xras_submission_id.desc()).first())
+    from sam.integration.xras_submission import submissions_for_registration
+    rows = submissions_for_registration(db.session, row.account_request_id)
+    return rows[0] if rows else None
 
 
 def _to_status(token):
@@ -357,13 +352,12 @@ def _to_status(token):
     return redirect(url)
 
 
-class _VisitorNewRequest(_NewRequestForm):
+class _VisitorNewRequest(NewRequestForm):
     """A confirmed visitor's New: the opportunity fixed by the token, no SAM user and no admin.
 
     The PI is the placeholder the row names; the flow mints it in XRAS as its first step.
     """
 
-    template = 'dashboards/user/fragments/request_new_htmx.html'
     roster_private = True
 
     def __init__(self, row, opportunity_id, token):
@@ -412,9 +406,11 @@ class _VisitorNewRequest(_NewRequestForm):
 
     def _expected_messages(self, messages):
         """XRAS will not know the PI until the account exists: its 422 is the approval's step."""
+        from sam.xras.errors import pi_not_in_database
         state = (self._ctx or {}).get('sam_state') or {}
         expected = set(state.get('mnemonic_errors') or ()) if state.get('mnemonic') else set()
-        return [m for m in messages if self._pi_username() in m or m in expected]
+        expected.add(pi_not_in_database(self._pi_username()))
+        return [m for m in messages if m in expected]
 
     def draft(self, data):
         from dataclasses import replace
@@ -422,7 +418,7 @@ class _VisitorNewRequest(_NewRequestForm):
         return replace(draft, sam=replace(draft.sam, registration_id=self.row.account_request_id))
 
     def _file(self, flow, draft, eula):
-        return flow.request_action(session_factory, draft,
+        return flow.request_action(self._sessions(), draft,
                                    actor=f'registration:{self.row.account_request_id}',
                                    xa_user=self.row.xras_username, eula=eula, door='visitor')
 
@@ -432,8 +428,8 @@ class _VisitorNewRequest(_NewRequestForm):
 def draft(token):
     """Step 5: the request itself, for a confirmed visitor; the form loads into its panel.
 
-    A request already filed (Back from the outcome) goes to its status: a second filing
-    would mint nothing and stop on the placeholder that now resolves.
+    A request already filed (Back from the outcome) goes to its status rather than filing
+    twice; only an aborted one may be filed again.
     """
     row, opportunity_id = draft_row(token)
     if row is None:
@@ -460,9 +456,7 @@ def draft_fragment(token):
     try:
         ctx = handler.gate()
     except FormError as exc:
-        return render_template('dashboards/user/fragments/request_message_htmx.html',
-                               title='The request cannot continue',
-                               message=' '.join(exc.errors), variant='warning')
+        return message_fragment('The request cannot continue', ' '.join(exc.errors))
     return render_template(handler.template, errors=[], field_errors={}, form=None, **ctx)
 
 
@@ -477,19 +471,22 @@ def draft_post(token):
     return _VisitorNewRequest(row, opportunity_id, token).handle()
 
 
-@bp.route('/draft/<token>/mnemonic-suggest')
-@_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
-def mnemonic_suggest(token):
-    """The code-letter picker's results; codes and their institutions are public knowledge."""
-    from sam.queries.mnemonic_console import search_mnemonic_codes
-    if draft_row(token)[0] is None:
-        abort(404)
-    q = (request.args.get('q') or '').strip()
-    if len(q) < 2:
-        return ''
-    codes = search_mnemonic_codes(db.session, q, limit=10)
-    return render_template('dashboards/allocations/partials/mnemonic_code_search_results_fk_htmx.html',
-                           codes=codes, q=q)
+def _draft_guard(view):
+    """Admits a typeahead by the draft token in its rule, on the anonymous tier."""
+    @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
+    @functools.wraps(view)
+    def guarded(token):
+        if draft_row(token)[0] is None:
+            abort(404)
+        return view()
+    return guarded
+
+
+register_typeahead(
+    bp, rule='/draft/<token>/mnemonic-suggest', endpoint='mnemonic_suggest', permission=None,
+    search=mnemonic_code_search,
+    template='dashboards/allocations/partials/mnemonic_code_search_results_fk_htmx.html',
+    ctx_key='codes', guard=_draft_guard)
 
 
 @bp.route('/draft/<token>/award-lookup')
@@ -505,13 +502,12 @@ def award_lookup(token):
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def status(token):
     """Where a visitor's request stands: the confirmation, then the filing SAM made."""
-    from sam.integration.xras_submission import XrasSubmission
+    from sam.integration.xras_submission import submissions_for_registration
     row, opportunity_id = draft_row(token)
     if row is None:
         return _expired()
-    submission = (db.session.query(XrasSubmission)
-                  .filter(XrasSubmission.registration_id == row.account_request_id)
-                  .order_by(XrasSubmission.xras_submission_id.desc()).first())
+    rows = submissions_for_registration(db.session, row.account_request_id, include_aborted=True)
+    submission = rows[0] if rows else None
     from sam.projects.projects import Project
     from sam.queries.xras_accounts import active_holder
     project = (db.session.get(Project, submission.project_id)
