@@ -49,7 +49,7 @@ from its plan, and the measurements behind the decisions.
 
 | Doc | Phase |
 |---|---|
-| [`XRAS_SPRINT_A.md`](incoming/implemented/XRAS_SPRINT_A.md) | Action ingestion — `xras_action_log`, the seven schemas, `POST /actions` in capture mode |
+| [`XRAS_SPRINT_A.md`](../plans/implemented/XRAS_SPRINT_A.md) | Action ingestion — `xras_action_log`, the seven schemas, `POST /actions` in capture mode |
 | [`XRAS_SPRINT_B.md`](incoming/implemented/XRAS_SPRINT_B.md) | The operator surface — the 4th Allocations tab, replay, `sam-admin xras`, the activation worklist |
 | [`XRAS_SPRINT_C.md`](incoming/implemented/XRAS_SPRINT_C.md) | The handlers — all six paths, and the replay-and-diff oracle that proves them |
 | [`XRAS_HANDLER_REFACTOR.md`](../plans/implemented/XRAS_HANDLER_REFACTOR.md) | The `ActionHandler` base class the six handlers should have shared, and the six bugs the duplication produced |

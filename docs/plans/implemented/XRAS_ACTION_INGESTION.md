@@ -31,7 +31,7 @@ the sprint.
 
 ### 1. Harvest real payloads — ✅ DONE (4 payloads), and the mailbox premise was wrong
 
-**Superseded by [`XRAS_SPRINT_A.md`](../../xras/incoming/implemented/XRAS_SPRINT_A.md) § *Track 0*, which is authoritative for
+**Superseded by [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) § *Track 0*, which is authoritative for
 the measured wire contract.** Kept here because the correction matters more than the
 original instruction.
 

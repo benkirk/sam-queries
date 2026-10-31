@@ -33,7 +33,7 @@ in the working tree are byte-identical to the deployed tag.
 |---|---|---|
 | **0** — Prerequisites | **partly done** | credential ✅, role enforcement ✅, `VIEW_XRAS` + `MANAGE_XRAS` ✅ (Sprint B). `xras_action_log` and `xras_activation_event` exist in **dev and CI only** — the prod DDL is one DBA ticket, now unblocked. SMTP still open |
 | **1** — Read endpoints (6 GETs) | ✅ **done** | PR #424; 94% of traffic |
-| **2** — Action ingestion + audit trail | ✅ **done, capture-only** | `xras_action_log` + `XrasActionSchema` + `POST /actions` shipped behind `XRAS_ACTIONS_CAPTURE_ONLY`; see [`XRAS_SPRINT_A.md`](implemented/XRAS_SPRINT_A.md). Dispatch is Phase 3 |
+| **2** — Action ingestion + audit trail | ✅ **done, capture-only** | `xras_action_log` + `XrasActionSchema` + `POST /actions` shipped behind `XRAS_ACTIONS_CAPTURE_ONLY`; see [`XRAS_SPRINT_A.md`](../../plans/implemented/XRAS_SPRINT_A.md). Dispatch is Phase 3 |
 | **3** — Handlers | ✅ **done** | **Sprint C** — see [`XRAS_SPRINT_C.md`](implemented/XRAS_SPRINT_C.md). All six services registered: Extension, Supplement, Adjustment, New, Update; Transfer is a *registered* handler that parks with a reason. Behind `XRAS_ACTIONS_CAPTURE_ONLY`, which flips **only at cutover** |
 | **4** — XRAS as the 4th Allocations tab | ✅ **done** | **Sprint B** — see [`XRAS_SPRINT_B.md`](implemented/XRAS_SPRINT_B.md). Tab, replay, `sam-admin xras`, the activation worklist; and it settled `xras_activation_event` so one DBA ticket carries both tables |
 | **5** — Parity and cutover | **partly done** | `--api xras` harness ✅, `sam-admin xras --validate-mapping` ✅ (a diagnostic, not a gate — see § *What is left*). **Next gate: merge and deploy, then run parity against the deployed host.** Sequence and commands: [`XRAS_CUTOVER_RUNBOOK.md`](XRAS_CUTOVER_RUNBOOK.md) |
@@ -47,7 +47,7 @@ up, which pushes SMTP to D.
 
 | Sprint | Contents | State |
 |---|---|---|
-| **A** — Action ingestion | Phase 2: `xras_action_log`, ORM, `XrasActionSchema`, `POST /actions` in capture mode | ✅ shipped — [`XRAS_SPRINT_A.md`](implemented/XRAS_SPRINT_A.md) |
+| **A** — Action ingestion | Phase 2: `xras_action_log`, ORM, `XrasActionSchema`, `POST /actions` in capture mode | ✅ shipped — [`XRAS_SPRINT_A.md`](../../plans/implemented/XRAS_SPRINT_A.md) |
 | **B** — Operator surface | Phase 4: the 4th Allocations tab, `sam-admin xras`, replay, `VIEW_XRAS`/`MANAGE_XRAS`, the activation worklist | ✅ shipped — [`XRAS_SPRINT_B.md`](implemented/XRAS_SPRINT_B.md) |
 | **C** — Handlers | Phase 3: the dispatcher and all six handler paths, and the replay-and-diff oracle that verifies them | ✅ shipped — [`XRAS_SPRINT_C.md`](implemented/XRAS_SPRINT_C.md). Suite 4,708 → **5,213** |
 | **C.1a** — Handler refactor | The `ActionHandler` base class the six handlers should have shared. Six bugs the duplication produced, one of them live | ✅ shipped — [`XRAS_HANDLER_REFACTOR.md`](../../plans/implemented/XRAS_HANDLER_REFACTOR.md) § *Deviations*. Suite 5,213 → **5,223** |
@@ -565,7 +565,7 @@ plus 67 failures.
 the 2026-08-11 bulk forward — and live scrubbed in `tests/fixtures/xras/actions/`
 (16 New, 9 Extension, 9 Supplement, 4 `Date Adjustment`, 3 Adjustment; 28 legacy successes,
 6 failures, 7 parked). They correct roughly twenty points of the shape inferred from the POJOs —
-see [`XRAS_SPRINT_A.md`](implemented/XRAS_SPRINT_A.md) § *Track 0*, which is authoritative **as amended by its
+see [`XRAS_SPRINT_A.md`](../../plans/implemented/XRAS_SPRINT_A.md) § *Track 0*, which is authoritative **as amended by its
 own dated update notes**, and `tests/unit/test_xras_actions.py`, which enforces it.
 
 Extraction is `scripts/xras/extract_email_payloads.py` (pairs each notification `.eml` with the
@@ -1196,7 +1196,7 @@ NRIT P2-63.
 
 > **Sprint A.** The as-built record — the measured wire contract, the DDL, how the new table
 > reaches dev *and* CI without regenerating the LFS snapshot, and the capture-first running
-> order — is in [`XRAS_SPRINT_A.md`](implemented/XRAS_SPRINT_A.md). The original handoff is retired to
+> order — is in [`XRAS_SPRINT_A.md`](../../plans/implemented/XRAS_SPRINT_A.md). The original handoff is retired to
 > [`XRAS_ACTION_INGESTION.md`](../../plans/implemented/XRAS_ACTION_INGESTION.md). What follows
 > is the contract summary.
 

@@ -162,7 +162,7 @@ production:
 - **`Transfer`** — parks by design; confirm the reason survives to wherever it lands.
 
 Both close permanently the same two ways: a bulk forward from `hdt@ucar.edu`
-(`XRAS_SPRINT_A.md` § 3b has the ask — include the manual-fallback subject, which is how
+(`../../../plans/implemented/XRAS_SPRINT_A.md` § 3b has the ask — include the manual-fallback subject, which is how
 the Adjustment payload nearly went unnoticed), or production capture after cutover.
 
 > **Update 2026-08-11 — the bulk forward arrived; the list did not shrink to zero, and it
