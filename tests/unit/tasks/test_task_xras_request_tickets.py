@@ -31,6 +31,13 @@ PAYLOAD = json.dumps({'actionType': 'New', 'requestTitle': 'Clouds', 'roles': [
      'person': {'firstName': 'Jo', 'lastName': 'Doe', 'email': 'jdoe@example.invalid'}}]})
 
 
+@pytest.fixture(autouse=True)
+def _one_worker_at_a_time(serial_file_lock):
+    """Every test files request RID, and the ledger and link rows commit on their own sessions."""
+    with serial_file_lock('xras_request_tickets_rid'):
+        yield
+
+
 @pytest.fixture
 def ctx(session):
     def build(dry_run=False, when=OCC):

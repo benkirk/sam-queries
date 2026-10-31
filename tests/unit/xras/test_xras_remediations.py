@@ -2749,19 +2749,31 @@ class TestProjcodePreview:
 
 
 class TestTheTicketKey:
-    """A refused request's NUSD ticket shows on its row (XRAS_REQUEST_TICKETS.md § 6)."""
+    """A refused request's NUSD ticket shows on its row (XRAS_REQUEST_TICKETS.md § 6).
+
+    Each test files under its own request id: the ticket row is committed, so on the
+    shared 900001 another worker's row could show it (the flake this replaced).
+    """
+
+    @staticmethod
+    def _own_request():
+        from factories import next_seq
+        payload = _payload()
+        payload['requestId'] = int(next_seq('91'))
+        _publish(payload)
+        return payload['requestId']
 
     def test_the_row_names_its_ticket(self, app, auth_client, configured):
         from sqlalchemy.orm import Session
 
         from sam import ExternalTicket
         from webapp.extensions import db
-        _publish(_payload())
+        rid = self._own_request()
         with app.app_context():
             engine = db.engine
         with Session(engine) as s:
-            ExternalTicket.create(s, provider='dry-run', ticket_key='DRY-SAM-XR-900001',
-                                  entity_type='xras_request', entity_id=900001,
+            ExternalTicket.create(s, provider='dry-run', ticket_key=f'DRY-SAM-XR-{rid}',
+                                  entity_type='xras_request', entity_id=rid,
                                   origin='created', requested_by='task:xras_request_tickets')
             s.commit()
         try:
@@ -2770,11 +2782,11 @@ class TestTheTicketKey:
         finally:
             with Session(engine) as s:
                 s.query(ExternalTicket).filter_by(entity_type='xras_request',
-                                                  entity_id=900001).delete()
+                                                  entity_id=rid).delete()
                 s.commit()
-        assert 'DRY-SAM-XR-900001' in body
+        assert f'DRY-SAM-XR-{rid}' in body
 
     def test_a_row_without_one_shows_none(self, auth_client, configured):
-        _publish(_payload())
+        self._own_request()
         body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'NUSD ticket for this refused post' not in body
