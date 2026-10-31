@@ -1,0 +1,63 @@
+{#- One allocation type as a card (sam/xras/allocation_overview.py TypeCard), in three
+    variants: `full` (the /request overview), `pick` (the New dialog's type stage), `admin`
+    (Allocations > XRAS > Configuration). Styles: static/css/request-types.css.
+    `start_url` is the full card's Start link; the caller wraps the cards in .type-card-list. -#}
+
+{% macro _facts(card) %}
+{%- set opp = card.opportunity %}{% set rules = card.rules %}
+<ul class="type-card-facts">
+    {% if card.funding %}<li><i class="fa-solid fa-hand-holding-dollar" aria-hidden="true"></i>{{ card.funding }}</li>{% endif %}
+    {% if opp and opp.award_months %}<li><i class="fa-regular fa-calendar" aria-hidden="true"></i>{{ opp.award_months }}-month award</li>{% endif %}
+    {% if rules and rules.wants_grants %}<li><i class="fa-solid fa-file-signature" aria-hidden="true"></i>Your award number, looked up on the form</li>{% endif %}
+    {% for doc in (rules.documents if rules else []) if doc.required %}
+    <li><i class="fa-regular fa-file-pdf" aria-hidden="true"></i>{{ doc.label }} (PDF{% if doc.hard_page_limit %}, up to {{ doc.hard_page_limit }} pages{% endif %})</li>
+    {% endfor %}
+</ul>
+{%- endmacro %}
+
+{% macro _ledger(card) %}
+{% if card.amounts %}
+<div class="table-responsive type-card-limits">
+    <table class="table table-sm align-middle mb-0">
+        <thead class="table-subtle">
+            <tr><th>Resource</th><th class="col-num">Typical request</th><th class="col-num">Up to</th></tr>
+        </thead>
+        <tbody>
+        {% for r in card.amounts %}
+            <tr>
+                <td>{{ r.name }}{% if r.units %} <span class="text-muted small">{{ r.units | lower }}</span>{% endif %}</td>
+                <td class="col-num">{{ r.limit.default_amount | fmt_number(raw=True) if r.limit and r.limit.default_amount is not none else '—' }}</td>
+                <td class="col-num">{{ r.limit.max_amount | fmt_number(raw=True) if r.limit and r.limit.max_amount is not none else 'no set limit' }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% if card.access %}
+<p class="type-card-notes mb-2"><i class="fa-solid fa-key me-1" aria-hidden="true"></i>Access to
+    {{ card.access | map(attribute='name') | join(', ') }}{% if card.amounts %}, without an amount to choose{% endif %}.</p>
+{% endif %}
+{%- endmacro %}
+
+{% macro type_card(card, variant='full', pick_name=None, start_url=None, admin=None) %}
+<section class="type-card{{ ' is-closed' if not card.is_open }}" aria-labelledby="type-{{ card.xras_allocation_type_id }}">
+    <div class="type-card-head">
+        <h2 id="type-{{ card.xras_allocation_type_id }}">{{ card.title }}</h2>
+        {% if card.cadence %}<span class="type-card-cadence">{{ card.cadence }}</span>{% endif %}
+    </div>
+    {% if card.summary %}<p class="mb-2">{{ card.summary }}</p>{% endif %}
+    {{ _facts(card) }}
+    {{ _ledger(card) }}
+    {% if card.notes %}<p class="type-card-notes">{{ card.notes }}</p>{% endif %}
+    <div class="type-card-foot">
+        {% if card.is_open and start_url %}
+        <a class="btn btn-primary" href="{{ start_url }}">
+            <i class="fa-solid fa-arrow-right" aria-hidden="true"></i> Request {{ card.title }}
+        </a>
+        {% else %}
+        <span class="text-muted"><i class="fa-regular fa-clock" aria-hidden="true"></i> {{ card.reason }}</span>
+        {% endif %}
+    </div>
+</section>
+{%- endmacro %}

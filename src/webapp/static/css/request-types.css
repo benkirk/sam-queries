@@ -1,0 +1,58 @@
+/* The allocation-type card (dashboards/fragments/type_cards.html): the /request overview,
+   the New dialog's type stage and Allocations > XRAS > Configuration. */
+
+.type-card-list {
+    display: grid;
+    gap: 1rem;
+    margin: 1.25rem 0;
+}
+.type-card {
+    border: 1px solid var(--border-default);
+    background: var(--surface-raised);
+    padding: 1rem 1.25rem;
+}
+.type-card.is-closed { background: var(--surface-card); }
+.type-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.75rem;
+    margin-bottom: 0.5rem;
+}
+.type-card-head h2 {
+    color: var(--text-heading);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-bold);
+    margin: 0;
+}
+.type-card-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.25rem;
+    color: var(--text-secondary);
+    font-size: var(--font-size-xsm);
+    margin: 0 0 0.5rem;
+    padding: 0;
+    list-style: none;
+}
+.type-card-facts i { margin-right: 0.35rem; }
+.type-card-limits { font-size: var(--font-size-xsm); margin-bottom: 0.5rem; }
+.type-card-notes {
+    color: var(--text-secondary);
+    font-size: var(--font-size-xsm);
+    margin-bottom: 0.75rem;
+}
+.type-card-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+.type-card-cadence {
+    border: 1px solid var(--border-default);
+    color: var(--text-secondary);
+    font-size: var(--font-size-xxsm);
+    padding: 0 0.5rem;
+    border-radius: 999px;
+}

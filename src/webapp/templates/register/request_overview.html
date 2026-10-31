@@ -1,4 +1,5 @@
 {% extends 'register/base_register.html' %}
+{% from 'dashboards/fragments/type_cards.html' import type_card %}
 {#
   /request step 1: every allocation type a visitor may file, laid out before anything
   starts (sam/xras/allocation_overview.py). Plain links, no htmx. Context: cards
@@ -31,57 +32,9 @@
 </div>
 {% endif %}
 
-<div class="request-type-list">
+<div class="type-card-list">
 {% for card in cards %}
-    {% set opp = card.opportunity %}
-    {% set rules = card.rules %}
-    <section class="request-type{{ ' is-closed' if not card.is_open }}" aria-labelledby="type-{{ card.xras_allocation_type_id }}">
-        <div class="request-type-head">
-            <h2 id="type-{{ card.xras_allocation_type_id }}">{{ card.title }}</h2>
-            {% if card.cadence %}<span class="request-type-cadence">{{ card.cadence }}</span>{% endif %}
-        </div>
-        {% if card.summary %}<p class="mb-2">{{ card.summary }}</p>{% endif %}
-        <ul class="request-type-facts">
-            {% if card.funding %}<li><i class="fa-solid fa-hand-holding-dollar" aria-hidden="true"></i>{{ card.funding }}</li>{% endif %}
-            {% if opp and opp.award_months %}<li><i class="fa-regular fa-calendar" aria-hidden="true"></i>{{ opp.award_months }}-month award</li>{% endif %}
-            {% if rules and rules.wants_grants %}<li><i class="fa-solid fa-file-signature" aria-hidden="true"></i>Your award number, looked up on the form</li>{% endif %}
-            {% for doc in (rules.documents if rules else []) if doc.required %}
-            <li><i class="fa-regular fa-file-pdf" aria-hidden="true"></i>{{ doc.label }} (PDF{% if doc.hard_page_limit %}, up to {{ doc.hard_page_limit }} pages{% endif %})</li>
-            {% endfor %}
-        </ul>
-        {% if card.amounts %}
-        <div class="table-responsive request-type-limits">
-            <table class="table table-sm align-middle mb-0">
-                <thead class="table-subtle">
-                    <tr><th>Resource</th><th class="col-num">Typical request</th><th class="col-num">Up to</th></tr>
-                </thead>
-                <tbody>
-                {% for r in card.amounts %}
-                    <tr>
-                        <td>{{ r.name }}{% if r.units %} <span class="text-muted small">{{ r.units | lower }}</span>{% endif %}</td>
-                        <td class="col-num">{{ r.limit.default_amount | fmt_number(raw=True) if r.limit and r.limit.default_amount is not none else '—' }}</td>
-                        <td class="col-num">{{ r.limit.max_amount | fmt_number(raw=True) if r.limit and r.limit.max_amount is not none else 'no set limit' }}</td>
-                    </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% endif %}
-        {% if card.access %}
-        <p class="request-type-notes mb-2"><i class="fa-solid fa-key me-1" aria-hidden="true"></i>Access to
-            {{ card.access | map(attribute='name') | join(', ') }}{% if card.amounts %}, without an amount to choose{% endif %}.</p>
-        {% endif %}
-        {% if card.notes %}<p class="request-type-notes">{{ card.notes }}</p>{% endif %}
-        <div class="request-type-foot">
-            {% if card.is_open %}
-            <a class="btn btn-primary" href="{{ url_for('allocation_request.start', opportunity_id=opp.opportunity_id) }}">
-                <i class="fa-solid fa-arrow-right" aria-hidden="true"></i> Request {{ card.title }}
-            </a>
-            {% else %}
-            <span class="text-muted"><i class="fa-regular fa-clock" aria-hidden="true"></i> {{ card.reason }}</span>
-            {% endif %}
-        </div>
-    </section>
+    {{ type_card(card, start_url=url_for('allocation_request.start', opportunity_id=card.opportunity.opportunity_id) if card.is_open) }}
 {% else %}
     <p class="text-muted fst-italic">No allocation types are listed here yet.</p>
 {% endfor %}

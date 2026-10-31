@@ -586,7 +586,7 @@ def test_request_overview_route(client, route_count_queries, visitor_overview):
         response = client.get('/request/')
     assert response.status_code == 200, f'GET /request/ returned {response.status_code}'
     html = response.get_data(as_text=True)
-    assert html.count('request-type-limits') >= 2, 'the cards carry their SAM limits'
+    assert html.count('type-card-limits') >= 2, 'the cards carry their SAM limits'
     assert stats.count <= baseline, (
         f'/request overview: {stats.count} queries > {baseline} baseline '
         f'({visitor_overview} guide rows). {stats.summary()}')
