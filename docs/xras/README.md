@@ -42,7 +42,7 @@ path (`docs/plans/XRAS_SUBMISSION.md` § 5).
 | [`XRAS_WRITE_PROBES.md`](outgoing/XRAS_WRITE_PROBES.md) | The **live probe runbook and results** (2026-08-21) behind that document: what each write verb actually does against production, the one authorization rule covering the whole surface, the role-type encoding trap, `rules{}` proven closed, and the net-zero proof. Re-probing is expensive and destructive — read this instead |
 | [`XRAS_SUBMISSION.md`](../plans/XRAS_SUBMISSION.md) | **Design, not built; the authoring surface is measured** (record: [`outgoing/XRAS_SUBMISSION_PROBES.md`](outgoing/XRAS_SUBMISSION_PROBES.md)). Authoring requests from SAM to close the loop (SAM → XRAS review → SAM apply) in three phases: Supplement/Extension on existing projects from the lead's dashboard, routed by the XRAS-family predicate and an allocation-type policy; new requests by logged-in users bounded by per-type, per-resource limits; requests by people without an account, via [`ACCOUNT_REGISTRATION.md`](../plans/implemented/ACCOUNT_REGISTRATION.md). One flow layer serves the PI form and the admin editor |
 
-## Shipped — `incoming/implemented/`
+## Shipped — `../plans/implemented/`
 
 As-built records, one per sprint. Each documents what was built, what deviated
 from its plan, and the measurements behind the decisions.
@@ -51,7 +51,7 @@ from its plan, and the measurements behind the decisions.
 |---|---|
 | [`XRAS_SPRINT_A.md`](../plans/implemented/XRAS_SPRINT_A.md) | Action ingestion — `xras_action_log`, the seven schemas, `POST /actions` in capture mode |
 | [`XRAS_SPRINT_B.md`](../plans/implemented/XRAS_SPRINT_B.md) | The operator surface — the 4th Allocations tab, replay, `sam-admin xras`, the activation worklist |
-| [`XRAS_SPRINT_C.md`](incoming/implemented/XRAS_SPRINT_C.md) | The handlers — all six paths, and the replay-and-diff oracle that proves them |
+| [`XRAS_SPRINT_C.md`](../plans/implemented/XRAS_SPRINT_C.md) | The handlers — all six paths, and the replay-and-diff oracle that proves them |
 | [`XRAS_HANDLER_REFACTOR.md`](../plans/implemented/XRAS_HANDLER_REFACTOR.md) | The `ActionHandler` base class the six handlers should have shared, and the six bugs the duplication produced |
 | [`XRAS_STRESS_AND_SCHEMA.md`](../plans/implemented/XRAS_STRESS_AND_SCHEMA.md) | Stressing the handlers with the audit row as the assertion target; the remaining `xras_action_log` columns |
 | [`XRAS_PRE_DEPLOY_SMOKE.md`](../plans/implemented/XRAS_PRE_DEPLOY_SMOKE.md) | End-to-end smoke on a local stack, incoming action → email |

@@ -20,7 +20,7 @@ validation. Unlike Extension it can also CREATE an allocation, and that branch
 uses **today** plus a derived end date rather than the action's own dates.
 
 Verified against ``~/codes/sam`` at tag 2.0.3. See
-``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``, *Supplement*.
+``docs/plans/implemented/XRAS_SPRINT_C.md``, *Supplement*.
 """
 
 import logging

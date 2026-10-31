@@ -34,7 +34,7 @@ WARNING: dates are compared AS STRINGS, never parsed. Java uses lexicographic
 would add a failure mode (an unparseable date) that legacy does not have.
 
 Verified against ``~/codes/sam`` at tag 2.0.3. See
-``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``, *The roster*.
+``docs/plans/implemented/XRAS_SPRINT_C.md``, *The roster*.
 """
 
 import logging

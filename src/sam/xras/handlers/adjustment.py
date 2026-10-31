@@ -29,7 +29,7 @@ Getting this half-right is what the original port did -- the flag was computed,
 carried through a tuple, unpacked, and then never applied.
 
 Verified against ``~/codes/sam`` at tag 2.0.3. See
-``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``, *Adjustment*.
+``docs/plans/implemented/XRAS_SPRINT_C.md``, *Adjustment*.
 """
 
 import logging

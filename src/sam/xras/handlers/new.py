@@ -21,7 +21,7 @@ an opaque 500 -- which is the actual deliverable.
 
 Verified against ``~/codes/sam`` at tag 2.0.3, but ported against
 ``projects_routes.py``'s create flow rather than the Java. See
-``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``, *New*.
+``docs/plans/implemented/XRAS_SPRINT_C.md``, *New*.
 """
 
 import logging

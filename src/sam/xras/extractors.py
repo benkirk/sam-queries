@@ -28,7 +28,7 @@ Two traps would silently produce wrong data:
    and ``Education`` each name two different ``allocation_type`` rows.
 
 Verified against ``~/codes/sam`` at tag 2.0.3. See
-``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``.
+``docs/plans/implemented/XRAS_SPRINT_C.md``.
 """
 
 import re

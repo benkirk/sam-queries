@@ -7,7 +7,7 @@ Incident record (UCLA0042, 2026-10-05), the decision taken, and one deferred ide
 Code: `src/sam/xras/handlers/extension.py`, `src/sam/xras/handlers/_allocations.py`
 (`account_is_extendable`), `src/sam/xras/preflight.py`; tests in
 `tests/unit/xras/test_xras_extension_handler.py`. Sprint record:
-`docs/xras/incoming/implemented/XRAS_SPRINT_C.md` § *Extension*, finding 4.
+`docs/plans/implemented/XRAS_SPRINT_C.md` § *Extension*, finding 4.
 
 ## In plain terms
 
