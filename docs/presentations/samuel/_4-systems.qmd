@@ -122,7 +122,7 @@ and sam-ldap-syncd as rootless podman containers. Sources: sam-queries
 docs/plans/implemented/SAM_LDAP_SYNCD_REFERENCE.md §2.5 and docs/plans/implemented/LDAP_SYNC_API.md.
 Giving way, 2026-10-02: unsetting a fair-share override deleted a facility_resource row, and
 legacy's fair-share tree for Derecho came back empty (#698). The row now stays, with a NULL value.
-An audit of every SAMuel delete on a table legacy reads followed (#699, docs/plans/HARD_DELETE_AUDIT.md):
+An audit of every SAMuel delete on a table legacy reads followed (#699, docs/plans/implemented/HARD_DELETE_AUDIT.md):
 a superseded allocation is shortened rather than left live, and the disk-root hard delete is gone.
 :::
 

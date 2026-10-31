@@ -353,7 +353,7 @@ Route handlers use `db.session`, so HTTP-layer tests see committed rows only; by
 | `docs/apis/SYSTEMS_INTEGRATION_APIs.md` | **one** pointer line (file is 953/960; §8 at `:851-856` is the ldapsync model) | 960 |
 | `CLAUDE.md:188` | `ROLE_XRAS`, `ROLE_API_ADMIN` -> add `ROLE_API_HEUV`; `:236` mounts list gains `api/heuv/`; **net-zero lines** (1067/1067) | 1067 |
 | `docs/plans/implemented/LDAP_SYNC_API.md:532` | HEUV row in Appendix B (`:521`, header `:525`): status -> ported, PR # | exempt |
-| `docs/plans/HARD_DELETE_AUDIT.md:185,212` | `default_project` consumer now known (HEUV `defaultproject`, no fallback) | exempt |
+| `docs/plans/implemented/HARD_DELETE_AUDIT.md:185,212` | `default_project` consumer now known (HEUV `defaultproject`, no fallback) | exempt |
 | `docs/presentations/samuel/_4-systems.qmd:34,182,704`, `_A-peers.qmd:195`, `docs/plans/SAMUEL_PRESENTATION.md:347` | "not ported" -> ported | exempt |
 | `_4-systems.qmd:528`, `_B-apis.qmd:16`, `SAMUEL_PRESENTATION.md:350` | stale "nothing is mounted at /api/protected" (ldapsync already is) -> list `admin` + `heuv` | exempt |
 | `src/webapp/README.md:83` | tree line for `api/heuv/` | 710 (597 now) |
