@@ -22,6 +22,20 @@ class TestThePage:
     def test_it_requires_login(self, client):
         assert client.get(PAGE).status_code in (302, 401)
 
+    def test_the_shells_ship_to_manage_xras(self, auth_client):
+        shells = ('createAllocationGuideModal', 'editAllocationGuideModal',
+                  'createAllocationLimitModal', 'editAllocationLimitModal')
+        html = auth_client.get(PAGE).get_data(as_text=True)
+        assert all(f'id="{s}"' in html for s in shells)
+
+    def test_a_viewer_gets_no_shells(self, view_only_client):
+        html = view_only_client.get(PAGE).get_data(as_text=True)
+        assert 'id="editAllocationGuideModal"' not in html
+
+    def test_admin_configuration_is_read_only_again(self, auth_client):
+        html = auth_client.get('/admin/configuration').get_data(as_text=True)
+        assert 'AllocationGuide' not in html and 'AllocationLimit' not in html
+
     def test_preview_offers_every_registry_audience_and_everyone(self, auth_client):
         html = auth_client.get(PAGE).get_data(as_text=True)
         assert 'id="typePreviewAll" value="" autocomplete="off" checked' in html

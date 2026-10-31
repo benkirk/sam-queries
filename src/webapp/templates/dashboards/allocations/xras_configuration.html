@@ -1,4 +1,5 @@
 {% extends 'dashboards/allocations/base_allocations.html' %}
+{% from 'dashboards/fragments/modals.html' import modal_scaffold %}
 {#
   Allocations > XRAS > Configuration: one card per allocation type as a PI sees it
   (dashboards/fragments/type_cards.html, variant admin). Context: audiences (the registry,
@@ -37,4 +38,15 @@
         <p class="mt-2">Loading...</p>
     </div>
 </section>
+
+{% if has_permission(Permission.MANAGE_XRAS) %}
+{{ modal_scaffold('createAllocationGuideModal', 'Publish on the request page',
+                  icon='signs-post', container_id='createAllocationGuideFormContainer') }}
+{{ modal_scaffold('editAllocationGuideModal', 'Edit the request page card',
+                  icon='signs-post', container_id='editAllocationGuideFormContainer') }}
+{{ modal_scaffold('createAllocationLimitModal', 'Add a limit',
+                  icon='plus', container_id='createAllocationLimitFormContainer') }}
+{{ modal_scaffold('editAllocationLimitModal', 'Edit the limit',
+                  icon='scale-balanced', container_id='editAllocationLimitFormContainer') }}
+{% endif %}
 {% endblock %}

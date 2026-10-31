@@ -1,6 +1,4 @@
 {% extends 'dashboards/admin/base_admin.html' %}
-{% from 'dashboards/fragments/search_box.html' import active_switch %}
-{% from 'dashboards/fragments/modals.html' import modal_scaffold %}
 
 {% block title %}Admin: Configuration - SAM{% endblock %}
 
@@ -22,59 +20,4 @@
         </div>
     </div>
 </div>
-
-<div class="card mt-3">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0 flex-grow-1">
-            <i class="fa-solid fa-scale-balanced"></i> Request limits
-            <small class="text-muted fw-normal ms-2">Per allocation type and resource</small>
-        </h5>
-        {{ active_switch('allocationLimitsCardActiveOnly',
-                         url_for('admin_dashboard.htmx_allocation_limits_card'),
-                         'allocationLimitsSection',
-                         wrapper_class='ms-3') }}
-    </div>
-    <div id="allocationLimitsSection"
-         hx-get="{{ url_for('admin_dashboard.htmx_allocation_limits_card') }}?active_only=1"
-         hx-trigger="load once"
-         hx-swap="innerHTML">
-        <div class="card-body text-center text-muted py-4" role="status">
-            <i class="fa-solid fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-            <p class="mt-2">Loading...</p>
-        </div>
-    </div>
-</div>
-
-<div class="card mt-3">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0 flex-grow-1">
-            <i class="fa-solid fa-signs-post"></i> Allocation type guide
-            <small class="text-muted fw-normal ms-2">What the request page says before anyone starts</small>
-        </h5>
-        {{ active_switch('allocationGuidesCardActiveOnly',
-                         url_for('admin_dashboard.htmx_allocation_guides_card'),
-                         'allocationGuidesSection',
-                         wrapper_class='ms-3') }}
-    </div>
-    <div id="allocationGuidesSection"
-         hx-get="{{ url_for('admin_dashboard.htmx_allocation_guides_card') }}?active_only=1"
-         hx-trigger="load once"
-         hx-swap="innerHTML">
-        <div class="card-body text-center text-muted py-4" role="status">
-            <i class="fa-solid fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-            <p class="mt-2">Loading...</p>
-        </div>
-    </div>
-</div>
-
-{% if has_permission(Permission.SYSTEM_ADMIN) %}
-{{ modal_scaffold('createAllocationGuideModal', 'New Allocation Type Guide',
-                  icon='plus', container_id='createAllocationGuideFormContainer') }}
-{{ modal_scaffold('editAllocationGuideModal', 'Edit Allocation Type Guide',
-                  icon='signs-post', container_id='editAllocationGuideFormContainer') }}
-{{ modal_scaffold('createAllocationLimitModal', 'New Request Limit',
-                  icon='plus', container_id='createAllocationLimitFormContainer') }}
-{{ modal_scaffold('editAllocationLimitModal', 'Edit Request Limit',
-                  icon='scale-balanced', container_id='editAllocationLimitFormContainer') }}
-{% endif %}
 {% endblock %}

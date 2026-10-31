@@ -1,4 +1,4 @@
-"""Admin -> Configuration: the request-limits card and the XRAS tile.
+"""Allocations > XRAS > Configuration: the request limits' forms (XRAS_SUBMISSION_SPRINT3.md A2).
 
 HTTP-layer only (auth, render, validation re-render, the duplicate-pair refusal):
 route handlers commit through ``db.session``, so no happy-path write runs here.
@@ -10,24 +10,8 @@ import pytest
 
 from sam.accounting.allocation_type_limits import AllocationTypeResourceLimit
 from sam.schemas.forms import EditAllocationLimitForm
-from webapp.utils.rbac import Permission
 
-CARD = '/admin/htmx/allocation-limits'
-
-
-@pytest.fixture
-def config_only_client(auth_client, monkeypatch):
-    """`benkirk` with VIEW_SYSTEM_CONFIG but without SYSTEM_ADMIN."""
-    from webapp.utils import rbac
-    real = rbac.get_user_permissions
-
-    def _without(user):
-        kept = {p for p in real(user) if p is not Permission.SYSTEM_ADMIN}
-        kept.add(Permission.VIEW_SYSTEM_CONFIG)
-        return kept
-
-    monkeypatch.setattr(rbac, 'get_user_permissions', _without)
-    return auth_client
+URL = '/allocations/htmx/allocation-limit'
 
 
 @pytest.fixture
@@ -64,56 +48,46 @@ def a_limit(engine):
             AllocationTypeResourceLimit.allocation_type_resource_limit_id == lid))
 
 
-class TestTheCard:
+class TestTheGate:
 
-    def test_renders_the_seeded_rows(self, auth_client, a_limit):
-        html = auth_client.get(CARD + '?active_only=1').get_data(as_text=True)
-        assert 'Education' in html
-        assert 'editAllocationLimitModal' in html
-        assert a_limit.resource_name in html
-
-    def test_the_page_hosts_the_card_and_its_shells(self, auth_client):
-        html = auth_client.get('/admin/configuration').get_data(as_text=True)
-        assert 'allocationLimitsSection' in html
-        assert 'id="editAllocationLimitModal"' in html
-
-    def test_view_system_config_reads_but_cannot_write(self, config_only_client, a_limit):
-        html = config_only_client.get(CARD).get_data(as_text=True)
-        assert a_limit.resource_name in html
-        assert 'editAllocationLimitModal' not in html
+    def test_view_xras_alone_cannot_open_or_post_a_form(self, view_only_client, a_limit):
         lid = a_limit.allocation_type_resource_limit_id
-        assert config_only_client.post(f'/admin/htmx/allocation-limit-edit/{lid}',
-                                       data={}).status_code == 403
-        assert config_only_client.delete(
-            f'/admin/htmx/allocation-limit-delete/{lid}').status_code == 403
+        assert view_only_client.get(f'{URL}-edit-form/{lid}').status_code == 403
+        assert view_only_client.get(f'{URL}-create-form').status_code == 403
+        assert view_only_client.post(f'{URL}-edit/{lid}', data={}).status_code == 403
+
+    def test_there_is_no_delete_route(self, auth_client, a_limit):
+        """Retiring a row is the edit form's Active box."""
+        lid = a_limit.allocation_type_resource_limit_id
+        assert auth_client.delete(f'{URL}-delete/{lid}').status_code in (404, 405)
 
     def test_anonymous_is_refused(self, client):
-        assert client.get(CARD).status_code in (302, 401, 403)
+        assert client.get(f'{URL}-create-form').status_code in (302, 401, 403)
 
 
 class TestTheForms:
 
     def test_edit_form_renders(self, auth_client, a_limit):
         lid = a_limit.allocation_type_resource_limit_id
-        html = auth_client.get(f'/admin/htmx/allocation-limit-edit-form/{lid}').get_data(
+        html = auth_client.get(f'{URL}-edit-form/{lid}').get_data(
             as_text=True)
         assert 'name="max_amount"' in html
 
     def test_bounds_out_of_order_rerender(self, auth_client, a_limit):
         lid = a_limit.allocation_type_resource_limit_id
-        resp = auth_client.post(f'/admin/htmx/allocation-limit-edit/{lid}',
+        resp = auth_client.post(f'{URL}-edit/{lid}',
                                 data={'min_amount': '10', 'max_amount': '5', 'active': 'y'})
         assert resp.status_code == 200
         assert 'exceeds' in resp.get_data(as_text=True)
 
     def test_a_second_row_for_a_pair_is_refused(self, auth_client, a_limit):
-        resp = auth_client.post('/admin/htmx/allocation-limit-create', data={
+        resp = auth_client.post(f'{URL}-create', data={
             'allocation_type_id': a_limit.allocation_type_id,
             'resource_id': a_limit.resource_id, 'max_amount': '1'})
         assert 'already have a limit' in resp.get_data(as_text=True)
 
     def test_create_form_renders(self, auth_client):
-        html = auth_client.get('/admin/htmx/allocation-limit-create-form').get_data(as_text=True)
+        html = auth_client.get(f'{URL}-create-form').get_data(as_text=True)
         assert 'name="allocation_type_id"' in html and 'name="resource_id"' in html
 
 
@@ -127,10 +101,3 @@ class TestTheSchema:
         from marshmallow import ValidationError
         with pytest.raises(ValidationError):
             EditAllocationLimitForm().load({'default_amount': '9', 'max_amount': '3'})
-
-
-class TestTheXrasTile:
-
-    def test_the_submit_lever_is_shown_off_in_tests(self, auth_client):
-        html = auth_client.get('/admin/htmx/configuration').get_data(as_text=True)
-        assert 'XRAS_SUBMIT_ENABLED' in html and 'Users may file' in html

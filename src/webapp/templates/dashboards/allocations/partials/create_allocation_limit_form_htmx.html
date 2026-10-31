@@ -1,10 +1,10 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
 {% from 'dashboards/fragments/form_fields.html' import select_field with context %}
-{% from 'dashboards/admin/fragments/allocation_limit_bounds.html' import bounds_row with context %}
+{% from 'dashboards/allocations/partials/allocation_limit_bounds.html' import bounds_row with context %}
 {# htmx: Create request limit (loaded into #createAllocationLimitFormContainer). #}
 {% set _p = 'createAllocationLimit' %}
 {% call htmx_form(
-    url_for('admin_dashboard.htmx_allocation_limit_create'),
+    url_for('allocations_dashboard.htmx_allocation_limit_create'),
     '#createAllocationLimitFormContainer',
     'Create',
     submit_icon='plus',
