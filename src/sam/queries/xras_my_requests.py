@@ -113,8 +113,8 @@ def my_requests(session, username: str,
     logs = latest_action_logs(session, [r.action_id for r in filed]
                         + [a['action_id'] for a in latest.values() if a])
     statuses = {a['action_id']: a.get('action_status') for a in latest.values() if a}
-    projcodes = _projcodes(session, [r.project_id for r in filed
-                                     if r.project_id and not r.request_number])
+    projcodes = _projcodes(session, [r.project_id for r in filed if r.project_id
+                                     and (r.action_type == 'New' or not r.request_number)])
     numbered = {e['request_id']: e['request_number'] for e in index_rows or ()
                 if e.get('request_id') and e.get('request_number')}
 
@@ -123,9 +123,12 @@ def my_requests(session, username: str,
     for sub in filed:
         readout = submission_readout(sub, logs.get(sub.action_id), statuses.get(sub.action_id))
         shown.add(sub.action_id)
-        # A New's row never learns a number: name its project, else the line the sweep found.
+        # An applied New's line is renamed to its project's code; before that, the number
+        # minted at submit, else the line the sweep found by request id.
+        new_code = projcodes.get(sub.project_id) if sub.action_type == 'New' else None
         rows.append(dict(kind='filed',
-                         request_number=(sub.request_number or projcodes.get(sub.project_id)
+                         request_number=(new_code or sub.request_number
+                                         or projcodes.get(sub.project_id)
                                          or numbered.get(sub.request_id)),
                          action_id=sub.action_id, action_type=sub.action_type, readout=readout,
                          when=sub.submitted_time or sub.creation_time, submission=sub,

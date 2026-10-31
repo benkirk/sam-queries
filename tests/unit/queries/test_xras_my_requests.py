@@ -125,6 +125,17 @@ class TestMyRequests:
         rows = my_requests(session, 'pi9', index)
         assert [r['request_number'] for r in rows] == ['NCAR4098']
 
+    def test_an_applied_new_names_its_project_over_its_minted_number(self, session,
+                                                                      active_project):
+        row = XrasSubmission.create(session, action_type='New', created_by='pi9',
+                                    xa_user='pi9', payload={}, **EULA)
+        row.set_keys(request_number='NCAR4098')
+        row.advance('created').advance('submitted')
+        assert [r['request_number'] for r in my_requests(session, 'pi9', None)] == ['NCAR4098']
+        row.mark_applied(active_project.project_id)
+        assert [r['request_number'] for r in my_requests(session, 'pi9', None)] == [
+            active_project.projcode]
+
     def test_an_open_row_sorts_first(self, session):
         old = XrasSubmission.create(session, action_type='Extension', created_by='pi9',
                                     xa_user='pi9', payload={}, **EULA)
