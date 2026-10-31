@@ -12,23 +12,20 @@
 <span class="badge {{ _TONES.get(readout.tone, 'state-tag') }}"{% if title %} title="{{ title }}"{% endif %}>{{ readout.label }}</span>
 {%- endmacro %}
 
-{#- A preflight verdict (sam.xras.preflight.Verdict) in the requester's words. -#}
+{#- A preflight verdict (sam.xras.preflight.Verdict) in the requester's words: only what it
+    tells them, so a clean check and an unchecked one render nothing. -#}
 {% macro verdict_note(verdict) -%}
+{%- if verdict.status in ('failed', 'manual') %}
 <div class="modal-facts small mb-2">
-{%- if verdict.status == 'rechecked' %}
-    <span class="text-success-emphasis"><i class="fa-solid fa-circle-check me-1"></i>SAM checked this:
-        once XRAS approves it, SAM can apply it.</span>
-{%- elif verdict.status == 'failed' %}
+{%- if verdict.status == 'failed' %}
     <span class="text-danger-emphasis"><i class="fa-solid fa-triangle-exclamation me-1"></i>SAM could not
         apply this once approved:</span>
     <ul class="mb-0 text-danger-emphasis">{% for m in verdict.messages %}<li>{{ m }}</li>{% endfor %}</ul>
-{%- elif verdict.status == 'manual' %}
-    <span><i class="fa-solid fa-circle-pause me-1"></i>Once approved, CISL staff apply this one by hand.</span>
 {%- else %}
-    <span><i class="fa-solid fa-circle-info me-1"></i>SAM could not check this in advance; XRAS
-        reviews it as usual.</span>
+    <span><i class="fa-solid fa-circle-pause me-1"></i>Once approved, CISL staff apply this one by hand.</span>
 {%- endif %}
 </div>
+{%- endif %}
 {%- endmacro %}
 
 {#- One resource row of amounts_table. An Available row is gray and shows its default; its inputs

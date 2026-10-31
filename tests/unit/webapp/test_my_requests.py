@@ -336,7 +336,7 @@ class TestTheExtensionForm:
         html = auth_client.post(EXT, data=_ext(floor + timedelta(days=365))).get_data(
             as_text=True)
         assert 'Review the Extension' in html and 'name="agree"' in html
-        assert 'SAM checked this' in html and _sha() in html
+        assert 'SAM checked this' not in html and _sha() in html   # a clean check says nothing
         assert not filed
 
     def test_submit_without_the_tick_returns_to_the_review(self, auth_client, on_roster,
