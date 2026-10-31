@@ -4,7 +4,7 @@
 and runs ``preflight_action``, the never-writes dispatch the sweep uses, so the handoff's own
 422 list shows while the requester is still at the form. The verdict is advisory; XRAS's
 validate on submit and the inbound handler stay the real gates. Flask-free.
-Design: ``docs/plans/XRAS_SUBMISSION_SPRINT1.md`` § 2.
+Design: ``docs/plans/implemented/XRAS_SUBMISSION_SPRINT1.md`` § 2.
 """
 
 from __future__ import annotations

@@ -4,7 +4,7 @@
 the test Postgres); `sam_dev` and production wait on Ben (§ 4).** Builds phase 3 of
 [`XRAS_SUBMISSION.md`](XRAS_SUBMISSION.md): someone with no SAM account files a New from SAMuel,
 and the New form gains an optional roster. Sprint 1's build plan,
-[`XRAS_SUBMISSION_SPRINT1.md`](XRAS_SUBMISSION_SPRINT1.md), is the shape this one follows. Every UI
+[`implemented/XRAS_SUBMISSION_SPRINT1.md`](implemented/XRAS_SUBMISSION_SPRINT1.md), is the shape this one follows. Every UI
 step loads the `wire-dashboard-feature` skill first.
 
 The case: ARC's untracked placeholder PIs are 55% of `New` handoff failures (`XRAS_SUBMISSION.md`

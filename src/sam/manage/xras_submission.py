@@ -5,7 +5,7 @@ The ``xras_submission`` row is committed before any write. Each step then runs t
 on the submission. A rejected, errored or unverified step stops the flow, stamps
 ``last_error`` and leaves the state where it was: there is **no automatic abort**. Resume
 skips every step whose event is ``verified``; abort deletes what SAM minted. Flask-free.
-Design: ``docs/plans/XRAS_SUBMISSION_SPRINT1.md`` § 2.
+Design: ``docs/plans/implemented/XRAS_SUBMISSION_SPRINT1.md`` § 2.
 """
 
 from __future__ import annotations
