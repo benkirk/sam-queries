@@ -1,7 +1,7 @@
 # Docs cleanup sprint: retire the shipped plans, one filing rule, the XRAS front door
 
-**Status: planned 2026-10-31 (Ben + Claude, at the close of the sprint 2 session); not
-started.** Runs before the signed-in type overview (the eligibility sprint). One PR against
+**Status: carried out 2026-10-31 in #882: 19 plans and 7 XRAS records retired, the four in § 3.4
+kept with status lines (Ben), the XRAS README and index rewritten, `docs/integration/` folded.** Runs before the signed-in type overview (the eligibility sprint). One PR against
 `staging`, a commit per plan, the docs gate as the proof.
 
 ## 1. The case
