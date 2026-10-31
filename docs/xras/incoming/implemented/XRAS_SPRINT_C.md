@@ -346,7 +346,7 @@ commands — the factory is never constructed at all.
    Extension is authoritative for dates and activation is already a human step on the
    XRAS card, so `account_is_extendable` keeps only the commissioned-resource test and
    the handler stamps `PROJECT_INACTIVE_WARNING` on the row. Record and the deferred
-   automatic-reactivation idea: `docs/plans/XRAS_EXTENSION_INACTIVE_PROJECT.md`.
+   automatic-reactivation idea: `docs/plans/implemented/XRAS_EXTENSION_INACTIVE_PROJECT.md`.
 
 **`Account.is_active` is the wrong predicate here** and this is the case where the
 house rule (§ 5) gives the wrong answer: SAM's hybrid on that model is `SoftDeleteMixin`
