@@ -393,6 +393,33 @@ class TestDropPendingWorklistRow:
 
 # the coherence patch
 
+class TestTheIndexInsert:
+    """``insert`` adds a request SAM filed; without it an absent number stays absent."""
+
+    def test_an_absent_request_is_appended_only_on_insert(self, published):
+        fresh = request_index_entry(_payload('NCAR4100'))
+        assert xras_cache.patch_requests_index('NCAR4100', fresh) is False
+        assert xras_cache.patch_requests_index('NCAR4100', fresh, insert=True) is True
+        rows = xras_cache.load_requests_index()['rows']
+        assert [r['request_number'] for r in rows] == ['EXAM0001', 'NCAR4100']
+
+    def test_a_present_request_is_replaced_not_duplicated(self, published):
+        again = request_index_entry(_payload(status='Incomplete'))
+        assert xras_cache.patch_requests_index('EXAM0001', again, insert=True) is True
+        rows = xras_cache.load_requests_index()['rows']
+        assert len(rows) == 1 and rows[0]['status'] == 'Incomplete'
+
+    def test_none_never_appends(self, published):
+        assert xras_cache.patch_requests_index('NCAR4100', None, insert=True) is False
+        assert len(xras_cache.load_requests_index()['rows']) == 1
+
+    def test_refresh_passes_insert_through(self, published):
+        reader = MagicMock()
+        reader.get_request_family_by_number.return_value = [_payload('NCAR4100')]
+        assert service.refresh_index_entry('NCAR4100', reader=reader, insert=True) is True
+        assert service.refresh_index_entry('NCAR4101', reader=reader) is False
+
+
 class TestTheSnapshotPatch:
 
     def test_it_produces_the_same_entry_shape_as_the_sweep(
