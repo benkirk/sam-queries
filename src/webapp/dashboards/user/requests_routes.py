@@ -661,7 +661,8 @@ class _NewRequestForm(_RequestForm):
                    None)
         opportunity = ctx['opportunity']
         line = new_request_line(data['draft'], pi_username=current_user.username,
-                                opportunity=opportunity, fos=fos)
+                                opportunity=opportunity, fos=fos,
+                                agency_names=dict(funding_agency_choices()))
         verdict = preflight_draft(
             db.session, line, data['draft'], resource_keys=ctx['resource_keys'],
             opportunities={opportunity['opportunity_id']: {

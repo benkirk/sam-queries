@@ -123,20 +123,21 @@ def new_request_sam_state(session, opportunity: Mapping[str, Any], pi) -> Dict[s
             'affiliation': getattr(where, 'name', None), 'mnemonic_errors': list(mnemonic_errors)}
 
 
-#: The push spells the agency by name; ``add_grant`` sends ``vocabulary.NSF_FUNDING_AGENCY_ID``.
-#: Not imported from there: the inbound boundary gate keeps ``xras_api`` out of ``sam.xras``.
-NSF_FUNDING_AGENCY_NAME = 'National Science Foundation'
-
-
 def new_request_line(draft, *, pi_username: str, opportunity: Mapping[str, Any],
-                     fos: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
-    """The reports-shaped line a New *draft* would become: no ids, the roster SAM will add."""
+                     fos: Optional[Mapping[str, Any]],
+                     agency_names: Optional[Mapping[int, str]] = None) -> Dict[str, Any]:
+    """The reports-shaped line a New *draft* would become: no ids, the roster SAM will add.
+
+    The push spells a grant's agency by name, so *agency_names* maps ``fundingAgencyId`` to it.
+    """
     roles = [{'person': {'username': pi_username}, 'roles': [{'role': 'PI'}]}]
     if draft.admin_username:
         roles.append({'person': {'username': draft.admin_username},
                       'roles': [{'role': 'Allocation Manager'}]})
+    names = agency_names or {}
     grants = [{**{k: format_ymd(v) if isinstance(v, date) else v for k, v in g.items()
-                  if k != 'fundingAgencyId'}, 'fundingAgency': NSF_FUNDING_AGENCY_NAME} for g in draft.grants]
+                  if k != 'fundingAgencyId'}, 'fundingAgency': names.get(g.get('fundingAgencyId'))}
+              for g in draft.grants]
     return {**_wire_opportunity(opportunity), 'requestId': None, 'requestType': 'New',
             'requestStatus': 'Incomplete', 'title': draft.title, 'abstract': draft.abstract,
             'roles': roles, 'fos': [dict(fos, isPrimary=True)] if fos else [],

@@ -105,7 +105,8 @@ class TestTheNew:
         draft = self._draft(admin_username='adm1',
                             grants=({'grantNumber': '2345678', 'fundingAgencyId': 1},))
         line = new_request_line(draft, pi_username='pi1', opportunity=_EXPLORATORY,
-                                fos={'fosTypeId': 500003, 'fosNum': '1'})
+                                fos={'fosTypeId': 500003, 'fosNum': '1'},
+                                agency_names={1: 'National Science Foundation', 14: 'NASA'})
         assert (line['requestNumber'], line['requestType'], line['opportunityId']) == \
             (None, 'New', 532221)
         assert [(r['person']['username'], r['roles'][0]['role']) for r in line['roles']] == \
@@ -113,6 +114,12 @@ class TestTheNew:
         assert line['grants'] == [{'grantNumber': '2345678',
                                    'fundingAgency': 'National Science Foundation'}]
         assert line['fos'] == [{'fosTypeId': 500003, 'fosNum': '1', 'isPrimary': True}]
+
+    def test_another_agencys_grant_keeps_its_name(self):
+        draft = self._draft(grants=({'grantNumber': '80NSSC21K1305', 'fundingAgencyId': 14},))
+        line = new_request_line(draft, pi_username='pi1', opportunity=_EXPLORATORY, fos=None,
+                                agency_names={1: 'National Science Foundation', 14: 'NASA'})
+        assert line['grants'][0]['fundingAgency'] == 'NASA'
 
     def test_a_grant_with_dates_still_synthesizes(self):
         from sam.xras.preflight import synthesize_action
