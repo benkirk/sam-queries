@@ -345,6 +345,7 @@ class _VisitorNewRequest(_NewRequestForm):
     """
 
     template = 'dashboards/user/fragments/request_new_htmx.html'
+    roster_private = True
 
     def __init__(self, row, opportunity_id, token):
         super().__init__()
@@ -380,6 +381,9 @@ class _VisitorNewRequest(_NewRequestForm):
 
     def _institution_name(self):
         return self.row.organization
+
+    def _pi_email(self):
+        return self.row.email
 
     def _post_url(self):
         return url_for('allocation_request.draft_post', token=self.token)

@@ -174,6 +174,7 @@ class XrasNewRequestForm(XrasGrantMixin, XrasAgreementMixin):
                         error_messages={'required': 'Choose the field of science.'})
     admin_user_id = f.Int(load_default=None)
     mnemonic_code_id = f.Int(load_default=None)
+    roster = f.Str(load_default=None, validate=v.Length(max=4000))     # Name <email> lines
     begin_date = f.Date(load_default=None)
     end_date = f.Date(load_default=None)
     amounts = f.Dict(keys=f.Int(), values=f.Str(), load_default=dict)
@@ -183,6 +184,7 @@ class XrasNewRequestForm(XrasGrantMixin, XrasAgreementMixin):
         data['title'] = clean_text(data.get('title'))
         data['abstract'] = clean_text(data.get('abstract'))
         data['keywords'] = strip_or_none(data.get('keywords'))
+        data['roster'] = strip_or_none(data.get('roster'))
         errors = {}
         if not data['title']:
             errors['title'] = ['The project needs a title.']

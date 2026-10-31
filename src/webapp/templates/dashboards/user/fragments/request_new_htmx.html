@@ -2,7 +2,8 @@
     project's title, abstract, keywords, field of science and an optional project admin.
     Context: opportunity_options, fos_choices [(value, label)], opportunity, rules, sam_state,
     chosen_mnemonic, chosen_admin, post_url, errors, field_errors, form; request_urls (a
-    visitor's: its opportunity is fixed and it names no admin). -#}
+    visitor's: its opportunity is fixed and it names no admin). The roster is free text,
+    parsed by the handler. -#}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
 {% from 'dashboards/user/partials/request_bits.html' import request_title %}
 {% from 'dashboards/fragments/form_fields.html' import fk_search_field, select_field, text_field, textarea_field with context %}
@@ -33,5 +34,10 @@
                        id_prefix='xrasNewAdmin',
                        help='A SAM user to manage the project with you. You are its PI.') }}
     {% endif %}
+    {{ textarea_field('roster', 'People on the project', rows=3, id='xrasNewRoster',
+                      placeholder='Ada Lovelace <ada@example.edu>',
+                      help='One person per line, as First Last <email>. Anyone with an NCAR '
+                           'account joins the project when it starts; everyone else is invited '
+                           'then to request one.') }}
     <div id="xrasNewOpportunityInputs">{% include 'dashboards/user/fragments/request_new_inputs_htmx.html' %}</div>
 {% endcall %}

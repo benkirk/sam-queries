@@ -864,6 +864,20 @@ def other_user(session):
             .order_by(User.user_id).first())
 
 
+@pytest.fixture
+def member(session):
+    """An active user, not the PI, whose primary address SAM resolves to them alone."""
+    from sam.core.users import User
+    from sam.queries.xras_accounts import sam_merge_targets
+    for user in (session.query(User).filter(User.is_active, User.username != 'benkirk')
+                 .order_by(User.user_id).limit(50)):
+        email = (user.primary_email or '').lower()
+        if email and sam_merge_targets(session, [email]).get(email, {}).get(
+                'username') == user.username:
+            return user
+    pytest.skip('no user with a uniquely held address in this snapshot')
+
+
 def _new(stage='request', **extra):
     return {**dict(stage=stage, opportunity_id='532221', title='Ensemble downscaling',
                    abstract='Regional runs for the next three summers.', fos_type_id='500003'),
@@ -1013,6 +1027,39 @@ class TestTheNewForm:
         assert [(r.resource_id, r.amount) for r in draft.resources] == [(530902, 1000.0)]
         assert draft.sam.mnemonic_code_id is not None and draft.request_id is None
         assert (kw['door'], kw['xa_user']) == ('pi', 'benkirk')
+
+    def test_a_roster_line_without_a_name_stays_on_page_one(self, auth_client, newable,
+                                                            lettered):
+        html = auth_client.post(NEW, data=_new(roster='ada@example.edu')).get_data(as_text=True)
+        assert 'expected &#34;Name &lt;email&gt;&#34;' in html and 'name="abstract"' in html
+
+    def test_the_roster_rides_to_the_review_and_into_the_draft(self, auth_client, newable,
+                                                               lettered, filed, member,
+                                                               session):
+        from io import BytesIO
+        from sam.core.users import User
+        newable.people = {member.username}
+        me = User.get_by_username(session, 'benkirk').primary_email
+        roster = (f'Known Person <{member.primary_email}>\nAda Lovelace <zz.ada@example.invalid>'
+                  f'\nMe Myself <{me}>')
+        html = auth_client.post(NEW, data=_new_review(roster=roster)).get_data(as_text=True)
+        facts = html.split('</dl>')[0]
+        assert f'in XRAS as {member.username}' in facts and 'added when the project starts' in facts
+        assert 'Me Myself' not in facts
+        assert 'zz.ada@example.invalid' in html.split('name="roster"')[1].split('>', 1)[0]
+        auth_client.post(NEW, data=_new_review(
+            roster=roster, stage='submit', eula_sha=_sha(), agree='1',
+            document_Advisor_Letter=(BytesIO(b'%PDF-1.7 letter'), 'letter.pdf')),
+            content_type='multipart/form-data')
+        draft, _ = filed[0]
+        assert draft.roster_usernames == (member.username,)
+        assert [e['email'] for e in draft.invitees] == ['zz.ada@example.invalid']
+
+    def test_a_known_address_xras_lacks_is_invited_not_rostered(self, auth_client, newable,
+                                                                 lettered, filed, member):
+        html = auth_client.post(NEW, data=_new_review(
+            roster=f'Known Person <{member.primary_email}>')).get_data(as_text=True)
+        assert 'in XRAS as' not in html and 'added when the project starts' in html
 
     def test_an_impersonator_cannot_file(self, auth_client, newable):
         with auth_client.session_transaction() as sess:

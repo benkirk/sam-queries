@@ -103,14 +103,16 @@ class TestTheNew:
 
     def test_the_line_carries_the_roster_sam_will_add_and_the_grant_by_name(self):
         draft = self._draft(admin_username='adm1',
-                            grants=({'grantNumber': '2345678', 'fundingAgencyId': 1},))
+                            grants=({'grantNumber': '2345678', 'fundingAgencyId': 1},),
+                            roster=({'email': 'u@x.edu', 'username': 'usr1'},
+                                    {'email': 'new@x.edu', 'username': None}))
         line = new_request_line(draft, pi_username='pi1', opportunity=_EXPLORATORY,
                                 fos={'fosTypeId': 500003, 'fosNum': '1'},
                                 agency_names={1: 'National Science Foundation', 14: 'NASA'})
         assert (line['requestNumber'], line['requestType'], line['opportunityId']) == \
             (None, 'New', 532221)
         assert [(r['person']['username'], r['roles'][0]['role']) for r in line['roles']] == \
-            [('pi1', 'PI'), ('adm1', 'Allocation Manager')]
+            [('pi1', 'PI'), ('adm1', 'Allocation Manager'), ('usr1', 'User')]
         assert line['grants'] == [{'grantNumber': '2345678',
                                    'fundingAgency': 'National Science Foundation'}]
         assert line['fos'] == [{'fosTypeId': 500003, 'fosNum': '1', 'isPrimary': True}]

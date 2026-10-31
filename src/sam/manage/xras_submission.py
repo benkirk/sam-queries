@@ -93,7 +93,18 @@ class ActionRequest:
     documents: Tuple[SubmissionDocument, ...] = ()
     eua_attribute_id: Optional[int] = None
     admin_username: Optional[str] = None
+    #: A New's other people: ``{first_name, last_name, email, username}``. ``username`` is set
+    #: for an active SAM user XRAS knows (an XRAS User role); the rest are invited at activation.
+    roster: Tuple[Dict[str, Any], ...] = ()
     sam: SamRefs = SamRefs()
+
+    @property
+    def roster_usernames(self) -> Tuple[str, ...]:
+        return tuple(e['username'] for e in self.roster if e.get('username'))
+
+    @property
+    def invitees(self) -> Tuple[Dict[str, Any], ...]:
+        return tuple(e for e in self.roster if not e.get('username'))
 
     def to_payload(self) -> Dict[str, Any]:
         return {
@@ -106,7 +117,8 @@ class ActionRequest:
             'grants': [dict(g) for g in self.grants], 'fos_type_id': self.fos_type_id,
             'documents': [d.to_payload() for d in self.documents],
             'eua_attribute_id': self.eua_attribute_id,
-            'admin_username': self.admin_username, 'sam': vars(self.sam),
+            'admin_username': self.admin_username,
+            'roster': [dict(e) for e in self.roster], 'sam': vars(self.sam),
         }
 
     @classmethod
@@ -131,6 +143,7 @@ class ActionRequest:
                 for d in payload.get('documents') or ()),
             eua_attribute_id=payload.get('eua_attribute_id'),
             admin_username=payload.get('admin_username'),
+            roster=tuple(payload.get('roster') or ()),
             sam=SamRefs(**(payload.get('sam') or {})),
         )
 
@@ -279,6 +292,9 @@ def _mint_steps(draft: ActionRequest, view: Dict[str, Any],
             steps.append(('role:Admin', 'add_role', lambda a, k: a.add_role(
                 k['request_id'], 'Allocation Manager', draft.admin_username,
                 request_number=k['request_number'], xa_user=xa)))
+        for username in draft.roster_usernames:
+            steps.append((f'role:User:{username}', 'add_role', lambda a, k, u=username: a.add_role(
+                k['request_id'], 'User', u, request_number=k['request_number'], xa_user=xa)))
         return steps
     if kind == 'Renewal':
         return [('mint', 'renew_request', lambda a, k: a.renew_request(

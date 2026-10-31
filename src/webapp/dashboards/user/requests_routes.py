@@ -477,7 +477,9 @@ _NEW_AMOUNTS = 'dashboards/user/fragments/request_new_amounts_htmx.html'
 _GRANT = 'dashboards/user/fragments/request_grant_htmx.html'
 #: The page-one inputs a later page carries in hidden fields, and whose errors land on page one.
 _DESCRIBE_FIELDS = ('opportunity_id', 'title', 'abstract', 'keywords', 'fos_type_id',
-                    'admin_user_id', 'mnemonic_code_id') + tuple(GRANT_INPUTS)
+                    'admin_user_id', 'mnemonic_code_id', 'roster') + tuple(GRANT_INPUTS)
+#: People a New may name on page one; the rest join once the project exists.
+ROSTER_MAX = 20
 
 
 def _new_opportunities(config):
@@ -534,7 +536,7 @@ class _NewRequestForm(_RequestForm):
 
     Who files is a seam (``_arm``, ``_opportunities``, ``_chosen_id``, ``_pi``, ``_pi_username``,
     ``_institution_name``, ``_check_admin``, ``_expected_messages``, ``_file``, ``_post_url``,
-    ``request_urls``): the visitor's New
+    ``_pi_email``, ``roster_private``, ``request_urls``): the visitor's New
     (``webapp/register/allocation_request.py``) overrides those and nothing else.
     """
 
@@ -542,6 +544,8 @@ class _NewRequestForm(_RequestForm):
     template = _NEW_DESCRIBE
     #: Template URLs a door replaces; empty means the signed-in user's endpoints.
     request_urls: dict = {}
+    #: True where the review must not say which roster addresses SAM or XRAS knows.
+    roster_private = False
 
     def __init__(self):
         HtmxFormHandler.__init__(self, project=None, action_type='New')
@@ -567,6 +571,10 @@ class _NewRequestForm(_RequestForm):
         """Where the code letters come from when there is no SAM user; the ladder needs none."""
         return None
 
+    def _pi_email(self):
+        """The PI's address where no SAM user names them, so the roster can skip it."""
+        return None
+
     def _post_url(self):
         return url_for('user_dashboard.my_request_new_post')
 
@@ -581,7 +589,7 @@ class _NewRequestForm(_RequestForm):
         fos = _fos_options()
         self._ctx = dict(project=None, action_type='New', decision=None,
                          eula_sha=eula_sha(), post_url=self._post_url(),
-                         request_urls=self.request_urls,
+                         request_urls=self.request_urls, roster_private=self.roster_private,
                          opportunities=opportunities, fos_options=fos,
                          opportunity_options=[(o['opportunity_id'], o['opportunity_name']
                                                if o['can_submit'] else
@@ -666,7 +674,39 @@ class _NewRequestForm(_RequestForm):
             errors['mnemonic_code_id'] = ['Choose the letters the project code starts with.']
         if ctx['rules'].wants_grants:
             errors.update(self._grant_errors(data, ctx['rules']))
+        errors.update(self._roster_errors(data))
         return errors
+
+    @staticmethod
+    def _roster_errors(data):
+        """Parse the roster's ``Name <email>`` lines onto ``data['roster_entries']``."""
+        from sam.manage.account_requests import parse_roster
+        entries, problems = parse_roster(data.get('roster') or '')
+        if len(entries) > ROSTER_MAX:
+            problems.append(f'Name at most {ROSTER_MAX} people here; add the rest once the '
+                            'project starts.')
+        data['roster_entries'] = entries
+        return {'roster': problems} if problems else {}
+
+    def _roster(self, data):
+        """The draft's roster: ``username`` for an active SAM user XRAS knows, else ``None``.
+
+        The PI and the admin are dropped; so is the visitor's own address.
+        """
+        from sam.queries.xras_accounts import sam_merge_targets
+        entries = data.get('roster_entries') or ()
+        targets = sam_merge_targets(db.session, [e['email'] for e in entries])
+        skip = {u.casefold() for u in (self._pi_username(), data['admin_username']) if u}
+        own = (self._pi_email() or '').strip().lower()
+        roster = []
+        for entry in entries:
+            target = targets.get(entry['email']) or {}
+            username = target.get('username') if target.get('active') else None
+            if entry['email'] == own or (username and username.casefold() in skip):
+                continue
+            known = username and self._in_xras(username, unsure=False)
+            roster.append(dict(entry, username=username if known else None))
+        return tuple(roster)
 
     def _check_admin(self, data, errors):
         """The optional project admin: an active SAM user with an XRAS person, not the PI."""
@@ -684,14 +724,15 @@ class _NewRequestForm(_RequestForm):
             data['admin_username'] = admin.username
 
     @staticmethod
-    def _in_xras(username):
+    def _in_xras(username, unsure=True):
+        """Whether XRAS knows *username*; *unsure* answers an outage (the admin's add_role backstops)."""
         from sam.integration.xras_api.base import XrasWriteRejected
         try:
             return admin_client(_config()).get_person(username) is not None
         except XrasWriteRejected:
             return False
         except XrasSourceUnavailable:
-            return True        # the add_role step is the backstop
+            return unsure
 
     def _verdict(self, data, ctx):
         """The preflight on the draft; a code the PI chose stands in for the ladder's miss."""
@@ -732,6 +773,7 @@ class _NewRequestForm(_RequestForm):
             action_type='New', opportunity_id=opportunity['opportunity_id'],
             title=data['title'], abstract=data['abstract'], keywords=data['keywords'],
             fos_type_id=data['fos_type_id'], admin_username=data['admin_username'],
+            roster=self._roster(data),
             resources=tuple(ResourceAmount(rid, amt) for rid, amt in data['amounts'].items()),
             dates=(data['begin_date'], data['end_date']), grants=self._grants(data),
             documents=tuple(data.get('documents') or ()),

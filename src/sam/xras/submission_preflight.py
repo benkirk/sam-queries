@@ -174,6 +174,8 @@ def new_request_line(draft, *, pi_username: str, opportunity: Mapping[str, Any],
     if draft.admin_username:
         roles.append({'person': {'username': draft.admin_username},
                       'roles': [{'role': 'Allocation Manager'}]})
+    roles += [{'person': {'username': u}, 'roles': [{'role': 'User'}]}
+              for u in draft.roster_usernames]
     names = agency_names or {}
     grants = [{**{k: format_ymd(v) if isinstance(v, date) else v for k, v in g.items()
                   if k != 'fundingAgencyId'}, 'fundingAgency': names.get(g.get('fundingAgencyId'))}

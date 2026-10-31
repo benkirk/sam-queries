@@ -67,6 +67,9 @@ def visitor(monkeypatch, guides):
                 raise XrasSourceUnavailable('down')
             return [_opp(0, 777001), _opp(1, 777002)]
 
+        def get_person(self, username):
+            return {'username': username}
+
     class Reader:
         def get_resources(self):
             return []
@@ -311,6 +314,26 @@ class TestTheVisitorsRequest:
             'visitor', f'registration:{row_id}', placeholder)
         assert f'/request/status/{token}' in html, 'Done goes to the status page'
 
+    def test_the_review_never_says_whom_an_address_belongs_to(self, client, confirmed,
+                                                              monkeypatch):
+        from sam.core.users import User
+        from webapp.extensions import db
+        _, token, _, _ = confirmed
+        monkeypatch.setattr('sam.xras.submission_preflight.preflight_draft',
+                            lambda *a, **k: _verdict('rechecked', ()))
+        with client.application.app_context():
+            known = db.session.query(User).filter(User.is_active, User.username != 'benkirk'
+                                                  ).order_by(User.user_id).first()
+            username, email = known.username, known.primary_email
+        roster = f'Known Person <{email}>\nMe Again <{_visitor_email(client, token)}>'
+        html = client.post(f'/request/draft/{token}', data=_describe(
+            stage='review', mnemonic_code_id=str(_a_code(client.application)),
+            begin_date='2026-12-01', end_date='2027-11-30', amount_530902='1000',
+            roster=roster)).get_data(as_text=True)
+        facts = html.split('</dl>')[0]
+        assert 'Known Person' in facts and 'Me Again' not in facts
+        assert 'in XRAS as' not in html and f'>{username}<' not in html
+
     def test_the_pickers_need_a_live_token(self, client, visitor):
         assert client.get('/request/draft/nope/mnemonic-suggest?q=cub').status_code == 404
         assert client.get('/request/draft/nope/award-lookup?grant_number=1').status_code == 404
@@ -319,6 +342,12 @@ class TestTheVisitorsRequest:
         _, token, _, _ = confirmed
         assert 'Continue the request' in client.get(f'/request/status/{token}').get_data(
             as_text=True)
+
+
+def _visitor_email(client, token):
+    from webapp.register.allocation_request import draft_row
+    with client.application.test_request_context():
+        return draft_row(token)[0].email
 
 
 def _verdict(status, messages):

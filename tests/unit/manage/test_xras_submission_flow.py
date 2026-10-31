@@ -245,7 +245,9 @@ class TestTheNew:
         client.update_request_attributes.return_value = _ok('update_attributes')
         draft = ActionRequest(action_type='New', opportunity_id=532220, title='T',
                               abstract='A', resources=(ResourceAmount(500055, 5e5),),
-                              admin_username='adm1')
+                              admin_username='adm1',
+                              roster=({'email': 'u@x.edu', 'username': 'usr1'},
+                                      {'email': 'new@x.edu', 'username': None}))
         client.update_resource_amount.return_value = _ok('update_resource_amount')
         out = flow.request_action(factory, draft, actor='pi1', xa_user='pi1',
                                   eula=EULA, submit=False, client=client)
@@ -254,8 +256,9 @@ class TestTheNew:
         row = _row(factory, out.submission_id)
         assert (row.request_id, row.action_id, row.request_type) == (rid, aid, 'New')
         assert row.snapshot_dict == {'requestId': rid}
-        roles = [c.args[1] for c in client.add_role.call_args_list]
-        assert roles == ['PI', 'Allocation Manager']
+        roles = [c.args[1:3] for c in client.add_role.call_args_list]
+        assert roles == [('PI', 'pi1'), ('Allocation Manager', 'adm1'), ('User', 'usr1')]
+        assert 'role:User:usr1' in row.steps
 
         flow.abort_submission(factory, out.submission_id, actor='pi1', client=client)
         client.delete_request.assert_called_once_with(rid, request_number=None,
@@ -406,8 +409,11 @@ class TestThePayload:
                               dates=(date(2027, 1, 1), date(2027, 12, 31)),
                               grants=({'grantNumber': '2345678'},),
                               resources=(ResourceAmount(1, 2.0, 'why'),),
+                              roster=({'first_name': 'A', 'last_name': 'B', 'email': 'a@x.edu',
+                                       'username': None},),
                               sam=SamRefs(project_id=4, contract_id=5))
         assert ActionRequest.from_payload(draft.to_payload()) == draft
+        assert draft.invitees == draft.roster and draft.roster_usernames == ()
 
 
 class TestTheRenewal:
