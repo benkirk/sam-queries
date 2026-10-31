@@ -26,15 +26,15 @@ from webapp.dashboards.event_lifecycle import upcoming_events_data
 from webapp.extensions import db
 from webapp.limiter import limiter as _rate_limit
 from webapp.utils import human_check
-from webapp.utils.htmx import institution_options
+from webapp.utils.htmx import institution_options, read_flag
 from webapp.utils.notify import get_notifier
 
 from . import eula, tokens
 from .handoff_mail import send_ticket
 from .common import (ACADEMIC_STATUSES, GATE_KEY, anon_tier as _anon_tier,  # noqa: F401
-                     email_key, email_tier, gate_accepted_at, gate_blocks, global_key,
+                     email_key, email_tier, expired, gate_accepted_at, gate_blocks, global_key,
                      global_tier, ip_key as _ip_key, open_event as _open_event,
-                     person_form_context, post_tier as _post_tier, refuse as _refuse)
+                     person_form_context, post_tier as _post_tier, refuse as _refuse, terms_page)
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('register', __name__, url_prefix='/register')
@@ -97,9 +97,7 @@ def form():
 @bp.route('/terms')
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def terms():
-    """The agreement on a page of its own (the gate links it in a new tab).
-    Read-only: accepting still happens on the gate."""
-    return render_template('register/terms.html', eula_html=eula.eula_html())
+    return terms_page()
 
 
 @bp.route('/institutions')
@@ -165,7 +163,7 @@ def submit():
         return _rerender(raw, errors=[human_error])
 
     now = datetime.now()
-    ttl = int(current_app.config.get('ACCOUNT_VERIFY_TTL_HOURS', 48))
+    ttl = tokens.verify_ttl_hours()
     code = tokens.new_code()
     accepted_at = gate_accepted_at()
     with management_transaction(db.session):
@@ -204,11 +202,11 @@ def pending(token):
     token (a guessed URL learns nothing)."""
     row = _row_for_page(token)
     if row is None:
-        return render_template('register/expired.html'), 200
+        return expired()
     if row.is_verified:
         return redirect(url_for('register.verified'))
     return render_template('register/pending.html', row=row, token=token,
-                           mail_sent=request.args.get('sent', '1') == '1',
+                           mail_sent=read_flag(request.args, 'sent', True),
                            errors=[], form={})
 
 
@@ -219,17 +217,17 @@ def pending_code(token):
     """The typed six-digit code."""
     row = _row_for_page(token)
     if row is None:
-        return render_template('register/expired.html'), 200
+        return expired()
     try:
         data = VerifyCodeForm().load(request.form)
     except ValidationError:
         return render_template('register/pending.html', row=row, token=token,
                                mail_sent=True, form=request.form,
-                               errors=['Enter the six-digit code from the mail.'])
+                               errors=[VerifyCodeForm.BAD_FORMAT])
     if not tokens.code_matches(row, data['code']):
         return render_template('register/pending.html', row=row, token=token,
                                mail_sent=True, form=request.form,
-                               errors=['That code is wrong or has expired.'])
+                               errors=[VerifyCodeForm.WRONG])
     with management_transaction(db.session):
         row.mark_verified('self')
     send_ticket(row)
@@ -244,7 +242,7 @@ def verify(token):
     row_id = tokens.read_link_token(token)
     row = db.session.get(AccountRequest, row_id) if row_id else None
     if row is None:
-        return render_template('register/expired.html'), 200
+        return expired()
     if not row.is_verified:
         with management_transaction(db.session):
             row.mark_verified('self')

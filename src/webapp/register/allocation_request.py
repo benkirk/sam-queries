@@ -27,7 +27,7 @@ from sam.schemas.forms import RegisterForm, RegisterGateForm, VerifyCodeForm
 from webapp.extensions import db
 from webapp.limiter import limiter as _rate_limit
 from webapp.utils import human_check
-from webapp.utils.htmx import institution_options
+from webapp.utils.htmx import institution_options, read_flag
 from webapp.utils.notify import get_notifier
 from webapp.dashboards.user.requests_routes import _NewRequestForm, award_lookup_fragment
 from webapp.utils.form_handler import FormError
@@ -35,9 +35,9 @@ from webapp.utils.xras import (admin_client, interactive_config, read_client, re
                                session_factory)
 
 from . import eula, tokens
-from .common import (GATE_KEY, anon_tier as _anon_tier, email_key, email_tier, gate_accepted_at,
-                     gate_blocks, global_key, global_tier, ip_key as _ip_key,
-                     person_form_context, post_tier as _post_tier)
+from .common import (GATE_KEY, anon_tier as _anon_tier, email_key, email_tier, expired,
+                     gate_accepted_at, gate_blocks, global_key, global_tier, ip_key as _ip_key,
+                     person_form_context, post_tier as _post_tier, terms_page)
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('allocation_request', __name__, url_prefix='/request')
@@ -55,10 +55,6 @@ def _gates():
             and not current_user.is_authenticated):
         return redirect(url_for('auth.login', next=request.full_path.rstrip('?')))
     return None
-
-
-def _verify_ttl() -> int:
-    return int(current_app.config.get('ACCOUNT_VERIFY_TTL_HOURS', 48)) * 3600
 
 
 def _draft_ttl() -> int:
@@ -118,7 +114,7 @@ def overview():
 @bp.route('/terms')
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def terms():
-    return render_template('register/terms.html', eula_html=eula.eula_html())
+    return terms_page()
 
 
 @bp.route('/institutions')
@@ -214,7 +210,7 @@ def submit(opportunity_id):
         return _render_person(opportunity, form=raw, errors=[human_error])
 
     now = datetime.now()
-    ttl = int(current_app.config.get('ACCOUNT_VERIFY_TTL_HOURS', 48))
+    ttl = tokens.verify_ttl_hours()
     code = tokens.new_code()
     accepted_at = gate_accepted_at()
     with management_transaction(db.session):
@@ -251,8 +247,7 @@ def _row(token, salt, max_age):
 
 
 def _expired():
-    return render_template('register/expired.html', again_label='start again',
-                           again_url=url_for('allocation_request.overview')), 200
+    return expired(again_label='start again', again_url=url_for('allocation_request.overview'))
 
 
 def _to_draft(row, opportunity_id):
@@ -283,13 +278,13 @@ def _confirm(row, opportunity_id):
 @bp.route('/pending/<token>')
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def pending(token):
-    row, opportunity_id = _row(token, tokens.SALT_REQUEST_PAGE, _verify_ttl())
+    row, opportunity_id = _row(token, tokens.SALT_REQUEST_PAGE, tokens.verify_ttl_seconds())
     if row is None:
         return _expired()
     if row.is_verified:
         return _to_draft(row, opportunity_id)
     return render_template('register/request_pending.html', row=row, token=token,
-                           mail_sent=request.args.get('sent', '1') == '1', errors=[], form={},
+                           mail_sent=read_flag(request.args, 'sent', True), errors=[], form={},
                            code_action=url_for('allocation_request.pending_code', token=token),
                            again_url=url_for('allocation_request.overview'),
                            again_label='start again', step=_step(4, 'Confirm your email'))
@@ -299,7 +294,7 @@ def pending(token):
 @_rate_limit.limiter.limit('10 per hour', methods=['POST'],
                            key_func=lambda: f'request-verify:{request.view_args.get("token", "")[:64]}')
 def pending_code(token):
-    row, opportunity_id = _row(token, tokens.SALT_REQUEST_PAGE, _verify_ttl())
+    row, opportunity_id = _row(token, tokens.SALT_REQUEST_PAGE, tokens.verify_ttl_seconds())
     if row is None:
         return _expired()
     context = dict(row=row, token=token, mail_sent=True, form=request.form,
@@ -310,17 +305,17 @@ def pending_code(token):
         data = VerifyCodeForm().load(request.form)
     except ValidationError:
         return render_template('register/request_pending.html',
-                               errors=['Enter the six-digit code from the mail.'], **context)
+                               errors=[VerifyCodeForm.BAD_FORMAT], **context)
     if not tokens.code_matches(row, data['code']):
         return render_template('register/request_pending.html',
-                               errors=['That code is wrong or has expired.'], **context)
+                               errors=[VerifyCodeForm.WRONG], **context)
     return _confirm(row, opportunity_id)
 
 
 @bp.route('/verify/<token>')
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def verify(token):
-    row, opportunity_id = _row(token, tokens.SALT_REQUEST_LINK, _verify_ttl())
+    row, opportunity_id = _row(token, tokens.SALT_REQUEST_LINK, tokens.verify_ttl_seconds())
     if row is None:
         return _expired()
     return _confirm(row, opportunity_id)

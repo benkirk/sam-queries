@@ -14,6 +14,7 @@ from flask import current_app, render_template, request, session, url_for
 from flask_limiter.util import get_remote_address
 
 from sam.core.account_requests import AccountRequestEvent
+from . import eula
 from sam.queries.admin import country_names
 from webapp.extensions import db
 
@@ -112,6 +113,17 @@ def anonymous_form_open() -> bool:
     """True when an anonymous visitor may use the creation form: mounted and not login-gated."""
     return (creation_form_mounted()
             and not current_app.config.get('ACCOUNT_REGISTRATION_LOGIN_REQUIRED', False))
+
+
+def terms_page():
+    """The agreement on a page of its own, read-only: accepting happens on the gate."""
+    return render_template('register/terms.html', eula_html=eula.eula_html())
+
+
+def expired(*, again_url=None, again_label=None):
+    """The expired-token page, 200: it names no address (a guessed URL learns nothing)."""
+    return render_template('register/expired.html', again_url=again_url,
+                           again_label=again_label), 200
 
 
 def refuse(reason):

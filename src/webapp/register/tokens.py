@@ -36,8 +36,13 @@ def _serializer(salt: str) -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(current_app.config['SECRET_KEY'], salt=salt)
 
 
-def _ttl_seconds() -> int:
-    return int(current_app.config.get('ACCOUNT_VERIFY_TTL_HOURS', 48)) * 3600
+def verify_ttl_hours() -> int:
+    """ACCOUNT_VERIFY_TTL_HOURS: how long a mailed code or link confirms an address."""
+    return int(current_app.config.get('ACCOUNT_VERIFY_TTL_HOURS', 48))
+
+
+def verify_ttl_seconds() -> int:
+    return verify_ttl_hours() * 3600
 
 
 def page_token(row_id: int) -> str:
@@ -50,7 +55,7 @@ def link_token(row_id: int) -> str:
 
 def _read(token: str, salt: str) -> Optional[int]:
     try:
-        payload = _serializer(salt).loads(token, max_age=_ttl_seconds())
+        payload = _serializer(salt).loads(token, max_age=verify_ttl_seconds())
     except (SignatureExpired, BadSignature, TypeError, ValueError):
         return None
     row_id = payload.get('id') if isinstance(payload, dict) else None
