@@ -49,6 +49,7 @@ from webapp.utils.xras import (
     interactive_config,
     read_client,
     requests_index,
+    resource_keys,
     session_factory,
 )
 from webapp.utils.rbac import Permission, has_permission
@@ -474,16 +475,6 @@ _GRANT = 'dashboards/user/fragments/request_grant_htmx.html'
 #: The page-one inputs a later page carries in hidden fields, and whose errors land on page one.
 _DESCRIBE_FIELDS = ('opportunity_id', 'title', 'abstract', 'keywords', 'fos_type_id',
                     'admin_user_id', 'mnemonic_code_id') + tuple(GRANT_INPUTS)
-
-
-def resource_keys(config):
-    """XRAS ``resourceId`` -> repository key from the catalog, or ``None`` when XRAS is not answering."""
-    from sam.integration.xras_api.people import resource_key_map
-    try:
-        catalog = read_client(config).get_resources()
-    except XrasSourceUnavailable:
-        return None
-    return resource_key_map(catalog) if catalog else None
 
 
 def _new_opportunities(config):

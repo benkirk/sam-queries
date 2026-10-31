@@ -338,8 +338,10 @@ class AccountRequest(Base, SessionMixin):
                 f"expected one of {', '.join(ACCOUNT_REQUEST_PURPOSES)}")
         if purpose == PURPOSE_ENROLLMENT and project_id is None:
             raise ValueError('an enrollment request needs a project_id')
+        # A visitor's own submission (/request) learns its placeholder at submit.
+        visitor = purpose == PURPOSE_SUBMISSION and created_by == CREATED_BY_SELF
         if (purpose in (PURPOSE_SUBMISSION, PURPOSE_REACTIVATION)
-                and not strip_or_none(xras_username)):
+                and not strip_or_none(xras_username) and not visitor):
             raise ValueError(f'a {purpose} request needs an xras_username')
         if purpose == PURPOSE_STANDALONE and project_id is not None:
             raise ValueError('a standalone request carries no project_id')
@@ -426,6 +428,20 @@ class AccountRequest(Base, SessionMixin):
     def reject(self, by, reason, clock=None):
         """Refuse; the reason is recorded and, if the operator chose, mailed."""
         return self._close('rejected', 'reject', by, reason, clock)
+
+    def attach_placeholder(self, username):
+        """Name the XRAS placeholder SAM minted for this visitor's New; set once."""
+        if self.purpose != PURPOSE_SUBMISSION:
+            raise ValueError('only a submission request carries a placeholder')
+        name = strip_or_none(username, width=64)
+        if not name:
+            raise ValueError('a placeholder username is required')
+        if self.xras_username and self.xras_username != self.xras_key(name):
+            raise ValueError(f'this request already names {self.xras_username}')
+        self.xras_username = self.xras_key(name)
+        self.modified_time = datetime.now()
+        self.session.flush()
+        return self
 
     def mark_merged(self, target_username, by, clock=None):
         """Dismiss: XRAS merged this placeholder into ``target_username``."""

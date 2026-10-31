@@ -16,6 +16,25 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 from sam.accounting.allocation_type_guide import AllocationTypeGuide, public_guides
 
 
+#: Display order of the resources a card lists; any other sorts after, by name.
+RESOURCE_ORDER = ('Derecho', 'Derecho GPU', 'Casper', 'Casper GPU', 'Campaign_Store')
+
+
+def _access_only(resource: Mapping[str, Any]) -> bool:
+    """A yes/no resource, or a limit of 1/1 (the seed's "a yes, not a quota")."""
+    limit = resource.get('limit')
+    return bool(resource.get('yes_no')
+                or (limit is not None and limit.max_amount == 1 and limit.default_amount in (None, 1)))
+
+
+def _ordered(resources) -> Tuple[Dict[str, Any], ...]:
+    def key(r):
+        name = r.get('sam_name') or ''
+        return (RESOURCE_ORDER.index(name) if name in RESOURCE_ORDER else len(RESOURCE_ORDER),
+                r.get('name') or '')
+    return tuple(dict(r, access=_access_only(r)) for r in sorted(resources, key=key))
+
+
 @dataclass(frozen=True)
 class TypeCard:
     xras_allocation_type_id: int
@@ -28,6 +47,14 @@ class TypeCard:
     resources: Tuple[Dict[str, Any], ...] = ()
     rules: Any = None
     reason: Optional[str] = None
+
+    @property
+    def amounts(self) -> Tuple[Dict[str, Any], ...]:
+        return tuple(r for r in self.resources if not r['access'])
+
+    @property
+    def access(self) -> Tuple[Dict[str, Any], ...]:
+        return tuple(r for r in self.resources if r['access'])
 
     @property
     def is_open(self) -> bool:
@@ -73,12 +100,12 @@ def allocation_type_overview(session, opportunities: Sequence[Mapping[str, Any]]
             continue
         opp = by_type.get(guide.xras_allocation_type_id)
         if opp is not None:
-            resources = tuple(resources_with_limits(
+            resources = _ordered(resources_with_limits(
                 session, [dict(r) for r in opp.get('resources') or ()], resource_keys,
                 guide.allocation_type))
             rules = rules_for(opp.get('allocation_type_id'), opp.get('allocation_type'))
         else:
-            resources, rules = _sam_limits(session, guide.allocation_type), None
+            resources, rules = _ordered(_sam_limits(session, guide.allocation_type)), None
         reason = None
         if opp is None:
             reason = 'Not open for requests now.'

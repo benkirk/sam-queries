@@ -1,0 +1,15 @@
+{% extends 'register/base_register.html' %}
+{# /request step 5: the request form for a confirmed visitor. Context: row, opportunity, overview_url, step. #}
+{% block title %}Your allocation request{% endblock %}
+{% block step %}{% include 'register/_request_step.html' %}{% endblock %}
+{% block content %}
+<h1>Your request</h1>
+{% if opportunity %}
+{% include 'register/_request_chosen.html' %}
+<p class="register-lede">Your email address is confirmed, {{ row.first_name }}.</p>
+{% else %}
+<div class="register-callout warn">
+    <p>That allocation is no longer open. <a href="{{ overview_url }}">Choose another</a>.</p>
+</div>
+{% endif %}
+{% endblock %}

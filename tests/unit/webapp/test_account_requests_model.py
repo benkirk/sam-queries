@@ -54,6 +54,21 @@ class TestTheInvariants:
                                   last_name='B', purpose='submission',
                                   created_by='benkirk')
 
+    def test_a_visitors_own_submission_learns_its_placeholder_later(self, session):
+        """/request: the row exists before SAM mints the XRAS person at submit."""
+        row = AccountRequest.create(session, email='a@x.edu', first_name='A', last_name='B',
+                                    purpose='submission', created_by='self')
+        assert row.xras_username is None
+        row.attach_placeholder(' Samr7-User-A1B2C3 ')
+        assert row.xras_username == 'samr7-user-a1b2c3'
+        row.attach_placeholder('samr7-user-a1b2c3')            # the same name again is a no-op
+        with pytest.raises(ValueError, match='already names'):
+            row.attach_placeholder('samr7-user-ffffff')
+
+    def test_only_a_submission_carries_a_placeholder(self, session):
+        with pytest.raises(ValueError, match='only a submission'):
+            make_account_request(session).attach_placeholder('x-user-y')
+
     def test_standalone_carries_no_project(self, session):
         project = make_project(session)
         with pytest.raises(ValueError, match='standalone'):

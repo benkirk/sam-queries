@@ -5,7 +5,7 @@
   the box until the reader scrolls to the data-eula-end sentinel. The human
   check sits on the form itself. Context: event | None, locked_code, errors,
   field_errors, accept_url, terms_url (either blueprint's), invite (a row, on
-  the invitation link).
+  the invitation link), hidden ({name: value} posted with the accept).
 #}
 {% block title %}Before you begin{% endblock %}
 
@@ -14,6 +14,7 @@
 {% endblock %}
 
 {% block content %}
+{% block heading %}
 <h1>{% if invite %}Before you finish your request{% else %}Before you request an account{% endif %}</h1>
 <p class="register-lede">
     NSF NCAR HPC resources are shared federal research systems. Please read and
@@ -26,10 +27,12 @@
        (<span class="font-monospace">{{ event.event_code }}</span>).</p>
 </div>
 {% endif %}
+{% endblock %}
 
 <form method="post" action="{{ accept_url }}" data-register-gate novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if locked_code %}<input type="hidden" name="event_code" value="{{ locked_code }}">{% endif %}
+    {% for name, value in (hidden or {}).items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
 
     <div class="eula-panel" tabindex="0" aria-label="Terms of use" data-eula-scroll>
         {# Trusted markup from the vendored agreement (webapp/register/eula.py). #}

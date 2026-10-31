@@ -35,6 +35,17 @@ def admin_client(config=None):
     return XrasAdminClient.from_environment(config or interactive_config())
 
 
+def resource_keys(config=None):
+    """XRAS ``resourceId`` -> repository key from the catalog, or ``None`` when XRAS is not answering."""
+    from sam.integration.xras_api import XrasSourceUnavailable
+    from sam.integration.xras_api.people import resource_key_map
+    try:
+        catalog = read_client(config).get_resources()
+    except XrasSourceUnavailable:
+        return None
+    return resource_key_map(catalog) if catalog else None
+
+
 def requests_index():
     """The published request index, or ``None`` if no sweep has written one."""
     from sam.integration.xras_api.cache import load_requests_index

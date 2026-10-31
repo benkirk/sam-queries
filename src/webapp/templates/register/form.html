@@ -9,7 +9,8 @@
   Context: event (locked code) | None, locked_code, form, errors, field_errors,
            academic_options, event_options (listed events; empty when locked),
            country_options, human_check, human_check_site_key, form_action,
-           institutions_url. Invitation mode (register/invite.py) adds invite
+           institutions_url; hide_purpose drops the event picker and the purpose
+           note (/request, whose request is the purpose). Invitation mode (register/invite.py) adds invite
            (the row) and sponsor_name, and drops the email input, the event
            picker, the purpose note, the honeypot and the human check.
 #}
@@ -20,6 +21,7 @@
 {% endblock %}
 
 {% block content %}
+{% block heading %}
 <h1>{% if invite %}Finish your NCAR HPC account request{% else %}Request an NCAR HPC account{% endif %}</h1>
 {% if invite %}
 <p class="register-lede">
@@ -46,6 +48,7 @@
     you do.
 </p>
 {% endif %}
+{% endblock %}
 
 <form method="post" action="{{ form_action }}" novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -85,8 +88,8 @@
                                             help='Needed to enroll your account in two-factor authentication.') }}</div>
         <div class="col-md-6">{{ text_field('orcid', 'ORCID', maxlength=19, placeholder='0000-0002-1825-0097') }}</div>
     </div>
-    {% if invite %}
-    {# The row already names its event and project. #}
+    {% if invite or hide_purpose %}
+    {# The row already names its event and project, or the request is the purpose. #}
     {% elif locked_code %}
     <input type="hidden" name="event_code" value="{{ locked_code }}">
     <input type="hidden" name="event_locked" value="1">
@@ -113,7 +116,7 @@
     {% if invite %}
     <button type="submit" class="btn btn-primary"><i class="fa-solid fa-paper-plane"></i> Complete my request</button>
     {% else %}
-    <button type="submit" class="btn btn-primary" data-human-check-submit><i class="fa-solid fa-paper-plane"></i> Send me the confirmation</button>
+    <button type="submit" class="btn btn-primary" data-human-check-submit><i class="fa-solid fa-paper-plane"></i> {{ submit_label or 'Send me the confirmation' }}</button>
     {% endif %}
 </form>
 {% endblock %}

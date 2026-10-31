@@ -1961,6 +1961,76 @@
     ]
   ],
   [
+    "allocation_request.accept",
+    "/request/accept",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocation_request.draft",
+    "/request/draft/<token>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocation_request.institutions_fragment",
+    "/request/institutions",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocation_request.overview",
+    "/request/",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocation_request.pending",
+    "/request/pending/<token>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocation_request.pending_code",
+    "/request/pending/<token>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocation_request.start",
+    "/request/start/<int:opportunity_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocation_request.submit",
+    "/request/start/<int:opportunity_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocation_request.terms",
+    "/request/terms",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocation_request.verify",
+    "/request/verify/<token>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.adjustment_details",
     "/allocations/adjustment_details/<int:adjustment_id>",
     [

@@ -3,7 +3,7 @@
    theme attribute and toggle (like auth/login.html), carrying the #589 email
    "sheet" onto the web: a navy masthead over a centered card, so the page and
    the confirmation mail read as one thing. Blocks: masthead, step, content,
-   footer_extra. #}
+   footer_extra, sheet_class (" register-sheet-wide" for the request overview). #}
 <html lang="en" data-bs-theme="{{ theme }}">
 <head>
     <meta charset="UTF-8">
@@ -20,7 +20,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/register.css') }}">
 </head>
 <body class="register-page">
-    <main class="register-sheet">
+    <main class="register-sheet{% block sheet_class %}{% endblock %}">
         <header class="register-masthead">
             {% block masthead %}
             {# The reversed lockup (light NCAR on transparent) — the masthead is
