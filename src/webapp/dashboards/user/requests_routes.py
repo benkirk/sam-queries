@@ -184,7 +184,8 @@ def my_request_notes(number):
                            yours=normalize_comment(action.get('userComments')))
 
 
-def _message(title, message, variant='warning'):
+def message_fragment(title, message, variant='warning'):
+    """A refusal or notice in the request dialog's body."""
     return render_template(_MESSAGE, title=title, message=message, variant=variant)
 
 
@@ -458,7 +459,7 @@ def my_request_form(project, kind):
     try:
         ctx = handler.gate()
     except FormError as exc:
-        return _message(f'{handler.action_type} unavailable', ' '.join(exc.errors))
+        return message_fragment(f'{handler.action_type} unavailable', ' '.join(exc.errors))
     return render_template(_FORM, errors=[], field_errors={}, form=None, **ctx)
 
 
@@ -803,7 +804,7 @@ def my_request_new_fragment():
     try:
         ctx = handler.gate()
     except FormError as exc:
-        return _message('New request unavailable', ' '.join(exc.errors))
+        return message_fragment('New request unavailable', ' '.join(exc.errors))
     return render_template(_NEW_DESCRIBE, errors=[], field_errors={}, form=None, **ctx)
 
 
@@ -825,7 +826,8 @@ def my_request_new_opportunity_fragment():
     return render_template(_NEW_OPPORTUNITY, form=None, field_errors={}, oob=True, **ctx)
 
 
-def _search_mnemonic_codes(q, active_only):
+def mnemonic_code_search(q, active_only):
+    """The code-letter picker's search; codes and their institutions are public knowledge."""
     from sam.queries.mnemonic_console import search_mnemonic_codes
     return search_mnemonic_codes(db.session, q, limit=10)
 
@@ -856,7 +858,7 @@ register_typeahead(
 register_typeahead(
     bp, rule='/requests/htmx/mnemonic-suggest', endpoint='my_requests_mnemonic_suggest',
     permission=None,                    # any user may pick the letters for a New
-    search=_search_mnemonic_codes,
+    search=mnemonic_code_search,
     template='dashboards/allocations/partials/mnemonic_code_search_results_fk_htmx.html',
     ctx_key='codes')
 

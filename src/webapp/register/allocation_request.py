@@ -9,6 +9,7 @@ Mounted with ACCOUNT_REGISTRATION_ENABLED; every route 404s unless the visitor l
 Design: docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md.
 """
 
+import functools
 import logging
 from datetime import datetime, timedelta
 
@@ -27,9 +28,10 @@ from sam.schemas.forms import RegisterForm, RegisterGateForm, VerifyCodeForm
 from webapp.extensions import db
 from webapp.limiter import limiter as _rate_limit
 from webapp.utils import human_check
-from webapp.utils.htmx import institution_options, read_flag
+from webapp.utils.htmx import institution_options, read_flag, register_typeahead
 from webapp.utils.notify import get_notifier
-from webapp.dashboards.user.requests_routes import _NewRequestForm, award_lookup_fragment
+from webapp.dashboards.user.requests_routes import (_NewRequestForm, award_lookup_fragment,
+                                                    message_fragment, mnemonic_code_search)
 from webapp.utils.form_handler import FormError
 from webapp.utils.xras import (admin_client, interactive_config, read_client, resource_keys,
                                session_factory)
@@ -458,9 +460,7 @@ def draft_fragment(token):
     try:
         ctx = handler.gate()
     except FormError as exc:
-        return render_template('dashboards/user/fragments/request_message_htmx.html',
-                               title='The request cannot continue',
-                               message=' '.join(exc.errors), variant='warning')
+        return message_fragment('The request cannot continue', ' '.join(exc.errors))
     return render_template(handler.template, errors=[], field_errors={}, form=None, **ctx)
 
 
@@ -475,19 +475,22 @@ def draft_post(token):
     return _VisitorNewRequest(row, opportunity_id, token).handle()
 
 
-@bp.route('/draft/<token>/mnemonic-suggest')
-@_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
-def mnemonic_suggest(token):
-    """The code-letter picker's results; codes and their institutions are public knowledge."""
-    from sam.queries.mnemonic_console import search_mnemonic_codes
-    if draft_row(token)[0] is None:
-        abort(404)
-    q = (request.args.get('q') or '').strip()
-    if len(q) < 2:
-        return ''
-    codes = search_mnemonic_codes(db.session, q, limit=10)
-    return render_template('dashboards/allocations/partials/mnemonic_code_search_results_fk_htmx.html',
-                           codes=codes, q=q)
+def _draft_guard(view):
+    """Admits a typeahead by the draft token in its rule, on the anonymous tier."""
+    @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
+    @functools.wraps(view)
+    def guarded(token):
+        if draft_row(token)[0] is None:
+            abort(404)
+        return view()
+    return guarded
+
+
+register_typeahead(
+    bp, rule='/draft/<token>/mnemonic-suggest', endpoint='mnemonic_suggest', permission=None,
+    search=mnemonic_code_search,
+    template='dashboards/allocations/partials/mnemonic_code_search_results_fk_htmx.html',
+    ctx_key='codes', guard=_draft_guard)
 
 
 @bp.route('/draft/<token>/award-lookup')
