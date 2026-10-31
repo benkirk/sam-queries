@@ -110,8 +110,8 @@ class UsaSpendingProvider(AwardProvider):
             return False
         return bool((contract_number or '').strip())
 
-    def fetch(self, contract_number: str) -> Optional[AwardRecord]:
-        hit = self._resolve(contract_number)
+    def fetch(self, contract_number: str, *, exact: bool = False) -> Optional[AwardRecord]:
+        hit = self._resolve(contract_number, exact=exact)
         if hit is None:
             return None
 
@@ -125,8 +125,9 @@ class UsaSpendingProvider(AwardProvider):
 
     # search
 
-    def _resolve(self, contract_number: str) -> Optional[Mapping[str, Any]]:
-        """Find the award row, escalating through the three lookup shapes."""
+    def _resolve(self, contract_number: str, *, exact: bool = False
+                 ) -> Optional[Mapping[str, Any]]:
+        """Find the award row, escalating through the three lookup shapes (*exact*: the first)."""
         candidates = award_id_candidates(contract_number)
         if not candidates:
             return None
@@ -137,8 +138,12 @@ class UsaSpendingProvider(AwardProvider):
                                  'award_type_codes': codes})
             if hits:
                 return hits[0]
+        if exact:
+            return None
 
         # Suffixed variants (trap 3): keyword search on the bare number.
+        # WARNING: its first hit can be an unrelated award ('unknown1' -> a steel-punch contract,
+        # 2026-10-30), so a form a PI fills alone passes exact=True.
         for codes in (ASSISTANCE_TYPE_CODES, CONTRACT_TYPE_CODES):
             hits = self._search({'keywords': [candidates[-1]],
                                  'award_type_codes': codes})

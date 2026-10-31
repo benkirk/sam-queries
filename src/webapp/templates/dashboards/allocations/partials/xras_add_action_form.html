@@ -3,10 +3,12 @@
   On save the handler re-renders the detail modal in place.
 
   Context: request_number, action_type_options[(value,label)], write_enabled,
-           post_url, back_url.
+           post_url, back_url, flow_action_types, eula_sha. An Extension or Supplement is
+           filed through the submission flow (an xras_submission row, left unsubmitted) and
+           records the terms of use, as every request SAM files does.
 #}
 {% from 'dashboards/fragments/form_fields.html' import select_field, form_errors_panel with context %}
-{% from 'dashboards/fragments/xras_bits.html' import dialog_title, form_footer, writes_off %}
+{% from 'dashboards/fragments/xras_bits.html' import agreement, dialog_title, form_footer, writes_off %}
 {{ dialog_title('Add action', 'plus', meta=request_number) }}
 {# The one warning on this form that is a warning: it is close to a new request. #}
 <div class="alert alert-warning py-2 small">
@@ -19,6 +21,10 @@
     <fieldset {% if not write_enabled %}disabled{% endif %}>
         {{ select_field('action_type', 'Action type', required=True,
                         options=action_type_options, placeholder='Choose…') }}
+        {% call(terms_url) agreement(eula_sha, checked=form and form.get('agree'), id='xrasAddActionAgree', small=True) %}
+            Filed under the <a href="{{ terms_url }}" target="_blank" rel="noopener">terms of use</a>
+            (required for {{ flow_action_types | join(' and ') }}).
+        {% endcall %}
     </fieldset>
     {{ form_errors_panel() }}
 </form>

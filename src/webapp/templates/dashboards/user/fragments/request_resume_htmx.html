@@ -1,0 +1,27 @@
+{#- Resume a stopped row that lacks its documents, into #xrasRequestModalBody: SAM keeps a
+    document's name and digest, never its bytes, so the PI attaches each again. Context: row
+    (XrasSubmission), missing (payload document entries), errors. -#}
+{% from 'dashboards/fragments/form_fields.html' import form_errors_panel with context %}
+{% from 'dashboards/user/partials/request_bits.html' import request_title, document_field %}
+{{ request_title('Resume the ' ~ row.action_type ~ (' request' if row.action_type == 'New' else ''), meta=row.request_number) }}
+<form hx-post="{{ url_for('user_dashboard.my_request_resume', submission_id=row.xras_submission_id) }}"
+      hx-target="#xrasRequestModalBody" hx-swap="innerHTML" hx-encoding="multipart/form-data"
+      hx-disabled-elt="find button[type='submit']" hx-disinherit="hx-disabled-elt" novalidate>
+    <div class="modal-body">
+        <p class="small mb-2">SAM keeps no copy of a document, so attach it again. The steps
+            already done in XRAS are not repeated.</p>
+        {% for d in missing %}
+        {{ document_field('xrasResumeDoc' ~ loop.index, 'document_' ~ d.document_type,
+                          d.title or d.document_type, 'PDF; first attached as ' ~ d.filename,
+                          gate=True) }}
+        {% endfor %}
+        {{ form_errors_panel() }}
+    </div>
+    <div class="modal-footer">
+        <span class="small text-muted me-auto" data-gate-hint role="status"></span>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary" data-gate-submit
+                data-busy="Sending to XRAS. This can take a few seconds.">
+            <span class="spinner-border spinner-border-sm busy-spinner" aria-hidden="true"></span><i class="fa-solid fa-paper-plane busy-icon"></i> Resume</button>
+    </div>
+</form>

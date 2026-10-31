@@ -1,8 +1,10 @@
 # Reimplementing XRAS submission from SAMuel
 
-**Status: design. Its incoming half (§ 4.6 items 1-3) is built and live in production; the
-submission work itself is not started and follows phase D of
-[`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md)** (order: § 2). A project's allocation
+**Status: sprint 1 (phases 0, 1, 1b and 2) shipped 2026-10-29 in #874, issue #871, build plan
+[`XRAS_SUBMISSION_SPRINT1.md`](XRAS_SUBMISSION_SPRINT1.md); sprint 2 (phase 3) is issue #872.
+The incoming half (§ 4.6 items 1-3) and every phase of
+[`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md) this plan waited on are live in
+production.** The decisions of 2026-10-27 are § 3.5. A project's allocation
 life begins at ARC (`arc.ucar.edu/xras_submit`), is reviewed in XRAS, and reaches SAM at
 approval (`docs/xras/incoming/`). This document designs the return path, **SAM → XRAS (review)
 → SAM (apply)**, so a request can be authored from SAMuel while ARC keeps working beside it.
@@ -33,9 +35,9 @@ interfere.
 same request: the operator approves and posts, the post does everything SAM can, and a post
 that cannot apply opens one ticket listing what is missing. That covers every request,
 whoever authored it, and it reports a failure after approval. This plan moves resolution
-earlier, to authoring time, for the requests SAM files. Since the 2026-08-24 repoint, 73
-approved News have applied, 3 stand refused and 3 are unposted (census,
-`XRAS_CLOSED_LOOP.md` § 3.3). So the case for each phase is different:
+earlier, to authoring time, for the requests SAM files. Since phase D armed (2026-10-19) a
+refused post is one ticket (`XRAS_REQUEST_TICKETS.md`), so the failure classes below are read
+from those tickets. The case for each phase is different:
 
 - **Phase 1 (an action on an existing project) stands on its own.**
   - A lead extends or supplements from the project card they already use.
@@ -75,17 +77,17 @@ short-circuits it, with the ladder as the fallback, in the same shape as
 
 ## 2. Phases
 
-Three user-facing phases on one layer of plumbing, in the order each becomes provable.
-**Across plans, the order is incoming first:** post automation's phase D, then its B, C and E,
-then this plan's phases 0 and 1. Phases 2 and 3 stay designed and are reassessed once phase
-D's tickets show which failures remain (§ 1).
+Three user-facing phases on one layer of plumbing. **Sprint 1 (issue #871) builds phases 0, 1,
+1b and 2 as one PR with commits grouped per phase; sprint 2 (issue #872) builds phase 3.** Post
+automation's A-D are live; its E is independent of this work. The home of phases 1 and 2 is a
+My Requests tab on the user dashboard (§ 4.0).
 
 | Phase | Who | What | Proves | Depends on | State |
 |---|---|---|---|---|---|
-| **0 — plumbing** | — | a JSON-body path in the write client's `_write`; the vocabulary module; the `xras_submission` table and the flow layer (§ 4.2, § 4.3); the ownership predicate; the routing policy (§ 4.4); the limits table and its admin card (§ 4.5); `XRAS_SUBMIT_ENABLED`; the asks to Steve (§ 5) | nothing by itself | nothing external | designed |
-| **1 — existing projects** | the lead or admin, from the project card | Supplement and Extension, with a status readout beside the control (described below the table); the admin Add-action modal re-pointed at the flow; the routed answer for projects that cannot use XRAS. **1b — Renewal:** `/renew` on the primary line, then the abstract, grants on Large and Small, and the document the rule book names, through the base64 upload | the flow layer, the audit trail and the lever. The incoming side is unchanged, because the request is the shape ARC would have sent | 0 (scheduled after post automation phase D) | designed; every verb measured |
-| **2 — new request, logged in** | any SAM user | the form of § 4.1, through preflight and submit (its parts are listed below the table); the `New` handler's consult point (§ 4.6 item 4) | the first phase that changes what arrives at the handoff | 0; phase D's ticket record (§ 1) | designed; the form is unprototyped; deferred |
-| **3 — new request, no account** | someone without a SAM login | `ACCOUNT_REGISTRATION.md` phase 2 first. The request is created under an XRAS person SAM mints (`POST /v1/people/<u>` with `isReconciled = false`); the `xras_submission` row carries `registration_id`; the account's arrival merges the placeholder into the real username with `merge_placeholder`, which moves the PI and Allocation Manager roles (§ 5 has the two constraints this brings) | the 55% row of § 1 | 2 in production; `ACCOUNT_REGISTRATION.md` phase 2 | designed; the person verb and the merge measured on XRAS-dev; deferred |
+| **0 — plumbing** | — | a JSON-body path in the write client's `_write`; the vocabulary module; the `xras_submission` table and the flow layer (§ 4.2, § 4.3); the ownership predicate; the routing policy (§ 4.4); the limits table and its admin card (§ 4.5); `XRAS_SUBMIT_ENABLED`; the asks to Steve (§ 5) | nothing by itself | nothing external | sprint 1, commits 0a and 0b |
+| **1 — existing projects** | the lead or admin, from the project card | Supplement and Extension, with a status readout beside the control (described below the table); the admin Add-action modal re-pointed at the flow; the routed answer for projects that cannot use XRAS. **1b — Renewal:** `/renew` on the primary line, then the abstract, grants on Large and Small, and the document the rule book names, through the base64 upload | the flow layer, the audit trail and the lever. The incoming side is unchanged, because the request is the shape ARC would have sent | 0 | sprint 1, commits 1a-1c; every verb measured, the Extension's two-write shape on 2026-10-27 |
+| **2 — new request, logged in** | any SAM user | the form of § 4.1, through preflight and submit (its parts are listed below the table); the `New` handler's consult point (§ 4.6 item 4) | the first phase that changes what arrives at the handoff | 0, 1 | sprint 1, commits 2a and 2b; the New rule book and the grant validation measured 2026-10-27 (§ 3.1) |
+| **3 — new request, no account** | someone without a SAM login | `ACCOUNT_REGISTRATION.md` phase 2 first. The request is created under an XRAS person SAM mints (`POST /v1/people/<u>` with `isReconciled = false`); the `xras_submission` row carries `registration_id`; the account's arrival merges the placeholder into the real username with `merge_placeholder`, which moves the PI and Allocation Manager roles (§ 5 has the two constraints this brings) | the 55% row of § 1 | 2 in production; `ACCOUNT_REGISTRATION.md` phase 2 | sprint 2 (#872); the person verb and the merge measured on XRAS-dev |
 
 **Phase 1's status readout** is the sweep cache entry for the projcode with
 `is_pending_work`, plus `get_recent_xras_actions`. `manual` and `failed` read as "being reviewed
@@ -96,11 +98,12 @@ by CISL", and nothing names a notified address.
 - the affiliation, failing visibly when the `user_institution` row is end-dated (the case that
   minted `CGD` for a CU Boulder PI);
 - a mnemonic, through the suggestor;
-- an award, through the awards picker;
+- an award, looked up in the awards registry and confirmed: XRAS validates six grant fields on
+  Small, Large and External (§ 3.1), and `AwardRecord` carries all six for an NSF award;
 - resources bounded by the opportunity's `rules`, and amounts bounded by § 4.5;
 - the explicit PI role;
-- acceptance of SAMuel's own NWSC end-user agreement, recorded on the row (§ 4.2); the XRAS
-  attribute row is written from it;
+- acceptance of SAMuel's own NWSC end-user agreement, recorded on the row (§ 4.2) as on every
+  action SAM files; the XRAS attribute row is written from it until the pivot (§ 3.5);
 - documents where the rule book demands them.
 
 Every phase is proven on samuel-dev ↔ XRAS-dev first, where an approval posts to `sam_dev`,
@@ -118,15 +121,16 @@ verify-by-reread go through the `report` context, the dual-context arrangement
 
 | Step | Endpoint | Measured behavior |
 |---|---|---|
-| Create | `POST /v1/requests?opportunityId&requestType[&requestNumber&grantTypeId]` | returns the full object **with `rules{}`**, status `Incomplete`, **the first action already minted**, `requestNumber` **null**, and the creator as **Allocation Manager, not PI** |
+| Create | `POST /v1/requests?opportunityId&requestType[&requestNumber&grantTypeId]` | returns the full object **with `rules{}`**, status `Incomplete`, **the first action already minted**, `requestNumber` **null**, and the creator as **Allocation Manager, not PI**. The request's `rules{}` is only `allowedOperations`, `allowedActions` and `existingActions`: **the resource list is on the opportunity's rules** (below). A deleted draft answers **401 by id** afterwards, which is the verify signal (2026-10-27) |
+| Opportunity rules | `GET /v1/opportunities[/<id>]` under `submit` as the user | `rules{}` per opportunity: `canSubmitNewRequest`, `resourceIdsAvailableForNewRequest`, `defaultAllocationAwardPeriod` (12 months on every open one) and **`availableActionRequests`**, the actions XRAS offers *that* user per family (a user with no role sees none). The request's own `allowedActions` is advisory: XRAS accepted an Extension it did not list. Measured on XRAS-dev 2026-10-27 and **on production 2026-10-28** as benkirk: UHSS0001 offers Renewal, and `GET /v1/requests/1449367` by id answers 200 with `allowedActions ["Supplement","Extension","Transfer"]` |
 | PI | `POST /v1/requests/<rid>/roles/PI/<username>` | required. One person may hold both PI and Allocation Manager. Validate and submit run as the PI: the same call passes as the PI and fails as an Allocation Manager who is not also the PI |
 | Text | `PUT /v1/requests/<rid>/attributes` | `title shortTitle abstract keywords isSupportedByGrants`. The apidoc also documents `requestType`, `grantTypeId` and `requestNumber`, which renames the request into that family (§ 4.6 item 3) |
-| Action | `POST /v1/requests/<rid>/actions?actionType[&userComments]` → `{actionId}` | accepted on `Approved`, `Incomplete` and `Submitted` lines. `DELETE …/actions/<aid>` is a **soft delete**: the row stays with `isDeleted: true`, and the line's own `isDeleted` is derived from its actions. A deleted action can hold the family's highest `actionId`, so anything that walks `actions[]` must filter it |
+| Action | `POST /v1/requests/<rid>/actions?actionType[&userComments]` → `{actionId}` | accepted on `Approved`, `Incomplete` and `Submitted` lines; `userComments` sticks as a create param, so an Extension is two writes, this and `allocation_dates?endDate` alone (`beginDate` null is accepted). `DELETE …/actions/<aid>` is a **soft delete**: the row stays with `isDeleted: true`, and the line's own `isDeleted` is derived from its actions. A deleted action can hold the family's highest `actionId`, so anything that walks `actions[]` must filter it |
 | Renew | `POST /v1/requests/<rid>/renew?opportunityId` | a new line with `rules{}`. It **copies the roster, title, keywords and field of science**, not the abstract, grants, resources, dates or documents. Create-with-`requestNumber` also spawns a line but copies nothing, so use `/renew` |
 | Resources, dates | `PUT …/actions/<aid>/resources/<resourceId>?amount`; `POST …/allocation_dates?beginDate&endDate` → `{allocationDateId}` | query params; the resource id is the resource *type* id |
-| Field of science, grants, publications | `PUT …/fos/<fosTypeId>?isPrimary`; `POST …/grants`; `POST …/publications` (JSON) | all three stick on XRAS-dev (`XRAS_DEV_PROBES.md` § 3) |
+| Field of science, grants, publications | `PUT …/fos/<fosTypeId>?isPrimary`; `POST …/grants` → `{grantId}`, `PUT …/grants/<gid>`; `POST …/publications` (JSON) | all three stick on XRAS-dev (`XRAS_DEV_PROBES.md` § 3). A grant stores with any subset of its params, but validate on Small (and the rule book on Large and External) demands **six**: PI name, title, begin and end date, program officer name and email (`XRAS_SUBMISSION_SPRINT1.md` § 9) |
 | Opportunity attributes | `PUT …/opportunity_attributes`, **JSON body** | the EUA row (§ 4.2). The bulk form is the one that works: the single-attribute `PUT` with no value is a 400 |
-| Documents | `POST …/documents`, **JSON with a base64 body**; `GET …/required_documents_status` | XRAS parses the bytes: a hand-written PDF is a 400, a rendered one a 200 with a `documentId`. The status endpoint names exactly the unmet rule. No multipart transport is needed |
+| Documents | `POST …/documents`, **JSON with a base64 body**; `GET …/required_documents_status` | XRAS parses the bytes: a hand-written PDF is a 400, a rendered one a 200 with a `documentId`; a non-PDF is 400 "document is not a PDF file"; a 15 MB PDF is a 200 in 4.7 s, and the type is not checked against the rule book at upload. The status endpoint names exactly the unmet rule, and answers `[]` on an Extension. No multipart transport is needed |
 | Rule book | `GET /v1/allocation_types/<at>/action_types/<act>/required_fields` | `<at>` is `opportunities[].allocationTypeInfo.allocationTypeId`; the tables are in the probes doc § 5 |
 | Preflight, submit | `GET …/validate`; `POST …/submit` | validate names exactly the unmet rules. A first submit lands **`Submitted`** and mints the number. A resubmit after Return for Corrections or a withdraw also lands `Submitted` on XRAS-dev, while production's one re-submit (P3) landed `Under Review`. The submit body is `null` |
 
@@ -135,8 +139,9 @@ nothing), and the audit row is committed **before** the write leaves
 (`sam/manage/xras_remediation.py`, `_editor_op`).
 
 Two entries belong in the privilege register (`XRAS_WRITE_PROBES.md` § 7):
-- The create response is captured, because it is the only `rules{}` read our key gets on
-  production. `GET /v1/requests/<rid>` is 401 there; XRAS-dev answers it for a role-holder.
+- The create response is captured for its `rules{}`. `GET /v1/requests/<rid>` is 401 on
+  production for an identity with no role on the line and 200 for a role-holder (benkirk on
+  UHSS0001, 2026-10-28), the same as XRAS-dev.
 - The Requested stage is the only stage a SAM submission can populate.
 
 XRAS checks nothing at submit about the people on the line. A request whose PI is an
@@ -155,16 +160,19 @@ SAM is the only gate.
 - Return for Corrections sets the request and action back to `Incomplete` with
   `returnedForCorrections: true` (`XRAS_DEV_PROBES.md` § 6.1).
 
-These belong in `sam/integration/xras_api/vocabulary.py`, one module, beside the role types.
+`sam/integration/xras_api/vocabulary.py` holds the role types and the action and request type
+ids (`ACTION_TYPES`), because the rule-book endpoint takes them.
 
-**The rule book is exact.**
+**The rule book is exact** (every type, including New, read 2026-10-27).
 - A Supplement requires **nothing**.
-- An Extension requires an end date and user comments.
+- An Extension requires an end date and user comments (External and NSC: nothing).
 - A Renewal requires a title and abstract, plus grants on Large and Small.
+- A New requires a title and abstract, plus grants on Large, Small and External.
 
-Documents are a separate rule:
-- a Main Document for New and Renewal on Large and NSC;
+Documents are a separate rule (`/types/documents`, with a `hardPageLimit` per pair):
+- a Main Document for New and Renewal on Large and NSC (10 pages);
 - a Progress Report for Renewal on Small and Educational;
+- Supporting Information on Educational;
 - an Advisor Letter on Exploratory.
 
 **No document rule names Supplement or Extension.** Across 400 approved requests the corpus
@@ -230,10 +238,10 @@ with a PI-facing form. The operator assumptions sit in:
 
 | Piece | Where | Reused how |
 |---|---|---|
-| the write client: create, PI and other roles, attributes, add action, resources, dates, user comments, validate, submit, withdraw, renew, rename, merge; `xa_user` and `context` per call. **Missing:** person-create, opportunity attributes, documents, action delete (§ 4.3's abort), field of science, grants and publications | `sam/integration/xras_api/admin_client.py` | as-is, plus a JSON-body path in `_write`, which takes params only, and the missing verbs (phase 0) |
+| the write client: PI and other roles, attributes, add action, resources, dates, user comments, validate, submit, withdraw, renew, rename, merge; `xa_user` and `context` per call. **Missing** (census 2026-10-27): create request, person-create, opportunity attributes, documents, action delete (§ 4.3's abort), field of science, grants and publications, and a JSON-body path in `_write` | `sam/integration/xras_api/admin_client.py` | as-is, plus the missing verbs (sprint 1, commit 0a) |
 | the service ops, taking `operator` and the PI as parameters; the audit row opened before the write, the sweep cache patched after | `sam/manage/xras_remediation.py`, `_editor_op` | each flow step is one op |
 | `xras_remediation_event` | the audit table | `created_by` and `xa_user` coincide for a PI, which the columns allow |
-| the preflight: `preflight_action`, which shapes the wire dict (`synthesize_action`) and runs `dispatch_action(validate_only=True)` in a SAVEPOINT | `sam/xras/preflight.py` | fed the draft through a report-shaped shim |
+| the preflight: `preflight_action`, which shapes the wire dict (`synthesize_action`) and runs `dispatch_action(validate_only=True)` in a SAVEPOINT | `sam/xras/preflight.py` | fed the draft directly: `actionId` and `requestId` are optional in `XrasActionSchema`, so a draft with no XRAS ids loads |
 | the mnemonic suggestor | `sam/queries/mnemonic_console.py` | the affiliation step |
 | the awards search | `sam-search awards` | the contract step |
 | the field validators (amount `≥ 0`, `end ≥ begin`, the comment caps) | `sam/schemas/forms/xras_remediation.py` | composed into one `ActionRequestForm` |
@@ -280,9 +288,44 @@ modal has the same gap: it creates a bare action and stops.
 | Default resource amounts | Allocation Types → *Available Resources* → Default Resource Amounts | the ARC form's pre-fill; SAM's § 4.5 default should match it |
 | Rule book | Allocation Types → *Allocation Type Rules*: Required Submission Fields, Required/Optional Documents, Maximum Requests per type, action time periods, ineligible lead statuses | the same rules `required_fields` and `required_documents_status` report: edit here, read there |
 | Available units per opportunity | Opportunities → *Available Resource Numbers* | the pool, not a per-request bound; leave it blank |
-| Notifications | Admin → *Notifications* (`/notification_templates`): each template sends for the rows of its Rules table (allocation type × action type × event × recipient). XRAS mails the submitter and `alloc@` on submit (Action Finalized/Submitted), and the PI with copies at the operator's Notify step (Action Approved) | deleting the Action Approved rules for the action types SAM takes over is the cutover step of `XRAS_POST_AUTOMATION.md` phase C; with both on, a PI is mailed twice |
+| Notifications | Admin → *Notifications* (`/notification_templates`): each template sends for the rows of its Rules table (allocation type × action type × event × recipient). XRAS mails the submitter and `alloc@` on submit (Action Finalized/Submitted), and the PI with copies at the operator's Notify step (Action Approved) | the Action Approved rules for the action types SAM sends were deleted at the phase C cutover (2026-10-20) |
+| End User Agreement attribute sets | Opportunities → *Submission Questions* (the `yes_no` set on five opportunities, § 4.2) | SAM owns the agreement (§ 3.5): these sets are deleted from the NCAR opportunities at the production pivot, the way phase C deleted its rules; until then SAM echoes the row |
+
+### 3.5 Decisions taken (2026-10-27)
+
+| Decision | |
+|---|---|
+| **One PR for phases 0, 1, 1b and 2** (issue #871), commits grouped per phase; phase 3 is sprint 2 (#872) | the dev loop is proven and A-D are live, so nothing is left to wait for |
+| **A My Requests tab** on the user dashboard is the home of the list and every form; the user project card gets one quiet link into it (§ 4.0) | one surface to build and test |
+| **Limits in full**: the table, a seed from ARC's published policy, a CrudSpec admin card (§ 4.5) | |
+| **All seven open opportunities** for New from day one, so documents and grants are day-one | |
+| **SAM owns the agreement, on every action.** Gentle acceptance (a checkbox beside the submit, the text one click away, no scroll gate) on Extension and Supplement too; `eula_sha` and `eula_accepted_at` on every row. XRAS's attribute sets are deprecated at the production pivot | one agreement, one record, whichever door |
+| **Upload limits are hooks, dark at rollout**: `SUBMISSION_DOCUMENT_MAX_BYTES` and `SUBMISSION_DOCUMENT_MAX_PAGES`, unset means no SAM-side bound; the PDF check and XRAS's own refusal are the real bounds, the rule book's page limit is shown as advice | XRAS took a 15 MB PDF |
+| **Logging is enough to diagnose, not pedantic**: one log line per flow step and XRAS's `errors[]` kept whole on the row | |
+| **Grants are lookup-then-confirm**: the award number goes to the registry, the six fields XRAS validates are prefilled from `AwardRecord`, and only the unavailable ones are typed. The PI picks the agency from XRAS's `funding_agencies` (NSF default); NSF looks up through NSF's API, any other agency through USAspending by **exact** number (2026-10-30: its keyword fallback returned unrelated awards), which fills title and dates; PI and officer are typed | |
+| **Rollout**: the PR branch rolls to samuel-dev by workflow dispatch as often as needed; Ben applies the Postgres DDL to `sam_dev` by hand; production MySQL got it 2026-10-29 | DDL ships in two dialects (§ 4.2) |
 
 ## 4. The design
+
+### 4.0 The home: a My Requests tab
+
+The user dashboard gains a sixth URL-driven tab, **My Requests**, beside My Accounts. It lists
+every XRAS request the user holds a role on (the sweep index, `request_numbers_by_username`)
+and every submission SAM filed for them (`xras_submission`), each with its status: the sweep's
+`is_pending_work` reading ("In review", "Approved, awaiting post", "Approved, in processing"; `manual` and `failed` read
+"In review by CISL"), and "Applied on …" from `xras_action_log`. A stopped submission
+reads "stopped at <step>" with Resume and Discard. Below the list, each project the user leads
+or administers offers its actions through the routing of § 4.4, enabled or disabled with the
+reason, never hidden; "New request" sits at the top. Every form of § 4.1 opens from this tab in
+its own modal. The user project card carries one quiet "Request time" link into the tab; the
+Manage Project page's Add, Extend and Renew stay what they are (allocation mutations, not
+requests). When `XRAS_SUBMIT_ENABLED` is off the tab renders with every control disabled and
+its reason.
+
+The sweep rebuilds its index only on the daily full slot, so SAM keeps its own filings on it:
+the submit inserts the request's row (`patch_requests_index(insert=True)`), and every sweep slot
+re-reads each filing still `submitted` (`_refresh_own_filings`), so a decision taken in XRAS
+reaches this tab within the hour.
 
 ### 4.1 The form: one to two pages, driven by the rule book
 
@@ -300,14 +343,14 @@ fields that choice requires, and nothing else.
 | Action | The page asks for | What drives the reveal |
 |---|---|---|
 | Extension | the new end date (a real date input, ISO) and comments. The floor is the end the handler will compare against: the account's **latest** allocation by end date (`latest_allocation`, `sam/xras/handlers/_allocations.py`), which after a Renewal posts is the renewal's future window, so an earlier date is refused at the handoff (`XRAS_DEV_PROBES.md` § 6.1, scenario 7) | rule book: end date and comments required; no amounts, no document |
-| Supplement | an amount per resource, pre-filled with the default and bounded by § 4.5, and comments | rule book: nothing required; the limits table. **Which window it lands on** is open: a Supplement filed after a Renewal posts applies to the renewal's future window (legacy's max-end-date rule, `XRAS_INGEST_IMPROVEMENTS.md` § 4). The form names the window it will reach, or the ingest rule changes first |
+| Supplement | an amount per resource the PI selects (opt-in: every resource starts under Available, its default shown; selecting one fills the default), bounded by § 4.5, and comments | rule book: nothing required; the limits table. **Which window it lands on** is open: a Supplement filed after a Renewal posts applies to the renewal's future window (legacy's max-end-date rule, `XRAS_INGEST_IMPROVEMENTS.md` § 4). The form names the window it will reach, or the ingest rule changes first |
 | Renewal | `/renew` copies the roster, title, keywords and field of science; the form asks for the abstract, grants on Large and Small, the agreement (below), and the Main Document or Progress Report the document rule names | the rule book and the document rules per allocation type |
 | New, page 1 — *Describe* | the opportunity (everything below keys on it); title, abstract, keywords; field of science; PI = `current_user`, pre-filled, with an optional admin; affiliation → the mnemonic suggestor, failing visibly when the `user_institution` row is end-dated; the award picker, revealed when the opportunity's rule book wants grants | the opportunity's `rules{}`, `required_fields` |
 | New, page 2 — *Request* | resources = `rules.resourceIdsAvailableForNewRequest` ∩ mapped, each showing its default, minimum and maximum; **the NWSC end-user agreement**, SAMuel's own vendored text shown in full and accepted on every request SAM files (New and Renewal), the way the registration gate asks it (`webapp/register/eula.py`); the document upload when a document rule names the pair; the preflight readout; submit | `rules{}`, § 4.5, the agreement (always; the XRAS attribute row is written from it when the opportunity carries one), `required_documents_status` |
 
 What this fixes, against the baseline of § 3.2:
 - the lead is pre-filled, and the role vocabulary is XRAS's own;
-- amounts are defaulted and bounded, with the limit shown;
+- amounts are opt-in (Selected over Available; a Renewal starts with the held lines selected), defaulted on selection and bounded, with the limit shown;
 - the date input is a date input;
 - a required field says so inline instead of moving focus;
 - dates and grants are asked only where the rule book asks for them.
@@ -326,7 +369,7 @@ Three identifiers arrive on every `/actions` payload, and they behave differentl
 | | `requestNumber` | `requestId` | `actionId` |
 |---|---|---|---|
 | At create | **`null`**: nothing is minted | assigned, returned with `rules{}` | the first action is minted with the line; a later one is returned by `POST …/actions` |
-| At submit | **minted** (`NCAR4352` appeared on the first `POST …/submit`) | unchanged | unchanged |
+| At submit | **minted** (`NCAR4352` appeared on the first `POST …/submit`); the flow reads the line by id once and records it | unchanged | unchanged |
 | After the New applies | renamed to the projcode by SAM, within a second of the reply (§ 4.6 item 3); the old number stops resolving | unchanged | unchanged |
 | Across a renewal | stable: the family key | a renewal starts a **new** line | new |
 
@@ -338,13 +381,16 @@ is indexed: it is the line the action hangs on, and the only XRAS key that exist
 create and submit.
 
 Modeled on `XrasRequestOverride` (`sam/integration/xras.py`): `SessionMixin`, state transitions
-as methods, a module-level lookup primitive.
+as methods, a module-level lookup primitive. The DDL ships in **two dialects**, MySQL for the
+local clone, the test container and production, Postgres for the CNPG `sam_dev` that samuel-dev
+runs on; `load_postgres.py` streams every ORM table from the local MySQL clone, so the MySQL
+script lands there before any `make refresh-dev` (`XRAS_SUBMISSION_SPRINT1.md` § 4).
 
 | Column group | Columns |
 |---|---|
 | Keys | `xras_submission_id` (PK); `action_id` (unique, nullable until the first write); `request_id` (indexed); `request_number` (the family key, updated when observed); `project_id` (set from the start for an action on an existing project; set when a `New` applies) |
 | Resolved SAM state | `user_id` (PI), `admin_user_id`, `facility_id`, `mnemonic_code_id`, `allocation_type_id`, `contract_id` (nullable, link-only), `opportunity_id`, `registration_id` (nullable; `ACCOUNT_REGISTRATION.md` § 4) |
-| Agreement | `eula_sha`, `eula_accepted_at`: the git blob SHA of the vendored text and the moment the submitter accepted it, the pair `account_request` records at the registration gate. Required before submit on a New or Renewal; null on an action on an existing project |
+| Agreement | `eula_sha`, `eula_accepted_at`: the git blob SHA of the vendored text and the moment the submitter accepted it, the pair `account_request` records at the registration gate. Required before submit on every action SAM files (§ 3.5) |
 | Lifecycle | `state` ∈ `draft · created · populated · submitted · aborted · applied`; `created_by` (who clicked); `xa_user` (who SAM impersonated: the same person for a PI, a PI for an operator); timestamps |
 | Evidence | `payload` (what we sent); `xras_snapshot` (the create response, `rules{}` included); the `xras_remediation_event` ids of each step |
 
@@ -391,9 +437,9 @@ webapp/dashboards/user/…                webapp/dashboards/allocations/xras/…
   xa_user = current_user                  xa_user = PI, created_by = operator
             \                                       /
              sam/manage/xras_submission.py        (new)
-               request_action(session_factory, *, line, action_type, resources,
-                              dates, comments, actor, xa_user, submit=True)
-               each step = an existing xras_remediation op through _editor_op
+               request_action(session_factory, draft: ActionRequest, *, actor,
+                              xa_user, eula, submit=True, door='pi')
+               each step = an existing xras_remediation op through audited_write
                state in the xras_submission row; abort = soft-delete the action;
                resume = continue from state
                                 |
@@ -483,7 +529,7 @@ resources; ids are resolved when read.
 | **Applies to** | New, Supplement (the increment), Renewal. Extension carries no amount |
 | **Does not apply to** | the admin request editor: an operator correcting a requested amount is not the case the limit exists for |
 | **Unconfigured pair** | no limit; the form shows the resource without a default and says so |
-| **Where it is edited** | Admin → Configuration, a card in the shape of Notification Addressing |
+| **Where it is edited** | Admin → Configuration, a CrudSpec card in the shape of Notification Addressing |
 
 XRAS carries the same number types on the wire: each opportunity resource has `numbers[]` with
 `source: allocationType` and the types Default, Minimum and Maximum. But the admin app exposes
@@ -494,11 +540,20 @@ no editor for a maximum:
 
 NCAR's data agrees: two decade-old defaults and Derecho dollar values, never a maximum. ARC
 publishes the policy limits as text on its opportunities page and enforces nothing, so SAM's
-table is the only enforcement. Its seed values are ARC's published policy:
-- **Small:** Derecho 1,000,000 core-hours, Derecho GPU 2,500 GPU-hours.
-- **Exploratory and Classroom:** 500,000 and 1,500.
-- **Large:** none.
-- **Data Analysis:** Casper only.
+table is the only enforcement. Its seed script (both dialects, sprint 1) carries ARC's
+published policy where one exists and the snapshot's medians elsewhere (Ben, 2026-10-28:
+the default is a nice median of what active projects of the type hold, the limit a multiple
+above, and the peer-reviewed panels get a high ceiling and no default). The full table, with
+the measured medians beside each proposed value, is `XRAS_SUBMISSION_SPRINT1.md` § 4. In short:
+- **Small:** Derecho 500,000 default under the published 1,000,000 cap; Derecho GPU 1,500 under 2,500.
+- **Exploratory and Classroom:** 500,000 and 400,000 defaults under the published 500,000 cap; GPU 1,500.
+- **Casper, Casper GPU, Campaign Storage:** medians as defaults, p90 as the limit, per type.
+- **Data Analysis:** Casper 1 / 1, the allocation is a yes, not a quota.
+- **CHAP and NSC:** no default; ceilings of 500 million and 200 million Derecho core-hours.
+
+Two published rules the table does not encode: requesting Derecho and Derecho GPU together
+reduces each limit proportionally, and a Small or Exploratory one-time supplement may reach
+twice the original. The form states them; nothing enforces them.
 
 The same limits apply to initial requests and supplements.
 
@@ -548,22 +603,45 @@ to phase 2.
    renamed. Rules 2 and 3 of item 2 cover the moments before the rename and any action parked
    earlier.
 4. **The `New` handler's consult point** (phase 2). It sits at the top of `NewHandler.assemble`
-   (`sam/xras/handlers/new.py`), keyed on the payload's `requestId`. It pre-sets the mnemonic,
-   allocation type, contracts and area of interest from the stored FKs, with the ladder as the
-   fallback. That is either three branches in the shape of the two `lookup_request_override`
-   branches, or one `_consult_submission()` first statement. Either way it only pre-sets inputs
-   and reports nothing, so the error order the tests pin (title, roster, area, allocation type,
-   mnemonic, contracts, dates, resources) is untouched. `NewHandler.execute` stamps `applied`
-   and `project_id` after `Project.create`.
+   (`sam/xras/handlers/new.py`), keyed on the payload's `requestId`, and pre-sets the mnemonic
+   from the stored id, with the ladder as the fallback; the allocation type, contracts and area
+   of interest come from the push, which carries what the form sent (built in 2b,
+   `XRAS_SUBMISSION_SPRINT1.md` § 2). It only pre-sets inputs and reports nothing, so the error
+   order the tests pin (title, roster, area, allocation type, mnemonic, contracts, dates,
+   resources) is untouched. Every handler stamps `applied` (and a New's `project_id`) inside
+   its own transaction.
+
+### 4.7 Sketch: an initial roster on the New form (sprint 2, #872)
+
+Not built. A New today carries its PI and an optional admin; everyone else is added after the
+project exists. XRAS request roles include **User** (`USER_ROLE_TYPE_ID`,
+`sam/integration/xras_api/vocabulary.py`) beside PI and Allocation Manager, so a New can carry
+its roster, and the flow layer already writes roles (`add_role`): each roster entry is one more
+step after the PI's.
+
+- An optional "People on the project" section on page 1. A SAM user is picked through the same
+  user search as the admin (username first, with the email).
+- Someone without an account is entered by name and email. SAM turns that entry into an
+  account-request invitation (the sponsor's invitation link, `.claude/rules/account-requests.md`)
+  **once the project exists, never before**, so an unapproved New sends no mail.
+- The no-account New (phase 3) must not expose the user directory (§ 5, the admin picker row).
+
+Open questions are in § 5.
 
 ## 5. Gaps and open questions
 
 | Gap | Why it matters | Next step |
 |---|---|---|
-| **The form has no prototype** (§ 4.1) | the one-versus-two-page split and the reveal rules are design, not measurement | mock it before the phase-2 plumbing; keep the rule-book-driven reveal |
-| **Which window an action lands on** (§ 4.1) | `latest_allocation` (max end date) drives the extension, supplement, adjustment and update handlers and the preflight. After a Renewal posts, a Supplement on the old line applies to the renewal's future window silently, and an Extension to a date before that window's end is refused | decide the ingest rule (`XRAS_INGEST_IMPROVEMENTS.md` § 4) before phase 1's forms; until then the form names the window it will reach and floors the date on it |
-| **Write client gaps** | `_write` takes params only; person-create, opportunity attributes, document upload, action delete, field of science, grants and publications are unbuilt. Action delete is the abort of § 4.3, so phase 1 needs it before the flow layer | phase 0 |
+| **The form has no prototype** (§ 4.1) | the reveal rules are now measurement (the New rule book, the grant validation, § 3.1); the page split is still a judgment call | sprint 1, commit 2a; keep the rule-book-driven reveal |
+| **Which window an action lands on** (§ 4.1) | `latest_allocation` (max end date) drives the extension, supplement, adjustment and update handlers and the preflight. After a Renewal posts, a Supplement on the old line applies to the renewal's future window silently, and an Extension to a date before that window's end is refused | undecided (`XRAS_INGEST_IMPROVEMENTS.md` § 4); sprint 1's form names the window it will reach and floors the date on it |
+| **Write client gaps** | `_write` takes params only; create request, person-create, opportunity attributes, document upload, action delete, field of science, grants and publications are unbuilt. Action delete is the abort of § 4.3, so phase 1 needs it before the flow layer | sprint 1, commit 0a |
+| **DDL is two-dialect** | samuel-dev runs Postgres, production MySQL; `load_postgres.py` streams every ORM table from the local MySQL clone | one MySQL and one Postgres script per table (§ 4.2) |
+| **Large and NSC on the demo** | XRAS-dev has no open Large or NSC opportunity (its five are the University four and External), so the Main Document and the officer-bearing grants have no target there | open one of each in `xras-admin-demo` before the phase-2 proof |
+| **The seed values** | proposed from the snapshot's medians and the published caps (`XRAS_SUBMISSION_SPRINT1.md` § 4) | approved 2026-10-29 (`XRAS_SUBMISSION_SPRINT1.md` § 5) |
+| **Grant lookup depth** | validate wants the program officer; NSF's API carries it, USAspending does not | settled 2026-10-30: USAspending by exact number for other agencies, 22 of 48 SAM non-NSF numbers found (standard formats nearly all); the PI types the officer (§ 3.5) |
 | **Placeholders SAM mints** (phase 3) | SAM classifies a placeholder by its username shape alone (`PLACEHOLDER_USERNAME_RE`, `^\S+-user-\S+$`, `sam/queries/xras_accounts.py`), and fulfills an `account_request` by email. A merge into an account under a different email leaves the sweep's row open in NUSD's queue (`XRAS_DEV_PROBES.md` § 6.1, scenario 6) | SAM names its placeholders `<x>-user-<y>`; `merge_placeholder` closes the source's rows (`XRAS_POST_AUTOMATION.md` phase D, item 6) |
+| **The admin picker on a no-account New** (phase 3) | the logged-in New picks its admin with a user search (`/user/requests/htmx/admin-suggest`: any user who may file a New sees active users' names, usernames and emails). An anonymous registrant must not get that directory | decide the phase-3 admin field (typed and checked at submit, or named later by the PI) when sprint 2 builds it; never reuse the logged-in endpoint |
+| **An initial roster on a New** (§ 4.7) | a New names only its PI and admin, so every other member waits for the project to exist and for the lead to add them by hand | decide with Ben in sprint 2 (#872): XRAS role for each entry (User only, or Co-PI too); invite a person without an account at submit or at activation (§ 4.7 proposes activation) |
 | **A parked action answers 200** (§ 4.6 item 2) | XRAS shows the operator a successful post, and phase D's tickets cover New and Renewal only | ask whether a parked action opens the request's ticket too, when phase D is built |
 | **Actions applied before SAMuel's log** | § 4.6 items 1 and 2 read only SAMuel's log, so a repost of an action applied before the 2026-08-24 repoint applies again. The 12 legacy-era families still under `NCAR*` are dormant (`XRAS_CLOSED_LOOP.md` § 3.3) | import legacy-era actions (matched to `allocation_transaction`) only when a repost of a pre-repoint action actually happens |
 | **Extension 399374 on `UHSS0001`** | approved and posted, parked as #184, not notified. The family answers `UHSS0001` after the 2026-10-14 backfill, so a fresh Extension applies | file it afresh, or withdraw it; the admin app's repost re-sends the `New`, which the guard refuses |
@@ -587,7 +665,9 @@ to phase 2.
 
 | | |
 |---|---|
-| [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md) | the incoming roadmap this plan follows: approve and post does everything SAM can, and a failed post opens one ticket |
+| [`XRAS_SUBMISSION_SPRINT1.md`](XRAS_SUBMISSION_SPRINT1.md) | the sprint-1 build plan: the commit map, the file plan, the DDL in two dialects, the dev proof |
+| [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md) | the incoming roadmap this plan followed: approve and post does everything SAM can, and a failed post opens one ticket |
+| [`XRAS_PHASE_C_AND_TICKETS.md`](XRAS_PHASE_C_AND_TICKETS.md), [`XRAS_NOTICES_CUTOVER.md`](XRAS_NOTICES_CUTOVER.md) | how phase C deleted XRAS's rules at its cutover: the shape the agreement's pivot follows |
 | [`XRAS_SUBMISSION_PROBES.md`](../xras/outgoing/XRAS_SUBMISSION_PROBES.md) | the 2026-09-14 probe record: every verb in § 3.1, the NCAR vocabularies, the rule-book tables, the final state left in XRAS |
 | [`XRAS_ARC_BASELINE.md`](../xras/outgoing/XRAS_ARC_BASELINE.md) | W9, 2026-09-15: the ARC form page by page, and one real New and Extension seen from ARC, the admin app, the API, SAM and mail |
 | [`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md) | the XRAS-dev read and write map, the posts to samuel-dev, the rename loop and the Track 2 scenarios |

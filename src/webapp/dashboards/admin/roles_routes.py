@@ -9,7 +9,7 @@ process's catalog snapshot; the other replicas catch up within RBAC_DB_TTL.
 import logging
 
 from flask import abort, current_app, make_response, render_template, request, url_for
-from flask_login import current_user, login_required
+from flask_login import login_required
 
 from sam.core.groups import AdhocGroup
 from sam.core.users import User
@@ -21,6 +21,7 @@ from sam.security.rbac_catalog import SUBJECT_TYPES
 from sam.security.rbac_reports import build_effective, build_keys, permission_groups
 from sam.security.samuel_roles import (RbacInvariantError, SamuelRole, SamuelRoleGrant,
                                        load_catalog)
+from webapp.auth.impersonation import acting_username
 from webapp.extensions import db
 from webapp.utils.form_handler import FlattenedFieldErrors, FormError, HtmxFormHandler
 from webapp.utils.htmx import read_flag, read_tab
@@ -158,7 +159,7 @@ class _AddGrantHandler(FlattenedFieldErrors, HtmxFormHandler):
     def perform(self, data):
         return SamuelRoleGrant.create(
             db.session, subject_type=data['subject_type'], subject_name=data['subject_name'],
-            by=current_user.username, role=data['role'],
+            by=acting_username(), role=data['role'],
             permission=Permission(data['permission']) if data.get('permission') else None,
             facility_name=data.get('facility_name'), note=data.get('note'))
 
@@ -192,7 +193,7 @@ def roles_grant_revoke(grant_id: int):
         return '', 404
     try:
         with management_transaction(db.session):
-            row.revoke(by=current_user.username)
+            row.revoke(by=acting_username())
     except RbacInvariantError as exc:
         return render_template('dashboards/admin/fragments/roles_grant_refused_row.html',
                                message=str(exc))
@@ -297,7 +298,7 @@ class _SaveRoleHandler(FlattenedFieldErrors, HtmxFormHandler):
 
     def perform(self, data):
         perms = [Permission(v) for v in data['permissions']]
-        by = current_user.username
+        by = acting_username()
         if self.role is None:
             return SamuelRole.create(db.session, name=data['name'], permissions=perms, by=by,
                                      description=data.get('description'), extends=data['parent'])

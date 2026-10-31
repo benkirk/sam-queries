@@ -396,6 +396,11 @@ class XrasApiClient(_XrasTransport):
         """
         return _as_list(self._get('/v1/types/fos'))
 
+    def get_funding_agencies(self) -> Optional[List[Dict[str, Any]]]:
+        """The grant agencies, ``GET /v1/funding_agencies``: ``{fundingAgencyId, fundingAgencyName,
+        fundingAgencyAbbr, relativeOrder}``, 19 rows, the same ids on the demo and production."""
+        return _as_list(self._get('/v1/funding_agencies'))
+
     def get_role_types(self) -> Optional[List[Dict[str, Any]]]:
         """The process role-type vocabulary — ``GET /v1/types/roles``.
 
@@ -406,6 +411,22 @@ class XrasApiClient(_XrasTransport):
         of by hand.
         """
         return _as_list(self._get('/v1/types/roles'))
+
+    def required_fields(self, allocation_type_id: int,
+                        action_type: Any) -> Optional[Dict[str, Any]]:
+        """The rule book for one allocation type x action type, or ``None``.
+
+        ``GET /v1/allocation_types/<at>/action_types/<act>/required_fields``; *at* is
+        ``opportunities[].allocationTypeInfo.allocationTypeId``, *action_type* a name or id.
+        """
+        from sam.integration.xras_api.vocabulary import action_type_id
+        return _as_dict(self._get(
+            f'/v1/allocation_types/{int(allocation_type_id)}'
+            f'/action_types/{action_type_id(action_type)}/required_fields'))
+
+    def get_document_types(self) -> Optional[List[Dict[str, Any]]]:
+        """``GET /v1/types/documents``: each type with the allocation x action types that require it."""
+        return _as_list(self._get('/v1/types/documents'))
 
     def get_panels(self) -> Optional[List[Dict[str, Any]]]:
         """The review-panel catalog — ``GET /v1/panels``.

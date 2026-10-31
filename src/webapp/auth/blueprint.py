@@ -10,6 +10,7 @@ from flask import (
 from flask_limiter.util import get_remote_address
 from sqlalchemy.orm import Session
 from flask_login import login_user, logout_user, login_required, current_user
+from webapp.auth import impersonation
 from webapp.auth.models import AuthUser
 from webapp.auth.providers import get_auth_provider, OIDCAuthProvider
 from webapp.extensions import db
@@ -102,6 +103,7 @@ def login():
             auth_user = AuthUser(sam_user)
 
             remember = request.form.get('remember', False)
+            impersonation.end()           # a fresh login never inherits an impersonation
             login_user(auth_user, remember=remember)
             logger.info("Login success (stub): user=%s", username)
             _record_login_seen(sam_user.username)
@@ -200,6 +202,7 @@ def oidc_callback():
         return redirect(url_for('auth.login'))
 
     auth_user = AuthUser(sam_user)
+    impersonation.end()
     login_user(auth_user, remember=False)
     logger.info("OIDC login success: user=%s", sam_user.username)
     _record_login_seen(sam_user.username)
@@ -223,6 +226,9 @@ def logout():
     # Pop before logout_user(): Flask-Login only clears its own keys, but
     # popping early makes the token's lifetime unambiguous.
     id_token = session.pop('oidc_id_token', None)
+    # logout_user() clears only Flask-Login's keys; a stale impersonator id would let the
+    # next person to log in on this browser "stop impersonating" into the admin's account.
+    impersonation.end()
     logout_user()
     flash(f'Logged out {username}.', 'info')
     logger.info("Logout: user=%s provider=%s", username, auth_provider)

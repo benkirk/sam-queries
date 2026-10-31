@@ -364,6 +364,9 @@ def create_app(*, config_overrides: dict | None = None):
         from webapp.utils.htmx import read_theme
         return {'theme': read_theme()}
 
+    from webapp.auth import impersonation
+    app.context_processor(impersonation.context_processor)
+
     # Expose runtime feature flags to all templates
     @app.context_processor
     def feature_flags_context_processor():

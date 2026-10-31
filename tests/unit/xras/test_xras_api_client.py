@@ -561,6 +561,29 @@ class TestLookups:
         monkeypatch.setattr(XrasApiClient, 'get_fos_types', boom)
         assert xras_lookups.fos_name_map() == {}
 
+    def test_funding_agency_choices_follow_xrass_order(self, monkeypatch):
+        xras_cache._adapters.clear()
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        monkeypatch.setattr(XrasApiClient, 'get_funding_agencies', lambda self: [
+            {'fundingAgencyId': 19, 'fundingAgencyName': 'Other', 'relativeOrder': 19},
+            {'fundingAgencyId': 1, 'fundingAgencyName': 'National Science Foundation',
+             'relativeOrder': 1},
+            {'fundingAgencyId': 14, 'fundingAgencyName': 'NASA (and centers)', 'relativeOrder': 14}])
+        assert xras_lookups.funding_agency_choices() == [
+            (1, 'National Science Foundation'), (14, 'NASA (and centers)'), (19, 'Other')]
+
+    def test_funding_agency_choices_are_nsf_alone_on_outage(self, monkeypatch):
+        xras_cache._adapters.clear()
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+
+        def boom(self):
+            raise XrasSourceUnavailable('down')
+
+        monkeypatch.setattr(XrasApiClient, 'get_funding_agencies', boom)
+        assert xras_lookups.funding_agency_choices() == [(1, 'National Science Foundation')]
+
     def test_opportunity_is_memoised_by_id(self, monkeypatch):
         xras_cache._adapters.clear()
         calls = []

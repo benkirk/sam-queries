@@ -1,12 +1,12 @@
 """
 Marshmallow form validation schemas for Facility management routes.
 
-Covers: Facilities, Panels, Panel Sessions, Allocation Types.
+Covers: Facilities, Panels, Panel Sessions, Allocation Types, their request limits.
 """
 
 import marshmallow.fields as f
 import marshmallow.validate as v
-from marshmallow import post_load
+from marshmallow import ValidationError, post_load, validates_schema
 
 from . import HtmxFormSchema
 
@@ -59,3 +59,25 @@ class CreateAllocationTypeForm(HtmxFormSchema):
                                          validate=v.Range(min=0))
     fair_share_percentage = f.Float(load_default=None,
                                     validate=v.Range(min=0, max=100))
+
+
+class EditAllocationLimitForm(HtmxFormSchema):
+    """An empty amount clears that bound; the order rule is the model's, checked here first."""
+    min_amount = f.Float(load_default=None, validate=v.Range(min=0))
+    default_amount = f.Float(load_default=None, validate=v.Range(min=0))
+    max_amount = f.Float(load_default=None, validate=v.Range(min=0))
+    active = f.Bool(load_default=False)
+
+    @validates_schema
+    def _bounds_in_order(self, data, **kwargs):
+        from sam.accounting.allocation_type_limits import AllocationTypeResourceLimit
+        try:
+            AllocationTypeResourceLimit.check_bounds(
+                data.get('min_amount'), data.get('default_amount'), data.get('max_amount'))
+        except ValueError as exc:
+            raise ValidationError(str(exc))
+
+
+class CreateAllocationLimitForm(EditAllocationLimitForm):
+    allocation_type_id = f.Int(required=True)
+    resource_id = f.Int(required=True)

@@ -1,0 +1,22 @@
+{#- The min / default / max row of a request limit; limit is the row (or none), prefix the ids'. -#}
+{% from 'dashboards/fragments/form_fields.html' import number_field with context %}
+{% macro bounds_row(limit, prefix) -%}
+<div class="row g-2">
+    <div class="col-md-4">
+        {{ number_field('min_amount', 'Minimum', min=0, step='any', optional_text='',
+                        default=(limit.min_amount if limit else none) | fmt_input,
+                        placeholder='No floor', id=prefix ~ 'Min') }}
+    </div>
+    <div class="col-md-4">
+        {{ number_field('default_amount', 'Default', min=0, step='any', optional_text='',
+                        default=(limit.default_amount if limit else none) | fmt_input,
+                        placeholder='No pre-fill', id=prefix ~ 'Default') }}
+    </div>
+    <div class="col-md-4">
+        {{ number_field('max_amount', 'Maximum', min=0, step='any', optional_text='',
+                        default=(limit.max_amount if limit else none) | fmt_input,
+                        placeholder='No ceiling', id=prefix ~ 'Max') }}
+    </div>
+</div>
+<p class="form-text mb-2">In the resource's own unit. An empty bound is no bound.</p>
+{%- endmacro %}

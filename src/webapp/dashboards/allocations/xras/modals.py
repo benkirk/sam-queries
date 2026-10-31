@@ -36,6 +36,7 @@ from sam.queries.xras_requests import (
 from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from sam.dates import parse_wire_date
 from sam.text import strip_or_none
+from sam.xras.wire import resource_label
 from webapp.extensions import db
 from webapp.utils.downloads import document_response
 from webapp.utils.htmx import read_flag
@@ -90,9 +91,7 @@ def _detail_actions(payload):
             raw = res.get('type')
             stage = raw if raw in _RESOURCE_STAGES else 'Other'
             rid = res.get('resourceId')
-            name = (res.get('displayResourceName') or res.get('resourceName')
-                    or (('resource ' + str(rid)) if rid is not None
-                        else 'resource'))
+            name = resource_label(res, rid)
             # Key on the resource-type id (unique per resource); fall back to
             # the name only when a payload omits the id.
             key = rid if rid is not None else name
@@ -171,22 +170,13 @@ def _actual_log_outcomes(action_ids):
     Read straight from ``db.session`` (committed rows), keyed by ``action_id``:
     the modal shows the prediction beside what actually happened when XRAS pushed.
     """
-    from sam.integration.xras import XrasActionLog
-
-    ids = [i for i in action_ids if i is not None]
-    if not ids:
-        return {}
-    outcomes = {}
-    for row in (db.session.query(XrasActionLog)
-                .filter(XrasActionLog.action_id.in_(set(ids)))
-                .order_by(XrasActionLog.xras_action_log_id.asc()).all()):
-        # Ascending id, so the last write for an action_id wins.
-        outcomes[row.action_id] = {'status': row.status,
-                                   'http_status': row.http_status,
-                                   'error_messages': row.error_messages,
-                                   'received_time': row.received_time,
-                                   'raw_payload': row.raw_payload}
-    return outcomes
+    from sam.integration.xras import latest_action_logs
+    return {action_id: {'status': row.status,
+                        'http_status': row.http_status,
+                        'error_messages': row.error_messages,
+                        'received_time': row.received_time,
+                        'raw_payload': row.raw_payload}
+            for action_id, row in latest_action_logs(db.session, action_ids).items()}
 
 
 def _detail_context(request_number, *, flash=None, flash_error=None):
@@ -362,15 +352,14 @@ def xras_document(request_number: str, action_id: int, document_id: int):
     The type is decided from the bytes, never from XRAS's header
     (``document_response``).
     """
-    from sam.integration.xras_api.admin_client import XrasAdminClient
-    from sam.integration.xras_api.config import XrasApiConfig
+    from webapp.utils.xras import admin_client
 
     try:
         line, doc = _find_document(_live_family(request_number), action_id, document_id)
         if doc is None:
             return _plain('No such document on this request.', 404)
         xa_user, _, _ = _impersonation(None, live=line)
-        client = XrasAdminClient.from_environment(XrasApiConfig.from_environment().interactive())
+        client = admin_client()
         fetched = client.get_document(line.get('requestId'), action_id, document_id,
                                       xa_user=xa_user)
     except XrasSourceUnavailable as exc:

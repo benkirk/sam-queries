@@ -129,7 +129,17 @@ class ActionHandler(ABC):
                                   resolved=self._resolved_summary())
         with management_transaction(self.session):
             self.execute()
+            self.stamp_applied()
         return self.result()
+
+    def stamp_applied(self) -> None:
+        """Mark the ``xras_submission`` row for this action ``applied``, in the handler's transaction."""
+        from sam.integration.xras_submission import submission_by_action_id
+        row = submission_by_action_id(self.session, self.get('actionId'))
+        if row is None or not row.can_advance('applied'):
+            return
+        project = getattr(self, 'created_project', None) or self.project
+        row.mark_applied(project.project_id if project is not None else None)
 
     def _resolved_summary(self) -> Optional[dict]:
         """What assembly resolved, for the preflight board — read defensively.

@@ -69,6 +69,11 @@
     cursor: pointer;
 }
 
+/* A picker's result row (fk-picker.js): the whole row is the target. */
+.fk-search-result {
+    cursor: pointer;
+}
+
 /* ===================================================================
    Spinners
    =================================================================== */
@@ -350,7 +355,7 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
 /* ===================================================================
    Data tables: column roles and the row-action strip
    Every column but one is .col-shrink, so the .cell-truncate column
-   takes the slack. Design record: docs/plans/ADMIN_TABLE_POLISH.md.
+   takes the slack. Design record: docs/plans/implemented/ADMIN_TABLE_POLISH.md.
    =================================================================== */
 .table .col-shrink,
 .table .col-num {
@@ -914,4 +919,30 @@ tr.collapsing {
 /* A footer slot no fragment has filled (modal_scaffold footer_id=). */
 .modal-footer:empty {
     display: none;
+}
+
+/* A [data-busy] submit button's spinner (form-helpers.js), or an htmx button's while its own
+   request runs, replaces its icon. */
+.btn .busy-spinner,
+.btn.is-busy .busy-icon,
+.btn.htmx-request .busy-icon {
+    display: none;
+}
+
+.btn.is-busy .busy-spinner,
+.btn.htmx-request .busy-spinner {
+    display: inline-block;
+    margin-right: 0.25rem;
+}
+
+/* The gate hint beside a footer's buttons; empty it takes no room, and on a phone it takes
+   its own line so Back and Submit stay together below it. */
+.modal-footer [data-gate-hint]:empty {
+    display: none;
+}
+
+@media (max-width: 575.98px) {
+    .modal-footer [data-gate-hint] {
+        flex-basis: 100%;
+    }
 }

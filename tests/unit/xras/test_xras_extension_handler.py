@@ -712,3 +712,37 @@ class TestTheRegistration:
         result = dispatch_action(session, dict(data, requestNumber='ZZUB0166'))
         assert result.status == 'processed'
         assert result.service == 'extend'
+
+
+class TestTheAppliedStamp:
+    """Every handler stamps the ``xras_submission`` row for its action, in its own transaction."""
+
+    @pytest.mark.parametrize('path', [('created', 'submitted'), ('created', 'populated')])
+    def test_the_row_for_this_action_reads_applied(self, committing, path):
+        import os
+        from factories import make_account, make_allocation, make_project
+        from sam.integration.xras_submission import XrasSubmission
+        session = committing
+        project = make_project(session)
+        make_allocation(session, account=make_account(session, project=project),
+                        end_date=datetime(2027, 1, 31))
+        action_id = 970_000_000 + (os.getpid() % 10_000) * 10 + len(path[-1])
+        row = XrasSubmission.create(
+            session, action_type='Extension', created_by='op', xa_user='pi', payload={},
+            eula_sha='a' * 40, eula_accepted_at=datetime.now(), action_id=action_id,
+            project_id=project.project_id)
+        for state in path:
+            row.advance(state)
+        handle_extension(session, action_for(project.projcode, '2030-06-30',
+                                             actionId=action_id))
+        assert (row.state, row.project_id) == ('applied', project.project_id)
+
+    def test_an_action_sam_did_not_file_stamps_nothing(self, committing):
+        from factories import make_account, make_allocation, make_project
+        session = committing
+        project = make_project(session)
+        make_allocation(session, account=make_account(session, project=project),
+                        end_date=datetime(2027, 1, 31))
+        result = handle_extension(session, action_for(project.projcode, '2030-06-30',
+                                                      actionId=123))
+        assert result.status == 'processed'

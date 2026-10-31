@@ -3,7 +3,6 @@
 {% if codes %}
 {% for c in codes %}
 <div class="list-group-item list-group-item-action p-2 fk-search-result"
-     style="cursor:pointer;"
      data-fk-id="{{ c.mnemonic_code_id }}"
      data-fk-label="{{ c.code }}">
     <span class="font-monospace">{{ c.code }}</span>

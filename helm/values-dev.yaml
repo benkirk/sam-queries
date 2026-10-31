@@ -57,6 +57,8 @@ webapp:
     XRAS_OUTGOING_ENABLED: "1"
     XRAS_WRITE_ENABLED: "1"
     XRAS_RENAME_ENABLED: "1"              # the after-reply rename (prod: "1" too; both gated)
+    XRAS_SUBMIT_ENABLED: "1"              # My Requests files to the demo (prod: "0"); webapp only
+    XRAS_SUBMIT_ACTION_TYPES: "all"       # prod narrows to Extension,Supplement; unset is none
     XRAS_AUTO_ACTIVATE: "1"               # a New that applies activates its project (prod: "1" too)
     XRAS_AUTO_NOTIFY: "1"                 # then mails it; NOTIFY_ENABLED=0 keeps that a no-send
     SAM_TASKS_XRAS_NOTICES_SINCE: ""      # no cutover floor on dev

@@ -1,4 +1,4 @@
-"""XRAS vocabularies (role types, document types) and stable wire-field names — the shared home.
+"""XRAS vocabularies (role, action, request and document types) and stable wire-field names.
 
 Both the write client (:mod:`sam.integration.xras_api.admin_client`) and the
 read-side report parsing (:mod:`sam.queries.xras_requests`) need the numeric
@@ -95,6 +95,39 @@ def role_type(key: Any) -> RoleType:
         raise ValueError(f'unknown XRAS role type {key!r}; '
                          f'expected one of {[r.name for r in ROLE_TYPES]}')
     return found
+
+
+#: ``GET /v1/types/all`` ``actionTypes`` for the NCAR process, read 2026-10-27. The rule-book
+#: route takes the id; the action routes take the name.
+ACTION_TYPES = {
+    'Advance': 500015, 'New': 500019, 'Renewal': 500021, 'Transfer': 500018,
+    'Supplement': 500020, 'Extension': 500017, 'Appeal': 500016,
+    'Adjustment': 500168, 'Final Report': 500022, 'Date Adjustment': 500334,
+}
+
+#: The action types SAM files for a user, in the order the picker offers them.
+SUBMIT_ACTION_TYPES = ('Extension', 'Supplement', 'Renewal', 'New')
+
+#: ``GET /v1/funding_agencies``: NSF, the one agency SAM looks a grant up for (XRAS_DEV_PROBES § 2).
+NSF_FUNDING_AGENCY_ID = 1
+
+_ACTION_BY_NAME = {name.casefold(): name for name in ACTION_TYPES}
+
+
+def action_type_name(key: Any) -> str:
+    """The canonical action-type name for a name (any case) or an id; ``ValueError`` if unknown."""
+    if isinstance(key, int) or (isinstance(key, str) and key.isdigit()):
+        found = next((n for n, i in ACTION_TYPES.items() if i == int(key)), None)
+    else:
+        found = _ACTION_BY_NAME.get(str(key).strip().casefold())
+    if found is None:
+        raise ValueError(f'unknown XRAS action type {key!r}')
+    return found
+
+
+def action_type_id(key: Any) -> int:
+    """The id for an action-type name or id; ``ValueError`` if unknown."""
+    return ACTION_TYPES[action_type_name(key)]
 
 
 #: ``actions[].documents[].documentType`` codes seen on NCAR requests (2026-10-12,

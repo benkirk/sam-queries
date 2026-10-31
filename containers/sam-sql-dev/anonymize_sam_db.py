@@ -1284,6 +1284,7 @@ class SAMAnonymizer:
                         ('account_request', 'account requests (names + emails of non-users)'),
                         ('account_request_event', 'account-request events (sponsor prose)'),
                         ('external_ticket', 'help-desk ticket links (orphaned with account_request)'),
+                        ('xras_submission', 'request drafts (titles, abstracts, usernames)'),
                         ('samuel_role', 'role catalog (seeded per environment)'),
                         ('samuel_role_permission', 'role catalog permission rows'),
                         ('samuel_role_grant', 'role grants (real usernames and key names)'),

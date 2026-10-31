@@ -36,9 +36,14 @@ class AwardHttpClient:
 
     def __init__(self, *, timeout: int = DEFAULT_TIMEOUT,
                  max_retries: int = DEFAULT_MAX_RETRIES,
+                 budget: Optional[float] = None,
                  user_agent: str = 'SAM/1.0 (+https://sam.hpc.ucar.edu)') -> None:
         self.timeout = timeout
         self.max_retries = max_retries
+        #: Seconds for every request this client makes, from its first: one lookup is up to
+        #: three requests, and a per-request timeout alone does not bound the wait.
+        self.budget = budget
+        self._deadline: Optional[float] = None
         self.session = requests.Session()
         self.session.headers.update({'User-Agent': user_agent,
                                      'Accept': 'application/json'})
@@ -57,10 +62,11 @@ class AwardHttpClient:
         last_error: Optional[Exception] = None
 
         for attempt in range(self.max_retries):
+            timeout = self._remaining(url)
             try:
                 response = self.session.request(
                     method, url, json=json_body, params=params,
-                    timeout=self.timeout,
+                    timeout=timeout,
                 )
             except requests.RequestException as exc:
                 last_error = exc
@@ -94,6 +100,18 @@ class AwardHttpClient:
 
         raise AwardSourceUnavailable(
             f'{url} unreachable after {self.max_retries} attempts: {last_error}')
+
+    def _remaining(self, url: str) -> float:
+        """This request's timeout: the client's, cut to what is left of the budget."""
+        if self.budget is None:
+            return self.timeout
+        now = time.monotonic()
+        if self._deadline is None:
+            self._deadline = now + self.budget
+        left = self._deadline - now
+        if left <= 0:
+            raise AwardSourceUnavailable(f'{url}: the {self.budget:g} s budget is spent')
+        return min(self.timeout, left)
 
     # public
 

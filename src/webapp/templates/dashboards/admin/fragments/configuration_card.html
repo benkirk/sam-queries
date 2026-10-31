@@ -69,12 +69,9 @@
                             hx-get="{{ url_for('admin_dashboard.htmx_server_card') }}"
                             hx-target="#server-card-body"
                             hx-swap="innerHTML"
-                            hx-indicator="#server-card-spinner"
                             title="Re-poll a worker (likely a different one)">
-                        <i class="fa-solid fa-rotate"></i>
+                        <span class="spinner-border spinner-border-sm busy-spinner" aria-hidden="true"></span><i class="fa-solid fa-rotate busy-icon"></i>
                         <span class="d-none d-sm-inline ms-1">Refresh</span>
-                        <span id="server-card-spinner" class="htmx-indicator spinner-border spinner-border-sm ms-1"
-                              role="status" aria-hidden="true"></span>
                     </button>
                 </div>
                 <div class="card-body" id="server-card-body">
@@ -389,6 +386,31 @@
                         {{ stat('Apply ' ~ kind, 'Yes' if enabled else 'No') }}
                         {% endfor %}
                         {% endif %}
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        {# XRAS: the client's levers. Read-only; the key shows as set or unset. #}
+        <div class="col-12 col-xl-6">
+            <div class="card inner-card h-100">
+                <div class="card-header mb-4">
+                    <h5><i class="fa-solid fa-right-left me-1"></i> XRAS</h5>
+                </div>
+                <div class="card-body">
+                    {% set xr = state.xras %}
+                    <dl class="config-stats mb-0 small">
+                        {{ stat('XRAS_OUTGOING_ENABLED', 'Yes' if xr.enabled else 'No') }}
+                        {{ stat('XRAS_WRITE_ENABLED', 'Yes' if xr.write_enabled else 'No') }}
+                        {{ stat('XRAS_ADMIN_CONTEXT_ENABLED', 'Yes' if xr.admin_context_enabled else 'No') }}
+                        {{ stat('XRAS_SUBMIT_ENABLED', 'Yes' if xr.submit_enabled else 'No') }}
+                        {{ stat('Submit action types', xr.submit_action_types | join(', ') if xr.submit_action_types else 'none') }}
+                        {{ stat('Users may file', 'Yes' if xr.submit_configured else 'No') }}
+                        <dt class="fw-normal text-muted">API key</dt>
+                        <dd>{{ mask_badge('set' if xr.api_key_set else 'unset') }}</dd>
+                        {{ stat('Base URL', xr.base_url) }}
+                        {{ stat('API user', xr.api_user) }}
+                        {{ stat('Process', xr.allocations_process) }}
                     </dl>
                 </div>
             </div>

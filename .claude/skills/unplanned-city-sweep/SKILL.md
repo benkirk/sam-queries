@@ -78,7 +78,9 @@ Run each pass and collect findings. The examples are real.
   comprehensions with no helper at all, and 11 flag, sort and page reads beside `read_flag` /
   `read_sort` / `read_page`, which already existed.
 - **Delete.** Dead CSS classes (`css-dead`, held at zero by `test_css_dead.py`), JS functions nothing calls
-  (`js-dead`), compatibility shims whose callers are gone, and options no caller passes.
+  (`js-dead`), compatibility shims whose callers are gone, and options no caller passes. A
+  `{% from %}` that imports a macro its source never defines is silent: Jinja hands back
+  Undefined and nothing fails until a call (`template-dead-imports`; sweep 32 found one).
 - **Retire plans.** A top-level `docs/plans/*.md` whose PRs have merged and that nobody has
   touched lately moves to `docs/plans/implemented/` (`plans-stale`). The detector holds back
   any plan whose `**Status:**` line says unbuilt, deferred, brainstorm, sketch or in progress,
@@ -116,7 +118,12 @@ Run each pass and collect findings. The examples are real.
 - **Propagate.** List the shared pieces the window introduced: macros, chart families, JS
   modules, query helpers. For each, find an older surface doing the same job the old way. The
   sunburst started on the allocations page and then moved to job history; that is the shape to
-  look for. Record candidates in the ledger even when nobody picks them.
+  look for. Record candidates in the ledger even when nobody picks them. A new CSS state rule
+  has the same tell: a button that mints a spinner id per row and points `hx-indicator` at
+  it is hand-rolling `.busy-spinner` (`grep -n 'hx-indicator="#' templates`; sweep 32 found
+  five). Two surfaces that render the same row in opposite orders (the user pickers:
+  name-first on the admin forms, username-first on My Requests) are a decision for Ben, not
+  a fold; present a before/after of one and record the answer.
 - **Default route.** When a later step records state in an existing column or file, trace
   the *default* configuration's path through it: a lever that ships off must not clear the
   record on its way past. Example: #773's reactivation hook cleared `users.deactivate`, the

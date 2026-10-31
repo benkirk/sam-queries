@@ -1,0 +1,21 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{% from 'dashboards/fragments/form_fields.html' import checkbox_field with context %}
+{% from 'dashboards/admin/fragments/allocation_limit_bounds.html' import bounds_row with context %}
+{# htmx: Edit request limit (loaded into #editAllocationLimitFormContainer). The pair is fixed. #}
+{% set _p = 'editAllocationLimit' %}
+{{ modal_title('editAllocationLimitModalLabel',
+               (limit.allocation_type.allocation_type if limit.allocation_type else limit.allocation_type_id) ~ ' on '
+               ~ (limit.resource.resource_name if limit.resource else limit.resource_id), 'scale-balanced',
+               meta=limit.allocation_type.panel.panel_name if limit.allocation_type and limit.allocation_type.panel else none) }}
+
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_allocation_limit_edit', allocation_type_resource_limit_id=limit.allocation_type_resource_limit_id),
+    '#editAllocationLimitFormContainer',
+    'Save Changes',
+    is_edit=True,
+    errors=errors
+) %}
+        {{ bounds_row(limit, _p) }}
+        {{ checkbox_field('active', 'Active', default=limit.active, id='editAllocationLimitActive') }}
+{% endcall %}

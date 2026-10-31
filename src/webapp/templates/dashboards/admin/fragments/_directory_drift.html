@@ -56,10 +56,8 @@
     <button type="button" class="btn btn-sm btn-primary ms-auto"
             hx-post="{{ apply_url }}" hx-target="{{ apply_target }}" hx-swap="innerHTML"
             hx-confirm="Write the directory's values for {{ panel.apply_kinds | join(', ') }}?"
-            hx-indicator="#directoryApplySpinner"
             {% if not panel.would_apply %}disabled title="Nothing to apply"{% endif %}>
-        <i class="fa-solid fa-download" aria-hidden="true"></i> Apply
-        <span id="directoryApplySpinner" class="htmx-indicator spinner-border spinner-border-sm ms-1" role="status" aria-hidden="true"></span>
+        <span class="spinner-border spinner-border-sm busy-spinner" aria-hidden="true"></span><i class="fa-solid fa-download busy-icon" aria-hidden="true"></i> Apply
     </button>
     {% endif %}
 </div>

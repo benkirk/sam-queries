@@ -1,4 +1,4 @@
-"""Cached wrappers over the client's reference lookups — FoS and opportunities.
+"""Cached wrappers over the client's reference lookups: FoS, grant agencies, opportunities.
 
 The sibling of :mod:`sam.integration.xras_api.people`: the client knows HTTP,
 these know memoisation, and these are what application code calls. Both back
@@ -10,7 +10,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from sam.integration.xras_api.cache import cached_fos_types, cached_opportunity
+from sam.integration.xras_api.cache import (
+    cached_fos_types, cached_funding_agencies, cached_opportunity,
+)
 from sam.integration.xras_api.client import XrasApiClient
 
 
@@ -46,6 +48,20 @@ def fos_name_map() -> Dict[int, str]:
         if fid is not None and name:
             out[int(fid)] = str(name)
     return out
+
+
+def funding_agency_choices() -> List[tuple]:
+    """``[(fundingAgencyId, name)]`` in XRAS's order; NSF alone when XRAS cannot be read."""
+    from sam.integration.xras_api.vocabulary import NSF_FUNDING_AGENCY_ID
+    try:
+        rows = cached_funding_agencies(
+            lambda: XrasApiClient.from_environment().get_funding_agencies()) or []
+    except Exception:
+        rows = []
+    rows = sorted((r for r in rows if isinstance(r, dict) and r.get('fundingAgencyId') is not None),
+                  key=lambda r: r.get('relativeOrder') or 0)
+    return ([(int(r['fundingAgencyId']), str(r.get('fundingAgencyName') or r.get('fundingAgencyAbbr')))
+             for r in rows] or [(NSF_FUNDING_AGENCY_ID, 'National Science Foundation')])
 
 
 def get_opportunity(opportunity_id) -> Optional[Dict[str, Any]]:

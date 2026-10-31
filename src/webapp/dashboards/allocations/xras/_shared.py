@@ -18,6 +18,7 @@ from webapp.utils.windows import read_days, read_log_window
 from flask import current_app, render_template, url_for
 
 from webapp.extensions import db
+from webapp.utils.xras import read_client, requests_index, session_factory
 from webapp.utils.facets import Facet, FacetSet
 from webapp.utils.htmx import (
     modal_triggers, read_flag, read_multi, read_page, read_sort,
@@ -33,25 +34,10 @@ from sam.queries.xras_accounts import (REMEDIES,
                                        SOURCE_ACTION_LOG, SOURCE_REPORTS)
 
 
-def _session_factory():
-    """Private sessions for the service's audit writes.
-
-    Deliberately **not** ``db.session``: an audit row that a request rollback
-    could erase would be a record of an irreversible act that can be un-said.
-
-    WARNING: the service takes the factory, not a session -- pass
-    ``_session_factory``, never ``_session_factory()``. The first production
-    merge (2026-08-25) shipped the call form and wrote no audit row; the
-    service logs and proceeds by design, so nothing else fails.
-    """
-    from sqlalchemy.orm import Session
-    return Session(db.engine)
-
-
-def _index():
-    """The published request index, or ``None`` if no sweep has written one."""
-    from sam.integration.xras_api.cache import load_requests_index
-    return load_requests_index()
+# The plumbing both dashboards share lives in webapp.utils.xras; these are its names here.
+_session_factory = session_factory
+_index = requests_index
+_read_client = read_client
 
 
 def _entry(request_number):
@@ -113,13 +99,6 @@ def _render_xras_modal(*, build, template, noun, not_found, log_label):
     if context is None:
         return not_found()
     return render_template(template, **context)
-
-
-def _read_client():
-    """The read client on the interactive budget: an outage degrades, not blocks."""
-    from sam.integration.xras_api import XrasApiClient
-    from sam.integration.xras_api.config import XrasApiConfig
-    return XrasApiClient.from_environment(XrasApiConfig.from_environment().interactive())
 
 
 def _primary_line(lines):

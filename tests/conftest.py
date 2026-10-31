@@ -137,6 +137,7 @@ def pytest_configure(config):
     os.environ["XRAS_API_KEY"] = ""
     os.environ["XRAS_OUTGOING_ENABLED"] = "0"
     os.environ["XRAS_WRITE_ENABLED"] = "0"
+    os.environ["XRAS_SUBMIT_ENABLED"] = "0"
     # NUSD's ticket address: a developer's .env may name the real Jira inbox,
     # and a route test that reaches a ticket site would write a ledger row.
     os.environ["NOTIFY_ACCOUNT_TICKET_TO"] = ""
@@ -484,6 +485,10 @@ _BOOTSTRAP_TABLES = (
      'sam.security.samuel_roles:SamuelRolePermission'),
     ('samuel_role_grant', 'create_samuel_roles.sql',
      'sam.security.samuel_roles:SamuelRoleGrant'),
+    ('xras_submission', 'create_xras_submission.sql',
+     'sam.integration.xras_submission:XrasSubmission'),
+    ('allocation_type_resource_limit', 'create_allocation_type_resource_limit.sql',
+     'sam.accounting.allocation_type_limits:AllocationTypeResourceLimit'),
 )
 
 

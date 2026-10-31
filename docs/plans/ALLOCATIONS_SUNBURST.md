@@ -21,7 +21,7 @@ That is the facility -> allocation type hierarchy split across ~2 x (1 + N) pies
 a table that reads differently at each level: the same problem the admin Facilities
 card had. Lessons from that work apply directly.
 
-## Lessons to carry over (from ADMIN_TABLE_POLISH.md)
+## Lessons to carry over (from `implemented/ADMIN_TABLE_POLISH.md`)
 
 1. **One chart per hierarchy, not one per level.** Inner ring = facilities, outer =
    their allocation types, each a `shade_family` shade of the facility's hue.
@@ -35,7 +35,7 @@ card had. Lessons from that work apply directly.
 5. **Chart <-> table drill**: wedges and legend entries carry `RowDrill` sentinels;
    `svg-chart-links.js` opens the row (zero JS when rows use Bootstrap collapse).
 6. Direct labels only on big wedges; outer labels dropped on mobile; the table is the
-   table view; no hover layer yet (`CHART_HOVER_LAYER.md`).
+   table view; no hover layer yet (`implemented/CHART_HOVER_LAYER.md`).
 7. Fingerprint regen must only ADD entries; bind new `chart_view`s LAST.
 
 ## Proposed shape (per Resource tab)

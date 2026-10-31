@@ -133,25 +133,20 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
     }
 });
 
-document.body.addEventListener('reloadFacilitiesCard', function() {
-    _reloadAdminCard('facilitiesSection', 'facilitiesCardActiveOnly');
-});
-document.body.addEventListener('reloadOrganizationsCard', function() {
-    _reloadAdminCard('organizationsSection', 'organizationsCardActiveOnly');
-});
-// Contracts and contract sources live on /admin/contracts, so their
-// mutations reload that table rather than the Organizations card.
-document.body.addEventListener('reloadContractsCard', function() {
-    _reloadAdminCard('contractsTableSection', 'contractsTableActiveOnly');
-});
-document.body.addEventListener('reloadResourcesCard', function() {
-    _reloadAdminCard('resourcesSection', 'resourcesCardActiveOnly');
-});
-
-// Reload the cross-project Project Directories table after an edit/deactivate.
-// Honors the canonical "Active only" toggle (active_only=1 when checked).
-document.body.addEventListener('reloadProjectDirectoriesCard', function() {
-    _reloadAdminCard('projectDirectoriesSection', 'projectDirectoriesActiveOnly');
+// Each admin card's reload event, its section and its "Active only" checkbox. Contracts and
+// contract sources live on /admin/contracts, so theirs reloads that table.
+var ADMIN_CARD_RELOADS = {
+    reloadFacilitiesCard: ['facilitiesSection', 'facilitiesCardActiveOnly'],
+    reloadOrganizationsCard: ['organizationsSection', 'organizationsCardActiveOnly'],
+    reloadContractsCard: ['contractsTableSection', 'contractsTableActiveOnly'],
+    reloadResourcesCard: ['resourcesSection', 'resourcesCardActiveOnly'],
+    reloadAllocationLimitsCard: ['allocationLimitsSection', 'allocationLimitsCardActiveOnly'],
+    reloadProjectDirectoriesCard: ['projectDirectoriesSection', 'projectDirectoriesActiveOnly']
+};
+Object.keys(ADMIN_CARD_RELOADS).forEach(function(event) {
+    document.body.addEventListener(event, function() {
+        _reloadAdminCard.apply(null, ADMIN_CARD_RELOADS[event]);
+    });
 });
 
 // Reload the per-project Linked Elements panel (#linkedElementsContainer

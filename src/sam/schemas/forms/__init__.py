@@ -172,6 +172,8 @@ from .facilities import (
     EditPanelForm,
     EditAllocationTypeForm,
     CreateAllocationTypeForm,
+    EditAllocationLimitForm,
+    CreateAllocationLimitForm,
 )
 from .resources import (
     EditResourceForm,
@@ -286,6 +288,13 @@ from .xras_remediation import (
     XrasAddActionForm,
     XrasRequestOverrideForm,
 )
+from .xras_submission import (
+    XrasAddActionAgreementForm,
+    XrasExtensionRequestForm,
+    XrasNewRequestForm,
+    XrasRenewalRequestForm,
+    XrasSupplementRequestForm,
+)
 # XRAS action ingest — plain marshmallow, deliberately NOT HtmxFormSchema
 # (JSON body with five nested arrays; see the module docstring).
 from .xras import (
@@ -312,7 +321,7 @@ __all__ = [
     'EditFacilityForm',
     'CreateFacilityForm',
     'CreatePanelForm',
-    'EditAllocationTypeForm',
+    'EditAllocationTypeForm', 'EditAllocationLimitForm', 'CreateAllocationLimitForm',
     'CreateAllocationTypeForm',
     # Resources
     'EditResourceForm',
@@ -406,6 +415,8 @@ __all__ = [
     'XrasActionFieldsForm',
     'XrasAddActionForm',
     'XrasRequestOverrideForm',
+    'XrasExtensionRequestForm', 'XrasSupplementRequestForm', 'XrasRenewalRequestForm',
+    'XrasNewRequestForm', 'XrasAddActionAgreementForm',
     'XrasActionSchema',
     'XrasActionResourceSchema',
     'XrasActionRoleSchema',
