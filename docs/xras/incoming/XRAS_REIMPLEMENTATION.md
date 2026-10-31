@@ -35,7 +35,7 @@ in the working tree are byte-identical to the deployed tag.
 | **1** — Read endpoints (6 GETs) | ✅ **done** | PR #424; 94% of traffic |
 | **2** — Action ingestion + audit trail | ✅ **done, capture-only** | `xras_action_log` + `XrasActionSchema` + `POST /actions` shipped behind `XRAS_ACTIONS_CAPTURE_ONLY`; see [`XRAS_SPRINT_A.md`](../../plans/implemented/XRAS_SPRINT_A.md). Dispatch is Phase 3 |
 | **3** — Handlers | ✅ **done** | **Sprint C** — see [`XRAS_SPRINT_C.md`](implemented/XRAS_SPRINT_C.md). All six services registered: Extension, Supplement, Adjustment, New, Update; Transfer is a *registered* handler that parks with a reason. Behind `XRAS_ACTIONS_CAPTURE_ONLY`, which flips **only at cutover** |
-| **4** — XRAS as the 4th Allocations tab | ✅ **done** | **Sprint B** — see [`XRAS_SPRINT_B.md`](implemented/XRAS_SPRINT_B.md). Tab, replay, `sam-admin xras`, the activation worklist; and it settled `xras_activation_event` so one DBA ticket carries both tables |
+| **4** — XRAS as the 4th Allocations tab | ✅ **done** | **Sprint B** — see [`XRAS_SPRINT_B.md`](../../plans/implemented/XRAS_SPRINT_B.md). Tab, replay, `sam-admin xras`, the activation worklist; and it settled `xras_activation_event` so one DBA ticket carries both tables |
 | **5** — Parity and cutover | **partly done** | `--api xras` harness ✅, `sam-admin xras --validate-mapping` ✅ (a diagnostic, not a gate — see § *What is left*). **Next gate: merge and deploy, then run parity against the deployed host.** Sequence and commands: [`XRAS_CUTOVER_RUNBOOK.md`](XRAS_CUTOVER_RUNBOOK.md) |
 
 ### Sprint map
@@ -48,7 +48,7 @@ up, which pushes SMTP to D.
 | Sprint | Contents | State |
 |---|---|---|
 | **A** — Action ingestion | Phase 2: `xras_action_log`, ORM, `XrasActionSchema`, `POST /actions` in capture mode | ✅ shipped — [`XRAS_SPRINT_A.md`](../../plans/implemented/XRAS_SPRINT_A.md) |
-| **B** — Operator surface | Phase 4: the 4th Allocations tab, `sam-admin xras`, replay, `VIEW_XRAS`/`MANAGE_XRAS`, the activation worklist | ✅ shipped — [`XRAS_SPRINT_B.md`](implemented/XRAS_SPRINT_B.md) |
+| **B** — Operator surface | Phase 4: the 4th Allocations tab, `sam-admin xras`, replay, `VIEW_XRAS`/`MANAGE_XRAS`, the activation worklist | ✅ shipped — [`XRAS_SPRINT_B.md`](../../plans/implemented/XRAS_SPRINT_B.md) |
 | **C** — Handlers | Phase 3: the dispatcher and all six handler paths, and the replay-and-diff oracle that verifies them | ✅ shipped — [`XRAS_SPRINT_C.md`](implemented/XRAS_SPRINT_C.md). Suite 4,708 → **5,213** |
 | **C.1a** — Handler refactor | The `ActionHandler` base class the six handlers should have shared. Six bugs the duplication produced, one of them live | ✅ shipped — [`XRAS_HANDLER_REFACTOR.md`](../../plans/implemented/XRAS_HANDLER_REFACTOR.md) § *Deviations*. Suite 5,213 → **5,223** |
 | **C.1b** — Stress + schema | Stress the handlers with the **audit row** as the assertion target, then decide the remaining `xras_action_log` columns | ✅ shipped — [`XRAS_STRESS_AND_SCHEMA.md`](implemented/XRAS_STRESS_AND_SCHEMA.md) § *Verdicts*. Found a live wire-contract bug; **3 columns built** — the ticket is a transcription of `zz-90` |
@@ -1273,7 +1273,7 @@ rollback-on-error and nothing else. Audit rows exist because manage functions *e
 
 > **Sprint B.** The as-built record — 12 routes, the replay interlock, the `VIEW_XRAS`/`MANAGE_XRAS`
 > split, `xras_activation_event` and the pending-activation worklist, and 11 numbered deviations
-> from this section — is [`XRAS_SPRINT_B.md`](implemented/XRAS_SPRINT_B.md). What follows is the design it was
+> from this section — is [`XRAS_SPRINT_B.md`](../../plans/implemented/XRAS_SPRINT_B.md). What follows is the design it was
 > built from, kept because its "six places a 4th tab touches" list is the reusable part.
 
 Ship the free Flask-Admin view first as a stopgap. Then the real surface: a **4th tab on the

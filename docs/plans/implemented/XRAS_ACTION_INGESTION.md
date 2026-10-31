@@ -73,7 +73,7 @@ numbers (`roles[].person`) plus grant-officer contacts (`grants[].programOfficer
 
 ### 2. Raise the prod DDL ticket — ⚠️ WITHDRAWN, do not do this
 
-**Superseded by [`XRAS_SPRINT_B.md`](../../xras/incoming/implemented/XRAS_SPRINT_B.md) § *The decision that reorders
+**Superseded by [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md) § *The decision that reorders
 everything*.** Filing early was correct only if the schema was settled, and it was not:
 the table was designed from inference and nothing had rendered it. Amending the init
 script is free until production has the table, so the ticket is deliberately held until

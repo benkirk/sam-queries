@@ -21,7 +21,7 @@ the relay unknowns are now **measured** (§ 9); a dormant subscription table and
 an activity chart are **cut** (§ 6, § 8); § 5 gained a suppression case that
 would have shipped as a deadlock.
 
-**Prior work:** PR #424 ([`XRAS_SPRINT_B.md`](../../xras/incoming/implemented/XRAS_SPRINT_B.md) § *Notify, with
+**Prior work:** PR #424 ([`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md) § *Notify, with
 SMTP still deferred*, and
 [`XRAS_SPRINT_B_FOLLOWUP.md`](XRAS_SPRINT_B_FOLLOWUP.md)
 § *The adjacent bug*). Sprint B deliberately shipped a record-only Notify button

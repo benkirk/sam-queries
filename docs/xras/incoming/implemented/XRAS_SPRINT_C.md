@@ -42,7 +42,7 @@ the session that produced it. The wire contract, the measured production data an
 design decisions live in [`XRAS_REIMPLEMENTATION.md`](../XRAS_REIMPLEMENTATION.md) — §
 references below point there. The as-built records of the two prior sprints are
 [`../../../plans/implemented/XRAS_SPRINT_A.md`](../../../plans/implemented/XRAS_SPRINT_A.md) (ingestion) and
-[`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md) (the operator surface).
+[`../../../plans/implemented/XRAS_SPRINT_B.md`](../../../plans/implemented/XRAS_SPRINT_B.md) (the operator surface).
 
 **Prior sprints.** Phases 1, 2 and 4 are done on PR #424, branch
 `xras_reimplementation`: the six GET endpoints, `POST /actions` in capture mode with
