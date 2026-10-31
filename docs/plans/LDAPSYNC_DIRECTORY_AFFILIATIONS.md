@@ -1,6 +1,6 @@
 # Reconciling SAM with the directory
 
-**Status:** direction agreed as the end goal (2026-10-15). The sync daemon stays as is for now. The
+**Status:** in progress; direction agreed as the end goal (2026-10-15). The daemon stays as is. The
 first step is a read-only discrepancy report, built as the directory client's step 1
 (`implemented/DIRECTORY_CLIENT.md`, PR #841); stage 2 is its step 2.
 **Scope:** directory → SAM: people, then their positions (`user_organization`) and collaborations
