@@ -845,7 +845,7 @@ def add_action(session_factory, *, request_number, request_id, action_type,
         request_number=request_number, client=client)
 
 
-# SAM's own rename after a New lands (docs/plans/XRAS_CLOSED_LOOP.md)
+# SAM's own rename after a New lands (docs/plans/implemented/XRAS_CLOSED_LOOP.md)
 
 #: :func:`rename_request` statuses meaning the line now answers the new number.
 RENAME_DONE = ('verified', 'already_renamed')

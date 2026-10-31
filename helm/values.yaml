@@ -418,7 +418,7 @@ webapp:
     # ships, so a flip in either direction is a reviewed change to both files.
     XRAS_WRITE_ENABLED: "1"
     # SAM's own rename of a request NCAR#### -> projcode right after its post lands
-    # (webapp/api/xras/actions.py; docs/plans/XRAS_CLOSED_LOOP.md). Armed 2026-10-14
+    # (webapp/api/xras/actions.py; docs/plans/implemented/XRAS_CLOSED_LOOP.md). Armed 2026-10-14
     # after the production backfill; pinned in tests/unit/gates/test_xras_admin_client.py,
     # so a flip is a reviewed change to both files. Needs XRAS_WRITE_ENABLED.
     XRAS_RENAME_ENABLED: "1"

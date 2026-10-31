@@ -1,7 +1,8 @@
 # XRAS closed loop: SAMuel renames requests, then the submission plan under load
 
-**Status: Track 1 built (#819), proven on XRAS-dev, backfilled in production and enabled there
-2026-10-14 (#820; § 3.3). Track 2 run in full 2026-10-14 (§ 4).** What
+**Status: Tracks 1 and 2 live in production. Track 1 (#819, #820) was backfilled and enabled
+2026-10-14, and the first live rename ran 2026-10-15 (NCAR4407 to UMMM0018); Track 2 ran in full
+2026-10-14 (§ 4).** What
 landed and what was decided: § 3.5. The wider goal this is phase A of:
 [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md). Written 2026-10-13 at the end of the session recorded in
 [`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md). Two tracks on one test bed:

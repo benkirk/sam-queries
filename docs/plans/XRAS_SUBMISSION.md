@@ -110,7 +110,7 @@ by CISL", and nothing names a notified address.
 - documents where the rule book demands them.
 
 Every phase is proven on samuel-dev ↔ XRAS-dev first, where an approval posts to `sam_dev`,
-never to production. The bed, its recipe and its rules are in `XRAS_CLOSED_LOOP.md` § 4. The
+never to production. The bed, its recipe and its rules are in `implemented/XRAS_CLOSED_LOOP.md` § 4. The
 benkirk-held families UHSS0002 and UHSS0003 are phase 1's test bed there.
 
 ## 3. What we have measured
@@ -488,7 +488,7 @@ That is exactly the condition under which XRAS accepts an action on the family:
   since XRAS can review actions on it.
 - A family whose every line is deleted does not qualify.
 - The 12 legacy families still under `NCAR*` fail the predicate. Their projects are all
-  inactive (`XRAS_CLOSED_LOOP.md` § 3.3).
+  inactive (`implemented/XRAS_CLOSED_LOOP.md` § 3.3).
 
 On top of the predicate sits a small **policy**, keyed by SAM allocation type and resolved by
 name at runtime, because having a family is necessary but not sufficient:
@@ -589,7 +589,7 @@ to phase 2.
    requestNumber=… (requestId=…)", and answers 200 with "SAM does not apply this action
    automatically; NSF NCAR staff will apply it by hand", which XRAS shows as a successful post.
 3. **SAM performs the rename** (`rename_request`, `sam/manage/xras_remediation.py`;
-   `XRAS_CLOSED_LOOP.md` § 3.5). `PUT /v1/requests/<request_id>/attributes?requestNumber=<projcode>`,
+   `implemented/XRAS_CLOSED_LOOP.md` § 3.5). `PUT /v1/requests/<request_id>/attributes?requestNumber=<projcode>`,
    under `submit` as the line's PI (else its Allocation Manager), renames the request in place:
    - the old number stops resolving, and `requestId` is unchanged;
    - actions filed afterwards arrive under the projcode and apply.
@@ -646,7 +646,7 @@ Open questions are in § 5.
 | **The admin picker on a no-account New** (phase 3) | the logged-in New picks its admin with a user search (`/user/requests/htmx/admin-suggest`: any user who may file a New sees active users' names, usernames and emails). An anonymous registrant must not get that directory | planned 2026-10-31: no admin field on the visitor New; the PI names one once the project exists (`implemented/XRAS_SUBMISSION_SPRINT2.md` § 0) |
 | **An initial roster on a New** (§ 4.7) | a New names only its PI and admin, so every other member waits for the project to exist and for the lead to add them by hand | planned 2026-10-31: User only (NCAR has no co-PI); invited at activation (`implemented/XRAS_SUBMISSION_SPRINT2.md` steps 2a, 2b) |
 | **A parked action answers 200** (§ 4.6 item 2) | XRAS shows the operator a successful post, and phase D's tickets cover New and Renewal only | ask whether a parked action opens the request's ticket too, when phase D is built |
-| **Actions applied before SAMuel's log** | § 4.6 items 1 and 2 read only SAMuel's log, so a repost of an action applied before the 2026-08-24 repoint applies again. The 12 legacy-era families still under `NCAR*` are dormant (`XRAS_CLOSED_LOOP.md` § 3.3) | import legacy-era actions (matched to `allocation_transaction`) only when a repost of a pre-repoint action actually happens |
+| **Actions applied before SAMuel's log** | § 4.6 items 1 and 2 read only SAMuel's log, so a repost of an action applied before the 2026-08-24 repoint applies again. The 12 legacy-era families still under `NCAR*` are dormant (`implemented/XRAS_CLOSED_LOOP.md` § 3.3) | import legacy-era actions (matched to `allocation_transaction`) only when a repost of a pre-repoint action actually happens |
 | **Extension 399374 on `UHSS0001`** | approved and posted, parked as #184, not notified. The family answers `UHSS0001` after the 2026-10-14 backfill, so a fresh Extension applies | file it afresh, or withdraw it; the admin app's repost re-sends the `New`, which the guard refuses |
 | **`GET /v1/projects`** | proxied to the accounting service as `/api/xras/v1/users/projects/<username>`, which neither legacy SAM nor SAMuel serves. One request in six weeks of production traffic, our own probe (`xras_action_log` #182, 2026-10-08). ACCESS's accounting service documents the response shape (`XRAS_OUTGOING_QUERIES.md` § 4.6) | ask Steve whether ARC or `xras_submit` calls it for NCAR; otherwise not built |
 | **WRAP** | stays `email:wrap@uwyo.edu` until WNA opts in | flip the policy row |
@@ -661,7 +661,7 @@ Open questions are in § 5.
 - **Inbound:** `sam_dev` carries production's `api_credentials` rows on every refresh, so the
   demo admin app authenticates as it does in production.
 - **Records:** the environment is in `implemented/K8S_DEV_ENVIRONMENT.md`; the recipe, the
-  rules and the state left on the demo are in `XRAS_CLOSED_LOOP.md` § 4 and
+  rules and the state left on the demo are in `implemented/XRAS_CLOSED_LOOP.md` § 4 and
   `XRAS_DEV_PROBES.md` § 8.
 
 ## 6. References
@@ -674,7 +674,7 @@ Open questions are in § 5.
 | [`XRAS_SUBMISSION_PROBES.md`](../xras/outgoing/XRAS_SUBMISSION_PROBES.md) | the 2026-09-14 probe record: every verb in § 3.1, the NCAR vocabularies, the rule-book tables, the final state left in XRAS |
 | [`XRAS_ARC_BASELINE.md`](../xras/outgoing/XRAS_ARC_BASELINE.md) | W9, 2026-09-15: the ARC form page by page, and one real New and Extension seen from ARC, the admin app, the API, SAM and mail |
 | [`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md) | the XRAS-dev read and write map, the posts to samuel-dev, the rename loop and the Track 2 scenarios |
-| [`XRAS_CLOSED_LOOP.md`](XRAS_CLOSED_LOOP.md) | the rename (§ 4.6 item 3), the production census and backfill, and the test bed |
+| [`implemented/XRAS_CLOSED_LOOP.md`](implemented/XRAS_CLOSED_LOOP.md) | the rename (§ 4.6 item 3), the production census and backfill, and the test bed |
 | [`implemented/XRAS_REQUEST_TICKETS.md`](implemented/XRAS_REQUEST_TICKETS.md) | the ticket a blocked post opens (post automation phase D) |
 | [`ACCOUNT_REGISTRATION.md`](implemented/ACCOUNT_REGISTRATION.md) | the identity step of phase 3, as a product of its own |
 | [`REQUEST_EDITOR.md`](../xras/outgoing/REQUEST_EDITOR.md) | the write client, tiers, levers and stage model the flow layer extends |

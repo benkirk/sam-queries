@@ -32,7 +32,7 @@ new projcode into XRAS's "Edit Request Number", and sending the notification fro
 
 ## 3. Phases
 
-**A. Renames.** Live in production 2026-10-14 (`XRAS_CLOSED_LOOP.md` § 3.3, § 3.5):
+**A. Renames.** Live in production 2026-10-14 (`implemented/XRAS_CLOSED_LOOP.md` § 3.3, § 3.5):
 - After a New applies, the inbound route renames its request to the projcode within a second
   of the reply (`XRAS_RENAME_ENABLED`).
 - The hourly `xras_rename` task is the backstop.
@@ -78,7 +78,7 @@ process's notification templates, sent at the operator's Notify step (read on `a
 **D. A refused post becomes one ticket.** `implemented/XRAS_REQUEST_TICKETS.md` (built in #828; on in
 samuel-dev through the `dry-run` provider; production waits on its § 9).
 Ben, 2026-10-14, the #819 second-pass review: of the News approved since the 2026-08-24
-repoint, 73 have applied, 3 stand refused and 3 are unposted (`XRAS_CLOSED_LOOP.md` § 3.3),
+repoint, 73 have applied, 3 stand refused and 3 are unposted (`implemented/XRAS_CLOSED_LOOP.md` § 3.3),
 so a ticket per approval is churn; the ticket belongs to the request whose post is refused.
 
 - **Approve and post in one sitting.** A post that applies is done. The post stays
@@ -137,12 +137,12 @@ A is live. The order from here:
 4. **E** last, as the smallest.
 5. **Then the outgoing work** of `XRAS_SUBMISSION.md`: its phases 0 and 1.
 
-Each phase is proven on samuel-dev ↔ XRAS-dev first (`XRAS_CLOSED_LOOP.md` § 4 holds the test
+Each phase is proven on samuel-dev ↔ XRAS-dev first (`implemented/XRAS_CLOSED_LOOP.md` § 4 holds the test
 bed and its rules).
 
 ## 5. Related plans
 
-- `XRAS_CLOSED_LOOP.md`: the rename (phase A) and the test bed.
+- `implemented/XRAS_CLOSED_LOOP.md`: the rename (phase A) and the test bed.
 - `XRAS_NOTICES_CUTOVER.md`: the award-mail cutover (phase C).
 - `implemented/XRAS_REQUEST_TICKETS.md`: the ticket for a request whose post is refused (phase D).
 - `XRAS_SUBMISSION.md` § 4.2, § 4.6: the request record and the incoming side; the outgoing

@@ -9,7 +9,7 @@ what it would do, and needs only the read config. ``SAM_TASKS_XRAS_RENAME_SINCE`
 WARNING: a scheduled task that writes to XRAS (``TASK_WRITABLE_OPERATIONS``; the other is
 ``account_requests_reconcile``'s placeholder merge).
 It ships named in production's ``SAM_TASKS_DISABLED``, and production's task env
-carries no ``XRAS_WRITE_ENABLED``: two locks. Design: ``docs/plans/XRAS_CLOSED_LOOP.md``.
+carries no ``XRAS_WRITE_ENABLED``: two locks. Design: ``docs/plans/implemented/XRAS_CLOSED_LOOP.md``.
 """
 
 from __future__ import annotations

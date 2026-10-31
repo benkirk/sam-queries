@@ -687,7 +687,7 @@ def _invite_after_activation(session, projcode, actor) -> None:
 
 
 def _rename_after_reply(response, action, projcode) -> None:
-    """Rename the XRAS line to *projcode* once the reply has gone (docs/plans/XRAS_CLOSED_LOOP.md).
+    """Rename the XRAS line to *projcode* once the reply has gone (docs/plans/implemented/XRAS_CLOSED_LOOP.md).
 
     XRAS waits on the reply and has timed out connecting, so the rename runs from
     ``call_on_close``; the ``xras_rename`` task covers a failure here. The outbound
