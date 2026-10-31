@@ -371,6 +371,39 @@ class TestTheVisitorsRequest:
         assert 'Continue the request' in client.get(f'/request/status/{token}').get_data(
             as_text=True)
 
+    def test_a_filed_request_is_not_filed_again(self, client, confirmed):
+        """Back from the outcome lands on the status page, not a second form; a withdrawn
+        request is started again."""
+        from datetime import datetime
+        from sam.integration.xras_submission import XrasSubmission
+        from sam.manage import management_transaction
+        from webapp.extensions import db
+        draft, token, row_id, placeholder = confirmed
+        with client.application.app_context():
+            with management_transaction(db.session):
+                sub = XrasSubmission.create(
+                    db.session, action_type='New', created_by=f'registration:{row_id}',
+                    xa_user=placeholder, eula_sha='a' * 40, eula_accepted_at=datetime.now(),
+                    payload={}, registration_id=row_id)
+                sub.advance('created')
+            sid = sub.xras_submission_id
+        status = f'/request/status/{token}'
+        htmx = {'HX-Request': 'true'}
+        try:
+            assert client.get(draft).location.endswith(status)
+            resp = client.get(f'{draft}/form', headers=htmx)
+            assert resp.status_code == 200 and resp.headers['HX-Redirect'].endswith(status)
+            resp = client.post(draft, data=_describe(), headers=htmx)
+            assert resp.status_code == 200 and resp.headers['HX-Redirect'].endswith(status)
+            with client.application.app_context():
+                with management_transaction(db.session):
+                    db.session.get(XrasSubmission, sid).advance('aborted')
+            assert client.get(draft).status_code == 200
+        finally:
+            with client.application.app_context():
+                db.session.query(XrasSubmission).filter_by(xras_submission_id=sid).delete()
+                db.session.commit()
+
 
 def _visitor_email(client, token):
     from webapp.register.allocation_request import draft_row

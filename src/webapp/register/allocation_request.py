@@ -12,8 +12,8 @@ Design: docs/plans/XRAS_SUBMISSION_SPRINT2.md.
 import logging
 from datetime import datetime, timedelta
 
-from flask import (Blueprint, abort, current_app, redirect, render_template, request,
-                   session, url_for)
+from flask import (Blueprint, abort, current_app, make_response, redirect, render_template,
+                   request, session, url_for)
 from flask_limiter.util import get_remote_address
 from flask_login import current_user
 from marshmallow import ValidationError
@@ -338,6 +338,25 @@ def draft_row(token):
     return row, opportunity_id
 
 
+def _filed(row):
+    """The newest submission under *row* that still stands (any state but aborted), else None."""
+    from sam.integration.xras_submission import XrasSubmission
+    return (db.session.query(XrasSubmission)
+            .filter(XrasSubmission.registration_id == row.account_request_id,
+                    XrasSubmission.state != 'aborted')
+            .order_by(XrasSubmission.xras_submission_id.desc()).first())
+
+
+def _to_status(token):
+    """To the status page; an htmx request gets the whole-page redirect, not a swapped body."""
+    url = url_for('allocation_request.status', token=token)
+    if request.headers.get('HX-Request'):
+        response = make_response('', 200)
+        response.headers['HX-Redirect'] = url
+        return response
+    return redirect(url)
+
+
 class _VisitorNewRequest(_NewRequestForm):
     """A confirmed visitor's New: the opportunity fixed by the token, no SAM user and no admin.
 
@@ -411,10 +430,16 @@ class _VisitorNewRequest(_NewRequestForm):
 @bp.route('/draft/<token>')
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def draft(token):
-    """Step 5: the request itself, for a confirmed visitor; the form loads into its panel."""
+    """Step 5: the request itself, for a confirmed visitor; the form loads into its panel.
+
+    A request already filed (Back from the outcome) goes to its status: a second filing
+    would mint nothing and stop on the placeholder that now resolves.
+    """
     row, opportunity_id = draft_row(token)
     if row is None:
         return _expired()
+    if _filed(row) is not None:
+        return _to_status(token)
     return render_template('register/request_draft.html', row=row,
                            opportunity=open_opportunity(opportunity_id),
                            form_url=url_for('allocation_request.draft_fragment', token=token),
@@ -429,6 +454,8 @@ def draft_fragment(token):
     row, opportunity_id = draft_row(token)
     if row is None:
         abort(404)
+    if _filed(row) is not None:
+        return _to_status(token)
     handler = _VisitorNewRequest(row, opportunity_id, token)
     try:
         ctx = handler.gate()
@@ -445,6 +472,8 @@ def draft_post(token):
     row, opportunity_id = draft_row(token)
     if row is None:
         return _expired()
+    if _filed(row) is not None:
+        return _to_status(token)
     return _VisitorNewRequest(row, opportunity_id, token).handle()
 
 
