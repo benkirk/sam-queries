@@ -314,6 +314,18 @@ class AccountRequest(Base, SessionMixin):
     def is_open(cls):
         return and_(cls.state.in_(OPEN_STATES), cls.verified_at.isnot(None))
 
+    @hybrid_property
+    def is_held(self) -> bool:
+        """A visitor's New (``/request``): kept from NUSD until the approved post refuses
+        its placeholder PI and SAM files the ticket (``requested_at``)."""
+        return (self.purpose == PURPOSE_SUBMISSION and self.created_by == CREATED_BY_SELF
+                and self.requested_at is None)
+
+    @is_held.expression
+    def is_held(cls):
+        return and_(cls.purpose == PURPOSE_SUBMISSION, cls.created_by == CREATED_BY_SELF,
+                    cls.requested_at.is_(None))
+
     @classmethod
     def create(cls, session, *, email, first_name, last_name, purpose, created_by,
                middle_name=None, organization=None, academic_status=None,

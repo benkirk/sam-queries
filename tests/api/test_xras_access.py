@@ -1240,6 +1240,72 @@ class TestActivateAfterReply:
         assert resp.status_code == 200 and action_log.one()['status'] == 'processed'
 
 
+class TestTheVisitorApproval:
+    """XRAS_SUBMISSION_SPRINT2.md 3a: the approved post of a visitor's New, refused for its
+    SAM-minted PI, releases the registration to NUSD and files its account ticket."""
+
+    PATH = TestDispatchArms.PATH
+    dispatching = TestDispatchArms.dispatching
+
+    @pytest.fixture
+    def held(self, app):
+        from sqlalchemy.orm import Session
+        from sam.core.account_requests import AccountRequest
+        from webapp.extensions import db
+        with app.app_context(), Session(db.engine) as s:
+            row = AccountRequest.create(
+                s, email=f'zz.visitor.{next_seq("1")}@example.invalid', first_name='Vis',
+                last_name='Itor', purpose='submission', created_by='self', verified_by='self')
+            s.commit()
+            rid = row.account_request_id
+        yield rid
+        with app.app_context(), Session(db.engine) as s:
+            s.query(AccountRequest).filter_by(account_request_id=rid).delete()
+            s.commit()
+
+    def _post(self, xras_client, dispatching, monkeypatch, held, messages, found=True):
+        from types import SimpleNamespace
+        from sam.manage import account_requests as manage
+        from sam.xras.errors import XrasActionRejected
+        tickets = []
+        monkeypatch.setattr(manage, 'refused_visitor_registration', lambda s, rid, m: (
+            SimpleNamespace(account_request_id=held) if found and m == messages else None))
+        monkeypatch.setattr('webapp.register.handoff_mail.send_ticket',
+                            lambda row, **kw: tickets.append((row.account_request_id, kw)))
+
+        def refuse(s, a, *, validate_only=False):
+            raise XrasActionRejected(messages)
+        dispatching.register('add', refuse)
+        payload = json.loads(_payload('new_ncar4214_ok.json'))
+        payload['requestId'] = payload['actionId'] = int(next_seq('1449'))
+        resp = xras_client.post(self.PATH, data=json.dumps(payload),
+                                content_type='application/json', headers=_auth())
+        resp.close()
+        return resp, tickets
+
+    def _requested_at(self, app, rid):
+        from sam.core.account_requests import AccountRequest
+        from webapp.extensions import db
+        with app.app_context():
+            return db.session.get(AccountRequest, rid).requested_at
+
+    def test_the_refusal_releases_the_row_and_files_its_ticket(
+            self, app, xras_client, action_log, dispatching, monkeypatch, held):
+        resp, tickets = self._post(xras_client, dispatching, monkeypatch, held,
+                                   ['PI samr1-user-a1b2c3 is not in database'])
+        assert resp.status_code == 422
+        assert self._requested_at(app, held) is not None
+        (rid, kw), = tickets
+        assert rid == held and kw['requested_by'].startswith('xras:')
+
+    def test_any_other_refusal_leaves_it_held(
+            self, app, xras_client, action_log, dispatching, monkeypatch, held):
+        resp, tickets = self._post(xras_client, dispatching, monkeypatch, held,
+                                   ['Missing pi role'], found=False)
+        assert resp.status_code == 422 and tickets == []
+        assert self._requested_at(app, held) is None
+
+
 class TestPostActionsErrors:
     """The status-code split that is this project's headline improvement.
 

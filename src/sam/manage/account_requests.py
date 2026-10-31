@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from sam.core.account_requests import (
     CREATED_BY_SELF,
     CREATED_BY_SWEEP,
+    OPEN_STATES,
     PURPOSE_ENROLLMENT,
     PURPOSE_REACTIVATION,
     PURPOSE_STANDALONE,
@@ -327,6 +328,27 @@ def _person_from_user(user: Optional[User]) -> Optional[Dict[str, Any]]:
         return None
     return {'email': email, 'first_name': user.first_name, 'last_name': user.last_name,
             'middle_name': user.middle_name}
+
+
+def refused_visitor_registration(session: Session, request_id: Optional[int],
+                                 messages: Sequence[str]) -> Optional[AccountRequest]:
+    """The ``/request`` registration whose New a refused post refused for its SAM-minted PI.
+
+    That refusal is the approval: XRAS posts only an approved request, and the PI has
+    no account yet. ``None`` for any other refusal. Reads only.
+    """
+    from sam.integration.xras_submission import XrasSubmission
+    from sam.xras.errors import pi_not_in_database
+    if request_id is None:
+        return None
+    for sub in session.query(XrasSubmission).filter(
+            XrasSubmission.request_id == request_id, XrasSubmission.action_type == 'New',
+            XrasSubmission.registration_id.isnot(None)):
+        if pi_not_in_database(sub.xa_user) in messages:
+            row = session.get(AccountRequest, sub.registration_id)
+            if row is not None and row.state in OPEN_STATES:
+                return row
+    return None
 
 
 def reconcile_account_requests(session: Session, *, clock=None,

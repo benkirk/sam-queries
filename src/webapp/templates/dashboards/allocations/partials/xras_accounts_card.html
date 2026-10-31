@@ -215,7 +215,7 @@
                         {% if not arq %}
                         <span class="text-muted" title="No account request yet: the next sweep writes one for an absent member with an email">—</span>
                         {% else %}
-                        {{ queue_state(arq.state, arq.assignee, requested_at=arq.requested_at, fulfilled=arq.fulfilled) }}
+                        {{ queue_state(arq.state, arq.assignee, requested_at=arq.requested_at, fulfilled=arq.fulfilled, held=arq.held) }}
                         {% endif %}
                     </td>
 

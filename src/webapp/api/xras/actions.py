@@ -494,8 +494,10 @@ def _dispatch(log_id, action):
         # repeatedly.
         _finish(log_id, status='failed', error_messages=exc.messages,
                 http_status=422, service=select_service(db.session, action))
-        return _errors(_refusal_reply(action, exc.messages), 422,
-                       count=len(exc.messages))
+        response = _errors(_refusal_reply(action, exc.messages), 422,
+                           count=len(exc.messages))
+        _release_after_refusal(response, action, exc.messages)
+        return response
     except Exception as exc:
         # A handler that RAISED is not the capture backlog — but without this arm the
         # row keeps `status='received'` / `http_status=200` / `processed_time IS NULL`,
@@ -626,6 +628,38 @@ def _activate_after_reply(response, result, log_id) -> None:
             app.logger.exception('XRAS activate/notify after reply failed: %s', projcode)
 
     response.call_on_close(activate)
+
+
+def _release_after_refusal(response, action, messages) -> None:
+    """A visitor's New refused for its SAM-minted PI was approved: hand the registration
+    to NUSD (``requested_at`` releases it) and file its account ticket, once the reply has
+    gone (docs/plans/XRAS_SUBMISSION_SPRINT2.md 3a). ``send_ticket`` files once per row."""
+    from sam.manage.account_requests import refused_visitor_registration
+    if action.get('actionType') != 'New':
+        return
+    row = refused_visitor_registration(db.session, _fit_int(action.get('requestId')), messages)
+    if row is None:
+        return
+    app = current_app._get_current_object()
+    actor = f'xras:{get_auth_actor() or "api"}'[:_PROCESSED_BY_WIDTH]
+    row_id = row.account_request_id
+
+    def release():
+        from sam.core.account_requests import AccountRequest
+        from sam.manage import management_transaction
+        from webapp.register.handoff_mail import send_ticket
+        try:
+            with _after_reply_context(app, actor):
+                held = db.session.get(AccountRequest, row_id)
+                with management_transaction(db.session):
+                    held.mark_requested()
+                result = send_ticket(held, requested_by=actor)
+                app.logger.info('XRAS approval of a visitor New: request %s ticket %s', row_id,
+                                getattr(result, 'status', 'not configured'))
+        except Exception:                               # noqa: BLE001
+            app.logger.exception('XRAS approval of a visitor New: request %s failed', row_id)
+
+    response.call_on_close(release)
 
 
 def _invite_after_activation(session, projcode, actor) -> None:

@@ -275,6 +275,7 @@ def _people(payload: Mapping[str, Any]) -> Dict[str, dict]:
 def ticket_context(session: Session, episode: Episode, *, card_url: str = '') -> dict:
     """The ``xras_request_ticket`` template's context."""
     from sam.core.account_requests import OPEN_STATES
+    from sam.queries.account_notices import ticket_handle as account_handle
     from sam.queries.account_requests import requests_by_xras_username
     from sam.queries.xras_accounts import is_placeholder, sam_merge_targets
 
@@ -287,7 +288,9 @@ def ticket_context(session: Session, episode: Episode, *, card_url: str = '') ->
     for rows in requests_by_xras_username(session, people).values():
         for row in rows:
             if row.state in OPEN_STATES and not row.is_fulfilled:
-                queued.append({'id': row.account_request_id, 'name': row.display_name,
+                queued.append({'id': row.account_request_id,
+                               'handle': account_handle(row.account_request_id),
+                               'name': row.display_name,
                                'email': row.email, 'purpose': row.purpose,
                                'state': row.state})
 

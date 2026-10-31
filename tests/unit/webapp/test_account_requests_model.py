@@ -349,3 +349,47 @@ class TestTheInvitationLink:
         assert stamped.eula_sha == 'abc' and stamped.eula_accepted_at == self.SENT
         bare = make_account_request(session, eula_sha='abc')
         assert bare.eula_sha is None and bare.eula_accepted_at is None
+
+
+class TestTheVisitorHold:
+    """A /request registration stays off NUSD's queue until its New is approved (3a)."""
+
+    def _row(self, session, **kw):
+        from factories import next_seq
+        from sam.core.account_requests import AccountRequest
+        return AccountRequest.create(
+            session, email=f'zz.held.{next_seq("1")}@example.invalid', first_name='Vis',
+            last_name='Itor', verified_by='self', **{'purpose': 'submission',
+                                                     'created_by': 'self', **kw})
+
+    def test_it_is_held_until_requested_and_the_queue_agrees(self, session):
+        from factories import next_seq
+        from sam.core.account_requests import AccountRequest
+        from sam.queries.account_requests import queue_requests
+        held = self._row(session)
+        swept = self._row(session, created_by='sweep', xras_username=f'zz{next_seq("1")}-user-ab')
+        assert held.is_held and not swept.is_held
+        ids = {r.account_request_id for r in queue_requests(session)}
+        assert held.account_request_id not in ids and swept.account_request_id in ids
+        held.mark_requested()
+        assert not held.is_held
+        assert held.account_request_id in {r.account_request_id for r in queue_requests(session)}
+        assert session.query(AccountRequest).filter(
+            AccountRequest.is_held,
+            AccountRequest.account_request_id == swept.account_request_id).count() == 0
+
+    def test_the_approvals_refusal_names_the_registration(self, session):
+        from datetime import datetime
+        from factories import next_seq
+        from sam.integration.xras_submission import XrasSubmission
+        from sam.manage.account_requests import refused_visitor_registration
+        row = self._row(session)
+        request_id = int(next_seq('7'))
+        XrasSubmission.create(session, action_type='New', created_by='registration:1',
+                              xa_user='samr1-user-a1b2c3', eula_sha='a' * 40,
+                              eula_accepted_at=datetime.now(), payload={},
+                              request_id=request_id, registration_id=row.account_request_id)
+        refused = ['PI samr1-user-a1b2c3 is not in database', 'Username x is missing']
+        assert refused_visitor_registration(session, request_id, refused) is row
+        assert refused_visitor_registration(session, request_id, ['Missing pi role']) is None
+        assert refused_visitor_registration(session, request_id + 1, refused) is None

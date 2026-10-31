@@ -70,10 +70,10 @@ def origin_of(row: AccountRequest) -> str:
 
 
 def queue_requests(session: Session) -> List[AccountRequest]:
-    """The rows NUSD works: open, verified, and not yet fulfilled -- plus
+    """The rows NUSD works: open, verified, not held, and not yet fulfilled -- plus
     fulfilled rows whose enrollment failed, which need a retry."""
     return (session.query(AccountRequest)
-            .filter(AccountRequest.is_open,
+            .filter(AccountRequest.is_open, ~AccountRequest.is_held,
                     or_(AccountRequest.user_id.is_(None),
                         AccountRequest.fulfill_error.isnot(None)))
             .order_by(AccountRequest.creation_time)
@@ -477,6 +477,7 @@ def stamp_account_requests(session: Session,
             'state': req.state,
             'assignee': req.assignee,
             'requested_at': req.requested_at,
+            'held': req.is_held,
             'fulfilled': req.is_fulfilled,
             'creation_time': req.creation_time,
         } if req else None)
