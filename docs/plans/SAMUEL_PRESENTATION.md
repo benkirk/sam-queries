@@ -343,7 +343,7 @@ way the data moves. Part 5 covers where it runs and how a commit gets there.
     `samuel_role*`, `external_ticket`, `xras_*` ledgers.
   - The incident is pinned in `tests/api/test_health_endpoints.py` (`TestSchemaDriftContract`).
 - **Identity:** the source map is `docs/plans/SAM_LDAP_SYNCD_REFERENCE.md` §1.2 and §2.4–2.5,
-  plus `docs/plans/LDAP_SYNC_API.md`. The Appendix B census gives the legacy callers:
+  plus `docs/plans/implemented/LDAP_SYNC_API.md`. The Appendix B census gives the legacy callers:
   ldapsync is live, AMIE is idle, HEUV is ported (PR #786, cutover pending), and XRAS has made 0 legacy calls since
   08-28.
 - **API:** decorator counts (2026-10-10) give core 39 routes (7 modules), legacy shapes 21 (6),
@@ -513,7 +513,7 @@ what is retired or retiring.
 - **To confirm with Ben:** nothing in `hpc-scheduling-tools` calls `/api/v1/fairshare`;
   `refresh.py` (the playground) builds both artifacts from the raw endpoints. That HSG's
   production cron downloads the tree is Ben's statement (2026-10-01), not something in a repo.
-- **Further reading:** `docs/plans/LDAP_SYNC_API.md` Appendix A has the fuller zoo survey.
+- **Further reading:** `docs/plans/implemented/LDAP_SYNC_API.md` Appendix A has the fuller zoo survey.
 
 ### Appendix B — APIs & Why Two Dialects (the APIs; drafted 2026-10-02)
 
@@ -629,7 +629,7 @@ CLI users are one of Part 1's five audiences, but had no slide.
 - **The name:** the app, and Ben's March deck, say "Systems Accounting Manager". `CLAUDE.md`'s
   "System for Allocation Management" is the outlier; the slides use the app's name.
 - **The LDAP identity mirror** (`sam-ldap-syncd`) still talks to **legacy** SAM on the shared
-  database (`docs/plans/LDAP_SYNC_API.md`). The Part 1 diagram shows identities flowing into
+  database (`docs/plans/implemented/LDAP_SYNC_API.md`). The Part 1 diagram shows identities flowing into
   the SAM database, and the notes say legacy still owns that edge.
 - **Legacy stack facts** (Spring/JSF, ~250K LOC, ~15 years) come only from Ben's March deck,
   not from anything in this repo. `_variables.yml` cites the slide.

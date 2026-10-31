@@ -160,7 +160,7 @@ was right, so we fixed it, here and on the dashboards.*
 
 ::: {.notes}
 ldapsync: src/webapp/api/ldapsync/, src/sam/schemas/ldapsync.py, input via
-src/sam/schemas/forms/ldapsync.py; record docs/plans/LDAP_SYNC_API.md § 10 (testbed reads and
+src/sam/schemas/forms/ldapsync.py; record docs/plans/implemented/LDAP_SYNC_API.md § 10 (testbed reads and
 writes § 10.5). The 1,343 PUTs were the daemon's own stream, captured and replayed over HTTP;
 the two 400s are an over-long acronym and a upid held by another username. Shadowing on
 samuel-dev since 2026-10-09 (docs/plans/LDAPSYNC_DEV_SHADOW.md); production's daemon still

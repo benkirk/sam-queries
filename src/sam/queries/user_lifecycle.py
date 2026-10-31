@@ -7,7 +7,7 @@ allocation), current memberships, and disk holdings (+90 days). The daemon then
 extends, never shortens, the directory's end date. Legacy
 ``DefaultUserLifecycleManager``; its defects are fixed here (the admin was never
 counted, an open end date was an NPE, and ``now`` froze at server start).
-See ``docs/plans/LDAP_SYNC_API.md``.
+See ``docs/plans/implemented/LDAP_SYNC_API.md``.
 """
 
 from collections import defaultdict

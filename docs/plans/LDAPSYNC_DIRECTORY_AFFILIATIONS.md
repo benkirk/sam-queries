@@ -6,7 +6,7 @@ first step is a read-only discrepancy report, built as the directory client's st
 **Scope:** directory → SAM: people, then their positions (`user_organization`) and collaborations
 (`user_institution`), then organizations, institutions and adhoc groups. SAM → directory (project
 groups, collaborator end dates) stays with the daemon.
-**Related:** `LDAP_SYNC_API.md` (§ 10.3 deviations D1-D4, § 10.5 residuals; § 10.7 soak, in PR #777),
+**Related:** `implemented/LDAP_SYNC_API.md` (§ 10.3 deviations D1-D4, § 10.5 residuals; § 10.7 soak, in PR #777),
 `LDAPSYNC_DEV_SHADOW.md`, `SAM_LDAP_SYNCD_REFERENCE.md` (daemon bugs N17, N21, N24-N26, 1, 7; staging
 § 3.6-3.8).
 
@@ -75,7 +75,7 @@ collaborations (4,512 active).
 How to read the table:
 
 - **Planned end dates.** Prod keeps 181 only because legacy's stock daemon rarely delivers position
-  changes at all (`LDAP_SYNC_API.md` § 10.5). The shadow delivered them, and SAMuel applied the erasure. So a faithful
+  changes at all (`implemented/LDAP_SYNC_API.md` § 10.5). The shadow delivered them, and SAMuel applied the erasure. So a faithful
   SAM fed by this daemon gets worse.
 - **Collaborations are nearly right everywhere.** The trouble is in positions.
 - **The 113 positions current in the directory but ended in prod** are undelivered changes. The
@@ -133,7 +133,7 @@ Counts from the live directory, anonymous (`ou=allPeople` is 28,605 people, 13,7
   membership and allocation dates, and the daemon will write it to the collaboration's own
   `x-ucar-endDate` (`lib/StagingTransformers.pm:71`), the attribute the directory uses too.
   **That keep-alive has never run** (no `collabexpiryupdates` GET in 57 days of logs; the cron child
-  dies, `LDAP_SYNC_API.md` § 2.4). Every collaboration today was last written by the bulk load or by
+  dies, `implemented/LDAP_SYNC_API.md` § 2.4). Every collaboration today was last written by the bulk load or by
   Fischer, so the 984 end dates on CISL/USS collaborations are PeopleDB's, not SAM's. Until the pass
   runs, a date there is the directory's: reported, never applied. Once it runs, the entry's
   `modifiersName` (the daemon's bind DN) tells a SAM-written date from the directory's; that is
@@ -172,10 +172,10 @@ than affiliations, because legacy already treats the directory as the truth for 
   the user's own rows is trusted, employer included, and the employer is updated in place. Today an
   id-less record can grab another row, and a moved collaboration is inserted again.
 - **Collaboration end dates stored as sent.** Today a midnight end is silently stored as 23:59:59
-  (`src/sam/base.py` around 53-71), so 22 collaboration PUTs never converge (`LDAP_SYNC_API.md` § 10.5).
+  (`src/sam/base.py` around 53-71), so 22 collaboration PUTs never converge (`implemented/LDAP_SYNC_API.md` § 10.5).
 - **A guard against end-date erasure (D-E):** a POST may not clear a planned end date SAM already
   holds, until upstream fixes the erasure.
-  - This deliberately departs from a faithful POST, so it would be recorded in `LDAP_SYNC_API.md` § 10.3.
+  - This deliberately departs from a faithful POST, so it would be recorded in `implemented/LDAP_SYNC_API.md` § 10.3.
   - It protects prod after the `SAM_URL` flip: from then on, prod would take the shadow's erasures.
 
 **Upstream:** an issue for the end-date erasure (D-D).

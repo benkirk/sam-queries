@@ -5,7 +5,7 @@ purgeable and otherwise PUTs a tombstone. Messages are legacy's, verbatim. The
 permit blocks on every row that references the entity and is not deleted with it:
 an ORM delete would otherwise NULL those foreign keys and orphan history.
 ``enabled=False`` (the ``LDAPSYNC_PURGE_ENABLED`` lever) refuses every purge of an
-existing row. See ``docs/plans/LDAP_SYNC_API.md``.
+existing row. See ``docs/plans/implemented/LDAP_SYNC_API.md``.
 """
 
 from typing import Optional

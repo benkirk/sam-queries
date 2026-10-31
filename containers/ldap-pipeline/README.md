@@ -10,7 +10,7 @@ The one deliberate exception is opt-in: `patches/` holds fixes to syncd we carry
 they go upstream, built only with `PATCHED=1` and run only with `SYNCD_TAG` set.
 
 What the daemon does and why: `docs/plans/SAM_LDAP_SYNCD_REFERENCE.md`. What SAMuel has
-to serve: `docs/plans/LDAP_SYNC_API.md`.
+to serve: `docs/plans/implemented/LDAP_SYNC_API.md`.
 
 ## The one rule: nothing leaves this testbed
 
@@ -143,7 +143,7 @@ against that dump is the field-level change the port has to make.
 `bin/compare-dumps A/sam-data.json B/sam-data.json` compares two such captures type by
 type and prints counts and field names, never values. Capture one `syncdInit` against
 prod and one against SAMuel to see how SAMuel's reads differ from legacy's; the expected
-differences are `docs/plans/LDAP_SYNC_API.md` § 10.3. Lists compare in any order, and
+differences are `docs/plans/implemented/LDAP_SYNC_API.md` § 10.3. Lists compare in any order, and
 `--ignore projectGroup.tags,projectGroup.lastModified` drops the two fields that differ
 by design (D14; the daemon's synthetic `all-hpc-users` stamp), so a clean day prints
 `differ=0` for every type and exits 0 (`docs/plans/LDAPSYNC_DEV_SHADOW.md`).

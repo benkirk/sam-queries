@@ -33,7 +33,7 @@ sample; `sam-admin directory report` nests (Ben, 2026-10-16) instead of `--repor
   only once the daemon's `SAM_URL` flips.
 - **Review of `fde9df23`:** F1 (the check holds the PUT reply) is recorded as a soak-gated
   follow-up in `DIRECTORY_CLIENT.md` § 10; F2 (deploy during the soak's deciding days) is
-  recorded in `LDAP_SYNC_API.md` § 10.7 on the #777 branch.
+  recorded in `implemented/LDAP_SYNC_API.md` § 10.7 on the #777 branch.
 - **Watch:** the session timer runs prod, dev and legacy ticks at :13 and :43; the dev tick
   tallies the daemon's PUTs and the `directory check` lines. No PUT has reached dev since the
   roll, so no check line yet.
@@ -63,7 +63,7 @@ What it means:
   § 3.6) has **created no project group since 2026-07-10** and has left membership behind on
   a third of the sampled groups. `LDAPSYNC_DIRECTORY_AFFILIATIONS.md` § 2 says "project groups
   work"; for creates it does not. Candidate cause: the same cron-child death that kills
-  `LifecycleUpdater` (`LDAP_SYNC_API.md` § 2.4, reference § 3.6 and the `cronDispatcher` note
+  `LifecycleUpdater` (`implemented/LDAP_SYNC_API.md` § 2.4, reference § 3.6 and the `cronDispatcher` note
   at reference L1014); George's 376b1a6/5f216b2 cron rework may bear on it. **Action for Ben:**
   an upstream issue on NCAR/sam-ldap-syncd with the dates above, and a correction to
   AFFILIATIONS § 2.

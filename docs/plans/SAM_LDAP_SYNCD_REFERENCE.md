@@ -8,7 +8,7 @@ scripts inside all three production images are byte-identical to the checkouts i
 sam-tomcat.ucar.edu, the legacy SAM host (§2.5): its access and application logs cover
 every request the daemon has made since 2026-07-31. Bugs in §4 carry a production-status
 column.
-**Companion:** `docs/plans/LDAP_SYNC_API.md` scopes serving this daemon from the new
+**Companion:** `docs/plans/implemented/LDAP_SYNC_API.md` scopes serving this daemon from the new
 SAM and holds the exact HTTP contract (§2 there); this document explains what the
 daemon *is* and how it works, for a reader who knows SAM well and LDAP little.
 
@@ -404,7 +404,7 @@ The subject of §3.
   answered 500). A quiet day is 8–62 requests; the add-file replay of Aug 10 was 6,329
   PUTs in 27 minutes at up to 347 per minute. Legacy answers a `PUT user` in 151 ms on
   average, the `user` collection (24.3 MB) in 30–35 s, `projectGroup` (1.03 MB) in 10–14 s.
-  The full table and the error breakdown are in `LDAP_SYNC_API.md` §1 and §2.5.
+  The full table and the error breakdown are in `implemented/LDAP_SYNC_API.md` §1 and §2.5.
 
 ---
 
@@ -598,13 +598,13 @@ expiry use container-local time, which the base image pins to `America/Denver`
 The HTTP rules (challenge-response Basic auth with realm `Realm`; 404 retried
 forever with "temp SAM init failure" logged for the first four; 500s whose message says
 the connection was refused, closed or reset retried; other 300–500 answers thrown; JSON
-bodies required) are in `LDAP_SYNC_API.md` §2.1. A thrown answer reaches the main loop,
+bodies required) are in `implemented/LDAP_SYNC_API.md` §2.1. A thrown answer reaches the main loop,
 which logs "Pausing and continuing after exception", sleeps a literal 300 s
 (`lib/Synchronizer.pm:266`) and replays from the last checkpoint. The consequence that
 matters here: the IMDB is updated **before** the PUT (`:571-576`) and the journal is
 appended only after success (`SamUpdatePropagator.pm:118`), so the replay compares the
 record as a no-op and it is never retried (bug 15). The server side shows what those
-answers were (`LDAP_SYNC_API.md` §2.5): in September 2026 two 400s (Sep 1, the "Upid N
+answers were (`implemented/LDAP_SYNC_API.md` §2.5): in September 2026 two 400s (Sep 1, the "Upid N
 matches username N" placeholder-account rejections tracked in the operations notes) and
 three 500s (Sep 2, 18, 26, each `Synchronization UserOrganization object for user upid N
 had unknown id: M`, a SAM position id the daemon holds that SAM has since replaced, bug
@@ -623,7 +623,7 @@ central directory's group membership follows SAM (`lib/ProjectGroupUpdater.pm:13
 - SAM's response per project: `posixGid`, `key` (lowercase projcode), `name`,
   `active`, `upids` (active members on live allocations, lead and admin always),
   `rolenames`, `tags` (access branches, `exclude-from-google`, `auto-renewed-project`),
-  `lastModified`. Server rules are in `LDAP_SYNC_API.md` P1a. Every fetch is a full
+  `lastModified`. Server rules are in `implemented/LDAP_SYNC_API.md` P1a. Every fetch is a full
   fetch: the incremental watermark reads a `lastModifiedDate` key that SAM does not send
   (`:179-181`, bugs 4 and 5), and the group-tag refresh loads an undefined variable
   (`:161-162`, bug 6), so the tags stay as loaded at daemon start.
@@ -663,7 +663,7 @@ date, pushes the later date to staging. It **only ever extends**
   `activeCollaborator`, `nominalExpiry` (`yyyy-MM-dd`), among others. The server
   computes the expiry as the latest end over contracts (PI/monitor), led/admin
   projects and their allocations, current memberships' allocations, and disk holdings,
-  each plus a 90-day grace (`LDAP_SYNC_API.md` P1d).
+  each plus a 90-day grace (`implemented/LDAP_SYNC_API.md` P1d).
 - The daemon skips a row when it is not active, the user is unknown, the user has no
   currently active collaboration in the IMDB, or the directory's end date is already
   later; otherwise it queues a modify replacing `x-ucar-endDate` (and
@@ -846,7 +846,7 @@ file-scoped. Misspelled or undeclared variables silently become package globals 
 | N7 | `$maxLen` vs `$maxlen` in tombstones | wrong | latent (no tombstoned orgs or institutions in the snapshot) | `lib/SamOrganizationData.pm:435-437`; `lib/SamInstitutionData.pm:124-126` | acronyms longer than 11 (org) or 36 (institution) chars become `" --x"`, so tombstoned records collide on acronym | fix the name |
 | N8 | `SAM_UPDATES_STUB` does not stub DELETE | loss (test/dev) | latent (stub unset in prod) | `lib/SamClient.pm:334-350,458-460,480-503` | "non-destructive" stub mode still purges in SAM, and `purgePermit` logs to the stub but still sends the GET | add the stub check to `_delete` and `purge` |
 | N10 | group normalize drops unknown usernames | wrong (transient) | observed at every init ("no user for username X") | `lib/SamGroupData.pm:338-345`; `lib/SamUserData.pm:195-197` | members not yet in the IMDB (ordering, rename, case) are dropped until the next full dump; lookup is exact-case | keep unresolved names; compare case-insensitively |
-| N21 | stale SAM position ids are sent until the next full reload | loss | observed (server): 73 × `PUT user` → 500 "Synchronization UserOrganization object for user upid N had unknown id: M" since 2026-08-01 (62 on Aug 10; one each on Sep 2, 18, 26) | `lib/SamUserEmploymentData.pm` (`positionIdmsUniqueNameToPositionId`), `lib/SamUpdatePropagator.pm` | the IMDB learns SAM-assigned `positionId`s only at a full load; when SAM replaces a `user_organization` row afterwards the daemon keeps PUTting the dead id, legacy 500s, and the whole user update is dropped (bug 15) | send `idmsUniqueName` and let SAM match, or drop the `positionId`s and retry once on that 500; server side, match tolerantly (`LDAP_SYNC_API.md` P1c) |
+| N21 | stale SAM position ids are sent until the next full reload | loss | observed (server): 73 × `PUT user` → 500 "Synchronization UserOrganization object for user upid N had unknown id: M" since 2026-08-01 (62 on Aug 10; one each on Sep 2, 18, 26) | `lib/SamUserEmploymentData.pm` (`positionIdmsUniqueNameToPositionId`), `lib/SamUpdatePropagator.pm` | the IMDB learns SAM-assigned `positionId`s only at a full load; when SAM replaces a `user_organization` row afterwards the daemon keeps PUTting the dead id, legacy 500s, and the whole user update is dropped (bug 15) | send `idmsUniqueName` and let SAM match, or drop the `positionId`s and retry once on that 500; server side, match tolerantly (`implemented/LDAP_SYNC_API.md` P1c) |
 | N22 | live institution records are not length-checked | wrong | observed (server): 4 × `PUT institution` → 500 "Data too long for column 'acronym'" (Aug 18, 20, 27 ×2) | `lib/SamInstitutionData.pm` (`:105-138` truncates only the tombstone) | an acronym longer than 40 characters is sent as-is; the database rejects it and the record is dropped until the next rebuild, then rejected again | truncate to the column widths (40 acronym, 128 name) on the live path too (testbed patch 0004, PR #774); server side, answer 400 |
 | N23 | a modify for an unknown key rebuilds from SAM every 300 s | wrong (load) | latent; observed on the testbed | `lib/IDMSUpdateManager.pm:369-375` | a modify whose person is in neither SAM nor the add file throws `IMDBStateException`; the rebuild cannot supply the record, so it re-downloads every collection every 300 s until an add file includes it | log and skip the modify (testbed patch 0003, PR #774) |
 | 1 + 7 | `getSAMObject` defined twice (second drops `$id`); `user->` bareword makes `willSamModify` always false | cosmetic, **fix together** | latent | `lib/SamClient.pm:236,260`; `lib/SamUserData.pm:289,295` | the read-back after PUT never runs, so SAM-assigned position ids are never learned; fixing 7 alone turns every user PUT with a new affiliation into a BUG abort via 1 (`SamUpdatePropagator.pm:143-147`) | delete the second definition; use `$user` |

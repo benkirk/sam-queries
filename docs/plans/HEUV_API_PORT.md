@@ -31,7 +31,7 @@ Legacy SAM (Java/Spring on `sam-tomcat`, `https://sam.ucar.edu`) serves a read-o
 feed at `/api/protected/heuv/v1/*` ("High End User View"). Spring role `ROLE_API_HEUV`
 (`legacy_sam/src/main/resources/spring/security-config.xml:33`), Basic auth against the shared
 `api_credentials` table, roles via `role_api_credentials -> role`. It is listed "not ported" in
-`docs/plans/LDAP_SYNC_API.md:532` and the deck. SAMuel will serve the **same path, auth and bytes**,
+`docs/plans/implemented/LDAP_SYNC_API.md:532` and the deck. SAMuel will serve the **same path, auth and bytes**,
 so each caller repoints by changing the host only.
 
 ## 2. Decisions log (2026-10-10, Ben)
@@ -352,7 +352,7 @@ Route handlers use `db.session`, so HTTP-layer tests see committed rows only; by
 | `docs/apis/HEUV_API.md` (new) | contract (§4-§6), traffic table, not-ported list (D2), cutover pointer | 250 default |
 | `docs/apis/SYSTEMS_INTEGRATION_APIs.md` | **one** pointer line (file is 953/960; §8 at `:851-856` is the ldapsync model) | 960 |
 | `CLAUDE.md:188` | `ROLE_XRAS`, `ROLE_API_ADMIN` -> add `ROLE_API_HEUV`; `:236` mounts list gains `api/heuv/`; **net-zero lines** (1067/1067) | 1067 |
-| `docs/plans/LDAP_SYNC_API.md:532` | HEUV row in Appendix B (`:521`, header `:525`): status -> ported, PR # | exempt |
+| `docs/plans/implemented/LDAP_SYNC_API.md:532` | HEUV row in Appendix B (`:521`, header `:525`): status -> ported, PR # | exempt |
 | `docs/plans/HARD_DELETE_AUDIT.md:185,212` | `default_project` consumer now known (HEUV `defaultproject`, no fallback) | exempt |
 | `docs/presentations/samuel/_4-systems.qmd:34,182,704`, `_A-peers.qmd:195`, `docs/plans/SAMUEL_PRESENTATION.md:347` | "not ported" -> ported | exempt |
 | `_4-systems.qmd:528`, `_B-apis.qmd:16`, `SAMUEL_PRESENTATION.md:350` | stale "nothing is mounted at /api/protected" (ldapsync already is) -> list `admin` + `heuv` | exempt |

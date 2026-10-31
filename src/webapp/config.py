@@ -129,7 +129,7 @@ class SAMWebappConfig(SAMConfig):
     # payloads in the meantime. Flip OFF per handler as each one lands.
     XRAS_ACTIONS_CAPTURE_ONLY = os.getenv('XRAS_ACTIONS_CAPTURE_ONLY', '1').lower() in ('1', 'true', 'yes')
 
-    # sam-ldap-syncd levers (/api/protected/admin, docs/plans/LDAP_SYNC_API.md), all off.
+    # sam-ldap-syncd levers (/api/protected/admin, docs/plans/implemented/LDAP_SYNC_API.md), all off.
     # PURGE off: a purge permit for an existing row answers not purgeable, so the
     # daemon PUTs a tombstone instead of DELETE (what legacy did on every permit).
     LDAPSYNC_PURGE_ENABLED = os.getenv('LDAPSYNC_PURGE_ENABLED', '0').lower() in ('1', 'true', 'yes')

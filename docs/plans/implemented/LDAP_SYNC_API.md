@@ -1,7 +1,7 @@
 # LDAP Sync API — serving `sam-ldap-syncd` from the new SAM
 
-**Status:** implemented 2026-10-09 on branch `ldapsync-api` (P1a–P2, one commit per
-phase); §10 is the as-built record and supersedes §3–§4 where they differ. Scoped
+**Status:** live, its levers on in production 2026-10-19 (#844). Built 2026-10-09 (P1a–P2,
+one commit per phase); §10 is the as-built record and supersedes §3–§4 where they differ. Scoped
 2026-09-25; the client-side facts in §1–§2 were checked against the production daemon
 on sam-app.ucar.edu (image 6c0fd35), the server-side facts (the §1 traffic table, §2.1,
 §2.5) against the legacy SAM host sam-tomcat.ucar.edu (SAM 2.0.4 on Tomcat 9.0.58) on

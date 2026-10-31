@@ -7,7 +7,7 @@ that instant in ``users.deactivate``: the column is the ledger, no table behind 
 ``restore_user_deactivation`` reopens the rows whose ``end_date`` equals it. A user
 deactivated before this code (``active=0``, stamp NULL) is not undone; the repair
 for that cohort stays ``scripts/repair/RUNBOOK-missing-projects.md``. Restored rows
-come back open-ended. Design: ``docs/plans/LDAP_SYNC_API.md`` § 10.4.
+come back open-ended. Design: ``docs/plans/implemented/LDAP_SYNC_API.md`` § 10.4.
 """
 
 import logging

@@ -862,7 +862,7 @@ challenge is literally `Basic realm="Realm"`
 The identity mirror: the daemon pushes institutions, organizations, users, unix groups
 and GID blocks from the UCAR directory, and reads project groups and collaborator
 expiry back. Contract rules, levers and every deviation from legacy:
-[`docs/plans/LDAP_SYNC_API.md`](../plans/LDAP_SYNC_API.md) § 10.
+[`docs/plans/implemented/LDAP_SYNC_API.md`](../plans/implemented/LDAP_SYNC_API.md) § 10.
 
 | Method | Path | Answer |
 |---|---|---|

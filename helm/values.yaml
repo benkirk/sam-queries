@@ -351,7 +351,7 @@ webapp:
     # e.g. "Extension,Supplement". Narrow this to park a misbehaving payload class as
     # manual without a revert; an unknown token leaves that type disabled.
     XRAS_ACTIONS_ENABLED: "all"
-    # sam-ldap-syncd at /api/protected/admin (docs/plans/LDAP_SYNC_API.md). Purge and
+    # sam-ldap-syncd at /api/protected/admin (docs/plans/implemented/LDAP_SYNC_API.md). Purge and
     # restore on, as the dev shadow soaked them. LIFECYCLE stays "0" until § 10.6's
     # conditions hold: the first run would close every pending user's memberships at once.
     # PURGE "1": hard-delete on the daemon's request. LIFECYCLE "1": finish stamped

@@ -1,7 +1,7 @@
 """Read side of the LDAP sync API: the collections ``sam-ldap-syncd`` loads from SAM.
 
 Each function returns plain dicts for ``sam.schemas.ldapsync``. Wire contract,
-legacy behavior and the deliberate deviations: ``docs/plans/LDAP_SYNC_API.md``.
+legacy behavior and the deliberate deviations: ``docs/plans/implemented/LDAP_SYNC_API.md``.
 Bulk SQL keyed by id, assembled in Python: the ``user`` collection is ~28k users
 with nested rows, and an ORM graph of it would not fit the worker timeout.
 """
