@@ -2,7 +2,7 @@
 
 > **Paths in § *Track 1* and § *Files* are as of Sprint A** and are left verbatim
 > as the as-built record. The XRAS plan docs have since moved: the live ones to
-> `docs/xras/incoming/`, the shipped ones to `docs/xras/incoming/implemented/`.
+> `docs/xras/incoming/`, the shipped ones to `docs/plans/implemented/`.
 
 ## Context
 

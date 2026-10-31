@@ -825,7 +825,7 @@ class TestDispatchArms:
         ``log_id``, which only the route has.
 
         Where warnings ultimately *belong* is a schema question — see
-        ``docs/xras/incoming/implemented/XRAS_STRESS_AND_SCHEMA.md``'s ``warnings`` column candidate. This
+        ``docs/plans/implemented/XRAS_STRESS_AND_SCHEMA.md``'s ``warnings`` column candidate. This
         pins only that they stop vanishing.
         """
         dispatching.register('extend', lambda s, a, *, validate_only=False: dispatching.DispatchResult(
@@ -937,7 +937,7 @@ class TestDispatchArms:
     @pytest.mark.parametrize('armed', [False, True])
     def test_a_refused_new_says_where_its_ticket_stands_only_when_armed(
             self, app, xras_client, action_log, dispatching, monkeypatch, armed):
-        """docs/plans/XRAS_REQUEST_TICKETS.md § 6: the state line leads, the stored row stays bare."""
+        """docs/plans/implemented/XRAS_REQUEST_TICKETS.md § 6: the state line leads, the stored row stays bare."""
         from sam.xras.errors import ActionErrors
 
         def rejecting(session, action, *, validate_only=False):

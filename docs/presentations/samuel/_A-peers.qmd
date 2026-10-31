@@ -172,7 +172,7 @@ legacy_sam/container_zoo/: "Repos for all the helper / synchronizers SAM uses." 
 NCAR clone (amieclient is XSEDE's). Identity: the LDAP replica feeds the transformer, which feeds
 syncd, which calls /api/protected/admin/ldapsync. AMIE: amie-sam-mediator calls
 /api/protected/amie/v1, quiet since 2026-09-04. amie-sam-mediator and amiemediator are public;
-the rest are private. Full survey: sam-queries docs/plans/LDAP_SYNC_API.md, Appendix A.
+the rest are private. Full survey: sam-queries docs/plans/implemented/LDAP_SYNC_API.md, Appendix A.
 :::
 
 ## Retired, or soon to be {.vcenter scale="1.15"}

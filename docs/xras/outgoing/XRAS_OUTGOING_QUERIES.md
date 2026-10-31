@@ -1019,7 +1019,7 @@ on evidence rather than re-litigated from scratch.
 | `docs/xras/incoming/XRAS_REIMPLEMENTATION.md` | The inbound wire contract, action semantics, the allocation-type extractor, and the open-risks list (co-PI now answerable) |
 | `docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md` | § 2 has the applied DDL sequence — the precedent for the follow-up table (§ 7.6) |
 | `docs/plans/implemented/DBA_PRIVILEGE_REQUEST.md` | The 2026-08-10 DDL grant that makes the follow-up table cheap |
-| `docs/xras/incoming/implemented/XRAS_SPRINT_B.md` | The operator surface and activation worklist — the closest existing analogue to the proposed card |
+| `docs/plans/implemented/XRAS_SPRINT_B.md` | The operator surface and activation worklist — the closest existing analogue to the proposed card |
 | `src/sam/integration/awards/` | The outbound-client template: client + cache, transport semantics, test patterns |
 | `src/sam/xras/dispatch.py` | `select_service()` and the `validate_only` seam Feed A is built on |
 | `src/sam/xras/roster.py` | The structured roster helpers the classifier uses instead of parsing error strings |

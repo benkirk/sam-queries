@@ -160,12 +160,12 @@ was right, so we fixed it, here and on the dashboards.*
 
 ::: {.notes}
 ldapsync: src/webapp/api/ldapsync/, src/sam/schemas/ldapsync.py, input via
-src/sam/schemas/forms/ldapsync.py; record docs/plans/LDAP_SYNC_API.md § 10 (testbed reads and
+src/sam/schemas/forms/ldapsync.py; record docs/plans/implemented/LDAP_SYNC_API.md § 10 (testbed reads and
 writes § 10.5). The 1,343 PUTs were the daemon's own stream, captured and replayed over HTTP;
 the two 400s are an over-long acronym and a upid held by another username. Shadowing on
-samuel-dev since 2026-10-09 (docs/plans/LDAPSYNC_DEV_SHADOW.md); production's daemon still
+samuel-dev since 2026-10-09 (docs/plans/implemented/LDAPSYNC_DEV_SHADOW.md); production's daemon still
 calls legacy. HEUV: src/webapp/api/heuv/, src/sam/schemas/heuv.py, contract
-docs/apis/HEUV_API.md; parity docs/plans/HEUV_API_PORT.md § 7.2 (42 projects, 60 users; the
+docs/apis/HEUV_API.md; parity docs/plans/implemented/HEUV_API_PORT.md § 7.2 (42 projects, 60 users; the
 14th group is one charge total that moved between the two fetches). The disk bug: NCIS0001
 Campaign_Store read 2,527 TB against legacy's 1,397 TB (and `df`'s 1,406) because an account
 with no current scan fell back to its own last row, however old; it now falls back to the
@@ -365,8 +365,8 @@ Aimed at HSG and groups like them: teams tied to old endpoints, or who would wan
 not asked. Honest state of the new dialect: paging is hand-rolled per route (only projects and
 users page), and there is no OpenAPI yet (api-demo/ is the worked examples, not a spec); both
 are on the fix-later list in the plan
-(SAMUEL_PRESENTATION.md §14). Cutovers: docs/plans/LDAPSYNC_DEV_SHADOW.md (the exit criteria)
-and docs/plans/HEUV_API_PORT.md § 12.
+(SAMUEL_PRESENTATION.md §14). Cutovers: docs/plans/implemented/LDAPSYNC_DEV_SHADOW.md (the exit criteria)
+and docs/plans/implemented/HEUV_API_PORT.md § 12.
 :::
 
 ## TL;DR - two dialects {.vcenter scale="1.15"}

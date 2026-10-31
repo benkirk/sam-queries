@@ -3,7 +3,7 @@
 Each function returns the plain dicts ``sam.schemas.heuv`` dumps; rounding is done here
 (Java ``Math.round``). Lookups are case-insensitive on both backends, as legacy's
 validators are. Rules, sources and the deliberate fixes: ``docs/apis/HEUV_API.md`` and
-``docs/plans/HEUV_API_PORT.md`` §5-§6. The usage report reads charges through the
+``docs/plans/implemented/HEUV_API_PORT.md`` §5-§6. The usage report reads charges through the
 accounting kernel (``anchored_charges`` / ``trailing_window_charges``), never a new sum.
 """
 

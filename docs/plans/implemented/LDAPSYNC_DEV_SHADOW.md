@@ -1,7 +1,7 @@
 # LDAP sync API: shadowing production on samuel-dev
 
-**Status:** exit bar met 2026-10-19 (five clean weekdays after T1; `LDAP_SYNC_API.md` § 10.6, § 10.7). Plan of 2026-10-09: #773 (`08794fbb`), #774 (`b9fc3efd`) and the levers PR #776
-(`4ee06e00`) are on `staging`; this branch carries the testbed changes. **Read first:** `LDAP_SYNC_API.md` § 10,
+**Status:** exit bar met 2026-10-19 (five clean weekdays after T1; `implemented/LDAP_SYNC_API.md` § 10.6, § 10.7). Plan of 2026-10-09: #773 (`08794fbb`), #774 (`b9fc3efd`) and the levers PR #776
+(`4ee06e00`) are on `staging`; this branch carries the testbed changes. **Read first:** `implemented/LDAP_SYNC_API.md` § 10,
 `LDAPSYNC_TESTBED_VERIFICATION.md` (safety rules), `containers/ldap-pipeline/README.md`,
 and the #774 comment on the lifecycle job
 (https://github.com/benkirk/sam-queries/pull/774#issuecomment-6087867176).
@@ -29,7 +29,7 @@ sam-app.
   running container `openssl s_client -CApath /etc/ssl/certs -verify_hostname
   samuel-dev.k8s.ucar.edu` verifies (InCommon DVG2C under emSign Root G1). The trap: when
   no CA path exists the client silently falls back to no verification
-  (`LDAP_SYNC_API.md` P1a), so `syncdTest` against dev is still the first proof.
+  (`implemented/LDAP_SYNC_API.md` P1a), so `syncdTest` against dev is still the first proof.
 - **The guard names the host.** `bin/guard.sh` allows writes to `host.docker.internal`,
   `localhost`, `127.0.0.1` and `samuel-dev.k8s.ucar.edu`, by exact name; prod is refused
   by its own case. No wildcard: a typo'd k8s host is refused too.
@@ -48,7 +48,7 @@ sam-app.
   age (a few records, one or two fields each, consistent with the minutes between the two
   captures) or a port defect (the same field on many records of a type, a count off, keys
   missing). Exit status 1 when anything differs, so the day's verdict is one line.
-- **The daily table** lives in `LDAP_SYNC_API.md` § 10.7, counts only.
+- **The daily table** lives in `implemented/LDAP_SYNC_API.md` § 10.7, counts only.
 - The 175+ users already stamped pending in prod data finish on the first run that ever
   asks with lifecycle on; that is a separate decision, not part of this shadow.
 
@@ -172,7 +172,7 @@ So every reset restarts `ldap` first.
 
 Five clean weekdays, the re-baseline day among them. Then the prod `SAM_URL` flip on
 sam-app is George's change; rollback is the same variable. Lifecycle is decided
-separately (`LDAP_SYNC_API.md` § 10.6).
+separately (`implemented/LDAP_SYNC_API.md` § 10.6).
 
 ## Who does what
 

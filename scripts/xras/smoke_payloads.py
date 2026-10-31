@@ -15,7 +15,7 @@ WARNING: Every one of these actions WRITES to the database it is posted at — a
 mints a projcode, allocates a Unix GID and creates real allocations. Point it
 only at a local stack.
 
-Typical run (see docs/xras/incoming/implemented/XRAS_PRE_DEPLOY_SMOKE.md for the full checklist)::
+Typical run (see docs/plans/implemented/XRAS_PRE_DEPLOY_SMOKE.md for the full checklist)::
 
     source etc/config_env.sh
     python scripts/xras/smoke_payloads.py --new --contract AGS-2524858 --post

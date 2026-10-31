@@ -633,7 +633,7 @@ def _activate_after_reply(response, result, log_id) -> None:
 def _release_after_refusal(response, action, messages) -> None:
     """A visitor's New refused for its SAM-minted PI was approved: hand the registration
     to NUSD (``requested_at`` releases it) and file its account ticket, once the reply has
-    gone (docs/plans/XRAS_SUBMISSION_SPRINT2.md 3a). ``send_ticket`` files once per row.
+    gone (docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md 3a). ``send_ticket`` files once per row.
     No ticket when one active SAM user already holds the address: reconcile fulfills the
     released row by that match and the merge follows."""
     from sam.manage.account_requests import refused_visitor_registration
@@ -687,7 +687,7 @@ def _invite_after_activation(session, projcode, actor) -> None:
 
 
 def _rename_after_reply(response, action, projcode) -> None:
-    """Rename the XRAS line to *projcode* once the reply has gone (docs/plans/XRAS_CLOSED_LOOP.md).
+    """Rename the XRAS line to *projcode* once the reply has gone (docs/plans/implemented/XRAS_CLOSED_LOOP.md).
 
     XRAS waits on the reply and has timed out connecting, so the rename runs from
     ``call_on_close``; the ``xras_rename`` task covers a failure here. The outbound

@@ -3,7 +3,7 @@
 **Handoff doc.** Written for a cold start: you should be able to execute this without the
 session that produced it. The wire contract, the measured production data and the
 design decisions live in [`XRAS_REIMPLEMENTATION.md`](../XRAS_REIMPLEMENTATION.md); the
-as-built record of the previous sprint is [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md).
+as-built record of the previous sprint is [`../../../plans/implemented/XRAS_SPRINT_A.md`](../../../plans/implemented/XRAS_SPRINT_A.md).
 Section references like §3.1 point at the reference doc. This document does not repeat
 them — it tells you what to build and in what order.
 
@@ -723,7 +723,7 @@ What Sprint A left you, and where:
 | Thing | Where |
 |---|---|
 | Reference doc (wire contract, prod data, divergences) | `docs/xras/incoming/XRAS_REIMPLEMENTATION.md` |
-| Sprint A as-built (the 20 measured contract corrections) | `docs/xras/incoming/implemented/XRAS_SPRINT_A.md` § *Track 0* |
+| Sprint A as-built (the 20 measured contract corrections) | `docs/plans/implemented/XRAS_SPRINT_A.md` § *Track 0* |
 | Retired Sprint A handoff | `docs/plans/implemented/XRAS_ACTION_INGESTION.md` |
 | Table DDL (amend here) | `containers/sam-sql-dev/initdb.d/zz-90-xras_action_log.sql` |
 | ORM model | `src/sam/integration/xras.py` — `XrasActionLog` |

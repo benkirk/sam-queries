@@ -10,7 +10,7 @@
 -- One row per XRAS allocation type (allocationTypeInfo.allocationTypeId).
 -- allocation_type names the SAM type whose limits the card shows; audience
 -- 'ncar' keeps a type off the public page (NULL = everyone). Design:
--- docs/plans/XRAS_SUBMISSION_SPRINT2.md. ORM:
+-- docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md. ORM:
 -- src/sam/accounting/allocation_type_guide.py. Pinned by
 -- tests/integration/test_schema_validation.py.
 --

@@ -11,14 +11,14 @@
 > ⚠️ **Two follow-ups have since superseded parts of this document. Read them before
 > trusting a code detail here.**
 >
-> - [`XRAS_HANDLER_REFACTOR.md`](XRAS_HANDLER_REFACTOR.md) (C.1a) rebuilt the handlers
+> - [`../../../plans/implemented/XRAS_HANDLER_REFACTOR.md`](../../../plans/implemented/XRAS_HANDLER_REFACTOR.md) (C.1a) rebuilt the handlers
 >   on an `ActionHandler` base class. **Every `handle_*` function described below is now
 >   a two-line shim over a handler class**, the shared helpers moved to
 >   `handlers/_fields.py` and `handlers/_allocations.py`, `_get` became
 >   `sam.xras.wire.get_field`, and `management_transaction` has one import site rather
 >   than five. It also fixed six defects this sprint shipped — including an Adjustment
 >   that computed the panel-authorisation flag and never applied it.
-> - [`XRAS_STRESS_AND_SCHEMA.md`](XRAS_STRESS_AND_SCHEMA.md) (C.1b) found that
+> - [`../../../plans/implemented/XRAS_STRESS_AND_SCHEMA.md`](../../../plans/implemented/XRAS_STRESS_AND_SCHEMA.md) (C.1b) found that
 >   `resolve_resource` read `resources[].key` — **a field XRAS has never sent**, and one
 >   this repo's own wire documentation names correctly as `resourceRepositoryKey`
 >   (`XRAS_REIMPLEMENTATION.md` § 3.1). Every Supplement, Adjustment, New and Update
@@ -41,8 +41,8 @@
 the session that produced it. The wire contract, the measured production data and the
 design decisions live in [`XRAS_REIMPLEMENTATION.md`](../XRAS_REIMPLEMENTATION.md) — §
 references below point there. The as-built records of the two prior sprints are
-[`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) (ingestion) and
-[`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md) (the operator surface).
+[`../../../plans/implemented/XRAS_SPRINT_A.md`](../../../plans/implemented/XRAS_SPRINT_A.md) (ingestion) and
+[`../../../plans/implemented/XRAS_SPRINT_B.md`](../../../plans/implemented/XRAS_SPRINT_B.md) (the operator surface).
 
 **Prior sprints.** Phases 1, 2 and 4 are done on PR #424, branch
 `xras_reimplementation`: the six GET endpoints, `POST /actions` in capture mode with
@@ -346,7 +346,7 @@ commands — the factory is never constructed at all.
    Extension is authoritative for dates and activation is already a human step on the
    XRAS card, so `account_is_extendable` keeps only the commissioned-resource test and
    the handler stamps `PROJECT_INACTIVE_WARNING` on the row. Record and the deferred
-   automatic-reactivation idea: `docs/plans/XRAS_EXTENSION_INACTIVE_PROJECT.md`.
+   automatic-reactivation idea: `docs/plans/implemented/XRAS_EXTENSION_INACTIVE_PROJECT.md`.
 
 **`Account.is_active` is the wrong predicate here** and this is the case where the
 house rule (§ 5) gives the wrong answer: SAM's hybrid on that model is `SoftDeleteMixin`
@@ -1261,7 +1261,7 @@ failed every run, forever — a gate that is always red is not a gate.
 It now exits non-zero only on a **dangling key** (a mapping row pointing at no resource),
 which is the one genuinely broken state. The unmapped list is a *diagnostic*: it matters
 when a resource that **should** be allocatable appears in it, and only a human can tell
-those two cases apart. See `XRAS_STRESS_AND_SCHEMA.md` § *--validate-mapping*.
+those two cases apart. See `../../../plans/implemented/XRAS_STRESS_AND_SCHEMA.md` § *--validate-mapping*.
 
 A test pins the documented set, so a change to it still fails loudly — that remains the
 signal a parity run needs repeating, because `resourceRepositoryKey` is omitted when

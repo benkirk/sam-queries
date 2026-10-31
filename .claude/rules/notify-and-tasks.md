@@ -109,7 +109,7 @@ so `webapp.env` and `tasks.env` carry one value (pinned by `test-dev-render.sh`)
 removing that key, or naming the task in `SAM_TASKS_DISABLED`, disarms it.
 `--dry-run` reads only; `SAM_TASKS_XRAS_RENAME_SINCE` widens the window for the backfill.
 The `/actions` route's own rename has a separate lever, `XRAS_RENAME_ENABLED` (`"1"` in both).
-Record: `docs/plans/XRAS_CLOSED_LOOP.md` § 3.3, § 3.5. Its after-reply hook also activates a New's
+Record: `docs/plans/implemented/XRAS_CLOSED_LOOP.md` § 3.3, § 3.5. Its after-reply hook also activates a New's
 project under `XRAS_AUTO_ACTIVATE` (`"1"` in both; `sam/manage/xras_activation.py`).
 
 ### The `xras_request_tickets` task
@@ -125,7 +125,7 @@ opened; `webapp.env` carries the same value so its 422 promises no ticket, state
 nothing reads it, refused to the webapp) and overrides the write lever and floor off.
 `XRAS_REQUEST_TICKETS_ENABLED` off, or `--dry-run`, reports only: the ledger and link rows commit
 on their own sessions. The webapp's 422 reads the state with no outbound call
-(`sam/queries/xras_request_tickets.py`). Record: `docs/plans/XRAS_REQUEST_TICKETS.md`.
+(`sam/queries/xras_request_tickets.py`). Record: `docs/plans/implemented/XRAS_REQUEST_TICKETS.md`.
 
 ### The `directory_report` task
 

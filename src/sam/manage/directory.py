@@ -1,6 +1,6 @@
 """Reconcile SAM to a directory record, one kind at a time, each behind ``DIRECTORY_APPLY_<KIND>``.
 
-Step 2 of docs/plans/DIRECTORY_CLIENT.md (AFFILIATIONS stage 2). The rules consume the
+Step 2 of docs/plans/implemented/DIRECTORY_CLIENT.md (AFFILIATIONS stage 2). The rules consume the
 compare categories: a row the directory ties to by id is brought to the record; SAM-only
 history, twins, an inactive entry with no end date and anything a lever withholds are
 reported, never written. Runs inside the caller's ``management_transaction``; ``dry_run``

@@ -71,7 +71,7 @@ webapp:
     NOTIFY_XRAS_REQUESTS_URL: "https://samuel-dev.k8s.ucar.edu/allocations/xras?view=remediations"
     JIRA_ENABLED: "0"
     JIRA_WRITE_ENABLED: "0"
-    # The LDAP sync shadow (docs/plans/LDAPSYNC_DEV_SHADOW.md): all three live. The daemon
+    # The LDAP sync shadow (docs/plans/implemented/LDAPSYNC_DEV_SHADOW.md): all three live. The daemon
     # cannot call lifecycle yet (the #774 comment), so a finish here is driven by hand.
     # Prod keeps lifecycle off until the conditions in LDAP_SYNC_API.md § 10.6 hold.
     LDAPSYNC_PURGE_ENABLED: "1"

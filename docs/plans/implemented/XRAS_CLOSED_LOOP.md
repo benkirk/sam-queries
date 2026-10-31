@@ -1,7 +1,8 @@
 # XRAS closed loop: SAMuel renames requests, then the submission plan under load
 
-**Status: Track 1 built (#819), proven on XRAS-dev, backfilled in production and enabled there
-2026-10-14 (#820; § 3.3). Track 2 run in full 2026-10-14 (§ 4).** What
+**Status: Tracks 1 and 2 live in production. Track 1 (#819, #820) was backfilled and enabled
+2026-10-14, and the first live rename ran 2026-10-15 (NCAR4407 to UMMM0018); Track 2 ran in full
+2026-10-14 (§ 4).** What
 landed and what was decided: § 3.5. The wider goal this is phase A of:
 [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md). Written 2026-10-13 at the end of the session recorded in
 [`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md). Two tracks on one test bed:
@@ -38,7 +39,7 @@ projcode (item 3), because PIs see the number and XRAS's other number-keyed call
 
 Read first: `XRAS_DEV_PROBES.md` (§ 3 write ladder, § 4 timeline, § 5 rewrite, § 7 state left
 on demo); `XRAS_SUBMISSION.md` § 4.2 (the three identifiers), § 4.6 items 1–4, § 5;
-[`XRAS_REQUEST_TICKETS.md`](XRAS_REQUEST_TICKETS.md) § 7; `.claude/rules/notify-and-tasks.md`.
+[`implemented/XRAS_REQUEST_TICKETS.md`](implemented/XRAS_REQUEST_TICKETS.md) § 7; `.claude/rules/notify-and-tasks.md`.
 CLAUDE.md tripwire: `SAM_TASKS_DISABLED` is fail-OPEN, so a new task ships named in
 `helm/values.yaml`'s disabled list in the same change.
 

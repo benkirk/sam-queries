@@ -37,7 +37,7 @@ check_syncd() {
 
     sam=$(host "$SAM_URL")
     # Writes may reach only our own webapp: a laptop server, or samuel-dev by exact name
-    # (docs/plans/LDAPSYNC_DEV_SHADOW.md). Prod stays refused by the case below.
+    # (docs/plans/implemented/LDAPSYNC_DEV_SHADOW.md). Prod stays refused by the case below.
     if [ -z "$SAM_UPDATES_STUB" ] && [ "$sam" != host.docker.internal ] \
             && [ "$sam" != localhost ] && [ "$sam" != 127.0.0.1 ] \
             && [ "$sam" != samuel-dev.k8s.ucar.edu ]; then

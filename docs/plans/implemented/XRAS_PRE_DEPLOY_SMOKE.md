@@ -131,7 +131,7 @@ Projcodes render as `<facility.code><mnemonic><NNNN>`, so expect **`UHSS0001`,
 Append a delimited block to `../.env` so teardown is a single delete:
 
 ```bash
-# --- XRAS pre-deploy smoke (docs/xras/incoming/implemented/XRAS_PRE_DEPLOY_SMOKE.md) — remove after ---
+# --- XRAS pre-deploy smoke (docs/plans/implemented/XRAS_PRE_DEPLOY_SMOKE.md) — remove after ---
 NOTIFY_ENABLED=1
 NOTIFY_TRANSPORT=smtp
 NOTIFY_REDIRECT_TO=benkirk@ucar.edu

@@ -228,7 +228,7 @@ webapp:
     # Admin > Notifications > Addressing (table notification_addressing),
     # which every Notifier reads from the database, the CronJob included.
     # The XRAS award mail leaves as the help desk, as XRAS's own did (templates 154, 135, 149;
-    # docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 2), with the allocations mailbox on the cc.
+    # docs/plans/implemented/XRAS_PHASE_C_AND_TICKETS.md § 2), with the allocations mailbox on the cc.
     NOTIFY_XRAS_CC: "alloc@ucar.edu"
     NOTIFY_XRAS_BCC: ""
     NOTIFY_XRAS_FROM: "cislhelp@ucar.edu"
@@ -351,7 +351,7 @@ webapp:
     # e.g. "Extension,Supplement". Narrow this to park a misbehaving payload class as
     # manual without a revert; an unknown token leaves that type disabled.
     XRAS_ACTIONS_ENABLED: "all"
-    # sam-ldap-syncd at /api/protected/admin (docs/plans/LDAP_SYNC_API.md). Purge and
+    # sam-ldap-syncd at /api/protected/admin (docs/plans/implemented/LDAP_SYNC_API.md). Purge and
     # restore on, as the dev shadow soaked them. LIFECYCLE stays "0" until § 10.6's
     # conditions hold: the first run would close every pending user's memberships at once.
     # PURGE "1": hard-delete on the daemon's request. LIFECYCLE "1": finish stamped
@@ -361,7 +361,7 @@ webapp:
     LDAPSYNC_LIFECYCLE_ENABLED: "0"
     LDAPSYNC_RESTORE_ON_REACTIVATE: "1"
     LDAPSYNC_RESTORE_WINDOW_DAYS: "90"
-    # The directory client (sam/integration/directory, docs/plans/DIRECTORY_CLIENT.md): SAMuel
+    # The directory client (sam/integration/directory, docs/plans/implemented/DIRECTORY_CLIENT.md): SAMuel
     # reading ldap.ucar.edu itself, anonymously. PROVIDER + URL turn the read features on (the
     # Admin > Configuration block, the user, organization and institution panels).
     # CHECK_ON_SYNC "1" reads each record the daemon PUTs and logs the differences, fail-open;
@@ -418,7 +418,7 @@ webapp:
     # ships, so a flip in either direction is a reviewed change to both files.
     XRAS_WRITE_ENABLED: "1"
     # SAM's own rename of a request NCAR#### -> projcode right after its post lands
-    # (webapp/api/xras/actions.py; docs/plans/XRAS_CLOSED_LOOP.md). Armed 2026-10-14
+    # (webapp/api/xras/actions.py; docs/plans/implemented/XRAS_CLOSED_LOOP.md). Armed 2026-10-14
     # after the production backfill; pinned in tests/unit/gates/test_xras_admin_client.py,
     # so a flip is a reviewed change to both files. Needs XRAS_WRITE_ENABLED.
     XRAS_RENAME_ENABLED: "1"
@@ -443,9 +443,9 @@ webapp:
     # helm/tests/test-dev-render.sh): SAMuel mails from 08:00 MT 2026-10-20 (Ben).
     XRAS_AUTO_NOTIFY: "1"
     SAM_TASKS_XRAS_NOTICES_SINCE: "2026-10-20T08:00"
-    # The ticket-state first line on a refused New/Renewal's 422 (docs/plans/XRAS_REQUEST_TICKETS.md
+    # The ticket-state first line on a refused New/Renewal's 422 (docs/plans/implemented/XRAS_REQUEST_TICKETS.md
     # § 6). "1" only together with the xras_request_tickets task, or the 422 promises a ticket.
-    # Armed with the task (docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 4). The floor MUST equal
+    # Armed with the task (docs/plans/implemented/XRAS_PHASE_C_AND_TICKETS.md § 4). The floor MUST equal
     # tasks.env's: a request first refused before it gets no ticket, so its 422 promises none
     # (pinned equal by helm/tests/test-dev-render.sh).
     XRAS_REQUEST_TICKETS_ENABLED: "1"
@@ -455,7 +455,7 @@ webapp:
     #   JIRA_ENABLED        reads: the hourly learn/status pass and the card.
     #   JIRA_WRITE_ENABLED  creates and comments. Never inherited by the CronJob; the
     #                       xras_request_tickets task gets its own in tasks.env
-    #                       (docs/plans/XRAS_REQUEST_TICKETS.md § 5).
+    #                       (docs/plans/implemented/XRAS_REQUEST_TICKETS.md § 5).
     #   TICKET_PROVIDER     the filing path: "" or "mail" = the NOTIFY_ACCOUNT_TICKET_TO
     #                       mail; "jira-servicedesk" = the JSM API, mail on any failure;
     #                       "dry-run" files nowhere, tasks only. Not inherited either;
@@ -757,12 +757,12 @@ tasks:
     # The CronJob's one ticket writer: these arm xras_request_tickets alone (no other task
     # files; tests/unit/gates/test_helm_jira_levers.py). Removing XRAS_REQUEST_TICKETS_ENABLED
     # makes it a shadow again. The floor: a request first refused before it never gets a
-    # ticket, so arming opens no backlog (docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 4).
+    # ticket, so arming opens no backlog (docs/plans/implemented/XRAS_PHASE_C_AND_TICKETS.md § 4).
     XRAS_REQUEST_TICKETS_ENABLED: "1"
     TICKET_PROVIDER: "jira-servicedesk"
     JIRA_WRITE_ENABLED: "1"
     SAM_TASKS_XRAS_TICKETS_SINCE: "2026-10-19"
     # The phase C cutover floor, naive Mountain: an action received before it was XRAS's to
     # mail, so neither xras_notices nor the New's notice after activation sends it. Equal to
-    # webapp.env's (docs/plans/XRAS_PHASE_C_AND_TICKETS.md § 6).
+    # webapp.env's (docs/plans/implemented/XRAS_PHASE_C_AND_TICKETS.md § 6).
     SAM_TASKS_XRAS_NOTICES_SINCE: "2026-10-20T08:00"

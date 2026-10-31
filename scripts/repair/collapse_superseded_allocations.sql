@@ -12,7 +12,7 @@
 -- replace_existing=True path) stayed live beside its replacement. UFSU0023's
 -- dead rows run to 2033-07-31, the live ones to 2027-09-30. An end before the
 -- start is not an option: legacy's DateRange.validateStartEnd throws.
--- Audit + census: docs/plans/HARD_DELETE_AUDIT.md section 1.
+-- Audit + census: docs/plans/implemented/HARD_DELETE_AUDIT.md section 1.
 --
 -- Rule: new end_date = later of (end of the row's start day, twin start - 1 s).
 --   76 rows share their twin's start -> collapse to their start day.
@@ -56,7 +56,7 @@ INSERT INTO allocation_transaction
      alloc_start_date, alloc_end_date, transaction_type, transaction_comment,
      propagated, creation_time)
 SELECT d.allocation_id, 23971, d.amount, 0.00, d.start_date, d.end_date, 'ADJUSTMENT',
-       '[REMEDIATION 2026-10-02] Superseded row ended where its replacement begins; legacy SAM ignores deleted=1 (docs/plans/HARD_DELETE_AUDIT.md).',
+       '[REMEDIATION 2026-10-02] Superseded row ended where its replacement begins; legacy SAM ignores deleted=1 (docs/plans/implemented/HARD_DELETE_AUDIT.md).',
        0, NOW()
 FROM allocation d
 WHERE d.deleted = 1

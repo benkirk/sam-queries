@@ -13,7 +13,7 @@
 **Handoff doc.** Written for a cold start. Every claim carries a `file:line` or a
 measurement; re-verify rather than trust.
 
-**Companion:** [`XRAS_HANDLER_REFACTOR.md`](XRAS_HANDLER_REFACTOR.md) — ✅ **shipped**, so
+**Companion:** [`../../../plans/implemented/XRAS_HANDLER_REFACTOR.md`](../../../plans/implemented/XRAS_HANDLER_REFACTOR.md) — ✅ **shipped**, so
 this work inherits **one** `management_transaction` patch point instead of five, held
 there by `tests/unit/test_xras_transaction_seam.py`. Two of the gaps below moved while it
 landed; they are marked inline.
@@ -162,7 +162,7 @@ production:
 - **`Transfer`** — parks by design; confirm the reason survives to wherever it lands.
 
 Both close permanently the same two ways: a bulk forward from `hdt@ucar.edu`
-(`XRAS_SPRINT_A.md` § 3b has the ask — include the manual-fallback subject, which is how
+(`../../../plans/implemented/XRAS_SPRINT_A.md` § 3b has the ask — include the manual-fallback subject, which is how
 the Adjustment payload nearly went unnoticed), or production capture after cutover.
 
 > **Update 2026-08-11 — the bulk forward arrived; the list did not shrink to zero, and it

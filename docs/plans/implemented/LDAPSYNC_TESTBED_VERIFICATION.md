@@ -1,9 +1,9 @@
 # LDAP sync API: testbed read comparison and write round trip (handoff)
 
-**Status:** done 2026-10-09; results in `LDAP_SYNC_API.md` § 10.5. Phase B ran as a
+**Status:** done 2026-10-09; results in `implemented/LDAP_SYNC_API.md` § 10.5. Phase B ran as a
 stub-on capture replayed over HTTP, because the daemon aborts its own stream at the first 400.
 **Branch:** `ldapsync-api` (the implementation; this doc ships in its PR).
-**Read first:** `docs/plans/LDAP_SYNC_API.md` § 10 (as built, deviations D1–D25),
+**Read first:** `docs/plans/implemented/LDAP_SYNC_API.md` § 10 (as built, deviations D1–D25),
 `containers/ldap-pipeline/README.md` (the testbed, especially *Operating* and
 *Choosing the SAM*), `containers/ldap-pipeline/out/HANDOFF.md` (untracked; the
 testbed's running state).
@@ -19,7 +19,7 @@ behind one variable (`SAM_URL`):
   and a second pass converges: after SAMuel has absorbed the stream, re-reading it
   leaves the daemon almost nothing to send.
 
-Results go into `LDAP_SYNC_API.md` § 10.5–10.6; any fix is a commit on `ldapsync-api`.
+Results go into `implemented/LDAP_SYNC_API.md` § 10.5–10.6; any fix is a commit on `ldapsync-api`.
 
 ## What is already proven (do not redo)
 
@@ -145,7 +145,7 @@ matters.
 
 ## Report
 
-Update `docs/plans/LDAP_SYNC_API.md` § 10.5 (results) and § 10.6 (remaining cutover
+Update `docs/plans/implemented/LDAP_SYNC_API.md` § 10.5 (results) and § 10.6 (remaining cutover
 items) on the branch, commit per fix, and summarize to Ben: phase A per-type
 differences by class, phase B status-code tally, rejection list by template, and the
 second-pass PUT count with its residual classes.
@@ -156,4 +156,4 @@ second-pass PUT count with its residual classes.
   `src/sam/manage/{ldapsync,purge,lifecycle,employment}.py`.
 - Testbed: `containers/ldap-pipeline/` (`bin/guard.sh`, `bin/collect`,
   `bin/compare-dumps`, `compose.yaml`).
-- Daemon reference and bug list: `docs/plans/SAM_LDAP_SYNCD_REFERENCE.md`.
+- Daemon reference and bug list: `docs/plans/implemented/SAM_LDAP_SYNCD_REFERENCE.md`.

@@ -14,7 +14,7 @@ undo them). On: file through ``TICKET_PROVIDER``, raising when it cannot write;
 samuel-dev runs ``dry-run``. ``SAM_TASKS_XRAS_TICKETS_SINCE`` (an ISO date) is the
 arming floor: a request refused before it never gets a ticket opened.
 WARNING: the CronJob's one ticket writer.
-Design: docs/plans/XRAS_REQUEST_TICKETS.md.
+Design: docs/plans/implemented/XRAS_REQUEST_TICKETS.md.
 """
 
 from __future__ import annotations

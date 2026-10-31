@@ -31,7 +31,7 @@ disables both Add and Update -- the honest granularity.
 
 Handlers register by importing this module and calling :func:`register`; until
 one does, its service selects and falls through to ``manual``.
-See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``, *The dispatcher*.
+See ``docs/plans/implemented/XRAS_SPRINT_C.md``, *The dispatcher*.
 """
 
 import copy

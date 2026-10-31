@@ -13,7 +13,7 @@ reads committed rows, so a row this pass fulfilled merges on the next.
 Otherwise the database alone, which the runner's rollback covers. Never a tracker
 write: it reaches the tracker through ``read_providers`` alone. Design:
 docs/plans/implemented/ACCOUNT_REGISTRATION.md, docs/plans/implemented/TICKET_PROVIDER.md,
-docs/plans/XRAS_SUBMISSION_SPRINT2.md 3b.
+docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md 3b.
 """
 
 from __future__ import annotations

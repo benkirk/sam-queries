@@ -456,7 +456,7 @@ def _repoint_submissions(session_factory, source_username, target_username) -> i
 def merge_fulfilled_visitors(session_factory, *, operator: str,
                              client=None) -> Dict[str, Any]:
     """Merge each ``/request`` placeholder whose account now exists into it
-    (docs/plans/XRAS_SUBMISSION_SPRINT2.md 3b).
+    (docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md 3b).
 
     The target is the SAM user reconcile fulfilled the registration with, by email.
     A target XRAS does not know yet waits for the next pass: merging into it would
@@ -845,7 +845,7 @@ def add_action(session_factory, *, request_number, request_id, action_type,
         request_number=request_number, client=client)
 
 
-# SAM's own rename after a New lands (docs/plans/XRAS_CLOSED_LOOP.md)
+# SAM's own rename after a New lands (docs/plans/implemented/XRAS_CLOSED_LOOP.md)
 
 #: :func:`rename_request` statuses meaning the line now answers the new number.
 RENAME_DONE = ('verified', 'already_renamed')

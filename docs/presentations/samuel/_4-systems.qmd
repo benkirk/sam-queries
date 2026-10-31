@@ -119,10 +119,10 @@ digraph Two {
 sam.ucar.edu is a load-balanced address in front of two Apache proxies that forward to Tomcat
 on sam-tomcat.ucar.edu (SAM 2.0.4). sam-app.ucar.edu runs the LDAP replica, the transformer
 and sam-ldap-syncd as rootless podman containers. Sources: sam-queries
-docs/plans/SAM_LDAP_SYNCD_REFERENCE.md §2.5 and docs/plans/LDAP_SYNC_API.md.
+docs/plans/implemented/SAM_LDAP_SYNCD_REFERENCE.md §2.5 and docs/plans/implemented/LDAP_SYNC_API.md.
 Giving way, 2026-10-02: unsetting a fair-share override deleted a facility_resource row, and
 legacy's fair-share tree for Derecho came back empty (#698). The row now stays, with a NULL value.
-An audit of every SAMuel delete on a table legacy reads followed (#699, docs/plans/HARD_DELETE_AUDIT.md):
+An audit of every SAMuel delete on a table legacy reads followed (#699, docs/plans/implemented/HARD_DELETE_AUDIT.md):
 a superseded allocation is shortened rather than left live, and the disk-root hard delete is gone.
 :::
 
@@ -185,7 +185,7 @@ same readiness reasoning as Part 3's CNPG PSA: degrade, don't vanish.
 | UCAR directory | project groups, fed by legacy SAM | **live**, not ported |
 
 ::: {.notes}
-From the Tomcat access-log census in sam-queries docs/plans/LDAP_SYNC_API.md Appendix B. AMIE
+From the Tomcat access-log census in sam-queries docs/plans/implemented/LDAP_SYNC_API.md Appendix B. AMIE
 was 99.6% of legacy's historical traffic but made 7 calls in the 30 days to 2026-09-26, the last
 on 09-04. XRAS made zero legacy calls from 08-28. PeopleDB sync was superseded; its controllers
 were deleted from legacy in July. The overlap is the plan.
@@ -275,7 +275,7 @@ digraph Identity {
 ::::
 
 ::: {.notes}
-sam-queries docs/plans/SAM_LDAP_SYNCD_REFERENCE.md §1.2 and §2.4 (one replay sent 6,329 PUTs
+sam-queries docs/plans/implemented/SAM_LDAP_SYNCD_REFERENCE.md §1.2 and §2.4 (one replay sent 6,329 PUTs
 in 27 minutes). The users rule from docs/xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md: no INSERT into
 users anywhere in src/, no User.create(), nothing writes active or locked; the only column
 SAMuel writes is primary_gid via User.set_primary_gid().
@@ -293,11 +293,11 @@ SAMuel writes is primary_gid via User.set_primary_gid().
 implementation, not a violation.*
 
 ::: {.notes}
-sam-queries docs/plans/LDAP_SYNC_API.md: the daemon keeps its SAM_URL; the new side answers
+sam-queries docs/plans/implemented/LDAP_SYNC_API.md: the daemon keeps its SAM_URL; the new side answers
 /api/protected/admin/{ldapsync,*Purge*,userlifecycle} with the same realm and shapes. The
 reference doc carries a ~30-item census of client-side quirks to preserve or fix. As built:
 LDAP_SYNC_API.md § 10 (PR #773); the dev shadow and its exit criteria:
-docs/plans/LDAPSYNC_DEV_SHADOW.md.
+docs/plans/implemented/LDAPSYNC_DEV_SHADOW.md.
 :::
 
 ## Signing in {.vcenter scale="1.15"}

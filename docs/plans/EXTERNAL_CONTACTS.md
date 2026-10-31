@@ -1,6 +1,6 @@
 # External contacts: contract PIs and monitors out of `users`
 
-Status: **proposal**, not scheduled. Needs a coordinated change with legacy SAM,
+**Status: proposal, unbuilt and not scheduled.** Needs a coordinated change with legacy SAM,
 which still runs against the shared database. No SAM-side schema change lands
 out of step with it.
 

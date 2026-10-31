@@ -3,7 +3,7 @@
 **Status: roadmap, 2026-10-15.** Phase A (renames) is live in production (#819, #820). B is live
 in production (built in #828, armed by #831; first case NCAR4407 → UMMM0018, 2026-10-15); D is built and on in samuel-dev, and armed for production in PR #845 with a
 since-floor (D's item 2 deferred); C is planned, with D's production arming, in
-[`XRAS_PHASE_C_AND_TICKETS.md`](XRAS_PHASE_C_AND_TICKETS.md) (2026-10-19); E is not started. This file sequences the work and points at the plans that hold the
+[`implemented/XRAS_PHASE_C_AND_TICKETS.md`](implemented/XRAS_PHASE_C_AND_TICKETS.md) (2026-10-19); E is not started. This file sequences the work and points at the plans that hold the
 detail; it holds the decisions, not the designs.
 
 ## 1. The goal
@@ -32,7 +32,7 @@ new projcode into XRAS's "Edit Request Number", and sending the notification fro
 
 ## 3. Phases
 
-**A. Renames.** Live in production 2026-10-14 (`XRAS_CLOSED_LOOP.md` § 3.3, § 3.5):
+**A. Renames.** Live in production 2026-10-14 (`implemented/XRAS_CLOSED_LOOP.md` § 3.3, § 3.5):
 - After a New applies, the inbound route renames its request to the projcode within a second
   of the reply (`XRAS_RENAME_ENABLED`).
 - The hourly `xras_rename` task is the backstop.
@@ -60,7 +60,7 @@ waiver is the operator's decision (Ben, 2026-10-14). NUSD checks nothing before 
 beyond what the handler checks (Travis, 2026-10-14), so a New that applies is ready to
 activate.
 
-**C. Notifications on post.** [`XRAS_NOTICES_CUTOVER.md`](XRAS_NOTICES_CUTOVER.md) holds the
+**C. Notifications on post.** [`implemented/XRAS_NOTICES_CUTOVER.md`](implemented/XRAS_NOTICES_CUTOVER.md) holds the
 checklist: which XRAS rules to delete, the SAMuel notice that replaces each, and the gaps to close
 first. XRAS's award mail is configuration we own: the Action Approved rules on the NCAR
 process's notification templates, sent at the operator's Notify step (read on `admin-ncar`,
@@ -75,10 +75,10 @@ process's notification templates, sent at the operator's Notify step (read on `a
 - **Before it:** template content at parity and one rule deleted on the demo to prove it
   silences Notify. The copy to `alloc@ucar.edu` already comes from `NOTIFY_XRAS_CC`.
 
-**D. A refused post becomes one ticket.** `XRAS_REQUEST_TICKETS.md` (built in #828; on in
+**D. A refused post becomes one ticket.** `implemented/XRAS_REQUEST_TICKETS.md` (built in #828; on in
 samuel-dev through the `dry-run` provider; production waits on its § 9).
 Ben, 2026-10-14, the #819 second-pass review: of the News approved since the 2026-08-24
-repoint, 73 have applied, 3 stand refused and 3 are unposted (`XRAS_CLOSED_LOOP.md` § 3.3),
+repoint, 73 have applied, 3 stand refused and 3 are unposted (`implemented/XRAS_CLOSED_LOOP.md` § 3.3),
 so a ticket per approval is churn; the ticket belongs to the request whose post is refused.
 
 - **Approve and post in one sitting.** A post that applies is done. The post stays
@@ -100,7 +100,7 @@ so a ticket per approval is churn; the ticket belongs to the request whose post 
   writer, the way #820 gave it `XRAS_WRITE_ENABLED` for `xras_rename`. The task works behind
   its own switch, and the chart's "reads only" gates become a pin of that grant.
 
-What the plan must hold (`XRAS_REQUEST_TICKETS.md` §§ 3, 4, 8):
+What the plan must hold (`implemented/XRAS_REQUEST_TICKETS.md` §§ 3, 4, 8):
 
 1. **Repeats are idempotent.** NUSD re-posts on purpose, and an impatient operator re-posts
    by accident (action 403317 arrived three times during a database stall, every one a
@@ -137,14 +137,14 @@ A is live. The order from here:
 4. **E** last, as the smallest.
 5. **Then the outgoing work** of `XRAS_SUBMISSION.md`: its phases 0 and 1.
 
-Each phase is proven on samuel-dev ↔ XRAS-dev first (`XRAS_CLOSED_LOOP.md` § 4 holds the test
+Each phase is proven on samuel-dev ↔ XRAS-dev first (`implemented/XRAS_CLOSED_LOOP.md` § 4 holds the test
 bed and its rules).
 
 ## 5. Related plans
 
-- `XRAS_CLOSED_LOOP.md`: the rename (phase A) and the test bed.
-- `XRAS_NOTICES_CUTOVER.md`: the award-mail cutover (phase C).
-- `XRAS_REQUEST_TICKETS.md`: the ticket for a request whose post is refused (phase D).
+- `implemented/XRAS_CLOSED_LOOP.md`: the rename (phase A) and the test bed.
+- `implemented/XRAS_NOTICES_CUTOVER.md`: the award-mail cutover (phase C).
+- `implemented/XRAS_REQUEST_TICKETS.md`: the ticket for a request whose post is refused (phase D).
 - `XRAS_SUBMISSION.md` § 4.2, § 4.6: the request record and the incoming side; the outgoing
   work that follows phase D.
 - `implemented/XRAS_AUTO_NOTICES.md`: the notice task and its phase-2 activation stub.

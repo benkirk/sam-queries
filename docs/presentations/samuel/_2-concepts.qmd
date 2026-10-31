@@ -549,7 +549,7 @@ in `ncar` (gid 1000), which exists nowhere as a row.*
 ::: {.notes}
 The three-layer group pipeline, docs/apis/SYSTEMS_INTEGRATION_APIs.md § Group Pipeline.
 Adhoc: ou=allGroups → adhoc_group / adhoc_group_tag and ou=groups,ou=unix →
-adhoc_system_account_entry (docs/plans/SAM_LDAP_SYNCD_REFERENCE.md). 271 active adhoc groups
+adhoc_system_account_entry (docs/plans/implemented/SAM_LDAP_SYNCD_REFERENCE.md). 271 active adhoc groups
 in the test copy. ncar: DEFAULT_COMMON_GROUP in src/sam/core/groups.py.
 :::
 

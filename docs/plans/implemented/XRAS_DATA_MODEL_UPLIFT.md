@@ -30,7 +30,7 @@ strip now names them); resolved contracts deduped; `request_id` persisted on
 date-windowing in the worklist and modal rosters; Feed A reads inline
 `roles[].person{}`; `fos[0]` fallback warned; `panels[]` can add a panel
 authorization but never withdraws one; `sam-admin xras --validate-vocabulary`.
-Details: `docs/xras/incoming/implemented/` and the commit series of #479.
+Details: the XRAS sprint records in `docs/plans/implemented/` and the commit series of #479.
 
 Follow-ons still NOT built (unobserved in corpus or a product call):
 `resources[]` dedupe guard in the four resource-walking handlers;

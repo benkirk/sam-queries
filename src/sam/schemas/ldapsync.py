@@ -2,7 +2,7 @@
 
 Declared in legacy's field order (Jackson emits declaration order; marshmallow 4
 keeps it). Inputs are the plain dicts of ``sam.queries.ldapsync``. Nulls are
-emitted, as legacy's DTOs carry no ``@JsonInclude``. See ``docs/plans/LDAP_SYNC_API.md``.
+emitted, as legacy's DTOs carry no ``@JsonInclude``. See ``docs/plans/implemented/LDAP_SYNC_API.md``.
 """
 
 from marshmallow import Schema, fields

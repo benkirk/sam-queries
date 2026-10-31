@@ -1,6 +1,6 @@
 # Directory client: an optional, read-first integration with the UCAR LDAP directory
 
-**Status: steps 1 to 4 built 2026-10-16; steps 1 to 3 on samuel-dev** (`directory-client`, draft PR #841 against `staging`). Groups and step 4: [`DIRECTORY_CLIENT_NEXT.md`](DIRECTORY_CLIENT_NEXT.md).
+**Status: #841 merged and live on prod 2026-10-16 (`6e0f00d2`).** The follow-on (groups and step 4) is [`DIRECTORY_CLIENT_NEXT.md`](../DIRECTORY_CLIENT_NEXT.md).
 Long-lived: each step lands as its own commit series and deploys to samuel-dev from the branch
 (`gh workflow run "Publish Images and CIRRUS Deploy" --ref directory-client`). The PR delivers
 steps 1 and 2; steps 3 and 4 are scoped here and land on the same PR or as follow-ups.

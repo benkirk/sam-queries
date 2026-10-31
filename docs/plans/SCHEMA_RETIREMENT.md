@@ -1,5 +1,8 @@
 # SAM Schema Retirement Audit
 
+**Status: living inventory. The views pass was done 2026-09-01; the drops wait on legacy SAM's
+retirement, and the tables pass is not started.**
+
 Living inventory of database objects SAM no longer uses, to be dropped once legacy
 Java SAM 2.0.3 is retired and SAM owns the schema outright
 (`implemented/POSTGRES_MIGRATION.md` Horizon 2). Nothing here is dropped in compatibility mode —

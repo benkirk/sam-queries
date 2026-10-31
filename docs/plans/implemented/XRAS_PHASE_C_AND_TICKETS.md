@@ -1,9 +1,9 @@
 # XRAS phase C and production tickets: SAMuel sends the award mail; refused posts ticket NUSD
 
-**Status: Part 1 (§ 4) merged in #845, deploying 2026-10-19; Part 2 (§ 5) built in #848 (letters reviewed), the cutover (§ 6) next.** Tracked by issue #846 (burn-down checklist), PR #845; built on
+**Status: phase C live in production 2026-10-20: Part 1 (§ 4) merged in #845, Part 2 (§ 5) in #848, the cutover (§ 6) done; issue #846 closed 2026-10-20.** Tracked by issue #846 (burn-down checklist), PR #845; built on
 branch `xras_incoming_tickets`. Lands phase C of [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md)
-and arms phase D ([`XRAS_REQUEST_TICKETS.md`](XRAS_REQUEST_TICKETS.md)) in production. The
-award-mail checklist it carries out is [`XRAS_NOTICES_CUTOVER.md`](XRAS_NOTICES_CUTOVER.md).
+and arms phase D ([`implemented/XRAS_REQUEST_TICKETS.md`](implemented/XRAS_REQUEST_TICKETS.md)) in production. The
+award-mail checklist it carries out is [`implemented/XRAS_NOTICES_CUTOVER.md`](implemented/XRAS_NOTICES_CUTOVER.md).
 
 ## 1. Where things stand
 
@@ -92,7 +92,7 @@ the reviews (the mail points to ARC instead).
 3. **Gates flip, not deletion:** every "production is off" pin becomes a pin of the one grant
    (`tests/unit/gates/test_helm_jira_levers.py`, `tests/unit/tasks/test_task_xras_request_tickets.py`,
    `helm/tests/test-cronjob-render.sh`, `helm/tests/test-dev-render.sh`).
-4. **Docs:** `XRAS_REQUEST_TICKETS.md` § 9, `.claude/rules/notify-and-tasks.md`,
+4. **Docs:** `implemented/XRAS_REQUEST_TICKETS.md` § 9, `.claude/rules/notify-and-tasks.md`,
    `docs/README-k8s.md`, `XRAS_POST_AUTOMATION.md`.
 5. **Before merge:** a production plan read with the floor set, in a task pod
    (`SAM_TASKS_DISABLED= SAM_TASKS_XRAS_TICKETS_SINCE=<date> sam-admin tasks --run xras_request_tickets --dry-run`,
@@ -141,15 +141,15 @@ XRAS already notified. Chart: `xras_notices` out of production's `SAM_TASKS_DISA
 `XRAS_AUTO_NOTIFY: "1"` in both envs (samuel-dev's `NOTIFY_ENABLED=0` keeps it a no-send).
 `test_task_xras_notices.py`'s switched-off pin is deleted, as its docstring asks.
 
-**5.6 Docs.** `XRAS_NOTICES_CUTOVER.md` (its § 3 says production has no `alloc@` copy; the
+**5.6 Docs.** `implemented/XRAS_NOTICES_CUTOVER.md` (its § 3 says production has no `alloc@` copy; the
 copy has come from `NOTIFY_XRAS_CC` since #480), `XRAS_POST_AUTOMATION.md`,
 `.claude/rules/notify-and-tasks.md`, one dated line in `implemented/XRAS_AUTO_NOTICES.md`.
 
 ## 6. Cutover
 
-The order as decided (Ben, 2026-10-19); the detail is `XRAS_NOTICES_CUTOVER.md` § 6:
+The order as decided (Ben, 2026-10-19); the detail is `implemented/XRAS_NOTICES_CUTOVER.md` § 6:
 
-1. Production's rules recorded (`XRAS_NOTICES_CUTOVER.md` § 7) and the demo proof done (§ 8).
+1. Production's rules recorded (`implemented/XRAS_NOTICES_CUTOVER.md` § 7) and the demo proof done (§ 8).
 2. Promote the evening of 2026-10-19. SAMuel mails from the cutover floor, 08:00 MT 2026-10-20
    (`SAM_TASKS_XRAS_NOTICES_SINCE`, read by both the task and the New's notice).
 3. NUSD stops clicking Notify from 08:00.

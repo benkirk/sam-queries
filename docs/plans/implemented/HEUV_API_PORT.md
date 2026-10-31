@@ -1,6 +1,6 @@
 # HEUV API port: `/api/protected/heuv/v1` on SAMuel
 
-**Status:** implemented 2026-10-10 on PR #786 and deployed to prod (`sha-d5ec2e3`); the cutover (§12) is Ben's.
+**Status:** implemented 2026-10-10 on PR #786 and deployed to prod (`sha-d5ec2e3`); ARC fully cut over 2026-10-23 (§12).
 **Branch:** `heuv-api` from `origin/staging`; one PR to `staging`, one commit per Progress step, every commit green.
 
 On approval of this plan (planning session, 2026-10-10) this file is committed verbatim as
@@ -31,7 +31,7 @@ Legacy SAM (Java/Spring on `sam-tomcat`, `https://sam.ucar.edu`) serves a read-o
 feed at `/api/protected/heuv/v1/*` ("High End User View"). Spring role `ROLE_API_HEUV`
 (`legacy_sam/src/main/resources/spring/security-config.xml:33`), Basic auth against the shared
 `api_credentials` table, roles via `role_api_credentials -> role`. It is listed "not ported" in
-`docs/plans/LDAP_SYNC_API.md:532` and the deck. SAMuel will serve the **same path, auth and bytes**,
+`docs/plans/implemented/LDAP_SYNC_API.md:532` and the deck. SAMuel will serve the **same path, auth and bytes**,
 so each caller repoints by changing the host only.
 
 ## 2. Decisions log (2026-10-10, Ben)
@@ -112,7 +112,7 @@ Compare with `python3 -c 'import json,sys; ...'` on key order (`json.load` prese
 |---|---|
 | Mount | `/api/protected/heuv/v1`, `strict_slashes=False`, GET only. **Rate-limited** at the authed tier (Ben 2026-10-10, overriding the plan's limiter exemption: belt and suspenders; ~125 calls/day sits far below it). A 429 carries the app-wide limiter body, since legacy never sent one. No response cache: per-URL hits would be rare and staleness costs more. |
 | Body | compact JSON via `compact_json` (`src/webapp/api/helpers.py:19-22`: `separators=(',',':')`, `ensure_ascii=False`, `sort_keys=False`), `Content-Type: application/json` (no charset), nulls included, keys in legacy declaration order (= Marshmallow field order with `data_key`). Legacy serializes getter-only properties (`userCount`, `thresholdLimited`, `label`) after the field-backed ones; the orders in §5 already reflect that. |
-| Auth | `heuv_api_required = partial(login_or_token_required, roles=('ROLE_API_HEUV',), deny=_deny)` modeled on `src/webapp/api/ldapsync/__init__.py:58-60` and `api/xras/__init__.py:62-64`. `login_or_token_required(permission=None, *, roles, deny)` is `src/webapp/utils/api_auth.py:228-372`; `roles=` closes the session path (any request without `Authorization` gets 401, :352-355), a key lacking the role gets 403 (:334-341). DB keys come from `ApiCredentials.as_api_key_map` (`src/sam/security/roles.py:92-110`) carrying the legacy role names, so the prod `heuv` credential (id 10) and `admin` work unchanged. Under `RBAC_SOURCE=db` a roles-only route with no Permission is authorized by the role link alone (`docs/plans/LDAPSYNC_DEV_SHADOW.md:20-25`). `_deny` sets `WWW-Authenticate: Basic realm="Realm"` on 401 only (ldapsync :51-55). |
+| Auth | `heuv_api_required = partial(login_or_token_required, roles=('ROLE_API_HEUV',), deny=_deny)` modeled on `src/webapp/api/ldapsync/__init__.py:58-60` and `api/xras/__init__.py:62-64`. `login_or_token_required(permission=None, *, roles, deny)` is `src/webapp/utils/api_auth.py:228-372`; `roles=` closes the session path (any request without `Authorization` gets 401, :352-355), a key lacking the role gets 403 (:334-341). DB keys come from `ApiCredentials.as_api_key_map` (`src/sam/security/roles.py:92-110`) carrying the legacy role names, so the prod `heuv` credential (id 10) and `admin` work unchanged. Under `RBAC_SOURCE=db` a roles-only route with no Permission is authorized by the role link alone (`docs/plans/implemented/LDAPSYNC_DEV_SHADOW.md:20-25`). `_deny` sets `WWW-Authenticate: Basic realm="Realm"` on 401 only (ldapsync :51-55). |
 | 400 | `{"errorMessage":"<javaMethod>.<param>: <text>"}`. Texts (`legacy_sam/src/main/resources/MessageResources_en_US.properties:79-87`): `Project X does not exist.` / `Project X is not active.` / `Resource X does not exist.` / `Username X does not exist.` — X echoes the **path value as sent** (`${validatedValue}`), not the canonical one. Method/param prefixes per route in §5. **Do not** reuse ldapsync's `validation_message` text (`ValidationException:\n <msg>`, :46-48); the shared kit takes the message as given. |
 | 500 | `{"errorMessage":<msg or null>}` (`legacy_sam/.../presentation/rest/ApiController.java:44-58`). On SAMuel: a fixed string, never driver text (P4); use the `Exception` handler pattern at ldapsync :84-89 minus the `{Type}: {msg}` echo. |
 | 404 | Only `access/resource/{r}` with no exact match: empty body, no content-type. Do **not** use `register_error_handlers` (`api/helpers.py:46-72`) — it rewrites 404 to `{"error":"Resource not found"}`. |
@@ -352,8 +352,8 @@ Route handlers use `db.session`, so HTTP-layer tests see committed rows only; by
 | `docs/apis/HEUV_API.md` (new) | contract (§4-§6), traffic table, not-ported list (D2), cutover pointer | 250 default |
 | `docs/apis/SYSTEMS_INTEGRATION_APIs.md` | **one** pointer line (file is 953/960; §8 at `:851-856` is the ldapsync model) | 960 |
 | `CLAUDE.md:188` | `ROLE_XRAS`, `ROLE_API_ADMIN` -> add `ROLE_API_HEUV`; `:236` mounts list gains `api/heuv/`; **net-zero lines** (1067/1067) | 1067 |
-| `docs/plans/LDAP_SYNC_API.md:532` | HEUV row in Appendix B (`:521`, header `:525`): status -> ported, PR # | exempt |
-| `docs/plans/HARD_DELETE_AUDIT.md:185,212` | `default_project` consumer now known (HEUV `defaultproject`, no fallback) | exempt |
+| `docs/plans/implemented/LDAP_SYNC_API.md:532` | HEUV row in Appendix B (`:521`, header `:525`): status -> ported, PR # | exempt |
+| `docs/plans/implemented/HARD_DELETE_AUDIT.md:185,212` | `default_project` consumer now known (HEUV `defaultproject`, no fallback) | exempt |
 | `docs/presentations/samuel/_4-systems.qmd:34,182,704`, `_A-peers.qmd:195`, `docs/plans/SAMUEL_PRESENTATION.md:347` | "not ported" -> ported | exempt |
 | `_4-systems.qmd:528`, `_B-apis.qmd:16`, `SAMUEL_PRESENTATION.md:350` | stale "nothing is mounted at /api/protected" (ldapsync already is) -> list `admin` + `heuv` | exempt |
 | `src/webapp/README.md:83` | tree line for `api/heuv/` | 710 (597 now) |

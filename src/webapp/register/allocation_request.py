@@ -6,7 +6,7 @@ and review cadence, before anything starts. Then the terms, the person (``Regist
 the human check) and the email confirmation, which files no NUSD ticket: the account waits
 for an approved request. A confirmed row's signed draft token admits the request form.
 Mounted with ACCOUNT_REGISTRATION_ENABLED; every route 404s unless the visitor lever is on.
-Design: docs/plans/XRAS_SUBMISSION_SPRINT2.md.
+Design: docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md.
 """
 
 import logging

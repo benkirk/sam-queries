@@ -5,7 +5,7 @@ opportunity and its award period (XRAS), the resources it offers with each one's
 ceiling (``allocation_type_resource_limit``), and the grants and documents its rule book
 demands. A type with no open opportunity (Large between calls) still shows, with its SAM
 limits and no Start. Only guided types appear: the active guide row is the publish switch.
-Flask-free. Design: ``docs/plans/XRAS_SUBMISSION_SPRINT2.md`` § 0.
+Flask-free. Design: ``docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md`` § 0.
 """
 
 from __future__ import annotations

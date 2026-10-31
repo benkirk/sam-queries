@@ -423,7 +423,7 @@ class XrasActionLog(Base):
     #: overloaded): a grant with no award number, an unflagged-primary fos
     #: fallback, a roster/role disagreement. utf8mb4 in the DDL — grant titles
     #: are user free text. The 2026-08-24 reversal of the decline in
-    #: ``docs/xras/incoming/implemented/XRAS_STRESS_AND_SCHEMA.md``.
+    #: ``docs/plans/implemented/XRAS_STRESS_AND_SCHEMA.md``.
     warnings = Column(Text)
 
     projcode_result = Column(String(30))

@@ -90,7 +90,7 @@ XRAS_ACTION_TYPES = ('New', 'Renewal', 'Extension', 'Supplement',
 #: ``actionBeginDate`` entirely (``date_adjustment_uwas0141`` asks for one that
 #: differs from its allocation's) and rejects an end date earlier than the
 #: current one, which is the likeliest reason a separate action type exists at
-#: all. See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``.
+#: all. See ``docs/plans/implemented/XRAS_SPRINT_C.md``.
 
 #: Wire spellings that mean the same handler, ``alias -> canonical``.
 #:

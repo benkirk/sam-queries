@@ -1,7 +1,7 @@
 # Directory client, next: groups in the UX, then the CLI and the nightly report
 
 **Status:** in progress on `directory-client` (PR #841), 2026-10-16. Steps 1 to 3 of
-`DIRECTORY_CLIENT.md` are on the branch; this is what comes after, in the order Ben wants it:
+`implemented/DIRECTORY_CLIENT.md` are on the branch; this is what comes after, in the order Ben wants it:
 groups first, the CLI and the nightly report second. Decisions (Ben, 2026-10-16, § 3.3):
 managers are flagged as drift (report-only); the project panel lives on the admin project card;
 the absent-group count stays in the report and the CLI, not the Configuration block.
@@ -32,8 +32,8 @@ sample; `sam-admin directory report` nests (Ben, 2026-10-16) instead of `--repor
   from the next prod deploy (`helm/values.yaml`, commit `21fec670`); its check is armed and fires
   only once the daemon's `SAM_URL` flips.
 - **Review of `fde9df23`:** F1 (the check holds the PUT reply) is recorded as a soak-gated
-  follow-up in `DIRECTORY_CLIENT.md` § 10; F2 (deploy during the soak's deciding days) is
-  recorded in `LDAP_SYNC_API.md` § 10.7 on the #777 branch.
+  follow-up in `implemented/DIRECTORY_CLIENT.md` § 10; F2 (deploy during the soak's deciding days) is
+  recorded in `implemented/LDAP_SYNC_API.md` § 10.7 on the #777 branch.
 - **Watch:** the session timer runs prod, dev and legacy ticks at :13 and :43; the dev tick
   tallies the daemon's PUTs and the `directory check` lines. No PUT has reached dev since the
   roll, so no check line yet.
@@ -59,11 +59,11 @@ What it means:
 
 - **The deviation is explainable, and it is not SAM's.** `project_groups` and `Project.users`
   agree; the gap is between SAM and the directory, and it dates from the July load: the
-  daemon's `ProjectGroupUpdater` (SAM to staging to directory, `SAM_LDAP_SYNCD_REFERENCE.md`
+  daemon's `ProjectGroupUpdater` (SAM to staging to directory, `implemented/SAM_LDAP_SYNCD_REFERENCE.md`
   § 3.6) has **created no project group since 2026-07-10** and has left membership behind on
   a third of the sampled groups. `LDAPSYNC_DIRECTORY_AFFILIATIONS.md` § 2 says "project groups
   work"; for creates it does not. Candidate cause: the same cron-child death that kills
-  `LifecycleUpdater` (`LDAP_SYNC_API.md` § 2.4, reference § 3.6 and the `cronDispatcher` note
+  `LifecycleUpdater` (`implemented/LDAP_SYNC_API.md` § 2.4, reference § 3.6 and the `cronDispatcher` note
   at reference L1014); George's 376b1a6/5f216b2 cron rework may bear on it. **Action for Ben:**
   an upstream issue on NCAR/sam-ldap-syncd with the dates above, and a correction to
   AFFILIATIONS § 2.

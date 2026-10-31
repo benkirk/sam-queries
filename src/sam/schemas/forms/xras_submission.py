@@ -3,7 +3,7 @@
 The shape of the body only: whether the user may file, the date floor, the limits and the
 preflight are the handler's, against SAM and XRAS. Every form carries the agreement
 (``XrasAgreementMixin``); the handler checks the posted ``eula_sha`` against the text it shows.
-Design: ``docs/plans/XRAS_SUBMISSION_SPRINT1.md`` § 2.
+Design: ``docs/plans/implemented/XRAS_SUBMISSION_SPRINT1.md`` § 2.
 """
 
 import marshmallow.fields as f

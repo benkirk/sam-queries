@@ -1,7 +1,7 @@
 # LDAP Sync API — serving `sam-ldap-syncd` from the new SAM
 
-**Status:** implemented 2026-10-09 on branch `ldapsync-api` (P1a–P2, one commit per
-phase); §10 is the as-built record and supersedes §3–§4 where they differ. Scoped
+**Status:** live, its levers on in production 2026-10-19 (#844). Built 2026-10-09 (P1a–P2,
+one commit per phase); §10 is the as-built record and supersedes §3–§4 where they differ. Scoped
 2026-09-25; the client-side facts in §1–§2 were checked against the production daemon
 on sam-app.ucar.edu (image 6c0fd35), the server-side facts (the §1 traffic table, §2.1,
 §2.5) against the legacy SAM host sam-tomcat.ucar.edu (SAM 2.0.4 on Tomcat 9.0.58) on
@@ -739,7 +739,7 @@ holds the rest (PII).
 It ended when `make refresh-dev` reloaded the laptop clone (14:41).
 
 **Dev shadow, from T0 = 2026-10-09 14:41 MDT** (`make refresh-dev`: `sam_dev` = prod at T0;
-`docs/plans/LDAPSYNC_DEV_SHADOW.md`). samuel-dev runs `sha-2af6431` with purge and restore
+`docs/plans/implemented/LDAPSYNC_DEV_SHADOW.md`). samuel-dev runs `sha-2af6431` with purge and restore
 on, lifecycle off. Before the repoint: 401 with `Basic realm="Realm"` anonymously, 200 as
 `admin`, the purge permit no longer "disabled", `pendingdeactivations/24` = `[]`; `syncdTest`
 reached dev over verified TLS and read `ldapsync/status` (its LDAP-staging half fails on the

@@ -1,10 +1,13 @@
 # XRAS Extension on an inactive project
 
+**Status: built in #756 (merged 2026-10-07); the automatic reactivation below is flagged, not
+built.**
+
 Incident record (UCLA0042, 2026-10-05), the decision taken, and one deferred idea.
 Code: `src/sam/xras/handlers/extension.py`, `src/sam/xras/handlers/_allocations.py`
 (`account_is_extendable`), `src/sam/xras/preflight.py`; tests in
 `tests/unit/xras/test_xras_extension_handler.py`. Sprint record:
-`docs/xras/incoming/implemented/XRAS_SPRINT_C.md` § *Extension*, finding 4.
+`docs/plans/implemented/XRAS_SPRINT_C.md` § *Extension*, finding 4.
 
 ## In plain terms
 

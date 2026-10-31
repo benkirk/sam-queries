@@ -1,6 +1,6 @@
 # Hard deletes (and soft deletes) that legacy SAM reads as meaning: audit
 
-Written 2026-10-02 from `docs/plans/implemented/HARD_DELETE_AUDIT_HANDOFF.md`. Legacy paths below are relative
+**Status: audit complete; its fixes merged in #699 (2026-10-02). The repair script for the 79 superseded rows, `scripts/repair/collapse_superseded_allocations.sql`, was not applied (Ben) and is the record.** Written 2026-10-02 from `docs/plans/implemented/HARD_DELETE_AUDIT_HANDOFF.md`. Legacy paths below are relative
 to `~/codes/sam/src/main/` (`H/` = `resources/hibernate/`, `J/` = `java/edu/ucar/cisl/sam/`).
 
 **Posture (Ben, 2026-10-02):** SAMuel must not break legacy until legacy is retired. Where the two

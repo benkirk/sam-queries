@@ -1,4 +1,4 @@
-"""Admin dashboard: the Directory panels (docs/plans/DIRECTORY_CLIENT.md step 3, _NEXT.md section 3).
+"""Admin dashboard: the Directory panels (docs/plans/implemented/DIRECTORY_CLIENT.md step 3, _NEXT.md section 3).
 
 A panel is an operator-initiated read of one person, organization, institution or group
 from the directory with SAM's drift beside it (``VIEW_DIRECTORY``); Apply

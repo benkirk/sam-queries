@@ -36,7 +36,7 @@ Three legacy bugs:
    sides and does work, so that one IS ported.
 
 Verified against ``~/codes/sam`` at tag 2.0.3. See
-``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``, *Update* and *Legacy defect 5*.
+``docs/plans/implemented/XRAS_SPRINT_C.md``, *Update* and *Legacy defect 5*.
 """
 
 import logging
