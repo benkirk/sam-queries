@@ -342,12 +342,12 @@ class _VisitorNewRequest(NewRequestForm):
     """
 
     roster_private = True
+    names_sam_users = False
 
     def __init__(self, row, opportunity_id, token):
         super().__init__()
         self.row, self.opportunity_id, self.token = row, opportunity_id, token
         self.request_urls = {
-            'fixed_opportunity': True,
             'mnemonic_suggest': url_for('allocation_request.mnemonic_suggest', token=token),
             'award_lookup': url_for('allocation_request.award_lookup', token=token),
             'terms': url_for('allocation_request.terms'),
@@ -383,6 +383,9 @@ class _VisitorNewRequest(NewRequestForm):
 
     def _post_url(self):
         return url_for('allocation_request.draft_post', token=self.token)
+
+    def _type_url(self):
+        return None
 
     def _check_admin(self, data, errors):
         data['admin_username'] = None

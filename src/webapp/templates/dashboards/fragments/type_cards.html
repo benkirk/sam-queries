@@ -125,8 +125,42 @@
 </section>
 {%- endmacro %}
 
+{#- The New dialog's choice: the whole card is the radio (.xras-candidate, xras.css); a
+    closed type's radio is disabled and its reason replaces the amounts line. -#}
+{#- Line two: funding, each amount's ceiling, the access-only resources; one line, cut with an
+    ellipsis, the whole of it in `title`. -#}
+{% macro _pick_line(card) -%}
+{%- set parts = [card.funding] if card.funding else [] -%}
+{%- for r in card.amounts %}{% set _ = parts.append(r.name ~ ' up to ' ~ (r.limit.max_amount | fmt_number(raw=True) if r.limit and r.limit.max_amount is not none else 'no set limit')) %}{% endfor -%}
+{%- if card.access %}{% set _ = parts.append('access to ' ~ (card.access | map(attribute='name') | join(', '))) %}{% endif -%}
+{{ parts | join(' · ') }}
+{%- endmacro %}
+
+{#- The New dialog's choice: the whole card is the radio (.xras-candidate, xras.css); a
+    closed type's radio is disabled and its reason replaces line two. -#}
+{% macro _pick_card(card, pick_name) %}
+{%- set open = card.is_open %}
+{%- set line = _pick_line(card) | trim %}
+<label class="type-card-pick xras-candidate list-group-item d-flex gap-2 align-items-start{{ ' is-closed' if not open }}" for="pick-{{ card.anchor }}">
+    <input class="form-check-input mt-1 flex-shrink-0" type="radio" name="{{ pick_name }}" id="pick-{{ card.anchor }}"
+           {%- if open %} value="{{ card.opportunity.opportunity_id }}"{% else %} disabled{% endif %}>
+    <span class="type-card-pick-body">
+        <span class="type-card-pick-head">
+            <span class="type-card-pick-title">{{ card.title }}</span>
+            {%- if card.cadence %} <span class="type-card-cadence">{{ card.cadence }}</span>{% endif %}
+        </span>
+        {%- if not open %}
+        <span class="type-card-pick-reason"><i class="fa-regular fa-clock me-1" aria-hidden="true"></i>{{ card.reason }}</span>
+        {%- elif line %}
+        <span class="type-card-pick-line" title="{{ line }}">{{ line }}</span>
+        {%- endif %}
+    </span>
+    <i class="fa-solid fa-circle-check xras-candidate-check mt-1" aria-hidden="true"></i>
+</label>
+{%- endmacro %}
+
 {% macro type_card(card, variant='full', pick_name=None, start_url=None, admin=None) %}
-{% if variant == 'admin' %}{{ _admin_card(card, admin) }}{% else %}
+{% if variant == 'admin' %}{{ _admin_card(card, admin) }}{% elif variant == 'pick' %}{{ _pick_card(card, pick_name) }}{% else %}
 <section class="type-card{{ ' is-closed' if not card.is_open }}" aria-labelledby="{{ card.anchor }}">
     <div class="type-card-head">
         <h2 id="{{ card.anchor }}">{{ card.title }}</h2>

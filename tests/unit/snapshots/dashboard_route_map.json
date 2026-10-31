@@ -3390,13 +3390,6 @@
     ]
   ],
   [
-    "user_dashboard.my_request_new_opportunity_fragment",
-    "/user/requests/new/opportunity",
-    [
-      "GET"
-    ]
-  ],
-  [
     "user_dashboard.my_request_new_post",
     "/user/requests/new",
     [

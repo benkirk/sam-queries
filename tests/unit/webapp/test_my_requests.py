@@ -883,6 +883,12 @@ def member(session):
     pytest.skip('no user with a uniquely held address in this snapshot')
 
 
+def _choose(client, opportunity_id):
+    """The type stage's Next: the describe page with *opportunity_id* fixed."""
+    return client.post(NEW, data={'stage': 'type', 'opportunity_id': str(opportunity_id)}
+                       ).get_data(as_text=True)
+
+
 def _new(stage='request', **extra):
     return {**dict(stage=stage, opportunity_id='532221', title='Ensemble downscaling',
                    abstract='Regional runs for the next three summers.', fos_type_id='500003'),
@@ -903,24 +909,36 @@ class TestTheNewForm:
         html = auth_client.get(PAGE).get_data(as_text=True)
         assert 'id="xrasNewRequestOpen"' in html and '/user/requests/new' in html
 
-    def test_page_one_lists_the_opportunities_and_the_selectable_fields(self, auth_client,
-                                                                       newable):
+    def test_the_first_stage_is_the_type_cards(self, auth_client, newable):
         html = auth_client.get(NEW).get_data(as_text=True)
-        assert 'Exploratory (University)' in html and 'Educational (University) (not open to you)' in html
-        assert 'Atmospheric Sciences' in html and 'Not offered' not in html
+        assert 'Choose the type of allocation.' in html and 'value="type"' in html
+        assert 'name="opportunity_id" id="pick-type-500847" value="532221"' in html
         assert ('opportunities', 'benkirk') in newable.reads
+        assert 'name="title"' not in html
+
+    def test_choosing_fixes_the_type_and_shows_the_selectable_fields(self, auth_client, newable):
+        html = _choose(auth_client, 532221)
+        assert 'type="hidden" name="opportunity_id" value="532221"' in html
+        assert 'Requesting <strong>Exploratory (University)</strong>' in html
+        assert 'Change type' in html and 'xrasNewOpportunitySelect' not in html
+        assert 'Atmospheric Sciences' in html and 'Not offered' not in html
         # The roster's user search, in append mode onto the paste box (the visitor has none).
         assert 'data-fk-append="#xrasNewRoster"' in html and '/htmx/roster-suggest' in html
 
+    def test_choosing_nothing_or_a_closed_type_returns_to_the_stage(self, auth_client, newable):
+        for chosen in ('', 532223):
+            html = _choose(auth_client, chosen)
+            assert 'Choose one of the open types.' in html and 'value="type"' in html
+
     def test_the_reveal_names_the_letter_and_the_code(self, auth_client, newable, lettered):
-        html = auth_client.get(NEW + '/opportunity?opportunity_id=532221').get_data(as_text=True)
+        html = _choose(auth_client, 532221)
         assert 'Advisor Letter on the review page' in html
         assert 'project code starts with' in html and 'name="grant_number"' not in html
 
     def test_a_grant_wanting_type_reveals_the_grant(self, auth_client, newable, lettered):
         newable.required = {'requiredFields': {'request': {'grants': {'required': True}}}}
-        html = auth_client.get(NEW + '/opportunity?opportunity_id=532220').get_data(as_text=True)
-        assert 'name="grant_number"' in html and 'Look up' in html and 'hx-swap-oob' in html
+        html = _choose(auth_client, 532220)
+        assert 'name="grant_number"' in html and 'Look up' in html
 
     def test_a_missing_title_stays_on_page_one(self, auth_client, newable, lettered):
         html = auth_client.post(NEW, data=_new(title='')).get_data(as_text=True)
@@ -955,7 +973,7 @@ class TestTheNewForm:
     def test_where_the_ladder_misses_the_pi_picks_the_letters(self, auth_client, newable,
                                                               session):
         from sam.core.organizations import MnemonicCode
-        html = auth_client.get(NEW + '/opportunity?opportunity_id=532221').get_data(as_text=True)
+        html = _choose(auth_client, 532221)
         if 'project code starts with' in html:
             pytest.skip("the ladder resolves benkirk's code in this snapshot")
         assert 'name="mnemonic_code_id"' in html

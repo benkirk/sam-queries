@@ -95,3 +95,35 @@
     color: var(--text-secondary);
     font-size: var(--font-size-xsm);
 }
+
+/* The New dialog's type stage: the whole card is the radio (.xras-candidate in xras.css draws
+   the choice); two lines, the second the amounts or, when closed, why. */
+.type-card-pick-lede { color: var(--text-secondary); margin-bottom: 0.75rem; }
+.type-card-picks { gap: 0.25rem; }
+.type-card-pick.list-group-item { border-width: 1px; border-radius: 0; flex-wrap: nowrap; }
+/* A zero basis: the uncut line two must not push the body onto a row of its own. */
+.type-card-pick-body { flex: 1 1 0; min-width: 0; }
+.type-card-pick-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.5rem;
+}
+.type-card-pick-title { color: var(--text-heading); font-weight: var(--font-weight-bold); }
+.type-card-pick-line,
+.type-card-pick-reason {
+    display: block;
+    color: var(--text-secondary);
+    font-size: var(--font-size-xsm);
+}
+.type-card-pick-line {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.type-card-pick.is-closed { cursor: default; background: var(--surface-card); }
+.type-card-pick.is-closed .type-card-pick-title { color: var(--text-secondary); }
+.type-card-others { margin-top: 1rem; }
+.type-card-others > summary { color: var(--text-link); cursor: pointer; }
+.type-card-chosen { margin-bottom: 0.75rem; }

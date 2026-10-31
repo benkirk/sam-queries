@@ -214,6 +214,9 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/user/fragments/request_offers_htmx.html': [
         'xrasRequestModal', 'xrasRequestModalBody'],
     'dashboards/user/fragments/request_review_htmx.html': ['xrasRequestModalBody'],
+    # Its "Change type" link (signed-in only) swaps the type stage back into the open body;
+    # the visitor's panel (register/request_draft.html) carries the same id.
+    'dashboards/user/fragments/request_new_htmx.html': ['xrasRequestModalBody'],
     'dashboards/user/fragments/request_new_amounts_htmx.html': ['xrasRequestModalBody'],
     'dashboards/user/fragments/request_resume_htmx.html': ['xrasRequestModalBody'],
     # The openers are the `admin` variant's only; it renders only into
