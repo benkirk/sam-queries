@@ -156,4 +156,4 @@ second-pass PUT count with its residual classes.
   `src/sam/manage/{ldapsync,purge,lifecycle,employment}.py`.
 - Testbed: `containers/ldap-pipeline/` (`bin/guard.sh`, `bin/collect`,
   `bin/compare-dumps`, `compose.yaml`).
-- Daemon reference and bug list: `docs/plans/SAM_LDAP_SYNCD_REFERENCE.md`.
+- Daemon reference and bug list: `docs/plans/implemented/SAM_LDAP_SYNCD_REFERENCE.md`.

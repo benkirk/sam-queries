@@ -1,6 +1,8 @@
 # sam-ldap-syncd — reference overview
 
-**Status:** reference, 2026-09-25. Code read from George's repos as cloned in
+**Status:** a record of George's daemon as read 2026-09-25; the server SAMuel runs for it is
+`LDAP_SYNC_API.md` § 10, and the directory reader is `.claude/rules/directory.md`. Code read
+from George's repos as cloned in
 `legacy_sam/container_zoo/`, and every claim checked against the production stack on
 sam-app.ucar.edu: the running image is `sam-ldap-syncd` commit 6c0fd35 (2026-08-27), and the
 scripts inside all three production images are byte-identical to the checkouts in

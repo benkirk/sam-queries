@@ -9,7 +9,7 @@ can be tested against the real client before a cutover.
 The one deliberate exception is opt-in: `patches/` holds fixes to syncd we carry until
 they go upstream, built only with `PATCHED=1` and run only with `SYNCD_TAG` set.
 
-What the daemon does and why: `docs/plans/SAM_LDAP_SYNCD_REFERENCE.md`. What SAMuel has
+What the daemon does and why: `docs/plans/implemented/SAM_LDAP_SYNCD_REFERENCE.md`. What SAMuel has
 to serve: `docs/plans/implemented/LDAP_SYNC_API.md`.
 
 ## The one rule: nothing leaves this testbed

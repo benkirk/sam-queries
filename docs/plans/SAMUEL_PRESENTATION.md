@@ -241,7 +241,7 @@ Outline (40 slides as drafted). Blocks A–C are the natural 2a, and D–F the 2
 | A. The core concepts | one sentence; the concept map (Graphviz); users (mirrored from LDAP, never created); projects; resources and units; facility → panel → allocation type | `src/sam/enums.py`, `src/sam/resources/facilities.py`, `docs/xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md` |
 | B. Users on a project | mostly; through resources (no user↔project table); SCSG0001's ten accounts + roster (frozen); membership dates; PSA, the rowless lead; live accounts | `src/sam/accounting/accounts.py`, `Project.users` / `live_accounts`, `ACCOUNT_USER_SOFT_DELETE.md`, `LEAD_ADMIN_MEMBERSHIP.md` |
 | C. Allocations and the ledger | amount × window; remaining = allocated − used; SAM used to keep every job; jobs live with their machine; the ledger; replay (frozen SCSG0001); the CESM0002 926; PSA, supplement ≠ total; the verbs | `src/sam/accounting/allocations.py` (`replay_amount`), `src/sam/manage/allocations.py`, `tests/unit/manage/test_accounting_models.py`, `CHARGING_INGEST.md` |
-| D. Access branches and groups | branches; derived, never stored; two kinds of groups (project groups: SAM is the truth; adhoc: upstream is); the fine print; who reads it | `src/sam/security/access.py`, `src/sam/queries/{directory,project}_access.py`, `docs/apis/SYSTEMS_INTEGRATION_APIs.md` § Group Pipeline, `SAM_LDAP_SYNCD_REFERENCE.md` |
+| D. Access branches and groups | branches; derived, never stored; two kinds of groups (project groups: SAM is the truth; adhoc: upstream is); the fine print; who reads it | `src/sam/security/access.py`, `src/sam/queries/{directory,project}_access.py`, `docs/apis/SYSTEMS_INTEGRATION_APIs.md` § Group Pipeline, `implemented/SAM_LDAP_SYNCD_REFERENCE.md` |
 | E. Trees | projects are trees; usage rolls uphill; allocations are trees too; two conventions; award and pool (SAM amounts, frozen); as PBS sees it; detach ≠ independence; the tree audit (frozen) | `project_tree_charging.md`, `ALLOCATION_TREE_EDITING.md`, `src/sam/queries/tree_audit.py` |
 | F. Wrap | follow one job's hours; TL;DR | — |
 
@@ -342,7 +342,7 @@ way the data moves. Part 5 covers where it runs and how a commit gets there.
     modeled tables are legacy's, and **16** are SAMuel's own: `account_*`, `notification_*`,
     `samuel_role*`, `external_ticket`, `xras_*` ledgers.
   - The incident is pinned in `tests/api/test_health_endpoints.py` (`TestSchemaDriftContract`).
-- **Identity:** the source map is `docs/plans/SAM_LDAP_SYNCD_REFERENCE.md` §1.2 and §2.4–2.5,
+- **Identity:** the source map is `docs/plans/implemented/SAM_LDAP_SYNCD_REFERENCE.md` §1.2 and §2.4–2.5,
   plus `docs/plans/implemented/LDAP_SYNC_API.md`. The Appendix B census gives the legacy callers:
   ldapsync is live, AMIE is idle, HEUV is ported (PR #786, cutover pending), and XRAS has made 0 legacy calls since
   08-28.

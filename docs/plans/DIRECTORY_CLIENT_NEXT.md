@@ -59,7 +59,7 @@ What it means:
 
 - **The deviation is explainable, and it is not SAM's.** `project_groups` and `Project.users`
   agree; the gap is between SAM and the directory, and it dates from the July load: the
-  daemon's `ProjectGroupUpdater` (SAM to staging to directory, `SAM_LDAP_SYNCD_REFERENCE.md`
+  daemon's `ProjectGroupUpdater` (SAM to staging to directory, `implemented/SAM_LDAP_SYNCD_REFERENCE.md`
   § 3.6) has **created no project group since 2026-07-10** and has left membership behind on
   a third of the sampled groups. `LDAPSYNC_DIRECTORY_AFFILIATIONS.md` § 2 says "project groups
   work"; for creates it does not. Candidate cause: the same cron-child death that kills
