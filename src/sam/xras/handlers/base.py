@@ -33,7 +33,7 @@ dependency.
 
 Subclasses get the projcode, its project, the panel-authorization flag and the
 error accumulator, resolved once per action.
-See ``docs/xras/incoming/implemented/XRAS_HANDLER_REFACTOR.md``.
+See ``docs/plans/implemented/XRAS_HANDLER_REFACTOR.md``.
 """
 
 import logging
