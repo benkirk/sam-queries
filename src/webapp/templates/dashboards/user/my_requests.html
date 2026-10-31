@@ -60,7 +60,7 @@
                 <tr>
                     <td class="col-shrink font-monospace text-nowrap">
                         {%- if has_notes %}{{ drill_toggle(nid ~ '-row', label='Show comments') }}{% endif -%}
-                        {{ r.request_number or 'New' }}</td>
+                        {%- if r.request_number %}{{ r.request_number }}{% else %}<span class="text-muted" title="XRAS numbers a new request when it is submitted; SAM shows the project code once it is created">—</span>{% endif %}</td>
                     <td class="col-shrink">{{ type_label(r.action_type) }}</td>
                     <td>{{ readout_badge(r.readout) }}
                         {% if r.readout.when and r.readout.tone == 'success' %}

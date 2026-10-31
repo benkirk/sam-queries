@@ -115,6 +115,16 @@ class TestMyRequests:
         rows = {r['readout'].label: r['request_number'] for r in my_requests(session, 'pi9', None)}
         assert rows == {'Applied': active_project.projcode, 'Not submitted': None}
 
+    def test_a_submitted_new_takes_the_number_the_sweep_found(self, session):
+        filed = XrasSubmission.create(session, action_type='New', created_by='pi9',
+                                      xa_user='pi9', payload={}, **EULA)
+        filed.set_keys(request_id=1_439_868)
+        filed.advance('created').advance('submitted')
+        index = [{'request_number': 'NCAR4098', 'request_id': 1_439_868,
+                  'roster': [{'username': 'someone'}], 'actions': []}]
+        rows = my_requests(session, 'pi9', index)
+        assert [r['request_number'] for r in rows] == ['NCAR4098']
+
     def test_an_open_row_sorts_first(self, session):
         old = XrasSubmission.create(session, action_type='Extension', created_by='pi9',
                                     xa_user='pi9', payload={}, **EULA)

@@ -497,6 +497,7 @@ class TestResumeAndDiscard:
         from io import BytesIO
         html = auth_client.get(PAGE).get_data(as_text=True)
         assert f'hx-get="/user/requests/{refused_letter_row}/resume"' in html
+        assert 'title="XRAS numbers a new request when it is submitted' in html  # no number yet
         modal = auth_client.get(f'/user/requests/{refused_letter_row}/resume').get_data(
             as_text=True)
         assert 'name="document_Advisor_Letter"' in modal

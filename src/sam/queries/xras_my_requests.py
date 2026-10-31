@@ -115,15 +115,18 @@ def my_requests(session, username: str,
     statuses = {a['action_id']: a.get('action_status') for a in latest.values() if a}
     projcodes = _projcodes(session, [r.project_id for r in filed
                                      if r.project_id and not r.request_number])
+    numbered = {e['request_id']: e['request_number'] for e in index_rows or ()
+                if e.get('request_id') and e.get('request_number')}
 
     rows: List[Dict[str, Any]] = []
     shown = set()
     for sub in filed:
         readout = submission_readout(sub, logs.get(sub.action_id), statuses.get(sub.action_id))
         shown.add(sub.action_id)
-        # A New's row never learns a number (the stamp records the project); name that instead.
+        # A New's row never learns a number: name its project, else the line the sweep found.
         rows.append(dict(kind='filed',
-                         request_number=sub.request_number or projcodes.get(sub.project_id),
+                         request_number=(sub.request_number or projcodes.get(sub.project_id)
+                                         or numbered.get(sub.request_id)),
                          action_id=sub.action_id, action_type=sub.action_type, readout=readout,
                          when=sub.submitted_time or sub.creation_time, submission=sub,
                          open=sub.is_active,
