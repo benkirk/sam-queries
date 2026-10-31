@@ -317,7 +317,8 @@ class AccountRequest(Base, SessionMixin):
     @hybrid_property
     def is_held(self) -> bool:
         """A visitor's New (``/request``): kept from NUSD until the approved post refuses
-        its placeholder PI and SAM files the ticket (``requested_at``)."""
+        its placeholder PI; ``requested_at`` releases it, with the account ticket, or without
+        one when an active user already holds the address."""
         return (self.purpose == PURPOSE_SUBMISSION and self.created_by == CREATED_BY_SELF
                 and self.requested_at is None)
 

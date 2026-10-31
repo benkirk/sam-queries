@@ -116,7 +116,8 @@ project under `XRAS_AUTO_ACTIVATE` (`"1"` in both; `sam/manage/xras_activation.p
 
 `src/scheduling/tasks/xras_request_tickets.py`, every 15 min: one NUSD ticket per XRAS New or
 Renewal still refused past the grace period (10 min), an internal comment when its blocker list
-changes and one when a post applies; NUSD closes it. Keys `xras_ticket:<requestId>:{open,<digest>,applied}`.
+changes, one when a placeholder it blocked on is merged since (repost it) and one when a post
+applies; NUSD closes it. Keys `xras_ticket:<requestId>:{open,<digest>,merged:<placeholder>,applied}`.
 ⚠️ **The CronJob's one ticket writer**: `TICKET_PROVIDER` and `JIRA_WRITE_ENABLED` reach the task
 pod from `tasks.env` alone, so no other task may call `provider_from_environment`
 (`test_helm_jira_levers.py`). Prod files to Jira, armed with the floor

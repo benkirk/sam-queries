@@ -2,7 +2,9 @@
 and, behind ``XRAS_AUTO_ACTIVATE``, the ``/actions`` route once a New applies
 (docs/plans/XRAS_POST_AUTOMATION.md § 3 B). The route's path is the one unattended
 exception to ``can_edit_project_governance``; the card checks it before calling.
-Behind ``XRAS_AUTO_NOTIFY`` the route then sends the New's award mail (phase C).
+Behind ``XRAS_AUTO_NOTIFY`` the route then sends the New's award mail (phase C). After
+either activation, ``invite_submission_roster`` invites the people the New named whom XRAS
+could not hold (sprint 2).
 """
 
 from __future__ import annotations

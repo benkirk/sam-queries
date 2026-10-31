@@ -387,8 +387,8 @@ def handle_htmx_form_post(
 
 def institution_options():
     """The datalist options for a ``datalist_field('organization', ...)``:
-    live institution names matching what was typed. One view behind two
-    routes (the login-gated invite form, the anonymous public form), each
+    live institution names matching what was typed. One view behind three
+    routes (the invite form, the public form, the visitor's request), each
     keeping its own decorators."""
     from sam.queries.admin import search_institutions
     from webapp.extensions import db

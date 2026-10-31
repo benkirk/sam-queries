@@ -42,3 +42,9 @@ Loaded with the account-request model, its manage layer and `/register`.
   self-service path. Record: `docs/plans/implemented/ACCOUNT_INVITE_LINKS.md`.
   **NUSD's handoff is one text-only Jira ticket per request** (`account_ticket`,
   `register/handoff_mail.py`, ACCOUNT_REGISTRATION.md D22); the digest stays off.
+  A visitor's allocation request (`/request/`, `register/allocation_request.py`,
+  `XRAS_SUBMIT_ANONYMOUS_ENABLED`) registers with `purpose='submission'` through the same
+  schema and `register_request`; the row is **held** (`AccountRequest.is_held`) out of the
+  queue and the digest until the approved post is refused for its placeholder PI, which
+  releases it (`requested_at`) and files the ticket; reconcile merges the placeholder when the
+  account arrives. Record: `docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md`.

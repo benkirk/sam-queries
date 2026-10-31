@@ -237,7 +237,9 @@ def merged_key(request_id: int, placeholder: str) -> str:
 def merges_since_refusal(session: Session, episodes: Sequence[Episode]
                          ) -> Dict[int, List[Tuple[str, str]]]:
     """``request_id -> [(placeholder, target)]``: verified merges of a placeholder the
-    latest refusal blocked on, made after it, so the request may now post. One query."""
+    latest refusal blocked on, made after it, so the request may now post. One query. Any
+    placeholder shape counts, ARC's included: an operator's merge on the Remediations card
+    earns the same comment as the reconcile's."""
     from sqlalchemy import func
 
     from sam.integration.xras import XrasRemediationEvent
