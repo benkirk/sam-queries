@@ -62,10 +62,13 @@ DEFAULT_MAX_RETRIES = 3
 
 
 def parse_submit_action_types(value: Optional[str]) -> FrozenSet[str]:
-    """``XRAS_SUBMIT_ACTION_TYPES``: unset, empty or ``all`` is every type, ``none`` is none.
+    """``XRAS_SUBMIT_ACTION_TYPES``: ``all`` is every type; unset, empty or ``none`` is none.
 
-    An unknown token is logged and dropped, so a typo leaves that type disabled.
+    Fail-closed, unlike ``XRAS_ACTIONS_ENABLED``: an environment that forgets the variable
+    files nothing. An unknown token is logged and dropped, so a typo leaves that type disabled.
     """
+    if not (value or '').strip():
+        return frozenset()
     return parse_action_types(value, SUBMIT_ACTION_TYPES, setting='XRAS_SUBMIT_ACTION_TYPES',
                               logger=logger)
 
