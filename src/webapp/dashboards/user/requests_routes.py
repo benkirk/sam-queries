@@ -430,12 +430,15 @@ class _RequestForm(HtmxFormHandler):
         from sam.manage import xras_submission as flow
         from webapp.register.eula import accepted
         try:
-            data['outcome'] = flow.request_action(
-                _session_factory, data['draft'], actor=acting_username(),
-                xa_user=current_user.username, eula=accepted(data['eula_sha']), door='pi')
+            data['outcome'] = self._file(flow, data['draft'], accepted(data['eula_sha']))
         except flow.SubmissionRefused as exc:
             raise FormError(str(exc))
         return data
+
+    def _file(self, flow, draft, eula):
+        """Open the submission through the PI door: the signed-in user files as themself."""
+        return flow.request_action(_session_factory, draft, actor=acting_username(),
+                                   xa_user=current_user.username, eula=eula, door='pi')
 
     def on_success(self, data):
         ctx = dict(self._ctx, form=request.form, data=data)
@@ -497,18 +500,17 @@ def _fos_options():
                   key=lambda r: r.get('fosName') or '')
 
 
-def _opportunity_context(config, opportunity):
+def _opportunity_context(config, opportunity, pi, institution_name=None):
     """What page one reveals for *opportunity*: the rule book, the PI's mnemonic, the grant."""
-    from sam.core.users import User
     from sam.integration.xras_api.rule_book import rule_book
     from sam.xras.submission_preflight import new_request_sam_state
     if opportunity is None:
         return {'opportunity': None, 'rules': None, 'sam_state': None}
     rules = rule_book(read_client(config), opportunity['allocation_type_id'], 'New',
                       allocation_type_name=opportunity['allocation_type'])
-    pi = User.get_by_username(db.session, current_user.username)
     return {'opportunity': opportunity, 'rules': rules,
-            'sam_state': new_request_sam_state(db.session, opportunity, pi)}
+            'sam_state': new_request_sam_state(db.session, opportunity, pi,
+                                               institution_name=institution_name)}
 
 
 def _chosen(opportunities, opportunity_id):
@@ -528,26 +530,58 @@ def _user_label(user_id):
 
 
 class _NewRequestForm(_RequestForm):
-    """A New through describe -> request -> review -> submit; nothing reaches XRAS before submit."""
+    """A New through describe -> request -> review -> submit; nothing reaches XRAS before submit.
+
+    Who files is a seam (``_arm``, ``_opportunities``, ``_chosen_id``, ``_pi``, ``_pi_username``,
+    ``_institution_name``, ``_check_admin``, ``_expected_messages``, ``_file``, ``_post_url``,
+    ``request_urls``): the visitor's New
+    (``webapp/register/allocation_request.py``) overrides those and nothing else.
+    """
 
     schema_cls = XrasNewRequestForm
     template = _NEW_DESCRIBE
+    #: Template URLs a door replaces; empty means the signed-in user's endpoints.
+    request_urls: dict = {}
 
     def __init__(self):
         HtmxFormHandler.__init__(self, project=None, action_type='New')
         self._ctx = None
+
+    def _arm(self, config):
+        _refuse_unless_armed(config, 'New')
+
+    def _opportunities(self, config):
+        return _new_opportunities(config)
+
+    def _chosen_id(self):
+        return request.values.get('opportunity_id', type=int)
+
+    def _pi(self):
+        from sam.core.users import User
+        return User.get_by_username(db.session, current_user.username)
+
+    def _pi_username(self):
+        return current_user.username
+
+    def _institution_name(self):
+        """Where the code letters come from when there is no SAM user; the ladder needs none."""
+        return None
+
+    def _post_url(self):
+        return url_for('user_dashboard.my_request_new_post')
 
     def gate(self):
         if self._ctx is not None:
             return self._ctx
         from webapp.register.eula import eula_sha
         config = _config()
-        _refuse_unless_armed(config, 'New')
-        opportunities = _new_opportunities(config)
-        chosen = _chosen(opportunities, request.values.get('opportunity_id', type=int))
+        self._arm(config)
+        opportunities = self._opportunities(config)
+        chosen = _chosen(opportunities, self._chosen_id())
         fos = _fos_options()
         self._ctx = dict(project=None, action_type='New', decision=None,
-                         eula_sha=eula_sha(), post_url=url_for('user_dashboard.my_request_new_post'),
+                         eula_sha=eula_sha(), post_url=self._post_url(),
+                         request_urls=self.request_urls,
                          opportunities=opportunities, fos_options=fos,
                          opportunity_options=[(o['opportunity_id'], o['opportunity_name']
                                                if o['can_submit'] else
@@ -559,7 +593,8 @@ class _NewRequestForm(_RequestForm):
                          chosen_admin=_user_label(request.values.get('admin_user_id', type=int)),
                          grant_agencies=funding_agency_choices(),
                          carry_fields=_DESCRIBE_FIELDS,
-                         **_opportunity_context(config, chosen))
+                         **_opportunity_context(config, chosen, self._pi(),
+                                                self._institution_name()))
         self._ctx.update(self._amounts_context(config))
         return self._ctx
 
@@ -585,7 +620,8 @@ class _NewRequestForm(_RequestForm):
                         opportunity=None, rules=None, sam_state=None, chosen_mnemonic='',
                         chosen_admin='',
                         carry_fields=_DESCRIBE_FIELDS, resources=[], documents=[],
-                        eula_sha=None, post_url=url_for('user_dashboard.my_request_new_post'))
+                        eula_sha=None, post_url=self._post_url(),
+                        request_urls=self.request_urls)
 
     def render_errors(self, errors, field_errors=None):
         stage = request.form.get('stage')
@@ -611,7 +647,6 @@ class _NewRequestForm(_RequestForm):
     def _describe_errors(self, data, ctx):
         """Page one's checks against XRAS and SAM, as ``{field: [message]}``."""
         from sam.core.organizations import MnemonicCode
-        from sam.core.users import User
         errors = {}
         opportunity = ctx['opportunity']
         if opportunity is None or opportunity['opportunity_id'] != data['opportunity_id']:
@@ -622,16 +657,7 @@ class _NewRequestForm(_RequestForm):
                                         or 'XRAS does not take a new request from you here.']
         if data['fos_type_id'] not in {r.get('fosTypeId') for r in ctx['fos_options']}:
             errors['fos_type_id'] = ['Choose the field of science.']
-        if data['admin_user_id']:
-            admin = db.session.get(User, data['admin_user_id'])
-            if admin is None or not admin.is_active:
-                errors['admin_user_id'] = ['Choose an active SAM user.']
-            elif admin.username.casefold() == current_user.username.casefold():
-                errors['admin_user_id'] = ['You are the PI; name someone else, or no one.']
-            elif not self._in_xras(admin.username):
-                errors['admin_user_id'] = [f'{admin.username} has no XRAS account yet.']
-            else:
-                data['admin_username'] = admin.username
+        self._check_admin(data, errors)
         if data['mnemonic_code_id']:
             code = db.session.get(MnemonicCode, data['mnemonic_code_id'])
             if code is None or not code.is_active:
@@ -641,6 +667,21 @@ class _NewRequestForm(_RequestForm):
         if ctx['rules'].wants_grants:
             errors.update(self._grant_errors(data, ctx['rules']))
         return errors
+
+    def _check_admin(self, data, errors):
+        """The optional project admin: an active SAM user with an XRAS person, not the PI."""
+        from sam.core.users import User
+        if not data['admin_user_id']:
+            return
+        admin = db.session.get(User, data['admin_user_id'])
+        if admin is None or not admin.is_active:
+            errors['admin_user_id'] = ['Choose an active SAM user.']
+        elif admin.username.casefold() == current_user.username.casefold():
+            errors['admin_user_id'] = ['You are the PI; name someone else, or no one.']
+        elif not self._in_xras(admin.username):
+            errors['admin_user_id'] = [f'{admin.username} has no XRAS account yet.']
+        else:
+            data['admin_username'] = admin.username
 
     @staticmethod
     def _in_xras(username):
@@ -659,7 +700,7 @@ class _NewRequestForm(_RequestForm):
         fos = next((r for r in ctx['fos_options'] if r.get('fosTypeId') == data['fos_type_id']),
                    None)
         opportunity = ctx['opportunity']
-        line = new_request_line(data['draft'], pi_username=current_user.username,
+        line = new_request_line(data['draft'], pi_username=self._pi_username(),
                                 opportunity=opportunity, fos=fos,
                                 agency_names=dict(funding_agency_choices()))
         verdict = preflight_draft(
@@ -669,11 +710,16 @@ class _NewRequestForm(_RequestForm):
         # NOTE: the review runs before the row exists, so the handler cannot consult it yet;
         # a code the PI chose stands in for the ladder's miss, as the handler will use it.
         skip = set(ctx['sam_state']['mnemonic_errors']) if data['mnemonic_code_id'] else set()
+        skip |= set(self._expected_messages(verdict.messages))
         if verdict.status == 'failed' and skip:
             left = tuple(m for m in verdict.messages if m not in skip)
             verdict = replace(verdict, messages=left,
                               status='failed' if left else 'rechecked', would_succeed=not left)
         return verdict
+
+    def _expected_messages(self, messages):
+        """Verdict messages this door expects and the review should not count; none here."""
+        return ()
 
     def draft(self, data):
         from sam.manage.xras_submission import ActionRequest, ResourceAmount, SamRefs
@@ -770,6 +816,11 @@ register_typeahead(
 @login_required
 def my_requests_award_lookup():
     """The grant fieldset, filled from NSF's record, or USAspending's for another agency."""
+    return award_lookup_fragment()
+
+
+def award_lookup_fragment(request_urls=None):
+    """The award lookup's body, shared with the visitor's New; *request_urls* re-points the fieldset."""
     from sam.integration.awards.base import AwardSourceUnavailable
     from sam.integration.awards.client import AwardHttpClient
     from sam.integration.awards.registry import build_providers, resolve_award
@@ -811,7 +862,8 @@ def my_requests_award_lookup():
     values = {**{k: v for k, v in kept.items() if v},
               'grant_agency_id': agency, 'grant_number': number}
     return render_template(_GRANT, form=values, required=required, note=note, field_errors={},
-                           grant_agencies=funding_agency_choices())
+                           grant_agencies=funding_agency_choices(),
+                           request_urls=request_urls or {})
 
 
 # a stopped row: resume or discard

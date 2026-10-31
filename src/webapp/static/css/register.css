@@ -227,3 +227,25 @@
     padding: 0 0.5rem;
     border-radius: 999px;
 }
+
+/* /request step 5: the My Requests New fragments, hosted in a panel instead of a modal. */
+.request-panel {
+    /* Bootstrap scopes these to .modal; the fragments' .modal-body/.modal-footer need them. */
+    --bs-modal-padding: 1rem;
+    --bs-modal-footer-gap: 0.5rem;
+    --bs-modal-footer-border-width: 1px;
+    --bs-modal-footer-border-color: var(--border-default);
+    border: 1px solid var(--border-default);
+    background: var(--surface-card);
+    margin: 1rem 0 1.5rem;
+}
+/* No modal to dismiss here; Back and the page's own links move between steps. */
+.request-panel [data-bs-dismiss="modal"] { display: none; }
+.request-panel .modal-title,
+.request-panel-title {
+    color: var(--text-heading);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-bold);
+    margin: 0;
+    padding: 0.75rem 1rem 0;
+}

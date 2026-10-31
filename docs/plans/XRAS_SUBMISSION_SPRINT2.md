@@ -78,6 +78,7 @@ Each commit regenerates the route-map snapshot it changes and lands its own test
 |---|---|---|---|
 | `XRAS_SUBMIT_ANONYMOUS_ENABLED` | the `/request/` blueprint's mount and every visitor stage | "1" | "0" |
 | `ACCOUNT_REGISTRATION_ENABLED` | the same, and `/register` | "1" | "0", until client-IP forwarding (`implemented/ACCOUNT_REGISTRATION.md` § 6.1, item 2) |
+| `ACCOUNT_REGISTRATION_LOGIN_REQUIRED` | `/register` and `/request` | "0" (Ben, 2026-10-31: both open to visitors on dev; Turnstile on, mail off, so an operator's Verify confirms) | unset, so on |
 | `XRAS_SUBMIT_ENABLED`, `XRAS_SUBMIT_ACTION_TYPES` | as in sprint 1; New must be armed | "1", `all` | "0", `Extension,Supplement` |
 
 ## 4. DDL, spoon-fed

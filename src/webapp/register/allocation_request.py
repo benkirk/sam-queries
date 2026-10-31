@@ -29,7 +29,10 @@ from webapp.limiter import limiter as _rate_limit
 from webapp.utils import human_check
 from webapp.utils.htmx import institution_options
 from webapp.utils.notify import get_notifier
-from webapp.utils.xras import admin_client, interactive_config, read_client, resource_keys
+from webapp.dashboards.user.requests_routes import _NewRequestForm, award_lookup_fragment
+from webapp.utils.form_handler import FormError
+from webapp.utils.xras import (admin_client, interactive_config, read_client, resource_keys,
+                               session_factory)
 
 from . import eula, tokens
 from .blueprint import _GATE_KEY, _email_key, _email_tier, _gate_accepted_at, _gate_blocks, _global_key, _global_tier
@@ -83,14 +86,19 @@ def _cards(config):
     return cards, outage
 
 
-def open_opportunity(opportunity_id):
-    """The open opportunity a visitor may file under *opportunity_id*, or None."""
+def _open(opportunity_id):
+    """``(opportunity, outage)``: the open opportunity a visitor may file under *opportunity_id*."""
     from sam.accounting.allocation_type_guide import public_guides
-    opportunities, _ = _opportunities(interactive_config())
+    opportunities, outage = _opportunities(interactive_config())
     public = {g.xras_allocation_type_id for g in public_guides(db.session)}
     return next((o for o in opportunities
                  if o.get('opportunity_id') == opportunity_id and o.get('can_submit')
-                 and o.get('allocation_type_id') in public), None)
+                 and o.get('allocation_type_id') in public), None), outage
+
+
+def open_opportunity(opportunity_id):
+    """The open opportunity a visitor may file under *opportunity_id*, or None."""
+    return _open(opportunity_id)[0]
 
 
 def _step(n, label):
@@ -247,7 +255,16 @@ def _expired():
 
 
 def _to_draft(row, opportunity_id):
-    """The verified row's way into the request form."""
+    """The verified row's way into the request form.
+
+    The row names its XRAS placeholder here, before any write, whoever verified it (the
+    visitor, or an operator's Verify on a deployment with mail off), so a retry or a resume
+    can never mint a second one.
+    """
+    from sam.queries.xras_accounts import sam_placeholder_username
+    if not row.xras_username:
+        with management_transaction(db.session):
+            row.attach_placeholder(sam_placeholder_username(row.account_request_id))
     token = tokens.request_token(tokens.SALT_REQUEST_DRAFT, row.account_request_id,
                                  opportunity_id, verified_at=row.verified_at)
     return redirect(url_for('allocation_request.draft', token=token))
@@ -321,14 +338,151 @@ def draft_row(token):
     return row, opportunity_id
 
 
+class _VisitorNewRequest(_NewRequestForm):
+    """A confirmed visitor's New: the opportunity fixed by the token, no SAM user and no admin.
+
+    The PI is the placeholder the row names; the flow mints it in XRAS as its first step.
+    """
+
+    template = 'dashboards/user/fragments/request_new_htmx.html'
+
+    def __init__(self, row, opportunity_id, token):
+        super().__init__()
+        self.row, self.opportunity_id, self.token = row, opportunity_id, token
+        self.request_urls = {
+            'fixed_opportunity': True,
+            'mnemonic_suggest': url_for('allocation_request.mnemonic_suggest', token=token),
+            'award_lookup': url_for('allocation_request.award_lookup', token=token),
+            'terms': url_for('allocation_request.terms'),
+            'done': url_for('allocation_request.status', token=token),
+            'where': "this request's status page"}
+
+    def _arm(self, config):
+        if not config.visitor_submit_configured:
+            raise FormError('New requests from this page are not enabled here.')
+
+    def _opportunities(self, config):
+        opportunity, outage = _open(self.opportunity_id)
+        if outage:
+            raise FormError('XRAS is not answering, so the request cannot continue now.')
+        if opportunity is None:
+            raise FormError('That allocation is no longer open. Choose another from the start.')
+        return [opportunity]
+
+    def _chosen_id(self):
+        return self.opportunity_id
+
+    def _pi(self):
+        return None
+
+    def _pi_username(self):
+        return self.row.xras_username
+
+    def _institution_name(self):
+        return self.row.organization
+
+    def _post_url(self):
+        return url_for('allocation_request.draft_post', token=self.token)
+
+    def _check_admin(self, data, errors):
+        data['admin_username'] = None
+
+    def _expected_messages(self, messages):
+        """XRAS will not know the PI until the account exists: its 422 is the approval's step."""
+        state = (self._ctx or {}).get('sam_state') or {}
+        expected = set(state.get('mnemonic_errors') or ()) if state.get('mnemonic') else set()
+        return [m for m in messages if self._pi_username() in m or m in expected]
+
+    def draft(self, data):
+        from dataclasses import replace
+        draft = super().draft(data)
+        return replace(draft, sam=replace(draft.sam, registration_id=self.row.account_request_id))
+
+    def _file(self, flow, draft, eula):
+        return flow.request_action(session_factory, draft,
+                                   actor=f'registration:{self.row.account_request_id}',
+                                   xa_user=self.row.xras_username, eula=eula, door='visitor')
+
+
 @bp.route('/draft/<token>')
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def draft(token):
-    """Step 5: the request itself, for a confirmed visitor."""
+    """Step 5: the request itself, for a confirmed visitor; the form loads into its panel."""
     row, opportunity_id = draft_row(token)
     if row is None:
         return _expired()
-    opportunity = open_opportunity(opportunity_id)
-    return render_template('register/request_draft.html', row=row, opportunity=opportunity,
+    return render_template('register/request_draft.html', row=row,
+                           opportunity=open_opportunity(opportunity_id),
+                           form_url=url_for('allocation_request.draft_fragment', token=token),
                            overview_url=url_for('allocation_request.overview'),
+                           step=_step(5, 'Your request'))
+
+
+@bp.route('/draft/<token>/form')
+@_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
+def draft_fragment(token):
+    """Page one of the visitor's New, into the panel; a refusal renders as a message."""
+    row, opportunity_id = draft_row(token)
+    if row is None:
+        abort(404)
+    handler = _VisitorNewRequest(row, opportunity_id, token)
+    try:
+        ctx = handler.gate()
+    except FormError as exc:
+        return render_template('dashboards/user/fragments/request_message_htmx.html',
+                               title='The request cannot continue',
+                               message=' '.join(exc.errors), variant='warning')
+    return render_template(handler.template, errors=[], field_errors={}, form=None, **ctx)
+
+
+@bp.route('/draft/<token>', methods=['POST'])
+@_rate_limit.limiter.limit(_post_tier, key_func=_ip_key, methods=['POST'])
+def draft_post(token):
+    row, opportunity_id = draft_row(token)
+    if row is None:
+        return _expired()
+    return _VisitorNewRequest(row, opportunity_id, token).handle()
+
+
+@bp.route('/draft/<token>/mnemonic-suggest')
+@_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
+def mnemonic_suggest(token):
+    """The code-letter picker's results; codes and their institutions are public knowledge."""
+    from sam.queries.mnemonic_console import search_mnemonic_codes
+    if draft_row(token)[0] is None:
+        abort(404)
+    q = (request.args.get('q') or '').strip()
+    if len(q) < 2:
+        return ''
+    codes = search_mnemonic_codes(db.session, q, limit=10)
+    return render_template('dashboards/allocations/partials/mnemonic_code_search_results_fk_htmx.html',
+                           codes=codes, q=q)
+
+
+@bp.route('/draft/<token>/award-lookup')
+@_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
+def award_lookup(token):
+    if draft_row(token)[0] is None:
+        abort(404)
+    return award_lookup_fragment(request_urls={
+        'award_lookup': url_for('allocation_request.award_lookup', token=token)})
+
+
+@bp.route('/status/<token>')
+@_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
+def status(token):
+    """Where a visitor's request stands: the confirmation, then the filing SAM made."""
+    from sam.integration.xras_submission import XrasSubmission
+    row, opportunity_id = draft_row(token)
+    if row is None:
+        return _expired()
+    submission = (db.session.query(XrasSubmission)
+                  .filter(XrasSubmission.registration_id == row.account_request_id)
+                  .order_by(XrasSubmission.xras_submission_id.desc()).first())
+    from sam.projects.projects import Project
+    project = (db.session.get(Project, submission.project_id)
+               if submission is not None and submission.project_id else None)
+    return render_template('register/request_status.html', row=row, submission=submission,
+                           project=project,
+                           draft_url=url_for('allocation_request.draft', token=token),
                            step=_step(5, 'Your request'))

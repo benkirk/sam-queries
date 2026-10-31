@@ -56,7 +56,7 @@
                           gate=True) }}
         {% endfor %}
         <p class="small text-muted mb-2">Submitting sends this to XRAS for review. You can follow it
-            on My Requests.</p>
+            on {{ (request_urls or {}).get('where') or 'My Requests' }}.</p>
         {% if action_type == 'Extension' %}
         <input type="hidden" name="end_date" value="{{ data.end_date.isoformat() }}">
         {% else %}
@@ -74,7 +74,8 @@
         {% else %}
         <input type="hidden" name="user_comments" value="{{ data.user_comments }}">
         {% endif %}
-        {{ agreement(eula_sha, error=data.review_error, gate=True) }}
+        {{ agreement(eula_sha, error=data.review_error, gate=True,
+                     terms_url=(request_urls or {}).get('terms')) }}
     </div>
     <div class="modal-footer">
         <span class="small text-muted me-auto" data-gate-hint role="status"></span>

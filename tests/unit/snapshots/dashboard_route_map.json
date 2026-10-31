@@ -1968,6 +1968,13 @@
     ]
   ],
   [
+    "allocation_request.award_lookup",
+    "/request/draft/<token>/award-lookup",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocation_request.draft",
     "/request/draft/<token>",
     [
@@ -1975,8 +1982,29 @@
     ]
   ],
   [
+    "allocation_request.draft_fragment",
+    "/request/draft/<token>/form",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocation_request.draft_post",
+    "/request/draft/<token>",
+    [
+      "POST"
+    ]
+  ],
+  [
     "allocation_request.institutions_fragment",
     "/request/institutions",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocation_request.mnemonic_suggest",
+    "/request/draft/<token>/mnemonic-suggest",
     [
       "GET"
     ]
@@ -2005,6 +2033,13 @@
   [
     "allocation_request.start",
     "/request/start/<int:opportunity_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocation_request.status",
+    "/request/status/<token>",
     [
       "GET"
     ]

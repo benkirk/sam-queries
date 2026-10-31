@@ -174,3 +174,20 @@ class TestTheDocumentCheck:
         monkeypatch.setenv('SUBMISSION_DOCUMENT_MAX_PAGES', '')
         monkeypatch.setenv('SUBMISSION_DOCUMENT_MAX_BYTES', '10')
         assert 'larger than' in document_refusal('a.pdf', pdf)
+
+
+class TestTheVisitorsCodeLetters:
+    """A visitor has no SAM user: the institution they typed stands in (XRAS_SUBMISSION_SPRINT2.md 1c)."""
+
+    def test_a_coded_institution_named_exactly_gives_its_code(self, session):
+        from factories.core import make_institution, make_mnemonic_code
+        from sam.xras.submission_preflight import institution_mnemonic
+        inst = make_institution(session, name='Probe Institute of Visitors')
+        code = make_mnemonic_code(session, description=inst.name)
+        found = institution_mnemonic(session, '  PROBE INSTITUTE OF VISITORS ')
+        assert found is not None and found.code == code.code
+
+    @pytest.mark.parametrize('name', ['', None, 'No Such Institution Anywhere', '%'])
+    def test_anything_else_gives_none(self, session, name):
+        from sam.xras.submission_preflight import institution_mnemonic
+        assert institution_mnemonic(session, name) is None

@@ -6,14 +6,14 @@
 <div class="modal-body">
     {% if outcome.succeeded %}
     {% call outcome_block('success', 'XRAS has your ' ~ ('new request' if action_type == 'New' else action_type ~ ' on ' ~ decision.request_number) ~ ' for review.') %}
-    <p class="mb-0 small text-muted">{% if action_type == 'New' %}Once approved, SAM creates the project and names it; {% endif %}My Requests shows its progress.</p>
+    <p class="mb-0 small text-muted">{% if action_type == 'New' %}Once approved, SAM creates the project and names it; {% endif %}{{ (request_urls or {}).get('where') or 'My Requests' }} shows its progress.</p>
     {% endcall %}
     {% else %}
     {% call outcome_block('warning', 'The request stopped at ' ~ outcome.step ~ (': ' ~ outcome.error if outcome.error else '') ~ '.') %}
-    <p class="mb-0 small text-muted">What SAM already sent to XRAS is kept. Resume or discard it from My Requests.</p>
+    <p class="mb-0 small text-muted">What SAM already sent to XRAS is kept. Resume or discard it from {{ (request_urls or {}).get('where') or 'My Requests' }}.</p>
     {% endcall %}
     {% endif %}
 </div>
 <div class="modal-footer">
-    <a class="btn btn-primary" href="{{ url_for('user_dashboard.my_requests_page') }}">Done</a>
+    <a class="btn btn-primary" href="{{ (request_urls or {}).get('done') or url_for('user_dashboard.my_requests_page') }}">Done</a>
 </div>

@@ -175,8 +175,8 @@
 
 {#- The agreement every request SAM files records: a checkbox beside the submit, the text one
     click away (a new tab). The caller, when given, is the label; the link is terms_url. -#}
-{% macro agreement(eula_sha, checked=False, error=None, id='xrasRequestAgree', small=False, gate=False) -%}
-{%- set terms_url = url_for('user_dashboard.my_requests_agreement') -%}
+{% macro agreement(eula_sha, checked=False, error=None, id='xrasRequestAgree', small=False, gate=False, terms_url=None) -%}
+{%- set terms_url = terms_url or url_for('user_dashboard.my_requests_agreement') -%}
 <input type="hidden" name="eula_sha" value="{{ eula_sha }}">
 <div class="form-check mb-0">
     <input type="checkbox" class="form-check-input{{ ' is-invalid' if error }}" id="{{ id }}"

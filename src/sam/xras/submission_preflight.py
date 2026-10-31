@@ -119,9 +119,30 @@ def _wire_opportunity(opportunity: Mapping[str, Any]) -> Dict[str, Any]:
             'allocationType': opportunity.get('allocation_type'), 'requestNumber': None}
 
 
-def new_request_sam_state(session, opportunity: Mapping[str, Any], pi) -> Dict[str, Any]:
+def institution_mnemonic(session, name: Optional[str]):
+    """The active code of the one live institution named *name* (the ladder's institution rule), else None."""
+    from sqlalchemy import func
+    from sam.core.organizations import Institution, MnemonicCode
+    name = (name or '').strip()
+    if not name:
+        return None
+    rows = (session.query(Institution).filter(Institution.deleted.isnot(True),
+                                              func.lower(Institution.name) == name.lower())
+            .limit(2).all())
+    code = (MnemonicCode.resolve_for_institution(rows[0], MnemonicCode.build_lookup(session))
+            if len(rows) == 1 else None)
+    return (session.query(MnemonicCode).filter(MnemonicCode.is_active, MnemonicCode.code == code)
+            .first() if code else None)
+
+
+def new_request_sam_state(session, opportunity: Mapping[str, Any], pi, *,
+                          institution_name: Optional[str] = None) -> Dict[str, Any]:
     """What the New handler's ladder resolves for *pi* under *opportunity*: ``allocation_type``,
-    ``mnemonic`` (rows or ``None``), ``affiliation`` and ``mnemonic_errors``."""
+    ``mnemonic`` (rows or ``None``), ``affiliation`` and ``mnemonic_errors``.
+
+    With no *pi* (a visitor's New), *institution_name* stands in: its code is preset on the
+    row, which the handler takes ahead of a ladder that cannot see the visitor.
+    """
     from sam.xras.errors import ActionErrors
     from sam.xras.extractors import (
         best_institution,
@@ -135,8 +156,11 @@ def new_request_sam_state(session, opportunity: Mapping[str, Any], pi) -> Dict[s
     mnemonic = resolve_mnemonic_code(session, action, mnemonic_errors,
                                      pi_username=pi.username if pi else None, pi=pi)
     where = (best_institution(pi) or best_organization(pi)) if pi else None
+    affiliation = getattr(where, 'name', None)
+    if pi is None and institution_name:
+        mnemonic, affiliation = institution_mnemonic(session, institution_name), institution_name
     return {'allocation_type': allocation_type, 'mnemonic': mnemonic,
-            'affiliation': getattr(where, 'name', None), 'mnemonic_errors': list(mnemonic_errors)}
+            'affiliation': affiliation, 'mnemonic_errors': list(mnemonic_errors)}
 
 
 def new_request_line(draft, *, pi_username: str, opportunity: Mapping[str, Any],

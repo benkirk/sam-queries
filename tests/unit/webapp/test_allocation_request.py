@@ -48,13 +48,16 @@ def visitor(monkeypatch, guides):
                      submit_enabled=True, submit_anonymous_enabled=True,
                      submit_action_types=frozenset({'New'}))
     monkeypatch.setattr('webapp.register.allocation_request.interactive_config', lambda: config)
+    monkeypatch.setattr('webapp.dashboards.user.requests_routes._config', lambda: config)
     fakes = type('Fakes', (), {'outage': False, 'reads': []})()
 
     def _opp(offset, opp_id):
         return {'opportunity_id': opp_id, 'opportunity_name': f'Probe {offset}',
                 'allocation_type_id': guides + offset, 'allocation_type': 'Probe',
                 'description': None, 'award_months': 12, 'can_submit': True, 'reason': None,
-                'resource_ids': [], 'resources': []}
+                'eua_attribute_id': None, 'resource_ids': [530902],
+                'resources': [{'resource_id': 530902, 'name': 'NSF NCAR Derecho',
+                               'units': 'Core-hours'}]}
 
     class Admin:
         def new_request_opportunities(self, username):
@@ -201,3 +204,136 @@ class TestTheConfirmation:
         with client.application.test_request_context():
             token = tokens.page_token(1)
         assert 'no longer valid' in client.get(f'/request/draft/{token}').get_data(as_text=True)
+
+
+_FOS = [{'fosTypeId': 500003, 'fosName': 'Atmospheric Sciences', 'isSelectable': True}]
+
+
+@pytest.fixture
+def confirmed(client, app, visitor, mail, cleanup, monkeypatch):
+    """A visitor through step 4: ``(draft path, token, row id)``."""
+    from sam.core.account_requests import AccountRequest
+    from sam.integration.xras_api import cache as xras_cache
+    from webapp.extensions import db
+    xras_cache._CACHE.reset_for_tests()
+    monkeypatch.setattr('sam.integration.xras_api.lookups.get_fos_types', lambda: _FOS)
+    monkeypatch.setattr('webapp.dashboards.user.requests_routes.funding_agency_choices',
+                        lambda: [(1, 'NSF')])
+    pending, context = _submit(client, mail, cleanup)
+    draft = client.post(pending, data={'code': context['code']}).location
+    with app.app_context():
+        row = db.session.query(AccountRequest).filter_by(email=cleanup).one()
+        row_id, placeholder = row.account_request_id, row.xras_username
+    yield draft, draft.rsplit('/', 1)[1], row_id, placeholder
+    xras_cache._CACHE.reset_for_tests(disabled=False)
+
+
+#: The probe opportunities' rule book wants a grant: the six fields validate demands.
+_GRANT = {'grant_agency_id': '1', 'grant_number': '2441755', 'grant_title': 'Ensembles',
+          'grant_pi_name': 'Vis Itor', 'grant_begin_date': '2025-09-01',
+          'grant_end_date': '2028-08-31', 'grant_officer_name': 'P. Officer',
+          'grant_officer_email': 'po@example.invalid'}
+
+
+def _describe(**extra):
+    return {'stage': 'request', 'opportunity_id': '777001', 'title': 'Ensemble downscaling',
+            'abstract': 'Regional runs for the next three summers.', 'fos_type_id': '500003',
+            'mnemonic_code_id': '', **_GRANT, **extra}
+
+
+class TestTheVisitorsRequest:
+
+    def test_confirming_names_the_placeholder_in_sams_shape(self, confirmed):
+        from sam.queries.xras_accounts import is_placeholder
+        _, _, row_id, placeholder = confirmed
+        assert placeholder.startswith(f'samr{row_id}-user-') and is_placeholder(placeholder)
+
+    def test_an_operators_verify_still_names_the_placeholder(self, client, app, visitor, mail,
+                                                             cleanup):
+        """Mail off (samuel-dev): Verify on the Accounts card, then the visitor's own page."""
+        from sam.core.account_requests import AccountRequest
+        from sam.manage import management_transaction
+        from webapp.extensions import db
+        pending, _ = _submit(client, mail, cleanup)
+        with app.app_context():
+            row = db.session.query(AccountRequest).filter_by(email=cleanup).one()
+            with management_transaction(db.session):
+                row.mark_verified('benkirk')
+        assert '/request/draft/' in client.get(pending).location
+        with app.app_context():
+            row = db.session.query(AccountRequest).filter_by(email=cleanup).one()
+            assert row.xras_username.startswith(f'samr{row.account_request_id}-user-')
+
+    def test_the_page_loads_the_form_into_its_panel(self, client, confirmed):
+        draft, token, _, _ = confirmed
+        html = client.get(draft).get_data(as_text=True)
+        assert f'hx-get="/request/draft/{token}/form"' in html and 'X-CSRFToken' in html
+
+    def test_page_one_fixes_the_opportunity_and_names_no_admin(self, client, confirmed):
+        _, token, _, _ = confirmed
+        html = client.get(f'/request/draft/{token}/form').get_data(as_text=True)
+        assert 'name="opportunity_id" value="777001"' in html and 'xrasNewOpportunitySelect' not in html
+        assert 'admin_user_id' not in html
+        assert f'/request/draft/{token}/mnemonic-suggest' in html, 'the letters picker is its own'
+
+    def test_the_review_does_not_count_the_pi_xras_cannot_know_yet(self, client, confirmed,
+                                                                    monkeypatch):
+        _, token, _, placeholder = confirmed
+        verdict = _verdict('failed', (f'PI {placeholder} is not in database',))
+        monkeypatch.setattr('sam.xras.submission_preflight.preflight_draft',
+                            lambda *a, **k: verdict)
+        code = _a_code(client.application)
+        resp = client.post(f'/request/draft/{token}', data=_describe(
+            stage='review', mnemonic_code_id=str(code), begin_date='2026-12-01',
+            end_date='2027-11-30', amount_530902='1000'))
+        html = resp.get_data(as_text=True)
+        assert 'data-gate-blocked disabled' not in html, 'only the PI message failed it'
+
+    def test_submit_files_through_the_visitor_door(self, client, confirmed, monkeypatch):
+        from sam.manage import xras_submission as flow
+        from sam.manage.xras_submission import SubmissionOutcome
+        from webapp.register.eula import eula_sha
+        _, token, row_id, placeholder = confirmed
+        monkeypatch.setattr('sam.xras.submission_preflight.preflight_draft',
+                            lambda *a, **k: _verdict('rechecked', ()))
+        calls = []
+        monkeypatch.setattr(flow, 'request_action',
+                            lambda *a, **k: calls.append(k) or SubmissionOutcome(1, 'submitted'))
+        code = _a_code(client.application)
+        with client.application.test_request_context():
+            sha = eula_sha()
+        html = client.post(f'/request/draft/{token}', data=_describe(
+            stage='submit', mnemonic_code_id=str(code), begin_date='2026-12-01',
+            end_date='2027-11-30', amount_530902='1000', agree='1',
+            eula_sha=sha)).get_data(as_text=True)
+        [call] = calls
+        assert (call['door'], call['actor'], call['xa_user']) == (
+            'visitor', f'registration:{row_id}', placeholder)
+        assert f'/request/status/{token}' in html, 'Done goes to the status page'
+
+    def test_the_pickers_need_a_live_token(self, client, visitor):
+        assert client.get('/request/draft/nope/mnemonic-suggest?q=cub').status_code == 404
+        assert client.get('/request/draft/nope/award-lookup?grant_number=1').status_code == 404
+
+    def test_the_status_page_offers_the_unsent_request(self, client, confirmed):
+        _, token, _, _ = confirmed
+        assert 'Continue the request' in client.get(f'/request/status/{token}').get_data(
+            as_text=True)
+
+
+def _verdict(status, messages):
+    from datetime import datetime
+    from sam.xras.preflight import Verdict
+    return Verdict(status=status, would_succeed=not messages, messages=messages, gaps=(),
+                   service=None, warnings=(), action_id=None, action_type='New',
+                   action_status=None, request_status=None, stage='Requested',
+                   push_state='unknown', push_detail=None, checked_at=datetime.now(),
+                   resolved=None)
+
+
+def _a_code(app):
+    from sam.core.organizations import MnemonicCode
+    from webapp.extensions import db
+    with app.app_context():
+        return db.session.query(MnemonicCode.mnemonic_code_id).filter(
+            MnemonicCode.is_active).order_by(MnemonicCode.mnemonic_code_id).first()[0]

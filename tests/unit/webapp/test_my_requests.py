@@ -187,12 +187,14 @@ class TestTheRowButtons:
         monkeypatch.setattr('sam.integration.xras_api.admin_client.XrasAdminClient.from_environment',
                             classmethod(lambda *a, **k: pytest.fail('read XRAS')))
         html = auth_client.get(PAGE).get_data(as_text=True)
-        assert 'Request</th>' not in html and self.OFFERS not in html
+        # The project table's column; the requests table opens with its own "Request"
+        # header whenever another worker has committed a row naming benkirk.
+        assert 'text-end">Request</th>' not in html and self.OFFERS not in html
         assert auth_client.get(self.OFFERS).get_data() == b''
 
     def test_armed_the_page_loads_the_buttons_once(self, auth_client, armed):
         html = auth_client.get(PAGE).get_data(as_text=True)
-        assert 'Request</th>' in html and 'id="req-offers-UHSS0001"' in html
+        assert 'text-end">Request</th>' in html and 'id="req-offers-UHSS0001"' in html
         assert html.count(f'hx-get="{self.OFFERS}"') == 1
 
     def test_the_buttons_open_the_forms(self, auth_client, armed, rostered):
@@ -846,7 +848,7 @@ def lettered(monkeypatch):
     from sam.core.organizations import MnemonicCode
     real = pre.new_request_sam_state
 
-    def state(session, opportunity, pi):
+    def state(session, opportunity, pi, **_):
         out = real(session, opportunity, pi)
         if out['mnemonic'] is None:
             out['mnemonic'] = session.query(MnemonicCode).filter(MnemonicCode.is_active).first()

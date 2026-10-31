@@ -462,3 +462,86 @@ class TestTheRenewal:
         assert done.state == 'aborted'
         client.delete_request.assert_not_called()
         client.delete_action.assert_not_called()
+
+
+class TestTheVisitorNew:
+    """A New from /request: SAM mints the PI before the line (XRAS_SUBMISSION_SPRINT2.md 1c)."""
+
+    @pytest.fixture
+    def registration(self, factory):
+        from sam.core.account_requests import AccountRequest
+        with factory() as s:
+            row = AccountRequest.create(
+                s, email=f'zz.visitor.{next(_IDS)}@example.invalid', first_name='Vis',
+                last_name='Itor', organization='University of Example',
+                academic_status='Faculty', residence_country='US', phone='+1 303 555 0100',
+                purpose='submission', created_by='self')
+            s.commit()
+            rid = row.account_request_id
+        yield rid
+        with factory() as s:
+            s.query(AccountRequest).filter_by(account_request_id=rid).delete()
+            s.commit()
+
+    @pytest.fixture
+    def visitor_armed(self, monkeypatch):
+        from sam.integration.xras_api.config import XrasApiConfig
+        monkeypatch.setattr(XrasApiConfig, 'visitor_submit_configured', True)
+
+    def _draft(self, registration):
+        return ActionRequest(action_type='New', opportunity_id=532221, title='T', abstract='A',
+                             sam=SamRefs(registration_id=registration, mnemonic_code_id=7))
+
+    def _client(self):
+        client = _client()
+        rid, aid = next(_IDS), next(_IDS)
+        client.create_person.return_value = _ok('create_person')
+        client.create_request.return_value = _ok(
+            'create_request', request_id=rid, action_id=aid, response={'requestId': rid})
+        client.add_role.return_value = _ok('add_role')
+        client.update_request_attributes.return_value = _ok('update_attributes')
+        return client
+
+    def test_the_person_comes_first_from_the_registration(self, factory, registration,
+                                                         visitor_armed):
+        client = self._client()
+        out = flow.request_action(factory, self._draft(registration), actor='registration:1',
+                                  xa_user='samr1-user-a1b2c3', eula=EULA, door='visitor',
+                                  client=client)
+        assert out.state == 'submitted'
+        row = _row(factory, out.submission_id)
+        assert row.registration_id == registration and row.user_id is None
+        assert _event_ops(factory, row)['person'] == 'create_person'
+        calls = [c[0] for c in client.mock_calls if c[0] in ('create_person', 'create_request')]
+        assert calls == ['create_person', 'create_request']
+        args = client.create_person.call_args
+        assert args.args == ('samr1-user-a1b2c3',)
+        assert args.kwargs['email'].startswith('zz.visitor.') and args.kwargs['last_name'] == 'Itor'
+        assert client.add_role.call_args.args[1:3] == ('PI', 'samr1-user-a1b2c3')
+        # the person and the mint never read a line by id; the PI role does
+        assert client.reading_draft.call_count == 3
+
+    def test_a_person_that_may_have_landed_is_never_resent(self, factory, registration,
+                                                          visitor_armed):
+        client = self._client()
+        client.create_person.return_value = _ok('create_person', verified=None)
+        out = flow.request_action(factory, self._draft(registration), actor='registration:1',
+                                  xa_user='samr1-user-a1b2c3', eula=EULA, door='visitor',
+                                  client=client)
+        assert not out.succeeded and out.step == 'person'
+        again = flow.resume_submission(factory, out.submission_id, actor='registration:1',
+                                       door='visitor', client=client)
+        assert again.step == 'person' and 'may have reached XRAS' in again.error
+        assert client.create_person.call_count == 1
+
+    def test_the_visitor_door_needs_its_lever(self, factory, registration):
+        with pytest.raises(SubmissionRefused, match='not enabled'):
+            flow.request_action(factory, self._draft(registration), actor='registration:1',
+                                xa_user='samr1-user-a1b2c3', eula=EULA, door='visitor',
+                                client=self._client())
+
+    def test_only_the_visitor_door_files_under_a_registration(self, factory, registration,
+                                                             visitor_armed):
+        with pytest.raises(SubmissionRefused, match='registration'):
+            flow.request_action(factory, self._draft(registration), actor='pi1',
+                                xa_user='pi1', eula=EULA, client=self._client())
