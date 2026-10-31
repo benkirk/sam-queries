@@ -606,6 +606,23 @@ to phase 2.
    resources) is untouched. Every handler stamps `applied` (and a New's `project_id`) inside
    its own transaction.
 
+### 4.7 Sketch: an initial roster on the New form (sprint 2, #872)
+
+Not built. A New today carries its PI and an optional admin; everyone else is added after the
+project exists. XRAS request roles include **User** (`USER_ROLE_TYPE_ID`,
+`sam/integration/xras_api/vocabulary.py`) beside PI and Allocation Manager, so a New can carry
+its roster, and the flow layer already writes roles (`add_role`): each roster entry is one more
+step after the PI's.
+
+- An optional "People on the project" section on page 1. A SAM user is picked through the same
+  user search as the admin (username first, with the email).
+- Someone without an account is entered by name and email. SAM turns that entry into an
+  account-request invitation (the sponsor's invitation link, `.claude/rules/account-requests.md`)
+  **once the project exists, never before**, so an unapproved New sends no mail.
+- The no-account New (phase 3) must not expose the user directory (§ 5, the admin picker row).
+
+Open questions are in § 5.
+
 ## 5. Gaps and open questions
 
 | Gap | Why it matters | Next step |
@@ -619,6 +636,7 @@ to phase 2.
 | **Grant lookup depth** | validate wants the program officer; NSF's API carries it, USAspending does not | settled 2026-10-30: USAspending by exact number for other agencies, 22 of 48 SAM non-NSF numbers found (standard formats nearly all); the PI types the officer (§ 3.5) |
 | **Placeholders SAM mints** (phase 3) | SAM classifies a placeholder by its username shape alone (`PLACEHOLDER_USERNAME_RE`, `^\S+-user-\S+$`, `sam/queries/xras_accounts.py`), and fulfills an `account_request` by email. A merge into an account under a different email leaves the sweep's row open in NUSD's queue (`XRAS_DEV_PROBES.md` § 6.1, scenario 6) | SAM names its placeholders `<x>-user-<y>`; `merge_placeholder` closes the source's rows (`XRAS_POST_AUTOMATION.md` phase D, item 6) |
 | **The admin picker on a no-account New** (phase 3) | the logged-in New picks its admin with a user search (`/user/requests/htmx/admin-suggest`: any user who may file a New sees active users' names, usernames and emails). An anonymous registrant must not get that directory | decide the phase-3 admin field (typed and checked at submit, or named later by the PI) when sprint 2 builds it; never reuse the logged-in endpoint |
+| **An initial roster on a New** (§ 4.7) | a New names only its PI and admin, so every other member waits for the project to exist and for the lead to add them by hand | decide with Ben in sprint 2 (#872): XRAS role for each entry (User only, or Co-PI too); invite a person without an account at submit or at activation (§ 4.7 proposes activation) |
 | **A parked action answers 200** (§ 4.6 item 2) | XRAS shows the operator a successful post, and phase D's tickets cover New and Renewal only | ask whether a parked action opens the request's ticket too, when phase D is built |
 | **Actions applied before SAMuel's log** | § 4.6 items 1 and 2 read only SAMuel's log, so a repost of an action applied before the 2026-08-24 repoint applies again. The 12 legacy-era families still under `NCAR*` are dormant (`XRAS_CLOSED_LOOP.md` § 3.3) | import legacy-era actions (matched to `allocation_transaction`) only when a repost of a pre-repoint action actually happens |
 | **Extension 399374 on `UHSS0001`** | approved and posted, parked as #184, not notified. The family answers `UHSS0001` after the 2026-10-14 backfill, so a fresh Extension applies | file it afresh, or withdraw it; the admin app's repost re-sends the `New`, which the guard refuses |
