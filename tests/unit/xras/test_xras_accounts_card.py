@@ -55,31 +55,6 @@ def _one_worker_at_a_time(serial_file_lock):
 
 
 @pytest.fixture
-def view_only_client(auth_client, monkeypatch):
-    """`benkirk` minus MANAGE_XRAS.
-
-    `benkirk` holds every Permission, so there is no snapshot user with
-    VIEW_XRAS and not MANAGE_XRAS — the split has to be simulated. Patching
-    `get_user_permissions` is the narrowest way: every gate in the request
-    path reads through it.
-    """
-    from webapp.utils import rbac
-
-    real = rbac.get_user_permissions
-
-    def limited(user, *args, **kwargs):
-        return {p for p in real(user, *args, **kwargs)
-                if p != Permission.MANAGE_XRAS}
-
-    for module in (rbac, __import__(
-            'webapp.dashboards.allocations.blueprint', fromlist=['x'])):
-        if hasattr(module, 'get_user_permissions'):
-            monkeypatch.setattr(module, 'get_user_permissions', limited)
-    monkeypatch.setattr(rbac, 'get_user_permissions', limited)
-    return auth_client
-
-
-@pytest.fixture
 def committed_worklist_action(app, committed_rows):
     """One committed `xras_action_log` row naming an unknown placeholder.
 

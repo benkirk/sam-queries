@@ -508,6 +508,7 @@ PAGES_WITH_PROJECT_MODAL = {
     '/allocations/transactions': 'dashboards/allocations/transactions.html',
     '/allocations/adjustments': 'dashboards/allocations/adjustments.html',
     '/allocations/xras': 'dashboards/allocations/xras.html',
+    '/allocations/xras/configuration': 'dashboards/allocations/xras_configuration.html',
     '/status/derecho': 'dashboards/status/derecho_page.html',
     '/status/casper': 'dashboards/status/casper_page.html',
     '/status/jupyterhub': 'dashboards/status/jupyterhub_page.html',

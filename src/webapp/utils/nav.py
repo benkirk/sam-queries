@@ -208,7 +208,8 @@ NAV_SECTIONS = (
             {'endpoint': 'allocations_dashboard.adjustments', 'label': 'Adjustments',
              'icon': 'fa-solid fa-scale-balanced'},
             {'endpoint': 'allocations_dashboard.xras', 'label': 'XRAS',
-             'icon': 'fa-solid fa-plug', 'visible': _can_view_xras},
+             'icon': 'fa-solid fa-plug', 'visible': _can_view_xras,
+             'active_endpoints': ('allocations_dashboard.xras_configuration',)},
         ),
     },
     {
