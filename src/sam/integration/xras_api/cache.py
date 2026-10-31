@@ -145,6 +145,11 @@ def cached_fos_types(compute: Callable[[], Any]) -> Optional[Any]:
     return _CACHE.get_or_compute('lookups', 'fos_types', compute)
 
 
+def cached_funding_agencies(compute: Callable[[], Any]) -> Optional[Any]:
+    """Memoise the grant-agency list. One key, the whole list."""
+    return _CACHE.get_or_compute('lookups', 'funding_agencies', compute)
+
+
 def cached_opportunity(opportunity_id, compute: Callable[[], Any]) -> Optional[Any]:
     """Memoise one opportunity's detail. Definite negatives cache too — a 404
     for an id is a real answer and re-asking costs a round trip per modal."""
@@ -217,7 +222,8 @@ def load_requests_index() -> Optional[Any]:
     return _load('pending', _REQUESTS_KEY)
 
 
-def patch_requests_index(request_number: str, entry: Optional[Any]) -> bool:
+def patch_requests_index(request_number: str, entry: Optional[Any], *,
+                         insert: bool = False) -> bool:
     """Replace one entry in the published index, in place. ``True`` if it stuck.
 
     WARNING: **This is what makes a write visible in the same interaction.** The card
@@ -243,6 +249,8 @@ def patch_requests_index(request_number: str, entry: Optional[Any]) -> bool:
     ``False`` means there was nothing to patch (no index published, or the
     request is not in it), which is not an error: the write itself already
     happened and was verified, and the next sweep will pick the request up.
+    *insert* appends an *entry* the index lacks: a request SAM itself filed, which the next
+    full sweep carries too.
     """
     adapter = _CACHE.adapter('pending')
     if adapter is None:
@@ -260,10 +268,12 @@ def patch_requests_index(request_number: str, entry: Optional[Any]) -> bool:
                       if isinstance(row, dict)
                       and str(row.get('request_number') or '').strip() == wanted),
                      None)
-        if index is None:
+        if index is None and not (insert and entry is not None):
             return False
 
-        if entry is None:
+        if index is None:
+            rows.append(entry)
+        elif entry is None:
             rows.pop(index)
         else:
             rows[index] = entry

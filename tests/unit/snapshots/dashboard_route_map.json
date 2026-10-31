@@ -3271,6 +3271,13 @@
     ]
   ],
   [
+    "user_dashboard.my_request_notes",
+    "/user/requests/<number>/notes",
+    [
+      "GET"
+    ]
+  ],
+  [
     "user_dashboard.my_request_post",
     "/user/requests/<projcode>/<any(extension, supplement, renewal):kind>",
     [
@@ -3299,6 +3306,13 @@
     ]
   ],
   [
+    "user_dashboard.my_requests_admin_suggest",
+    "/user/requests/htmx/admin-suggest",
+    [
+      "GET"
+    ]
+  ],
+  [
     "user_dashboard.my_requests_agreement",
     "/user/requests/agreement",
     [
@@ -3315,6 +3329,13 @@
   [
     "user_dashboard.my_requests_mnemonic_suggest",
     "/user/requests/htmx/mnemonic-suggest",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "user_dashboard.my_requests_offers",
+    "/user/requests/htmx/offers",
     [
       "GET"
     ]

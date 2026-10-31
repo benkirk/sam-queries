@@ -99,6 +99,141 @@ class TestThePage:
         assert client.get(PAGE).status_code in (302, 401)
 
 
+def _indexed(number='UHSS0003', action_id=373148, username='benkirk'):
+    return [{'request_number': number, 'roster': [{'username': username}],
+             'actions': [{'action_id': action_id, 'action_type': 'Extension',
+                          'action_status': 'Submitted'}]}]
+
+
+class TestTheComments:
+
+    @pytest.fixture
+    def indexed(self, monkeypatch):
+        monkeypatch.setattr(requests_routes, '_index_rows', lambda: _indexed())
+
+    def _family(self, **action):
+        return [{'requestNumber': 'UHSS0003', 'actions': [
+            {'actionId': 373148, 'actionType': 'Extension', **action}]}]
+
+    def test_each_xras_row_gets_a_comments_drill(self, auth_client, indexed):
+        html = auth_client.get(PAGE).get_data(as_text=True)
+        assert 'Show comments' in html
+        assert '/user/requests/UHSS0003/notes?action_id=373148' in html
+
+    def test_a_discarded_row_has_no_drill(self, auth_client, engine, monkeypatch):
+        from datetime import datetime
+        from sam.integration.xras_submission import XrasSubmission
+        monkeypatch.setattr(requests_routes, '_index_rows', lambda: [])
+        with tracking_factory(engine, XrasSubmission) as make:
+            with make() as s:
+                row = XrasSubmission.create(s, action_type='Extension', created_by='benkirk',
+                                            xa_user='benkirk', payload={}, eula_sha='a' * 40,
+                                            eula_accepted_at=datetime.now())
+                row.set_keys(request_number='UHSS0003', action_id=373_149)
+                row.advance('aborted')
+                s.commit()
+            html = auth_client.get(PAGE).get_data(as_text=True)
+        assert 'Discarded' in html and 'Show comments' not in html
+
+    def test_the_approvers_note_and_the_pis_comment(self, auth_client, armed, indexed):
+        armed.family = self._family(adminComments='Approved to March.\r\n\r\n\r\nThanks.',
+                                    userComments='Needed for the ensemble.')
+        html = auth_client.get('/user/requests/UHSS0003/notes?action_id=373148').get_data(
+            as_text=True)
+        assert 'From the approver' in html and 'Approved to March.\n\nThanks.' in html
+        assert 'Your comment' in html and 'Needed for the ensemble.' in html
+
+    def test_no_comments_says_so(self, auth_client, armed, indexed):
+        armed.family = self._family()
+        html = auth_client.get('/user/requests/UHSS0003/notes?action_id=373148').get_data(
+            as_text=True)
+        assert 'No comments from XRAS yet.' in html
+
+    def test_an_outage_says_so(self, auth_client, armed, indexed, monkeypatch):
+        from sam.integration.xras_api import XrasSourceUnavailable
+
+        def down(self, number):
+            raise XrasSourceUnavailable('down')
+        monkeypatch.setattr(type(requests_routes.read_client()), 'get_request_family_by_number',
+                            down)
+        html = auth_client.get('/user/requests/UHSS0003/notes?action_id=373148').get_data(
+            as_text=True)
+        assert 'XRAS is not answering' in html
+
+    def test_a_request_the_user_does_not_see_is_not_found(self, auth_client, armed, indexed):
+        assert auth_client.get('/user/requests/UHSS0099/notes?action_id=373148').status_code == 404
+        assert auth_client.get('/user/requests/UHSS0003/notes?action_id=1').status_code == 404
+        assert auth_client.get('/user/requests/UHSS0003/notes').status_code == 404
+        assert armed.reads == []
+
+    def test_the_comment_is_escaped(self, auth_client, armed, indexed):
+        armed.family = self._family(adminComments='<script>x</script>')
+        html = auth_client.get('/user/requests/UHSS0003/notes?action_id=373148').get_data(
+            as_text=True)
+        assert '<script>x' not in html and '&lt;script&gt;' in html
+
+
+
+class TestTheRowButtons:
+
+    OFFERS = '/user/requests/htmx/offers'
+
+    @pytest.fixture
+    def rostered(self, monkeypatch):
+        monkeypatch.setattr(requests_routes, '_index_rows', lambda: [
+            {'request_number': 'UHSS0001', 'roster': [{'username': 'benkirk', 'active': True}]}])
+
+    def test_the_lever_off_draws_no_column_and_reads_nothing(self, auth_client, monkeypatch):
+        monkeypatch.setattr('sam.integration.xras_api.admin_client.XrasAdminClient.from_environment',
+                            classmethod(lambda *a, **k: pytest.fail('read XRAS')))
+        html = auth_client.get(PAGE).get_data(as_text=True)
+        assert 'Request</th>' not in html and self.OFFERS not in html
+        assert auth_client.get(self.OFFERS).get_data() == b''
+
+    def test_armed_the_page_loads_the_buttons_once(self, auth_client, armed):
+        html = auth_client.get(PAGE).get_data(as_text=True)
+        assert 'Request</th>' in html and 'id="req-offers-UHSS0001"' in html
+        assert html.count(f'hx-get="{self.OFFERS}"') == 1
+
+    def test_the_buttons_open_the_forms(self, auth_client, armed, rostered):
+        armed.available = [{'action_type': 'Renewal', 'request_number': 'UHSS0001'}]
+        html = auth_client.get(self.OFFERS).get_data(as_text=True)
+        cell = html.split('id="req-offers-UHSS0001"')[1].split('</span>\n', 1)[0]
+        assert 'hx-swap-oob' in html.split('id="req-offers-UHSS0001"')[1][:40]
+        for kind, word in (('extension', 'Extend'), ('supplement', 'Supplement'),
+                           ('renewal', 'Renew')):
+            assert f'/user/requests/UHSS0001/{kind}' in cell and f'>{word}</span>' in cell
+        assert armed.reads.count(('offers', 'benkirk')) == 1
+
+    def test_an_outage_still_offers_extension_and_supplement(self, auth_client, armed, rostered,
+                                                             monkeypatch):
+        from sam.integration.xras_api import XrasSourceUnavailable
+
+        def down(self, username):
+            raise XrasSourceUnavailable('down')
+        monkeypatch.setattr(type(requests_routes.admin_client()), 'available_action_requests',
+                            down)
+        cell = auth_client.get(self.OFFERS).get_data(as_text=True).split(
+            'id="req-offers-UHSS0001"')[1].split('</span>\n', 1)[0]
+        assert '/extension' in cell and '/supplement' in cell and '/renewal' not in cell
+
+    def test_off_the_roster_the_cell_is_emptied_without_a_read(self, auth_client, armed):
+        html = auth_client.get(self.OFFERS).get_data(as_text=True)
+        cell = html.split('id="req-offers-UHSS0001"')[1].split('</span>', 1)[0]
+        assert 'button' not in cell
+        assert armed.reads == []
+
+    def test_renewal_off_offers_the_rest_without_a_read(self, auth_client, armed, rostered,
+                                                        monkeypatch):
+        config = replace(requests_routes._config(),
+                         submit_action_types=('Extension', 'Supplement'))
+        monkeypatch.setattr(requests_routes, '_config', lambda: config)
+        cell = auth_client.get(self.OFFERS).get_data(as_text=True).split(
+            'id="req-offers-UHSS0001"')[1].split('</span>\n', 1)[0]
+        assert '/extension' in cell and '/supplement' in cell and '/renewal' not in cell
+        assert armed.reads == []
+
+
 class TestThePicker:
 
     def test_the_lever_off_disables_everything_without_reading_xras(self, auth_client,
@@ -227,7 +362,7 @@ class TestTheExtensionForm:
         html = auth_client.post(EXT, data=_ext(floor + timedelta(days=365))).get_data(
             as_text=True)
         assert 'Review the Extension' in html and 'name="agree"' in html
-        assert 'SAM checked this' in html and _sha() in html
+        assert 'SAM checked this' not in html and _sha() in html   # a clean check says nothing
         assert not filed
 
     def test_submit_without_the_tick_returns_to_the_review(self, auth_client, on_roster,
@@ -337,8 +472,8 @@ class TestResumeAndDiscard:
         html = auth_client.get(PAGE).get_data(as_text=True)
         assert 'Stopped at submit' in html
         assert f'/user/requests/{a_row}/resume' in html and f'/user/requests/{a_row}/abort' in html
-        # The Date column repeats an applied row's date; phones keep the width for Resume/Discard.
-        assert '<th class="col-shrink d-none d-md-table-cell">Date</th>' in html
+        # The Filed column repeats an applied row's date; phones keep the width for Resume/Discard.
+        assert '<th class="col-shrink d-none d-md-table-cell">Filed</th>' in html
 
     @pytest.fixture
     def lettered_row(self, engine):
@@ -388,6 +523,8 @@ class TestResumeAndDiscard:
         from io import BytesIO
         html = auth_client.get(PAGE).get_data(as_text=True)
         assert f'hx-get="/user/requests/{refused_letter_row}/resume"' in html
+        assert 'title="XRAS numbers a new request when it is submitted' in html  # no number yet
+        assert '>Filed</th>' in html
         modal = auth_client.get(f'/user/requests/{refused_letter_row}/resume').get_data(
             as_text=True)
         assert 'name="document_Advisor_Letter"' in modal
@@ -547,6 +684,42 @@ class TestTheRenewalForm:
         assert draft.grants[0]['fundingAgencyId'] == 1
         assert draft.grants[0]['programOfficerEmail'] == 'po@nsf.gov'
 
+    def test_the_lines_grant_prefills_the_renewal(self, auth_client, renewable, monkeypatch):
+        monkeypatch.setattr(requests_routes, 'funding_agency_choices',
+                            lambda: [(1, 'National Science Foundation'), (14, 'NASA (and centers)')])
+        renewable.required = {'requiredFields': {'request': {'grants': {'required': True}}}}
+        renewable.family[0]['grants'] = [
+            {'fundingAgency': 'NASA (and centers)', 'grantNumber': None},
+            {'fundingAgency': 'NASA (and centers)', 'grantNumber': '80NSSC21K1305',
+             'title': 'Dust modeling', 'beginDate': '2021-07-16', 'endDate': '2027-07-15',
+             'piName': None, 'programOfficerEmail': 'po@nasa.gov'}]
+        html = auth_client.get(REN).get_data(as_text=True)
+        assert 'value="80NSSC21K1305"' in html and 'value="Dust modeling"' in html
+        assert 'SAM starts you from the last one' in html
+        assert 'value="2021-07-16"' in html and 'value="po@nasa.gov"' in html
+        assert '<option value="14" selected>' in html
+        posted = auth_client.post(REN, data=_ren('edit')).get_data(as_text=True)
+        assert '80NSSC21K1305' not in posted                    # a posted form keeps its own
+
+    def test_another_agencys_grant_keeps_its_agency(self, auth_client, renewable, filed,
+                                                    monkeypatch):
+        from io import BytesIO
+        monkeypatch.setattr(requests_routes, 'funding_agency_choices',
+                            lambda: [(1, 'National Science Foundation'), (14, 'NASA (and centers)')])
+        renewable.required = {'requiredFields': {'request': {'grants': {'required': True}}}}
+        auth_client.post(REN, data=_ren('submit', eula_sha=_sha(), agree='1', **_GRANT,
+                                        grant_agency_id='14',
+                                        document_Advisor_Letter=(BytesIO(b'%PDF-1.7 x'), 'l.pdf')),
+                         content_type='multipart/form-data')
+        draft, _ = filed[0]
+        assert draft.grants[0]['fundingAgencyId'] == 14
+
+    def test_an_agency_xras_does_not_list_is_refused(self, auth_client, renewable, filed):
+        renewable.required = {'requiredFields': {'request': {'grants': {'required': True}}}}
+        html = auth_client.post(REN, data=_ren(**_GRANT, grant_agency_id='999')).get_data(
+            as_text=True)
+        assert 'Choose one of the agencies listed.' in html and not filed
+
     def test_only_the_resources_the_line_holds_are_prefilled(self, auth_client, renewable,
                                                              monkeypatch):
         import sam.xras.submission_preflight as pre
@@ -558,11 +731,12 @@ class TestTheRenewalForm:
             for rid, name in ((530902, 'Derecho'), (530275, 'Casper'))})
         monkeypatch.setattr('sam.accounting.allocation_type_limits.limits_for_allocation_type',
                             lambda s, t: {'Derecho': limit, 'Casper': limit})
-        import re
         html = auth_client.get(REN).get_data(as_text=True)
-        assert re.search(r'name="amount_530902"\s+value="5000"', html)
-        casper = html.split('name="amount_530275"')[1][:120]
-        assert 'value=""' in casper
+        selected, available = html.split('data-amount-group="available"')
+        derecho = selected.split('name="amount_530902"')[1].split('>', 1)[0]
+        assert 'value="5000"' in derecho and 'disabled' not in derecho
+        casper = available.split('name="amount_530275"')[1].split('>', 1)[0]
+        assert 'value=""' in casper and 'disabled' in casper and 'data-suggest="5000"' in casper
 
     def test_a_seven_digit_default_fills_the_box_whole(self, auth_client, renewable,
                                                       monkeypatch):
@@ -575,12 +749,26 @@ class TestTheRenewalForm:
         html = auth_client.get(REN).get_data(as_text=True)
         assert 'value="2000000"' in html and '2e+06' not in html
 
+    def test_a_lone_resource_starts_selected(self, app):
+        from flask import render_template_string
+        src = ("{% from 'dashboards/user/partials/request_bits.html' import amounts_table %}"
+               "{{ amounts_table(resources, form, {}) }}")
+        one = [{'resource_id': 1, 'name': 'Derecho', 'units': 'Core-hours', 'prefill': False}]
+        with app.test_request_context():
+            alone = render_template_string(src, resources=one, form=None)
+            two = render_template_string(src, resources=one + [dict(one[0], resource_id=2)],
+                                         form=None)
+            cleared = render_template_string(src, resources=one, form={'amounts_present': '1'})
+        assert alone.split('data-amount-group="available"')[0].count('data-amount-row ') == 1
+        assert two.split('data-amount-group="available"')[0].count('data-amount-row ') == 0
+        assert cleared.split('data-amount-group="available"')[0].count('data-amount-row ') == 0
+
     def test_the_form_prefills_the_abstract_and_the_window(self, auth_client, renewable, floor):
         from datetime import timedelta
         html = auth_client.get(REN).get_data(as_text=True)
         assert 'Year one of the ensemble.' in html and 'name="amount_530902"' in html
         assert (floor + timedelta(days=1)).isoformat() in html
-        assert 'Advisor Letter at the review' in html
+        assert 'Advisor Letter on the review page' in html
 
     def test_the_review_asks_for_the_letter(self, auth_client, renewable, filed):
         html = auth_client.post(REN, data=_ren()).get_data(as_text=True)
@@ -666,6 +854,14 @@ def lettered(monkeypatch):
     monkeypatch.setattr(pre, 'new_request_sam_state', state)
 
 
+@pytest.fixture
+def other_user(session):
+    """An active snapshot user who is not the logged-in PI."""
+    from sam.core.users import User
+    return (session.query(User).filter(User.is_active, User.username != 'benkirk')
+            .order_by(User.user_id).first())
+
+
 def _new(stage='request', **extra):
     return {**dict(stage=stage, opportunity_id='532221', title='Ensemble downscaling',
                    abstract='Regional runs for the next three summers.', fos_type_id='500003'),
@@ -695,7 +891,7 @@ class TestTheNewForm:
 
     def test_the_reveal_names_the_letter_and_the_code(self, auth_client, newable, lettered):
         html = auth_client.get(NEW + '/opportunity?opportunity_id=532221').get_data(as_text=True)
-        assert 'Advisor Letter at the review' in html
+        assert 'Advisor Letter on the review page' in html
         assert 'project code starts with' in html and 'name="grant_number"' not in html
 
     def test_a_grant_wanting_type_reveals_the_grant(self, auth_client, newable, lettered):
@@ -712,9 +908,17 @@ class TestTheNewForm:
         assert 'You already have one' in html
 
     def test_an_unknown_admin_is_refused(self, auth_client, newable, lettered):
-        html = auth_client.post(NEW, data=_new(admin_username='nosuchuser9')).get_data(
+        html = auth_client.post(NEW, data=_new(admin_user_id='999999999')).get_data(
             as_text=True)
-        assert 'SAM has no active user nosuchuser9' in html
+        assert 'Choose an active SAM user.' in html
+
+    def test_the_admin_is_picked_and_shown_on_the_review(self, auth_client, newable, lettered,
+                                                         other_user):
+        newable.people = {other_user.username}
+        html = auth_client.post(NEW, data=_new_review(admin_user_id=str(other_user.user_id))
+                                ).get_data(as_text=True)
+        assert f'{other_user.username} ({other_user.display_name})' in html
+        assert f'name="admin_user_id" value="{other_user.user_id}"' in html
 
     def test_the_grant_is_required_where_the_rule_book_wants_one(self, auth_client, newable,
                                                                 lettered):
@@ -746,13 +950,13 @@ class TestTheNewForm:
         assert 'type="hidden" name="title" value="Ensemble downscaling"' in html
         assert 'value="describe"' in html          # Back
 
-    def test_a_yes_no_resource_is_a_checkbox_that_asks_for_one(self, auth_client, newable,
-                                                              lettered, filed):
+    def test_a_yes_no_resource_asks_for_one_once_selected(self, auth_client, newable,
+                                                          lettered, filed):
         newable.opportunities[0]['resources'].append(
             {'resource_id': 530999, 'name': 'NCAR Data Access', 'units': 'Yes / No'})
         html = auth_client.post(NEW, data=_new()).get_data(as_text=True)
-        box = html.split('name="amount_530999"')[0].rsplit('<input', 1)[1]
-        assert 'type="checkbox"' in box and 'value="1"' in box
+        box = html.split('name="amount_530999"')[1].split('>', 1)[0]
+        assert 'value="1"' in box and 'disabled' in box
         assert 'yes or no' in html
         html = auth_client.post(NEW, data=_new_review(amount_530999='1')).get_data(as_text=True)
         assert 'NCAR Data Access' in html and '>Yes<' in html
@@ -765,6 +969,31 @@ class TestTheNewForm:
         html = auth_client.post(NEW, data=_new_review()).get_data(as_text=True)
         assert 'Review the New request' in html and 'name="document_Advisor_Letter"' in html
         assert 'name="agree"' in html and 'value="request"' in html and not filed
+
+    def test_submit_waits_for_the_letter_and_the_terms(self, auth_client, newable, lettered):
+        html = auth_client.post(NEW, data=_new_review()).get_data(as_text=True)
+        letter = html.split('name="document_Advisor_Letter"')[1].split('>', 1)[0]
+        assert 'data-gate-check' in letter and 'attach the Advisor Letter' in letter
+        agree = html.split('name="agree"')[1].split('>', 1)[0]
+        assert 'data-gate-check' in agree and 'accept the terms' in agree
+        submit = html.split('value="submit"')[1].split('>', 1)[0]
+        assert 'data-gate-submit' in submit and 'data-busy=' in submit
+
+    def test_page_two_selects_its_only_resource(self, auth_client, newable, lettered):
+        html = auth_client.post(NEW, data=_new()).get_data(as_text=True)
+        selected, _ = html.split('data-amount-group="available"')
+        box = selected.split('name="amount_530902"')[1].split('>', 1)[0]
+        assert 'disabled' not in box
+
+    def test_a_posted_amount_comes_back_selected(self, auth_client, newable, lettered):
+        html = auth_client.post(NEW, data=_new(stage='review', amount_530902='',
+                                                begin_date='2026-12-01', end_date='2027-11-30')
+                                ).get_data(as_text=True)
+        assert 'Add at least one resource.' in html
+        html = auth_client.post(NEW, data=_new_review(amount_530902='750', end_date='2026-11-01')
+                                ).get_data(as_text=True)
+        selected = html.split('data-amount-group="available"')[0]
+        assert 'name="amount_530902"' in selected and 'value="750"' in selected
 
     def test_submit_files_the_new_through_the_pi_door(self, auth_client, newable, lettered,
                                                      filed):
@@ -805,6 +1034,48 @@ class TestThePickers:
         assert 'value="2345678"' in html and 'AGS-2345678' not in html  # the number typed
         assert 'value="2026-01-01"' in html and 'Filled from NSF' in html
 
+    def test_another_agency_looks_up_usaspending_by_exact_number(self, auth_client, monkeypatch):
+        from datetime import date
+        from sam.integration.awards.base import AwardRecord
+        calls = []
+
+        def resolve(source, number, exact=False, providers=None):
+            calls.append((source, number, exact))
+            assert {(p.client.timeout, p.client.max_retries, p.client.budget)
+                    for p in providers} == {(10, 1, 10)}
+            return AwardRecord(provenance='USAspending', title='Dust modeling',
+                               start_date=date(2021, 7, 16), end_date=date(2027, 7, 15))
+        monkeypatch.setattr('sam.integration.awards.registry.resolve_award', resolve)
+        html = auth_client.get('/user/requests/htmx/award-lookup?grant_agency_id=14'
+                               '&grant_number=80NSSC21K1305').get_data(as_text=True)
+        assert calls == [(None, '80NSSC21K1305', True)]
+        assert 'value="Dust modeling"' in html and 'no PI or program officer' in html
+        monkeypatch.setattr('sam.integration.awards.registry.resolve_award',
+                            lambda *a, **k: None)
+        html = auth_client.get('/user/requests/htmx/award-lookup?grant_agency_id=14'
+                               '&grant_number=014421').get_data(as_text=True)
+        assert 'no federal award numbered exactly 014421' in html
+
+    def test_a_slow_usaspending_says_so(self, auth_client, monkeypatch):
+        from sam.integration.awards.base import AwardSourceUnavailable
+
+        def slow(*a, **k):
+            raise AwardSourceUnavailable('timeout')
+        monkeypatch.setattr('sam.integration.awards.registry.resolve_award', slow)
+        html = auth_client.get('/user/requests/htmx/award-lookup?grant_agency_id=14'
+                               '&grant_number=80NSSC21K1305&grant_title=Typed+by+hand'
+                               '&grant_pi_name=A.+PI').get_data(as_text=True)
+        assert 'USAspending did not answer within ten seconds' in html
+        assert 'value="Typed by hand"' in html and 'value="A. PI"' in html   # kept
+
+    def test_a_found_record_replaces_what_was_typed(self, auth_client, monkeypatch):
+        from sam.integration.awards.base import AwardRecord
+        monkeypatch.setattr('sam.integration.awards.registry.resolve_award',
+                            lambda *a, **k: AwardRecord('nsf', title='Ensembles'))
+        html = auth_client.get('/user/requests/htmx/award-lookup?grant_number=2345678'
+                               '&grant_pi_name=Old+PI').get_data(as_text=True)
+        assert 'value="Ensembles"' in html and 'Old PI' not in html
+
     def test_an_unknown_award_says_so(self, auth_client, monkeypatch):
         monkeypatch.setattr('sam.integration.awards.registry.resolve_award', lambda s, n: None)
         html = auth_client.get('/user/requests/htmx/award-lookup?grant_number=9').get_data(
@@ -820,6 +1091,23 @@ class TestThePickers:
         html = auth_client.get('/user/requests/htmx/award-lookup?grant_number=9').get_data(
             as_text=True)
         assert 'NSF is not answering' in html
+
+    def test_the_admin_suggest_finds_users_but_never_the_pi(self, auth_client, newable,
+                                                            other_user):
+        url = '/user/requests/htmx/admin-suggest?q='
+        html = auth_client.get(url + other_user.username).get_data(as_text=True)
+        assert f'data-fk-id="{other_user.user_id}"' in html
+        # Username first, so a role account sharing a person's name reads as itself.
+        assert f'data-fk-label="{other_user.username} (' in html
+        assert other_user.primary_email is None or other_user.primary_email in html
+        assert 'data-fk-label="benkirk (' not in auth_client.get(
+            url + 'benkirk').get_data(as_text=True)
+
+    def test_the_admin_suggest_is_empty_unless_a_new_may_be_filed(self, auth_client,
+                                                                  other_user):
+        html = auth_client.get('/user/requests/htmx/admin-suggest?q=' + other_user.username
+                               ).get_data(as_text=True)
+        assert 'data-fk-id' not in html
 
     def test_the_mnemonic_suggest_needs_two_letters(self, auth_client, session):
         from sam.core.organizations import MnemonicCode

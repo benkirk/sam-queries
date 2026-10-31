@@ -1,28 +1,30 @@
 {#- Page one of a New, into #xrasRequestModalBody: the opportunity (its reveal below), then the
     project's title, abstract, keywords, field of science and an optional project admin.
     Context: opportunity_options, fos_choices [(value, label)], opportunity, rules, sam_state,
-    chosen_mnemonic, post_url, errors, field_errors, form. -#}
+    chosen_mnemonic, chosen_admin, post_url, errors, field_errors, form. -#}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
 {% from 'dashboards/user/partials/request_bits.html' import request_title %}
-{% from 'dashboards/fragments/form_fields.html' import select_field, text_field, textarea_field with context %}
+{% from 'dashboards/fragments/form_fields.html' import fk_search_field, select_field, text_field, textarea_field with context %}
 {{ request_title('New request') }}
 {% call htmx_form(post_url, '#xrasRequestModalBody', 'Next', submit_icon='arrow-right', errors=errors) %}
     <input type="hidden" name="stage" value="request">
     {{ select_field('opportunity_id', 'Opportunity', required=True, id='xrasNewOpportunitySelect',
                     options=opportunity_options,
-                    placeholder='Choose the allocation you are applying for',
+                    placeholder='Choose the type of allocation',
                     default=opportunity.opportunity_id if opportunity else '',
                     hx_get=url_for('user_dashboard.my_request_new_opportunity_fragment'),
                     hx_target='#xrasNewOpportunity', hx_trigger='change', hx_include='this') }}
     <div id="xrasNewOpportunity">{% include 'dashboards/user/fragments/request_new_opportunity_htmx.html' %}</div>
     {{ text_field('title', 'Project title', required=True, maxlength=500, id='xrasNewTitle') }}
     {{ textarea_field('abstract', 'Abstract', required=True, rows=6, id='xrasNewAbstract',
-                      help='What the project will do with the time, for the reviewers.') }}
+                      help='Summarize the research and how the requested resources will advance it for the allocation review team.') }}
     {{ text_field('keywords', 'Keywords', maxlength=500, id='xrasNewKeywords') }}
     {{ select_field('fos_type_id', 'Field of science', required=True, id='xrasNewFos',
                     options=fos_choices,
                     placeholder='Choose one') }}
-    {{ text_field('admin_username', 'Project admin', maxlength=35, id='xrasNewAdmin',
-                  help='A SAM username to manage the project with you. You are its PI.') }}
+    {{ fk_search_field('admin_user_id', 'Project admin', url_for('user_dashboard.my_requests_admin_suggest'),
+                       placeholder='Search SAM users…', selected_label=chosen_admin,
+                       id_prefix='xrasNewAdmin',
+                       help='A SAM user to manage the project with you. You are its PI.') }}
     <div id="xrasNewOpportunityInputs">{% include 'dashboards/user/fragments/request_new_inputs_htmx.html' %}</div>
 {% endcall %}

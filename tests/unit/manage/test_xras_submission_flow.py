@@ -24,6 +24,7 @@ from sam.manage.xras_submission import (
 )
 
 EULA = ('a' * 40, datetime(2026, 10, 29, 9, 0))
+_REAL_PATCH_CARD = flow._patch_card
 
 #: Committed rows are shared across xdist workers and action_id is unique: fresh ids per test.
 _IDS = itertools.count(900_000_000 + (os.getpid() % 10_000) * 1_000)
@@ -74,6 +75,7 @@ def _client(action_id=None):
     client.submit_action.return_value = _ok('submit_action')
     client.delete_action.return_value = _ok('delete_action')
     client.delete_request.return_value = _ok('delete_request')
+    client.get_draft.return_value = {}
     return client
 
 
@@ -280,6 +282,52 @@ class TestTheNew:
         assert {c.args for c in client.reading_draft.call_args_list} == {(rid, 'pi1')}
         attrs = client.update_request_attributes.call_args.kwargs
         assert attrs['isSupportedByGrants'] == 'true' and attrs['request_number'] is None
+
+
+    def _submitted_new(self, factory, client, monkeypatch):
+        rid, aid = next(_IDS), next(_IDS)
+        client.create_request.return_value = _ok(
+            'create_request', request_id=rid, action_id=aid, response={'requestId': rid})
+        client.add_role.return_value = _ok('add_role')
+        client.update_request_attributes.return_value = _ok('update_attributes')
+        patched = []
+        monkeypatch.setattr(flow, '_patch_card', lambda f, view: patched.append(dict(view)))
+        draft = ActionRequest(action_type='New', opportunity_id=532220, title='T', abstract='A')
+        out = flow.request_action(factory, draft, actor='pi1', xa_user='pi1', eula=EULA,
+                                  client=client)
+        return out, rid, patched
+
+    def test_the_submit_learns_the_number_xras_minted(self, factory, monkeypatch):
+        client = _client()
+        client.get_draft.return_value = {'requestNumber': 'NCAR4100'}
+        out, rid, patched = self._submitted_new(factory, client, monkeypatch)
+        assert out.state == 'submitted'
+        assert _row(factory, out.submission_id).request_number == 'NCAR4100'
+        client.get_draft.assert_called_once_with(rid, xa_user='pi1')
+        assert patched[-1]['request_number'] == 'NCAR4100'
+
+    def test_a_failed_read_leaves_the_submit_standing(self, factory, monkeypatch):
+        client = _client()
+        client.get_draft.side_effect = XrasSourceUnavailable('timeout')
+        out, _, _ = self._submitted_new(factory, client, monkeypatch)
+        row = _row(factory, out.submission_id)
+        assert (row.state, row.request_number) == ('submitted', None)
+
+
+class TestTheCardPatch:
+
+    def test_a_submit_inserts_and_an_abort_only_patches(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr('sam.manage.xras_remediation.refresh_index_entry',
+                            lambda number, **kw: calls.append((number, kw)))
+        patch = _REAL_PATCH_CARD                        # the autouse fixture stubs flow's
+        patch(None, {'request_number': 'NCAR4100', 'state': 'submitted', 'action_type': 'New'})
+        patch(None, {'request_number': 'UHSS0001', 'state': 'submitted',
+                     'action_type': 'Extension'})
+        patch(None, {'request_number': 'NCAR4100', 'state': 'aborted', 'action_type': 'New'})
+        patch(None, {'request_number': None, 'state': 'submitted', 'action_type': 'New'})
+        assert [(n, kw['insert'], kw['pending_push']) for n, kw in calls] == [
+            ('NCAR4100', True, True), ('UHSS0001', True, False), ('NCAR4100', False, None)]
 
 
 class TestDocuments:

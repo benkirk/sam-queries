@@ -1710,3 +1710,46 @@ class TestAnOverlappingPrimaryStatusDoesNotDuplicate:
 
         numbers = [r['request_number'] for r in load_requests_index()['rows']]
         assert sorted(numbers) == ['NCAR0001', 'NCAR0002']
+
+
+class TestOwnFilings:
+    """SAM's filings still awaiting XRAS are refreshed every slot, inserted when absent."""
+
+    def _filing(self, session, action_type, state, **keys):
+        from sam.integration.xras_submission import XrasSubmission
+        row = XrasSubmission.create(session, action_type=action_type, created_by='pi9',
+                                    xa_user='pi9', payload={}, eula_sha='a' * 40,
+                                    eula_accepted_at=datetime.now())
+        row.set_keys(**keys)
+        for step in {'created': ('created',), 'submitted': ('created', 'submitted')}[state]:
+            row.advance(step)
+        return row
+
+    def test_open_filings_are_refreshed_and_a_missing_number_comes_from_the_run(
+            self, ctx, session, monkeypatch):
+        calls = []
+        monkeypatch.setattr('sam.manage.xras_remediation.refresh_index_entry',
+                            lambda number, **kw: calls.append((number, kw)) or True)
+        self._filing(session, 'New', 'submitted', request_id=1_439_868,
+                     request_number='NCAR4098')
+        self._filing(session, 'New', 'submitted', request_id=1_439_900)    # read failed
+        self._filing(session, 'Extension', 'submitted', request_id=1_439_571,
+                     request_number='UHSS0003')
+        self._filing(session, 'Extension', 'created', request_id=1_439_572,
+                     request_number='UHSS0004')                             # not submitted
+        payloads = [{'requestId': 1_439_900, 'requestNumber': 'NCAR4101'}]
+
+        count = mod._refresh_own_filings(ctx(), object(), session, payloads,
+                                         since=date.today() - timedelta(days=1))
+        assert count == 3
+        assert [(n, kw['insert'], kw['pending_push']) for n, kw in calls] == [
+            ('NCAR4098', True, True), ('NCAR4101', True, True), ('UHSS0003', True, False)]
+
+    def test_an_old_filing_is_left_to_the_full_sweep(self, ctx, session, monkeypatch):
+        calls = []
+        monkeypatch.setattr('sam.manage.xras_remediation.refresh_index_entry',
+                            lambda number, **kw: calls.append(number) or True)
+        self._filing(session, 'New', 'submitted', request_id=1, request_number='NCAR0001')
+        assert mod._refresh_own_filings(ctx(), object(), session, [],
+                                        since=date.today() + timedelta(days=1)) == 0
+        assert calls == []

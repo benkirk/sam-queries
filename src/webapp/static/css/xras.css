@@ -433,3 +433,67 @@
 .xras-candidate:has(.form-check-input:checked) .xras-candidate-check {
     visibility: visible;
 }
+
+/* ===================================================================
+   My Requests amounts — Selected over Available (request-amounts.js)
+   =================================================================== */
+
+.amounts-table .amount-row-available {
+    cursor: pointer;
+}
+
+.amounts-table .amount-row-available > td,
+.amounts-table .amount-row-available .text-muted {
+    color: var(--text-tertiary) !important;
+}
+
+.amounts-table .amount-row-available:hover > td,
+.amounts-table .amount-row-available:focus-within > td {
+    color: var(--text-primary) !important;
+    background-color: var(--surface-tertiary);
+}
+
+.amounts-table .amount-row-available .amount-input,
+.amounts-table .amount-row-available .amount-yes,
+.amounts-table .amount-row-available .amount-remove,
+.amounts-table .amount-row:not(.amount-row-available) .amount-pick {
+    display: none;
+}
+
+.amount-pick {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: inherit;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+}
+
+@keyframes amount-arrive {
+    from { background-color: var(--surface-accent); }
+    to { background-color: transparent; }
+}
+
+.amounts-table .amount-row-arrived > td {
+    animation: amount-arrive 0.6s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .amounts-table .amount-row-arrived > td {
+        animation: none;
+    }
+}
+
+/* My Requests: XRAS's comments on an action keep their line breaks. */
+.request-notes dt {
+    font-weight: 600;
+}
+
+.request-notes .request-note {
+    white-space: pre-line;
+    margin-bottom: 0.5rem;
+}
+
+.request-notes .request-note:last-child {
+    margin-bottom: 0;
+}

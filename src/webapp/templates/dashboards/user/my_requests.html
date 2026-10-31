@@ -12,8 +12,12 @@
 {{ super() }}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/xras.css') }}">
 {% endblock %}
+{% block extra_js %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/request-amounts.js') }}"></script>
+{% endblock %}
 
-{% set _ROUTES = {'xras': 'Through XRAS', 'staff': 'CISL staff'} %}
+{% set _ROUTES = {'xras': 'XRAS', 'staff': 'CISL staff'} %}
 
 {% block user_content %}
 <div class="mb-3">
@@ -45,20 +49,24 @@
                     <th class="col-shrink">Request</th>
                     <th class="col-shrink">Action</th>
                     <th>Status</th>
-                    <th class="col-shrink d-none d-md-table-cell">Date</th>
+                    <th class="col-shrink d-none d-md-table-cell">Filed</th>
                     <th class="col-shrink" aria-label="Actions"></th>
                 </tr>
             </thead>
             <tbody>
             {% for r in requests %}
+                {% set nid = 'req-note-' ~ loop.index %}
+                {% set has_notes = r.request_number and r.action_id and r.readout.label != 'Discarded' %}
                 <tr>
-                    <td class="col-shrink font-monospace text-nowrap">{{ r.request_number or 'New' }}</td>
+                    <td class="col-shrink font-monospace text-nowrap">
+                        {%- if has_notes %}{{ drill_toggle(nid ~ '-row', label='Show comments') }}{% endif -%}
+                        {%- if r.request_number %}{{ r.request_number }}{% else %}<span class="text-muted" title="XRAS numbers a new request when it is submitted; SAM shows the project code once it is created">—</span>{% endif %}</td>
                     <td class="col-shrink">{{ type_label(r.action_type) }}</td>
                     <td>{{ readout_badge(r.readout) }}
                         {% if r.readout.when and r.readout.tone == 'success' %}
                         <span class="small text-muted ms-1">{{ r.readout.when | fmt_date }}</span>
                         {% endif %}
-                        {% if r.kind == 'filed' %}<span class="small text-muted ms-1">filed through SAM</span>{% endif %}
+                        {% if r.kind == 'filed' %}<span class="small text-muted ms-1">via SAM</span>{% endif %}
                     </td>
                     <td class="col-shrink text-nowrap small text-muted d-none d-md-table-cell">{{ r.when | fmt_date }}</td>
                     <td class="text-end text-nowrap">
@@ -84,6 +92,10 @@
                     {%- endif %}
                     </td>
                 </tr>
+                {% if has_notes %}
+                {{ lazy_drill_row(nid, url_for('user_dashboard.my_request_notes', number=r.request_number, action_id=r.action_id),
+                                  5, 'Asking XRAS for its comments', persist=false) }}
+                {% endif %}
             {% endfor %}
             </tbody>
         </table>
@@ -119,7 +131,8 @@
                     <th class="col-shrink">Project</th>
                     <th>Title</th>
                     <th class="col-shrink d-none d-md-table-cell">Type</th>
-                    <th class="col-shrink">Requests&nbsp;go</th>
+                    <th class="col-shrink d-none d-md-table-cell">Filed&nbsp;through</th>
+                    {% if submit_configured %}<th class="col-shrink text-end">Request</th>{% endif %}
                 </tr>
             </thead>
             <tbody>
@@ -128,20 +141,26 @@
                 {% set is_open = project.projcode == open_projcode %}
                 <tr>
                     <td class="col-shrink text-nowrap">
-                        {{ drill_toggle(rid ~ '-row', label='Show the actions', expanded=is_open) }}{{ project_link(project.projcode, True) }}
+                        {{ drill_toggle(rid ~ '-row', label='Show what you can request', expanded=is_open) }}{{ project_link(project.projcode, True) }}
                     </td>
                     <td class="cell-truncate" title="{{ project.title }}">{{ project.title }}</td>
                     <td class="col-shrink text-nowrap small d-none d-md-table-cell">{{ project.allocation_type.allocation_type if project.allocation_type else '—' }}</td>
-                    <td class="col-shrink text-nowrap small">
-                        {%- if route.startswith('email:') %}By email{% else %}{{ _ROUTES.get(route, route) }}{% endif -%}
+                    <td class="col-shrink text-nowrap small d-none d-md-table-cell">
+                        {%- if route.startswith('email:') %}Email{% else %}{{ _ROUTES.get(route, route) }}{% endif -%}
                     </td>
+                    {% if submit_configured %}
+                    <td class="text-end text-nowrap"><span class="row-actions" id="req-offers-{{ project.projcode }}">
+                        {%- if route == 'xras' %}<span class="spinner-border spinner-border-sm text-secondary" role="status" aria-label="Asking XRAS"></span>{% endif -%}
+                    </span></td>
+                    {% endif %}
                 </tr>
                 {{ lazy_drill_row(rid, url_for('user_dashboard.my_requests_actions', projcode=project.projcode),
-                                  4, 'Asking XRAS what this project can request', persist=false, open=is_open) }}
+                                  5 if submit_configured else 4, 'Asking XRAS what this project can request', persist=false, open=is_open) }}
             {% endfor %}
             </tbody>
         </table>
         </div>
+        {% if submit_configured %}<div hx-get="{{ url_for('user_dashboard.my_requests_offers') }}" hx-trigger="load" hx-swap="none"></div>{% endif %}
     {% endif %}
     </div>
 </div>

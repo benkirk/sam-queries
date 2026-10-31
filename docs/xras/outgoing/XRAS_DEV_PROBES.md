@@ -32,7 +32,7 @@ so only the two that answer are shown.
 
 | Endpoint family | `submit` | `report` | Notes |
 |---|---|---|---|
-| `announcements`, `funding_agencies`, `opportunities` (all, list, by id), `panels`, `resources`, `types/*`, rule book `required_fields` | 200 | 200 | `types/grants` is empty, as in production. NSF is `fundingAgencyId` 1 |
+| `announcements`, `funding_agencies`, `opportunities` (all, list, by id), `panels`, `resources`, `types/*`, rule book `required_fields` | 200 | 200 | `types/grants` is empty, as in production. `funding_agencies`: 19 rows, identical on production (read 2026-10-30): NSF 1 first, Other 19 last; the grant form's agency picker reads it |
 | `people/<u>`, `search/people`, `permissions/<u>` | 200 | 200 | not proxied to SAM (no action-log row) |
 | `orcid/check_status/<u>` | 200 | 401 | deprecated |
 | `projects` | 404 | 404 | SAM's own 404 envelope, via the proxy (§ 1) |

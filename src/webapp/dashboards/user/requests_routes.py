@@ -21,8 +21,9 @@ from flask import (
 )
 from flask_login import current_user, login_required
 
-from sam.dates import add_months, first_of_next_month
+from sam.dates import add_months, first_of_next_month, parse_wire_date
 from sam.integration.xras_api import XrasSourceUnavailable
+from sam.integration.xras_api.lookups import funding_agency_choices
 from sam.queries.xras_my_requests import led_projects, my_requests
 from sam.schemas.forms import (
     XrasExtensionRequestForm,
@@ -31,7 +32,13 @@ from sam.schemas.forms import (
     XrasSupplementRequestForm,
 )
 from sam.schemas.forms.xras_submission import GRANT_INPUTS
-from sam.xras.routing import action_offers, request_routing, route_for
+from sam.xras.routing import (
+    action_offers,
+    inline_offers,
+    offer_candidates,
+    request_routing,
+    route_for,
+)
 from webapp.api.access_control import require_project_permission
 from webapp.auth.impersonation import acting_username, is_impersonating
 from webapp.extensions import db
@@ -129,6 +136,53 @@ def my_requests_actions(project):
 
 # the Extension, Supplement and Renewal forms
 
+@bp.route('/requests/htmx/offers')
+@login_required
+def my_requests_offers():
+    """Every project row's request buttons in one response (out-of-band swaps), at most one XRAS read."""
+    config = _config()
+    if not config.submit_configured:
+        return ''
+    projects = led_projects(db.session, current_user)
+    index_rows = _index_rows()
+    available = None
+    # The read feeds the Renewal check alone: a lead of staff-routed projects, or a site with
+    # Renewal off, gets Extend and Supplement with no XRAS round trip.
+    if config.submit_allows('Renewal') and offer_candidates(
+            projects, current_user.username, index_rows, armed=True):
+        try:
+            available = admin_client(config).available_action_requests(current_user.username)
+        except XrasSourceUnavailable as exc:
+            current_app.logger.warning('my requests inline offers: %s', exc)
+    offers = inline_offers(db.session, projects, current_user.username, index_rows,
+                           available, config.submit_allows, armed=True)
+    return render_template('dashboards/user/fragments/request_offers_htmx.html',
+                           projects=projects, offers=offers,
+                           form_types={v: k for k, v in _FORM_TYPES.items()})
+
+
+@bp.route('/requests/<number>/notes')
+@login_required
+def my_request_notes(number):
+    """The comments XRAS holds on one action of a row the user sees, read live on first open."""
+    from sam.integration.xras_api.comments import find_action, normalize_comment
+    action_id = request.args.get('action_id', type=int)
+    # The read client does not carry the PI as XA-USER, so SAM decides who may read the line.
+    if action_id is None or not any(
+            r['request_number'] == number and r['action_id'] == action_id
+            for r in my_requests(db.session, current_user.username, _index_rows())):
+        abort(404)
+    try:
+        action = find_action(read_client(_config()).get_request_family_by_number(number),
+                             action_id) or {}
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('my requests notes %s/%s: %s', number, action_id, exc)
+        return render_template('dashboards/user/fragments/request_notes_htmx.html', outage=True)
+    return render_template('dashboards/user/fragments/request_notes_htmx.html', outage=False,
+                           approver=normalize_comment(action.get('adminComments')),
+                           yours=normalize_comment(action.get('userComments')))
+
+
 def _message(title, message, variant='warning'):
     return render_template(_MESSAGE, title=title, message=message, variant=variant)
 
@@ -185,6 +239,7 @@ class _RequestForm(HtmxFormHandler):
             raise FormError(decision.message)
         self._ctx = dict(project=self.project, action_type=self.action_type,
                          decision=decision, eula_sha=eula_sha(), grant_inputs=list(GRANT_INPUTS),
+                         grant_agencies=funding_agency_choices(),
                          post_url=request.path, **self._type_context(config, decision))
         return self._ctx
 
@@ -222,7 +277,23 @@ class _RequestForm(HtmxFormHandler):
                 'documents': [d for d in rules.documents if d.required],
                 'default_begin': begin, 'default_end': end,
                 'line_abstract': (decision.line or {}).get('abstract') or '',
+                'grant_defaults': self._line_grant(decision.line),
                 **self._with_limits(config, resources)}
+
+    @staticmethod
+    def _line_grant(line):
+        """The grant fieldset's values from the line's first numbered grant; XRAS spells the agency by name."""
+        grant = next((g for g in (line or {}).get('grants') or ()
+                      if isinstance(g, dict) and (g.get('grantNumber') or '').strip()), None)
+        if grant is None:
+            return None
+        agencies = {name: agency_id for agency_id, name in funding_agency_choices()}
+        values = {name: grant.get(wire) for name, wire in GRANT_INPUTS.items()
+                  if name != 'grant_agency_id'}
+        values['grant_agency_id'] = agencies.get(grant.get('fundingAgency'))
+        for name in ('grant_begin_date', 'grant_end_date'):
+            values[name] = parse_wire_date(values[name])
+        return {k: v for k, v in values.items() if v}
 
     def _with_limits(self, config, resources, type_name=None):
         """*resources* with their SAM resource and type limit, through the catalog key."""
@@ -330,14 +401,18 @@ class _RequestForm(HtmxFormHandler):
         """``{field: [message]}`` for the grant fields the rule book requires and the form lacks."""
         if not data['grant_number']:
             return {'grant_number': ['This request needs a supporting grant.']}
-        wire_to_input = {w: n for n, w in GRANT_INPUTS.items()}
-        return {wire_to_input[w]: ['Required for the grant.'] for w in rules.grant_fields
-                if w in wire_to_input and data.get(wire_to_input[w]) is None}
+        wire_to_input = {w: n for n, w in GRANT_INPUTS.items() if n != 'grant_agency_id'}
+        errors = {wire_to_input[w]: ['Required for the grant.'] for w in rules.grant_fields
+                  if w in wire_to_input and data.get(wire_to_input[w]) is None}
+        agency = data.get('grant_agency_id')
+        if agency is not None and agency not in dict(funding_agency_choices()):
+            errors['grant_agency_id'] = ['Choose one of the agencies listed.']
+        return errors
 
     @staticmethod
     def _grants(data):
         from sam.integration.xras_api.vocabulary import NSF_FUNDING_AGENCY_ID
-        return ((dict(data['grant'], fundingAgencyId=NSF_FUNDING_AGENCY_ID),)
+        return ((dict({'fundingAgencyId': NSF_FUNDING_AGENCY_ID}, **data['grant']),)
                 if data.get('grant') else ())
 
     @staticmethod
@@ -411,7 +486,7 @@ _NEW_AMOUNTS = 'dashboards/user/fragments/request_new_amounts_htmx.html'
 _GRANT = 'dashboards/user/fragments/request_grant_htmx.html'
 #: The page-one inputs a later page carries in hidden fields, and whose errors land on page one.
 _DESCRIBE_FIELDS = ('opportunity_id', 'title', 'abstract', 'keywords', 'fos_type_id',
-                    'admin_username', 'mnemonic_code_id') + tuple(GRANT_INPUTS)
+                    'admin_user_id', 'mnemonic_code_id') + tuple(GRANT_INPUTS)
 
 
 def _new_opportunities(config):
@@ -458,6 +533,12 @@ def _mnemonic_label(mnemonic_code_id):
     return code.code if code is not None else ''
 
 
+def _user_label(user_id):
+    from sam.core.users import User
+    user = db.session.get(User, user_id) if user_id else None
+    return f'{user.username} ({user.display_name})' if user is not None else ''
+
+
 class _NewRequestForm(_RequestForm):
     """A New through describe -> request -> review -> submit; nothing reaches XRAS before submit."""
 
@@ -487,6 +568,8 @@ class _NewRequestForm(_RequestForm):
                          fos_choices=[(r['fosTypeId'], r.get('fosName')) for r in fos],
                          chosen_mnemonic=_mnemonic_label(request.values.get(
                              'mnemonic_code_id', type=int)),
+                         chosen_admin=_user_label(request.values.get('admin_user_id', type=int)),
+                         grant_agencies=funding_agency_choices(),
                          carry_fields=_DESCRIBE_FIELDS,
                          **_opportunity_context(config, chosen))
         self._ctx.update(self._amounts_context(config))
@@ -512,6 +595,7 @@ class _NewRequestForm(_RequestForm):
             return dict(project=None, action_type='New', decision=None, opportunities=[],
                         opportunity_options=[], fos_options=[], fos_choices=[],
                         opportunity=None, rules=None, sam_state=None, chosen_mnemonic='',
+                        chosen_admin='',
                         carry_fields=_DESCRIBE_FIELDS, resources=[], documents=[],
                         eula_sha=None, post_url=url_for('user_dashboard.my_request_new_post'))
 
@@ -525,6 +609,7 @@ class _NewRequestForm(_RequestForm):
     def clean(self, data):
         from marshmallow import ValidationError
         ctx = self.gate()
+        data['admin_username'] = None
         if data['stage'] == 'describe':
             return data
         errors = self._describe_errors(data, ctx)
@@ -549,15 +634,16 @@ class _NewRequestForm(_RequestForm):
                                         or 'XRAS does not take a new request from you here.']
         if data['fos_type_id'] not in {r.get('fosTypeId') for r in ctx['fos_options']}:
             errors['fos_type_id'] = ['Choose the field of science.']
-        admin = data['admin_username']
-        if admin:
-            found = User.get_by_username(db.session, admin)
-            if found is None or not found.is_active:
-                errors['admin_username'] = [f'SAM has no active user {admin}.']
-            elif admin.casefold() == current_user.username.casefold():
-                errors['admin_username'] = ['You are the PI; name someone else, or no one.']
-            elif not self._in_xras(admin):
-                errors['admin_username'] = [f'{admin} has no XRAS account yet.']
+        if data['admin_user_id']:
+            admin = db.session.get(User, data['admin_user_id'])
+            if admin is None or not admin.is_active:
+                errors['admin_user_id'] = ['Choose an active SAM user.']
+            elif admin.username.casefold() == current_user.username.casefold():
+                errors['admin_user_id'] = ['You are the PI; name someone else, or no one.']
+            elif not self._in_xras(admin.username):
+                errors['admin_user_id'] = [f'{admin.username} has no XRAS account yet.']
+            else:
+                data['admin_username'] = admin.username
         if data['mnemonic_code_id']:
             code = db.session.get(MnemonicCode, data['mnemonic_code_id'])
             if code is None or not code.is_active:
@@ -586,7 +672,8 @@ class _NewRequestForm(_RequestForm):
                    None)
         opportunity = ctx['opportunity']
         line = new_request_line(data['draft'], pi_username=current_user.username,
-                                opportunity=opportunity, fos=fos)
+                                opportunity=opportunity, fos=fos,
+                                agency_names=dict(funding_agency_choices()))
         verdict = preflight_draft(
             db.session, line, data['draft'], resource_keys=ctx['resource_keys'],
             opportunities={opportunity['opportunity_id']: {
@@ -667,6 +754,22 @@ def _search_mnemonic_codes(q, active_only):
     return search_mnemonic_codes(db.session, q, limit=10)
 
 
+def _search_admins(q, active_only):
+    from sam.queries.users import search_users_by_pattern
+    if not _config().submit_allows('New'):
+        return []
+    return search_users_by_pattern(db.session, q, limit=15, active_only=True,
+                                   exclude_user_ids=[current_user.user_id])
+
+
+register_typeahead(
+    bp, rule='/requests/htmx/admin-suggest', endpoint='my_requests_admin_suggest',
+    permission=None,                    # any user who may file a New picks its admin
+    search=_search_admins,
+    template='dashboards/user/fragments/request_admin_results_htmx.html',
+    ctx_key='users')
+
+
 register_typeahead(
     bp, rule='/requests/htmx/mnemonic-suggest', endpoint='my_requests_mnemonic_suggest',
     permission=None,                    # any user may pick the letters for a New
@@ -678,27 +781,49 @@ register_typeahead(
 @bp.route('/requests/htmx/award-lookup')
 @login_required
 def my_requests_award_lookup():
-    """The grant fieldset, filled from NSF's record of the number typed."""
+    """The grant fieldset, filled from NSF's record, or USAspending's for another agency."""
     from sam.integration.awards.base import AwardSourceUnavailable
-    from sam.integration.awards.registry import resolve_award
+    from sam.integration.awards.client import AwardHttpClient
+    from sam.integration.awards.registry import build_providers, resolve_award
+    from sam.integration.xras_api.vocabulary import NSF_FUNDING_AGENCY_ID
     number = (request.args.get('grant_number') or '').strip()
+    agency = request.args.get('grant_agency_id', type=int) or NSF_FUNDING_AGENCY_ID
     required = [w for w in (request.args.get('grant_required') or '').split(',') if w]
+    nsf = agency == NSF_FUNDING_AGENCY_ID
+    source = 'NSF' if nsf else 'USAspending'
     found, note = {}, None
     try:
-        record = resolve_award('NSF', number) if number else None
+        # Exact numbers only away from NSF: USAspending's keyword fallback can return another award.
+        # USAspending answered the cluster in 1-16 s (2026-10-31): ten seconds in all, as the
+        # help says.
+        record = (resolve_award('NSF', number) if nsf else resolve_award(
+            None, number, exact=True,
+            providers=build_providers(AwardHttpClient(timeout=10, max_retries=1, budget=10)))
+        ) if number else None
     except AwardSourceUnavailable:
-        record, note = None, 'NSF is not answering. Type the grant\'s details, or try again.'
+        record, note = None, ('NSF is not answering. Type the grant\'s details, or try again.' if nsf
+                              else 'USAspending did not answer within ten seconds. Type the '
+                                   'grant\'s details, or try again.')
     if record is not None:
         found = {'grant_title': record.title, 'grant_begin_date': record.start_date,
                  'grant_end_date': record.end_date,
                  'grant_pi_name': record.pi.name if record.pi else None,
                  'grant_officer_name': record.monitor.name if record.monitor else None,
                  'grant_officer_email': record.monitor.email if record.monitor else None}
-        note = 'Filled from NSF. Check each field, and type any NSF left blank.'
+        note = (f'Filled from {source}. Check each field, and type any {source} left blank.' if nsf
+                else 'Filled from USAspending: the title and dates. It has no PI or program '
+                     'officer; type them.')
     elif number and note is None:
-        note = f'NSF has no award {number}. Check the number, or type the details.'
-    values = {'grant_number': number, **{k: v for k, v in found.items() if v}}
-    return render_template(_GRANT, form=values, required=required, note=note, field_errors={})
+        note = (f'NSF has no award {number}. Check the number, or type the details.' if nsf
+                else f'USAspending has no federal award numbered exactly {number}. Check the '
+                     'number, or type the details.')
+    # No record: keep what the user typed. A found record replaces it whole, so no stale PI
+    # rides along.
+    kept = found if record is not None else {k: request.args.get(k) for k in GRANT_INPUTS}
+    values = {**{k: v for k, v in kept.items() if v},
+              'grant_agency_id': agency, 'grant_number': number}
+    return render_template(_GRANT, form=values, required=required, note=note, field_errors={},
+                           grant_agencies=funding_agency_choices())
 
 
 # a stopped row: resume or discard

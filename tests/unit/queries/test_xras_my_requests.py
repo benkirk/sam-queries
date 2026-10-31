@@ -27,21 +27,21 @@ class TestActionReadout:
 
     @pytest.mark.parametrize('status, label', [
         ('Submitted', 'In review'), ('Under Review', 'In review'),
-        ('Approved', 'Approved, being applied'), ('Rejected', 'Rejected')])
+        ('Approved', 'Approved, awaiting post'), ('Rejected', 'Rejected')])
     def test_xras_status_without_a_post(self, status, label):
         assert action_readout(status).label == label
 
     def test_the_sweep_finding_it_applied_reads_applied(self):
         assert action_readout('Approved', push_state='applied_inferred').label == 'Applied'
         assert action_readout('Approved', push_state='pending').label == \
-            'Approved, being applied'
+            'Approved, awaiting post'
 
     def test_an_approval_before_the_repoint_was_legacy_sams(self):
         assert action_readout('Approved', entered=date(2025, 1, 1)).label == 'Approved'
 
     @pytest.mark.parametrize('status, label', [
-        ('processed', 'Applied'), ('manual', 'Being reviewed by CISL'),
-        ('failed', 'Being reviewed by CISL'), ('received', 'Approved, being applied')])
+        ('processed', 'Applied'), ('manual', 'In review by CISL'),
+        ('failed', 'In review by CISL'), ('received', 'Approved, in processing')])
     def test_the_log_row_decides_once_xras_posted(self, status, label):
         when = datetime(2026, 10, 1)
         out = action_readout('Approved', _log(status, when))
@@ -114,6 +114,27 @@ class TestMyRequests:
                                         xa_user='pi9', payload={}, **EULA)
         rows = {r['readout'].label: r['request_number'] for r in my_requests(session, 'pi9', None)}
         assert rows == {'Applied': active_project.projcode, 'Not submitted': None}
+
+    def test_a_submitted_new_takes_the_number_the_sweep_found(self, session):
+        filed = XrasSubmission.create(session, action_type='New', created_by='pi9',
+                                      xa_user='pi9', payload={}, **EULA)
+        filed.set_keys(request_id=1_439_868)
+        filed.advance('created').advance('submitted')
+        index = [{'request_number': 'NCAR4098', 'request_id': 1_439_868,
+                  'roster': [{'username': 'someone'}], 'actions': []}]
+        rows = my_requests(session, 'pi9', index)
+        assert [r['request_number'] for r in rows] == ['NCAR4098']
+
+    def test_an_applied_new_names_its_project_over_its_minted_number(self, session,
+                                                                      active_project):
+        row = XrasSubmission.create(session, action_type='New', created_by='pi9',
+                                    xa_user='pi9', payload={}, **EULA)
+        row.set_keys(request_number='NCAR4098')
+        row.advance('created').advance('submitted')
+        assert [r['request_number'] for r in my_requests(session, 'pi9', None)] == ['NCAR4098']
+        row.mark_applied(active_project.project_id)
+        assert [r['request_number'] for r in my_requests(session, 'pi9', None)] == [
+            active_project.projcode]
 
     def test_an_open_row_sorts_first(self, session):
         old = XrasSubmission.create(session, action_type='Extension', created_by='pi9',

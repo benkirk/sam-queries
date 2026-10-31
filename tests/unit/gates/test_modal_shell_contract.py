@@ -211,6 +211,8 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # on the page (it opens the shell); the review swaps inside the open body, no toggle.
     'dashboards/user/fragments/request_actions_htmx.html': [
         'xrasRequestModal', 'xrasRequestModalBody'],
+    'dashboards/user/fragments/request_offers_htmx.html': [
+        'xrasRequestModal', 'xrasRequestModalBody'],
     'dashboards/user/fragments/request_review_htmx.html': ['xrasRequestModalBody'],
     'dashboards/user/fragments/request_new_amounts_htmx.html': ['xrasRequestModalBody'],
     'dashboards/user/fragments/request_resume_htmx.html': ['xrasRequestModalBody'],

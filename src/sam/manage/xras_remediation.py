@@ -167,7 +167,7 @@ def admin_client(client=None):
 
 def refresh_index_entry(request_number: str, *, reader=None,
                          session_factory=None, index_key: Optional[str] = None,
-                         pending_push: Optional[bool] = None) -> bool:
+                         pending_push: Optional[bool] = None, insert: bool = False) -> bool:
     """Re-read one request and patch its snapshot entry. ``True`` if patched.
 
     With *session_factory* the preflight is re-run too. Without it the entry
@@ -187,6 +187,7 @@ def refresh_index_entry(request_number: str, *, reader=None,
 
     *index_key* patches the row stored under another number: a rename reads the
     family by its new number and replaces the row keyed by the old one.
+    *insert* adds the row when the index lacks it (``patch_requests_index``).
 
     Never raises. Every caller reaches here having already completed and
     recorded an irreversible write.
@@ -219,7 +220,7 @@ def refresh_index_entry(request_number: str, *, reader=None,
                                     family=family)
         if entry is None:
             return False
-        return patch_requests_index(key, entry)
+        return patch_requests_index(key, entry, insert=insert)
     except Exception as exc:                            # noqa: BLE001
         logger.warning('xras remediation: could not refresh the card entry '
                        'for %s (%s); it will lag until the next sweep',

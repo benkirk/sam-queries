@@ -26,7 +26,8 @@ SUBMISSION_STAGES = ('edit', 'review', 'submit')
 NEW_REQUEST_STAGES = ('describe', 'request', 'review', 'submit')
 
 #: Form input -> the wire name ``add_grant`` sends.
-GRANT_INPUTS = {'grant_number': 'grantNumber', 'grant_title': 'title',
+GRANT_INPUTS = {'grant_agency_id': 'fundingAgencyId', 'grant_number': 'grantNumber',
+                'grant_title': 'title',
                 'grant_pi_name': 'piName', 'grant_begin_date': 'beginDate',
                 'grant_end_date': 'endDate', 'grant_officer_name': 'programOfficerName',
                 'grant_officer_email': 'programOfficerEmail'}
@@ -86,7 +87,7 @@ def _parse_amounts(raw: dict) -> dict:
     if errors:
         raise ValidationError(errors)
     if not amounts:
-        raise ValidationError('Ask for an amount on at least one resource.')
+        raise ValidationError('Add at least one resource.')
     return amounts
 
 
@@ -117,6 +118,7 @@ class XrasGrantMixin(HtmxFormSchema):
     Which fields the type requires is the rule book's, so the handler checks them.
     """
 
+    grant_agency_id = f.Int(load_default=None)     # XRAS's fundingAgencyId; the handler checks it
     grant_number = f.Str(load_default=None, validate=v.Length(max=64))
     grant_title = f.Str(load_default=None, validate=v.Length(max=XRAS_TITLE_MAX))
     grant_pi_name = f.Str(load_default=None, validate=v.Length(max=255))
@@ -170,7 +172,7 @@ class XrasNewRequestForm(XrasGrantMixin, XrasAgreementMixin):
     keywords = f.Str(load_default=None, validate=v.Length(max=500))
     fos_type_id = f.Int(required=True,
                         error_messages={'required': 'Choose the field of science.'})
-    admin_username = f.Str(load_default=None, validate=v.Length(max=35))
+    admin_user_id = f.Int(load_default=None)
     mnemonic_code_id = f.Int(load_default=None)
     begin_date = f.Date(load_default=None)
     end_date = f.Date(load_default=None)
@@ -181,7 +183,6 @@ class XrasNewRequestForm(XrasGrantMixin, XrasAgreementMixin):
         data['title'] = clean_text(data.get('title'))
         data['abstract'] = clean_text(data.get('abstract'))
         data['keywords'] = strip_or_none(data.get('keywords'))
-        data['admin_username'] = strip_or_none(data.get('admin_username'))
         errors = {}
         if not data['title']:
             errors['title'] = ['The project needs a title.']

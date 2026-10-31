@@ -915,3 +915,17 @@ tr.collapsing {
 .modal-footer:empty {
     display: none;
 }
+
+/* A [data-busy] submit button's spinner (form-helpers.js), or an htmx button's while its own
+   request runs, replaces its icon. */
+.btn .busy-spinner,
+.btn.is-busy .busy-icon,
+.btn.htmx-request .busy-icon {
+    display: none;
+}
+
+.btn.is-busy .busy-spinner,
+.btn.htmx-request .busy-spinner {
+    display: inline-block;
+    margin-right: 0.25rem;
+}
