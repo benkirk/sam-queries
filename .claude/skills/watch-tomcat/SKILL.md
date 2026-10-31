@@ -63,13 +63,14 @@ they line up with `cirrus_watch.sh` and the ingress probe reports.
 (prints client, user agent and families: label it); **MISSING** when a label had
 ≥ 5 calls in last week's window and none now, 07:00-19:00 Mountain; **refused**
 when a mapped caller gets 401/403 (key revoked or rotated); **FAIL** for any
-authenticated `/api/xras/` call (XRAS cut over 2026-08-24); WARN for a `retired`
+authenticated call to a `cutover` family (`xras/` 2026-08-24, `heuv/` 2026-10-23), WARN
+unauthenticated, `self` and `watch` exempt; WARN for a `retired`
 family answering. A 401 from an unmapped client is a scanner and is never NEW.
 
 Volume is weekday-shaped, which is why every comparison is the same weekday.
 Baselines (2026-10-02 to 10-09): `ported` ~950-1,130 calls a day (ssg
 fairShareTree ~500, wallClockExemption ~300, queue ~200, ldapsync 5-70),
-`porting` (HEUV) ~30-60 on weekends, ~140-170 on weekdays. `sam.log` logged 27
+HEUV ~30-60 on weekends, ~140-170 on weekdays before its cutover, 0 by 10-30. `sam.log` logged 27
 ERRORs on Saturday 10-10 (NPEs behind `ApiController`), so the window threshold
 is the signal, not a daily count.
 
