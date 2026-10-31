@@ -32,7 +32,13 @@ from sam.schemas.forms import (
     XrasSupplementRequestForm,
 )
 from sam.schemas.forms.xras_submission import GRANT_INPUTS
-from sam.xras.routing import action_offers, inline_offers, request_routing, route_for
+from sam.xras.routing import (
+    action_offers,
+    inline_offers,
+    offer_candidates,
+    request_routing,
+    route_for,
+)
 from webapp.api.access_control import require_project_permission
 from webapp.auth.impersonation import acting_username, is_impersonating
 from webapp.extensions import db
@@ -133,17 +139,22 @@ def my_requests_actions(project):
 @bp.route('/requests/htmx/offers')
 @login_required
 def my_requests_offers():
-    """Every project row's request buttons in one response (out-of-band swaps), one XRAS read."""
+    """Every project row's request buttons in one response (out-of-band swaps), at most one XRAS read."""
     config = _config()
     if not config.submit_configured:
         return ''
-    try:
-        available = admin_client(config).available_action_requests(current_user.username)
-    except XrasSourceUnavailable as exc:
-        current_app.logger.warning('my requests inline offers: %s', exc)
-        available = None
     projects = led_projects(db.session, current_user)
-    offers = inline_offers(db.session, projects, current_user.username, _index_rows(),
+    index_rows = _index_rows()
+    available = None
+    # The read feeds the Renewal check alone: a lead of staff-routed projects, or a site with
+    # Renewal off, gets Extend and Supplement with no XRAS round trip.
+    if config.submit_allows('Renewal') and offer_candidates(
+            projects, current_user.username, index_rows, armed=True):
+        try:
+            available = admin_client(config).available_action_requests(current_user.username)
+        except XrasSourceUnavailable as exc:
+            current_app.logger.warning('my requests inline offers: %s', exc)
+    offers = inline_offers(db.session, projects, current_user.username, index_rows,
                            available, config.submit_allows, armed=True)
     return render_template('dashboards/user/fragments/request_offers_htmx.html',
                            projects=projects, offers=offers,

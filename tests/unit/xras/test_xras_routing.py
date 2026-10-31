@@ -10,6 +10,7 @@ from sam.xras.routing import (
     ROUTING_REASONS,
     XRAS_REQUEST_ROUTES,
     inline_offers,
+    offer_candidates,
     request_routing,
     route_for,
 )
@@ -124,6 +125,14 @@ class TestTheInlineOffers:
     def test_staff_routes_and_the_lever_off_offer_nothing(self, session):
         assert self._offers(session, [self._p('UHSS0001', 'Staff')], self._index()) == {}
         assert self._offers(session, [self._p('UHSS0001')], self._index(), armed=False) == {}
+
+    def test_the_candidates_are_the_rostered_xras_routed_projects(self):
+        xras, staff = self._p('UHSS0001'), self._p('NCAR0001', 'Staff')
+        index = self._index() + [{'request_number': 'NCAR0001',
+                                  'roster': [{'username': 'pi1', 'active': True}]}]
+        assert offer_candidates([xras, staff], 'PI1', index, armed=True) == [xras]
+        assert offer_candidates([xras, staff], 'PI1', index, armed=False) == []
+        assert offer_candidates([xras, staff], 'PI1', [], armed=True) == []
 
     def test_a_pending_request_offers_nothing(self, session):
         XrasSubmission.create(session, action_type='Extension', created_by='pi1',

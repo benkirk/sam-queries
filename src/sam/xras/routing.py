@@ -121,6 +121,20 @@ class Offer:
         return self.reason is None
 
 
+def offer_candidates(projects, username: str, index_rows, *, armed: bool) -> list:
+    """The *projects* whose row may carry request buttons: XRAS-routed, *username* on its roster.
+
+    No I/O: the caller reads XRAS (the Renewal offers) only when this is non-empty.
+    """
+    if not armed:
+        return []
+    on_roster = {row.get('request_number') for row in index_rows or ()
+                 if any((p.get('username') or '').casefold() == username.casefold()
+                        and p.get('active', True) for p in row.get('roster') or ())}
+    return [p for p in projects if p.projcode in on_roster and route_for(
+        p.allocation_type.allocation_type if p.allocation_type else None) == 'xras']
+
+
 def inline_offers(session, projects, username: str, index_rows, available, allows,
                   *, armed: bool) -> Dict[str, List[str]]:
     """``{projcode: [action types]}`` a project row may open, without a family read per row.
@@ -129,13 +143,7 @@ def inline_offers(session, projects, username: str, index_rows, available, allow
     day stale; the form's own gate (``request_routing`` on a live read) stays the authority.
     """
     from sam.integration.xras_submission import XrasSubmission
-    if not armed:
-        return {}
-    on_roster = {row.get('request_number') for row in index_rows or ()
-                 if any((p.get('username') or '').casefold() == username.casefold()
-                        and p.get('active', True) for p in row.get('roster') or ())}
-    candidates = [p for p in projects if p.projcode in on_roster and route_for(
-        p.allocation_type.allocation_type if p.allocation_type else None) == 'xras']
+    candidates = offer_candidates(projects, username, index_rows, armed=armed)
     if not candidates:
         return {}
     pending = {pid for (pid,) in session.query(XrasSubmission.project_id)

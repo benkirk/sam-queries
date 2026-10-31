@@ -217,10 +217,21 @@ class TestTheRowButtons:
             'id="req-offers-UHSS0001"')[1].split('</span>\n', 1)[0]
         assert '/extension' in cell and '/supplement' in cell and '/renewal' not in cell
 
-    def test_off_the_roster_the_cell_is_emptied(self, auth_client, armed):
+    def test_off_the_roster_the_cell_is_emptied_without_a_read(self, auth_client, armed):
         html = auth_client.get(self.OFFERS).get_data(as_text=True)
         cell = html.split('id="req-offers-UHSS0001"')[1].split('</span>', 1)[0]
         assert 'button' not in cell
+        assert armed.reads == []
+
+    def test_renewal_off_offers_the_rest_without_a_read(self, auth_client, armed, rostered,
+                                                        monkeypatch):
+        config = replace(requests_routes._config(),
+                         submit_action_types=('Extension', 'Supplement'))
+        monkeypatch.setattr(requests_routes, '_config', lambda: config)
+        cell = auth_client.get(self.OFFERS).get_data(as_text=True).split(
+            'id="req-offers-UHSS0001"')[1].split('</span>\n', 1)[0]
+        assert '/extension' in cell and '/supplement' in cell and '/renewal' not in cell
+        assert armed.reads == []
 
 
 class TestThePicker:
