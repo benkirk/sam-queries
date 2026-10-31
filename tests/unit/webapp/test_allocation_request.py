@@ -338,6 +338,34 @@ class TestTheVisitorsRequest:
         assert client.get('/request/draft/nope/mnemonic-suggest?q=cub').status_code == 404
         assert client.get('/request/draft/nope/award-lookup?grant_number=1').status_code == 404
 
+    def test_the_status_page_says_approved_once_released(self, client, confirmed):
+        from datetime import datetime
+        from sam.core.account_requests import AccountRequest
+        from sam.integration.xras_submission import XrasSubmission
+        from sam.manage import management_transaction
+        from webapp.extensions import db
+        _, token, row_id, placeholder = confirmed
+        with client.application.app_context():
+            with management_transaction(db.session):
+                sub = XrasSubmission.create(
+                    db.session, action_type='New', created_by=f'registration:{row_id}',
+                    xa_user=placeholder, eula_sha='a' * 40, eula_accepted_at=datetime.now(),
+                    payload={}, registration_id=row_id)
+                sub.advance('created').advance('submitted')
+            sid = sub.xras_submission_id
+        try:
+            assert 'CISL has your request' in client.get(f'/request/status/{token}').get_data(
+                as_text=True)
+            with client.application.app_context():
+                with management_transaction(db.session):
+                    db.session.get(AccountRequest, row_id).mark_requested()
+            html = client.get(f'/request/status/{token}').get_data(as_text=True)
+            assert 'the NCAR account team is creating your account' in html
+        finally:
+            with client.application.app_context():
+                db.session.query(XrasSubmission).filter_by(xras_submission_id=sid).delete()
+                db.session.commit()
+
     def test_the_status_page_offers_the_unsent_request(self, client, confirmed):
         _, token, _, _ = confirmed
         assert 'Continue the request' in client.get(f'/request/status/{token}').get_data(

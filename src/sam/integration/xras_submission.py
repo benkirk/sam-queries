@@ -169,6 +169,15 @@ class XrasSubmission(Base, SessionMixin):
         self.session.flush()
         return self
 
+    def repoint(self, xa_user: str, user_id: Optional[int]) -> 'XrasSubmission':
+        """A merge moved the placeholder PI onto *xa_user*, SAM user *user_id*."""
+        self.xa_user = str(xa_user)
+        if user_id is not None:
+            self.user_id = user_id
+        self.modified_time = datetime.now()
+        self.session.flush()
+        return self
+
     def stop(self, error: Any) -> 'XrasSubmission':
         """Stamp why a step stopped; the state stays where it was, so resume can continue."""
         self.last_error = as_json_text(error)

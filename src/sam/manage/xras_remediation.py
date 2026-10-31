@@ -397,6 +397,7 @@ def merge_placeholder(session_factory, *, source_username, target_username,
                                          session_factory=session_factory)
         _dismiss_merged_requests(session_factory, source_username, target_username,
                                  operator)
+        _repoint_submissions(session_factory, source_username, target_username)
         # Best-effort: the Pending Users card renders the cached pending half,
         # so a just-merged placeholder would keep its row until the next sweep.
         try:
@@ -428,6 +429,68 @@ def _dismiss_merged_requests(session_factory, source_username, target_username,
         logger.warning('merge_placeholder: could not dismiss the account requests for %s',
                        source_username, exc_info=True)
         return 0
+
+
+def _repoint_submissions(session_factory, source_username, target_username) -> int:
+    """Point the placeholder's ``xras_submission`` rows at the target, as XRAS now does.
+    Best-effort: the merge already happened."""
+    from sqlalchemy import func
+
+    from sam.core.users import User
+    from sam.integration.xras_submission import XrasSubmission
+    try:
+        with session_factory() as session:
+            user = User.get_by_username(session, target_username)
+            rows = session.query(XrasSubmission).filter(
+                func.lower(XrasSubmission.xa_user) == str(source_username).strip().lower()).all()
+            for row in rows:
+                row.repoint(target_username, user.user_id if user else None)
+            session.commit()
+            return len(rows)
+    except Exception:                                   # noqa: BLE001
+        logger.warning('merge_placeholder: could not repoint the submissions of %s',
+                       source_username, exc_info=True)
+        return 0
+
+
+def merge_fulfilled_visitors(session_factory, *, operator: str,
+                             client=None) -> Dict[str, Any]:
+    """Merge each ``/request`` placeholder whose account now exists into it
+    (docs/plans/XRAS_SUBMISSION_SPRINT2.md 3b).
+
+    The target is the SAM user reconcile fulfilled the registration with, by email.
+    A target XRAS does not know yet waits for the next pass: merging into it would
+    create it. ``merged`` lists ``(placeholder, target, request ids)``.
+    """
+    from sam.integration.xras_api.base import XrasSourceUnavailable
+    from sam.integration.xras_submission import XrasSubmission
+    from sam.queries.account_requests import visitors_to_merge
+    with session_factory() as session:
+        due = visitors_to_merge(session)
+    out: Dict[str, Any] = {'due': len(due), 'waiting': 0, 'failed': 0, 'merged': []}
+    if not due:
+        return out
+    admin = admin_client(client)
+    for request_id, source, target in due:
+        try:
+            known = admin.get_person(target) is not None
+        except XrasSourceUnavailable:
+            known = False
+        if not known:
+            out['waiting'] += 1
+            continue
+        with session_factory() as session:
+            lines = [r.request_id for r in session.query(XrasSubmission).filter(
+                XrasSubmission.registration_id == request_id) if r.request_id]
+        outcome = merge_placeholder(
+            session_factory, source_username=source, target_username=target,
+            operator=operator, client=admin,
+            comment=f'SAM-AR-{request_id}: the account for a New filed at /request exists')
+        if outcome.succeeded:
+            out['merged'].append((source, target, lines))
+        else:
+            out['failed'] += 1
+    return out
 
 
 def _patch_requests_naming(username: str, *, session_factory=None) -> bool:

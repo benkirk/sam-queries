@@ -327,6 +327,11 @@ def changed_comment(episode: Episode) -> str:
     return '\n'.join(lines)
 
 
+def merged_comment(placeholder: str, target: str) -> str:
+    return (f"The PI's NCAR account exists: SAM merged {placeholder} into {target} in XRAS. "
+            'Repost the request; XRAS never retries a post on its own.')
+
+
 def applied_comment(episode: Episode) -> str:
     return (f'Request {episode.request_number} posted and applied as {episode.projcode} '
             f'({episode.applied_at:%Y-%m-%d %H:%M}). SAM has nothing left to block; '

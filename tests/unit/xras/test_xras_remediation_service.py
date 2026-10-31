@@ -372,6 +372,71 @@ class TestMergeDismissesTheSweepRows:
                 s.commit()
 
 
+class TestTheVisitorMerge:
+    """XRAS_SUBMISSION_SPRINT2.md 3b: a /request placeholder merges into its new account."""
+
+    @pytest.fixture
+    def fulfilled(self, engine, monkeypatch):
+        """A fulfilled visitor row and its submission, committed: ``(placeholder, user, line)``."""
+        from sqlalchemy.orm import Session
+
+        from factories import next_seq
+        from sam.core.account_requests import AccountRequest
+        from sam.core.users import User
+        from sam.integration.xras_submission import XrasSubmission
+        monkeypatch.setattr(service, '_patch_requests_naming', lambda _u, **kw: True)
+        monkeypatch.setattr(xras_cache, 'invalidate_person', lambda _u: None)
+        n = next_seq('9')
+        placeholder, line = f'samr{n}-user-abc123', int(n)
+        with Session(engine) as s:
+            user = s.query(User).filter(User.is_active).order_by(User.user_id).first()
+            row = AccountRequest.create(
+                s, email=f'zz.visitor.{n}@example.invalid', first_name='Vis', last_name='Itor',
+                purpose='submission', created_by='self', verified_by='self',
+                xras_username=placeholder)
+            row.fulfill(user)
+            sub = XrasSubmission.create(
+                s, action_type='New', created_by=f'registration:{row.account_request_id}',
+                xa_user=placeholder, eula_sha='a' * 40, eula_accepted_at=datetime.now(),
+                payload={}, request_id=line, registration_id=row.account_request_id)
+            s.commit()
+            ids = (row.account_request_id, sub.xras_submission_id)
+            target = (user.username, user.user_id)
+        yield placeholder, target, line, ids
+        with Session(engine) as s:
+            s.query(XrasSubmission).filter_by(xras_submission_id=ids[1]).delete()
+            s.query(AccountRequest).filter_by(account_request_id=ids[0]).delete()
+            s.commit()
+
+    def test_it_merges_repoints_and_closes_the_row(self, factory, engine, fulfilled):
+        from sqlalchemy.orm import Session
+
+        from sam.core.account_requests import AccountRequest
+        from sam.integration.xras_submission import XrasSubmission
+        placeholder, (username, user_id), line, (rid, sid) = fulfilled
+        client = MagicMock()
+        client.get_person.return_value = {'username': username}
+        client.merge_person.return_value = _result('merge_person')
+        out = service.merge_fulfilled_visitors(factory, operator='benkirk', client=client)
+        assert (placeholder, username, [line]) in out['merged']
+        client.merge_person.assert_any_call(placeholder, username)
+        with Session(engine) as s:
+            assert (s.get(XrasSubmission, sid).xa_user, s.get(XrasSubmission, sid).user_id) == \
+                (username, user_id)
+            row = s.get(AccountRequest, rid)
+            assert row.merged_at is not None and row.is_fulfilled
+        again = service.merge_fulfilled_visitors(factory, operator='benkirk', client=client)
+        assert all(m[0] != placeholder for m in again['merged'])
+
+    def test_an_account_xras_does_not_know_yet_waits(self, factory, fulfilled):
+        placeholder = fulfilled[0]
+        client = MagicMock()
+        client.get_person.return_value = None
+        out = service.merge_fulfilled_visitors(factory, operator='benkirk', client=client)
+        assert out['waiting'] >= 1 and out['merged'] == []
+        client.merge_person.assert_not_called()
+
+
 class TestDropPendingWorklistRow:
     """The cache primitive behind the merge's coherence patch."""
 

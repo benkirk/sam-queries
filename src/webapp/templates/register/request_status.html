@@ -1,6 +1,7 @@
 {% extends 'register/base_register.html' %}
 {#
-  /request: where a visitor's request stands. Context: row (account_request), submission
+  /request: where a visitor's request stands; the row's requested_at is the approval (3a).
+  Context: row (account_request), submission
   (the latest xras_submission under it, or none), project (once applied), draft_url, step.
 #}
 {% block title %}Your allocation request{% endblock %}
@@ -15,6 +16,8 @@
     <p><i class="fa-solid fa-circle-check" aria-hidden="true"></i>
     {% if submission.state == 'applied' %}Approved: the project
     {%- if project %} <span class="font-monospace">{{ project.projcode }}</span>{% endif %} exists.
+    {% elif row.requested_at %}Approved{% if submission.request_number %} ({{ submission.request_number }}){% endif %}:
+    the NCAR account team is creating your account, and the project follows.
     {% else %}CISL has your request{% if submission.request_number %} ({{ submission.request_number }}){% endif %}
     for review, sent {{ submission.submitted_time | fmt_date }}.{% endif %}</p>
 </div>

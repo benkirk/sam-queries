@@ -23,6 +23,7 @@ from sam.core.account_requests import (
     CREATED_BY_SWEEP,
     OPEN_STATES,
     PURPOSE_REACTIVATION,
+    PURPOSE_SUBMISSION,
     AccountRequest,
     AccountRequestEvent,
     EventEnrollment,
@@ -78,6 +79,20 @@ def queue_requests(session: Session) -> List[AccountRequest]:
                         AccountRequest.fulfill_error.isnot(None)))
             .order_by(AccountRequest.creation_time)
             .all())
+
+
+def visitors_to_merge(session: Session) -> List[tuple]:
+    """``(account_request_id, placeholder, username)`` for each fulfilled ``/request``
+    registration whose placeholder no merge has closed yet."""
+    rows = (session.query(AccountRequest.account_request_id, AccountRequest.xras_username,
+                          User.username)
+            .join(User, User.user_id == AccountRequest.user_id)
+            .filter(AccountRequest.purpose == PURPOSE_SUBMISSION,
+                    AccountRequest.created_by == CREATED_BY_SELF,
+                    AccountRequest.state.in_(OPEN_STATES), AccountRequest.merged_at.is_(None),
+                    AccountRequest.xras_username.isnot(None))
+            .order_by(AccountRequest.account_request_id).all())
+    return [tuple(r) for r in rows]
 
 
 def all_requests(session: Session) -> List[AccountRequest]:
