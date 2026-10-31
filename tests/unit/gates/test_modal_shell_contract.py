@@ -746,6 +746,22 @@ ACTIONS_DEPENDENTS = [
 ]
 
 
+# The request dialogs' review carries data-gate-submit / data-busy; submit-gate.js drives
+# them. A page that hosts the request shell outside dashboards/base.html must load it too, or
+# the visitor's Submit is never gated and never shows busy (sweep 33).
+REQUEST_SHELL_HOSTS = ['dashboards/base.html', 'register/request_draft.html']
+
+
+def test_every_request_shell_host_loads_the_submit_gate():
+    hosts = [name for name, text in TEMPLATES.items()
+             if 'id="xrasRequestModalBody"' in text or name == 'dashboards/base.html']
+    assert sorted(hosts) == sorted(REQUEST_SHELL_HOSTS), (
+        f'request shell hosts changed: {hosts}; update REQUEST_SHELL_HOSTS and make sure the '
+        'new host loads js/submit-gate.js')
+    missing = [name for name in hosts if 'js/submit-gate.js' not in TEMPLATES[name]]
+    assert not missing, f'{missing} host the request dialogs but never load js/submit-gate.js'
+
+
 def test_actions_js_loads_before_its_dependents():
     base = TEMPLATES['dashboards/base.html']
     order = [m for m in re.findall(r"js/([A-Za-z0-9_.-]+\.js)", base)]

@@ -271,6 +271,7 @@ class TestTheVisitorsRequest:
         draft, token, _, _ = confirmed
         html = client.get(draft).get_data(as_text=True)
         assert f'hx-get="/request/draft/{token}/form"' in html and 'X-CSRFToken' in html
+        assert 'js/submit-gate.js' in html, 'the review needs the gate and busy handlers'
 
     def test_page_one_fixes_the_opportunity_and_names_no_admin(self, client, confirmed):
         _, token, _, _ = confirmed
