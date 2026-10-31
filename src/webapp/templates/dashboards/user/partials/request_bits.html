@@ -69,13 +69,15 @@
 
 {#- The amounts, Selected over Available: a resource is requested only once picked. A row is
     Selected when this table was posted with its amount, or on a first render when r.prefill (a
-    renewal's held lines). static/js/request-amounts.js moves rows between the groups. -#}
+    renewal's held lines) or when it is the only resource. static/js/request-amounts.js moves
+    rows between the groups. -#}
 {% macro amounts_table(resources, form, field_errors) -%}
 {%- set _posted = form and (form.get('amounts_present') or ' amount_' in ' ' ~ form.keys() | join(' ')) -%}
 {%- set _selected = [] -%}{%- set _available = [] -%}
 {%- for r in resources -%}
     {%- set _value = form.get('amount_' ~ r.resource_id) if form else none -%}
-    {%- set _ = (_selected if (_value if _posted else r.prefill) else _available).append((loop.index, r)) -%}
+    {%- set _ = (_selected if (_value if _posted else (r.prefill or resources | length == 1))
+                 else _available).append((loop.index, r)) -%}
 {%- endfor %}
 {% if not resources %}
 <p class="small text-muted">This request names no resources.</p>

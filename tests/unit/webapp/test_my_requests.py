@@ -723,6 +723,20 @@ class TestTheRenewalForm:
         html = auth_client.get(REN).get_data(as_text=True)
         assert 'value="2000000"' in html and '2e+06' not in html
 
+    def test_a_lone_resource_starts_selected(self, app):
+        from flask import render_template_string
+        src = ("{% from 'dashboards/user/partials/request_bits.html' import amounts_table %}"
+               "{{ amounts_table(resources, form, {}) }}")
+        one = [{'resource_id': 1, 'name': 'Derecho', 'units': 'Core-hours', 'prefill': False}]
+        with app.test_request_context():
+            alone = render_template_string(src, resources=one, form=None)
+            two = render_template_string(src, resources=one + [dict(one[0], resource_id=2)],
+                                         form=None)
+            cleared = render_template_string(src, resources=one, form={'amounts_present': '1'})
+        assert alone.split('data-amount-group="available"')[0].count('data-amount-row ') == 1
+        assert two.split('data-amount-group="available"')[0].count('data-amount-row ') == 0
+        assert cleared.split('data-amount-group="available"')[0].count('data-amount-row ') == 0
+
     def test_the_form_prefills_the_abstract_and_the_window(self, auth_client, renewable, floor):
         from datetime import timedelta
         html = auth_client.get(REN).get_data(as_text=True)
@@ -939,12 +953,11 @@ class TestTheNewForm:
         submit = html.split('value="submit"')[1].split('>', 1)[0]
         assert 'data-gate-submit' in submit and 'data-busy=' in submit
 
-    def test_page_two_starts_with_nothing_selected(self, auth_client, newable, lettered):
+    def test_page_two_selects_its_only_resource(self, auth_client, newable, lettered):
         html = auth_client.post(NEW, data=_new()).get_data(as_text=True)
-        selected, available = html.split('data-amount-group="available"')
-        assert 'data-amount-row' not in selected and 'Nothing selected yet' in selected
-        box = available.split('name="amount_530902"')[1].split('>', 1)[0]
-        assert 'disabled' in box and 'value=""' in box
+        selected, _ = html.split('data-amount-group="available"')
+        box = selected.split('name="amount_530902"')[1].split('>', 1)[0]
+        assert 'disabled' not in box
 
     def test_a_posted_amount_comes_back_selected(self, auth_client, newable, lettered):
         html = auth_client.post(NEW, data=_new(stage='review', amount_530902='',
