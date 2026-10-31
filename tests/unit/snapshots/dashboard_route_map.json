@@ -2283,6 +2283,13 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_configuration_cards",
+    "/allocations/xras/configuration/cards",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_dates_edit",
     "/allocations/xras_dates_edit/<path:request_number>/<int:action_id>",
     [

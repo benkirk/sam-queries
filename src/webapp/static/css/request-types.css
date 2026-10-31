@@ -11,7 +11,10 @@
     background: var(--surface-raised);
     padding: 1rem 1.25rem;
 }
+/* An open type carries the accent rule; inset, so open and closed cards keep one width. */
+.type-card:not(.is-closed) { box-shadow: inset 3px 0 0 var(--text-link); }
 .type-card.is-closed { background: var(--surface-card); }
+.type-card.is-unpublished { border-style: dashed; }
 .type-card-head {
     display: flex;
     flex-wrap: wrap;
@@ -37,6 +40,7 @@
 }
 .type-card-facts i { margin-right: 0.35rem; }
 .type-card-limits { font-size: var(--font-size-xsm); margin-bottom: 0.5rem; }
+.type-card-limits .col-num { text-align: right; font-variant-numeric: tabular-nums; }
 .type-card-notes {
     color: var(--text-secondary);
     font-size: var(--font-size-xsm);
@@ -57,7 +61,17 @@
     border-radius: 999px;
 }
 
-/* Allocations > XRAS > Configuration: the lede and the "Preview as" switch. */
+/* Allocations > XRAS > Configuration: the cards two abreast where they fit, the head's
+   Edit at its end, the XRAS state line, the lede and the "Preview as" switch. */
+.type-card-list.is-grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr));
+    align-items: start;
+    margin-top: 0;
+}
+.type-card-head .state-tag { margin-left: 0 !important; }
+.type-card-edit { margin-left: auto; }
+.type-card-state.is-open { color: var(--text-link); }
+.type-card-state.is-open .fa-circle { font-size: 0.5em; vertical-align: middle; }
 .type-config-head {
     display: flex;
     flex-wrap: wrap;

@@ -32,7 +32,13 @@
     </form>
 </div>
 
-<section id="xrasTypeCardsSection" aria-label="Allocation types">
+{# Fetches on load, on a "Preview as" change, and after a guide or limit form saves; each
+   fetch carries the switch, so a save keeps the preview. #}
+<section id="xrasTypeCardsSection" aria-label="Allocation types"
+         hx-get="{{ url_for('allocations_dashboard.xras_configuration_cards') }}"
+         hx-trigger="load, change from:#typePreviewForm, reloadAllocationGuidesCard from:body delay:300ms, reloadAllocationLimitsCard from:body delay:300ms"
+         hx-include="#typePreviewForm"
+         hx-swap="innerHTML">
     <div class="text-center text-muted py-4" role="status">
         <i class="fa-solid fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
         <p class="mt-2">Loading...</p>

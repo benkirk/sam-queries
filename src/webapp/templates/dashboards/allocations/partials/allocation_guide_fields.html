@@ -1,10 +1,11 @@
-{#- The text of a request page card; guide is the row (or none), prefix the ids'. -#}
+{#- The text of a request page card; guide is the row (or none), prefix the ids'; a create
+    form's `preset` ({title, allocation_type}) comes from the card that opened it. -#}
 {% from 'dashboards/fragments/form_fields.html' import text_field, textarea_field, number_field, select_field with context %}
 {% macro guide_fields(guide, prefix) -%}
 <div class="row g-2">
     <div class="col-md-8">
         {{ text_field('title', 'Title', required=True, maxlength=64,
-                      default=guide.title if guide else '', id=prefix ~ 'Title') }}
+                      default=guide.title if guide else (preset or {}).get('title', ''), id=prefix ~ 'Title') }}
     </div>
     <div class="col-md-4">
         {{ number_field('display_order', 'Order', min=0, step=1, optional_text='',
@@ -31,7 +32,7 @@
 <div class="row g-2">
     <div class="col-md-6">
         {{ select_field('allocation_type', 'SAM allocation type', options=allocation_type_options,
-                        placeholder='None', default=guide.allocation_type if guide else '',
+                        placeholder='None', default=guide.allocation_type if guide else (preset or {}).get('allocation_type', ''),
                         id=prefix ~ 'SamType', help='The type whose request limits the card shows.') }}
     </div>
     <div class="col-md-6">

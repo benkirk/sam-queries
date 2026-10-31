@@ -1,0 +1,15 @@
+{#- Allocations > XRAS > Configuration's cards, into #xrasTypeCardsSection. Context: cards
+    (TypeCard, the unpublished last), outage, audience ('' is every type), audience_labels. -#}
+{% from 'dashboards/fragments/type_cards.html' import type_card with context %}
+{% if outage %}
+<p class="alert alert-warning small"><i class="fa-solid fa-triangle-exclamation me-1" aria-hidden="true"></i>
+    XRAS is not answering, so no card shows whether it is open or what it asks for. The words
+    and the limits below are SAM's and can still be edited.</p>
+{% endif %}
+<div class="type-card-list is-grid">
+{% for card in cards %}
+    {{ type_card(card, variant='admin', admin={'audience_labels': audience_labels, 'outage': outage}) }}
+{% else %}
+    <p class="text-muted fst-italic">{% if audience %}No type is published for {{ audience_labels[audience] }}.{% else %}No allocation type has a card or a request limit yet.{% endif %}</p>
+{% endfor %}
+</div>

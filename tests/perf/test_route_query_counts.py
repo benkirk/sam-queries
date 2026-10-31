@@ -541,14 +541,17 @@ _OVERVIEW_KEYS = {1: 145575, 2: 145576, 3: 144650, 4: 146036, 5: 144646, 6: 1451
 
 @pytest.fixture
 def visitor_overview(app, monkeypatch):
-    """The visitor lever on; every public guide type open with six resources, no XRAS call."""
+    """The visitor lever on; every guide type open with six resources, no XRAS call (the
+    visitor's overview and the Configuration page's cards read the same opportunities)."""
     from dataclasses import replace
 
     from sam.accounting.allocation_type_guide import AllocationTypeGuide
     from sam.integration.xras_api import cache as xras_cache
     from sam.integration.xras_api.config import XrasApiConfig
     from webapp.extensions import db
+    from webapp.dashboards.allocations.xras import configuration_routes
     from webapp.register import allocation_request as mod
+    from webapp.utils import xras as xras_utils
     config = replace(XrasApiConfig(enabled=True, write_enabled=True, api_key='k'),
                      submit_enabled=True, submit_anonymous_enabled=True,
                      submit_action_types=frozenset({'New'}))
@@ -573,9 +576,11 @@ def visitor_overview(app, monkeypatch):
 
     xras_cache._CACHE.reset_for_tests()
     monkeypatch.setattr(mod, 'interactive_config', lambda: config)
-    monkeypatch.setattr(mod, '_opportunities', lambda c: (opportunities, False))
-    monkeypatch.setattr(mod, 'read_client', lambda c=None: Reader())
-    monkeypatch.setattr(mod, 'resource_keys', lambda c=None: dict(_OVERVIEW_KEYS))
+    monkeypatch.setattr(mod, 'report_opportunities', lambda c: (opportunities, False))
+    monkeypatch.setattr(configuration_routes, 'report_opportunities',
+                        lambda c: (opportunities, False))
+    monkeypatch.setattr(xras_utils, 'read_client', lambda c=None: Reader())
+    monkeypatch.setattr(xras_utils, 'resource_keys', lambda c=None: dict(_OVERVIEW_KEYS))
     yield len(types)
     xras_cache._CACHE.reset_for_tests(disabled=False)
 
@@ -589,4 +594,15 @@ def test_request_overview_route(client, route_count_queries, visitor_overview):
     assert html.count('type-card-limits') >= 2, 'the cards carry their SAM limits'
     assert stats.count <= baseline, (
         f'/request overview: {stats.count} queries > {baseline} baseline '
+        f'({visitor_overview} guide rows). {stats.summary()}')
+
+
+def test_xras_configuration_cards_route(auth_client, route_count_queries, visitor_overview):
+    baseline = get_baseline('xras_configuration_cards_route')
+    with route_count_queries() as stats:
+        response = auth_client.get('/allocations/xras/configuration/cards')
+    assert response.status_code == 200, f'cards returned {response.status_code}'
+    assert response.get_data(as_text=True).count('type-card-limits') >= 2
+    assert stats.count <= baseline, (
+        f'XRAS configuration cards: {stats.count} queries > {baseline} baseline '
         f'({visitor_overview} guide rows). {stats.summary()}')

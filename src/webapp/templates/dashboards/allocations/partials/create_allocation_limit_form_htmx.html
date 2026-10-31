@@ -16,7 +16,8 @@
         <div class="row g-2">
             <div class="col-md-6">
                 {{ select_field('allocation_type_id', 'Allocation type', options=ns.types, required=True,
-                                placeholder='— Select —', id='createAllocationLimitType') }}
+                                placeholder='— Select —', id='createAllocationLimitType',
+                                default=(preset or {}).get('allocation_type_id', '')) }}
             </div>
             <div class="col-md-6">
                 {{ select_field('resource_id', 'Resource', options=ns.resources, required=True,

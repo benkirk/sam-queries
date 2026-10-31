@@ -1,7 +1,10 @@
 {#- One allocation type as a card (sam/xras/allocation_overview.py TypeCard), in three
     variants: `full` (the /request overview), `pick` (the New dialog's type stage), `admin`
     (Allocations > XRAS > Configuration). Styles: static/css/request-types.css.
-    `start_url` is the full card's Start link; the caller wraps the cards in .type-card-list. -#}
+    `start_url` is the full card's Start link; the caller wraps the cards in .type-card-list.
+    `admin` is a dict: `audience_labels`, `outage`; import this file with context there. -#}
+{% from 'dashboards/fragments/table_bits.html' import state_tag %}
+{% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
 
 {% macro _facts(card) %}
 {%- set opp = card.opportunity %}{% set rules = card.rules %}
@@ -40,7 +43,90 @@
 {% endif %}
 {%- endmacro %}
 
+{#- The admin's ledger: the SAM type's limit rows, retired ones too, each with its edit pencil. -#}
+{% macro _admin_ledger(card) %}
+{% if card.limits %}
+<div class="table-responsive type-card-limits">
+    <table class="table table-sm align-middle mb-0" aria-label="{{ card.allocation_type }} request limits">
+        <thead class="table-subtle">
+            <tr><th>Resource</th><th class="col-num">Typical request</th><th class="col-num">Up to</th><th class="col-shrink"><span class="visually-hidden">Actions</span></th></tr>
+        </thead>
+        <tbody>
+        {% for row in card.limits %}{% set lim = row.limit %}
+            <tr{% if not lim.active %} class="row-inactive"{% endif %}>
+                <td>{{ row.name }}{% if not lim.active %}{{ state_tag('inactive', title='Retired: it bounds nothing') }}{% endif %}</td>
+                <td class="col-num">{{ lim.default_amount | fmt_number(raw=True) if lim.default_amount is not none else '—' }}</td>
+                <td class="col-num">{{ lim.max_amount | fmt_number(raw=True) if lim.max_amount is not none else 'no set limit' }}</td>
+                <td class="text-end text-nowrap"><span class="row-actions">
+                    {{- edit_modal_button(url_for('allocations_dashboard.htmx_allocation_limit_edit_form', allocation_type_resource_limit_id=lim.allocation_type_resource_limit_id),
+                                          'editAllocationLimitModal', 'editAllocationLimitFormContainer',
+                                          title='Edit the ' ~ row.name ~ ' limit', permission=Permission.MANAGE_XRAS) -}}
+                </span></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="type-card-notes mb-2">No request limits: any amount may be asked for.</p>
+{% endif %}
+{% if has_permission(Permission.MANAGE_XRAS) and card.allocation_type %}
+<button type="button" class="btn btn-link btn-sm px-0 mb-2" data-bs-toggle="modal" data-bs-target="#createAllocationLimitModal"
+        hx-get="{{ url_for('allocations_dashboard.htmx_allocation_limit_create_form', allocation_type=card.allocation_type) }}"
+        hx-target="#createAllocationLimitFormContainer">
+    <i class="fa-solid fa-plus" aria-hidden="true"></i> Add a limit
+</button>
+{% endif %}
+{%- endmacro %}
+
+{#- The admin card's last line: what XRAS says about the type right now. -#}
+{% macro _xras_state(card, admin) %}
+{% if card.xras_allocation_type_id is none %}
+<span class="text-muted"><i class="fa-solid fa-link-slash" aria-hidden="true"></i> No XRAS type: publishing names one.</span>
+{% elif admin.outage %}
+<span class="text-muted"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> XRAS is not answering.</span>
+{% elif card.is_open %}
+<span class="type-card-state is-open"><i class="fa-solid fa-circle" aria-hidden="true"></i> Open in XRAS: {{ card.opportunity.opportunity_name }}</span>
+{% else %}
+<span class="text-muted"><i class="fa-regular fa-clock" aria-hidden="true"></i> {{ card.reason }}</span>
+{% endif %}
+{%- endmacro %}
+
+{% macro _admin_card(card, admin) %}
+<section class="type-card type-card-admin{{ ' is-closed' if not card.is_open }}{{ ' is-unpublished' if not card.published }}" aria-labelledby="{{ card.anchor }}">
+    <div class="type-card-head">
+        <h2 id="{{ card.anchor }}">{{ card.title }}</h2>
+        {% if card.cadence %}<span class="type-card-cadence">{{ card.cadence }}</span>{% endif %}
+        {% if card.published %}{{ state_tag(admin.audience_labels.get(card.audience, 'Everyone') if card.audience else 'Everyone', title='Who sees it') }}
+        {% else %}{{ state_tag('Not on the request page') }}{% endif %}
+        {% if has_permission(Permission.MANAGE_XRAS) %}
+        <span class="type-card-edit">
+        {% if card.guide is not none %}
+            <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editAllocationGuideModal"
+                    hx-get="{{ url_for('allocations_dashboard.htmx_allocation_guide_edit_form', allocation_type_guide_id=card.guide.allocation_type_guide_id) }}"
+                    hx-target="#editAllocationGuideFormContainer">
+                <i class="fa-solid fa-pen" aria-hidden="true"></i> Edit
+            </button>
+        {% else %}
+            <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#createAllocationGuideModal"
+                    hx-get="{{ url_for('allocations_dashboard.htmx_allocation_guide_create_form', allocation_type=card.allocation_type, title=card.title) }}"
+                    hx-target="#createAllocationGuideFormContainer">
+                <i class="fa-solid fa-signs-post" aria-hidden="true"></i> Publish on the request page
+            </button>
+        {% endif %}
+        </span>
+        {% endif %}
+    </div>
+    {% if card.summary %}<p class="mb-2">{{ card.summary }}</p>{% endif %}
+    {{ _facts(card) }}
+    {{ _admin_ledger(card) }}
+    {% if card.notes %}<p class="type-card-notes">{{ card.notes }}</p>{% endif %}
+    <div class="type-card-foot">{{ _xras_state(card, admin) }}</div>
+</section>
+{%- endmacro %}
+
 {% macro type_card(card, variant='full', pick_name=None, start_url=None, admin=None) %}
+{% if variant == 'admin' %}{{ _admin_card(card, admin) }}{% else %}
 <section class="type-card{{ ' is-closed' if not card.is_open }}" aria-labelledby="{{ card.anchor }}">
     <div class="type-card-head">
         <h2 id="{{ card.anchor }}">{{ card.title }}</h2>
@@ -60,4 +146,5 @@
         {% endif %}
     </div>
 </section>
+{% endif %}
 {%- endmacro %}

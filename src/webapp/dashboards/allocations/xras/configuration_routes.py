@@ -7,7 +7,7 @@ A row is retired through its edit form's Active box. Design:
 ``docs/plans/XRAS_SUBMISSION_SPRINT3.md``.
 """
 
-from flask import render_template
+from flask import render_template, request
 from flask_login import current_user, login_required
 
 from sam.accounting.allocation_type_guide import AUDIENCE_LABELS, AllocationTypeGuide
@@ -19,8 +19,9 @@ from sam.schemas.forms import (CreateAllocationLimitForm, CreateAllocationTypeGu
 from sam.xras.audiences import AUDIENCES
 from webapp.dashboards.admin.crud import CrudSpec, register_crud
 from webapp.extensions import db
-from webapp.utils.htmx import modal_triggers
+from webapp.utils.htmx import modal_triggers, read_tab
 from webapp.utils.rbac import Permission, require_permission
+from webapp.utils.xras import interactive_config, report_opportunities, type_cards
 
 from .. import bp
 
@@ -38,17 +39,36 @@ def xras_configuration():
                            audiences=AUDIENCES)
 
 
+@bp.route('/xras/configuration/cards')
+@login_required
+@require_permission(Permission.VIEW_XRAS)
+def xras_configuration_cards():
+    """One card per type as *audience* sees it (empty: every type), then the unpublished ones."""
+    audience = read_tab('audience', tuple(AUDIENCE_LABELS), '')
+    config = interactive_config()
+    opportunities, outage = report_opportunities(config)
+    cards = type_cards(opportunities, config, audiences={audience} if audience else None,
+                       include_unguided=True)
+    return render_template(f'{_PARTIALS}/xras_type_cards_htmx.html', cards=cards,
+                           outage=outage, audience=audience, audience_labels=AUDIENCE_LABELS)
+
+
 def _actor() -> str:
     return getattr(current_user, 'username', None) or 'unknown'
 
 
 def _limit_context():
-    """The create form's selects: the active SAM types (with their panel) and resources."""
+    """The create form's selects (the active SAM types with their panel, the resources) and
+    the type a card's "Add a limit" names (``?allocation_type=``), preset by its first id."""
     types = (db.session.query(AllocationType).filter(AllocationType.is_active)
-             .order_by(AllocationType.allocation_type).all())
+             .order_by(AllocationType.allocation_type, AllocationType.allocation_type_id).all())
     resources = (db.session.query(Resource).filter(Resource.is_active)
                  .order_by(Resource.resource_name).all())
-    return {'allocation_types': types, 'resources': resources}
+    named = request.args.get('allocation_type')
+    first = next((t.allocation_type_id for t in types if named and t.allocation_type == named),
+                 None)
+    return {'allocation_types': types, 'resources': resources,
+            'preset': {'allocation_type_id': first} if first else {}}
 
 
 def _guide_context():
@@ -56,7 +76,9 @@ def _guide_context():
     names = (db.session.query(AllocationType.allocation_type).filter(AllocationType.is_active)
              .distinct().order_by(AllocationType.allocation_type).all())
     return {'allocation_type_options': [(n, n) for (n,) in names],
-            'audience_options': list(AUDIENCE_LABELS.items())}
+            'audience_options': list(AUDIENCE_LABELS.items()),
+            'preset': {k: request.args[k] for k in ('title', 'allocation_type')
+                       if request.args.get(k)}}
 
 
 register_crud(bp, CrudSpec(

@@ -216,6 +216,12 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/user/fragments/request_review_htmx.html': ['xrasRequestModalBody'],
     'dashboards/user/fragments/request_new_amounts_htmx.html': ['xrasRequestModalBody'],
     'dashboards/user/fragments/request_resume_htmx.html': ['xrasRequestModalBody'],
+    # The openers are the `admin` variant's only; it renders only into
+    # allocations/xras_configuration.html (via xras_type_cards_htmx.html), which ships them.
+    'dashboards/fragments/type_cards.html': [
+        'createAllocationGuideFormContainer', 'createAllocationGuideModal',
+        'createAllocationLimitFormContainer', 'createAllocationLimitModal',
+        'editAllocationGuideFormContainer', 'editAllocationGuideModal'],
     'dashboards/admin/fragments/disk_root_directories_section.html': [
         'addDiskRootFormContainer', 'addDiskRootModal'],
     'dashboards/admin/fragments/facility_card.html': [
