@@ -29,6 +29,11 @@ def end() -> None:
     session.pop(SESSION_KEY, None)
 
 
+def context_processor():
+    """``impersonating`` for every template: the banner and the user tab labels read it."""
+    return {'impersonating': is_impersonating()}
+
+
 def impersonator():
     """The admin's ``User`` row behind an impersonated session, or ``None``."""
     from sam.core.users import User

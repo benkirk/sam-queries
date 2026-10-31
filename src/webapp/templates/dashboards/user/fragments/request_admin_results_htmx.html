@@ -2,7 +2,7 @@
     leads with the username and shows the email: a role account reads as its own name. -#}
 {% if users %}
 {% for user in users %}
-<div class="list-group-item list-group-item-action p-2 fk-search-result cursor-pointer"
+<div class="list-group-item list-group-item-action p-2 fk-search-result"
      data-fk-id="{{ user.user_id }}"
      data-fk-label="{{ user.username }} ({{ user.display_name }})">
     <div class="d-flex justify-content-between align-items-center gap-2">

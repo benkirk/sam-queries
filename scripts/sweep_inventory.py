@@ -35,7 +35,7 @@ PLANS_ROOT = Path("docs/plans")
 AREAS = {
     "py": ("private-imports", "dup-functions", "py-dup-names", "helper-bypass"),
     "css": ("css-dead", "css-shape"),
-    "templates": ("inline-styles", "bs4-classes", "row-buttons", "modal-alerts"),
+    "templates": ("inline-styles", "bs4-classes", "row-buttons", "modal-alerts", "template-dead-imports"),
     "js": ("js-dup", "js-dead"),
     "docs": ("plans-stale",),
 }
@@ -279,6 +279,42 @@ def inline_styles(template_files):
     return sorted((r for r in rows if r["count"]), key=lambda r: -r["count"])
 
 
+_FROM_IMPORT = re.compile(r"\{%-?\s*from\s+['\"]([^'\"]+)['\"]\s+import\s+(.+?)\s*-?%\}", re.S)
+_EXPORTED = re.compile(r"\{%-?\s*(?:macro|set)\s+(\w+)\s*[(=]")   # a macro, or a top-level set
+_JINJA_COMMENT = re.compile(r"\{#.*?#\}", re.S)
+
+
+def _blank_comments(text):
+    """Jinja comments as spaces, line count kept, so an example in a docblock is not read as code."""
+    return _JINJA_COMMENT.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), text)
+
+
+def template_dead_imports(template_files, root=TEMPLATE_ROOT):
+    """``{% from 'x' import name %}`` where x defines no such macro or variable.
+
+    Jinja resolves the name to Undefined without complaint, so nothing fails until the page
+    calls it (the edit_project import of a macro its fragment never had, sweep 32).
+    """
+    exported = {}
+    for path in template_files:
+        rel = path.relative_to(root).as_posix() if root in path.parents else path.name
+        exported[rel] = set(_EXPORTED.findall(read(path)))
+    rows = []
+    for path in template_files:
+        text = _blank_comments(read(path))
+        for m in _FROM_IMPORT.finditer(text):
+            source = m.group(1)
+            if source not in exported:
+                continue
+            names = re.sub(r"\bwith(?:out)?\s+context\b", "", m.group(2))
+            for item in names.split(","):
+                name = item.strip().split(" as ")[0].strip()
+                if name and name not in exported[source]:
+                    rows.append({"file": path.as_posix(), "line": text.count("\n", 0, m.start()) + 1,
+                                 "source": source, "name": name})
+    return rows
+
+
 def bs4_classes(template_files, css_files):
     """Bootstrap 4 class names in templates that no stylesheet of ours styles either."""
     styled = {c for p in css_files for sel, _ in _css_rules(read(p)) for c in _selector_classes(sel)}
@@ -470,6 +506,9 @@ def run(detectors, changed=None, use_gh=False):
                             "repeated_blocks": [r for r in shape["repeated_blocks"] if keep(r["sites"])]}
     if "inline-styles" in detectors:
         out["inline-styles"] = [r for r in inline_styles(files(TEMPLATE_ROOT, "*.html")) if keep([r["file"]])]
+    if "template-dead-imports" in detectors:
+        out["template-dead-imports"] = [r for r in template_dead_imports(files(TEMPLATE_ROOT, "*.html"))
+                                        if keep([r["file"]])]
     if "bs4-classes" in detectors:
         rows = bs4_classes(files(TEMPLATE_ROOT, "*.html"), css)
         out["bs4-classes"] = [r for r in rows if keep(r["sites"])]
@@ -547,6 +586,12 @@ def report(result, top):
         for r in rows[:top]:
             print(f"  {r['count']:4d}  {r['file']}")
         print(f"  total: {sum(r['count'] for r in rows)} attributes in {len(rows)} templates")
+    if "template-dead-imports" in result:
+        rows = result["template-dead-imports"]
+        print("\n== template-dead-imports: {% from %} names the source never defines (Jinja: a silent Undefined)")
+        for r in rows[:top]:
+            print(f"  {r['file']}:{r['line']}  {r['name']} <- {r['source']}")
+        print(f"  total: {len(rows)} imports in {len({r['file'] for r in rows})} templates")
     if "bs4-classes" in result:
         rows = result["bs4-classes"]
         print("\n== bs4-classes: Bootstrap 4 class names Bootstrap 5.3 dropped (they style nothing)")

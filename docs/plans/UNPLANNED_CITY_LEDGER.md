@@ -47,6 +47,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-23 | `bfb58fd8` + sweep 30 (XRAS validate-only lookups), py only | 52 / 64 / 26 | 1 (2) | 21 / 67 | — | — | — | — | — | — | — | 6 |
 | 2026-10-29 | `5cf3eebe` (#874 as merged), before sweep 31 | 61 / 73 / 26 | 1 (2) | 21 / 68 | 20 (20), 2 kept | 5,250 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
 | 2026-10-29 | `5cf3eebe` + sweep 31 (the submission window and impersonation) | 53 / 65 / 26 | 1 (2) | 21 / 67 | 20 (20), 2 kept | 5,250 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
+| 2026-10-31 | `dfef6f6f` + sweep 32 (the My Requests window, #877) | 53 / 65 / 26 | 1 (2) | 21 / 67 | 20 (20), 2 kept | 5,332 / 53 / 7 | 109 (54) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -2124,6 +2125,80 @@ keeps them open on purpose; I3 is what that needs.
 - [ ] Browser proof: the request dialogs (W4-W7) need the submit lever and XRAS, which the local
   stub server does not have; they were proven by the rendered-HTML tests and want a look on
   samuel-dev after the roll.
+
+## 32. 2026-10-31: window sweep, the My Requests UX pass (#877)
+
+**Mode:** window, `786d3473..origin/staging`: one squash, PR #877 (`dfef6f6f`, 47 files,
++1,427). **End commit:** `dfef6f6f`. Read as one design, #877 holds: every new route (the
+inline offers, the XRAS comments drill, the admin suggest) has real tests behind it, not a
+route-map pin alone; the relabeled statuses and renamed fields left no stale prose; the Python
+side added no duplicate bodies, and the inventory's three shared names (`_load`, `_parse_date`,
+`_search_mnemonic_codes`) are different concepts or one-line local wrappers. #877 moved no
+whole-tree count. The drift is at the seams: the site showed a busy button three ways, wired a
+submit gate two ways, and said who a user is in a picker two ways; six older FK fragments still
+carried an inline cursor style the new one replaced with a class. The #877 review's F2 and F3
+stand; F4 is the gate and picker pair below.
+
+**Done** (one commit each, PR #878 on `sweep-32-my-requests`):
+
+- [x] F3, delete: `edit_project.html` imported `render_fk_search_results` from a fragment with no
+  macro; Jinja resolves a missing import to Undefined silently (checked).
+- [x] F2, drift: `.fk-search-result { cursor: pointer }`; seven inline cursor styles gone, the
+  filter sidebar's clear link and the mnemonic target list on the `cursor-pointer` utility.
+  Inline styles 116 to 109. Proof: the FK row's computed cursor is `pointer` on the merge
+  commit and the branch, the attribute gone on the branch.
+- [x] F1, propagate: the three directory checks (user, project and group cards), the directory
+  Apply and the server-card Refresh drop their per-row spinner id and `hx-indicator` for
+  `.busy-spinner` / `.busy-icon`; htmx puts `htmx-request` on the button itself. Visual change on
+  purpose: busy shows the spinner alone (before: beside the icon); at rest identical, by element
+  shot on both servers.
+- [x] F7 (entry 31's I4), consolidate: `impersonation.context_processor` exposes `impersonating`;
+  `base.html`'s banner and `base_user.html`'s tab label read it; `_page_context` drops the field.
+- [x] F5 (entry 31's A4), default route: `parse_submit_action_types` is fail-closed: unset, empty
+  or `none` arms nothing, `all` is the opt-in. `XRAS_ACTIONS_ENABLED` keeps its grammar. Behavior
+  change for `XRAS_SUBMIT_ENABLED=1` with no types; nothing ships that way.
+- [x] F10a, legibility: `.xras-section-label` and `.xras-action-label` share one rule (jscpd
+  188-196 / 275-283). F10b (entry 31's open item): `ADMIN_CARD_RELOADS` binds the six
+  admin-card reload listeners from one table.
+- [x] Tooling: `template-dead-imports` (a `{% from %}` naming what its source never defines,
+  Jinja comments blanked first; fixture test; the tree reads zero). Skill: the id'd-spinner tell
+  and the picker-order decision.
+
+**Decided, no change:** the admin user pickers stay name-first (`user_search_results_fk_htmx`,
+the impersonate and add-member lists); only My Requests leads with the username, where a role
+account must read as itself (Ben, 2026-10-31).
+
+**Tried and dropped:** F10c, folding `request_bits.html:72`'s two-way "posted before" test onto
+the `amounts_present` input alone: the tests post amounts by hand without the hidden input, so
+the fallback is the contract for a hand-built post. F8, one home for the two submit gates
+(`register.js` `wireGate`, `form-helpers.js` `gateForm`): never on one page, 15 lines each, and
+a shared file would put the public `/register` gate behind dashboard code; not picked. F9, the
+two `_private` cross-module imports (`_page_context` within the user package, `_preflight_rollup`
+into the sweep task): not picked. F6, one guard for the three login-only helper endpoints
+(`admin-suggest` answers nothing unless a New may be filed; `mnemonic-suggest` and
+`award-lookup` answer any logged-in user, entry 31's A6): a behavior change Ben did not take.
+
+**Open:**
+
+- [ ] F6 / A6 as above, if it bites: gate `award-lookup` on `submit_configured` and the mnemonic
+  search like the admin one.
+- [ ] F8: the two submit gates, if a third `data-gate-*` consumer appears.
+- [ ] S5a (two scopes on the second-open guard), W13 (the ownership rule in `_owned_submission`
+  and `my_requests.html:75`; a `mine` flag stamped per row in the route), S15 (`_same_value`
+  falling through to `_read_text` for text): unchanged from entry 31.
+- [ ] Untested flow branches (entry 31): the admin door with the lever off, abort whose delete
+  fails, abort with no `action_id`, resume of a non-open row; no test was added in the window.
+- [ ] A5 and W9 close: with the lever off My Requests says requests are not enabled and shows
+  where each project's go, so the card link lands somewhere useful; the limits card gates
+  exactly like its rate-limits peer.
+- [ ] The #877 review's F3: a submit landing inside the hourly own-filings refresh for the same
+  number can append the Remediations row twice until the 04:00 rebuild; not worth a lock.
+- [ ] Two local-only test failures seen while running the suites: the Flask-Login loader tests in
+  `test_access_control_decorators.py` (py3.15 env, CI passes) and
+  `test_nhd_env_layers` `test_after_a_signal_to_the_process_group[15]`.
+- [ ] `plans-stale` lists `LDAPSYNC_DIRECTORY_AFFILIATIONS.md` beside the kept syncd reference;
+  its Status is a direction agreed, not a build, so it stays.
+- [ ] Browser proof of the request dialogs on samuel-dev (entry 31) still wants the roll.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

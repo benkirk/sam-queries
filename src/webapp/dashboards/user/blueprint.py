@@ -10,7 +10,6 @@ JavaScript API calls for improved performance and simplicity.
 import json
 
 from flask import Blueprint, abort, render_template, request, flash, redirect, url_for, jsonify, make_response, current_app
-from webapp.auth import impersonation
 from flask_login import login_required, current_user
 from datetime import datetime, date
 from typing import NamedTuple
@@ -117,7 +116,6 @@ def _page_context():
     job_history_machines = jobs_service.job_history_machines()
     return dict(
         user=user_to_display,
-        impersonator_id=impersonation.impersonator_id(),
         my_data_available=my_data_available,
         fs_scan_resources=fs_scan_resources,
         my_jobs_available=bool(job_history_machines),

@@ -1043,7 +1043,7 @@ class TestTheSubmitLever:
                              api_key='k').submit_configured is True
 
     @pytest.mark.parametrize('value, expected', [
-        (None, set(SUBMIT_ACTION_TYPES)), ('', set(SUBMIT_ACTION_TYPES)),
+        (None, set()), ('', set()), ('  ', set()),            # forgotten means nothing files
         ('all', set(SUBMIT_ACTION_TYPES)), ('none', set()),
         ('Extension,Supplement', {'Extension', 'Supplement'}),
         ('extension, Extention ,new', {'Extension', 'New'}),   # the typo is dropped
