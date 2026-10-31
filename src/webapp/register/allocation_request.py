@@ -35,8 +35,9 @@ from webapp.utils.xras import (admin_client, interactive_config, read_client, re
                                session_factory)
 
 from . import eula, tokens
-from .blueprint import _GATE_KEY, _email_key, _email_tier, _gate_accepted_at, _gate_blocks, _global_key, _global_tier
-from .common import anon_tier as _anon_tier, ip_key as _ip_key, person_form_context, post_tier as _post_tier
+from .common import (GATE_KEY, anon_tier as _anon_tier, email_key, email_tier, gate_accepted_at,
+                     gate_blocks, global_key, global_tier, ip_key as _ip_key,
+                     person_form_context, post_tier as _post_tier)
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('allocation_request', __name__, url_prefix='/request')
@@ -164,7 +165,7 @@ def start(opportunity_id):
     opportunity, refusal = _chosen_or_refuse(opportunity_id)
     if refusal:
         return refusal
-    return _render_gate(opportunity) if _gate_blocks() else _render_person(opportunity)
+    return _render_gate(opportunity) if gate_blocks() else _render_person(opportunity)
 
 
 @bp.route('/accept', methods=['POST'], strict_slashes=False)
@@ -183,14 +184,14 @@ def accept():
         field_errors, form_level = RegisterGateForm.split_errors(exc.messages)
         return _render_gate(opportunity, form=request.form, errors=form_level,
                             field_errors=field_errors)
-    session[_GATE_KEY] = datetime.now().isoformat()
+    session[GATE_KEY] = datetime.now().isoformat()
     return redirect(url_for('allocation_request.start', opportunity_id=opportunity_id))
 
 
 @bp.route('/start/<int:opportunity_id>', methods=['POST'])
 @_rate_limit.limiter.limit(_post_tier, key_func=_ip_key, methods=['POST'])
-@_rate_limit.limiter.limit(_email_tier, key_func=_email_key, methods=['POST'])
-@_rate_limit.limiter.limit(_global_tier, key_func=_global_key, methods=['POST'])
+@_rate_limit.limiter.limit(email_tier, key_func=email_key, methods=['POST'])
+@_rate_limit.limiter.limit(global_tier, key_func=global_key, methods=['POST'])
 def submit(opportunity_id):
     raw = request.form
     if (raw.get('website') or '').strip():
@@ -200,7 +201,7 @@ def submit(opportunity_id):
     opportunity, refusal = _chosen_or_refuse(opportunity_id)
     if refusal:
         return refusal
-    if _gate_blocks():
+    if gate_blocks():
         return _render_gate(opportunity)
     try:
         data = RegisterForm().load(raw)
@@ -215,7 +216,7 @@ def submit(opportunity_id):
     now = datetime.now()
     ttl = int(current_app.config.get('ACCOUNT_VERIFY_TTL_HOURS', 48))
     code = tokens.new_code()
-    accepted_at = _gate_accepted_at()
+    accepted_at = gate_accepted_at()
     with management_transaction(db.session):
         row = register_request(db.session, purpose=PURPOSE_SUBMISSION, clock=now,
                                source_ip=get_remote_address(),
@@ -232,7 +233,7 @@ def submit(opportunity_id):
     result = get_notifier().send(message)
     logger.info('request registration %s for %s: verification mail %s',
                 row.account_request_id, row.email, result.status)
-    session.pop(_GATE_KEY, None)
+    session.pop(GATE_KEY, None)
     page = tokens.request_token(tokens.SALT_REQUEST_PAGE, row.account_request_id, opportunity_id)
     return redirect(url_for('allocation_request.pending', token=page,
                             sent=int(result.status in ('sent', 'redirected'))))

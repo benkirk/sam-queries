@@ -19,8 +19,9 @@ from sam.projects.projects import Project
 from webapp.extensions import db
 from webapp.limiter import limiter as _rate_limit
 
-from .blueprint import _gate_blocks, _render_form, _render_gate
-from .common import anon_tier, anonymous_form_open, ip_key, open_event, post_tier, refuse
+from .blueprint import _render_form, _render_gate
+from .common import (anon_tier, anonymous_form_open, gate_blocks, ip_key, open_event, post_tier,
+                     refuse)
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('register_events', __name__, url_prefix='/register')
@@ -47,7 +48,7 @@ def form_for_event(event_code):
         return _render_self_enroll(event)
     if not anonymous_form_open():
         return redirect(url_for('auth.login', next=request.full_path.rstrip('?')))
-    if _gate_blocks():
+    if gate_blocks():
         return _render_gate(event, locked_code=event.event_code)
     return _render_form(event, locked_code=event.event_code)
 
