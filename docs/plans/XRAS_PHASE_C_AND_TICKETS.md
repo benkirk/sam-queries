@@ -3,7 +3,7 @@
 **Status: Part 1 (§ 4) merged in #845, deploying 2026-10-19; Part 2 (§ 5) built in #848 (letters reviewed), the cutover (§ 6) next.** Tracked by issue #846 (burn-down checklist), PR #845; built on
 branch `xras_incoming_tickets`. Lands phase C of [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md)
 and arms phase D ([`implemented/XRAS_REQUEST_TICKETS.md`](implemented/XRAS_REQUEST_TICKETS.md)) in production. The
-award-mail checklist it carries out is [`XRAS_NOTICES_CUTOVER.md`](XRAS_NOTICES_CUTOVER.md).
+award-mail checklist it carries out is [`implemented/XRAS_NOTICES_CUTOVER.md`](implemented/XRAS_NOTICES_CUTOVER.md).
 
 ## 1. Where things stand
 
@@ -141,15 +141,15 @@ XRAS already notified. Chart: `xras_notices` out of production's `SAM_TASKS_DISA
 `XRAS_AUTO_NOTIFY: "1"` in both envs (samuel-dev's `NOTIFY_ENABLED=0` keeps it a no-send).
 `test_task_xras_notices.py`'s switched-off pin is deleted, as its docstring asks.
 
-**5.6 Docs.** `XRAS_NOTICES_CUTOVER.md` (its § 3 says production has no `alloc@` copy; the
+**5.6 Docs.** `implemented/XRAS_NOTICES_CUTOVER.md` (its § 3 says production has no `alloc@` copy; the
 copy has come from `NOTIFY_XRAS_CC` since #480), `XRAS_POST_AUTOMATION.md`,
 `.claude/rules/notify-and-tasks.md`, one dated line in `implemented/XRAS_AUTO_NOTICES.md`.
 
 ## 6. Cutover
 
-The order as decided (Ben, 2026-10-19); the detail is `XRAS_NOTICES_CUTOVER.md` § 6:
+The order as decided (Ben, 2026-10-19); the detail is `implemented/XRAS_NOTICES_CUTOVER.md` § 6:
 
-1. Production's rules recorded (`XRAS_NOTICES_CUTOVER.md` § 7) and the demo proof done (§ 8).
+1. Production's rules recorded (`implemented/XRAS_NOTICES_CUTOVER.md` § 7) and the demo proof done (§ 8).
 2. Promote the evening of 2026-10-19. SAMuel mails from the cutover floor, 08:00 MT 2026-10-20
    (`SAM_TASKS_XRAS_NOTICES_SINCE`, read by both the task and the New's notice).
 3. NUSD stops clicking Notify from 08:00.

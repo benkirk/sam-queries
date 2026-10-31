@@ -670,7 +670,7 @@ Open questions are in § 5.
 |---|---|
 | [`implemented/XRAS_SUBMISSION_SPRINT1.md`](implemented/XRAS_SUBMISSION_SPRINT1.md) | the sprint-1 build plan: the commit map, the file plan, the DDL in two dialects, the dev proof |
 | [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md) | the incoming roadmap this plan followed: approve and post does everything SAM can, and a failed post opens one ticket |
-| [`XRAS_PHASE_C_AND_TICKETS.md`](XRAS_PHASE_C_AND_TICKETS.md), [`XRAS_NOTICES_CUTOVER.md`](XRAS_NOTICES_CUTOVER.md) | how phase C deleted XRAS's rules at its cutover: the shape the agreement's pivot follows |
+| [`XRAS_PHASE_C_AND_TICKETS.md`](XRAS_PHASE_C_AND_TICKETS.md), [`implemented/XRAS_NOTICES_CUTOVER.md`](implemented/XRAS_NOTICES_CUTOVER.md) | how phase C deleted XRAS's rules at its cutover: the shape the agreement's pivot follows |
 | [`XRAS_SUBMISSION_PROBES.md`](../xras/outgoing/XRAS_SUBMISSION_PROBES.md) | the 2026-09-14 probe record: every verb in § 3.1, the NCAR vocabularies, the rule-book tables, the final state left in XRAS |
 | [`XRAS_ARC_BASELINE.md`](../xras/outgoing/XRAS_ARC_BASELINE.md) | W9, 2026-09-15: the ARC form page by page, and one real New and Extension seen from ARC, the admin app, the API, SAM and mail |
 | [`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md) | the XRAS-dev read and write map, the posts to samuel-dev, the rename loop and the Track 2 scenarios |

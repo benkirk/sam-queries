@@ -60,7 +60,7 @@ waiver is the operator's decision (Ben, 2026-10-14). NUSD checks nothing before 
 beyond what the handler checks (Travis, 2026-10-14), so a New that applies is ready to
 activate.
 
-**C. Notifications on post.** [`XRAS_NOTICES_CUTOVER.md`](XRAS_NOTICES_CUTOVER.md) holds the
+**C. Notifications on post.** [`implemented/XRAS_NOTICES_CUTOVER.md`](implemented/XRAS_NOTICES_CUTOVER.md) holds the
 checklist: which XRAS rules to delete, the SAMuel notice that replaces each, and the gaps to close
 first. XRAS's award mail is configuration we own: the Action Approved rules on the NCAR
 process's notification templates, sent at the operator's Notify step (read on `admin-ncar`,
@@ -143,7 +143,7 @@ bed and its rules).
 ## 5. Related plans
 
 - `implemented/XRAS_CLOSED_LOOP.md`: the rename (phase A) and the test bed.
-- `XRAS_NOTICES_CUTOVER.md`: the award-mail cutover (phase C).
+- `implemented/XRAS_NOTICES_CUTOVER.md`: the award-mail cutover (phase C).
 - `implemented/XRAS_REQUEST_TICKETS.md`: the ticket for a request whose post is refused (phase D).
 - `XRAS_SUBMISSION.md` § 4.2, § 4.6: the request record and the incoming side; the outgoing
   work that follows phase D.

@@ -219,7 +219,7 @@ The card's Activate on UHSS0004 (09:00), now through the shared `activate_projec
 With Exploratory · New · Action Approved · PI deleted from demo template 154, NCAR4094 (1439637,
 benkirk-only) was approved and posted: sam_dev #29 → UHSS0006, gone from Recent submissions, no
 Notify button. XRAS computes the button from the rules at read time; re-adding the rule restored
-it. Record: `docs/plans/XRAS_NOTICES_CUTOVER.md` § 8.
+it. Record: `docs/plans/implemented/XRAS_NOTICES_CUTOVER.md` § 8.
 
 ## 7. Open, and what unblocks it
 
