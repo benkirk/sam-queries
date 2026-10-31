@@ -627,9 +627,12 @@ def compare_project_access(legacy_by_branch: dict, new: dict) -> list[CheckResul
 # FairShare Tree — 11 checks
 # ===========================================================================
 
+LIFECYCLE_STATUSES = frozenset({'No Account', 'Waiting', 'Expired', 'No Allocation', 'Disabled'})
+
+
 def compare_fstree_access(legacy_by_resource: dict, new: dict,
                           new_by_resource: dict | None = None) -> list[CheckResult]:
-    """Per-resource dicts are {resource_name: fstree_dict}; checks 10-11 need new_by_resource."""
+    """Per-resource dicts are {resource_name: fstree_dict}; checks 10-12 need new_by_resource."""
     results: list[CheckResult] = []
     new_idx = _build_fstree_index(new)
 
@@ -971,6 +974,37 @@ def compare_fstree_access(legacy_by_resource: dict, new: dict,
         name='fstree / facility shares sum to 100 (per resource, new)',
         passed=not failures,
         summary=f'{compared} resources checked',
+        mismatches=failures,
+        compared=compared,
+    ))
+
+    # 12. Lifecycle statuses match exactly, both ways, on the per-resource payloads (the
+    # all-resource one omits No Account). Check 9 cannot see a lifecycle row relabeled
+    # with another non-Normal status, such as a parent's cascaded threshold.
+    failures = []
+    compared = 0
+    for resource, legacy_data in legacy_by_resource.items():
+        res_idx = _build_fstree_index(new_by_resource.get(resource) or {})
+        for fac in legacy_data.get('facilities', []):
+            for at in fac.get('allocationTypes', []):
+                for proj in at.get('projects', []):
+                    for res in proj.get('resources', []):
+                        new_res = (res_idx.get(fac['name'], {}).get(at['name'], {})
+                                   .get(proj['projectCode'], {}).get(res['name']))
+                        if new_res is None:
+                            continue
+                        ls = res.get('accountStatus', 'Normal')
+                        ns = new_res.get('accountStatus', 'Normal')
+                        if ls not in LIFECYCLE_STATUSES and ns not in LIFECYCLE_STATUSES:
+                            continue
+                        compared += 1
+                        if ls != ns:
+                            failures.append(f"{resource}/{proj['projectCode']}/{res['name']}: "
+                                            f'legacy={ls!r}, new={ns!r}')
+    results.append(CheckResult(
+        name='fstree / lifecycle accountStatus matches (per resource, both ways)',
+        passed=len(failures) <= 5,
+        summary=f'{compared} lifecycle nodes checked (tolerance 5)',
         mismatches=failures,
         compared=compared,
     ))
