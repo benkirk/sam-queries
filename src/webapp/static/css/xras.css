@@ -184,13 +184,17 @@
     font-weight: var(--font-weight-semi-bold);
 }
 
-.xras-section-label {
-    margin: 1rem 0 0.4rem;
+.xras-section-label,
+.xras-action-label {
     color: var(--text-secondary);
     font-size: 0.75rem;
     font-weight: var(--font-weight-semi-bold);
     text-transform: uppercase;
     letter-spacing: 0.04em;
+}
+
+.xras-section-label {
+    margin: 1rem 0 0.4rem;
 }
 
 .xras-recipients {
@@ -273,11 +277,6 @@
 
 .xras-action-label {
     flex: 0 0 8.5rem;
-    color: var(--text-secondary);
-    font-size: 0.75rem;
-    font-weight: var(--font-weight-semi-bold);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
 }
 
 .xras-date + .xras-date {
