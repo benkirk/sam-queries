@@ -876,7 +876,7 @@ class TestTheNewForm:
         newable.people = {other_user.username}
         html = auth_client.post(NEW, data=_new_review(admin_user_id=str(other_user.user_id))
                                 ).get_data(as_text=True)
-        assert f'{other_user.display_name} ({other_user.username})' in html
+        assert f'{other_user.username} ({other_user.display_name})' in html
         assert f'name="admin_user_id" value="{other_user.user_id}"' in html
 
     def test_the_grant_is_required_where_the_rule_book_wants_one(self, auth_client, newable,
@@ -1046,7 +1046,10 @@ class TestThePickers:
         url = '/user/requests/htmx/admin-suggest?q='
         html = auth_client.get(url + other_user.username).get_data(as_text=True)
         assert f'data-fk-id="{other_user.user_id}"' in html
-        assert 'data-fk-label="' in html and '(benkirk)' not in auth_client.get(
+        # Username first, so a role account sharing a person's name reads as itself.
+        assert f'data-fk-label="{other_user.username} (' in html
+        assert other_user.primary_email is None or other_user.primary_email in html
+        assert 'data-fk-label="benkirk (' not in auth_client.get(
             url + 'benkirk').get_data(as_text=True)
 
     def test_the_admin_suggest_is_empty_unless_a_new_may_be_filed(self, auth_client,

@@ -525,7 +525,7 @@ def _mnemonic_label(mnemonic_code_id):
 def _user_label(user_id):
     from sam.core.users import User
     user = db.session.get(User, user_id) if user_id else None
-    return f'{user.display_name} ({user.username})' if user is not None else ''
+    return f'{user.username} ({user.display_name})' if user is not None else ''
 
 
 class _NewRequestForm(_RequestForm):
@@ -754,7 +754,7 @@ register_typeahead(
     bp, rule='/requests/htmx/admin-suggest', endpoint='my_requests_admin_suggest',
     permission=None,                    # any user who may file a New picks its admin
     search=_search_admins,
-    template='dashboards/admin/fragments/user_search_results_fk_htmx.html',
+    template='dashboards/user/fragments/request_admin_results_htmx.html',
     ctx_key='users')
 
 
