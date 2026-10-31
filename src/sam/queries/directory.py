@@ -1,6 +1,6 @@
 """Directory checks: SAM's rows and the daemon's increment, each against the directory record.
 
-The read side of docs/plans/DIRECTORY_CLIENT.md step 1. ``run_check`` is the ldapsync
+The read side of docs/plans/implemented/DIRECTORY_CLIENT.md step 1. ``run_check`` is the ldapsync
 hook's body: one read, two comparisons, one log line, never a write. A failure to
 reach the directory sets the outage latch so a PUT burst does not wait out a timeout each.
 """

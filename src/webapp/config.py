@@ -142,7 +142,7 @@ class SAMWebappConfig(SAMConfig):
     # Only a closure this recent is undone automatically; older is a real departure.
     LDAPSYNC_RESTORE_WINDOW_DAYS = int(os.getenv('LDAPSYNC_RESTORE_WINDOW_DAYS', '90'))
 
-    # The directory client (sam/integration/directory, docs/plans/DIRECTORY_CLIENT.md).
+    # The directory client (sam/integration/directory, docs/plans/implemented/DIRECTORY_CLIENT.md).
     # PROVIDER "" or "ucar"; URL empty = off whatever the provider says.
     DIRECTORY_PROVIDER = os.getenv('DIRECTORY_PROVIDER', '')
     DIRECTORY_URL = os.getenv('DIRECTORY_URL', '')

@@ -2,7 +2,7 @@
 
 **Status:** direction agreed as the end goal (2026-10-15). The sync daemon stays as is for now. The
 first step is a read-only discrepancy report, built as the directory client's step 1
-(`DIRECTORY_CLIENT.md`, PR #841); stage 2 is its step 2.
+(`implemented/DIRECTORY_CLIENT.md`, PR #841); stage 2 is its step 2.
 **Scope:** directory → SAM: people, then their positions (`user_organization`) and collaborations
 (`user_institution`), then organizations, institutions and adhoc groups. SAM → directory (project
 groups, collaborator end dates) stays with the daemon.
@@ -482,5 +482,5 @@ wider list was considered, and the shape that serves them all.
   plus one `search`; a null reader when the directory URL is empty; one `UCARDirectory` adapter
   that owns the schema (attribute names, DN shapes, the label-to-code map) and returns typed
   records, so no consumer sees an attribute name. The check after each incoming sync PUT is the
-  first consumer and the CLI flag the last (`DIRECTORY_CLIENT.md`); the nightly sweep is the
+  first consumer and the CLI flag the last (`implemented/DIRECTORY_CLIENT.md`); the nightly sweep is the
   same comparison in a loop. Anonymous bind until a hidden field is named; names and emails are never cached, counts are.

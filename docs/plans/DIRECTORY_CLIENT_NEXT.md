@@ -1,7 +1,7 @@
 # Directory client, next: groups in the UX, then the CLI and the nightly report
 
 **Status:** in progress on `directory-client` (PR #841), 2026-10-16. Steps 1 to 3 of
-`DIRECTORY_CLIENT.md` are on the branch; this is what comes after, in the order Ben wants it:
+`implemented/DIRECTORY_CLIENT.md` are on the branch; this is what comes after, in the order Ben wants it:
 groups first, the CLI and the nightly report second. Decisions (Ben, 2026-10-16, § 3.3):
 managers are flagged as drift (report-only); the project panel lives on the admin project card;
 the absent-group count stays in the report and the CLI, not the Configuration block.
@@ -32,7 +32,7 @@ sample; `sam-admin directory report` nests (Ben, 2026-10-16) instead of `--repor
   from the next prod deploy (`helm/values.yaml`, commit `21fec670`); its check is armed and fires
   only once the daemon's `SAM_URL` flips.
 - **Review of `fde9df23`:** F1 (the check holds the PUT reply) is recorded as a soak-gated
-  follow-up in `DIRECTORY_CLIENT.md` § 10; F2 (deploy during the soak's deciding days) is
+  follow-up in `implemented/DIRECTORY_CLIENT.md` § 10; F2 (deploy during the soak's deciding days) is
   recorded in `implemented/LDAP_SYNC_API.md` § 10.7 on the #777 branch.
 - **Watch:** the session timer runs prod, dev and legacy ticks at :13 and :43; the dev tick
   tallies the daemon's PUTs and the `directory check` lines. No PUT has reached dev since the

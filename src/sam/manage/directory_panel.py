@@ -4,7 +4,7 @@ Read-only and Flask-free: the admin panels and the CLI ``--directory`` views ren
 dicts. A view is a dry run of the apply, so each drift row says whether it would apply under
 today's levers; personal values (names, emails, phones) are filled here from the record and
 the ORM row, never from a log line. Groups are report-only (``reconcile_group`` withholds all).
-Record: docs/plans/DIRECTORY_CLIENT.md step 3, DIRECTORY_CLIENT_NEXT.md section 3.
+Record: docs/plans/implemented/DIRECTORY_CLIENT.md step 3, DIRECTORY_CLIENT_NEXT.md section 3.
 """
 
 from __future__ import annotations

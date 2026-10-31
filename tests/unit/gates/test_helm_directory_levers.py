@@ -2,7 +2,7 @@
 
 Both environments read ldap.ucar.edu (the panels, and the check after each sync PUT) and
 write nothing. A DIRECTORY_APPLY_<KIND> key appears in neither file until step 2 of
-docs/plans/DIRECTORY_CLIENT.md soaks on dev.
+docs/plans/implemented/DIRECTORY_CLIENT.md soaks on dev.
 """
 import yaml
 

@@ -361,7 +361,7 @@ webapp:
     LDAPSYNC_LIFECYCLE_ENABLED: "0"
     LDAPSYNC_RESTORE_ON_REACTIVATE: "1"
     LDAPSYNC_RESTORE_WINDOW_DAYS: "90"
-    # The directory client (sam/integration/directory, docs/plans/DIRECTORY_CLIENT.md): SAMuel
+    # The directory client (sam/integration/directory, docs/plans/implemented/DIRECTORY_CLIENT.md): SAMuel
     # reading ldap.ucar.edu itself, anonymously. PROVIDER + URL turn the read features on (the
     # Admin > Configuration block, the user, organization and institution panels).
     # CHECK_ON_SYNC "1" reads each record the daemon PUTs and logs the differences, fail-open;

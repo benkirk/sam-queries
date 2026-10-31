@@ -11,7 +11,7 @@ paths:
 
 # The directory client
 
-Loaded with `sam.integration.directory`. Plan and step list: `docs/plans/DIRECTORY_CLIENT.md`;
+Loaded with `sam.integration.directory`. Plan and step list: `docs/plans/implemented/DIRECTORY_CLIENT.md`;
 what the directory holds and how it maps to SAM: `docs/plans/LDAPSYNC_DIRECTORY_AFFILIATIONS.md`
 Appendix C.
 
