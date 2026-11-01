@@ -2317,7 +2317,7 @@ wired right on its own, and nothing joined it to the way in.
   page's forms and SSO link dropped any `next` they were given. The register gates' docstring
   promised the round trip, and their test checked only the first hop.
 
-**Done** (one commit each, PR on `nav-polish`):
+**Done** (one commit each, #887 on `nav-polish`):
 
 - [x] N1, default route: `webapp/auth/redirects.py` builds and checks `next`.
   - For htmx, the target is the page in `HX-Current-URL`, not the fragment.
@@ -2355,8 +2355,8 @@ wired right on its own, and nothing joined it to the way in.
 
 - [ ] N6: the job and directory explorers open in a new tab (`target="_blank"`) with no trail.
 - [ ] N7: page titles in six formats; one `X — SAM` through a block in `base.html`.
-- [ ] N8: Back closes an open dialog instead of leaving the page. Evaluated after this PR; see
-  the PR thread.
+- [ ] N8: Back closes an open dialog instead of leaving the page. Prototyped on `nav-polish-n8`; see
+  #887 for the cost; it waits on Ben.
 - [ ] Tab and pill state lives only in localStorage on the job-history, disk-scan and allocation
   cards, so those views cannot be linked to.
 - [ ] Resource details for staff reached through a quick-view says "My Accounts" for a project
