@@ -31,7 +31,7 @@
 {% from 'dashboards/fragments/breadcrumbs.html' import breadcrumbs %}
 {# ?from=admin: launched from an admin project card — trail returns there
    with this projcode pre-loaded (see resource_details.html). #}
-{% if request.args.get('from') == 'admin' %}
+{% if request.args.get('from') == 'admin' and has_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD) %}
 {{ breadcrumbs(trail=[
     ('Admin', url_for('admin_dashboard.projects')),
     ('Projects', url_for('admin_dashboard.projects', projcode=projcode)),

@@ -50,9 +50,6 @@ class TestNavLocate:
             for i in s['items']:
                 assert i['endpoint'] in app.view_functions, i['endpoint']
 
-    # A sub-strip under one menu item; N5 folds it into Organizations.
-    TAB_ONLY = {'admin_dashboard.organizations_mnemonics'}
-
     def test_every_section_tab_is_in_the_nav(self):
         """A tab added to a section strip and not to the registry is a page the menu
         cannot reach (My Requests was one)."""
@@ -65,7 +62,7 @@ class TestNavLocate:
             f'{f.name}: {ep}'
             for f in strips
             for ep in re.findall(r"'endpoint':\s*'([a-z_]+\.[a-z_]+)'", f.read_text())
-            if nav_locate(ep)[1] is None and ep not in self.TAB_ONLY)
+            if nav_locate(ep)[1] is None)
         assert not missing, missing
 
 
@@ -161,6 +158,32 @@ class TestBreadcrumbs:
         html = auth_client.get('/user/requests').get_data(as_text=True)
         assert 'aria-current="page">My Requests' in html
         assert html.count('href="/user/requests"') >= 3   # navbar, drawer, tab strip
+
+    @pytest.mark.parametrize('path, parent, leaf', [
+        ('/admin/htmx/notifications', 'Configuration', 'Notifications'),
+        ('/admin/htmx/rate-limits', 'Configuration', 'Rate limiting'),
+        ('/admin/htmx/tasks', 'Configuration', 'Scheduled tasks'),
+        ('/admin/users/last-seen', 'Users &amp; Groups', 'Last seen'),
+        ('/admin/organizations/mnemonics', 'Organizations', 'Mnemonic Codes'),
+        ('/allocations/xras/configuration', 'XRAS', 'Configuration'),
+    ])
+    def test_sub_pages_name_their_parent(self, auth_client, path, parent, leaf):
+        import re
+        resp = auth_client.get(path)
+        if resp.status_code == 404:
+            pytest.skip(f'{path} not mounted here')
+        trail = re.search(r'<nav aria-label="breadcrumb" class="sam-breadcrumbs">(.*?)</nav>',
+                          resp.get_data(as_text=True), re.S).group(1)
+        assert f'>{parent}</a>' in trail, trail
+        assert f'aria-current="page">{leaf}<' in trail, trail
+
+    def test_only_the_last_crumb_is_current(self, auth_client, active_project):
+        import re
+        html = auth_client.get(f'/admin/project/{active_project.projcode}/edit').get_data(as_text=True)
+        trail = re.search(r'class="sam-breadcrumbs">(.*?)</nav>', html, re.S).group(1)
+        assert trail.count('aria-current') == 1
+        assert f'aria-current="page">Manage {active_project.projcode}<' in trail
+        assert '>Projects</a>' in trail and 'Back to Dashboard' not in html
 
     def test_no_breadcrumbs_outside_registry(self, client):
         html = client.get('/auth/login').get_data(as_text=True)

@@ -150,8 +150,9 @@ def _my_events_available():
 # Section keys: 'blueprint' drives section-level active state; 'endpoint' is
 # the section's default page (what the navbar label links to). Item keys:
 # 'active_endpoints' lists sub-pages that count as "on this item" (same idea
-# as the page_tabs macro). 'visible' callables gate rendering; omitted means
-# always visible (within a visible section).
+# as the page_tabs macro); as a mapping it also names each sub-page's crumb,
+# so the trail reads Section > Item > Sub-page. 'visible' callables gate
+# rendering; omitted means always visible (within a visible section).
 
 NAV_SECTIONS = (
     {
@@ -212,7 +213,7 @@ NAV_SECTIONS = (
              'icon': 'fa-solid fa-scale-balanced'},
             {'endpoint': 'allocations_dashboard.xras', 'label': 'XRAS',
              'icon': 'fa-solid fa-plug', 'visible': _can_view_xras,
-             'active_endpoints': ('allocations_dashboard.xras_configuration',)},
+             'active_endpoints': {'allocations_dashboard.xras_configuration': 'Configuration'}},
         ),
     },
     {
@@ -228,11 +229,12 @@ NAV_SECTIONS = (
              'icon': 'fa-solid fa-folder-tree'},
             {'endpoint': 'admin_dashboard.users_groups', 'label': 'Users & Groups',
              'icon': 'fa-solid fa-users',
-             'active_endpoints': ('admin_dashboard.users_last_seen',)},
+             'active_endpoints': {'admin_dashboard.users_last_seen': 'Last seen'}},
             {'endpoint': 'admin_dashboard.resources', 'label': 'Resources',
              'icon': 'fa-solid fa-server'},
             {'endpoint': 'admin_dashboard.organizations', 'label': 'Organizations',
-             'icon': 'fa-solid fa-sitemap'},
+             'icon': 'fa-solid fa-sitemap',
+             'active_endpoints': {'admin_dashboard.organizations_mnemonics': 'Mnemonic Codes'}},
             {'endpoint': 'admin_dashboard.contracts', 'label': 'Contracts',
              'icon': 'fa-solid fa-file-signature'},
             {'endpoint': 'admin_dashboard.facilities', 'label': 'Facilities & Allocations',
@@ -248,7 +250,10 @@ NAV_SECTIONS = (
             {'endpoint': 'admin_dashboard.roles', 'label': 'Roles & access',
              'icon': 'fa-solid fa-user-shield', 'visible': _can_manage_roles},
             {'endpoint': 'admin_dashboard.configuration', 'label': 'Configuration',
-             'icon': 'fa-solid fa-sliders', 'visible': _can_view_config},
+             'icon': 'fa-solid fa-sliders', 'visible': _can_view_config,
+             'active_endpoints': {'admin_dashboard.notifications': 'Notifications',
+                                  'admin_dashboard.rate_limits': 'Rate limiting',
+                                  'admin_dashboard.scheduled_tasks': 'Scheduled tasks'}},
         ),
     },
 )
