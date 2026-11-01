@@ -136,6 +136,17 @@ Run each pass and collect findings. The examples are real.
   the hosts once found. And when a page offers to start an aborted flow again, trace the retry
   against every write the abort left behind: sweep 33's abort deleted the request line and left
   the minted person, so every refile stopped at `create_person`.
+- **Findability.** A page nothing links to cannot be reached, and every check that passes
+  can still miss that.
+  - Every full-page GET route needs an inbound link from the nav registry or a template. A
+    section's tab strip must not name a page the registry lacks
+    (`test_every_section_tab_is_in_the_nav`).
+  - A public form needs a way in from where a stranger lands: the login page and the signed-out
+    navbar. It must appear only where it serves them (`nav.public_entry_points`).
+  - A redirect to login must survive the second hop, which means following the login page's own
+    form, not just the first 302. Sweep 34 found every login form dropping `next`.
+  - A dialog that hands off to another (the sunburst to a project quick-view) must come back on
+    close and on Back.
 - **Round trips.** On a surface that runs far from its database (the CLI on Casper: ~4.5 ms per
   statement), count statements per command with a `before_cursor_execute` counter and attribute
   them to source lines before reading code. A property that loads ORM objects to answer a count
