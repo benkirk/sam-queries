@@ -76,7 +76,8 @@ def cli(ctx: Context, verbose: bool, output_format: str):
               help='Reopen the memberships the last deactivation closed')
 @directory_option
 @click.option('--directory-apply', 'directory_apply', is_flag=True,
-              help='Patch the user from the directory record, per the DIRECTORY_APPLY_<KIND> levers')
+              help='Patch the user from the directory record (person, positions, collaborations; '
+                   'the DIRECTORY_APPLY_<KIND> levers gate only the sync hook)')
 @click.option('--dry-run', is_flag=True,
               help='With --restore-deactivation or --directory-apply: report only')
 @pass_context

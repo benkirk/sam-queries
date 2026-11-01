@@ -1,16 +1,16 @@
 """Admin dashboard: the Directory panels (docs/plans/implemented/DIRECTORY_CLIENT.md step 3, _NEXT.md section 3).
 
 A panel is an operator-initiated read of one person, organization, institution or group
-from the directory with SAM's drift beside it (``VIEW_DIRECTORY``); Apply
-(``MANAGE_DIRECTORY``) writes the kinds whose ``DIRECTORY_APPLY_<KIND>`` lever is on, inside
-``management_transaction``. Groups are report-only. The directory being down is a 200 with
-an alert, never a 500.
+from the directory with SAM's drift beside it (``VIEW_DIRECTORY``). Apply (``MANAGE_DIRECTORY``)
+writes inside ``management_transaction``: the organization and institution panels the kinds whose
+``DIRECTORY_APPLY_<KIND>`` lever is on, the user panel's Sync the person-side kinds regardless.
+Groups are report-only. The directory being down is a 200 with an alert, never a 500.
 """
 
 import json
 
 from flask import make_response, render_template
-from flask_login import login_required
+from flask_login import current_user, login_required
 
 from sam.core.groups import AdhocGroup
 from sam.core.organizations import Institution, Organization
@@ -18,8 +18,8 @@ from sam.core.users import User
 from sam.integration.directory import DirectoryUnavailable
 from sam.integration.directory.config import DirectoryConfig
 from sam.manage import management_transaction
-from sam.manage.directory import (reconcile_institution, reconcile_organization,
-                                  reconcile_person)
+from sam.manage.directory import (log_result, reconcile_institution,
+                                  reconcile_organization, reconcile_person)
 from sam.manage.directory_panel import (adhoc_group_panel, directory_reader,
                                         institution_panel,
                                         organization_panel, person_panel,
@@ -38,10 +38,10 @@ INST_PANEL = 'dashboards/admin/fragments/inst_directory_panel.html'
 GROUP_PANEL = 'dashboards/admin/fragments/group_directory_panel.html'
 
 
-def _apply(template, obj, key, read, reconcile, context, *, trigger=None, **kwargs):
+def _apply(template, obj, key, read, reconcile, context, *, trigger=None, config=None, **kwargs):
     """The Apply POSTs: read the record, reconcile inside ``management_transaction``, re-render
     the panel with the result; the directory being down re-renders the plain panel (200)."""
-    config = DirectoryConfig.from_environment()
+    config = config or DirectoryConfig.from_environment()
     reader = directory_reader()
     try:
         record = read(reader)(key) if reader.configured and key is not None else None
@@ -52,6 +52,8 @@ def _apply(template, obj, key, read, reconcile, context, *, trigger=None, **kwar
         with management_transaction(db.session):
             result = reconcile(db.session, obj, record, config=config, **kwargs)
         db.session.refresh(obj)
+        if result.applied:
+            log_result(result, key, by=current_user.username)
     resp = make_response(render_template(template, **context(record, result)))
     if trigger and result is not None and result.applied:
         resp.headers['HX-Trigger'] = json.dumps({trigger: {}})
@@ -75,9 +77,11 @@ def htmx_user_directory_apply(username):
     sam_user = User.get_by_username(db.session, username)
     if sam_user is None:
         return htmx_not_found('User')
+    # The operator's Sync: the person-side kinds whatever DIRECTORY_APPLY_<KIND> says (those gate the hook).
     return _apply(USER_PANEL, sam_user, sam_user.upid, lambda r: r.person, reconcile_person,
                   lambda record, result: dict(sam_user=sam_user, panel=person_panel(
                       db.session, sam_user, record=record, applied=result)),
+                  config=DirectoryConfig.from_environment().for_operator(),
                   on_reactivate=restore_hook())
 
 

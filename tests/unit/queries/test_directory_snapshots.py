@@ -138,9 +138,10 @@ class TestChecks:
         assert fake.calls == [('person', user.upid)]
         assert (increment.side, sam.side) == ('increment', 'sam')
         assert increment.key == sam.key == user.username
-        # the directory's address is missing and primary differs; the collaboration is history
-        assert sam.counts() == {'email': 2, 'history_open': 1}
-        assert increment.counts() == {'email': 2, 'history_open': 1}
+        # the directory's address is missing, SAM's is extra and primary differs; the
+        # collaboration is history
+        assert sam.counts() == {'email': 3, 'history_open': 1}
+        assert increment.counts() == {'email': 3, 'history_open': 1}
 
     def test_a_role_login_without_a_upid_is_skipped(self, session):
         fake = FakeDirectory()

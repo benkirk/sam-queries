@@ -95,7 +95,7 @@ class TestPersonFields:
         assert categories(result.withheld) == ['academic_status_unmapped', 'unix_uid', 'username']
         assert writes == [] and user.username != 'other'
 
-    def test_emails_are_added_and_primary_follows_mail_nothing_deleted(self, session, user, writes):
+    def test_emails_are_added_and_primary_follows_mail(self, session, user, writes):
         record = record_for(user, emails=(EmailRecord('new@example.invalid', True),
                                           EmailRecord(f'{user.username}@example.invalid', False)))
         result = reconcile_person(session, user, record, config=levers('person'), now=NOW)
@@ -103,6 +103,22 @@ class TestPersonFields:
         rows = {e.email_address: e.is_primary for e in user.email_addresses}
         assert rows == {'new@example.invalid': True, f'{user.username}@example.invalid': False}
         assert session.query(EmailAddress).filter_by(user_id=user.user_id).count() == 2
+
+    def test_emails_mirror_the_directory_and_sam_only_ones_go(self, session, user, writes):
+        make_email_address(session, user, email='stale@example.invalid', is_primary=False)
+        session.refresh(user)
+        record = record_for(user, emails=(EmailRecord('new@example.invalid', True),))
+        result = reconcile_person(session, user, record, config=levers('person'), now=NOW)
+        assert categories(result.applied) == ['email', 'email', 'email', 'email']
+        assert [(e.email_address, e.is_primary) for e in user.email_addresses] == [
+            ('new@example.invalid', True)]
+        assert session.query(EmailAddress).filter_by(user_id=user.user_id).count() == 1
+
+    def test_a_record_with_no_email_deletes_nothing(self, session, user, writes):
+        result = reconcile_person(session, user, record_for(user, emails=()),
+                                  config=levers('person'), now=NOW)
+        assert categories(result.withheld) == ['email'] and result.applied == ()
+        assert writes == [] and len(user.email_addresses) == 1
 
     def test_phones_are_mirrored_and_an_unknown_label_withholds(self, session, user, writes):
         record = record_for(user, phones=(PhoneRecord('Cell', '303-555-0199'),))

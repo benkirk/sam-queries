@@ -222,6 +222,9 @@ def _person_fields(record: PersonRecord, snap: PersonSnapshot) -> List[Discrepan
     for e in record.emails:
         if e.address.lower() not in sam_addresses:
             differ('email', 'missing', '', '', valued=False)
+    directory_addresses = {e.address.lower() for e in record.emails}
+    for _ in sam_addresses - directory_addresses:
+        differ('email', 'extra', '', '', valued=False)
     primary = next((e.address.lower() for e in record.emails if e.primary), '')
     sam_primary = next((e.address.lower() for e in snap.emails if e.primary), '')
     if primary and sam_primary and primary != sam_primary:

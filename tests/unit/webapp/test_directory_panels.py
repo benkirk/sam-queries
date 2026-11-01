@@ -14,9 +14,10 @@ from factories.directory import (FakeDirectory, make_group_record, make_person_r
                                  make_position_record)
 from sam.core.groups import AdhocGroup
 from sam.core.users import User
-from sam.integration.directory import (DirectoryUnavailable, InstitutionRecord,
+from sam.integration.directory import (DirectoryUnavailable, EmailRecord, InstitutionRecord,
                                        OrganizationRecord, outage)
 from sam.integration.directory.compare import DriftReport
+from sam.integration.directory.config import PERSON_KINDS
 from sam.manage.directory import Change, ReconcileResult
 
 CARD = '/admin/user/benkirk'
@@ -263,20 +264,31 @@ class TestUserPanel:
         assert configured.calls == [('person', benkirk.upid)]
         assert f'uid {benkirk.unix_uid}' in html
         assert any_organization.acronym in html and 'Position</th>' in html
-        assert '>would apply</span>' not in html         # no lever is on
-        assert '>withheld</span>' in html and 'Levers on: none' in html
-        assert 'hx-post' not in html                     # no Apply without a lever
+        assert 'Automatic apply on sync: none' in html
+        assert 'Sync from directory' in html             # no lever needed for the operator's Sync
 
     def test_drift_rows_carry_both_values(self, auth_client, configured, benkirk):
         _seed(configured, benkirk, first_name='Someone Else', positions=())
         html = auth_client.get(PANEL).get_data(as_text=True)
-        assert 'first_name' in html and 'Someone Else' in html and 'withheld' in html
+        assert 'first_name' in html and 'Someone Else' in html and 'would apply' in html
 
-    def test_a_lever_shows_the_apply_button(self, auth_client, configured, benkirk, monkeypatch):
-        monkeypatch.setenv('DIRECTORY_APPLY_PERSON', '1')
+    def test_sync_needs_no_lever(self, auth_client, configured, benkirk):
         _seed(configured, benkirk, first_name='Someone Else', positions=())
         html = auth_client.get(PANEL).get_data(as_text=True)
         assert 'would apply' in html and 'hx-post="' + APPLY in html
+        assert 'Sync writes' in html and "benkirk&#39;s SAM record" in html
+
+    def test_identity_rows_stay_withheld_under_sync(self, auth_client, configured, benkirk):
+        _seed(configured, benkirk, unix_uid=(benkirk.unix_uid or 0) + 1, positions=())
+        html = auth_client.get(PANEL).get_data(as_text=True)
+        assert 'unix_uid' in html and '>withheld</span>' in html
+
+    def test_extra_emails_name_the_address_and_are_withheld_when_the_record_has_none(
+            self, auth_client, configured, benkirk):
+        _seed(configured, benkirk, positions=())         # emails=() in the record
+        html = auth_client.get(PANEL).get_data(as_text=True)
+        assert '<td class="col-shrink">extra</td>' in html
+        assert benkirk.primary_email in html
 
     def test_not_in_the_directory(self, auth_client, configured, benkirk):
         resp = auth_client.get(PANEL)
@@ -326,6 +338,7 @@ class TestDirectoryGates:
         assert 'Check directory' in non_admin_client.get(CARD).get_data(as_text=True)
         html = non_admin_client.get(PANEL).get_data(as_text=True)
         assert 'Someone Else' in html and 'hx-post="' + APPLY not in html
+        assert 'Sync from directory' not in html
         assert non_admin_client.post(APPLY).status_code == 403
 
 
@@ -348,6 +361,24 @@ class TestUserApply:
         assert seen == [('benkirk', benkirk.upid, False)]
         assert 'Applied 1, withheld 0' in html and 'Refresh card' in html
         assert configured.calls == [('person', benkirk.upid)]
+
+    def test_sync_runs_under_the_operator_config_and_logs_who(self, auth_client, configured,
+                                                              benkirk, monkeypatch, caplog):
+        import webapp.dashboards.admin.directory_routes as routes
+        _seed(configured, benkirk, first_name='Someone Else', positions=())
+        seen = []
+
+        def fake_reconcile(session, user, record, *, config, **kw):
+            seen.append(config.apply_kinds)
+            return ReconcileResult('person', user.username,
+                                   DriftReport('person', user.username, 'sam', True, ()),
+                                   applied=(Change('person', 'name', 'first_name'),))
+        monkeypatch.setattr(routes, 'reconcile_person', fake_reconcile)
+        caplog.set_level('INFO', logger='sam.manage.directory')
+        assert auth_client.post(APPLY).status_code == 200
+        assert seen == [PERSON_KINDS]                    # no lever is set in the suite
+        assert any('directory apply person benkirk' in r.getMessage()
+                   and r.getMessage().endswith('by=benkirk') for r in caplog.records)
 
     def test_apply_with_the_directory_down_is_the_alert(self, auth_client, configured):
         configured.raise_with = DirectoryUnavailable('timeout')

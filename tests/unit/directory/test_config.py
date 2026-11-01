@@ -2,7 +2,7 @@
 import pytest
 
 from sam.integration.directory import KINDS, DirectoryNotConfigured, NullDirectory
-from sam.integration.directory.config import (DirectoryConfig, apply_lever,
+from sam.integration.directory.config import (PERSON_KINDS, DirectoryConfig, apply_lever,
                                               directory_check_on_sync, directory_configured)
 from sam.integration.directory.registry import (READERS, build_reader, reader_from_environment,
                                                 reader_names)
@@ -33,6 +33,14 @@ def test_each_kind_has_its_own_apply_lever(monkeypatch, kind):
     assert config.apply_kinds == frozenset({kind})
     assert config.apply_enabled(kind) is True
     assert all(not config.apply_enabled(other) for other in KINDS if other != kind)
+
+
+def test_the_operator_config_adds_the_person_side_kinds_only(monkeypatch):
+    monkeypatch.setenv('DIRECTORY_APPLY_ORGANIZATION', '1')
+    config = DirectoryConfig.from_environment()
+    assert config.for_operator().apply_kinds == PERSON_KINDS | {'organization'}
+    assert config.apply_kinds == frozenset({'organization'})
+    assert PERSON_KINDS == frozenset({'person', 'position', 'collaboration'})
 
 
 def test_the_summary_names_every_kind_and_no_secret(monkeypatch):
