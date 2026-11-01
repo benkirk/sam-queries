@@ -38,6 +38,12 @@ Appendix C.
   write cannot drift; each kind's rules are the table in `DIRECTORY_CLIENT.md` section 5.
   Identity columns (`User.SYNC_FIELDS` excludes them), twins, undated-inactive entries,
   reopens and SAM-only history are withheld whatever the lever says. `dry_run` touches nothing.
+  Emails mirror the directory through the sync's own `sync_emails` (SAM-only addresses deleted),
+  except that a record with no email withholds the deletes.
+- **Levers gate the hook only.** An operator's Sync (the user panel, `sam-admin user
+  --directory-apply`) runs under `DirectoryConfig.for_operator()`: the person-side kinds
+  (`PERSON_KINDS`) on whatever `DIRECTORY_APPLY_<KIND>` says; the withholds above still hold.
+  Organization and institution Apply stay lever-gated.
 - **Panels** (`sam/manage/directory_panel.py`, Flask-free so the CLI `--directory` views share
   it; routes in `dashboards/admin/directory_routes.py`) are operator-initiated reads gated on
   `VIEW_DIRECTORY` (NUSD, CSG); every Apply is `MANAGE_DIRECTORY`, withheld from the default roles: a card

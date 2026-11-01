@@ -221,7 +221,7 @@ def _lookup_id(session, wanted, column, id_column, label):
     return row[0]
 
 
-def _sync_emails(user: User, wanted: list) -> None:
+def sync_emails(user: User, wanted: list) -> None:
     """Match by address, case-insensitively; addresses not sent are deleted (legacy)."""
     keep = {e['email'].lower() for e in wanted}
     for row in list(user.email_addresses):
@@ -355,7 +355,7 @@ def sync_user(session, data: dict, *, now: Optional[datetime] = None,
         session, data['type_of_login'], LoginType.type, LoginType.login_type_id, 'login type')
     user.apply_sync(**fields)
 
-    _sync_emails(user, data['emails'])
+    sync_emails(user, data['emails'])
     _sync_phones(session, user, data['phones'])
     _sync_affiliations(session, user, data['collaborations'], positions=False)
     _sync_affiliations(session, user, data['positions'], positions=True)

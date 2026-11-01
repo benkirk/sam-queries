@@ -1,13 +1,14 @@
 """The directory settings, read per call from Flask config or the environment.
 
 ``DIRECTORY_URL`` empty means off, whatever the provider says. ``DIRECTORY_APPLY_<KIND>``
-is the trust stage for that kind: with it off, that kind is reported and never written,
-whichever path (sync hook, admin panel, CLI) asks for a reconcile.
+is the trust stage for that kind on the sync hook, which writes unattended. An operator's
+one-person write (the user panel's Sync, ``sam-admin user --directory-apply``) runs under
+:meth:`DirectoryConfig.for_operator`, which turns on the person-side kinds whatever the levers say.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Dict, FrozenSet, Optional
 
 from sam.integration._config import config_bool, config_float, config_str
@@ -15,6 +16,10 @@ from sam.integration.directory.base import KINDS
 
 DEFAULT_BASE_DN = 'dc=ucar,dc=edu'
 DEFAULT_TIMEOUT = 5.0
+
+
+#: The kinds one person's record covers: what an operator's Sync writes.
+PERSON_KINDS: FrozenSet[str] = frozenset({'person', 'position', 'collaboration'})
 
 
 def apply_lever(kind: str) -> str:
@@ -47,6 +52,10 @@ class DirectoryConfig:
 
     def apply_enabled(self, kind: str) -> bool:
         return kind in self.apply_kinds
+
+    def for_operator(self) -> 'DirectoryConfig':
+        """This config with the person-side kinds on: an operator's click, not the hook."""
+        return replace(self, apply_kinds=self.apply_kinds | PERSON_KINDS)
 
     def summary(self) -> Dict[str, Any]:
         return {

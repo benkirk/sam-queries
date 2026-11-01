@@ -92,6 +92,15 @@ class TestPersonFields:
         assert sorted(d.field for d in report.discrepancies) == ['missing', 'primary']
         assert '@' not in report.fragment()
 
+    def test_sam_only_emails_are_extra_without_the_address(self):
+        record = make_person_record(emails=(EmailRecord(f'USER{UPID}@example.invalid', True),
+                                            ))
+        assert compare_person(record, snapshot(), key='k', side='sam', now=NOW).discrepancies == ()
+        report = compare_person(make_person_record(emails=(EmailRecord('new@example.invalid', True),)),
+                                snapshot(), key='k', side='sam', now=NOW)
+        assert sorted(d.field for d in report.discrepancies) == ['extra', 'missing', 'primary']
+        assert '@' not in report.fragment()
+
     def test_phones_compare_on_label_and_digits(self):
         same = compare_person(make_person_record(phones=(PhoneRecord('Ucar Office', '303.555.0100'),)),
                               snapshot(), key='k', side='sam', now=NOW)
