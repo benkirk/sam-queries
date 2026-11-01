@@ -2283,7 +2283,7 @@
     ]
   ],
   [
-    "allocations_dashboard.xras_configuration_cards",
+    "allocations_dashboard.xras_configuration_cards_fragment",
     "/allocations/xras/configuration/cards",
     [
       "GET"

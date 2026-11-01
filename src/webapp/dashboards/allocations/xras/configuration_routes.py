@@ -42,7 +42,7 @@ def xras_configuration():
 @bp.route('/xras/configuration/cards')
 @login_required
 @require_permission(Permission.VIEW_XRAS)
-def xras_configuration_cards():
+def xras_configuration_cards_fragment():
     """One card per type as *audience* sees it (empty: every type), then the unpublished ones."""
     audience = read_tab('audience', tuple(AUDIENCE_LABELS), '')
     config = interactive_config()
