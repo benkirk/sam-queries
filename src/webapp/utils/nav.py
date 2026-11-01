@@ -315,9 +315,30 @@ def nav_locate(endpoint):
     return None, None
 
 
+def public_entry_points():
+    """The public forms a signed-out visitor can use on this deployment, as (label, url, icon).
+
+    A form is listed only when it serves the visitor: mounted, and not bounced to login by
+    ACCOUNT_REGISTRATION_LOGIN_REQUIRED. /request also needs the XRAS visitor lever.
+    """
+    if current_app.config.get('ACCOUNT_REGISTRATION_LOGIN_REQUIRED', False):
+        return []
+    from flask import url_for
+    points = []
+    if 'register' in current_app.blueprints:
+        points.append(('Request an NCAR account', url_for('register.form'), 'fa-solid fa-user-plus'))
+    if 'allocation_request' in current_app.blueprints:
+        from webapp.utils.xras import interactive_config
+        if interactive_config().visitor_submit_configured:
+            points.append(('Request an allocation', url_for('allocation_request.overview'),
+                           'fa-solid fa-paper-plane'))
+    return points
+
+
 def nav_context_processor():
-    """Template context: ``nav_sections()`` (callable) and ``nav_locate``."""
+    """Template context: ``nav_sections()``, ``nav_locate`` and ``public_entry_points()``."""
     return {
         'nav_sections': resolve_nav_sections,
         'nav_locate': nav_locate,
+        'public_entry_points': public_entry_points,
     }

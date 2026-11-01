@@ -7,6 +7,8 @@ permission-driven per request; ``nav_locate`` maps endpoints to their
 section/item for breadcrumb derivation.
 """
 
+import pytest
+
 from webapp.utils.nav import NAV_SECTIONS, nav_locate
 
 
@@ -168,3 +170,36 @@ class TestBreadcrumbs:
         """The referrer-based .back-link machinery is fully retired."""
         html = auth_client.get('/user/accounts').get_data(as_text=True)
         assert 'back-link' not in html
+
+
+class TestPublicEntryPoints:
+    """The public forms are linked only where they serve a signed-out visitor."""
+
+    def test_login_page_and_navbar_link_the_open_form(self, client):
+        login = client.get('/auth/login').get_data(as_text=True)
+        assert 'href="/register/"' in login and 'New to NCAR?' in login
+        status = client.get('/status/derecho').get_data(as_text=True)
+        assert 'id="getAccessDropdown"' in status
+        assert status.count('href="/register/"') == 2      # navbar + drawer
+
+    def test_nothing_when_the_form_bounces_to_login(self, app, client, monkeypatch):
+        monkeypatch.setitem(app.config, 'ACCOUNT_REGISTRATION_LOGIN_REQUIRED', True)
+        assert 'New to NCAR?' not in client.get('/auth/login').get_data(as_text=True)
+        assert 'getAccessDropdown' not in client.get('/status/derecho').get_data(as_text=True)
+
+    def test_request_link_needs_the_visitor_lever(self, app, monkeypatch):
+        from types import SimpleNamespace
+        import webapp.utils.xras as xras
+        if 'allocation_request' not in app.blueprints:
+            pytest.skip('allocation_request blueprint not mounted')
+        with app.test_request_context('/auth/login'):
+            from webapp.utils.nav import public_entry_points
+            monkeypatch.setattr(xras, 'interactive_config',
+                                lambda: SimpleNamespace(visitor_submit_configured=False))
+            assert 'Request an allocation' not in [p[0] for p in public_entry_points()]
+            monkeypatch.setattr(xras, 'interactive_config',
+                                lambda: SimpleNamespace(visitor_submit_configured=True))
+            assert 'Request an allocation' in [p[0] for p in public_entry_points()]
+
+    def test_signed_in_users_see_no_get_access(self, auth_client):
+        assert 'getAccessDropdown' not in auth_client.get('/user/accounts').get_data(as_text=True)

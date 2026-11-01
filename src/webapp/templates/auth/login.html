@@ -120,6 +120,16 @@
         {% endif %}
         {% endif %}
 
+        {% set _entry = public_entry_points() %}
+        {% if _entry %}
+        <div class="text-center mt-4">
+            <span class="text-muted small d-block mb-1">New to NCAR?</span>
+            {% for label, url, icon in _entry %}
+            <a href="{{ url }}" class="help-link d-block"><i class="{{ icon }} me-1" aria-hidden="true"></i>{{ label }}</a>
+            {% endfor %}
+        </div>
+        {% endif %}
+
         <div class="login-footer">
             {% from 'dashboards/fragments/theme_toggle.html' import theme_toggle %}
             {{ theme_toggle(theme, labelled=true) }}

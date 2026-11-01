@@ -59,6 +59,9 @@
             <a class="d-block mb-2" href="{{ url_for('user_dashboard.index') }}">My Dashboard</a>
             <a class="fw-bold" href="{{ url_for('auth.logout') }}">Logout</a>
             {% else %}
+            {% for label, url, icon in public_entry_points() %}
+            <a class="d-block mb-2" href="{{ url }}"><i class="{{ icon }} me-1" aria-hidden="true"></i>{{ label }}</a>
+            {% endfor %}
             <a class="fw-bold" href="{{ url_for('auth.login') }}">Login</a>
             {% endif %}
         </div>
