@@ -2364,9 +2364,10 @@ wired right on its own, and nothing joined it to the way in.
 
 - [ ] N6: the job and directory explorers open in a new tab (`target="_blank"`) with no trail.
 - [ ] N7: page titles in six formats; one `X — SAM` through a block in `base.html`.
-- [ ] `test_chart_fingerprints` fails on clean staging on 2026-11-01: the 18 status-history
-  charts (node type, queue cores and GPUs) move. That is a DST day, so the fixture's window
-  probably depends on the date. It was not read further.
+- [x] `test_chart_fingerprints` failed on clean staging on 2026-11-01, the DST change: the
+  dual-panel charts labelled their time axis with today's zone (`fmt.local_tz_label()` read
+  `now`). They now name the plotted window's zone ('MST/MDT' across a change), and the snapshot
+  says MST for the March fixture whatever the date.
 - [ ] Tab and pill state lives only in localStorage on the job-history, disk-scan and allocation
   cards, so those views cannot be linked to.
 - [ ] Resource details for staff reached through a quick-view says "My Accounts" for a project

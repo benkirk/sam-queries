@@ -52,6 +52,11 @@ class DualPanelTimeSeriesChart(BaseChart):
     def is_empty(self) -> bool:
         return not self.history_data
 
+    def tz_label(self):
+        """The zone abbreviation for the plotted window, never today's (a March chart reads MST)."""
+        stamps = [d['timestamp'] for d in self.history_data]
+        return fmt.local_tz_label(min(stamps), max(stamps))
+
     def make_figure(self, layout):
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=layout.figsize, sharex=True)
         if layout.legend_placement == 'below':
@@ -161,7 +166,7 @@ class NodetypeHistoryChart(DualPanelTimeSeriesChart):
         self.apply_grid(ax1, theme)
 
         ax2.set_ylabel('Utilization', **self.label_kw(layout))
-        ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', **self.label_kw(layout))
+        ax2.set_xlabel(f'Time ({self.tz_label()})', **self.label_kw(layout))
         ax2.set_ylim(0, 100)
         ax2.yaxis.set_major_formatter(fmt.mpl_pct_formatter())
         self.apply_grid(ax2, theme)
@@ -221,7 +226,7 @@ class QueueHistoryChart(DualPanelTimeSeriesChart):
 
         self.count_axis(ax2)
         ax2.set_ylabel('Resources', **self.label_kw(layout))
-        ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', **self.label_kw(layout))
+        ax2.set_xlabel(f'Time ({self.tz_label()})', **self.label_kw(layout))
         self.apply_grid(ax2, theme)
 
     def add_legend(self, axes, layout, theme):

@@ -565,3 +565,17 @@ class TestRoundTrip:
         viewed = to_local_dt(stored_utc)
         assert viewed.hour == 14
         assert viewed.minute == 30
+
+
+class TestLocalTzLabel:
+    """A chart's zone label names its own window, not today (the 2026-11-01 DST failure)."""
+
+    def test_instants_name_the_zone_then(self):
+        assert fmt.local_tz_label(datetime(2026, 3, 1, 12)) == 'MST'
+        assert fmt.local_tz_label(datetime(2026, 7, 1, 12)) == 'MDT'
+
+    def test_a_window_across_a_change_names_both(self):
+        assert fmt.local_tz_label(datetime(2026, 3, 1, 12), datetime(2026, 3, 20, 12)) == 'MST/MDT'
+
+    def test_no_instant_is_now(self):
+        assert fmt.local_tz_label() in ('MST', 'MDT')
