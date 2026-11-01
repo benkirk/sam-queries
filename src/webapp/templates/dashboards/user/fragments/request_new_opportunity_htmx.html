@@ -1,11 +1,7 @@
-{#- What a New's page one says about the chosen opportunity, into #xrasNewOpportunity: its type,
-    resources, documents and the project code letters. On the reveal (oob) the inputs it asks
-    for follow out of band into #xrasNewOpportunityInputs. Context: opportunity, rules,
-    sam_state, chosen_mnemonic, form, field_errors, oob (or outage). -#}
+{#- What a New's page one says about the chosen opportunity: its type, resources, documents and
+    the project code letters. Context: opportunity, rules, sam_state. -#}
 {% from 'dashboards/user/partials/request_bits.html' import attach_note %}
-{% if outage %}
-<p class="small text-warning-emphasis"><i class="fa-solid fa-triangle-exclamation me-1"></i>{{ outage }}</p>
-{% elif opportunity %}
+{% if opportunity %}
 {% set _docs = rules.documents | selectattr('required') | list %}
 <div class="modal-facts small mb-3">
     {{ opportunity.allocation_type }}: XRAS offers
@@ -18,7 +14,4 @@
     <span class="d-block">The project code starts with <span class="font-monospace">{{ sam_state.mnemonic.code }}</span>{% if sam_state.affiliation %}, from {{ sam_state.affiliation }}{% endif %}.</span>
     {%- endif %}
 </div>
-{% endif %}
-{% if oob %}
-<div id="xrasNewOpportunityInputs" hx-swap-oob="true">{% include 'dashboards/user/fragments/request_new_inputs_htmx.html' %}</div>
 {% endif %}

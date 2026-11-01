@@ -3,23 +3,21 @@
 One row per XRAS allocation type (``allocationTypeInfo.allocationTypeId``). The prose
 (summary, funding eligibility, review cadence, notes) is SAM's own, modeled on ARC's
 opportunities table; the limits shown beside it come from ``allocation_type_resource_limit``
-through ``allocation_type``, a SAM type **name** resolved at read time. ``audience``
-``'ncar'`` keeps a type off the public page. No foreign keys (two dialects). DDL and seed:
+through ``allocation_type``, a SAM type **name** resolved at read time. ``audience`` names
+one key of the registry in ``sam/xras/audiences.py`` (NULL is everyone). No foreign keys (two dialects). DDL and seed:
 ``scripts/sql/create_allocation_type_guide.sql`` and ``seed_allocation_type_guide.sql``,
 each with a ``_pg`` twin. Design: ``docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md``.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Iterable, List, Optional
 
 from sqlalchemy import Column, DateTime, Integer, String, Text, UniqueConstraint
 
 from sam.base import ActiveFlagMixin, Base, SessionMixin
+from sam.xras.audiences import AUDIENCE_LABELS, VISITOR_AUDIENCES
 
-#: Audience value -> its label on the admin form; `ncar` keeps a type off the public page.
-AUDIENCE_LABELS = {'university': 'University', 'ncar': 'NCAR staff only'}
 AUDIENCES = tuple(AUDIENCE_LABELS)
-AUDIENCE_NCAR = 'ncar'
 
 
 class AllocationTypeGuide(Base, SessionMixin, ActiveFlagMixin):
@@ -106,11 +104,16 @@ class AllocationTypeGuide(Base, SessionMixin, ActiveFlagMixin):
                 f'title={self.title!r}, audience={self.audience}, active={self.active})>')
 
 
+def guides_for_audiences(session, audiences: Optional[Iterable[str]]
+                         ) -> List[AllocationTypeGuide]:
+    """The active rows for *audiences* (or every audience when ``None``), in display order."""
+    q = session.query(AllocationTypeGuide).filter(AllocationTypeGuide.is_active)
+    if audiences is not None:
+        q = q.filter(AllocationTypeGuide.audience.is_(None)
+                     | AllocationTypeGuide.audience.in_(sorted(audiences)))
+    return q.order_by(AllocationTypeGuide.display_order, AllocationTypeGuide.title).all()
+
+
 def public_guides(session) -> List[AllocationTypeGuide]:
-    """The active rows a visitor may see (every audience but ``ncar``), in display order."""
-    return (session.query(AllocationTypeGuide)
-            .filter(AllocationTypeGuide.is_active)
-            .filter((AllocationTypeGuide.audience.is_(None))
-                    | (AllocationTypeGuide.audience != AUDIENCE_NCAR))
-            .order_by(AllocationTypeGuide.display_order, AllocationTypeGuide.title)
-            .all())
+    """The active rows a visitor may see, in display order."""
+    return guides_for_audiences(session, VISITOR_AUDIENCES)

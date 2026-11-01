@@ -1,0 +1,32 @@
+{#- A New's first stage, into #xrasRequestModalBody: the allocation types as radio cards
+    (type_cards.type_card, variant pick), the PI's audiences first, the rest behind a
+    disclosure. Context: eligible, others (TypeCard), outage, post_url, errors. -#}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/user/partials/request_bits.html' import request_title %}
+{% from 'dashboards/fragments/type_cards.html' import type_card %}
+{{ request_title('New request') }}
+{% call htmx_form(post_url, '#xrasRequestModalBody', 'Next', submit_icon='arrow-right', errors=errors) %}
+    <input type="hidden" name="stage" value="type">
+    <p class="type-card-pick-lede">Choose the type of allocation.</p>
+    {% if outage %}
+    <p class="small text-warning-emphasis"><i class="fa-solid fa-triangle-exclamation me-1" aria-hidden="true"></i>XRAS is not answering, so no type can be started now.</p>
+    {% endif %}
+    <div class="list-group type-card-picks" role="radiogroup" aria-label="Allocation types for you">
+    {% for card in eligible %}
+        {{ type_card(card, 'pick', pick_name='opportunity_id') }}
+    {% else %}
+        <p class="text-muted fst-italic mb-0">No allocation type is published for you yet.</p>
+    {% endfor %}
+    </div>
+    {% if others %}
+    <details class="type-card-others">
+        <summary>Other allocation types</summary>
+        <p class="small text-muted my-2">These are meant for another audience. XRAS decides whether it takes your request.</p>
+        <div class="list-group type-card-picks" role="radiogroup" aria-label="Other allocation types">
+        {% for card in others %}
+            {{ type_card(card, 'pick', pick_name='opportunity_id') }}
+        {% endfor %}
+        </div>
+    </details>
+    {% endif %}
+{% endcall %}

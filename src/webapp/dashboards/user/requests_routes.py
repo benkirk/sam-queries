@@ -51,6 +51,7 @@ from webapp.utils.xras import (
     requests_index,
     resource_keys,
     session_factory,
+    type_cards,
 )
 from webapp.utils.rbac import Permission, has_permission
 
@@ -477,8 +478,8 @@ def my_request_post(project, kind):
 
 # the New request: describe -> request -> review -> submit
 
+_NEW_TYPE = 'dashboards/user/fragments/request_new_type_htmx.html'
 _NEW_DESCRIBE = 'dashboards/user/fragments/request_new_htmx.html'
-_NEW_OPPORTUNITY = 'dashboards/user/fragments/request_new_opportunity_htmx.html'
 _NEW_AMOUNTS = 'dashboards/user/fragments/request_new_amounts_htmx.html'
 _GRANT = 'dashboards/user/fragments/request_grant_htmx.html'
 #: The page-one inputs a later page carries in hidden fields, and whose errors land on page one.
@@ -538,11 +539,14 @@ def _user_label(user_id):
 
 
 class NewRequestForm(_RequestForm):
-    """A New through describe -> request -> review -> submit; nothing reaches XRAS before submit.
+    """A New through type -> describe -> request -> review -> submit; nothing reaches XRAS
+    before submit. The type stage (``type_stage``, ``choose_type``) is the signed-in door's:
+    the visitor's type is fixed by its token.
 
     Who files is a seam (``_arm``, ``_opportunities``, ``_chosen_id``, ``_pi``, ``_pi_username``,
     ``_institution_name``, ``_check_admin``, ``_expected_messages``, ``_file``, ``_post_url``,
-    ``_pi_email``, ``roster_private``, ``request_urls``): the visitor's New
+    ``_type_url``, ``_pi_email``, ``roster_private``, ``names_sam_users``, ``request_urls``):
+    the visitor's New
     (``webapp/register/allocation_request.py``) overrides those, and ``draft`` to stamp its
     registration on the ``SamRefs``.
     """
@@ -553,6 +557,8 @@ class NewRequestForm(_RequestForm):
     request_urls: dict = {}
     #: True where the review must not say which roster addresses SAM or XRAS knows.
     roster_private = False
+    #: False where the form must not search SAM's users (the project admin, the roster picker).
+    names_sam_users = True
 
     def __init__(self):
         HtmxFormHandler.__init__(self, project=None, action_type='New')
@@ -585,6 +591,33 @@ class NewRequestForm(_RequestForm):
     def _post_url(self):
         return url_for('user_dashboard.my_request_new_post')
 
+    def _type_url(self):
+        """Where "Change type" returns to; ``None`` where the type is fixed."""
+        return url_for('user_dashboard.my_request_new_fragment')
+
+    def type_stage(self, errors=()):
+        """The first stage: every published type as a card, the PI's audiences first (one read)."""
+        from sam.xras.audiences import user_audiences
+        config = _config()
+        self._arm(config)
+        try:
+            opportunities, outage = self._opportunities(config), False
+        except FormError:
+            opportunities, outage = [], True
+        mine = user_audiences(self._pi())
+        cards = type_cards(opportunities, config, audiences=None)
+        eligible = [c for c in cards if c.audience is None or c.audience in mine]
+        others = [c for c in cards if not (c.audience is None or c.audience in mine)]
+        return render_template(_NEW_TYPE, eligible=eligible, others=others, outage=outage,
+                               post_url=self._post_url(), errors=list(errors))
+
+    def choose_type(self):
+        """``stage=type``: the describe page with the chosen open type fixed, or the stage again."""
+        ctx = self.gate()
+        if ctx['opportunity'] is None or not ctx['opportunity']['can_submit']:
+            return self.type_stage(errors=['Choose one of the open types.'])
+        return render_template(_NEW_DESCRIBE, errors=[], field_errors={}, form=None, **ctx)
+
     def gate(self):
         if self._ctx is not None:
             return self._ctx
@@ -597,11 +630,8 @@ class NewRequestForm(_RequestForm):
         self._ctx = dict(project=None, action_type='New', decision=None,
                          eula_sha=eula_sha(), post_url=self._post_url(),
                          request_urls=self.request_urls, roster_private=self.roster_private,
+                         names_sam_users=self.names_sam_users, type_url=self._type_url(),
                          opportunities=opportunities, fos_options=fos,
-                         opportunity_options=[(o['opportunity_id'], o['opportunity_name']
-                                               if o['can_submit'] else
-                                               f"{o['opportunity_name']} (not open to you)")
-                                              for o in opportunities],
                          fos_choices=[(r['fosTypeId'], r.get('fosName')) for r in fos],
                          chosen_mnemonic=_mnemonic_label(request.values.get(
                              'mnemonic_code_id', type=int)),
@@ -631,7 +661,8 @@ class NewRequestForm(_RequestForm):
             return self.gate()
         except FormError:
             return dict(project=None, action_type='New', decision=None, opportunities=[],
-                        opportunity_options=[], fos_options=[], fos_choices=[],
+                        names_sam_users=self.names_sam_users, type_url=self._type_url(),
+                        fos_options=[], fos_choices=[],
                         opportunity=None, rules=None, sam_state=None, chosen_mnemonic='',
                         chosen_admin='',
                         carry_fields=_DESCRIBE_FIELDS, resources=[], documents=[],
@@ -804,31 +835,24 @@ class NewRequestForm(_RequestForm):
 @bp.route('/requests/new')
 @login_required
 def my_request_new_fragment():
-    """Page one of a New, into ``#xrasRequestModalBody``; a refusal renders as a message."""
-    handler = NewRequestForm()
+    """A New's type stage, into ``#xrasRequestModalBody``; a refusal renders as a message."""
     try:
-        ctx = handler.gate()
+        return NewRequestForm().type_stage()
     except FormError as exc:
         return message_fragment('New request unavailable', ' '.join(exc.errors))
-    return render_template(_NEW_DESCRIBE, errors=[], field_errors={}, form=None, **ctx)
 
 
 @bp.route('/requests/new', methods=['POST'])
 @login_required
 def my_request_new_post():
-    return NewRequestForm().handle()
-
-
-@bp.route('/requests/new/opportunity')
-@login_required
-def my_request_new_opportunity_fragment():
-    """Page one's reveal for the chosen opportunity: its rule book, the code letters, the grant."""
+    """``stage=type`` picks the type (no schema: the choice is the whole input); then the form."""
+    handler = NewRequestForm()
+    if request.form.get('stage') != 'type':
+        return handler.handle()
     try:
-        ctx = NewRequestForm().gate()
+        return handler.choose_type()
     except FormError as exc:
-        return render_template(_NEW_OPPORTUNITY, outage=' '.join(exc.errors), form=None,
-                               field_errors={}, opportunity=None, oob=True)
-    return render_template(_NEW_OPPORTUNITY, form=None, field_errors={}, oob=True, **ctx)
+        return message_fragment('New request unavailable', ' '.join(exc.errors))
 
 
 def mnemonic_code_search(q, active_only):

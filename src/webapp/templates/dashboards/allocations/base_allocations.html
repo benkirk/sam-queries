@@ -21,7 +21,8 @@
     {'endpoint': 'allocations_dashboard.transactions', 'label': 'Transactions', 'icon': 'fa-solid fa-right-left'},
     {'endpoint': 'allocations_dashboard.adjustments',  'label': 'Adjustments',  'icon': 'fa-solid fa-scale-balanced'},
     {'endpoint': 'allocations_dashboard.xras',         'label': 'XRAS',         'icon': 'fa-solid fa-plug',
-     'visible': has_permission(Permission.VIEW_XRAS)},
+     'visible': has_permission(Permission.VIEW_XRAS),
+     'active_endpoints': ['allocations_dashboard.xras_configuration']},
 ]) }}
 
 {% block alloc_content %}{% endblock %}

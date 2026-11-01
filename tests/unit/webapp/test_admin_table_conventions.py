@@ -27,6 +27,7 @@ CARDS = [
     '/admin/htmx/contracts-table',
     '/admin/htmx/facilities',
     '/admin/htmx/mnemonic-codes-table',
+    '/allocations/xras/configuration/cards',
 ]
 
 

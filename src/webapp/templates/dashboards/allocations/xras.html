@@ -16,6 +16,7 @@
 {% endblock %}
 
 {% block alloc_content %}
+{% include 'dashboards/allocations/_xras_strip.html' %}
 
 {# Three panes over one time window, above the action log.
    WARNING: the window control renders ONCE, here. In each pane it would put three

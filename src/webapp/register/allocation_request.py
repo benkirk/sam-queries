@@ -20,7 +20,6 @@ from flask_login import current_user
 from marshmallow import ValidationError
 
 from sam.core.account_requests import PURPOSE_SUBMISSION, AccountRequest
-from sam.integration.xras_api import XrasSourceUnavailable
 from sam.manage import management_transaction
 from sam.manage.account_requests import register_request
 from sam.queries.account_notices import build_verify_message
@@ -33,7 +32,7 @@ from webapp.utils.notify import get_notifier
 from webapp.dashboards.user.requests_routes import (NewRequestForm, award_lookup_fragment,
                                                     message_fragment, mnemonic_code_search)
 from webapp.utils.form_handler import FormError
-from webapp.utils.xras import admin_client, interactive_config, read_client, resource_keys
+from webapp.utils.xras import interactive_config, report_opportunities, type_cards
 
 from . import eula, tokens
 from .common import (GATE_KEY, anon_tier as _anon_tier, email_key, email_tier, expired,
@@ -62,32 +61,16 @@ def _draft_ttl() -> int:
     return int(current_app.config.get('REQUEST_DRAFT_TTL_DAYS', 30)) * 86400
 
 
-def _opportunities(config):
-    """``(views, outage)``: the open opportunities in the report context."""
-    try:
-        return admin_client(config).new_request_opportunities(None), False
-    except XrasSourceUnavailable as exc:
-        logger.warning('request overview: XRAS not answering: %s', exc)
-        return [], True
-
-
 def _cards(config):
-    from sam.integration.xras_api.rule_book import rule_book
-    from sam.xras.allocation_overview import allocation_type_overview
-    opportunities, outage = _opportunities(config)
-    reader = read_client(config) if opportunities else None
-    cards = allocation_type_overview(
-        db.session, opportunities,
-        rules_for=lambda type_id, name: rule_book(reader, type_id, 'New',
-                                                  allocation_type_name=name),
-        resource_keys=resource_keys(config) if opportunities else None)
-    return cards, outage
+    from sam.xras.audiences import VISITOR_AUDIENCES
+    opportunities, outage = report_opportunities(config)
+    return type_cards(opportunities, config, audiences=VISITOR_AUDIENCES), outage
 
 
 def _open(opportunity_id):
     """``(opportunity, outage)``: the open opportunity a visitor may file under *opportunity_id*."""
     from sam.accounting.allocation_type_guide import public_guides
-    opportunities, outage = _opportunities(interactive_config())
+    opportunities, outage = report_opportunities(interactive_config())
     public = {g.xras_allocation_type_id for g in public_guides(db.session)}
     return next((o for o in opportunities
                  if o.get('opportunity_id') == opportunity_id and o.get('can_submit')
@@ -359,12 +342,12 @@ class _VisitorNewRequest(NewRequestForm):
     """
 
     roster_private = True
+    names_sam_users = False
 
     def __init__(self, row, opportunity_id, token):
         super().__init__()
         self.row, self.opportunity_id, self.token = row, opportunity_id, token
         self.request_urls = {
-            'fixed_opportunity': True,
             'mnemonic_suggest': url_for('allocation_request.mnemonic_suggest', token=token),
             'award_lookup': url_for('allocation_request.award_lookup', token=token),
             'terms': url_for('allocation_request.terms'),
@@ -400,6 +383,9 @@ class _VisitorNewRequest(NewRequestForm):
 
     def _post_url(self):
         return url_for('allocation_request.draft_post', token=self.token)
+
+    def _type_url(self):
+        return None
 
     def _check_admin(self, data, errors):
         data['admin_username'] = None

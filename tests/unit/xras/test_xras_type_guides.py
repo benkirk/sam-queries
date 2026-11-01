@@ -1,4 +1,4 @@
-"""Admin -> Configuration: the allocation type guide card (XRAS_SUBMISSION_SPRINT2.md § 4).
+"""Allocations > XRAS > Configuration: the guide rows' forms (XRAS_SUBMISSION_SPRINT3.md A2).
 
 HTTP-layer only (auth, render, validation re-render, the duplicate refusal): route handlers
 commit through ``db.session``, so no happy-path write runs here.
@@ -10,24 +10,9 @@ import pytest
 
 from sam.accounting.allocation_type_guide import AllocationTypeGuide
 from sam.schemas.forms import EditAllocationTypeGuideForm
-from webapp.utils.rbac import Permission
+from sam.xras.audiences import AUDIENCE_LABELS
 
-CARD = '/admin/htmx/allocation-guides'
-
-
-@pytest.fixture
-def config_only_client(auth_client, monkeypatch):
-    """`benkirk` with VIEW_SYSTEM_CONFIG but without SYSTEM_ADMIN."""
-    from webapp.utils import rbac
-    real = rbac.get_user_permissions
-
-    def _without(user):
-        kept = {p for p in real(user) if p is not Permission.SYSTEM_ADMIN}
-        kept.add(Permission.VIEW_SYSTEM_CONFIG)
-        return kept
-
-    monkeypatch.setattr(rbac, 'get_user_permissions', _without)
-    return auth_client
+URL = '/allocations/htmx/allocation-guide'
 
 
 @pytest.fixture
@@ -49,34 +34,25 @@ def a_guide(engine):
             AllocationTypeGuide.allocation_type_guide_id == gid))
 
 
-class TestTheCard:
+class TestTheGate:
 
-    def test_it_renders_its_rows_for_an_admin(self, auth_client, a_guide):
-        html = auth_client.get(f'{CARD}?active_only=1').get_data(as_text=True)
-        assert a_guide.title in html and 'editAllocationGuideModal' in html
-        assert "(XRAS's description)" in html, 'an empty summary says what stands in'
+    def test_view_xras_alone_cannot_open_or_post_a_form(self, view_only_client, a_guide):
+        assert view_only_client.get(f'{URL}-edit-form/{a_guide.id}').status_code == 403
+        assert view_only_client.get(f'{URL}-create-form').status_code == 403
+        assert view_only_client.post(f'{URL}-edit/{a_guide.id}', data={}).status_code == 403
 
-    def test_the_configuration_page_hosts_it(self, auth_client):
-        html = auth_client.get('/admin/configuration').get_data(as_text=True)
-        assert 'allocationGuidesSection' in html
-        assert 'id="editAllocationGuideModal"' in html
+    def test_there_is_no_delete_route(self, auth_client, a_guide):
+        """Retiring a row is the edit form's Active box."""
+        assert auth_client.delete(f'{URL}-delete/{a_guide.id}').status_code in (404, 405)
 
-    def test_view_system_config_reads_but_cannot_write(self, config_only_client, a_guide):
-        html = config_only_client.get(CARD).get_data(as_text=True)
-        assert a_guide.title in html and 'editAllocationGuideModal' not in html
-        assert config_only_client.post(f'/admin/htmx/allocation-guide-edit/{a_guide.id}',
-                                       data={}).status_code == 403
-        assert config_only_client.delete(
-            f'/admin/htmx/allocation-guide-delete/{a_guide.id}').status_code == 403
-
-    def test_anonymous_is_refused(self, client):
-        assert client.get(CARD).status_code in (302, 401, 403)
+    def test_anonymous_is_refused(self, client, a_guide):
+        assert client.get(f'{URL}-edit-form/{a_guide.id}').status_code in (302, 401, 403)
 
 
 class TestTheForms:
 
     def test_edit_form_renders(self, auth_client, a_guide):
-        html = auth_client.get(f'/admin/htmx/allocation-guide-edit-form/{a_guide.id}').get_data(
+        html = auth_client.get(f'{URL}-edit-form/{a_guide.id}').get_data(
             as_text=True)
         assert 'name="summary"' in html and f'XRAS type {a_guide.xras_type}' in html
         assert 'name="allocation_type"' in html and '<option value="Everyone"' not in html
@@ -87,24 +63,24 @@ class TestTheForms:
         with auth_client.application.app_context():
             a_name = db.session.query(AllocationType.allocation_type).filter(
                 AllocationType.is_active).order_by(AllocationType.allocation_type).first()[0]
-        html = auth_client.get('/admin/htmx/allocation-guide-create-form').get_data(as_text=True)
+        html = auth_client.get(f'{URL}-create-form').get_data(as_text=True)
         select = html[html.index('name="allocation_type"'):]
         select = select[:select.index('</select>')]
-        assert f'<option value="{a_name}"' in select and 'NCAR staff only' in html
+        assert f'<option value="{a_name}"' in select and AUDIENCE_LABELS['ncar'] in html
 
     @pytest.mark.parametrize('data, says', [
         ({'title': ''}, 'title'), ({'title': 'T', 'audience': 'everyone'}, 'audience')])
     def test_a_bad_field_rerenders(self, auth_client, a_guide, data, says):
-        resp = auth_client.post(f'/admin/htmx/allocation-guide-edit/{a_guide.id}', data=data)
+        resp = auth_client.post(f'{URL}-edit/{a_guide.id}', data=data)
         assert resp.status_code == 200 and says in resp.get_data(as_text=True).lower()
 
     def test_a_second_row_for_a_type_is_refused(self, auth_client, a_guide):
-        resp = auth_client.post('/admin/htmx/allocation-guide-create', data={
+        resp = auth_client.post(f'{URL}-create', data={
             'xras_allocation_type_id': a_guide.xras_type, 'title': 'Again'})
         assert 'already has a guide row' in resp.get_data(as_text=True)
 
     def test_create_form_renders(self, auth_client):
-        html = auth_client.get('/admin/htmx/allocation-guide-create-form').get_data(as_text=True)
+        html = auth_client.get(f'{URL}-create-form').get_data(as_text=True)
         assert 'name="xras_allocation_type_id"' in html and 'name="title"' in html
 
 

@@ -214,13 +214,17 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/user/fragments/request_offers_htmx.html': [
         'xrasRequestModal', 'xrasRequestModalBody'],
     'dashboards/user/fragments/request_review_htmx.html': ['xrasRequestModalBody'],
+    # Its "Change type" link (signed-in only) swaps the type stage back into the open body;
+    # the visitor's panel (register/request_draft.html) carries the same id.
+    'dashboards/user/fragments/request_new_htmx.html': ['xrasRequestModalBody'],
     'dashboards/user/fragments/request_new_amounts_htmx.html': ['xrasRequestModalBody'],
     'dashboards/user/fragments/request_resume_htmx.html': ['xrasRequestModalBody'],
-    # Loaded only into admin/configuration.html, which ships both limit shells.
-    'dashboards/admin/fragments/allocation_guides_card.html': [
-        'createAllocationGuideFormContainer', 'createAllocationGuideModal'],
-    'dashboards/admin/fragments/allocation_limits_card.html': [
-        'createAllocationLimitFormContainer', 'createAllocationLimitModal'],
+    # The openers are the `admin` variant's only; it renders only into
+    # allocations/xras_configuration.html (via xras_type_cards_htmx.html), which ships them.
+    'dashboards/fragments/type_cards.html': [
+        'createAllocationGuideFormContainer', 'createAllocationGuideModal',
+        'createAllocationLimitFormContainer', 'createAllocationLimitModal',
+        'editAllocationGuideFormContainer', 'editAllocationGuideModal'],
     'dashboards/admin/fragments/disk_root_directories_section.html': [
         'addDiskRootFormContainer', 'addDiskRootModal'],
     'dashboards/admin/fragments/facility_card.html': [
@@ -508,6 +512,7 @@ PAGES_WITH_PROJECT_MODAL = {
     '/allocations/transactions': 'dashboards/allocations/transactions.html',
     '/allocations/adjustments': 'dashboards/allocations/adjustments.html',
     '/allocations/xras': 'dashboards/allocations/xras.html',
+    '/allocations/xras/configuration': 'dashboards/allocations/xras_configuration.html',
     '/status/derecho': 'dashboards/status/derecho_page.html',
     '/status/casper': 'dashboards/status/casper_page.html',
     '/status/jupyterhub': 'dashboards/status/jupyterhub_page.html',

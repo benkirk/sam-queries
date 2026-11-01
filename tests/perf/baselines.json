@@ -264,5 +264,13 @@
     "request_overview_route": {
         "queries": 6,
         "notes": "measured 4 (2026-10-31, 7 guide rows, six resources each): the guide rows, the type ids, the limits for every type, and the resource map joined to its resources, each once for all the cards. 55 before the batching (a map query, six lazy resource loads, a type lookup and a limits query per card). Flat in cards"
+    },
+    "xras_configuration_cards_route": {
+        "queries": 20,
+        "notes": "measured 15 (2026-10-31, benkirk, 7 guide rows, six resources each): 9 for the signed-in user, then the guide rows, the limited type names, the type ids, the limits (retired too) and the resource map, each once for all the cards. Flat in cards"
+    },
+    "user_my_requests_new_route": {
+        "queries": 32,
+        "notes": "measured 26 (2026-10-31, benkirk, 7 guide rows, six resources each): the signed-in user's context, the PI read through NewRequestForm._pi() (its selectin relationships, as the describe page pays) with its current organization and institution, then the guide rows, the type ids, the limits and the resource map once for every card. Flat in cards"
     }
 }

@@ -1,0 +1,6 @@
+{# The XRAS tab's own pages: the work queue and the request types' configuration. #}
+{% from 'dashboards/fragments/page_tabs.html' import page_tabs %}
+{{ page_tabs([
+    {'endpoint': 'allocations_dashboard.xras', 'label': 'Work queue', 'icon': 'fa-solid fa-inbox'},
+    {'endpoint': 'allocations_dashboard.xras_configuration', 'label': 'Configuration', 'icon': 'fa-solid fa-sliders'},
+]) }}

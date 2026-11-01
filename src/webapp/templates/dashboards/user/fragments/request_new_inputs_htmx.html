@@ -2,7 +2,7 @@
     tell them from the PI's affiliation, and the grant when the rule book wants one. Context:
     opportunity, rules, sam_state, chosen_mnemonic, form, field_errors. -#}
 {% from 'dashboards/fragments/form_fields.html' import fk_search_field with context %}
-{% if opportunity and not outage %}
+{% if opportunity %}
 {% if not sam_state.mnemonic %}
 {{ fk_search_field('mnemonic_code_id', 'Project code letters',
                    (request_urls or {}).get('mnemonic_suggest') or url_for('user_dashboard.my_requests_mnemonic_suggest'),

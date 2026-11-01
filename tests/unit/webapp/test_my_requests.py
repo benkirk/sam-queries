@@ -22,7 +22,11 @@ def _picker(projcode):
 
 @pytest.fixture
 def armed(monkeypatch):
-    """The submit lever on, every type armed; returns the fakes the picker builds."""
+    """The submit lever on, every type armed; returns the fakes the picker builds. The XRAS
+    cache is off during the test (a fake catalog cached by one test fed the next one's
+    preflight) and back to its configured state after it."""
+    from sam.integration.xras_api import cache as xras_cache
+    xras_cache._CACHE.reset_for_tests()
     config = replace(XrasApiConfig(enabled=True, write_enabled=True, api_key='k'),
                      submit_enabled=True,
                      submit_action_types=('Extension', 'Supplement', 'Renewal', 'New'))
@@ -61,7 +65,8 @@ def armed(monkeypatch):
                         classmethod(lambda cls, *a, **k: Reader()))
     monkeypatch.setattr('sam.integration.xras_api.admin_client.XrasAdminClient.from_environment',
                         classmethod(lambda cls, *a, **k: Admin()))
-    return fakes
+    yield fakes
+    xras_cache._CACHE.reset_for_tests(disabled=False)
 
 
 def _line(number, username='benkirk'):
@@ -878,6 +883,12 @@ def member(session):
     pytest.skip('no user with a uniquely held address in this snapshot')
 
 
+def _choose(client, opportunity_id):
+    """The type stage's Next: the describe page with *opportunity_id* fixed."""
+    return client.post(NEW, data={'stage': 'type', 'opportunity_id': str(opportunity_id)}
+                       ).get_data(as_text=True)
+
+
 def _new(stage='request', **extra):
     return {**dict(stage=stage, opportunity_id='532221', title='Ensemble downscaling',
                    abstract='Regional runs for the next three summers.', fos_type_id='500003'),
@@ -898,24 +909,96 @@ class TestTheNewForm:
         html = auth_client.get(PAGE).get_data(as_text=True)
         assert 'id="xrasNewRequestOpen"' in html and '/user/requests/new' in html
 
-    def test_page_one_lists_the_opportunities_and_the_selectable_fields(self, auth_client,
-                                                                       newable):
+    def test_the_first_stage_is_the_type_cards(self, auth_client, newable):
         html = auth_client.get(NEW).get_data(as_text=True)
-        assert 'Exploratory (University)' in html and 'Educational (University) (not open to you)' in html
-        assert 'Atmospheric Sciences' in html and 'Not offered' not in html
+        assert 'Choose the type of allocation.' in html and 'value="type"' in html
+        assert 'name="opportunity_id" id="pick-type-500847" value="532221"' in html
         assert ('opportunities', 'benkirk') in newable.reads
+        assert 'name="title"' not in html
+
+    def test_choosing_fixes_the_type_and_shows_the_selectable_fields(self, auth_client, newable):
+        html = _choose(auth_client, 532221)
+        assert 'type="hidden" name="opportunity_id" value="532221"' in html
+        assert 'Requesting <strong>Exploratory (University)</strong>' in html
+        assert 'Change type' in html and 'xrasNewOpportunitySelect' not in html
+        assert 'Atmospheric Sciences' in html and 'Not offered' not in html
         # The roster's user search, in append mode onto the paste box (the visitor has none).
         assert 'data-fk-append="#xrasNewRoster"' in html and '/htmx/roster-suggest' in html
 
+    @pytest.fixture
+    def by_audience(self, newable, committed_guide):
+        """A guided open type per audience and one closed university type, all offered."""
+        made = {'ncar': committed_guide(audience='ncar'),
+                'university': committed_guide(audience='university'),
+                'everyone': committed_guide(),
+                'closed': committed_guide(audience='university')}
+        for n, (key, guide) in enumerate(made.items()):
+            closed = key == 'closed'
+            newable.opportunities.append(_opportunity(
+                880000 + n, guide.title, guide.xras_type, can_submit=not closed,
+                reason='Opens in March.' if closed else None))
+        return made
+
+    def _split(self, client, monkeypatch, audiences):
+        import sam.xras.audiences as registry
+        monkeypatch.setattr(registry, 'user_audiences', lambda user: frozenset(audiences))
+        html = client.get(NEW).get_data(as_text=True)
+        mine, _, others = html.partition('<details class="type-card-others">')
+        return mine, others
+
+    def test_staff_see_their_types_first_and_the_rest_disclosed(self, auth_client, monkeypatch,
+                                                                 by_audience):
+        mine, others = self._split(auth_client, monkeypatch, {'ncar'})
+        assert by_audience['ncar'].title in mine and by_audience['everyone'].title in mine
+        assert by_audience['university'].title not in mine
+        assert by_audience['university'].title in others
+
+    def test_a_university_pi_sees_theirs_first(self, auth_client, monkeypatch, by_audience):
+        mine, others = self._split(auth_client, monkeypatch, {'university'})
+        assert by_audience['university'].title in mine and by_audience['everyone'].title in mine
+        assert by_audience['ncar'].title not in mine and by_audience['ncar'].title in others
+
+    def test_a_closed_type_is_disabled_with_xrass_reason(self, auth_client, monkeypatch,
+                                                         by_audience):
+        mine, _ = self._split(auth_client, monkeypatch, {'university'})
+        card = mine.split(f'>{by_audience["closed"].title}<')[0].rsplit('<label', 1)[1]
+        assert 'disabled' in card and 'value="' not in card.split('type="radio"')[1].split('>')[0]
+        assert 'Opens in March.' in mine
+
+    def test_the_real_classifier_reads_the_pi(self, auth_client, newable, by_audience, session):
+        from sam.core.users import User
+        from sam.xras.audiences import user_audiences
+        mine = user_audiences(User.get_by_username(session, 'benkirk'))
+        html = auth_client.get(NEW).get_data(as_text=True).partition('<details')[0]
+        assert (by_audience['ncar'].title in html) == ('ncar' in mine)
+
+    def test_an_outage_still_shows_the_types(self, auth_client, newable, monkeypatch,
+                                             by_audience):
+        from sam.integration.xras_api import XrasSourceUnavailable
+
+        def down(self, username):
+            raise XrasSourceUnavailable('down')
+        monkeypatch.setattr(type(requests_routes.admin_client()), 'new_request_opportunities',
+                            down)
+        html = auth_client.get(NEW).get_data(as_text=True)
+        assert 'XRAS is not answering' in html and by_audience['everyone'].title in html
+        assert 'type="radio" name="opportunity_id" id="pick-type-' in html
+        assert ' disabled>' in html
+
+    def test_choosing_nothing_or_a_closed_type_returns_to_the_stage(self, auth_client, newable):
+        for chosen in ('', 532223):
+            html = _choose(auth_client, chosen)
+            assert 'Choose one of the open types.' in html and 'value="type"' in html
+
     def test_the_reveal_names_the_letter_and_the_code(self, auth_client, newable, lettered):
-        html = auth_client.get(NEW + '/opportunity?opportunity_id=532221').get_data(as_text=True)
+        html = _choose(auth_client, 532221)
         assert 'Advisor Letter on the review page' in html
         assert 'project code starts with' in html and 'name="grant_number"' not in html
 
     def test_a_grant_wanting_type_reveals_the_grant(self, auth_client, newable, lettered):
         newable.required = {'requiredFields': {'request': {'grants': {'required': True}}}}
-        html = auth_client.get(NEW + '/opportunity?opportunity_id=532220').get_data(as_text=True)
-        assert 'name="grant_number"' in html and 'Look up' in html and 'hx-swap-oob' in html
+        html = _choose(auth_client, 532220)
+        assert 'name="grant_number"' in html and 'Look up' in html
 
     def test_a_missing_title_stays_on_page_one(self, auth_client, newable, lettered):
         html = auth_client.post(NEW, data=_new(title='')).get_data(as_text=True)
@@ -950,7 +1033,7 @@ class TestTheNewForm:
     def test_where_the_ladder_misses_the_pi_picks_the_letters(self, auth_client, newable,
                                                               session):
         from sam.core.organizations import MnemonicCode
-        html = auth_client.get(NEW + '/opportunity?opportunity_id=532221').get_data(as_text=True)
+        html = _choose(auth_client, 532221)
         if 'project code starts with' in html:
             pytest.skip("the ladder resolves benkirk's code in this snapshot")
         assert 'name="mnemonic_code_id"' in html

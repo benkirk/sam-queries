@@ -1,0 +1,184 @@
+{#- One allocation type as a card (sam/xras/allocation_overview.py TypeCard), in three
+    variants: `full` (the /request overview), `pick` (the New dialog's type stage), `admin`
+    (Allocations > XRAS > Configuration). Styles: static/css/request-types.css.
+    `start_url` is the full card's Start link; the caller wraps the cards in .type-card-list.
+    `admin` is a dict: `audience_labels`, `outage`; import this file with context there. -#}
+{% from 'dashboards/fragments/table_bits.html' import state_tag %}
+{% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
+
+{% macro _facts(card) %}
+{%- set opp = card.opportunity %}{% set rules = card.rules %}
+<ul class="type-card-facts">
+    {% if card.funding %}<li><i class="fa-solid fa-hand-holding-dollar" aria-hidden="true"></i>{{ card.funding }}</li>{% endif %}
+    {% if opp and opp.award_months %}<li><i class="fa-regular fa-calendar" aria-hidden="true"></i>{{ opp.award_months }}-month award</li>{% endif %}
+    {% if rules and rules.wants_grants %}<li><i class="fa-solid fa-file-signature" aria-hidden="true"></i>Your award number, looked up on the form</li>{% endif %}
+    {% for doc in (rules.documents if rules else []) if doc.required %}
+    <li><i class="fa-regular fa-file-pdf" aria-hidden="true"></i>{{ doc.label }} (PDF{% if doc.hard_page_limit %}, up to {{ doc.hard_page_limit }} pages{% endif %})</li>
+    {% endfor %}
+</ul>
+{%- endmacro %}
+
+{% macro _ledger(card) %}
+{% if card.amounts %}
+<div class="table-responsive type-card-limits">
+    <table class="table table-sm align-middle mb-0">
+        <thead class="table-subtle">
+            <tr><th>Resource</th><th class="col-num">Typical request</th><th class="col-num">Up to</th></tr>
+        </thead>
+        <tbody>
+        {% for r in card.amounts %}
+            <tr>
+                <td>{{ r.name }}{% if r.units %} <span class="text-muted small">{{ r.units | lower }}</span>{% endif %}</td>
+                <td class="col-num">{{ r.limit.default_amount | fmt_number(raw=True) if r.limit and r.limit.default_amount is not none else '—' }}</td>
+                <td class="col-num">{{ r.limit.max_amount | fmt_number(raw=True) if r.limit and r.limit.max_amount is not none else 'no set limit' }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% if card.access %}
+<p class="type-card-notes mb-2"><i class="fa-solid fa-key me-1" aria-hidden="true"></i>Access to
+    {{ card.access | map(attribute='name') | join(', ') }}{% if card.amounts %}, without an amount to choose{% endif %}.</p>
+{% endif %}
+{%- endmacro %}
+
+{#- The admin's ledger: the SAM type's limit rows, retired ones too, each with its edit pencil. -#}
+{% macro _admin_ledger(card) %}
+{% if card.limits %}
+<div class="table-responsive type-card-limits">
+    <table class="table table-sm align-middle mb-0" aria-label="{{ card.allocation_type }} request limits">
+        <thead class="table-subtle">
+            <tr><th>Resource</th><th class="col-num">Typical request</th><th class="col-num">Up to</th><th class="col-shrink"><span class="visually-hidden">Actions</span></th></tr>
+        </thead>
+        <tbody>
+        {% for row in card.limits %}{% set lim = row.limit %}
+            <tr{% if not lim.active %} class="row-inactive"{% endif %}>
+                <td>{{ row.name }}{% if not lim.active %}{{ state_tag('inactive', title='Retired: it bounds nothing') }}{% endif %}</td>
+                <td class="col-num">{{ lim.default_amount | fmt_number(raw=True) if lim.default_amount is not none else '—' }}</td>
+                <td class="col-num">{{ lim.max_amount | fmt_number(raw=True) if lim.max_amount is not none else 'no set limit' }}</td>
+                <td class="text-end text-nowrap"><span class="row-actions">
+                    {{- edit_modal_button(url_for('allocations_dashboard.htmx_allocation_limit_edit_form', allocation_type_resource_limit_id=lim.allocation_type_resource_limit_id),
+                                          'editAllocationLimitModal', 'editAllocationLimitFormContainer',
+                                          title='Edit the ' ~ row.name ~ ' limit', permission=Permission.MANAGE_XRAS) -}}
+                </span></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="type-card-notes mb-2">No request limits: any amount may be asked for.</p>
+{% endif %}
+{% if has_permission(Permission.MANAGE_XRAS) and card.allocation_type %}
+<button type="button" class="btn btn-link btn-sm px-0 mb-2" data-bs-toggle="modal" data-bs-target="#createAllocationLimitModal"
+        hx-get="{{ url_for('allocations_dashboard.htmx_allocation_limit_create_form', allocation_type=card.allocation_type) }}"
+        hx-target="#createAllocationLimitFormContainer">
+    <i class="fa-solid fa-plus" aria-hidden="true"></i> Add a limit
+</button>
+{% endif %}
+{%- endmacro %}
+
+{#- The admin card's last line: what XRAS says about the type right now. -#}
+{% macro _xras_state(card, admin) %}
+{% if card.xras_allocation_type_id is none %}
+<span class="text-muted"><i class="fa-solid fa-link-slash" aria-hidden="true"></i> No XRAS type: publishing names one.</span>
+{% elif admin.outage %}
+<span class="text-muted"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> XRAS is not answering.</span>
+{% elif card.is_open %}
+<span class="type-card-state is-open"><i class="fa-solid fa-circle" aria-hidden="true"></i> Open in XRAS: {{ card.opportunity.opportunity_name }}</span>
+{% else %}
+<span class="text-muted"><i class="fa-regular fa-clock" aria-hidden="true"></i> {{ card.reason }}</span>
+{% endif %}
+{%- endmacro %}
+
+{% macro _admin_card(card, admin) %}
+<section class="type-card type-card-admin{{ ' is-closed' if not card.is_open }}{{ ' is-unpublished' if not card.published }}" aria-labelledby="{{ card.anchor }}">
+    <div class="type-card-head">
+        <h2 id="{{ card.anchor }}">{{ card.title }}</h2>
+        {% if card.cadence %}<span class="type-card-cadence">{{ card.cadence }}</span>{% endif %}
+        {% if card.published %}{{ state_tag(admin.audience_labels.get(card.audience, 'Everyone') if card.audience else 'Everyone', title='Who sees it') }}
+        {% else %}{{ state_tag('Not on the request page') }}{% endif %}
+        {% if has_permission(Permission.MANAGE_XRAS) %}
+        <span class="type-card-edit">
+        {% if card.guide is not none %}
+            <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editAllocationGuideModal"
+                    hx-get="{{ url_for('allocations_dashboard.htmx_allocation_guide_edit_form', allocation_type_guide_id=card.guide.allocation_type_guide_id) }}"
+                    hx-target="#editAllocationGuideFormContainer">
+                <i class="fa-solid fa-pen" aria-hidden="true"></i> Edit
+            </button>
+        {% else %}
+            <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#createAllocationGuideModal"
+                    hx-get="{{ url_for('allocations_dashboard.htmx_allocation_guide_create_form', allocation_type=card.allocation_type, title=card.title, xras_allocation_type_id=card.xras_allocation_type_id) }}"
+                    hx-target="#createAllocationGuideFormContainer">
+                <i class="fa-solid fa-signs-post" aria-hidden="true"></i> Publish on the request page
+            </button>
+        {% endif %}
+        </span>
+        {% endif %}
+    </div>
+    {% if card.summary %}<p class="mb-2">{{ card.summary }}</p>{% endif %}
+    {{ _facts(card) }}
+    {{ _admin_ledger(card) }}
+    {% if card.notes %}<p class="type-card-notes">{{ card.notes }}</p>{% endif %}
+    <div class="type-card-foot">{{ _xras_state(card, admin) }}</div>
+</section>
+{%- endmacro %}
+
+{#- The New dialog's choice: the whole card is the radio (.xras-candidate, xras.css); a
+    closed type's radio is disabled and its reason replaces the amounts line. -#}
+{#- Line two: funding, each amount's ceiling, the access-only resources; one line, cut with an
+    ellipsis, the whole of it in `title`. -#}
+{% macro _pick_line(card) -%}
+{%- set parts = [card.funding] if card.funding else [] -%}
+{%- for r in card.amounts %}{% set _ = parts.append(r.name ~ ' up to ' ~ (r.limit.max_amount | fmt_number(raw=True) if r.limit and r.limit.max_amount is not none else 'no set limit')) %}{% endfor -%}
+{%- if card.access %}{% set _ = parts.append('access to ' ~ (card.access | map(attribute='name') | join(', '))) %}{% endif -%}
+{{ parts | join(' · ') }}
+{%- endmacro %}
+
+{#- The New dialog's choice: the whole card is the radio (.xras-candidate, xras.css); a
+    closed type's radio is disabled and its reason replaces line two. -#}
+{% macro _pick_card(card, pick_name) %}
+{%- set open = card.is_open %}
+{%- set line = _pick_line(card) | trim %}
+<label class="type-card-pick xras-candidate list-group-item d-flex gap-2 align-items-start{{ ' is-closed' if not open }}" for="pick-{{ card.anchor }}">
+    <input class="form-check-input mt-1 flex-shrink-0" type="radio" name="{{ pick_name }}" id="pick-{{ card.anchor }}"
+           {%- if open %} value="{{ card.opportunity.opportunity_id }}"{% else %} disabled{% endif %}>
+    <span class="type-card-pick-body">
+        <span class="type-card-pick-head">
+            <span class="type-card-pick-title">{{ card.title }}</span>
+            {%- if card.cadence %} <span class="type-card-cadence">{{ card.cadence }}</span>{% endif %}
+        </span>
+        {%- if not open %}
+        <span class="type-card-pick-reason"><i class="fa-regular fa-clock me-1" aria-hidden="true"></i>{{ card.reason }}</span>
+        {%- elif line %}
+        <span class="type-card-pick-line" title="{{ line }}">{{ line }}</span>
+        {%- endif %}
+    </span>
+    <i class="fa-solid fa-circle-check xras-candidate-check mt-1" aria-hidden="true"></i>
+</label>
+{%- endmacro %}
+
+{% macro type_card(card, variant='full', pick_name=None, start_url=None, admin=None) %}
+{% if variant == 'admin' %}{{ _admin_card(card, admin) }}{% elif variant == 'pick' %}{{ _pick_card(card, pick_name) }}{% else %}
+<section class="type-card{{ ' is-closed' if not card.is_open }}" aria-labelledby="{{ card.anchor }}">
+    <div class="type-card-head">
+        <h2 id="{{ card.anchor }}">{{ card.title }}</h2>
+        {% if card.cadence %}<span class="type-card-cadence">{{ card.cadence }}</span>{% endif %}
+    </div>
+    {% if card.summary %}<p class="mb-2">{{ card.summary }}</p>{% endif %}
+    {{ _facts(card) }}
+    {{ _ledger(card) }}
+    {% if card.notes %}<p class="type-card-notes">{{ card.notes }}</p>{% endif %}
+    <div class="type-card-foot">
+        {% if card.is_open and start_url %}
+        <a class="btn btn-primary" href="{{ start_url }}">
+            <i class="fa-solid fa-arrow-right" aria-hidden="true"></i> Request {{ card.title }}
+        </a>
+        {% else %}
+        <span class="text-muted"><i class="fa-regular fa-clock" aria-hidden="true"></i> {{ card.reason }}</span>
+        {% endif %}
+    </div>
+</section>
+{% endif %}
+{%- endmacro %}

@@ -1,7 +1,12 @@
 """The XRAS plumbing both dashboards share: audit-write sessions, the interactive clients,
-the published request index. Route-free; the Allocations ``xras/_shared`` re-exports it."""
+the published request index, the request types' cards. Route-free; the Allocations
+``xras/_shared`` re-exports it."""
+
+import logging
 
 from webapp.extensions import db
+
+logger = logging.getLogger(__name__)
 
 
 def session_factory():
@@ -52,3 +57,26 @@ def requests_index():
     """The published request index, or ``None`` if no sweep has written one."""
     from sam.integration.xras_api.cache import load_requests_index
     return load_requests_index()
+
+
+def report_opportunities(config=None):
+    """``(views, outage)``: the open New opportunities read with no user (a visitor, an admin)."""
+    from sam.integration.xras_api import XrasSourceUnavailable
+    try:
+        return admin_client(config).new_request_opportunities(None), False
+    except XrasSourceUnavailable as exc:
+        logger.warning('XRAS opportunities (report context): not answering: %s', exc)
+        return [], True
+
+
+def type_cards(opportunities, config=None, *, audiences, include_unguided=False):
+    """The request types' cards (``sam/xras/allocation_overview.py``), each open type with
+    its New rule book; the reader and the resource catalog are read only when XRAS answered."""
+    from sam.integration.xras_api.rule_book import rule_book
+    from sam.xras.allocation_overview import allocation_type_overview
+    reader = read_client(config) if opportunities else None
+    return allocation_type_overview(
+        db.session, opportunities, audiences=audiences, include_unguided=include_unguided,
+        rules_for=lambda type_id, name: rule_book(reader, type_id, 'New',
+                                                  allocation_type_name=name),
+        resource_keys=resource_keys(config) if opportunities else None)

@@ -2118,8 +2118,9 @@ keeps them open on purpose; I3 is what that needs.
 - [ ] A6: `award-lookup` and `mnemonic-suggest` are login-only, so any user can drive NSF reads.
 - [ ] Untested flow branches: the admin door with the lever off (the autouse `armed` fixture
   forces it on), abort whose delete fails, abort with no `action_id`, resume of a non-open row.
-- [ ] W9: the limits card gates on `SYSTEM_ADMIN` / `VIEW_SYSTEM_CONFIG` where its peers gate on
-  domain permissions, and sits on the read-only Configuration page.
+- [x] W9: the limits card gates on `SYSTEM_ADMIN` / `VIEW_SYSTEM_CONFIG` where its peers gate on
+  domain permissions, and sits on the read-only Configuration page. Closed by sprint 3 (#884):
+  the limits and the guide are edited on Allocations > XRAS > Configuration under `MANAGE_XRAS`.
 - [ ] W13: the ownership rule (`created_by` or `xa_user` or `MANAGE_XRAS`) is in
   `_owned_submission` and `my_requests.html`; a per-row flag.
 - [ ] S15: `_same_value` vs `_read_text` normalisation in the admin client's grant verify.
@@ -2190,9 +2191,8 @@ into the sweep task): not picked. F6, one guard for the three login-only helper 
   falling through to `_read_text` for text): unchanged from entry 31.
 - [ ] Untested flow branches (entry 31): the admin door with the lever off, abort whose delete
   fails, abort with no `action_id`, resume of a non-open row; no test was added in the window.
-- [ ] A5 and W9 close: with the lever off My Requests says requests are not enabled and shows
-  where each project's go, so the card link lands somewhere useful; the limits card gates
-  exactly like its rate-limits peer.
+- [ ] A5: with the lever off My Requests says requests are not enabled and shows where each
+  project's go, so the card link lands somewhere useful. (W9 closed by sprint 3, #884.)
 - [ ] The #877 review's F3: a submit landing inside the hourly own-filings refresh for the same
   number can append the Remediations row twice until the 04:00 rebuild; not worth a lock.
 - [ ] Two local-only test failures seen while running the suites: the Flask-Login loader tests in
@@ -2284,18 +2284,20 @@ guide (Ben, 2026-10-31).
 - [ ] D3: two roster pastes (`request_new_htmx.html`, `project_members/fragments/roster_form_htmx.html`)
   with disagreeing help; a `roster_field` macro carrying the parser's forms.
 - [ ] D4: `.cursor-pointer` and `.fk-search-result` are one rule; `register.css` repeats its
-  heading, muted-small and bordered-box blocks; `.request-type-cadence` is a fourth pill beside
-  `xras_bits.tag`.
+  heading, muted-small and bordered-box blocks; `.type-card-cadence` (request-types.css, sprint 3)
+  is a fourth pill beside `xras_bits.tag`.
 - [ ] D6: `(request_urls or {}).get('x') or url_for(...)` seven times across the request
-  fragments; `fixed_opportunity` gates three unrelated things; the handler fills the dict.
+  fragments; the handler fills the dict. (Sprint 3 retired `fixed_opportunity`: both doors fix
+  the type, and `names_sam_users` gates the SAM-user pickers.)
 - [ ] D7: inline styles 109 to about 100 (`base.html:211` z-index Bootstrap already sets,
   `w-auto`, `stats-two-col` + `align-content-start` on the group card, a `.text-pre-wrap` utility
   for seven `white-space:pre-wrap`).
-- [ ] D8, tests: `/request/accept` never driven; `award-lookup` 404-only; guide delete 403-only;
+- [ ] D8, tests: `/request/accept` never driven; `award-lookup` 404-only (sprint 3 dropped the
+  guide and limit delete routes: the edit form's Active box retires a row);
   roster `ROSTER_MAX`, own address and admin dropped, `_in_xras(unsure=False)`.
 - [ ] A4: `_release_after_refusal` commits the release, then files the ticket; a filing failure
   leaves the row released with no ticket and nothing retries until XRAS reposts. Not built.
-- [ ] W9 as decided above; S5a, W13, S15 from entry 31 unchanged.
+- [x] W9 as decided above: closed by sprint 3 (#884). S5a, W13, S15 from entry 31 unchanged.
 - [ ] `tests/api/test_xras_access.py::TestDispatchArms` fails three or four tests under `-n 4`
   on `origin/staging` itself (two runs on a clean worktree) and passes serially: a parallel-order
   flake, not read further.

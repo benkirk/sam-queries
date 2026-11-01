@@ -463,90 +463,6 @@
     ]
   ],
   [
-    "admin_dashboard.htmx_allocation_guide_create",
-    "/admin/htmx/allocation-guide-create",
-    [
-      "POST"
-    ]
-  ],
-  [
-    "admin_dashboard.htmx_allocation_guide_create_form",
-    "/admin/htmx/allocation-guide-create-form",
-    [
-      "GET"
-    ]
-  ],
-  [
-    "admin_dashboard.htmx_allocation_guide_delete",
-    "/admin/htmx/allocation-guide-delete/<int:allocation_type_guide_id>",
-    [
-      "DELETE"
-    ]
-  ],
-  [
-    "admin_dashboard.htmx_allocation_guide_edit",
-    "/admin/htmx/allocation-guide-edit/<int:allocation_type_guide_id>",
-    [
-      "POST"
-    ]
-  ],
-  [
-    "admin_dashboard.htmx_allocation_guide_edit_form",
-    "/admin/htmx/allocation-guide-edit-form/<int:allocation_type_guide_id>",
-    [
-      "GET"
-    ]
-  ],
-  [
-    "admin_dashboard.htmx_allocation_guides_card",
-    "/admin/htmx/allocation-guides",
-    [
-      "GET"
-    ]
-  ],
-  [
-    "admin_dashboard.htmx_allocation_limit_create",
-    "/admin/htmx/allocation-limit-create",
-    [
-      "POST"
-    ]
-  ],
-  [
-    "admin_dashboard.htmx_allocation_limit_create_form",
-    "/admin/htmx/allocation-limit-create-form",
-    [
-      "GET"
-    ]
-  ],
-  [
-    "admin_dashboard.htmx_allocation_limit_delete",
-    "/admin/htmx/allocation-limit-delete/<int:allocation_type_resource_limit_id>",
-    [
-      "DELETE"
-    ]
-  ],
-  [
-    "admin_dashboard.htmx_allocation_limit_edit",
-    "/admin/htmx/allocation-limit-edit/<int:allocation_type_resource_limit_id>",
-    [
-      "POST"
-    ]
-  ],
-  [
-    "admin_dashboard.htmx_allocation_limit_edit_form",
-    "/admin/htmx/allocation-limit-edit-form/<int:allocation_type_resource_limit_id>",
-    [
-      "GET"
-    ]
-  ],
-  [
-    "admin_dashboard.htmx_allocation_limits_card",
-    "/admin/htmx/allocation-limits",
-    [
-      "GET"
-    ]
-  ],
-  [
     "admin_dashboard.htmx_allocation_type_create",
     "/admin/htmx/allocation-type-create",
     [
@@ -2094,6 +2010,62 @@
     ]
   ],
   [
+    "allocations_dashboard.htmx_allocation_guide_create",
+    "/allocations/htmx/allocation-guide-create",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.htmx_allocation_guide_create_form",
+    "/allocations/htmx/allocation-guide-create-form",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.htmx_allocation_guide_edit",
+    "/allocations/htmx/allocation-guide-edit/<int:allocation_type_guide_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.htmx_allocation_guide_edit_form",
+    "/allocations/htmx/allocation-guide-edit-form/<int:allocation_type_guide_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.htmx_allocation_limit_create",
+    "/allocations/htmx/allocation-limit-create",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.htmx_allocation_limit_create_form",
+    "/allocations/htmx/allocation-limit-create-form",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.htmx_allocation_limit_edit",
+    "/allocations/htmx/allocation-limit-edit/<int:allocation_type_resource_limit_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.htmx_allocation_limit_edit_form",
+    "/allocations/htmx/allocation-limit-edit-form/<int:allocation_type_resource_limit_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.htmx_calendar",
     "/allocations/htmx/calendar/<resource_name>",
     [
@@ -2301,6 +2273,20 @@
     "/allocations/xras_comment/<int:project_id>",
     [
       "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_configuration",
+    "/allocations/xras/configuration",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_configuration_cards_fragment",
+    "/allocations/xras/configuration/cards",
+    [
+      "GET"
     ]
   ],
   [
@@ -3399,13 +3385,6 @@
   [
     "user_dashboard.my_request_new_fragment",
     "/user/requests/new",
-    [
-      "GET"
-    ]
-  ],
-  [
-    "user_dashboard.my_request_new_opportunity_fragment",
-    "/user/requests/new/opportunity",
     [
       "GET"
     ]

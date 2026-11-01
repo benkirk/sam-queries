@@ -1,0 +1,58 @@
+{% extends 'dashboards/allocations/base_allocations.html' %}
+{% from 'dashboards/fragments/modals.html' import modal_scaffold %}
+{#
+  Allocations > XRAS > Configuration: one card per allocation type as a PI sees it
+  (dashboards/fragments/type_cards.html, variant admin). Context: audiences (the registry,
+  sam/xras/audiences.py), which builds the "Preview as" switch.
+#}
+
+{% block title %}XRAS Configuration - SAM{% endblock %}
+
+{% block extra_css %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/request-types.css') }}">
+{% endblock %}
+
+{% block alloc_content %}
+{% include 'dashboards/allocations/_xras_strip.html' %}
+
+<div class="type-config-head">
+    <p class="type-config-lede">What a PI sees before starting a request. Edit the words here;
+        the amounts come from the limits.</p>
+    <form class="type-config-preview" id="typePreviewForm" aria-label="Preview as">
+        <span class="type-config-preview-label" id="typePreviewLabel">Preview as</span>
+        <div class="btn-group btn-group-sm" role="group" aria-labelledby="typePreviewLabel">
+            <input type="radio" class="btn-check" name="audience" id="typePreviewAll" value="" autocomplete="off" checked>
+            <label class="btn btn-outline-primary" for="typePreviewAll">Everyone</label>
+            {% for a in audiences %}
+            <input type="radio" class="btn-check" name="audience" id="typePreview-{{ a.key }}" value="{{ a.key }}" autocomplete="off">
+            <label class="btn btn-outline-primary" for="typePreview-{{ a.key }}">{{ a.label }}</label>
+            {% endfor %}
+        </div>
+    </form>
+</div>
+
+{# Fetches on load, on a "Preview as" change, and after a guide or limit form saves; each
+   fetch carries the switch, so a save keeps the preview. #}
+<section id="xrasTypeCardsSection" aria-label="Allocation types"
+         hx-get="{{ url_for('allocations_dashboard.xras_configuration_cards_fragment') }}"
+         hx-trigger="load, change from:#typePreviewForm, reloadAllocationGuidesCard from:body delay:300ms, reloadAllocationLimitsCard from:body delay:300ms"
+         hx-include="#typePreviewForm"
+         hx-swap="innerHTML">
+    <div class="text-center text-muted py-4" role="status">
+        <i class="fa-solid fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
+        <p class="mt-2">Loading...</p>
+    </div>
+</section>
+
+{% if has_permission(Permission.MANAGE_XRAS) %}
+{{ modal_scaffold('createAllocationGuideModal', 'Publish on the request page',
+                  icon='signs-post', container_id='createAllocationGuideFormContainer') }}
+{{ modal_scaffold('editAllocationGuideModal', 'Edit the request page card',
+                  icon='signs-post', container_id='editAllocationGuideFormContainer') }}
+{{ modal_scaffold('createAllocationLimitModal', 'Add a limit',
+                  icon='plus', container_id='createAllocationLimitFormContainer') }}
+{{ modal_scaffold('editAllocationLimitModal', 'Edit the limit',
+                  icon='scale-balanced', container_id='editAllocationLimitFormContainer') }}
+{% endif %}
+{% endblock %}
