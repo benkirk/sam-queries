@@ -174,12 +174,34 @@ class TestTheUnguidedCard:
         assert 'Not on the request page' in card and 'Publish on the request page' in card
         assert f'allocation_type={quote_plus(unguided)}' in card.replace('&amp;', '&')
 
+    def test_an_xras_type_no_guide_names_shows_with_publish_preset_to_its_id(
+            self, auth_client, monkeypatch):
+        from webapp.dashboards.allocations.xras import configuration_routes
+        from webapp.utils import xras as xras_utils
+        opp = {'opportunity_id': 1, 'opportunity_name': 'New program (University)',
+               'allocation_type_id': 99_999_990, 'allocation_type': 'New program',
+               'description': None, 'award_months': 12, 'can_submit': True, 'reason': None,
+               'resources': []}
+        reader = type('Reader', (), {'required_fields': lambda self, *a: {},
+                                     'get_document_types': lambda self: []})()
+        monkeypatch.setattr(configuration_routes, 'report_opportunities', lambda c: ([opp], False))
+        monkeypatch.setattr(xras_utils, 'read_client', lambda c=None: reader)
+        monkeypatch.setattr(xras_utils, 'resource_keys', lambda c=None: {})
+        html = _titles(auth_client)
+        card = html.split('>New program</h2>')[1].split('</section>')[0]
+        assert 'Not on the request page' in card and 'Publish on the request page' in card
+        assert 'xras_allocation_type_id=99999990' in card.replace('&amp;', '&')
+        assert 'Open in XRAS: New program (University)' in card
+
     def test_the_guide_form_opens_preset(self, auth_client, unguided):
         from urllib.parse import urlencode
         html = auth_client.get('/allocations/htmx/allocation-guide-create-form?' + urlencode(
-            {'allocation_type': unguided, 'title': unguided})).get_data(as_text=True)
+            {'allocation_type': unguided, 'title': unguided,
+             'xras_allocation_type_id': 99_999_990})).get_data(as_text=True)
         title = html.split('id="createAllocationGuideTitle"')[1].split('>')[0]
         assert f'value="{unguided}"' in title
+        xras = html.split('id="createAllocationGuideXrasType"')[1].split('>')[0]
+        assert 'value="99999990"' in xras
         select = html.split('name="allocation_type"')[1].split('</select>')[0]
         assert f'<option value="{unguided}" selected' in select
 

@@ -97,11 +97,13 @@ class TestWhoSeesWhat:
         assert set(_cards(session, self._opps(three), three, audiences=None)) == {
             type_id, type_id + 1, type_id + 2}
 
-    def test_the_admin_view_adds_the_retired_row_last(self, session, type_id, three):
+    def test_the_admin_view_adds_the_retired_and_unguided_types_last(self, session, type_id,
+                                                                    three):
         cards = _cards(session, self._opps(three), three, audiences={'ncar'},
                        include_unguided=True)
-        assert set(cards) == {type_id, type_id + 1, type_id + 3}
+        assert set(cards) == {type_id, type_id + 1, type_id + 3, type_id + 4}
         assert not cards[type_id + 3].published and cards[type_id + 3].guide is not None
+        assert not cards[type_id + 4].published and cards[type_id + 4].guide is None
 
 
 class TestTheUnguidedTypes:
@@ -132,6 +134,23 @@ class TestTheUnguidedTypes:
 
     def test_the_visitor_never_sees_it(self, session, limited):
         assert self._named(session, limited[0].allocation_type, audiences=VISITOR_AUDIENCES) == []
+
+    def test_an_xras_type_no_guide_names_is_a_card_for_the_admin(self, session, type_id):
+        opps = [_opp(type_id, name='New program', reason=None),
+                _opp(type_id + 1, can_submit=False, reason='Opens in March.')]
+        cards = _cards(session, opps, {type_id, type_id + 1}, audiences=None,
+                       include_unguided=True)
+        assert set(cards) == {type_id, type_id + 1}
+        card = cards[type_id]
+        assert card.guide is None and not card.published and card.title == 'Probe'
+        assert card.is_open and card.anchor == f'type-{type_id}' and card.rules.wants_grants
+        assert cards[type_id + 1].reason == 'Opens in March.'
+
+    def test_the_visitor_and_the_pi_never_see_an_xras_type_without_a_guide(self, session,
+                                                                            type_id):
+        opps = [_opp(type_id)]
+        assert _cards(session, opps, {type_id}) == {}
+        assert _cards(session, opps, {type_id}, audiences=None) == {}
 
     def test_a_guide_naming_the_type_takes_its_place(self, session, type_id, limited):
         sam_type, _ = limited

@@ -6,8 +6,8 @@ ceiling (``allocation_type_resource_limit``), and the grants and documents its r
 demands. A type with no open opportunity (Large between calls) still shows, with its SAM
 limits and no Start. The active guide row is the publish switch; ``audiences`` narrows the
 rows to the types for those audiences (``sam/xras/audiences.py``). ``include_unguided`` (the
-admin's page) adds the retired guide rows and the SAM types with limits but no guide row.
-Flask-free. Design: ``docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md`` § 0 and
+admin's page) adds the retired guide rows, the SAM types with limits but no guide row, and the
+XRAS types no guide row names. Flask-free. Design: ``docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md`` § 0 and
 ``docs/plans/XRAS_SUBMISSION_SPRINT3.md``.
 """
 
@@ -141,6 +141,7 @@ def allocation_type_overview(session, opportunities: Sequence[Mapping[str, Any]]
     by_type = _pick(opportunities)
     retired: List[AllocationTypeGuide] = []
     unguided: List[str] = []
+    orphans: List[Mapping[str, Any]] = []
     if include_unguided:
         wanted = None if audiences is None else set(audiences)
         rows = (session.query(AllocationTypeGuide)
@@ -150,6 +151,9 @@ def allocation_type_overview(session, opportunities: Sequence[Mapping[str, Any]]
         retired = [g for g in rows if not g.active]
         named = {g.allocation_type for g in rows}
         unguided = [n for n in _limited_type_names(session) if n not in named]
+        guided = {g.xras_allocation_type_id for g in rows}
+        orphans = sorted((o for t, o in by_type.items() if t not in guided),
+                         key=lambda o: o.get('allocation_type') or '')
     else:
         guides = guides_for_audiences(session, audiences)
     every = limits_for_allocation_types(
@@ -157,9 +161,9 @@ def allocation_type_overview(session, opportunities: Sequence[Mapping[str, Any]]
         active_only=not include_unguided)
     limits = {name: {r: lim for r, lim in by_resource.items() if lim.active}
               for name, by_resource in every.items()}
+    offered = [by_type.get(g.xras_allocation_type_id) for g in guides + retired] + orphans
     sam = sam_resources_by_xras_id(session, {
-        r['resource_id'] for g in guides + retired
-        for r in (by_type.get(g.xras_allocation_type_id) or {}).get('resources') or ()},
+        r['resource_id'] for opp in offered if opp for r in opp.get('resources') or ()},
         resource_keys)
     cards = []
     for guide in guides + retired:
@@ -184,4 +188,13 @@ def allocation_type_overview(session, opportunities: Sequence[Mapping[str, Any]]
             notes=None, resources=_ordered(_sam_limits(limits.get(name, {}))),
             reason='Not on the request page.', allocation_type=name,
             limits=_ledger(every.get(name, {}))))
+    for opp in orphans:
+        cards.append(TypeCard(
+            xras_allocation_type_id=int(opp['allocation_type_id']),
+            title=opp.get('allocation_type') or opp.get('opportunity_name') or 'XRAS type',
+            summary=opp.get('description'), funding=None, cadence=None, notes=None,
+            opportunity=opp, reason=_reason(opp),
+            resources=_ordered(annotate_resources([dict(r) for r in opp.get('resources') or ()],
+                                                  sam, {})),
+            rules=rules_for(opp.get('allocation_type_id'), opp.get('allocation_type'))))
     return cards

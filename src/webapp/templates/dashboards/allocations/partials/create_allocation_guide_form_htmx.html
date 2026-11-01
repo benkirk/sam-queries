@@ -11,6 +11,7 @@
 ) %}
         {{ number_field('xras_allocation_type_id', 'XRAS allocation type id', required=True, min=1, step=1,
                         id='createAllocationGuideXrasType',
+                        default=(preset or {}).get('xras_allocation_type_id', ''),
                         help='allocationTypeInfo.allocationTypeId, e.g. 500024 for Small.') }}
         {{ guide_fields(none, 'createAllocationGuide') }}
 {% endcall %}

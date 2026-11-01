@@ -109,7 +109,7 @@
             </button>
         {% else %}
             <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#createAllocationGuideModal"
-                    hx-get="{{ url_for('allocations_dashboard.htmx_allocation_guide_create_form', allocation_type=card.allocation_type, title=card.title) }}"
+                    hx-get="{{ url_for('allocations_dashboard.htmx_allocation_guide_create_form', allocation_type=card.allocation_type, title=card.title, xras_allocation_type_id=card.xras_allocation_type_id) }}"
                     hx-target="#createAllocationGuideFormContainer">
                 <i class="fa-solid fa-signs-post" aria-hidden="true"></i> Publish on the request page
             </button>

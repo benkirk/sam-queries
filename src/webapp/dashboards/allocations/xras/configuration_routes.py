@@ -77,7 +77,8 @@ def _guide_context():
              .distinct().order_by(AllocationType.allocation_type).all())
     return {'allocation_type_options': [(n, n) for (n,) in names],
             'audience_options': list(AUDIENCE_LABELS.items()),
-            'preset': {k: request.args[k] for k in ('title', 'allocation_type')
+            'preset': {k: request.args[k]
+                       for k in ('title', 'allocation_type', 'xras_allocation_type_id')
                        if request.args.get(k)}}
 
 
