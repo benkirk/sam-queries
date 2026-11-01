@@ -48,6 +48,24 @@ class TestNavLocate:
             for i in s['items']:
                 assert i['endpoint'] in app.view_functions, i['endpoint']
 
+    # A sub-strip under one menu item; N5 folds it into Organizations.
+    TAB_ONLY = {'admin_dashboard.organizations_mnemonics'}
+
+    def test_every_section_tab_is_in_the_nav(self):
+        """A tab added to a section strip and not to the registry is a page the menu
+        cannot reach (My Requests was one)."""
+        import re
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[3] / 'src/webapp/templates/dashboards'
+        strips = list(root.glob('*/base_*.html'))
+        assert len(strips) >= 4
+        missing = sorted(
+            f'{f.name}: {ep}'
+            for f in strips
+            for ep in re.findall(r"'endpoint':\s*'([a-z_]+\.[a-z_]+)'", f.read_text())
+            if nav_locate(ep)[1] is None and ep not in self.TAB_ONLY)
+        assert not missing, missing
+
 
 # ---------------------------------------------------------------------------
 # Rendered navbar markup (visibility resolution end-to-end)
@@ -136,6 +154,11 @@ class TestBreadcrumbs:
         # Section crumb links to the section default; current page is the
         # active (unlinked) crumb.
         assert 'aria-current="page">Transactions' in html
+
+    def test_my_requests_is_in_the_menu_and_the_trail(self, auth_client):
+        html = auth_client.get('/user/requests').get_data(as_text=True)
+        assert 'aria-current="page">My Requests' in html
+        assert html.count('href="/user/requests"') >= 3   # navbar, drawer, tab strip
 
     def test_no_breadcrumbs_outside_registry(self, client):
         html = client.get('/auth/login').get_data(as_text=True)

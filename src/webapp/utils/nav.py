@@ -9,7 +9,8 @@ Consumed by:
 The in-page ``page_tabs`` strips in each section's ``base_*.html`` keep their
 own tab lists on purpose: they carry request-specific labels and visibility
 (reservation counts, the impersonation-aware "X's Accounts" label,
-``my_data_available``) that the global registry can't know cheaply.
+``my_data_available``) that the global registry can't know cheaply. Every tab
+endpoint must still be a registry item (``test_every_section_tab_is_in_the_nav``).
 
 Register in the app factory:
     app.context_processor(nav_context_processor)
@@ -162,6 +163,8 @@ NAV_SECTIONS = (
         'items': (
             {'endpoint': 'user_dashboard.accounts', 'label': 'My Accounts',
              'icon': 'fa-solid fa-file-invoice-dollar'},
+            {'endpoint': 'user_dashboard.my_requests_page', 'label': 'My Requests',
+             'icon': 'fa-solid fa-paper-plane'},
             {'endpoint': 'user_dashboard.info', 'label': 'User Information',
              'icon': 'fa-solid fa-circle-user'},
             {'endpoint': 'user_dashboard.my_data', 'label': 'My Data',
