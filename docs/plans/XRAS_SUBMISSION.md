@@ -3,7 +3,7 @@
 **Status: sprint 1 (phases 0, 1, 1b and 2) shipped 2026-10-29 in #874, issue #871, build plan
 [`implemented/XRAS_SUBMISSION_SPRINT1.md`](implemented/XRAS_SUBMISSION_SPRINT1.md); sprint 2 (phase 3) shipped 2026-10-31 in #880, issue #872, build plan
 [`implemented/XRAS_SUBMISSION_SPRINT2.md`](implemented/XRAS_SUBMISSION_SPRINT2.md) (decisions of 2026-10-31 in its § 0).
-Sprint 3, issue #884, build plan [`XRAS_SUBMISSION_SPRINT3.md`](XRAS_SUBMISSION_SPRINT3.md):
+Sprint 3, PR #886, issue #884, build plan [`XRAS_SUBMISSION_SPRINT3.md`](XRAS_SUBMISSION_SPRINT3.md):
 the request types as editable cards on Allocations → XRAS → Configuration, and a type stage
 filtered by audience as the signed-in New's first step.
 The incoming half (§ 4.6 items 1-3) and every phase of
