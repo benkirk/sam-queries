@@ -239,7 +239,7 @@
    ?from=admin so the trail returns the user to the admin Projects page with
    this projcode pre-loaded into the card slot, instead of dumping them on
    the user dashboard. #}
-{% if request.args.get('from') == 'admin' %}
+{% if request.args.get('from') == 'admin' and has_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD) %}
 {{ breadcrumbs(trail=[
     ('Admin', url_for('admin_dashboard.projects')),
     ('Projects', url_for('admin_dashboard.projects', projcode=projcode)),

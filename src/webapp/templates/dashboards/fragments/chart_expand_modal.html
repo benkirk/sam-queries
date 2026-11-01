@@ -2,7 +2,7 @@
    Openers live on the card: data-bs-toggle + hx-get -> #chartExpandModalBody. The
    body fragment (fragments/chart_expanded.html) sets the title out of band. #}
 {% from 'dashboards/fragments/chart_bits.html' import chart_loading %}
-<div class="modal fade" id="chartExpandModal" tabindex="-1"
+<div class="modal fade" id="chartExpandModal" tabindex="-1" data-dialog-history
      aria-labelledby="chartExpandModalTitle" aria-hidden="true">
     <div class="modal-dialog modal-fullscreen">
         <div class="modal-content">

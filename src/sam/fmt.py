@@ -53,11 +53,16 @@ def to_local_dt(dt: Optional[datetime]) -> Optional[datetime]:
     return dt.astimezone(_DISPLAY_TZ)
 
 
-def local_tz_label() -> str:
+def local_tz_label(*utc_instants: datetime) -> str:
     """DST-aware short abbreviation for the active display TZ (e.g. 'MDT'/'MST').
-    Falls back to the IANA name if the platform doesn't supply an abbrev."""
-    abbr = datetime.now(_DISPLAY_TZ).strftime('%Z')
-    return abbr or _DISPLAY_TZ_NAME
+
+    With no argument, the abbreviation now. Given naive-UTC instants (a chart's
+    first and last points), the ones in force then: 'MST/MDT' across a change.
+    Falls back to the IANA name if the platform doesn't supply an abbrev.
+    """
+    stamps = [to_local_dt(t) for t in utc_instants] or [datetime.now(_DISPLAY_TZ)]
+    abbrs = list(dict.fromkeys(s.strftime('%Z') for s in stamps))
+    return '/'.join(a for a in abbrs if a) or _DISPLAY_TZ_NAME
 
 
 def naive_local_to_utc(

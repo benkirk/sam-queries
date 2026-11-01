@@ -467,10 +467,12 @@ What we worry about, what we don't, and why.
   the user has to also exist in SAM and be active. If someone leaves
   CISL, removing them from the SAM database revokes their access
   immediately, even if their UCAR account is still alive.
-- **Open-redirect protection.** The `?next=` query param is validated
-  to reject external hosts (no `?next=https://evil.com/`), tested at
-  [`tests/unit/webapp/test_oidc_auth.py`](../tests/unit/webapp/test_oidc_auth.py)
-  lines 319-353.
+- **Return to the page, safely.** A visitor sent to login carries the page
+  as `?next=` (for htmx, the page in `HX-Current-URL`, not the fragment), and
+  every login form and the SSO button keep it. `src/webapp/auth/redirects.py`
+  accepts a same-site path only: no host, no `//` or `/\` prefix. Tested in
+  `TestOpenRedirectProtection` and `TestLoginReturnsToTarget`
+  ([`tests/unit/webapp/test_oidc_auth.py`](../tests/unit/webapp/test_oidc_auth.py)).
 - **VPN gating.** The Fargate ALB is restricted to the UCAR VPN CIDR
   (`128.117.0.0/16`), so external attackers can't reach its login page.
   This no longer applies to the CIRRUS deployment: it moved to
@@ -493,7 +495,8 @@ What we worry about, what we don't, and why.
 - **Logout doesn't fully clear the Flask session.** Flask-Login's
   `logout_user()` clears the user ID but leaves any other session keys
   (`oidc_next`, etc.) in place. Low risk -- nothing sensitive is
-  stored there -- but tracked as a hardening follow-up.
+  stored there, and the next SSO start replaces `oidc_next` -- but tracked
+  as a hardening follow-up.
 
 ### What we don't worry about (and why)
 

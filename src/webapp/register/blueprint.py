@@ -23,6 +23,7 @@ from sam.manage.account_requests import register_request
 from sam.queries.account_notices import build_verify_message
 from sam.schemas.forms import RegisterForm, RegisterGateForm, VerifyCodeForm
 from webapp.dashboards.event_lifecycle import upcoming_events_data
+from webapp.auth.redirects import login_url
 from webapp.extensions import db
 from webapp.limiter import limiter as _rate_limit
 from webapp.utils import human_check
@@ -47,7 +48,7 @@ def _login_gate():
     is one config flip away."""
     if (current_app.config.get('ACCOUNT_REGISTRATION_LOGIN_REQUIRED', False)
             and not current_user.is_authenticated):
-        return redirect(url_for('auth.login', next=request.full_path.rstrip('?')))
+        return redirect(login_url())
     return None
 
 

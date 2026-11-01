@@ -12,20 +12,22 @@
 
 {% block breadcrumbs %}
 {% from 'dashboards/fragments/breadcrumbs.html' import breadcrumbs %}
-{# The admin crumb carries projcode so the Projects page re-renders this card on return. #}
-{{ breadcrumbs(trail=([('Admin', url_for('admin_dashboard.projects', projcode=project.projcode))] if can_access_admin else [])
-                     + [('Manage Project', none), (project.projcode, none)]) }}
+{# One trail per viewer. The Projects crumb carries projcode so that page re-renders this card. #}
+{% if can_access_admin %}
+{{ breadcrumbs(trail=[('Admin', url_for('admin_dashboard.projects')),
+                      ('Projects', url_for('admin_dashboard.projects', projcode=project.projcode)),
+                      ('Manage ' ~ project.projcode, none)]) }}
+{% else %}
+{{ breadcrumbs(trail=[('User Dashboard', url_for('user_dashboard.accounts')),
+                      ('My Accounts', url_for('user_dashboard.accounts')),
+                      ('Manage ' ~ project.projcode, none)]) }}
+{% endif %}
 {% endblock %}
 
 {% block content %}
 {% set header_title %}<span class="font-monospace">{{ project.projcode }}</span> <span class="fw-normal text-muted">{{ project.title }}</span>{% endset %}
 {% call page_header(header_title, icon='folder-open') %}
   {% if not project.active %}{{ state_tag('inactive') }}{% endif %}
-  {% if not can_access_admin %}
-  <a href="{{ url_for('user_dashboard.index') }}" class="btn btn-sm btn-outline-secondary">
-    <i class="fa-solid fa-arrow-left"></i> Back to Dashboard
-  </a>
-  {% endif %}
 {% endcall %}
 
 <!-- Tab navigation -->

@@ -320,7 +320,15 @@ class TestTheLoginGate:
         from urllib.parse import unquote
         assert 'next=/register/verify/x' in unquote(
             client.get('/register/verify/x').headers['Location']), \
-            'the mailed link survives the round trip through login'
+            'the mailed link carries itself to login'
+        import html
+        import re
+        visitor = gated_app.test_client()
+        login = visitor.get(visitor.get('/register/verify/x').headers['Location']).data.decode()
+        action = html.unescape(re.search(r'<form method="POST" action="([^"]+)"', login).group(1))
+        resp = visitor.post(action, data={'username': 'benkirk', 'password': 'test'})
+        assert resp.headers['Location'].endswith('/register/verify/x'), \
+            'and login sends it back there'
         assert client.post('/register/', data={}).status_code == 302
 
     def test_a_signed_in_user_sees_the_form_and_the_banner(self, gated_app, session):
