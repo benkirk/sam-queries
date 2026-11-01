@@ -175,7 +175,11 @@ class TestReport:
         text, warn, fail = report(window(logs), tmp_path, state='LASTJVM=%d\n' % JVM)
         assert 'NEW caller (unmapped): client=54.85.201.121 ua=Ruby' in text
         assert '44.204.179.135' not in text
-        assert 'legacy XRAS hit: xras/v1' in text and fail == 1
+        assert 'legacy cutover hit: xras/v1' in text and 'legacy cutover hit: heuv/report' in text and fail == 3
+
+    def test_self_on_a_cutover_family_never_gates(self, logs, tmp_path):
+        text, _, fail = report(window(logs), tmp_path, 'self heuv/ 54.85.201.121 Ruby\n', state='LASTJVM=%d\n' % JVM)
+        assert 'cutover hit: heuv' not in text and 'cutover hit: xras/v1' in text and fail == 1
 
     def test_mapped_callers_line_and_self_excluded(self, logs, tmp_path):
         text, warn, fail = report(window(logs), tmp_path, CMAP, state='LASTJVM=%d\n' % JVM)
@@ -198,7 +202,7 @@ class TestReport:
     def test_daily_history_and_cutover_line(self, logs, tmp_path):
         records = read(logs, 'days', '20261009', '20261002')
         text, _, _ = report(records, tmp_path, CMAP, mode='daily')
-        assert 'cutover 20261009' in text and 'porting 1 (0)' in text
+        assert 'cutover 20261009' in text and 'cutover 1 (0)' in text
         rows = (tmp_path / 'daily.tsv').read_text().splitlines()
         assert '20261009\theuv/user\theuv/portal\t1\t0\t0' in rows
         assert not any('amie' in r for r in rows)
@@ -214,7 +218,7 @@ def tick(logs, tmp_path, *args, **extra):
 
 def test_tick_runs_locally_against_the_fixture(logs, tmp_path):
     out = tick(logs, tmp_path, '--no-app')
-    assert out.returncode == 2, out.stdout + out.stderr  # the fixture's XRAS hit
+    assert out.returncode == 2, out.stdout + out.stderr  # the fixture's XRAS and HEUV hits
     assert '[tomcat: local]' in out.stdout and 'callers: heuv/portal 3' in out.stdout
     assert 'cutover 20261009' in out.stdout and 'app:' not in out.stdout
 
