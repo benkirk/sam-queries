@@ -147,6 +147,9 @@ Run each pass and collect findings. The examples are real.
     form, not just the first 302. Sweep 34 found every login form dropping `next`.
   - A dialog that hands off to another (the sunburst to a project quick-view) must come back on
     close and on Back.
+  - History must be symmetric: Forward reopens what Back closed. Walk every press after
+    leaving from inside a dialog and after a reload; no press may land on a stale entry.
+    Sweep 34's first prototype left a dead Back press and a Forward trap.
 - **Round trips.** On a surface that runs far from its database (the CLI on Casper: ~4.5 ms per
   statement), count statements per command with a `before_cursor_execute` counter and attribute
   them to source lines before reading code. A property that loads ORM objects to answer a count
