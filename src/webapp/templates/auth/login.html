@@ -43,7 +43,7 @@
             <p class="text-muted">Sign in with your institutional account</p>
         </div>
 
-        <a href="{{ url_for('auth.oidc_login') }}" class="btn btn-primary btn-login btn-lg w-100">
+        <a href="{{ url_for('auth.oidc_login', next=request.args.get('next')) }}" class="btn btn-primary btn-login btn-lg w-100">
             Sign in with UCAR SSO
         </a>
 
@@ -60,7 +60,7 @@
             Any password will work for existing users.
         </div>
 
-        <form method="POST" action="{{ url_for('auth.login') }}">
+        <form method="POST" action="{{ url_for('auth.login', next=request.args.get('next')) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="mb-3">
                 <label for="username">Username</label>
@@ -104,7 +104,7 @@
         <div class="quick-login-section">
             <h5>Quick Login (Test Users)</h5>
             {% for username, label in test_users %}
-            <form method="POST" action="{{ url_for('auth.login') }}" class="login-form">
+            <form method="POST" action="{{ url_for('auth.login', next=request.args.get('next')) }}" class="login-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="username" value="{{ username }}">
                 <input type="hidden" name="password" value="test">

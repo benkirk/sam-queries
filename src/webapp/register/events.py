@@ -16,6 +16,7 @@ from sam.core.users import User
 from sam.manage import management_transaction
 from sam.manage.account_requests import enroll_user_in_event
 from sam.projects.projects import Project
+from webapp.auth.redirects import login_url
 from webapp.extensions import db
 from webapp.limiter import limiter as _rate_limit
 
@@ -47,7 +48,7 @@ def form_for_event(event_code):
     if current_user.is_authenticated:
         return _render_self_enroll(event)
     if not anonymous_form_open():
-        return redirect(url_for('auth.login', next=request.full_path.rstrip('?')))
+        return redirect(login_url())
     if gate_blocks():
         return _render_gate(event, locked_code=event.event_code)
     return _render_form(event, locked_code=event.event_code)

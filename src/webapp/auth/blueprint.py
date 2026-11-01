@@ -1,7 +1,7 @@
 """Authentication blueprint for login/logout functionality."""
 
 import logging
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
@@ -13,6 +13,7 @@ from flask_login import login_user, logout_user, login_required, current_user
 from webapp.auth import impersonation
 from webapp.auth.models import AuthUser
 from webapp.auth.providers import get_auth_provider, OIDCAuthProvider
+from webapp.auth.redirects import is_safe_redirect
 from webapp.extensions import db
 from webapp.limiter import limiter as _rate_limit
 
@@ -24,14 +25,6 @@ def _ip_key():
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('auth', __name__, url_prefix='/auth')
-
-
-def _is_safe_redirect(target: str) -> bool:
-    """Only allow relative paths — block open redirects to external hosts."""
-    if not target:
-        return False
-    parsed = urlparse(target)
-    return not parsed.scheme and not parsed.netloc
 
 
 def _record_login_seen(username):
@@ -87,6 +80,9 @@ def login():
     to ``get_remote_address`` so attackers can't sidestep by varying usernames.
     """
     if current_user.is_authenticated:
+        next_page = request.args.get('next')
+        if next_page and is_safe_redirect(next_page):
+            return redirect(next_page)
         return _redirect_for_role(current_user)
 
     auth_provider = current_app.config.get('AUTH_PROVIDER', 'stub')
@@ -109,7 +105,7 @@ def login():
             _record_login_seen(sam_user.username)
 
             next_page = request.args.get('next')
-            if next_page and _is_safe_redirect(next_page):
+            if next_page and is_safe_redirect(next_page):
                 return redirect(next_page)
             return _redirect_for_role(auth_user)
         else:
@@ -151,8 +147,10 @@ def oidc_login():
         'auth.oidc_callback', _external=True
     )
 
+    # Pop first: a stale target from an abandoned sign-in must not steer this one.
+    session.pop('oidc_next', None)
     next_page = request.args.get('next', '')
-    if next_page and _is_safe_redirect(next_page):
+    if next_page and is_safe_redirect(next_page):
         session['oidc_next'] = next_page
 
     logger.info("OIDC login initiated, redirecting to IdP")
@@ -208,7 +206,7 @@ def oidc_callback():
     _record_login_seen(sam_user.username)
 
     next_page = session.pop('oidc_next', None)
-    if next_page and _is_safe_redirect(next_page):
+    if next_page and is_safe_redirect(next_page):
         return redirect(next_page)
     return _redirect_for_role(auth_user)
 

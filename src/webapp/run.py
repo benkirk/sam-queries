@@ -321,12 +321,13 @@ def create_app(*, config_overrides: dict | None = None):
 
     @login_manager.unauthorized_handler
     def unauthorized():
-        """Handle unauthorized access — return HX-Redirect for HTMX requests."""
+        """Send the visitor to login with the page as ``next``; htmx gets HX-Redirect."""
+        from webapp.auth.redirects import login_url
         if request.headers.get('HX-Request'):
             response = make_response('', 401)
-            response.headers['HX-Redirect'] = url_for('auth.login')
+            response.headers['HX-Redirect'] = login_url()
             return response
-        return redirect(url_for('auth.login'))
+        return redirect(login_url())
 
     @login_manager.user_loader
     def load_user(user_id):
