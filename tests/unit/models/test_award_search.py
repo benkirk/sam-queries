@@ -394,3 +394,34 @@ class TestBuildProviders:
         client = MagicMock()
         for provider in registry.build_providers(client):
             assert provider.client is client
+
+
+class TestResolveExact:
+    """``exact`` reaches the provider and keys its own cache entry."""
+
+    def test_exact_is_passed_and_cached_apart(self, monkeypatch):
+        provider = MagicMock(source=None)
+        provider.name = 'USAspending'
+        provider.supports.return_value = True
+        provider.fetch.return_value = None
+        monkeypatch.setattr(registry, '_PROVIDERS', [provider])
+        keys = []
+        monkeypatch.setattr(registry, 'cached_lookup',
+                            lambda name, number, compute: keys.append(name) or compute())
+
+        registry.resolve_award(None, '80NSSC21K1305', exact=True)
+        registry.resolve_award(None, '80NSSC21K1305')
+        assert keys == ['USAspending:exact', 'USAspending']
+        assert provider.fetch.call_args_list[0].kwargs == {'exact': True}
+        assert provider.fetch.call_args_list[1].kwargs == {}
+
+    def test_providers_overrides_the_pool(self, monkeypatch):
+        default, injected = MagicMock(source=None), MagicMock(source=None)
+        default.name = injected.name = 'USAspending'
+        injected.supports.return_value = True
+        injected.fetch.return_value = AwardRecord(provenance='USAspending')
+        monkeypatch.setattr(registry, '_PROVIDERS', [default])
+        monkeypatch.setattr(registry, 'cached_lookup', lambda name, number, compute: compute())
+
+        assert registry.resolve_award(None, 'X-1', providers=[injected]) is not None
+        default.supports.assert_not_called()

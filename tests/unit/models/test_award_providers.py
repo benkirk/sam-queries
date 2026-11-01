@@ -270,6 +270,15 @@ class TestUsaSpendingProvider:
         last_filters = client.post_json.call_args[0][1]['filters']
         assert last_filters['keywords'] == ['NA18NWS4620043']
 
+    def test_exact_never_falls_back_to_keywords(self):
+        """A PI's form: the keyword fallback's first hit can be another award entirely."""
+        provider, client = _provider(nsf=False)
+        client.post_json.side_effect = [{'results': []}, {'results': []},
+                                        {'results': [{'generated_internal_id': 'MEALS'}]}]
+        assert provider.fetch('014421', exact=True) is None
+        assert client.post_json.call_count == 2
+        assert all('keywords' not in c[0][1]['filters'] for c in client.post_json.call_args_list)
+
     def test_no_hit_anywhere_is_not_found(self):
         provider, client = _provider(nsf=False)
         client.post_json.return_value = {'results': []}
@@ -324,6 +333,19 @@ class TestAwardHttpClient:
         with pytest.raises(AwardSourceUnavailable):
             client.get_json('https://example.test/a')
         assert client.session.request.call_count == 3
+
+    def test_the_budget_cuts_each_timeout_and_then_refuses(self, monkeypatch):
+        clock = iter([100.0, 107.0, 111.0])
+        monkeypatch.setattr('sam.integration.awards.client.time.monotonic', lambda: next(clock))
+        client = AwardHttpClient(timeout=10, max_retries=1, budget=10)
+        monkeypatch.setattr(client.session, 'request',
+                            MagicMock(return_value=self._response(200, {'ok': True})))
+        client.get_json('https://example.test/a')
+        client.get_json('https://example.test/b')
+        assert [c.kwargs['timeout'] for c in client.session.request.call_args_list] == [10, 3]
+        with pytest.raises(AwardSourceUnavailable, match='budget is spent'):
+            client.get_json('https://example.test/c')
+        assert client.session.request.call_count == 2
 
     def test_network_error_retries(self, monkeypatch):
         client = self._client(monkeypatch, [

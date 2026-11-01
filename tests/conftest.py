@@ -137,6 +137,8 @@ def pytest_configure(config):
     os.environ["XRAS_API_KEY"] = ""
     os.environ["XRAS_OUTGOING_ENABLED"] = "0"
     os.environ["XRAS_WRITE_ENABLED"] = "0"
+    os.environ["XRAS_SUBMIT_ENABLED"] = "0"
+    os.environ["XRAS_SUBMIT_ANONYMOUS_ENABLED"] = "0"
     # NUSD's ticket address: a developer's .env may name the real Jira inbox,
     # and a route test that reaches a ticket site would write a ledger row.
     os.environ["NOTIFY_ACCOUNT_TICKET_TO"] = ""
@@ -484,6 +486,12 @@ _BOOTSTRAP_TABLES = (
      'sam.security.samuel_roles:SamuelRolePermission'),
     ('samuel_role_grant', 'create_samuel_roles.sql',
      'sam.security.samuel_roles:SamuelRoleGrant'),
+    ('xras_submission', 'create_xras_submission.sql',
+     'sam.integration.xras_submission:XrasSubmission'),
+    ('allocation_type_resource_limit', 'create_allocation_type_resource_limit.sql',
+     'sam.accounting.allocation_type_limits:AllocationTypeResourceLimit'),
+    ('allocation_type_guide', 'create_allocation_type_guide.sql',
+     'sam.accounting.allocation_type_guide:AllocationTypeGuide'),
 )
 
 
@@ -1246,3 +1254,32 @@ def committed_rows(app):
                 if obj is not None:
                     db.session.delete(obj)
             db.session.commit()
+
+
+@pytest.fixture
+def committed_guide(engine):
+    """Make committed ``allocation_type_guide`` rows on XRAS type ids no seed names (a route
+    reads through ``db.session``); each is deleted after the test."""
+    import secrets
+
+    from sqlalchemy import delete
+    from sqlalchemy.orm import Session
+
+    from sam.accounting.allocation_type_guide import AllocationTypeGuide
+    made = []
+
+    def make(**kw):
+        xras_type = 10_000_000 + secrets.randbelow(10_000_000) * 10
+        kw.setdefault('title', f'Probe {xras_type}')
+        with Session(engine) as s:
+            row = AllocationTypeGuide.create(s, xras_allocation_type_id=xras_type,
+                                             created_by='t', **kw)
+            s.commit()
+            made.append(row.allocation_type_guide_id)
+            return type('Guide', (), {'id': row.allocation_type_guide_id, 'title': row.title,
+                                      'xras_type': xras_type})
+
+    yield make
+    with engine.begin() as conn:
+        conn.execute(delete(AllocationTypeGuide).where(
+            AllocationTypeGuide.allocation_type_guide_id.in_(made)))

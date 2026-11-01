@@ -1,5 +1,8 @@
 # Disk ingest triage
 
+**Status: the living reference for the disk import's triage, shipped in #682, #684 and #685
+(dev-validated 2026-09-30). The follow-ups at the end are not started.**
+
 `sam-admin accounting --disk` sorts every row that it cannot charge into one
 category before it writes anything. It then prints one report grouped by
 category; with `--format json`, that report is the `disk_import` envelope.

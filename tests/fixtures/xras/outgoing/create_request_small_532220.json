@@ -1,0 +1,92 @@
+{
+ "message": null,
+ "result": {
+  "rules": {
+   "requestId": 1439704,
+   "allowedOperations": [
+    "Edit",
+    "Delete"
+   ],
+   "allowedActions": [],
+   "allowedActionsRes": [],
+   "existingActions": [
+    {
+     "actionId": 373018,
+     "actionType": "New",
+     "allowedOperations": [
+      "Edit",
+      "Delete"
+     ],
+     "reviewsViewable": false
+    }
+   ]
+  },
+  "requestId": 1439704,
+  "requestType": "New",
+  "requestStatus": "Incomplete",
+  "requestNumber": null,
+  "opportunityId": 532220,
+  "isDeleted": false,
+  "title": null,
+  "shortTitle": null,
+  "abstract": null,
+  "submitDate": null,
+  "isSupportedByGrants": null,
+  "opportunity_name": "Small Allocation (University)",
+  "grantTypeId": null,
+  "actions": [
+   {
+    "actionId": 373018,
+    "actionType": "New",
+    "actionStatus": "Incomplete",
+    "finalReviews": [],
+    "isDeleted": false,
+    "userComments": null,
+    "adminComments": null,
+    "collaborators": null,
+    "entryDate": "2026-10-28T00:49:48.397Z",
+    "returnedForCorrections": false,
+    "finalReview": "",
+    "states": [],
+    "resources": [],
+    "documents": [],
+    "allocationDates": [],
+    "opportunityAttributes": [],
+    "resourceAttributes": []
+   }
+  ],
+  "roles": [
+   {
+    "person": {
+     "username": "benkirk",
+     "firstName": "Ben",
+     "middleName": null,
+     "lastName": "Kirk",
+     "email": "benkirk@example.org",
+     "phone": null,
+     "organization": "NCAR/CISL",
+     "academicStatus": null,
+     "residenceCountry": null,
+     "isReconciled": true,
+     "orcid": null,
+     "hasOrcidToken": false
+    },
+    "roles": [
+     {
+      "roleId": 537884,
+      "role": "Allocation Manager",
+      "roleTypeId": 14,
+      "beginDate": "2026-10-27",
+      "endDate": null,
+      "isAccountToBeCreated": false
+     }
+    ]
+   }
+  ],
+  "fos": [],
+  "grants": [],
+  "conflicts": [],
+  "publications": [],
+  "publicURL": null
+ }
+}

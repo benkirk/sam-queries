@@ -1,7 +1,7 @@
 """Match a user's incoming affiliations (IdM positions/collaborations) to SAM's rows.
 
 Pure: no session. The rungs are legacy ``UserEmploymentSynchronizer``'s, minus its
-defects (``docs/plans/LDAP_SYNC_API.md`` D1-D4): an unknown or foreign id falls
+defects (``docs/plans/implemented/LDAP_SYNC_API.md`` D1-D4): an unknown or foreign id falls
 through to the ladder instead of a 500, an id must also name the same employer,
 each SAM row matches at most one incoming record, and an inverted range simply
 does not overlap. Rows absent from the payload are never ended or deleted.

@@ -2,8 +2,9 @@
 
 Not in ``sam.fmt``: that module imports ``config``, which the webapp boot order cannot take here.
 """
+import calendar
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
@@ -33,6 +34,11 @@ def parse_ymd_end_of_day(s: str) -> datetime:
 def format_ymd(value) -> Optional[str]:
     """``yyyy-MM-dd`` as the Java side renders a date on the wire; None stays None."""
     return None if value is None else value.strftime(YMD)
+
+
+def format_iso(value) -> Optional[str]:
+    """``isoformat()`` of a date or datetime; None stays None."""
+    return None if value is None else value.isoformat()
 
 
 def parse_ymd_or(s, default=None, at_end_of_day=False):
@@ -96,3 +102,20 @@ def from_generalized_time(value) -> Optional[datetime]:
     except ValueError:
         return None
     return aware.astimezone(SERVER_TZ).replace(tzinfo=None)
+
+
+def add_months(day, months: int):
+    """*day* moved *months* ahead (or back), clamped to the target month's last day."""
+    month = day.month - 1 + months
+    year, month = day.year + month // 12, month % 12 + 1
+    return day.replace(year=year, month=month,
+                       day=min(day.day, calendar.monthrange(year, month)[1]))
+
+
+def end_of_month(day):
+    """The last day of *day*'s month."""
+    return day.replace(day=calendar.monthrange(day.year, day.month)[1])
+
+
+def first_of_next_month(day):
+    return (day.replace(day=1) + timedelta(days=32)).replace(day=1)

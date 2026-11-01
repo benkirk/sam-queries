@@ -173,6 +173,24 @@
 </div>
 {%- endmacro %}
 
+{#- The agreement every request SAM files records: a checkbox beside the submit, the text one
+    click away (a new tab). The caller, when given, is the label; the link is terms_url. -#}
+{% macro agreement(eula_sha, checked=False, error=None, id='xrasRequestAgree', small=False, gate=False, terms_url=None) -%}
+{%- set terms_url = terms_url or url_for('user_dashboard.my_requests_agreement') -%}
+<input type="hidden" name="eula_sha" value="{{ eula_sha }}">
+<div class="form-check mb-0">
+    <input type="checkbox" class="form-check-input{{ ' is-invalid' if error }}" id="{{ id }}"
+           name="agree" value="1"{% if checked %} checked{% endif %}
+           {%- if gate %} data-gate-check data-gate-label="accept the terms"{% endif %}>
+    <label class="form-check-label{{ ' small' if small }}" for="{{ id }}">
+        {%- if caller is defined %}{{ caller(terms_url) }}{% else %}
+        I accept the <a href="{{ terms_url }}" target="_blank" rel="noopener">NSF NCAR HPC terms of use</a> for this request.
+        {%- endif %}
+    </label>
+    {%- if error %}<div class="invalid-feedback d-block">{{ error }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
 {#- A dialog's small section label. -#}
 {% macro section_label(text) -%}<h6 class="xras-section-label">{{ text }}</h6>{%- endmacro %}
 

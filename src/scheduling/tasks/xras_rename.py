@@ -6,9 +6,10 @@ pod gone mid-call, the write lever off at the time. ``--dry-run`` reads and repo
 what it would do, and needs only the read config. ``SAM_TASKS_XRAS_RENAME_SINCE``
 (an ISO date) widens the window once, for the production backfill.
 
-WARNING: the one scheduled task that writes to XRAS (``TASK_WRITABLE_OPERATIONS``).
-It ships named in production's ``SAM_TASKS_DISABLED``, and production's task env
-carries no ``XRAS_WRITE_ENABLED``: two locks. Design: ``docs/plans/XRAS_CLOSED_LOOP.md``.
+WARNING: a scheduled task that writes to XRAS (``TASK_WRITABLE_OPERATIONS``; the other is
+``account_requests_reconcile``'s placeholder merge).
+Its one lock is ``XRAS_WRITE_ENABLED`` in the task env, which production carries, so it
+runs armed there (``helm/values.yaml``). Design: ``docs/plans/implemented/XRAS_CLOSED_LOOP.md``.
 """
 
 from __future__ import annotations

@@ -77,7 +77,7 @@ behind a collapse.
 Status, Job History, Derecho, By Project, CPU-hours, opened full screen with the expand icon: facilities
 inside, allocation panels in the middle, every project on the rim, with a "+N" wedge for the ones too
 thin to draw. Staff only (VIEW_ALL_JOB_DATA). Project codes, no people. Taken locally against a copy
-of the job-history database, 2026-10-06. Design record: docs/plans/PANEL_SUNBURST.md.
+of the job-history database, 2026-10-06. Design record: docs/plans/implemented/PANEL_SUNBURST.md.
 :::
 
 ![](images/jobs-by-facility.png){height="88%" fig-align="center"}

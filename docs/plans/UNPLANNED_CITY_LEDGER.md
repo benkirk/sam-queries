@@ -45,6 +45,11 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-14 | `50bda35a` + sweep 27 (XRAS soft-deleted records) | 51 / 63 / 26 | 1 (2) | 16 / 52 | 20 (20), 2 kept | 5,245 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
 | 2026-10-15 | `034fff4a` + sweep 28 (quota reconcile), py only | 52 / 64 / 26 | 1 (2) | 16 / 52 | — | — | — | — | — | — | — | 6 |
 | 2026-10-23 | `bfb58fd8` + sweep 30 (XRAS validate-only lookups), py only | 52 / 64 / 26 | 1 (2) | 21 / 67 | — | — | — | — | — | — | — | 6 |
+| 2026-10-29 | `5cf3eebe` (#874 as merged), before sweep 31 | 61 / 73 / 26 | 1 (2) | 21 / 68 | 20 (20), 2 kept | 5,250 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
+| 2026-10-29 | `5cf3eebe` + sweep 31 (the submission window and impersonation) | 53 / 65 / 26 | 1 (2) | 21 / 67 | 20 (20), 2 kept | 5,250 / 51 / 7 | 116 (61) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
+| 2026-10-31 | `dfef6f6f` + sweep 32 (the My Requests window, #877) | 53 / 65 / 26 | 1 (2) | 21 / 67 | 20 (20), 2 kept | 5,332 / 53 / 7 | 109 (54) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
+| 2026-10-31 | `283fe47c` (#878-#882 as merged), before sweep 33 | 60 / 73 / 26 | 1 (2) | 28 / 89 | 20 (20), 2 kept | 5,425 / 53 / 7 | 109 (54) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 7 |
+| 2026-10-31 | `283fe47c` + sweep 33 (the sprint-2 window) | 51 / 63 / 26 | 1 (2) | 26 / 83 | 20 (20), 2 kept | 5,425 / 53 / 7 | 109 (54) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 5 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -2036,6 +2041,266 @@ identity map. #861's perf test seeded only Extensions and so never measured the 
   same way if a real worklist grows them.
 - [ ] `resolve_project`'s `logged_projcode` read stays per action, for a project-scoped
   number that is not a projcode (not seen in the measured windows).
+
+## 31. 2026-10-29: window sweep, XRAS submission sprint 1 (#874) and impersonation
+
+**Mode:** window, `bfb58fd8..origin/staging` (`5cf3eebe`, four squash commits, 110 files,
++8,464 lines; nearly all #874). **End commit:** `5cf3eebe`. The window added nine `_private`
+cross-module imports (the submission modules borrowing the remediation service's helpers) and
+wrote its upload reader, limit check, step-status query and newest-log query twice each.
+Three findings were on the default route: the operator's Add-action already opens
+`xras_submission` rows on production under the write lever, and that row carried a Discard
+no lever checked and a Resume that would have submitted it; a step whose audit write failed
+read as "never sent" to the flow (the UNVR0027 re-send) and as "sent" to the page; and,
+read across the whole webapp at Ben's ask, session impersonation had an impersonate button
+dead since 2026-06 (its form was gone), a key no logout or login cleared (the next login on
+that browser could "stop impersonating" into the admin's account), and an audit actor that
+named the impersonated user. Ben decided: Resume and Discard stay open under impersonation
+(an admin corrects a stuck submission), so the record must name the admin.
+
+**Done** (one commit each, PR on `sweep-xras-submission-2026-10`):
+
+- [x] S1, drift: `step_statuses` + `documents_to_reattach` on `sam/integration/xras_submission.py`;
+  a step recorded with no event id is `UNKNOWN_STEP`, which stops a resume like an unverified add.
+- [x] D1, default route: the row records `submit`; `resume_submission(submit=None)` honors it;
+  `abort_submission(door=)` refuses the PI door with the lever off; the page hides Resume and
+  Discard from a PI whose type is not armed; SPRINT1 § 3 names the admin door's lever.
+- [x] S13, drift: `SamRefs.user_id` / `admin_user_id` filled by `request_action` (the dead
+  `(user_id, state)` index indexes rows now).
+- [x] I2, security: `webapp/auth/impersonation.py` owns the key; logout and both logins `end()` it.
+- [x] I3, drift: `acting_username()`; the audit line reads `user=<admin> as=<target>` while
+  impersonating; 23 `actor= / operator= / created_by=` sites use it; `xa_user` stays the PI.
+- [x] I1 + I5: `action_buttons.impersonate_button` replaces three forms and the dead JS branch.
+- [x] S2, S3, S7, S8, S12: `audited_write` / `admin_client` / `refresh_index_entry`,
+  `cached_required_fields` / `cached_document_types`, `clean_text` / `XRAS_*_MAX` /
+  `strip_or_none`, `AllocationTypeResourceLimit.check_bounds`, `as_json_text`: public, in place.
+- [x] S6 + W12, lift: `sam.dates.add_months` / `end_of_month` / `first_of_next_month` (two route
+  copies and `_snap_to_end_of_month` folded, unit-tested); `format_ymd` / `parse_wire_date`
+  replace `_iso` / `_from_iso` / `_wire_date`.
+- [x] W2, lift: `webapp/utils/xras.py` (`session_factory` with its 2026-08-25 WARNING restored,
+  `interactive_config`, `read_client`, `admin_client`, `requests_index`); `_shared` aliases.
+- [x] W3 + W10, consolidate: the New form inherits `form_input`, `_check_limits`, `_assemble`,
+  `_refuse_unless_armed`; `_read_upload` serves the review and the resume; the dead 404 went.
+- [x] S4, S10, S11, S14: `latest_action_logs` (three copies), `resource_label` (three, one short a
+  step), `parse_action_types` (two levers, one grammar; `PICKER_ACTION_TYPES` derives),
+  `can_advance` / `OPEN_STATES` (three restated tuples).
+- [x] W11: `register_typeahead(permission=None)`; the mnemonic picker registers like its peer.
+- [x] S5b, delete: `lookup_submission_by_request_id`, `open_submissions_for_user` (no callers).
+- [x] T1, tests: `tests/xras_commit_helpers.py` (`tracking_factory`, `write_result`) for the
+  three suites that commit for real.
+- [x] W4, propagate: `xras_bits.agreement`, `eula.agreement_problem` / `accepted`,
+  `XrasAgreementFields`; the Add-action and the review share all three.
+- [x] W6a (the Renewal review's hardcoded grant list, now `GRANT_INPUTS`), W6b (`document_field`,
+  `attach_note`, `r.yes_no` set once, `form_errors_panel` on the two red-text pages), W8 (the
+  limits forms' `bounds_row` partial, `fmt_input` for the four `'%.15g'`).
+- [x] W5 + W7: `request_title` for the seven dialog headers; `xras_bits.outcome` in the two
+  message dialogs (My Requests loads `xras.css`); the verdict icons match `_VERDICTS`.
+- [x] Prose: the admin client's privilege note and docstring (`get_draft` reads by id as a
+  role-holder), both plans' Status lines, the abort row, the probe table's External row,
+  `REQUEST_TYPES` deleted, `NSF_FUNDING_AGENCY_NAME` beside its id.
+- [x] Plans: `ADMIN_TABLE_POLISH`, `CHART_HOVER_LAYER` (step 4 not planned) and
+  `JOBHIST_WRITER_ROLE` (Status was stale) to `implemented/`; `SAM_LDAP_SYNCD_REFERENCE` stays.
+
+**Tried and dropped:** W1 as proposed (refuse Resume and Discard under impersonation): Ben
+keeps them open on purpose; I3 is what that needs.
+
+**Open:**
+
+- [ ] I4: "am I impersonating" is still read three ways (`requests_routes._refuse_unless_armed`,
+  `_page_context`'s field, `base.html`'s `session.impersonator_id`); a context processor
+  exposing `impersonator` would fold them.
+- [ ] S5a: the second-open guard has two scopes (routing: any active row on the project;
+  service: `(request_id, action_type, created_by)`), so an operator's Add-action passes while
+  a PI's row is open. Likely intended; decide if it bites.
+- [ ] A4: `XRAS_SUBMIT_ACTION_TYPES` unset or empty means every type; the prod pin is the only guard.
+- [ ] A5: with the lever off a lead's project card still links "Request time" to a picker
+  offering nothing; gate it on `submit_configured`.
+- [ ] A6: `award-lookup` and `mnemonic-suggest` are login-only, so any user can drive NSF reads.
+- [ ] Untested flow branches: the admin door with the lever off (the autouse `armed` fixture
+  forces it on), abort whose delete fails, abort with no `action_id`, resume of a non-open row.
+- [x] W9: the limits card gates on `SYSTEM_ADMIN` / `VIEW_SYSTEM_CONFIG` where its peers gate on
+  domain permissions, and sits on the read-only Configuration page. Closed by sprint 3 (#884):
+  the limits and the guide are edited on Allocations > XRAS > Configuration under `MANAGE_XRAS`.
+- [ ] W13: the ownership rule (`created_by` or `xa_user` or `MANAGE_XRAS`) is in
+  `_owned_submission` and `my_requests.html`; a per-row flag.
+- [ ] S15: `_same_value` vs `_read_text` normalisation in the admin client's grant verify.
+- [ ] `htmx-config.js`: six `_reloadAdminCard` listeners, one per admin card; a table.
+- [ ] Browser proof: the request dialogs (W4-W7) need the submit lever and XRAS, which the local
+  stub server does not have; they were proven by the rendered-HTML tests and want a look on
+  samuel-dev after the roll.
+
+## 32. 2026-10-31: window sweep, the My Requests UX pass (#877)
+
+**Mode:** window, `786d3473..origin/staging`: one squash, PR #877 (`dfef6f6f`, 47 files,
++1,427). **End commit:** `dfef6f6f`. Read as one design, #877 holds: every new route (the
+inline offers, the XRAS comments drill, the admin suggest) has real tests behind it, not a
+route-map pin alone; the relabeled statuses and renamed fields left no stale prose; the Python
+side added no duplicate bodies, and the inventory's three shared names (`_load`, `_parse_date`,
+`_search_mnemonic_codes`) are different concepts or one-line local wrappers. #877 moved no
+whole-tree count. The drift is at the seams: the site showed a busy button three ways, wired a
+submit gate two ways, and said who a user is in a picker two ways; six older FK fragments still
+carried an inline cursor style the new one replaced with a class. The #877 review's F2 and F3
+stand; F4 is the gate and picker pair below.
+
+**Done** (one commit each, PR #878 on `sweep-32-my-requests`):
+
+- [x] F3, delete: `edit_project.html` imported `render_fk_search_results` from a fragment with no
+  macro; Jinja resolves a missing import to Undefined silently (checked).
+- [x] F2, drift: `.fk-search-result { cursor: pointer }`; seven inline cursor styles gone, the
+  filter sidebar's clear link and the mnemonic target list on the `cursor-pointer` utility.
+  Inline styles 116 to 109. Proof: the FK row's computed cursor is `pointer` on the merge
+  commit and the branch, the attribute gone on the branch.
+- [x] F1, propagate: the three directory checks (user, project and group cards), the directory
+  Apply and the server-card Refresh drop their per-row spinner id and `hx-indicator` for
+  `.busy-spinner` / `.busy-icon`; htmx puts `htmx-request` on the button itself. Visual change on
+  purpose: busy shows the spinner alone (before: beside the icon); at rest identical, by element
+  shot on both servers.
+- [x] F7 (entry 31's I4), consolidate: `impersonation.context_processor` exposes `impersonating`;
+  `base.html`'s banner and `base_user.html`'s tab label read it; `_page_context` drops the field.
+- [x] F5 (entry 31's A4), default route: `parse_submit_action_types` is fail-closed: unset, empty
+  or `none` arms nothing, `all` is the opt-in. `XRAS_ACTIONS_ENABLED` keeps its grammar. Behavior
+  change for `XRAS_SUBMIT_ENABLED=1` with no types; nothing ships that way.
+- [x] F10a, legibility: `.xras-section-label` and `.xras-action-label` share one rule (jscpd
+  188-196 / 275-283). F10b (entry 31's open item): `ADMIN_CARD_RELOADS` binds the six
+  admin-card reload listeners from one table.
+- [x] Tooling: `template-dead-imports` (a `{% from %}` naming what its source never defines,
+  Jinja comments blanked first; fixture test; the tree reads zero). Skill: the id'd-spinner tell
+  and the picker-order decision.
+
+**Decided, no change:** the admin user pickers stay name-first (`user_search_results_fk_htmx`,
+the impersonate and add-member lists); only My Requests leads with the username, where a role
+account must read as itself (Ben, 2026-10-31).
+
+**Tried and dropped:** F10c, folding `request_bits.html:72`'s two-way "posted before" test onto
+the `amounts_present` input alone: the tests post amounts by hand without the hidden input, so
+the fallback is the contract for a hand-built post. F8, one home for the two submit gates
+(`register.js` `wireGate`, `form-helpers.js` `gateForm`): never on one page, 15 lines each, and
+a shared file would put the public `/register` gate behind dashboard code; not picked. F9, the
+two `_private` cross-module imports (`_page_context` within the user package, `_preflight_rollup`
+into the sweep task): not picked. F6, one guard for the three login-only helper endpoints
+(`admin-suggest` answers nothing unless a New may be filed; `mnemonic-suggest` and
+`award-lookup` answer any logged-in user, entry 31's A6): a behavior change Ben did not take.
+
+**Open:**
+
+- [ ] F6 / A6 as above, if it bites: gate `award-lookup` on `submit_configured` and the mnemonic
+  search like the admin one.
+- [ ] F8: the two submit gates, if a third `data-gate-*` consumer appears.
+- [ ] S5a (two scopes on the second-open guard), W13 (the ownership rule in `_owned_submission`
+  and `my_requests.html:75`; a `mine` flag stamped per row in the route), S15 (`_same_value`
+  falling through to `_read_text` for text): unchanged from entry 31.
+- [ ] Untested flow branches (entry 31): the admin door with the lever off, abort whose delete
+  fails, abort with no `action_id`, resume of a non-open row; no test was added in the window.
+- [ ] A5: with the lever off My Requests says requests are not enabled and shows where each
+  project's go, so the card link lands somewhere useful. (W9 closed by sprint 3, #884.)
+- [ ] The #877 review's F3: a submit landing inside the hourly own-filings refresh for the same
+  number can append the Remediations row twice until the 04:00 rebuild; not worth a lock.
+- [ ] Two local-only test failures seen while running the suites: the Flask-Login loader tests in
+  `test_access_control_decorators.py` (py3.15 env, CI passes) and
+  `test_nhd_env_layers` `test_after_a_signal_to_the_process_group[15]`.
+- [ ] `plans-stale` lists `LDAPSYNC_DIRECTORY_AFFILIATIONS.md` beside the kept syncd reference;
+  its Status is a direction agreed, not a build, so it stays.
+- [x] Browser proof of the request dialogs on samuel-dev (entry 31), done 2026-10-31 on
+  `sha-8165c97` (the #878 squash) with a captured OIDC session replayed by Playwright, light
+  and dark, 1200 and 390 px: the Extension form, its review with the agreement unticked (the
+  gate reads "To submit, accept the terms." and Submit is disabled; no error panel, as the
+  gate now precedes the post), and the refusal dialog for a staff-routed project (the
+  outcome block). No stopped row on dev, so the resume dialog is still unshot. One hit: at
+  390 px the footer's gate hint sat beside Back and pushed Submit onto a line of its own
+  (Back at y 363, Submit at 417). Fixed in the follow-on PR: an empty hint takes no room, and
+  under 576 px it takes its own line (`components.css`), after which Back and Submit share
+  one line (both at 392), proven by injecting the rule into the live dialog.
+
+## 33. 2026-10-31: window sweep, XRAS submission sprint 2 and its neighbors (#878-#882)
+
+**Mode:** window, `dfef6f6f..origin/staging` (`283fe47c`: five squashes, #878 sweep 32, #879 the
+footer rule, #880 sprint 2, #881 the blob and fstree parity, #882 the docs cleanup; 252 files,
++5,081). **End commit:** `283fe47c`. Read as one design: the seam `SWEEP_32_HANDOFF.md` worried
+about held (`NewRequestForm` names its override points; the visitor's class overrides those and
+`draft`, copying nothing), and the drift landed in the register package instead, where `/request`
+was built as a copy of `/register` (the terms and institutions views three times byte for byte,
+accept/submit/pending/verify near-copies, seven `_private` gate and rate helpers borrowed across
+modules; every new private import in the window). On the default route: the visitor's review
+dialog carried the submit-gate and busy markup but its page loaded none of the script that
+drives it (only `dashboards/base.html` did), and an aborted visitor row's "Start it again"
+stopped every refile at `create_person`, because abort deletes the line, never the person. #882
+had already retired both sprint plans; a dozen docstrings still described the step before.
+
+**Done** (one commit each, PR on `sweep-33-sprint2-window`):
+
+- [x] A1, default route: `submit-gate.js` (the gate, busy and a hint-borne failure message
+  lifted out of `form-helpers.js`), loaded by `dashboards/base.html` and the visitor's
+  `request_draft.html`; sweep 32's F8 condition (a third gate consumer) was met.
+  `test_every_request_shell_host_loads_the_submit_gate` pins the hosts of `#xrasRequestModalBody`.
+  Proof: headless Chromium on the review footer, disabled until ticked, hint text, recovery
+  after a 500.
+- [x] A2, default route: the visitor door asks XRAS for the placeholder first; an unreconciled
+  hit (ours, from the earlier filing) skips the person step, a reconciled one still refuses.
+  Flow tests: abort then refile succeeds with one `create_person`; a reconciled hit stops.
+- [x] A3, drift: the review's expected refusal is the exact `pi_not_in_database` text, as the
+  release hook reads it (a message merely naming the placeholder fails the review).
+- [x] D5, drift: the guide card's SAM type is a select of the active types; `AUDIENCE_LABELS`
+  is the one audience vocabulary (schema, form, `public_guides`).
+- [x] B1, lift: the gate key and the five gate and rate helpers public in `register/common.py`;
+  the comments say `/register` and `/request` share the gate (one EULA) and the global bucket
+  (Ben, 2026-10-31). Private imports 60 to 53.
+- [x] B2, consolidate: `common.terms_page` / `expired`, `tokens.verify_ttl_hours` / `_seconds`,
+  `VerifyCodeForm.BAD_FORMAT` / `WRONG`, `read_flag` for `sent`. Helper-bypass 7 to 6.
+- [x] B3, consolidate: `register_typeahead(guard=)`; the visitor's letters picker registers
+  through it on the anonymous tier (flask-limiter resolves 30 per minute on `ip_key`, as for
+  `/request/terms`); `mnemonic_code_search` and `message_fragment` public.
+- [x] B4, drift: `NewRequestForm` public; `_RequestForm._sessions()` is the one session seam;
+  the no-op `template` override gone; the base docstring names `draft`.
+- [x] C1, consolidate: `submissions_for_registration` behind the three by-registration queries.
+- [x] C2, lift: `sam.dates.format_iso` for the two identical `_iso` helpers (legacy payloads
+  unchanged: `isoformat()` as before); `format_ymd` for the third.
+- [x] C3, lift: `split_error_messages` public. C4: `active_holders`, the roster's rule in one place.
+- [x] Prose: `xras_rename`'s two false locks, the "webapp only" lever, "hourly" (it is every 15
+  minutes), `is_held`, `xras_activation`, `institution_options`, `webapp.register`,
+  `merges_since_refusal` (an operator's merge earns the comment too); the two rule files; the
+  `XRAS_SUBMISSION.md` § 5 rows and the placeholder shape; the retired sprint-2 record's "as
+  built" line (inline cards, no receipt mail, help desk on a stopped row) and both records'
+  `implemented/` links.
+- [x] Skill: the hosted-dialog script tell and the abort-then-retry trace.
+
+**Tried and dropped:** C5, `paste_roster` for the activation invites: the two loops share
+`invite_user` but differ in source, note, event and return shape (rows, not addresses); folding
+them grows `paste_roster` for one caller. C6 (one query per due row in `merge_fulfilled_visitors`,
+one `session.get` per row in `invite_activated_roster`, `public_guides` re-read per visitor step):
+rows are few; recorded, not built.
+
+**Decided:** `/register` and `/request` keep one gate key and one global POST bucket (B1a).
+W9 stays open, leaning to a page of their own under Allocations for the request limits and the
+guide (Ben, 2026-10-31).
+
+**Open:**
+
+- [ ] D1: the lazy admin card block (header, `active_switch`, `hx-get … load once`, spinner)
+  three times on `admin/configuration.html` and 13 placeholders on 8 pages; a
+  `_config_macros.lazy_card` macro.
+- [ ] D2: `request_new_htmx.html:43-52` hand-writes the roster picker (no results `max-height`,
+  so 15 rows grow the form); `request_roster_results_htmx.html` copies
+  `request_admin_results_htmx.html`; `fk_search_field(append_to=)` and one user-results fragment.
+- [ ] D3: two roster pastes (`request_new_htmx.html`, `project_members/fragments/roster_form_htmx.html`)
+  with disagreeing help; a `roster_field` macro carrying the parser's forms.
+- [ ] D4: `.cursor-pointer` and `.fk-search-result` are one rule; `register.css` repeats its
+  heading, muted-small and bordered-box blocks; `.type-card-cadence` (request-types.css, sprint 3)
+  is a fourth pill beside `xras_bits.tag`.
+- [ ] D6: `(request_urls or {}).get('x') or url_for(...)` seven times across the request
+  fragments; the handler fills the dict. (Sprint 3 retired `fixed_opportunity`: both doors fix
+  the type, and `names_sam_users` gates the SAM-user pickers.)
+- [ ] D7: inline styles 109 to about 100 (`base.html:211` z-index Bootstrap already sets,
+  `w-auto`, `stats-two-col` + `align-content-start` on the group card, a `.text-pre-wrap` utility
+  for seven `white-space:pre-wrap`).
+- [ ] D8, tests: `/request/accept` never driven; `award-lookup` 404-only (sprint 3 dropped the
+  guide and limit delete routes: the edit form's Active box retires a row);
+  roster `ROSTER_MAX`, own address and admin dropped, `_in_xras(unsure=False)`.
+- [ ] A4: `_release_after_refusal` commits the release, then files the ticket; a filing failure
+  leaves the row released with no ticket and nothing retries until XRAS reposts. Not built.
+- [x] W9 as decided above: closed by sprint 3 (#884). S5a, W13, S15 from entry 31 unchanged.
+- [ ] `tests/api/test_xras_access.py::TestDispatchArms` fails three or four tests under `-n 4`
+  on `origin/staging` itself (two runs on a clean worktree) and passes serially: a parallel-order
+  flake, not read further.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

@@ -789,22 +789,24 @@ class TestExpiredNodeRosterHonorsMembershipWindow:
         session.rollback()
 
 
+def _fstree_node(tree, projcode, resource_name):
+    """The resource node of one project in a get_fstree_data payload, or None."""
+    for fac in tree['facilities']:
+        for at in fac['allocationTypes']:
+            for proj in at['projects']:
+                if proj['projectCode'] != projcode:
+                    continue
+                for res in proj['resources']:
+                    if res['name'] == resource_name:
+                        return res
+    return None
+
+
 class TestWaitingLifecycleNode:
     """A future-only allocation surfaces as a 'Waiting' node with its members;
     future takes precedence over a prior ended allocation (matches legacy
     DefaultAccountStatusCalculator, which legacy fstree surfaces).
     """
-
-    def _node(self, tree, projcode, resource_name):
-        for fac in tree['facilities']:
-            for at in fac['allocationTypes']:
-                for proj in at['projects']:
-                    if proj['projectCode'] != projcode:
-                        continue
-                    for res in proj['resources']:
-                        if res['name'] == resource_name:
-                            return res
-        return None
 
     def test_future_only_is_waiting_and_future_beats_prior(self, session, hpc_resource):
         from sam import AccountUser
@@ -839,12 +841,47 @@ class TestWaitingLifecycleNode:
 
         tree = get_fstree_data(session, resource_name=resource_name)
 
-        n1 = self._node(tree, p_wait.projcode, resource_name)
+        n1 = _fstree_node(tree, p_wait.projcode, resource_name)
         assert n1 is not None and n1['accountStatus'] == 'Waiting'
         assert lead.username in {u['username'] for u in n1['users']}  # members carried
         assert n1['allocationAmount'] == 0 and n1['thresholds'] is None  # lifecycle shape
 
-        n2 = self._node(tree, p_both.projcode, resource_name)
+        n2 = _fstree_node(tree, p_both.projcode, resource_name)
         assert n2 is not None and n2['accountStatus'] == 'Waiting'  # future beats prior
+
+        session.rollback()
+
+
+class TestParentStatusSparesLifecycleRows:
+    """A non-Normal parent cascades only onto children whose status came from charges;
+    legacy settles No Account and Waiting before it consults the parent."""
+
+    def test_overspent_parent_keeps_children_lifecycle_status(self, session, hpc_resource):
+        from factories.projects import (
+            make_account, make_allocation, make_allocation_type, make_project,
+        )
+        from factories.summaries import make_comp_charge_summary
+
+        resource_name = hpc_resource.resource_name
+        now = datetime.now()
+        at = make_allocation_type(session)
+
+        parent = make_project(session, allocation_type=at)
+        acct = make_account(session, project=parent, resource=hpc_resource)
+        make_allocation(session, account=acct, amount=100.0,
+                        start_date=now - timedelta(days=10), end_date=now + timedelta(days=355))
+        make_comp_charge_summary(session, account=acct, charges=1000.0,
+                                 activity_date=now - timedelta(days=1))
+
+        no_account = make_project(session, parent=parent, allocation_type=at)
+        waiting = make_project(session, parent=parent, allocation_type=at)
+        make_allocation(session, account=make_account(session, project=waiting, resource=hpc_resource),
+                        start_date=now + timedelta(days=30), end_date=now + timedelta(days=395))
+
+        tree = get_fstree_data(session, resource_name=resource_name)
+
+        assert _fstree_node(tree, parent.projcode, resource_name)['accountStatus'] == 'Overspent'
+        assert _fstree_node(tree, no_account.projcode, resource_name)['accountStatus'] == 'No Account'
+        assert _fstree_node(tree, waiting.projcode, resource_name)['accountStatus'] == 'Waiting'
 
         session.rollback()

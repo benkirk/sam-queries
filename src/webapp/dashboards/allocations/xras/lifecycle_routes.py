@@ -10,6 +10,7 @@ from flask import abort, current_app, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from webapp.api.xras.recheck import recheck_action
+from webapp.auth.impersonation import acting_username
 from webapp.extensions import db
 from webapp.utils.htmx import (
     handle_htmx_form_post, htmx_not_found, htmx_success,
@@ -85,7 +86,7 @@ def _record_activation_event(project, event_type, *, comment=None,
         db.session,
         project_id=project.project_id,
         event_type=event_type,
-        created_by=current_user.username,
+        created_by=acting_username(),
         comment=comment,
         notified_to=notified_to,
         # `action_log_id` names the action the operator acted on. It defaults
@@ -109,7 +110,7 @@ def _xras_messages(project, people, *, action=None):
     never disagree about what has already been sent.
     """
     return build_xras_messages(db.session, project, people, action=action,
-                               requested_by=current_user.username,
+                               requested_by=acting_username(),
                                approver_comment=approver_comment_for_action(action),
                                site_url=public_url_root())
 
@@ -303,12 +304,24 @@ def xras_activate(project_id: int):
             f'{project.projcode} is already active.',
             detail='Nothing to do.')
 
-    activate_project(db.session, project, by=current_user.username)
+    activate_project(db.session, project, by=acting_username())
+    invited = _invite_roster(project)
 
     return htmx_success_message(
         {'refreshXrasTab': {}},
         f'Activated {project.projcode}.',
-        detail=project.title or None)
+        detail=' '.join(filter(None, (project.title, f'Invited {invited} people named on the '
+                                      'request.' if invited else None))) or None)
+
+
+def _invite_roster(project) -> int:
+    """The New's invitees once it is active; a failure is logged, never the activation's."""
+    from webapp.register.invite_mail import invite_activated_roster
+    try:
+        return len(invite_activated_roster(db.session, project, by=acting_username()))
+    except Exception:                                   # noqa: BLE001
+        current_app.logger.exception('roster invites after activating %s', project.projcode)
+        return 0
 
 
 @bp.route('/xras_dismiss_form/<int:project_id>')
@@ -499,7 +512,7 @@ def xras_recheck(action_id: int):
     ``webapp/api/xras/recheck.py``.
     """
     try:
-        new_id, status = recheck_action(action_id, actor=current_user.username)
+        new_id, status = recheck_action(action_id, actor=acting_username())
     except LookupError:
         return htmx_not_found('Action')
     except Exception:                              # pragma: no cover - defensive

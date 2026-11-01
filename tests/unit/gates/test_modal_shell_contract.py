@@ -207,6 +207,24 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/admin/fragments/contracts_table_htmx.html': [
         'contractDetailsModalBody', 'createContractFormContainer', 'createContractModal',
         'createContractSourceFormContainer', 'createContractSourceModal'],
+    # Loaded only into user/my_requests.html, which ships #xrasRequestModal. The picker is
+    # on the page (it opens the shell); the review swaps inside the open body, no toggle.
+    'dashboards/user/fragments/request_actions_htmx.html': [
+        'xrasRequestModal', 'xrasRequestModalBody'],
+    'dashboards/user/fragments/request_offers_htmx.html': [
+        'xrasRequestModal', 'xrasRequestModalBody'],
+    'dashboards/user/fragments/request_review_htmx.html': ['xrasRequestModalBody'],
+    # Its "Change type" link (signed-in only) swaps the type stage back into the open body;
+    # the visitor's panel (register/request_draft.html) carries the same id.
+    'dashboards/user/fragments/request_new_htmx.html': ['xrasRequestModalBody'],
+    'dashboards/user/fragments/request_new_amounts_htmx.html': ['xrasRequestModalBody'],
+    'dashboards/user/fragments/request_resume_htmx.html': ['xrasRequestModalBody'],
+    # The openers are the `admin` variant's only; it renders only into
+    # allocations/xras_configuration.html (via xras_type_cards_htmx.html), which ships them.
+    'dashboards/fragments/type_cards.html': [
+        'createAllocationGuideFormContainer', 'createAllocationGuideModal',
+        'createAllocationLimitFormContainer', 'createAllocationLimitModal',
+        'editAllocationGuideFormContainer', 'editAllocationGuideModal'],
     'dashboards/admin/fragments/disk_root_directories_section.html': [
         'addDiskRootFormContainer', 'addDiskRootModal'],
     'dashboards/admin/fragments/facility_card.html': [
@@ -476,6 +494,7 @@ PAGES_WITH_PROJECT_MODAL = {
     '/user/jobs': 'dashboards/user/my_jobs.html',
     '/user/data': 'dashboards/user/my_data.html',
     '/user/events': 'dashboards/user/my_events.html',
+    '/user/requests': 'dashboards/user/my_requests.html',
     '/admin/projects': 'dashboards/admin/projects.html',
     '/admin/projects/directories': 'dashboards/admin/projects_directories.html',
     '/admin/organizations': 'dashboards/admin/organizations.html',
@@ -493,6 +512,7 @@ PAGES_WITH_PROJECT_MODAL = {
     '/allocations/transactions': 'dashboards/allocations/transactions.html',
     '/allocations/adjustments': 'dashboards/allocations/adjustments.html',
     '/allocations/xras': 'dashboards/allocations/xras.html',
+    '/allocations/xras/configuration': 'dashboards/allocations/xras_configuration.html',
     '/status/derecho': 'dashboards/status/derecho_page.html',
     '/status/casper': 'dashboards/status/casper_page.html',
     '/status/jupyterhub': 'dashboards/status/jupyterhub_page.html',
@@ -729,6 +749,22 @@ ACTIONS_DEPENDENTS = [
     'modals.js',
     'form-helpers.js',
 ]
+
+
+# The request dialogs' review carries data-gate-submit / data-busy; submit-gate.js drives
+# them. A page that hosts the request shell outside dashboards/base.html must load it too, or
+# the visitor's Submit is never gated and never shows busy (sweep 33).
+REQUEST_SHELL_HOSTS = ['dashboards/base.html', 'register/request_draft.html']
+
+
+def test_every_request_shell_host_loads_the_submit_gate():
+    hosts = [name for name, text in TEMPLATES.items()
+             if 'id="xrasRequestModalBody"' in text or name == 'dashboards/base.html']
+    assert sorted(hosts) == sorted(REQUEST_SHELL_HOSTS), (
+        f'request shell hosts changed: {hosts}; update REQUEST_SHELL_HOSTS and make sure the '
+        'new host loads js/submit-gate.js')
+    missing = [name for name in hosts if 'js/submit-gate.js' not in TEMPLATES[name]]
+    assert not missing, f'{missing} host the request dialogs but never load js/submit-gate.js'
 
 
 def test_actions_js_loads_before_its_dependents():

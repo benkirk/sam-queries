@@ -1,0 +1,17 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import number_field with context %}
+{% from 'dashboards/allocations/partials/allocation_guide_fields.html' import guide_fields with context %}
+{# htmx: Create allocation type guide (loaded into #createAllocationGuideFormContainer). #}
+{% call htmx_form(
+    url_for('allocations_dashboard.htmx_allocation_guide_create'),
+    '#createAllocationGuideFormContainer',
+    'Create',
+    submit_icon='plus',
+    errors=errors
+) %}
+        {{ number_field('xras_allocation_type_id', 'XRAS allocation type id', required=True, min=1, step=1,
+                        id='createAllocationGuideXrasType',
+                        default=(preset or {}).get('xras_allocation_type_id', ''),
+                        help='allocationTypeInfo.allocationTypeId, e.g. 500024 for Small.') }}
+        {{ guide_fields(none, 'createAllocationGuide') }}
+{% endcall %}

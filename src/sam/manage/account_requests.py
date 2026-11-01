@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from sam.core.account_requests import (
     CREATED_BY_SELF,
     CREATED_BY_SWEEP,
+    OPEN_STATES,
     PURPOSE_ENROLLMENT,
     PURPOSE_REACTIVATION,
     PURPOSE_STANDALONE,
@@ -329,6 +330,40 @@ def _person_from_user(user: Optional[User]) -> Optional[Dict[str, Any]]:
             'middle_name': user.middle_name}
 
 
+def refused_visitor_registration(session: Session, request_id: Optional[int],
+                                 messages: Sequence[str]) -> Optional[AccountRequest]:
+    """The ``/request`` registration whose New a refused post refused for its SAM-minted PI.
+
+    That refusal is the approval: XRAS posts only an approved request, and the PI has
+    no account yet. ``None`` for any other refusal. Reads only.
+    """
+    from sam.integration.xras_submission import XrasSubmission
+    from sam.xras.errors import pi_not_in_database
+    if request_id is None:
+        return None
+    for sub in session.query(XrasSubmission).filter(
+            XrasSubmission.request_id == request_id, XrasSubmission.action_type == 'New',
+            XrasSubmission.registration_id.isnot(None)):
+        if pi_not_in_database(sub.xa_user) in messages:
+            row = session.get(AccountRequest, sub.registration_id)
+            if row is not None and row.state in OPEN_STATES:
+                return row
+    return None
+
+
+def release_visitor_registration(session: Session, row: AccountRequest, *, clock=None
+                                 ) -> Optional[str]:
+    """Hand a held ``/request`` row to NUSD (``requested_at``); returns the one active SAM
+    user already holding its address, for whom the account ticket would be noise.
+
+    That is the match reconcile fulfills the row by and the merge then folds the
+    placeholder into. An inactive or ambiguous holder is NUSD's call: ``None``, a ticket.
+    """
+    from sam.queries.xras_accounts import active_holder
+    row.mark_requested(clock)
+    return active_holder(session, row.email)
+
+
 def reconcile_account_requests(session: Session, *, clock=None,
                                purge_unverified_days: Optional[int] = None
                                ) -> Dict[str, int]:
@@ -393,14 +428,15 @@ def reconcile_account_requests(session: Session, *, clock=None,
 
 def register_request(session: Session, *, email: str, first_name: str, last_name: str,
                      event: Optional[AccountRequestEvent] = None, clock=None,
-                     **person) -> AccountRequest:
+                     purpose: Optional[str] = None, **person) -> AccountRequest:
     """A self-registration: ``created_by='self'``, unverified, and therefore
     invisible to the queue until the mailed link or code confirms the address.
-    An event makes it an ``enrollment`` on the event's project."""
+    An event makes it an ``enrollment`` on the event's project; ``purpose='submission'``
+    is a visitor filing a New (``/request``)."""
     return AccountRequest.create(
         session,
         email=email, first_name=first_name, last_name=last_name,
-        purpose=PURPOSE_ENROLLMENT if event else PURPOSE_STANDALONE,
+        purpose=purpose or (PURPOSE_ENROLLMENT if event else PURPOSE_STANDALONE),
         project_id=event.project_id if event else None,
         event_id=event.account_request_event_id if event else None,
         created_by=CREATED_BY_SELF, verified_by=None, clock=clock, **person,

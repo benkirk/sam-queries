@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/action_buttons.html' import impersonate_button with context %}
 {# htmx: User search results — clicking a user loads their card; impersonate icon is permission-gated #}
 {% if users %}
 {% for user in users %}
@@ -22,20 +23,7 @@
         <small class="text-muted">{{ user.primary_email }}</small>
         {% endif %}
     </button>
-    <!-- Right: impersonate icon (only for IMPERSONATE_USERS) -->
-    {% if has_permission(Permission.IMPERSONATE_USERS) %}
-    <form method="POST" action="{{ url_for('admin_dashboard.impersonate') }}" class="ms-2"
-          data-action-submit="confirm-submit"
-          data-confirm-title="Impersonate user"
-          data-confirm-message="Impersonate {{ user.display_name }} ({{ user.username }})?"
-          data-confirm-variant="warning" data-confirm-label="Impersonate">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="username" value="{{ user.username }}">
-        <button type="submit" class="btn  btn-outline-warning" title="Impersonate {{ user.username }}">
-            <i class="fa-solid fa-user-secret"></i>
-        </button>
-    </form>
-    {% endif %}
+    {{ impersonate_button(user, cls='btn btn-outline-warning', form_class='ms-2') }}
 </div>
 {% endfor %}
 {% else %}

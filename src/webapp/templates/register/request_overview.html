@@ -1,0 +1,42 @@
+{% extends 'register/base_register.html' %}
+{% from 'dashboards/fragments/type_cards.html' import type_card %}
+{#
+  /request step 1: every allocation type a visitor may file, laid out before anything
+  starts (sam/xras/allocation_overview.py). Plain links, no htmx. Context: cards
+  (TypeCard), outage (XRAS did not answer), step.
+#}
+{% block title %}Request an NCAR allocation{% endblock %}
+{% block sheet_class %} register-sheet-wide{% endblock %}
+{% block step %}{% include 'register/_request_step.html' %}{% endblock %}
+
+{% block content %}
+<h1>Request an NCAR allocation</h1>
+{% include 'register/_preview_banner.html' %}
+<p class="register-lede">
+    NSF NCAR allocates time on its supercomputer (Derecho), its analysis cluster
+    (Casper) and its storage. Each kind of allocation below says who it is for, how
+    much you can ask for, and what the request needs. Pick the one that fits your
+    work; CISL reviews every request, and an NCAR account is created for you once
+    yours is approved.
+</p>
+<div class="register-callout">
+    <p><i class="fa-solid fa-user-check" aria-hidden="true"></i>
+    Already have an NCAR account? <a href="{{ url_for('user_dashboard.my_requests_page') }}">Sign in</a>
+    and request from your dashboard, where your details are already filled in.</p>
+</div>
+{% if outage %}
+<div class="register-callout warn">
+    <p><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+    The allocation system is not answering right now, so no request can be started.
+    The descriptions below still apply; please try again shortly.</p>
+</div>
+{% endif %}
+
+<div class="type-card-list">
+{% for card in cards %}
+    {{ type_card(card, start_url=url_for('allocation_request.start', opportunity_id=card.opportunity.opportunity_id) if card.is_open) }}
+{% else %}
+    <p class="text-muted fst-italic">No allocation types are listed here yet.</p>
+{% endfor %}
+</div>
+{% endblock %}

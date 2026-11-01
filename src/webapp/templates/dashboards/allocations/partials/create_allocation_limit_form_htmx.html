@@ -1,0 +1,28 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import select_field with context %}
+{% from 'dashboards/allocations/partials/allocation_limit_bounds.html' import bounds_row with context %}
+{# htmx: Create request limit (loaded into #createAllocationLimitFormContainer). #}
+{% set _p = 'createAllocationLimit' %}
+{% call htmx_form(
+    url_for('allocations_dashboard.htmx_allocation_limit_create'),
+    '#createAllocationLimitFormContainer',
+    'Create',
+    submit_icon='plus',
+    errors=errors
+) %}
+        {%- set ns = namespace(types=[], resources=[]) %}
+        {%- for at in allocation_types %}{% set ns.types = ns.types + [(at.allocation_type_id, at.allocation_type ~ (' (' ~ at.panel.panel_name ~ ')' if at.panel else ''))] %}{% endfor %}
+        {%- for r in resources %}{% set ns.resources = ns.resources + [(r.resource_id, r.resource_name)] %}{% endfor %}
+        <div class="row g-2">
+            <div class="col-md-6">
+                {{ select_field('allocation_type_id', 'Allocation type', options=ns.types, required=True,
+                                placeholder='— Select —', id='createAllocationLimitType',
+                                default=(preset or {}).get('allocation_type_id', '')) }}
+            </div>
+            <div class="col-md-6">
+                {{ select_field('resource_id', 'Resource', options=ns.resources, required=True,
+                                placeholder='— Select —', id='createAllocationLimitResource') }}
+            </div>
+        </div>
+        {{ bounds_row(none, _p) }}
+{% endcall %}

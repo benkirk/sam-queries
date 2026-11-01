@@ -17,6 +17,8 @@ writing must stay a separate deliberate act, because the same key that reads
 reports can merge one person into another irreversibly. The write lever is
 webapp-only by design -- ``cronjob-tasks.yaml`` never sets it, so no scheduled
 task can write to XRAS even if one imported the admin client.
+``XRAS_SUBMIT_ENABLED`` (webapp only, never ``tasks.env``) additionally arms
+authoring a request for a user; ``XRAS_SUBMIT_ACTION_TYPES`` narrows which types.
 
 WARNING: ``XRAS_API_KEY`` is NOT ``SAM_XRAS_USER`` / ``SAM_XRAS_PASS``. Those
 are XRAS's credential for calling SAM. This is SAM's credential for calling
@@ -25,13 +27,18 @@ XRAS.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from typing import Any, Dict, Optional
+import logging
+from dataclasses import dataclass, field, replace
+from typing import Any, Dict, FrozenSet, Optional
 
-from sam.integration._config import (config_bool as _config_bool,
+from sam.integration._config import (parse_action_types,
+                                     config_bool as _config_bool,
                                     config_float as _config_float,
                                     config_int as _config_int,
                                     config_str as _config_str)
+from sam.integration.xras_api.vocabulary import SUBMIT_ACTION_TYPES
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = 'https://api.xras.org'
 DEFAULT_ALLOCATIONS_PROCESS = 'NCAR'
@@ -54,6 +61,18 @@ DEFAULT_CONNECT_TIMEOUT = 3.05
 DEFAULT_MAX_RETRIES = 3
 
 
+def parse_submit_action_types(value: Optional[str]) -> FrozenSet[str]:
+    """``XRAS_SUBMIT_ACTION_TYPES``: ``all`` is every type; unset, empty or ``none`` is none.
+
+    Fail-closed, unlike ``XRAS_ACTIONS_ENABLED``: an environment that forgets the variable
+    files nothing. An unknown token is logged and dropped, so a typo leaves that type disabled.
+    """
+    if not (value or '').strip():
+        return frozenset()
+    return parse_action_types(value, SUBMIT_ACTION_TYPES, setting='XRAS_SUBMIT_ACTION_TYPES',
+                              logger=logger)
+
+
 @dataclass(frozen=True)
 class XrasApiConfig:
     """A snapshot of outbound-XRAS config, resolved at construction."""
@@ -72,6 +91,13 @@ class XrasApiConfig:
     #: provisioned XRAS key lands. Flipping it on without that key just surfaces
     #: XRAS's 401 — it is the flip-point, not the fix.
     admin_context_enabled: bool = False
+    #: Fourth lever: authoring a request for a user (the My Requests tab). Webapp only.
+    submit_enabled: bool = False
+    submit_action_types: FrozenSet[str] = field(
+        default_factory=lambda: frozenset(SUBMIT_ACTION_TYPES))
+    #: Fifth lever: a New filed by a visitor with no SAM account (/request/). The webapp mounts
+    #: the door; in the task env it arms the placeholder merge (``visitor_merge_configured``).
+    submit_anonymous_enabled: bool = False
     api_key: str = ''
     base_url: str = DEFAULT_BASE_URL
     allocations_process: str = DEFAULT_ALLOCATIONS_PROCESS
@@ -88,6 +114,10 @@ class XrasApiConfig:
             write_enabled=_config_bool('XRAS_WRITE_ENABLED', False),
             admin_context_enabled=_config_bool('XRAS_ADMIN_CONTEXT_ENABLED',
                                                False),
+            submit_enabled=_config_bool('XRAS_SUBMIT_ENABLED', False),
+            submit_action_types=parse_submit_action_types(
+                _config_str('XRAS_SUBMIT_ACTION_TYPES', '')),
+            submit_anonymous_enabled=_config_bool('XRAS_SUBMIT_ANONYMOUS_ENABLED', False),
             api_key=_config_str('XRAS_API_KEY', ''),
             base_url=(_config_str('XRAS_API_BASE', DEFAULT_BASE_URL)
                       or DEFAULT_BASE_URL).rstrip('/'),
@@ -142,6 +172,26 @@ class XrasApiConfig:
         """
         return bool(self.write_configured and self.admin_context_enabled)
 
+    @property
+    def submit_configured(self) -> bool:
+        """True when SAM may file a request for a user: the submit lever on top of the write lever."""
+        return bool(self.write_configured and self.submit_enabled)
+
+    def submit_allows(self, action_type: str) -> bool:
+        """Whether filing *action_type* is armed here (the lever and the type list)."""
+        return self.submit_configured and action_type in self.submit_action_types
+
+    @property
+    def visitor_submit_configured(self) -> bool:
+        """True when a visitor with no SAM account may file a New: its lever, with New armed."""
+        return bool(self.submit_anonymous_enabled and self.submit_allows('New'))
+
+    @property
+    def visitor_merge_configured(self) -> bool:
+        """True when a fulfilled visitor's placeholder may be merged: its lever and the write
+        lever, so the task pod (no submit levers) can arm it too."""
+        return bool(self.submit_anonymous_enabled and self.write_configured)
+
     def summary(self) -> Dict[str, Any]:
         """Config for the Admin -> Configuration card. **Never** the key.
 
@@ -152,6 +202,10 @@ class XrasApiConfig:
             'enabled': self.enabled,
             'write_enabled': self.write_enabled,
             'admin_context_enabled': self.admin_context_enabled,
+            'submit_enabled': self.submit_enabled,
+            'submit_action_types': [t for t in SUBMIT_ACTION_TYPES
+                                    if t in self.submit_action_types],
+            'submit_anonymous_enabled': self.submit_anonymous_enabled,
             'api_key_set': bool(self.api_key),
             'base_url': self.base_url,
             'allocations_process': self.allocations_process,
@@ -162,6 +216,8 @@ class XrasApiConfig:
             'configured': self.configured,
             'write_configured': self.write_configured,
             'admin_context_available': self.admin_context_available,
+            'submit_configured': self.submit_configured,
+            'visitor_submit_configured': self.visitor_submit_configured,
         }
 
 
@@ -198,3 +254,8 @@ def xras_admin_context_available(config: Optional[XrasApiConfig] = None) -> bool
     client's per-call ``context='admin'`` is what flips them live on that day.
     """
     return (config or XrasApiConfig.from_environment()).admin_context_available
+
+
+def xras_submit_configured(config: Optional[XrasApiConfig] = None) -> bool:
+    """The predicate the My Requests tab branches on; off renders its controls disabled with the reason."""
+    return (config or XrasApiConfig.from_environment()).submit_configured

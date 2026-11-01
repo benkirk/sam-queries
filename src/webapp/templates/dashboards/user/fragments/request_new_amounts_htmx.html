@@ -1,0 +1,30 @@
+{#- Page two of a New, into #xrasRequestModalBody: the window and an amount per resource the
+    opportunity offers, page one's answers carried in hidden fields; Back (stage=describe) or
+    Review. Context: the handler's (opportunity, resources, documents, default_begin,
+    default_end, sam_state, carry_fields), errors, field_errors, form. -#}
+{% from 'dashboards/fragments/form_fields.html' import date_field, form_errors_panel with context %}
+{% from 'dashboards/user/partials/request_bits.html' import request_title, amounts_table, attach_note, carry %}
+{{ request_title('New request: resources') }}
+<form hx-post="{{ post_url }}" hx-target="#xrasRequestModalBody" hx-swap="innerHTML"
+      hx-disabled-elt="find button[type='submit']" hx-disinherit="hx-disabled-elt" novalidate>
+    <div class="modal-body">
+        {{ carry(form, carry_fields) }}
+        <div class="modal-facts small mb-3">
+            {{ opportunity.opportunity_name }}
+            {%- if form and form.get('title') %}: <span class="fw-semibold">{{ form.get('title') }}</span>{% endif %}.
+            {{ attach_note(documents) }}
+        </div>
+        <div class="row g-2">
+            <div class="col-sm-6">{{ date_field('begin_date', 'Start', required=True, default=default_begin, id='xrasNewBegin') }}</div>
+            <div class="col-sm-6">{{ date_field('end_date', 'End', required=True, default=default_end, id='xrasNewEnd') }}</div>
+        </div>
+        {{ amounts_table(resources, form, field_errors) }}
+        {{ form_errors_panel() }}
+    </div>
+    <div class="modal-footer">
+        <button type="submit" name="stage" value="describe" class="btn btn-secondary">
+            <i class="fa-solid fa-arrow-left"></i> Back</button>
+        <button type="submit" name="stage" value="review" class="btn btn-primary">
+            <i class="fa-solid fa-arrow-right"></i> Review</button>
+    </div>
+</form>

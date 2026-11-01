@@ -1,0 +1,17 @@
+{#- The inputs a New's opportunity adds to page one: the project code letters when SAM cannot
+    tell them from the PI's affiliation, and the grant when the rule book wants one. Context:
+    opportunity, rules, sam_state, chosen_mnemonic, form, field_errors. -#}
+{% from 'dashboards/fragments/form_fields.html' import fk_search_field with context %}
+{% if opportunity %}
+{% if not sam_state.mnemonic %}
+{{ fk_search_field('mnemonic_code_id', 'Project code letters',
+                   (request_urls or {}).get('mnemonic_suggest') or url_for('user_dashboard.my_requests_mnemonic_suggest'),
+                   required=True, placeholder='Your institution, or its letters', id_prefix='xrasNewMnemonic',
+                   selected_label=chosen_mnemonic,
+                   help='SAM could not tell them from your affiliation' ~ (', ' ~ sam_state.affiliation if sam_state.affiliation else '')
+                        ~ '. Pick your institution\'s; CISL checks the choice.') }}
+{% endif %}
+{% if rules.wants_grants %}
+{% with required=rules.grant_fields %}{% include 'dashboards/user/fragments/request_grant_htmx.html' %}{% endwith %}
+{% endif %}
+{% endif %}

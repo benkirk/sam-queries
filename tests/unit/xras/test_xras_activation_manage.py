@@ -101,3 +101,33 @@ def test_the_news_notice_waits_for_the_cutover_floor(monkeypatch):
     assert xras_activation.auto_notify_armed(datetime(2033, 11, 16, 8, 0)) is True
     monkeypatch.setenv('SAM_TASKS_XRAS_NOTICES_SINCE', '')
     assert xras_activation.auto_notify_armed(datetime(2000, 1, 1)) is True
+
+
+class TestTheRosterInvites:
+    """2b: the people a New named that XRAS could not hold, invited at activation."""
+
+    def _filed(self, session, project, roster):
+        from datetime import datetime
+        from sam.integration.xras_submission import XrasSubmission
+        from sam.manage.xras_submission import ActionRequest
+        draft = ActionRequest(action_type='New', opportunity_id=1, roster=roster)
+        XrasSubmission.create(session, action_type='New', created_by='pi1', xa_user='pi1',
+                              eula_sha='a' * 40, eula_accepted_at=datetime.now(),
+                              payload=draft.to_payload(), project_id=project.project_id)
+
+    def test_each_invitee_is_queued_under_the_lead_once(self, session):
+        project = make_project(session, active=True)
+        self._filed(session, project, (
+            {'first_name': 'Ada', 'last_name': 'Lovelace', 'email': 'zz.ada@example.invalid',
+             'username': None},
+            {'first_name': 'In', 'last_name': 'Xras', 'email': 'zz.x@example.invalid',
+             'username': 'inxras'}))
+        (row,) = xras_activation.invite_submission_roster(session, project, by='benkirk')
+        assert (row.email, row.purpose, row.sponsor_user_id, row.project_id) == (
+            'zz.ada@example.invalid', 'enrollment', project.lead.user_id, project.project_id)
+        assert project.projcode in row.comment
+        assert xras_activation.invite_submission_roster(session, project, by='benkirk') == []
+
+    def test_a_project_no_submission_named_invites_no_one(self, session):
+        project = make_project(session, active=True)
+        assert xras_activation.invite_submission_roster(session, project, by='benkirk') == []

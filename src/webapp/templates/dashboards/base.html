@@ -140,7 +140,7 @@
     {% include 'dashboards/fragments/mobile_nav.html' %}
 
     <!-- Impersonation Banner -->
-    {% if session.impersonator_id %}
+    {% if impersonating %}
     <div class="impersonation-banner alert alert-warning text-center mb-0">
         <div class="container d-flex justify-content-center align-items-center">
             <i class="fa-solid fa-user-secret me-2"></i>
@@ -236,6 +236,7 @@
     <script src="{{ url_for('static', filename='js/admin-cards.js') }}"></script>
     <script src="{{ url_for('static', filename='js/modals.js') }}"></script>
     <script src="{{ url_for('static', filename='js/form-helpers.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/submit-gate.js') }}"></script>
     <script src="{{ url_for('static', filename='js/lazy-loading.js') }}"></script>
     <script src="{{ url_for('static', filename='js/nav-view-persistence.js') }}"></script>
     <script src="{{ url_for('static', filename='js/number-preview.js') }}"></script>

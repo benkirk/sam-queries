@@ -1,5 +1,5 @@
 """Reads for the one NUSD ticket a refused XRAS New or Renewal earns
-(docs/plans/XRAS_REQUEST_TICKETS.md): the 422's pointer and state lines, the
+(docs/plans/implemented/XRAS_REQUEST_TICKETS.md): the 422's pointer and state lines, the
 ticket state the webapp shows without any outbound call, and the episodes, keys
 and text the ``xras_request_tickets`` task files from.
 
@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from sam.integration.tickets.models import ExternalTicket
 from sam.integration.xras import XrasActionLog
 from sam.notify.models import NotificationLog
-from sam.queries.xras_actions import _split_errors
+from sam.queries.xras_actions import split_error_messages
 from sam.queries.xras_requests import message_kind, person_username
 
 #: ``external_ticket.entity_type``; ``entity_id`` is the XRAS ``requestId``,
@@ -198,7 +198,7 @@ def ticket_episodes(session: Session, *, since: datetime, until: datetime) -> Li
             action_type=latest.action_type or '', first_refused=first,
             refusals=len(rows), latest_log_id=latest.xras_action_log_id,
             latest_refused=latest.received_time,
-            messages=tuple(_split_errors(latest.error_messages)),
+            messages=tuple(split_error_messages(latest.error_messages)),
             payload=_payload(latest.raw_payload),
             applied_at=applied.received_time if applied else None,
             projcode=applied.projcode_result if applied else None))
@@ -228,6 +228,41 @@ def content_key(request_id: int, messages: Sequence[str]) -> str:
 
 def applied_key(request_id: int) -> str:
     return f'xras_ticket:{request_id}:applied'
+
+
+def merged_key(request_id: int, placeholder: str) -> str:
+    return f'xras_ticket:{request_id}:merged:{placeholder.lower()}'
+
+
+def merges_since_refusal(session: Session, episodes: Sequence[Episode]
+                         ) -> Dict[int, List[Tuple[str, str]]]:
+    """``request_id -> [(placeholder, target)]``: verified merges of a placeholder the
+    latest refusal blocked on, made after it, so the request may now post. One query. Any
+    placeholder shape counts, ARC's included: an operator's merge on the Remediations card
+    earns the same comment as the reconcile's."""
+    from sqlalchemy import func
+
+    from sam.integration.xras import XrasRemediationEvent
+    from sam.queries.xras_accounts import is_placeholder
+    blocked = {e.request_id: {g['username'].lower() for g in blocker_groups(e.messages)[0]
+                              if is_placeholder(g['username'])}
+               for e in episodes if e.applied_at is None}
+    names = set().union(*blocked.values()) if blocked else set()
+    if not names:
+        return {}
+    rows = (session.query(XrasRemediationEvent.username, XrasRemediationEvent.target_username,
+                          XrasRemediationEvent.creation_time)
+            .filter(XrasRemediationEvent.operation == 'merge_person',
+                    XrasRemediationEvent.status == 'verified',
+                    func.lower(XrasRemediationEvent.username).in_(sorted(names)))
+            .order_by(XrasRemediationEvent.creation_time).all())
+    out: Dict[int, List[Tuple[str, str]]] = {}
+    for episode in episodes:
+        for username, target, when in rows:
+            if username.lower() in blocked.get(episode.request_id, ()) \
+                    and when >= episode.latest_refused:
+                out.setdefault(episode.request_id, []).append((username, target))
+    return out
 
 
 # -- What the ticket says -------------------------------------------------------
@@ -275,6 +310,7 @@ def _people(payload: Mapping[str, Any]) -> Dict[str, dict]:
 def ticket_context(session: Session, episode: Episode, *, card_url: str = '') -> dict:
     """The ``xras_request_ticket`` template's context."""
     from sam.core.account_requests import OPEN_STATES
+    from sam.queries.account_notices import ticket_handle as account_handle
     from sam.queries.account_requests import requests_by_xras_username
     from sam.queries.xras_accounts import is_placeholder, sam_merge_targets
 
@@ -287,7 +323,9 @@ def ticket_context(session: Session, episode: Episode, *, card_url: str = '') ->
     for rows in requests_by_xras_username(session, people).values():
         for row in rows:
             if row.state in OPEN_STATES and not row.is_fulfilled:
-                queued.append({'id': row.account_request_id, 'name': row.display_name,
+                queued.append({'id': row.account_request_id,
+                               'handle': account_handle(row.account_request_id),
+                               'name': row.display_name,
                                'email': row.email, 'purpose': row.purpose,
                                'state': row.state})
 
@@ -322,6 +360,11 @@ def changed_comment(episode: Episode) -> str:
     if pointers:
         lines += ['', 'Where each is fixed:'] + [f'- {p}' for p in pointers]
     return '\n'.join(lines)
+
+
+def merged_comment(placeholder: str, target: str) -> str:
+    return (f'SAM merged {placeholder} into {target} in XRAS, so the request may now post. '
+            'Repost it; XRAS never retries a post on its own.')
 
 
 def applied_comment(episode: Episode) -> str:

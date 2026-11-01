@@ -49,6 +49,7 @@ from sam.integration.xras_api.config import (
     XrasApiConfig,
     xras_admin_context_available,
     xras_api_configured,
+    xras_submit_configured,
     xras_write_configured,
 )
 from sam.integration.xras_api.lookups import (
@@ -86,5 +87,6 @@ __all__ = [
     'role_type',
     'xras_admin_context_available',
     'xras_api_configured',
+    'xras_submit_configured',
     'xras_write_configured',
 ]

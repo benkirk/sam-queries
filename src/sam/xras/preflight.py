@@ -376,21 +376,12 @@ def log_seen_for(session, action_ids) -> Dict[int, dict]:
     Ordered by id so the highest row wins: a failed post followed by a re-post
     must report the re-post, and the pending-work queue reads this status.
     """
-    from sam.integration.xras import XrasActionLog
-
-    ids = {a for a in action_ids if a is not None}
-    if not ids:
-        return {}
-    seen: Dict[int, dict] = {}
-    for row in (session.query(XrasActionLog)
-                .filter(XrasActionLog.action_id.in_(ids))
-                .order_by(XrasActionLog.xras_action_log_id.asc()).all()):
-        seen[row.action_id] = {
-            'status': row.status,
-            'received_time': (row.received_time.isoformat()
-                              if row.received_time else None),
-            'log_id': row.xras_action_log_id}
-    return seen
+    from sam.integration.xras import latest_action_logs
+    return {action_id: {'status': row.status,
+                        'received_time': (row.received_time.isoformat()
+                                          if row.received_time else None),
+                        'log_id': row.xras_action_log_id}
+            for action_id, row in latest_action_logs(session, action_ids).items()}
 
 
 def _resolve_push_state(session, synthesis: Synthesis, service: Optional[str],

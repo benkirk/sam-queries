@@ -1,13 +1,13 @@
 # Phase 2: Collapse the disk-charging pipeline onto `disk_charge_summary`
 
-> **Status (2026-09-27): collapse NOT done.** `disk_charge_summary` is wired for
-> project usage (`sam/queries/disk_usage.py`, `sam/summaries/disk_summaries.py`,
-> `sam/manage/summaries.py`), but the ingest still writes `disk_activity` and
-> `disk_charge` (`upsert_disk_activity`, `upsert_disk_charge`), `sam-admin
-> accounting --disk` reconciles them, and the per-directory drill-down reads
-> `DiskActivity`. PR-D (historical backfill) was deferred and remains open.
-> Test counts and CLAUDE.md section numbers below are period-accurate
-> snapshots; do not update them.
+**Status: deferred; the collapse is not started (2026-09-27).** `disk_charge_summary` is wired for
+project usage (`sam/queries/disk_usage.py`, `sam/summaries/disk_summaries.py`,
+`sam/manage/summaries.py`), but the ingest still writes `disk_activity` and
+`disk_charge` (`upsert_disk_activity`, `upsert_disk_charge`), `sam-admin
+accounting --disk` reconciles them, and the per-directory drill-down reads
+`DiskActivity`. PR-D (historical backfill) was deferred and remains open.
+Test counts and CLAUDE.md section numbers below are period-accurate
+snapshots; do not update them.
 
 ## Restart instructions (read first when picking this up cold)
 

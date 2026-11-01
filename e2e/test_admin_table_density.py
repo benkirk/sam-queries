@@ -4,7 +4,7 @@ Row height is a browser fact: the markup gate
 (``tests/unit/webapp/test_admin_table_conventions.py``) cannot see that a 54x38 px
 outlined button set every admin row to ~56 px, or that two buttons wrapped.
 Measured at the session's 1440x1000 viewport. Design record:
-docs/plans/ADMIN_TABLE_POLISH.md.
+docs/plans/implemented/ADMIN_TABLE_POLISH.md.
 """
 import pytest
 

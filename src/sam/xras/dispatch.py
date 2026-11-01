@@ -31,7 +31,7 @@ disables both Add and Update -- the honest granularity.
 
 Handlers register by importing this module and calling :func:`register`; until
 one does, its service selects and falls through to ``manual``.
-See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``, *The dispatcher*.
+See ``docs/plans/implemented/XRAS_SPRINT_C.md``, *The dispatcher*.
 """
 
 import copy
@@ -40,6 +40,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
 from typing import Callable, Dict, FrozenSet, Optional, Tuple
 
+from sam.integration._config import parse_action_types
 from sam.queries.xras_actions import XRAS_ACTION_TYPES, canonical_action_type
 
 from .lookups import batch_lookups, find_project
@@ -140,29 +141,8 @@ def parse_enabled_action_types(value: Optional[str]) -> FrozenSet[str]:
     nobody meant to enable. Refusing to start would be worse — this is the lever
     reached for during an incident, and it must not be able to take the app down.
     """
-    if value is None:
-        return frozenset(ALL_ACTION_TYPES)
-
-    text = value.strip()
-    if not text or text.lower() == 'all':
-        return frozenset(ALL_ACTION_TYPES)
-    if text.lower() == 'none':
-        return frozenset()
-
-    enabled = set()
-    for token in text.split(','):
-        token = token.strip()
-        if not token:
-            continue
-        canonical = canonical_action_type(token)
-        if canonical in ALL_ACTION_TYPES:
-            enabled.add(canonical)
-        else:
-            logger.warning(
-                'XRAS_ACTIONS_ENABLED lists an unknown action type %r — ignoring it, '
-                'so that type stays DISABLED and its actions park as manual. '
-                'Known types: %s', token, ', '.join(sorted(ALL_ACTION_TYPES)))
-    return frozenset(enabled)
+    return parse_action_types(value, ALL_ACTION_TYPES, setting='XRAS_ACTIONS_ENABLED',
+                              canonical=canonical_action_type, logger=logger)
 
 
 def select_service(session, action) -> Optional[str]:

@@ -96,7 +96,7 @@ class NsfAwardProvider(AwardProvider):
             return False
         return nsf_award_id(contract_number) is not None
 
-    def fetch(self, contract_number: str) -> Optional[AwardRecord]:
+    def fetch(self, contract_number: str, *, exact: bool = False) -> Optional[AwardRecord]:
         award_id = nsf_award_id(contract_number)
         if award_id is None:
             return None

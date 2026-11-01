@@ -3,7 +3,7 @@
 The researcher portal's feed ("High End User View"), ported from legacy Java SAM at the same
 path, auth and bytes, so a caller repoints by changing the host only (`sam.ucar.edu` ->
 `sam.hpc.ucar.edu`). Read-only. Design record, evidence and parity results:
-[`docs/plans/HEUV_API_PORT.md`](../plans/HEUV_API_PORT.md).
+[`docs/plans/implemented/HEUV_API_PORT.md`](../plans/implemented/HEUV_API_PORT.md).
 
 **Base URL**: `/api/protected/heuv/v1`
 **Auth**: HTTP Basic, a DB `api_credentials` key holding `ROLE_API_HEUV` (legacy's Spring role).
@@ -80,7 +80,7 @@ date is edited it reports the original date; SAMuel reports the allocation row.
 `allocationchange`, `dataholdings[detail]`: zero calls in three 30-day log windows. They
 answer 404 or 405. Both callers use only the eight `GET` routes their owner listed on
 2026-10-12; `allocationchange` is dead code in their client. If it is ever needed, its scope
-is `docs/plans/HEUV_API_PORT.md` Appendix C.
+is `docs/plans/implemented/HEUV_API_PORT.md` Appendix C.
 
 ## Callers and parity
 
@@ -94,4 +94,4 @@ SAM_HEUV_USER=... SAM_HEUV_PASS=... python utils/parity/check_legacy_apis.py --a
 ```
 
 `--new-max-rpm` keeps the run under the shared rate-limit bucket. Cutover runbook:
-`docs/plans/HEUV_API_PORT.md` §12.
+`docs/plans/implemented/HEUV_API_PORT.md` §12.

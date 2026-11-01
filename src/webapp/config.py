@@ -76,6 +76,8 @@ class SAMWebappConfig(SAMConfig):
     ACCOUNT_VERIFY_TTL_HOURS = int(os.getenv('ACCOUNT_VERIFY_TTL_HOURS', 48))
     # How long a mailed invitation link stays valid, in days.
     ACCOUNT_INVITE_TTL_DAYS = int(os.getenv('ACCOUNT_INVITE_TTL_DAYS', 30))
+    # How long a confirmed visitor's /request draft link stays valid, in days.
+    REQUEST_DRAFT_TTL_DAYS = int(os.getenv('REQUEST_DRAFT_TTL_DAYS', 30))
     # Limit /register to signed-in users (a redirect to login, and a preview
     # banner on the form). ON by default: the form is shared with authenticated
     # testers on dev; switch it off per deployment to open the form to the public.
@@ -127,7 +129,7 @@ class SAMWebappConfig(SAMConfig):
     # payloads in the meantime. Flip OFF per handler as each one lands.
     XRAS_ACTIONS_CAPTURE_ONLY = os.getenv('XRAS_ACTIONS_CAPTURE_ONLY', '1').lower() in ('1', 'true', 'yes')
 
-    # sam-ldap-syncd levers (/api/protected/admin, docs/plans/LDAP_SYNC_API.md), all off.
+    # sam-ldap-syncd levers (/api/protected/admin, docs/plans/implemented/LDAP_SYNC_API.md), all off.
     # PURGE off: a purge permit for an existing row answers not purgeable, so the
     # daemon PUTs a tombstone instead of DELETE (what legacy did on every permit).
     LDAPSYNC_PURGE_ENABLED = os.getenv('LDAPSYNC_PURGE_ENABLED', '0').lower() in ('1', 'true', 'yes')
@@ -140,7 +142,7 @@ class SAMWebappConfig(SAMConfig):
     # Only a closure this recent is undone automatically; older is a real departure.
     LDAPSYNC_RESTORE_WINDOW_DAYS = int(os.getenv('LDAPSYNC_RESTORE_WINDOW_DAYS', '90'))
 
-    # The directory client (sam/integration/directory, docs/plans/DIRECTORY_CLIENT.md).
+    # The directory client (sam/integration/directory, docs/plans/implemented/DIRECTORY_CLIENT.md).
     # PROVIDER "" or "ucar"; URL empty = off whatever the provider says.
     DIRECTORY_PROVIDER = os.getenv('DIRECTORY_PROVIDER', '')
     DIRECTORY_URL = os.getenv('DIRECTORY_URL', '')
@@ -558,6 +560,8 @@ class TestingConfig(SAMWebappConfig):
     # says otherwise.
     XRAS_WRITE_ENABLED = False
     XRAS_RENAME_ENABLED = False
+    XRAS_SUBMIT_ENABLED = False
+    XRAS_SUBMIT_ANONYMOUS_ENABLED = False
     XRAS_AUTO_ACTIVATE = False
     XRAS_REQUEST_TICKETS_ENABLED = False
     # Pinned for the same reason: tests opt into a destructive lever explicitly.

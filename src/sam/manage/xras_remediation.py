@@ -158,16 +158,16 @@ def _outcome_fields(result) -> Dict[str, Any]:
     }
 
 
-def _client(client=None):
+def admin_client(client=None):
     from sam.integration.xras_api.admin_client import XrasAdminClient
     return client or XrasAdminClient.from_environment()
 
 
 # cache coherence
 
-def _refresh_index_entry(request_number: str, *, reader=None,
+def refresh_index_entry(request_number: str, *, reader=None,
                          session_factory=None, index_key: Optional[str] = None,
-                         pending_push: Optional[bool] = None) -> bool:
+                         pending_push: Optional[bool] = None, insert: bool = False) -> bool:
     """Re-read one request and patch its snapshot entry. ``True`` if patched.
 
     With *session_factory* the preflight is re-run too. Without it the entry
@@ -187,6 +187,7 @@ def _refresh_index_entry(request_number: str, *, reader=None,
 
     *index_key* patches the row stored under another number: a rename reads the
     family by its new number and replaces the row keyed by the old one.
+    *insert* adds the row when the index lacks it (``patch_requests_index``).
 
     Never raises. Every caller reaches here having already completed and
     recorded an irreversible write.
@@ -219,7 +220,7 @@ def _refresh_index_entry(request_number: str, *, reader=None,
                                     family=family)
         if entry is None:
             return False
-        return patch_requests_index(key, entry)
+        return patch_requests_index(key, entry, insert=insert)
     except Exception as exc:                            # noqa: BLE001
         logger.warning('xras remediation: could not refresh the card entry '
                        'for %s (%s); it will lag until the next sweep',
@@ -365,7 +366,7 @@ def merge_placeholder(session_factory, *, source_username, target_username,
     """
     from sam.integration.xras_api.base import XrasSourceUnavailable, XrasWriteRejected
 
-    admin = _client(client)
+    admin = admin_client(client)
     event_id = _open_event(session_factory, operation='merge_person',
                            created_by=operator, username=source_username,
                            target_username=target_username, comment=comment)
@@ -396,6 +397,7 @@ def merge_placeholder(session_factory, *, source_username, target_username,
                                          session_factory=session_factory)
         _dismiss_merged_requests(session_factory, source_username, target_username,
                                  operator)
+        _repoint_submissions(session_factory, source_username, target_username)
         # Best-effort: the Pending Users card renders the cached pending half,
         # so a just-merged placeholder would keep its row until the next sweep.
         try:
@@ -429,6 +431,68 @@ def _dismiss_merged_requests(session_factory, source_username, target_username,
         return 0
 
 
+def _repoint_submissions(session_factory, source_username, target_username) -> int:
+    """Point the placeholder's ``xras_submission`` rows at the target, as XRAS now does.
+    Best-effort: the merge already happened."""
+    from sqlalchemy import func
+
+    from sam.core.users import User
+    from sam.integration.xras_submission import XrasSubmission
+    try:
+        with session_factory() as session:
+            user = User.get_by_username(session, target_username)
+            rows = session.query(XrasSubmission).filter(
+                func.lower(XrasSubmission.xa_user) == str(source_username).strip().lower()).all()
+            for row in rows:
+                row.repoint(target_username, user.user_id if user else None)
+            session.commit()
+            return len(rows)
+    except Exception:                                   # noqa: BLE001
+        logger.warning('merge_placeholder: could not repoint the submissions of %s',
+                       source_username, exc_info=True)
+        return 0
+
+
+def merge_fulfilled_visitors(session_factory, *, operator: str,
+                             client=None) -> Dict[str, Any]:
+    """Merge each ``/request`` placeholder whose account now exists into it
+    (docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md 3b).
+
+    The target is the SAM user reconcile fulfilled the registration with, by email.
+    A target XRAS does not know yet waits for the next pass: merging into it would
+    create it. ``merged`` lists ``(placeholder, target, request ids)``.
+    """
+    from sam.integration.xras_api.base import XrasSourceUnavailable
+    from sam.integration.xras_submission import submissions_for_registration
+    from sam.queries.account_requests import visitors_to_merge
+    with session_factory() as session:
+        due = visitors_to_merge(session)
+    out: Dict[str, Any] = {'due': len(due), 'waiting': 0, 'failed': 0, 'merged': []}
+    if not due:
+        return out
+    admin = admin_client(client)
+    for request_id, source, target in due:
+        try:
+            known = admin.get_person(target) is not None
+        except XrasSourceUnavailable:
+            known = False
+        if not known:
+            out['waiting'] += 1
+            continue
+        with session_factory() as session:
+            lines = [r.request_id for r in submissions_for_registration(
+                session, request_id, include_aborted=True) if r.request_id]
+        outcome = merge_placeholder(
+            session_factory, source_username=source, target_username=target,
+            operator=operator, client=admin,
+            comment=f'SAM-AR-{request_id}: the account for a New filed at /request exists')
+        if outcome.succeeded:
+            out['merged'].append((source, target, lines))
+        else:
+            out['failed'] += 1
+    return out
+
+
 def _patch_requests_naming(username: str, *, session_factory=None) -> bool:
     """Refresh every index entry whose roster carries *username*.
 
@@ -448,7 +512,7 @@ def _patch_requests_naming(username: str, *, session_factory=None) -> bool:
                        for r in (row.get('roster') or []))]
     if not numbers:
         return True
-    return all(_refresh_index_entry(number, session_factory=session_factory)
+    return all(refresh_index_entry(number, session_factory=session_factory)
                for number in numbers if number)
 
 
@@ -510,7 +574,7 @@ def _action_op(operation, session_factory, *, request_number, request_id,
                                        xa_user=pi_username,
                                        preflight=bool(preflight))
 
-    return _editor_op(
+    return audited_write(
         operation, session_factory, dispatch,
         open_fields=dict(created_by=operator, xa_user=pi_username,
                          request_number=request_number, request_id=request_id,
@@ -555,7 +619,7 @@ def change_role(session_factory, *, add, request_number, request_id, username,
                                      xa_user=xa_user)
         close_extra = None
 
-    return _editor_op(
+    return audited_write(
         'add_role' if add else 'remove_role', session_factory, dispatch,
         open_fields=dict(created_by=operator, xa_user=xa_user, username=username,
                          request_number=request_number, request_id=request_id,
@@ -567,29 +631,25 @@ def change_role(session_factory, *, add, request_number, request_id, username,
 
 # the request editor (Part B): resources & allocation dates
 
-def _editor_op(operation, session_factory, dispatch, *, open_fields,
+def audited_write(operation, session_factory, dispatch, *, open_fields,
                request_number, client=None, close_extra=None, refresh=None
                ) -> RemediationOutcome:
-    """Shared open->dispatch->close->patch body for **every** remediation verb.
+    """One audited XRAS write: open -> dispatch -> close -> patch.
 
-    The audit row is committed ``attempted`` before the write leaves, closed on
-    a fresh session after, and the card entry is patched only on a verified
-    success. Each verb differs only in what is passed in: ``dispatch`` runs the
-    client call, ``open_fields`` are the columns the ``attempted`` row carries,
-    and the optional ``close_extra(result) -> dict`` contributes extra columns
-    to the success close (``add_role`` uses it to record the ``roleId`` XRAS
-    only assigns at completion). ``refresh()`` replaces the card patch (the rename's).
-
-    Also the body behind ``_action_op`` (withdraw/re-submit) and ``change_role``
-    (add/remove role) — they were three copies of this skeleton until they were
-    folded onto it.
+    Every remediation verb and every submission step runs through here. The audit
+    row is committed ``attempted`` before the write leaves, closed on a fresh
+    session after, and the card entry is patched only on a verified success.
+    ``dispatch`` runs the client call, ``open_fields`` are the columns the
+    ``attempted`` row carries, ``close_extra(result) -> dict`` adds columns to the
+    success close (``add_role``'s ``roleId``), and ``refresh()`` replaces the card
+    patch (the rename's; a submission on an unnumbered draft passes a no-op).
     """
     from sam.integration.xras_api.base import (
         XrasSourceUnavailable,
         XrasWriteRejected,
     )
 
-    admin = _client(client)
+    admin = admin_client(client)
     event_id = _open_event(session_factory, operation=operation, **open_fields)
 
     try:
@@ -610,7 +670,7 @@ def _editor_op(operation, session_factory, dispatch, *, open_fields,
     elif refresh is not None:
         patched = refresh()
     else:
-        patched = _refresh_index_entry(request_number, session_factory=session_factory)
+        patched = refresh_index_entry(request_number, session_factory=session_factory)
     return RemediationOutcome(event_id, result=result, status=result.status,
                               patched=patched)
 
@@ -625,7 +685,7 @@ def update_resource_amount(session_factory, *, request_number, request_id,
     value, not the award. ``comment`` doubles as the resource's XRAS ``comments``
     field and the audit note.
     """
-    return _editor_op(
+    return audited_write(
         'update_resource_amount', session_factory,
         lambda admin: admin.update_resource_amount(
             request_id, action_id, resource_id, amount,
@@ -641,7 +701,7 @@ def remove_resource(session_factory, *, request_number, request_id, action_id,
                     resource_id, pi_username, operator, comment=None,
                     context=None, client=None) -> RemediationOutcome:
     """Delete one resource's stage line (Requested-only on our current key)."""
-    return _editor_op(
+    return audited_write(
         'remove_resource', session_factory,
         lambda admin: admin.remove_resource(
             request_id, action_id, resource_id,
@@ -657,7 +717,7 @@ def set_action_dates(session_factory, *, request_number, request_id, action_id,
                      begin_date, end_date, pi_username, operator, comment=None,
                      context=None, client=None) -> RemediationOutcome:
     """Create an allocation-date range on one action in XRAS."""
-    return _editor_op(
+    return audited_write(
         'set_action_dates', session_factory,
         lambda admin: admin.set_action_dates(
             request_id, action_id, begin_date, end_date,
@@ -674,7 +734,7 @@ def update_action_dates(session_factory, *, request_number, request_id,
                         pi_username, operator, comment=None, context=None,
                         client=None) -> RemediationOutcome:
     """Update one allocation-date range in place."""
-    return _editor_op(
+    return audited_write(
         'update_action_dates', session_factory,
         lambda admin: admin.update_action_dates(
             request_id, action_id, allocation_date_id, begin_date, end_date,
@@ -691,7 +751,7 @@ def remove_action_dates(session_factory, *, request_number, request_id,
                         comment=None, context=None,
                         client=None) -> RemediationOutcome:
     """Delete one allocation-date range."""
-    return _editor_op(
+    return audited_write(
         'remove_action_dates', session_factory,
         lambda admin: admin.remove_action_dates(
             request_id, action_id, allocation_date_id,
@@ -707,7 +767,7 @@ def update_request_attributes(session_factory, *, request_number, request_id,
                               fields, pi_username, operator, comment=None,
                               context=None, client=None) -> RemediationOutcome:
     """Set request-level text attributes. ``fields`` is a wire-named dict."""
-    return _editor_op(
+    return audited_write(
         'update_attributes', session_factory,
         lambda admin: admin.update_request_attributes(
             request_id, request_number=request_number, xa_user=pi_username,
@@ -722,7 +782,7 @@ def update_action(session_factory, *, request_number, request_id, action_id,
                   fields, pi_username, operator, comment=None, context=None,
                   client=None) -> RemediationOutcome:
     """Set action-level text fields. ``fields`` is a wire-named dict."""
-    return _editor_op(
+    return audited_write(
         'update_action', session_factory,
         lambda admin: admin.update_action(
             request_id, action_id, request_number=request_number,
@@ -738,13 +798,13 @@ def update_action(session_factory, *, request_number, request_id, action_id,
 # WARNING: Irreversible in XRAS and NOT live-probed. Same audit-before-dispatch
 # discipline as every op — the record survives whether or not the destructive
 # call is confirmed. On a verified delete the request is patched OUT of the card
-# (`_refresh_index_entry` re-reads, finds nothing, drops the row).
+# (`refresh_index_entry` re-reads, finds nothing, drops the row).
 
 def delete_request(session_factory, *, request_number, request_id, pi_username,
                    operator, comment=None, context=None,
                    client=None) -> RemediationOutcome:
     """Delete a whole request in XRAS. **Irreversible.**"""
-    return _editor_op(
+    return audited_write(
         'delete_request', session_factory,
         lambda admin: admin.delete_request(
             request_id, request_number=request_number, xa_user=pi_username,
@@ -759,7 +819,7 @@ def renew_request(session_factory, *, request_number, request_id, pi_username,
                   operator, comment=None, context=None,
                   client=None) -> RemediationOutcome:
     """Spawn a renewal of a request in XRAS."""
-    return _editor_op(
+    return audited_write(
         'renew_request', session_factory,
         lambda admin: admin.renew_request(
             request_id, request_number=request_number, xa_user=pi_username,
@@ -774,7 +834,7 @@ def add_action(session_factory, *, request_number, request_id, action_type,
                pi_username, operator, comment=None, context=None,
                client=None) -> RemediationOutcome:
     """Add an action to a request in XRAS."""
-    return _editor_op(
+    return audited_write(
         'add_action', session_factory,
         lambda admin: admin.add_action(
             request_id, action_type, request_number=request_number,
@@ -785,7 +845,7 @@ def add_action(session_factory, *, request_number, request_id, action_type,
         request_number=request_number, client=client)
 
 
-# SAM's own rename after a New lands (docs/plans/XRAS_CLOSED_LOOP.md)
+# SAM's own rename after a New lands (docs/plans/implemented/XRAS_CLOSED_LOOP.md)
 
 #: :func:`rename_request` statuses meaning the line now answers the new number.
 RENAME_DONE = ('verified', 'already_renamed')
@@ -849,7 +909,7 @@ def rename_request(session_factory, *, request_id, old_number, new_number, opera
     """
     from sam.integration.xras_api.base import XrasSourceUnavailable
 
-    admin = _client(client)
+    admin = admin_client(client)
     try:
         line = admin.reader.get_request_by_id(request_id)
     except XrasSourceUnavailable as exc:
@@ -861,7 +921,7 @@ def rename_request(session_factory, *, request_id, old_number, new_number, opera
     if state != 'rename':
         return RemediationOutcome(None, status=state, error=why)
 
-    outcome = _editor_op(
+    outcome = audited_write(
         'rename_request', session_factory,
         lambda a: a.rename_request(request_id, old_number=old_number,
                                    new_number=new_number, xa_user=xa_user),
@@ -869,7 +929,7 @@ def rename_request(session_factory, *, request_id, old_number, new_number, opera
                          request_number=old_number, request_id=request_id,
                          comment=f'rename {old_number} -> {new_number}'),
         request_number=old_number, client=admin,
-        refresh=lambda: _refresh_index_entry(
+        refresh=lambda: refresh_index_entry(
             new_number, session_factory=session_factory,
             index_key=old_number, pending_push=False))
     if outcome.succeeded:

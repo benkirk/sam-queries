@@ -177,15 +177,21 @@ and the End User Agreement attribute each carries (`attributeSets[].attributes[]
 | 535388 | Large Allocation (University) - Fall 2026 | 500023 Large | none |
 | 535487 | NCAR - NSC Allocation Request - Fall 2026 | 500088 NCAR Strategic Computing | none |
 
-**Required fields per action type** (`required: true` leaves only):
+**Required fields per action type** (`required: true` leaves only; the New column and the
+last two rows were read on XRAS-dev 2026-10-27, `XRAS_SUBMISSION_SPRINT1.md` § 9):
 
-| Allocation type | Supplement 500020 | Extension 500017 | Renewal 500021 |
-|---|---|---|---|
-| Large 500023 | none | `actions.allocationDates.endDate`, `actions.userComments` | `title`, `abstract`, `grants` |
-| Small 500024 | none | same | `title`, `abstract`, `grants` |
-| Educational 500026 | none | same | `title`, `abstract` |
-| Exploratory 500847 | none | same | `title`, `abstract` |
-| NCAR Strategic Computing 500088 | none | none | `title`, `abstract` |
+| Allocation type | Supplement 500020 | Extension 500017 | Renewal 500021 | New 500019 |
+|---|---|---|---|---|
+| Large 500023 | none | `actions.allocationDates.endDate`, `actions.userComments` | `title`, `abstract`, `grants` | `title`, `abstract`, `grants` |
+| Small 500024 | none | same | `title`, `abstract`, `grants` | `title`, `abstract`, `grants` |
+| Educational 500026 | none | same | `title`, `abstract` | `title`, `abstract` |
+| Exploratory 500847 | none | same | `title`, `abstract` | `title`, `abstract` |
+| NCAR Strategic Computing 500088 | none | none | `title`, `abstract` | `title`, `abstract` |
+| Data Analysis 500848 | none | same as Large | `title`, `abstract` | `title`, `abstract` |
+| NCAR External Projects 501276 | none | none | `title`, `abstract` | `title`, `abstract`, `grants` (no program officer, no title) |
+
+`grants` means the sub-fields XRAS validates: grant number, funding agency, PI name, title,
+begin and end date, and on Large and Small the program officer's name and email.
 
 Documents are a separate rule book (`types/all` → `documentTypes[]`): a Main
 Document is required for New and Renewal at 500023 and 500088, a Progress Report

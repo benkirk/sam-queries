@@ -1,4 +1,4 @@
-"""An optional read-first client for the site's LDAP directory (docs/plans/DIRECTORY_CLIENT.md).
+"""An optional read-first client for the site's LDAP directory (docs/plans/implemented/DIRECTORY_CLIENT.md).
 
 Import-light on purpose: this file exports only ``base``. ``registry`` and ``ucar``
 bring in ``ldap3`` and are imported by path.

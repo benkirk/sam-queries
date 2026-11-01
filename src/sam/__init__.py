@@ -114,6 +114,8 @@ from .accounting.allocations import (
     AllocationTransactionType,
     AllocationType
 )
+from .accounting.allocation_type_limits import AllocationTypeResourceLimit
+from .accounting.allocation_type_guide import AllocationTypeGuide
 from .accounting.adjustments import (
     ChargeAdjustment,
     ChargeAdjustmentType
@@ -227,6 +229,7 @@ from .notify.addressing_store import NotificationAddressing
 from .notify.models import NotificationLog
 from .notify.template_store import NotificationTemplateOverride
 from .integration.tickets.models import ExternalTicket
+from .integration.xras_submission import XrasSubmission
 
 from .security.permissions import Permission
 from .security.samuel_roles import SamuelRole, SamuelRolePermission, SamuelRoleGrant
@@ -274,6 +277,8 @@ __all__ = [
     # Accounting
     'Account', 'AccountUser', 'ResponsibleParty',
     'Allocation', 'AllocationTransaction', 'AllocationTransactionType', 'AllocationType',
+    'AllocationTypeResourceLimit',
+    'AllocationTypeGuide',
     'ChargeAdjustment', 'ChargeAdjustmentType',
     # Activity
     'CompJob', 'CompActivity', 'CompActivityChargeView',
@@ -308,6 +313,7 @@ __all__ = [
     'NotificationTemplateOverride',
     # Help-desk tickets
     'ExternalTicket',
+    'XrasSubmission',
     # Security
     'Permission', 'SamuelRole', 'SamuelRolePermission', 'SamuelRoleGrant',
     'Role', 'RoleUser', 'ApiCredentials', 'RoleApiCredentials',

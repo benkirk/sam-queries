@@ -19,7 +19,7 @@ MT = ZoneInfo('America/Denver')
 # Family prefix -> cutover status; first match wins. A port landing is a one-line edit here.
 FAMILIES = [
     ('xras/', 'cutover'),
-    ('heuv/', 'porting'),
+    ('heuv/', 'cutover'),
     ('ssg/', 'ported'),
     ('sysacct/directoryaccess', 'ported'),
     ('sysacct/groupstatus', 'ported'),
@@ -193,8 +193,8 @@ def report_traffic(r, recs, tick, to):
         kind = status_of(fam)
         total += n
         status_mix[st[0] + 'xx'] += n
-        if kind == 'cutover':
-            r.flag('FAIL' if authed(st) else 'WARN', f'legacy XRAS hit: {fam} {cl} {ua} {st} x{n}')
+        if kind == 'cutover' and label not in EXCLUDED:
+            r.flag('FAIL' if authed(st) else 'WARN', f'legacy cutover hit: {fam} {cl} {ua} {st} x{n}')
         if not authed(st):
             if label and label not in EXCLUDED:
                 refused[(label, fam, st)] += n

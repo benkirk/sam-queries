@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/action_buttons.html' import impersonate_button with context %}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_former_projects, g_former_affiliations with context %}
 {% macro render_user_card(sam_user, is_admin=False, user_groups=None, primary_group_name=None,
@@ -460,7 +461,7 @@
     </div>
     {% endif %}
 
-    <!-- Directory (docs/plans/DIRECTORY_CLIENT.md step 3): operator-initiated, never on load.
+    <!-- Directory (docs/plans/implemented/DIRECTORY_CLIENT.md step 3): operator-initiated, never on load.
          Ids carry the user id: the card also opens in #userDetailsModal. -->
     {% if is_admin and directory %}
     <div class="card-body border-top pt-3">
@@ -468,10 +469,8 @@
             <strong><i class="fa-solid fa-address-book"></i> Directory</strong>
             <button type="button" class="btn btn-sm btn-outline-secondary"
                     hx-get="{{ url_for('admin_dashboard.htmx_user_directory', username=sam_user.username) }}"
-                    hx-target="#userDirectoryPanel-{{ sam_user.user_id }}" hx-swap="innerHTML"
-                    hx-indicator="#userDirectorySpinner-{{ sam_user.user_id }}">
-                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Check directory
-                <span id="userDirectorySpinner-{{ sam_user.user_id }}" class="htmx-indicator spinner-border spinner-border-sm ms-1" role="status" aria-hidden="true"></span>
+                    hx-target="#userDirectoryPanel-{{ sam_user.user_id }}" hx-swap="innerHTML">
+                <span class="spinner-border spinner-border-sm busy-spinner" aria-hidden="true"></span><i class="fa-solid fa-magnifying-glass busy-icon" aria-hidden="true"></i> Check directory
             </button>
         </div>
         <div id="userDirectoryPanel-{{ sam_user.user_id }}">
@@ -482,17 +481,7 @@
 
     {% if is_admin and has_permission(Permission.IMPERSONATE_USERS) %}
     <div class="card-footer">
-        <form method="POST" action="{{ url_for('admin_dashboard.impersonate') }}"
-              data-action-submit="confirm-submit"
-              data-confirm-title="Impersonate user"
-              data-confirm-message="Impersonate {{ sam_user.display_name }} ({{ sam_user.username }})?"
-              data-confirm-variant="warning" data-confirm-label="Impersonate">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="username" value="{{ sam_user.username }}">
-            <button type="submit" class="btn btn-sm btn-primary">
-                <i class="fa-solid fa-user-secret"></i> Impersonate {{ sam_user.username }}
-            </button>
-        </form>
+        {{ impersonate_button(sam_user, label='Impersonate ' ~ sam_user.username, cls='btn btn-sm btn-primary') }}
     </div>
     {% endif %}
 </div>

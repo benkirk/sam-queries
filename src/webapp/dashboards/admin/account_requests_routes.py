@@ -38,6 +38,7 @@ from sam.queries.account_requests import (
     unverified_count,
 )
 from sam.schemas.forms import AccountRequestReasonForm
+from webapp.auth.impersonation import acting_username
 from webapp.extensions import db
 from webapp.utils.facets import Facet, FacetSet
 from webapp.utils.form_handler import HtmxFormHandler
@@ -226,7 +227,7 @@ def _one_click(request_id, verb, action, done, after=None):
 @require_permission(Permission.MANAGE_ACCOUNT_REQUESTS)
 def account_request_claim(request_id):
     return _one_click(request_id, 'claim',
-                      lambda row: row.claim(current_user.username),
+                      lambda row: row.claim(acting_username()),
                       'Claimed {name}.')
 
 
@@ -245,9 +246,9 @@ def account_request_verify(request_id):
     """An operator vouching for an address the mail round trip did not confirm."""
     from webapp.register.handoff_mail import send_ticket
     return _one_click(request_id, 'verify',
-                      lambda row: row.mark_verified(current_user.username),
+                      lambda row: row.mark_verified(acting_username()),
                       'Marked {name} verified; the request is now in the queue.',
-                      after=lambda row: send_ticket(row, requested_by=current_user.username))
+                      after=lambda row: send_ticket(row, requested_by=acting_username()))
 
 
 @bp.route('/account-requests/<int:request_id>/reopen', methods=['POST'])
@@ -300,7 +301,7 @@ def account_request_dismiss_form(request_id):
 def account_request_dismiss(request_id):
     """Set aside: a duplicate, or someone who already has an account."""
     return _reason_post(request_id, 'dismiss',
-                        lambda row, reason: row.dismiss(current_user.username, reason),
+                        lambda row, reason: row.dismiss(acting_username(), reason),
                         'Dismissed {name}.')
 
 
@@ -317,7 +318,7 @@ def _rejection_message(row, *, reason=None, closed_at=None):
     view, = request_views(db.session, [row], resolutions={},
                           events={row.event_id: event} if event else {})
     return build_rejection_message(
-        row, requested_by=current_user.username,
+        row, requested_by=acting_username(),
         event_name=event.name if event else '',
         project_code=view['project_code'], reason=reason, closed_at=closed_at)
 
@@ -352,7 +353,7 @@ class _RejectHandler(HtmxFormHandler):
         return data
 
     def perform(self, data):
-        return self.row.reject(current_user.username, data['reason'])
+        return self.row.reject(acting_username(), data['reason'])
 
     def after_commit(self, row):
         self.notice = None
@@ -398,15 +399,36 @@ def account_request_reject(request_id):
 @login_required
 @require_permission(Permission.MANAGE_ACCOUNT_REQUESTS)
 def account_requests_reconcile():
-    """Reconcile now: the same pass the hourly task runs. No purge here."""
+    """Reconcile now: the same pass the scheduled task runs. No purge here."""
     with management_transaction(db.session):
         counts = reconcile_account_requests(db.session, clock=datetime.now())
+    merged = _merge_visitors()
     return htmx_success_message(
         _TRIGGERS,
         f"Reconciled: {counts['fulfilled']} fulfilled, {counts['enrolled']} "
         f"enrolled, {counts['enroll_failed']} enrollment failure(s).",
-        detail=(f"{counts['checked']} checked; {counts['ambiguous']} ambiguous "
-                f"email(s) left alone."))
+        detail=' '.join(filter(None, (
+            f"{counts['checked']} checked; {counts['ambiguous']} ambiguous "
+            f"email(s) left alone.", merged))))
+
+
+def _merge_visitors():
+    """Merge the fulfilled ``/request`` placeholders, behind the visitor lever; the toast's
+    line. The request ticket's "repost" comment is the ``xras_request_tickets`` task's."""
+    from sam.integration.xras_api.config import XrasApiConfig
+    from sam.manage.xras_remediation import merge_fulfilled_visitors
+    from webapp.utils.xras import session_factory
+    if not XrasApiConfig.from_environment().visitor_merge_configured:
+        return None
+    try:
+        out = merge_fulfilled_visitors(session_factory, operator=acting_username())
+    except Exception:                                   # noqa: BLE001
+        logger.exception('reconcile: the visitor merge pass failed')
+        return 'The XRAS merge of new accounts failed; see the log.'
+    if not out['due']:
+        return None
+    return (f"XRAS: {len(out['merged'])} placeholder(s) merged into their new account, "
+            f"{out['waiting']} waiting for XRAS to know the account, {out['failed']} failed.")
 
 
 def _digest_recipient() -> str:
@@ -419,7 +441,7 @@ def _digest_message(rows, now):
     """The digest the Send button mails; the weekly task builds the same one."""
     return build_queue_summary(
         db.session, rows, recipient=_digest_recipient(), occurrence=now,
-        requested_by=current_user.username,
+        requested_by=acting_username(),
         queue_url=url_for('admin_dashboard.account_requests', _external=True))
 
 

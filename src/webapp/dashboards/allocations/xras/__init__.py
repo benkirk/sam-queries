@@ -18,4 +18,5 @@ from . import card_routes  # noqa: F401  (page + worklist card fragment routes)
 from . import lifecycle_routes  # noqa: F401  (notify/activate/dismiss lifecycle)
 from . import modals  # noqa: F401  (read-only detail modals)
 from . import remediation  # noqa: F401  (operator write / remediation surface)
+from . import configuration_routes  # noqa: F401  (the request types: Configuration page)
 

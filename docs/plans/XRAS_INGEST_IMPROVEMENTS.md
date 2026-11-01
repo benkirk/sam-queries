@@ -335,7 +335,7 @@ is when each will be reached for:
   parity-correct and now visible; that question belongs to them.
 - **Any task-side XRAS write**, with one exception Ben chose on 2026-10-13: the rename of a
   request's number to its new projcode, a backstop to the webapp's own rename
-  (`XRAS_CLOSED_LOOP.md`). The invariant is enforced twice (chart + model); that change lifts
+  (`implemented/XRAS_CLOSED_LOOP.md`). The invariant is enforced twice (chart + model); that change lifts
   it for that write alone, deliberately.
 - **Dual-posting during cutover.** Ruled out in the runbook; not re-proposed.
 

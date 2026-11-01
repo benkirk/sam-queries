@@ -423,7 +423,7 @@ class XrasActionLog(Base):
     #: overloaded): a grant with no award number, an unflagged-primary fos
     #: fallback, a roster/role disagreement. utf8mb4 in the DDL — grant titles
     #: are user free text. The 2026-08-24 reversal of the decline in
-    #: ``docs/xras/incoming/implemented/XRAS_STRESS_AND_SCHEMA.md``.
+    #: ``docs/plans/implemented/XRAS_STRESS_AND_SCHEMA.md``.
     warnings = Column(Text)
 
     projcode_result = Column(String(30))
@@ -625,10 +625,21 @@ XRAS_REMEDIATION_OPERATIONS = (
     'add_action',              # add an action to a request
     # SAM's own step after a New lands (XRAS_CLOSED_LOOP.md): NCAR#### -> projcode.
     'rename_request',
+    # A user's own request (XRAS_SUBMISSION.md): create, populate, abort.
+    'create_request',          # a new line under an opportunity (New)
+    'delete_action',           # soft-delete one action (abort)
+    'upload_document',         # attach a PDF to an action
+    'set_opp_attributes',      # the opportunity attributes (the EUA echo)
+    'add_grant',
+    'update_grant',
+    'set_fos',                 # a field of science on the request
+    # A visitor's New (XRAS_SUBMISSION_SPRINT2.md): the unreconciled PI SAM mints.
+    'create_person',
 )
 
-#: The only operations a ``task:`` operator may open: the rename's backstop task.
-TASK_WRITABLE_OPERATIONS = ('rename_request',)
+#: The only operations a ``task:`` operator may open: the rename's backstop task, and the
+#: reconcile's merge of a ``/request`` placeholder into its new account (XRAS_SUBMISSION_SPRINT2.md 3b).
+TASK_WRITABLE_OPERATIONS = ('rename_request', 'merge_person')
 
 #: ``xras_remediation_event.status``. Five values, and the distinctions matter:
 #:
@@ -824,7 +835,7 @@ class XrasRemediationEvent(Base, SessionMixin):
             xa_user=xa_user,
             created_by=str(created_by)[:35],
             comment=comment,
-            before_state=_as_json_text(before_state),
+            before_state=as_json_text(before_state),
             creation_time=datetime.now(),
         )
         session.add(event)
@@ -863,9 +874,9 @@ class XrasRemediationEvent(Base, SessionMixin):
         if outcome_reason:
             event.outcome_reason = str(outcome_reason)[:255]
         if before_state is not None:
-            event.before_state = _as_json_text(before_state)
+            event.before_state = as_json_text(before_state)
         if after_state is not None:
-            event.after_state = _as_json_text(after_state)
+            event.after_state = as_json_text(after_state)
         if role_id is not None:
             event.role_id = role_id
         event.completed_time = datetime.now()
@@ -882,7 +893,24 @@ class XrasRemediationEvent(Base, SessionMixin):
                 f"created_by={self.created_by!r})>")
 
 
-def _as_json_text(value):
+def latest_action_logs(session, action_ids) -> Dict[int, 'XrasActionLog']:
+    """The newest ``xras_action_log`` row per action id, in one query.
+
+    Ordered by id so the highest row wins: a failed post followed by a re-post
+    reports the re-post.
+    """
+    wanted = sorted({int(a) for a in action_ids if a is not None})
+    if not wanted:
+        return {}
+    out: Dict[int, XrasActionLog] = {}
+    for row in (session.query(XrasActionLog)
+                .filter(XrasActionLog.action_id.in_(wanted))
+                .order_by(XrasActionLog.xras_action_log_id)):
+        out[row.action_id] = row
+    return out
+
+
+def as_json_text(value):
     """Serialize a capture for storage, leaving an existing string alone.
 
     ``default=str`` so a stray datetime in a payload cannot turn an audit write

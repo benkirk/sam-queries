@@ -500,6 +500,11 @@ def plural(value, singular: str, plural_form: Optional[str] = None,
     return f'{number(count, raw=raw)} {word}'
 
 
+def input_value(value) -> str:
+    """A number as an ``<input>`` carries it: every digit, no grouping, ``''`` for ``None``."""
+    return '' if value is None else '%.15g' % value
+
+
 def register_jinja_filters(target) -> None:
     """Register fmt_* Jinja2 filters on a Flask app **or** a bare Environment.
 
@@ -535,6 +540,7 @@ def register_jinja_filters(target) -> None:
     env.filters['fmt_size']     = size
     env.filters['fmt_hours']    = hours
     env.filters['fmt_factor']   = factor
+    env.filters['fmt_input']    = input_value
     env.filters['fmt_ago']      = ago
     env.filters['fmt_age']      = age
     env.filters['fmt_plural']   = plural

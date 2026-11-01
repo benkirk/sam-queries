@@ -2,7 +2,7 @@
 
 **LEGACY-COMPAT BLUEPRINT.** ``sam-ldap-syncd`` on sam-app is the sole caller;
 cutover and rollback are both its ``SAM_URL``. Contract, legacy behavior and the
-deliberate deviations: ``docs/plans/LDAP_SYNC_API.md``. The four rules the daemon
+deliberate deviations: ``docs/plans/implemented/LDAP_SYNC_API.md``. The four rules the daemon
 cannot survive breaking: the 401 realm is literally ``Realm``; a mapped path never
 404s (it retries a 404 forever, silently); every 2xx GET/PUT body is JSON; a
 rejected record is lost until its next full reload, so reject only what is wrong.

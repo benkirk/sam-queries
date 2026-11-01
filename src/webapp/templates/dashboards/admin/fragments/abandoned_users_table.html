@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/user_rows.html' import user_link %}
+{% from 'dashboards/fragments/action_buttons.html' import impersonate_button with context %}
 {# Outside the if/else on purpose — see expirations_cards.html. #}
 {% if summary %}
 <p class="text-muted small mb-3 expirations-summary">
@@ -61,13 +62,7 @@
                     {% else %}<span class="text-muted">never</span>{% endif %}
                 </td>
                 <td class="text-end text-nowrap">
-                    <button type="button"
-                            class="btn btn-row impersonate-user-btn"
-                            data-username="{{ user_info.username }}"
-                            title="Impersonate {{ user_info.username }}"
-                            aria-label="Impersonate {{ user_info.username }}">
-                        <i class="fa-solid fa-user-secret"></i>
-                    </button>
+                    {{ impersonate_button(user_info) }}
                 </td>
             </tr>
             {% endfor %}

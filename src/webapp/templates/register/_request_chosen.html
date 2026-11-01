@@ -1,0 +1,7 @@
+{#- Which allocation the visitor is requesting, with a way back. Context: opportunity. -#}
+{% if opportunity %}
+<div class="register-callout good">
+    <p>Requesting: <strong>{{ opportunity.opportunity_name }}</strong>
+       · <a href="{{ url_for('allocation_request.overview') }}">choose another</a></p>
+</div>
+{% endif %}

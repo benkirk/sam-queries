@@ -1,0 +1,11 @@
+{% extends 'register/base_register.html' %}
+{# /request: the chosen opportunity is no longer open to a visitor. Context: overview_url. #}
+{% block title %}Not open for requests{% endblock %}
+{% block content %}
+<h1>That allocation is not open for requests</h1>
+<div class="register-callout warn">
+    <p><i class="fa-solid fa-calendar-xmark" aria-hidden="true"></i>
+    It may have closed since you chose it, or it may not take requests from here.</p>
+</div>
+<p class="register-lede"><a href="{{ overview_url }}">See the allocations open now</a>.</p>
+{% endblock %}

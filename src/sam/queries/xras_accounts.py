@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import secrets
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -37,7 +38,7 @@ from sqlalchemy.orm import Session
 
 from sam.core.account_requests import AccountRequest
 from sam.core.users import EmailAddress, User
-from sam.dates import parse_wire_date
+from sam.dates import format_ymd, parse_wire_date
 from sam.integration.xras import XrasActionLog, XrasRemediationEvent
 from sam.queries.projects import project_ids_by_code
 from sam.queries.users import users_by_username_ci
@@ -73,6 +74,15 @@ VALIDATE_STATUSES: Tuple[str, ...] = ('received', 'failed', 'manual')
 #: for every unreconciled person, and it resolves fully through
 #: ``GET /v1/people/<username>``, which is what makes the detail sheet possible.
 PLACEHOLDER_USERNAME_RE = re.compile(r'^\S+-user-\S+$')
+
+
+def sam_placeholder_username(registration_id: int) -> str:
+    """The XRAS username SAM mints for a registration's PI: ``samr<id>-user-<hex6>``.
+
+    The ``-user-`` shape makes :func:`is_placeholder` class it; the id names the
+    ``account_request`` row that will merge it.
+    """
+    return f'samr{int(registration_id)}-user-{secrets.token_hex(3)}'
 
 #: Wire role strings, spaced -- the *inbound* vocabulary. Verified live: the
 #: NCAR process defines exactly these three role types (13 PI / 14 Allocation
@@ -534,10 +544,6 @@ def report_activity_date(payload: dict) -> Optional[date]:
     return max(dates) if dates else parse_wire_date(payload.get('submitDate'))
 
 
-def _iso(value: Optional[date]) -> Optional[str]:
-    return value.isoformat() if value else None
-
-
 def pending_in_window(row: Mapping[str, Any], since, *, first_seen=None) -> bool:
     """Was this Feed-B person first seen approved within the window?
 
@@ -612,7 +618,7 @@ def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]
                           received_time=None,
                           submit_date=(str(payload.get('submitDate'))[:10]
                                        if payload.get('submitDate') else None),
-                          entry_date=_iso(report_activity_date(payload)),
+                          entry_date=format_ymd(report_activity_date(payload)),
                           source=SOURCE_REPORTS),
             usernames=tuple(usernames),
             roles_by_username={k: tuple(v) for k, v in roles.items()},
@@ -1076,6 +1082,19 @@ def sam_merge_targets(session: Session, emails: Iterable[str]) -> Dict[str, dict
         else:
             targets[email] = {'username': None, 'active': False, 'ambiguous': True}
     return targets
+
+
+def active_holders(session: Session, emails: Iterable[str]) -> Dict[str, str]:
+    """``lower(email) -> username`` for each address one active SAM user holds
+    (:func:`sam_merge_targets`); an inactive, absent or ambiguous holder is left out."""
+    return {email: found['username'] for email, found in sam_merge_targets(session, emails).items()
+            if found.get('active') and found.get('username')}
+
+
+def active_holder(session: Session, email: Optional[str]) -> Optional[str]:
+    """The one active SAM user holding *email*, else None."""
+    key = (email or '').strip().lower()
+    return active_holders(session, [key]).get(key)
 
 
 def stamp_merge_targets(session: Session, rows: List[Dict[str, Any]]) -> Dict[str, int]:

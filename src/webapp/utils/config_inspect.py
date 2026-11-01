@@ -543,6 +543,12 @@ def _directory_block() -> Dict[str, Any]:
     return block
 
 
+def _xras_block() -> Dict[str, Any]:
+    """The XRAS client's levers and endpoint; the key only as set or unset."""
+    from sam.integration.xras_api.config import XrasApiConfig
+    return XrasApiConfig.from_environment().summary()
+
+
 def _rbac_block(app, db) -> Dict[str, Any]:
     """The role catalog's source, snapshot TTL, counts, and the keys still
     holding no grant; ``unavailable`` while the tables are missing."""
@@ -756,6 +762,7 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
     tickets_block = _tickets_block(db)
     rbac_block = _rbac_block(app, db)
     directory_block = _directory_block()
+    xras_block = _xras_block()
 
     # Scheduled tasks: registry + SAM_TASKS_DISABLED + task_run counts. No
     # addresses and no PII. `runner_id` is a pod name and `detail` can hold a
@@ -831,5 +838,6 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         'tickets':         tickets_block,
         'rbac':            rbac_block,
         'directory':       directory_block,
+        'xras':            xras_block,
         'server':          server,
     }

@@ -26,14 +26,15 @@ from webapp.dashboards.event_lifecycle import upcoming_events_data
 from webapp.extensions import db
 from webapp.limiter import limiter as _rate_limit
 from webapp.utils import human_check
-from webapp.utils.htmx import institution_options
+from webapp.utils.htmx import institution_options, read_flag
 from webapp.utils.notify import get_notifier
 
 from . import eula, tokens
 from .handoff_mail import send_ticket
-from .common import (ACADEMIC_STATUSES, GATE_TTL, anon_tier as _anon_tier,  # noqa: F401
-                     ip_key as _ip_key, open_event as _open_event, person_form_context,
-                     post_tier as _post_tier, refuse as _refuse)
+from .common import (ACADEMIC_STATUSES, GATE_KEY, anon_tier as _anon_tier,  # noqa: F401
+                     email_key, email_tier, expired, gate_accepted_at, gate_blocks, global_key,
+                     global_tier, ip_key as _ip_key, open_event as _open_event,
+                     person_form_context, post_tier as _post_tier, refuse as _refuse, terms_page)
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('register', __name__, url_prefix='/register')
@@ -48,25 +49,6 @@ def _login_gate():
             and not current_user.is_authenticated):
         return redirect(url_for('auth.login', next=request.full_path.rstrip('?')))
     return None
-
-
-def _email_key():
-    # Raw input, so bounded to the column width before it becomes a Redis key.
-    return 'email:' + (request.form.get('email') or '').strip().lower()[:255]
-
-
-def _global_key():
-    # A fixed key: every registration POST shares one bucket, so the tier is a
-    # site-wide ceiling independent of IP or address (the relay blast-radius bound).
-    return 'register-global'
-
-
-def _email_tier():
-    return current_app.config['RATELIMIT_REGISTER_EMAIL']
-
-
-def _global_tier():
-    return current_app.config['RATELIMIT_REGISTER_GLOBAL']
 
 
 def _event_options():
@@ -95,30 +77,6 @@ def _rerender(raw, **kwargs):
                         locked_code=event.event_code if event else None, **kwargs)
 
 
-#: The gate marker, set on accept, lets the open form through for one form-fill
-#: window. Session-backed (signed on SECRET_KEY), so a direct POST to the form
-#: without an accept in this session is bounced -- the gate is enforced, not
-#: merely hidden. Design: docs/plans/implemented/ACCOUNT_REGISTRATION.md.
-_GATE_KEY = 'register_gate_at'
-_GATE_TTL = GATE_TTL
-
-
-def _gate_accepted_at():
-    """This session's gate acceptance while still inside the window, else None."""
-    try:
-        accepted = datetime.fromisoformat(session.get(_GATE_KEY) or '')
-    except (TypeError, ValueError):
-        return None
-    return accepted if datetime.now() - accepted <= _GATE_TTL else None
-
-
-def _gate_blocks():
-    """True when the gate is on and this session has no recent accept."""
-    if not current_app.config.get('ACCOUNT_REGISTRATION_GATE_ENABLED', False):
-        return False
-    return _gate_accepted_at() is None
-
-
 def _render_gate(event=None, *, locked_code=None, form=None, errors=(), field_errors=None):
     return render_template('register/gate.html', event=event, locked_code=locked_code,
                            form=form or {}, errors=list(errors),
@@ -131,7 +89,7 @@ def _render_gate(event=None, *, locked_code=None, form=None, errors=(), field_er
 @bp.route('/', strict_slashes=False)
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def form():
-    if _gate_blocks():
+    if gate_blocks():
         return _render_gate()
     return _render_form()
 
@@ -139,9 +97,7 @@ def form():
 @bp.route('/terms')
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def terms():
-    """The agreement on a page of its own (the gate links it in a new tab).
-    Read-only: accepting still happens on the gate."""
-    return render_template('register/terms.html', eula_html=eula.eula_html())
+    return terms_page()
 
 
 @bp.route('/institutions')
@@ -167,7 +123,7 @@ def accept():
         field_errors, form_level = RegisterGateForm.split_errors(exc.messages)
         return _render_gate(event, locked_code=locked, form=request.form,
                             errors=form_level, field_errors=field_errors)
-    session[_GATE_KEY] = datetime.now().isoformat()
+    session[GATE_KEY] = datetime.now().isoformat()
     # The event pages are a sibling blueprint (events.py) that may be unmounted.
     if locked and 'register_events' in current_app.blueprints:
         return redirect(url_for('register_events.form_for_event', event_code=locked))
@@ -176,8 +132,8 @@ def accept():
 
 @bp.route('/', methods=['POST'], strict_slashes=False)
 @_rate_limit.limiter.limit(_post_tier, key_func=_ip_key, methods=['POST'])
-@_rate_limit.limiter.limit(_email_tier, key_func=_email_key, methods=['POST'])
-@_rate_limit.limiter.limit(_global_tier, key_func=_global_key, methods=['POST'])
+@_rate_limit.limiter.limit(email_tier, key_func=email_key, methods=['POST'])
+@_rate_limit.limiter.limit(global_tier, key_func=global_key, methods=['POST'])
 def submit():
     raw = request.form
     # The honeypot: a bot fills every field. Pretend success and write nothing.
@@ -186,7 +142,7 @@ def submit():
         return redirect(url_for('register.pending', token=tokens.page_token(0)))
     # The gate is enforced here, not just in the UI: the open inputs cannot be
     # submitted until the terms were accepted in this session.
-    if _gate_blocks():
+    if gate_blocks():
         event, _refusal = _open_event(raw.get('event_code'))
         return _render_gate(event, locked_code=(event.event_code if event else None))
     try:
@@ -207,9 +163,9 @@ def submit():
         return _rerender(raw, errors=[human_error])
 
     now = datetime.now()
-    ttl = int(current_app.config.get('ACCOUNT_VERIFY_TTL_HOURS', 48))
+    ttl = tokens.verify_ttl_hours()
     code = tokens.new_code()
-    accepted_at = _gate_accepted_at()
+    accepted_at = gate_accepted_at()
     with management_transaction(db.session):
         row = register_request(db.session, event=event, clock=now,
                                source_ip=get_remote_address(),
@@ -229,7 +185,7 @@ def submit():
     result = get_notifier().send(message)
     logger.info('registration %s for %s: verification mail %s',
                 row.account_request_id, row.email, result.status)
-    session.pop(_GATE_KEY, None)  # best effort: a cookie session cannot revoke
+    session.pop(GATE_KEY, None)  # best effort: a cookie session cannot revoke
     return redirect(url_for('register.pending', token=tokens.page_token(row.account_request_id),
                             sent=int(result.status in ('sent', 'redirected'))))
 
@@ -246,11 +202,11 @@ def pending(token):
     token (a guessed URL learns nothing)."""
     row = _row_for_page(token)
     if row is None:
-        return render_template('register/expired.html'), 200
+        return expired()
     if row.is_verified:
         return redirect(url_for('register.verified'))
     return render_template('register/pending.html', row=row, token=token,
-                           mail_sent=request.args.get('sent', '1') == '1',
+                           mail_sent=read_flag(request.args, 'sent', True),
                            errors=[], form={})
 
 
@@ -261,17 +217,17 @@ def pending_code(token):
     """The typed six-digit code."""
     row = _row_for_page(token)
     if row is None:
-        return render_template('register/expired.html'), 200
+        return expired()
     try:
         data = VerifyCodeForm().load(request.form)
     except ValidationError:
         return render_template('register/pending.html', row=row, token=token,
                                mail_sent=True, form=request.form,
-                               errors=['Enter the six-digit code from the mail.'])
+                               errors=[VerifyCodeForm.BAD_FORMAT])
     if not tokens.code_matches(row, data['code']):
         return render_template('register/pending.html', row=row, token=token,
                                mail_sent=True, form=request.form,
-                               errors=['That code is wrong or has expired.'])
+                               errors=[VerifyCodeForm.WRONG])
     with management_transaction(db.session):
         row.mark_verified('self')
     send_ticket(row)
@@ -286,7 +242,7 @@ def verify(token):
     row_id = tokens.read_link_token(token)
     row = db.session.get(AccountRequest, row_id) if row_id else None
     if row is None:
-        return render_template('register/expired.html'), 200
+        return expired()
     if not row.is_verified:
         with management_transaction(db.session):
             row.mark_verified('self')

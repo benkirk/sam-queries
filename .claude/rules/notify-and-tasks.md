@@ -103,20 +103,21 @@ so `webapp.env` and `tasks.env` carry one value (pinned by `test-dev-render.sh`)
 
 `src/scheduling/tasks/xras_rename.py`, hourly :20: renames a request line still under its
 `NCAR####` token to its projcode, the backstop to the `/actions` route's after-reply rename.
-⚠️ **The one task that writes to XRAS**: `TASK_WRITABLE_OPERATIONS` in
-`sam/integration/xras.py` is the only `task:` operation the audit table accepts. Both envs
-arm it through `XRAS_WRITE_ENABLED` in `tasks.env` (pinned by `test_xras_admin_client.py`);
+⚠️ **Task writes to XRAS**: `TASK_WRITABLE_OPERATIONS` in `sam/integration/xras.py`
+(this rename, and `account_requests_reconcile`'s `/request` placeholder merge) are the only
+`task:` operations the audit table accepts. Both envs arm the rename through `XRAS_WRITE_ENABLED` in `tasks.env` (pinned by `test_xras_admin_client.py`);
 removing that key, or naming the task in `SAM_TASKS_DISABLED`, disarms it.
 `--dry-run` reads only; `SAM_TASKS_XRAS_RENAME_SINCE` widens the window for the backfill.
 The `/actions` route's own rename has a separate lever, `XRAS_RENAME_ENABLED` (`"1"` in both).
-Record: `docs/plans/XRAS_CLOSED_LOOP.md` § 3.3, § 3.5. Its after-reply hook also activates a New's
+Record: `docs/plans/implemented/XRAS_CLOSED_LOOP.md` § 3.3, § 3.5. Its after-reply hook also activates a New's
 project under `XRAS_AUTO_ACTIVATE` (`"1"` in both; `sam/manage/xras_activation.py`).
 
 ### The `xras_request_tickets` task
 
 `src/scheduling/tasks/xras_request_tickets.py`, every 15 min: one NUSD ticket per XRAS New or
 Renewal still refused past the grace period (10 min), an internal comment when its blocker list
-changes and one when a post applies; NUSD closes it. Keys `xras_ticket:<requestId>:{open,<digest>,applied}`.
+changes, one when a placeholder it blocked on is merged since (repost it) and one when a post
+applies; NUSD closes it. Keys `xras_ticket:<requestId>:{open,<digest>,merged:<placeholder>,applied}`.
 ⚠️ **The CronJob's one ticket writer**: `TICKET_PROVIDER` and `JIRA_WRITE_ENABLED` reach the task
 pod from `tasks.env` alone, so no other task may call `provider_from_environment`
 (`test_helm_jira_levers.py`). Prod files to Jira, armed with the floor
@@ -125,7 +126,7 @@ opened; `webapp.env` carries the same value so its 422 promises no ticket, state
 nothing reads it, refused to the webapp) and overrides the write lever and floor off.
 `XRAS_REQUEST_TICKETS_ENABLED` off, or `--dry-run`, reports only: the ledger and link rows commit
 on their own sessions. The webapp's 422 reads the state with no outbound call
-(`sam/queries/xras_request_tickets.py`). Record: `docs/plans/XRAS_REQUEST_TICKETS.md`.
+(`sam/queries/xras_request_tickets.py`). Record: `docs/plans/implemented/XRAS_REQUEST_TICKETS.md`.
 
 ### The `directory_report` task
 
@@ -139,9 +140,11 @@ an unreadable directory fails the run. Rule: `.claude/rules/directory.md`.
 
 ### The account-request tasks
 
-`account_requests_reconcile` (every 15 min, DB-only, **live in prod**: stamps fulfilled
+`account_requests_reconcile` (every 15 min, **live in prod**: stamps fulfilled
 requests, enrolls inside a savepoint so one project without accounts cannot fail the
-pass, purges unverified public rows past `SAM_TASKS_ACCOUNT_PURGE_DAYS`) and
+pass, purges unverified public rows past `SAM_TASKS_ACCOUNT_PURGE_DAYS`; its one XRAS
+write, merging a fulfilled `/request` placeholder, needs `XRAS_SUBMIT_ANONYMOUS_ENABLED`
+in `tasks.env`, which only dev carries) and
 `account_queue_digest` (Mon 08:00 MT, one message, reconciles first, `SAM_TASKS_ACCOUNT_MAX`
 on the row count, an empty queue sends nothing; **ships named in `SAM_TASKS_DISABLED`**).
 

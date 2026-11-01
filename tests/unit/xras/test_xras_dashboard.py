@@ -95,27 +95,6 @@ def committed_odd_status_action(app):
         session.commit()
 
 
-@pytest.fixture
-def view_only_client(auth_client, monkeypatch):
-    """`benkirk` minus MANAGE_XRAS.
-
-    `benkirk` is `[p for p in Permission]`, so there is no snapshot user who
-    holds VIEW_XRAS but not MANAGE_XRAS — the split has to be simulated. Patching
-    `get_user_permissions` is the narrowest way to do it: every gate in the
-    request path (`require_permission`, the `has_permission` template global, the
-    route's own check) reads through it.
-    """
-    from webapp.utils import rbac
-
-    real = rbac.get_user_permissions
-
-    def _without_manage(user):
-        return {p for p in real(user) if p is not Permission.MANAGE_XRAS}
-
-    monkeypatch.setattr(rbac, 'get_user_permissions', _without_manage)
-    return auth_client
-
-
 class TestXrasPageAccess:
     def test_page_renders_for_a_permitted_user(self, auth_client):
         resp = auth_client.get('/allocations/xras')

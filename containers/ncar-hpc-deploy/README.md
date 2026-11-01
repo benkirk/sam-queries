@@ -46,7 +46,7 @@ so any HPC user can run `bin/sam-search` read-only. `sam-admin` and
 is unreadable, naming its group. Without an overlay the lane is single-audience
 (dev: one 0600 `env`). `NHD_DEBUG=1` prints the layers loaded, never values.
 The merged copy goes to a 0600 temp file under `$TMPDIR`, removed when the run
-ends. Grants and rollout: `docs/plans/HPC_LANE_ENV_LAYERING.md`.
+ends. Grants and rollout: `docs/plans/implemented/HPC_LANE_ENV_LAYERING.md`.
 
 ## Commands
 
@@ -164,7 +164,7 @@ is csgteam's cron mail: stale locks, lock timeouts on `cron`, and every non-zero
    users' conda install, and they cannot write `src/__pycache__`. Until csgteam recompiles,
    every module a pull changed is compiled again on every user run. Its install-root `.env`
    (0644) holds the readers from `lanes/prod/env` in python-dotenv syntax, so change the two
-   together (`docs/plans/HPC_LANE_ENV_LAYERING.md` § 6).
+   together (`docs/plans/implemented/HPC_LANE_ENV_LAYERING.md` § 6).
 2. `bin/ncar-hpc-deploy update --lane <lane> --smoke-hosts derecho.hpc.ucar.edu`
 3. Merge `etc/crontab.<lane>` into csgteam's crontab on `cron`. For prod, remove
    each host-checkout entry it replaces in the same edit; dev replaces none.

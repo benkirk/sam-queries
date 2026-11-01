@@ -133,24 +133,8 @@
         window.open('/admin/expirations/export?' + params.toString(), '_blank');
     });
 
-    /* Impersonate buttons + project-code links inside dynamically loaded
-     * expiration content (delegated; samConfirm is htmx-config.js) */
+    /* Project-code links inside dynamically loaded expiration content (delegated) */
     document.addEventListener('click', function (e) {
-        var btn = e.target.closest('.impersonate-user-btn');
-        if (btn && btn.dataset.username) {
-            var username = btn.dataset.username;
-            samConfirm({
-                title: 'Impersonate user',
-                message: 'Impersonate user ' + username + '?',
-                variant: 'warning',
-                label: 'Impersonate',
-                onConfirm: function () {
-                    document.getElementById('selectedUsernameImpersonate').value = username;
-                    document.getElementById('impersonateUserForm').submit();
-                }
-            });
-        }
-
         var link = e.target.closest('.project-code-link');
         if (link && link.dataset.projcode) {
             e.preventDefault();

@@ -1,6 +1,6 @@
 """HEUV parity: sample over HTTP, fetch every ported route from both stacks, compare bytes.
 
-Legacy bodies are changed only by the named rules of ``docs/plans/HEUV_API_PORT.md`` §6
+Legacy bodies are changed only by the named rules of ``docs/plans/implemented/HEUV_API_PORT.md`` §6
 (F1-F10) before a byte comparison; anything else counts as a difference. Row sets are
 compared in both directions. The §7 ruleset counters ride along as an informational check,
 for the old/new statements Ben decides on.

@@ -14,7 +14,7 @@ Where each is fixed:
 {% for line in pointers %}- {{ line }}
 {% endfor %}{% endif %}{% if queued %}
 Already in SAM's Accounts queue:
-{% for row in queued %}- #{{ row.id }} {{ row.name }} <{{ row.email }}>, {{ row.purpose }}, {{ row.state }}
+{% for row in queued %}- {{ row.handle }} {{ row.name }} <{{ row.email }}>, {{ row.purpose }}, {{ row.state }}
 {% endfor %}{% endif %}{% if merges %}
 Placeholders to merge (Allocations > XRAS > Pending Users):
 {% for m in merges %}- {{ m.placeholder }}{% if m.target %} into {{ m.target }}{% else %}: no SAM account holds its email{% endif %}

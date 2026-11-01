@@ -2059,6 +2059,31 @@ class TestPartCIsAdminOnly:
             data={'action_type': 'Nonsense'}).get_data(as_text=True)
         assert 'Must be one of' in body
 
+    def test_an_extension_needs_the_terms(self, auth_client, armed, monkeypatch):
+        from sam.manage import xras_submission as flow
+        _reader(monkeypatch, payload=_detail_payload())
+        monkeypatch.setattr(flow, 'request_action', lambda *a, **k: pytest.fail('filed'))
+        body = auth_client.post('/allocations/xras_add_action/EXAM0001',
+                                data={'action_type': 'Extension'}).get_data(as_text=True)
+        assert 'terms of use' in body
+
+    def test_an_extension_is_filed_through_the_flow_unsubmitted(self, auth_client, armed,
+                                                               monkeypatch):
+        from sam.manage import xras_submission as flow
+        from webapp.register.eula import eula_sha
+        _reader(monkeypatch, payload=_detail_payload())
+        calls = []
+        monkeypatch.setattr(flow, 'request_action', lambda f, draft, **kw: calls.append(
+            (draft, kw)) or flow.SubmissionOutcome(1, 'populated', 'mint', None, None))
+        body = auth_client.post('/allocations/xras_add_action/EXAM0001', data={
+            'action_type': 'Extension', 'agree': '1', 'eula_sha': eula_sha()}).get_data(
+            as_text=True)
+        assert 'Added an Extension action' in body
+        draft, kw = calls[0]
+        assert (draft.action_type, draft.request_number) == ('Extension', 'EXAM0001')
+        assert (kw['door'], kw['submit'], kw['xa_user'], kw['actor']) == \
+            ('admin', False, 'pi-user', 'benkirk')
+
     def test_the_lever_off_refuses_a_delete(self, auth_client, configured,
                                            monkeypatch):
         """Belt and braces: the button is disabled AND the POST refuses."""
@@ -2724,19 +2749,31 @@ class TestProjcodePreview:
 
 
 class TestTheTicketKey:
-    """A refused request's NUSD ticket shows on its row (XRAS_REQUEST_TICKETS.md § 6)."""
+    """A refused request's NUSD ticket shows on its row (XRAS_REQUEST_TICKETS.md § 6).
+
+    Each test files under its own request id: the ticket row is committed, so on the
+    shared 900001 another worker's row could show it (the flake this replaced).
+    """
+
+    @staticmethod
+    def _own_request():
+        from factories import next_seq
+        payload = _payload()
+        payload['requestId'] = int(next_seq('91'))
+        _publish(payload)
+        return payload['requestId']
 
     def test_the_row_names_its_ticket(self, app, auth_client, configured):
         from sqlalchemy.orm import Session
 
         from sam import ExternalTicket
         from webapp.extensions import db
-        _publish(_payload())
+        rid = self._own_request()
         with app.app_context():
             engine = db.engine
         with Session(engine) as s:
-            ExternalTicket.create(s, provider='dry-run', ticket_key='DRY-SAM-XR-900001',
-                                  entity_type='xras_request', entity_id=900001,
+            ExternalTicket.create(s, provider='dry-run', ticket_key=f'DRY-SAM-XR-{rid}',
+                                  entity_type='xras_request', entity_id=rid,
                                   origin='created', requested_by='task:xras_request_tickets')
             s.commit()
         try:
@@ -2745,11 +2782,11 @@ class TestTheTicketKey:
         finally:
             with Session(engine) as s:
                 s.query(ExternalTicket).filter_by(entity_type='xras_request',
-                                                  entity_id=900001).delete()
+                                                  entity_id=rid).delete()
                 s.commit()
-        assert 'DRY-SAM-XR-900001' in body
+        assert f'DRY-SAM-XR-{rid}' in body
 
     def test_a_row_without_one_shows_none(self, auth_client, configured):
-        _publish(_payload())
+        self._own_request()
         body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'NUSD ticket for this refused post' not in body

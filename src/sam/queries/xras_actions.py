@@ -90,7 +90,7 @@ XRAS_ACTION_TYPES = ('New', 'Renewal', 'Extension', 'Supplement',
 #: ``actionBeginDate`` entirely (``date_adjustment_uwas0141`` asks for one that
 #: differs from its allocation's) and rejects an end date earlier than the
 #: current one, which is the likeliest reason a separate action type exists at
-#: all. See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``.
+#: all. See ``docs/plans/implemented/XRAS_SPRINT_C.md``.
 
 #: Wire spellings that mean the same handler, ``alias -> canonical``.
 #:
@@ -291,7 +291,7 @@ def rename_candidates(session: Session, *, since: datetime) -> List[Dict[str, An
     return out
 
 
-def _split_errors(error_messages: Optional[str]) -> List[str]:
+def split_error_messages(error_messages: Optional[str]) -> List[str]:
     """``error_messages`` is newline-joined; give callers the ordered list back.
 
     The order is the contract — legacy accumulates every problem into an ordered
@@ -514,8 +514,8 @@ def get_recent_xras_actions(
             'service': row.service,
             'outcome_reason': row.outcome_reason,
             'http_status': row.http_status,
-            'errors': _split_errors(row.error_messages),
-            'warnings': _split_errors(row.warnings),
+            'errors': split_error_messages(row.error_messages),
+            'warnings': split_error_messages(row.warnings),
             'projcode_result': row.projcode_result,
             'processed_time': row.processed_time,
             'processed_by': row.processed_by,

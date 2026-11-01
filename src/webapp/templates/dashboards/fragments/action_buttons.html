@@ -110,3 +110,24 @@
 </button>
 {%- endif -%}
 {%- endmacro %}
+
+
+{#- impersonate_button(user, label=None, cls='btn btn-row')
+    The one "log in as this user" control: a confirmed POST to admin_dashboard.impersonate.
+    Renders nothing without IMPERSONATE_USERS. ``label`` adds the username after the icon. -#}
+{% macro impersonate_button(user, label=None, cls='btn btn-row', form_class='') -%}
+{% if has_permission(Permission.IMPERSONATE_USERS) -%}
+<form method="POST" action="{{ url_for('admin_dashboard.impersonate') }}"{% if form_class %} class="{{ form_class }}"{% endif %}
+      data-action-submit="confirm-submit"
+      data-confirm-title="Impersonate user"
+      data-confirm-message="Impersonate {{ user.display_name }} ({{ user.username }})?"
+      data-confirm-variant="warning" data-confirm-label="Impersonate">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="username" value="{{ user.username }}">
+    <button type="submit" class="{{ cls }}" title="Impersonate {{ user.username }}"
+            aria-label="Impersonate {{ user.username }}">
+        <i class="fa-solid fa-user-secret"></i>{% if label %} {{ label }}{% endif %}
+    </button>
+</form>
+{%- endif %}
+{%- endmacro %}

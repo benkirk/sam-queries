@@ -1,0 +1,148 @@
+{#- My Requests: one readout (sam.queries.xras_my_requests.Readout) as a badge. -#}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+
+{#- The request dialog's header: every body swapped into #xrasRequestModal titles itself here. -#}
+{% macro request_title(title, meta=None) -%}
+{{ modal_title('xrasRequestModalLabel', title, 'paper-plane', meta=meta) }}
+{%- endmacro %}
+
+{%- set _TONES = {'success': 'bg-success', 'info': 'bg-info', 'attention': 'bg-warning',
+                  'danger': 'bg-danger', 'muted': 'state-tag'} -%}
+{% macro readout_badge(readout, title='') -%}
+<span class="badge {{ _TONES.get(readout.tone, 'state-tag') }}"{% if title %} title="{{ title }}"{% endif %}>{{ readout.label }}</span>
+{%- endmacro %}
+
+{#- A preflight verdict (sam.xras.preflight.Verdict) in the requester's words: only what it
+    tells them, so a clean check and an unchecked one render nothing. -#}
+{% macro verdict_note(verdict) -%}
+{%- if verdict.status in ('failed', 'manual') %}
+<div class="modal-facts small mb-2">
+{%- if verdict.status == 'failed' %}
+    <span class="text-danger-emphasis"><i class="fa-solid fa-triangle-exclamation me-1"></i>SAM could not
+        apply this once approved:</span>
+    <ul class="mb-0 text-danger-emphasis">{% for m in verdict.messages %}<li>{{ m }}</li>{% endfor %}</ul>
+{%- else %}
+    <span><i class="fa-solid fa-circle-pause me-1"></i>Once approved, CISL staff apply this one by hand.</span>
+{%- endif %}
+</div>
+{%- endif %}
+{%- endmacro %}
+
+{#- One resource row of amounts_table. An Available row is gray and shows its default; its inputs
+    are disabled so it posts nothing until request-amounts.js moves it to Selected. -#}
+{% macro _amount_row(r, form, field_errors, selected, order) -%}
+{%- set _name = 'amount_' ~ r.resource_id -%}
+{%- set _err = (field_errors or {}).get(_name) -%}
+{%- set _default = r.limit.default_amount if r.limit and r.limit.default_amount is not none else none -%}
+{%- set _suggest = _default | fmt_input if _default is not none else '' -%}
+{%- set _posted = form.get(_name) if form else none -%}
+<tr class="amount-row{{ ' amount-row-available' if not selected }}" data-amount-row data-order="{{ order }}">
+    <td>{{ r.name }}
+        {%- if r.units and not r.yes_no %} <span class="small text-muted">{{ r.units }}</span>{% endif %}</td>
+    <td class="col-num">
+        <button type="button" class="amount-pick" data-amount-move="select"
+                aria-label="Request {{ r.name }}{{ (', default ' ~ (_default | fmt_number)) if _suggest and not r.yes_no }}">
+            {{- 'Yes' if r.yes_no else (_default | fmt_number if _suggest else '—') }}</button>
+        {% if r.yes_no %}
+        <span class="amount-yes">Yes</span>
+        <input type="hidden" name="{{ _name }}" value="1"{% if not selected %} disabled{% endif %}>
+        {% else %}
+        <input type="text" inputmode="decimal" class="form-control form-control-sm text-end ctl-w-sm amount-input{{ ' is-invalid' if _err }}"
+               id="xrasRequestAmount{{ r.resource_id }}" name="{{ _name }}" aria-label="{{ r.name }} amount"
+               data-suggest="{{ _suggest }}" placeholder="{{ _suggest }}"
+               value="{{ _posted if _posted else (_suggest if selected else '') }}"{% if not selected %} disabled{% endif %}>
+        {% endif %}
+        {% if _err %}<div class="invalid-feedback d-block text-start">{{ _err[0] }}</div>{% endif %}
+    </td>
+    <td class="col-shrink text-nowrap small text-muted">
+        {%- if r.yes_no %}yes or no{% elif r.limit and r.limit.max_amount is not none %}up to {{ r.limit.max_amount | fmt_number }}{% else %}—{% endif -%}
+    </td>
+    <td class="text-end text-nowrap"><span class="row-actions">
+        <button type="button" class="btn btn-row amount-remove" data-amount-move="remove"
+                title="Remove {{ r.name }}" aria-label="Remove {{ r.name }}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+    </span></td>
+</tr>
+{%- endmacro %}
+
+{#- The amounts, Selected over Available: a resource is requested only once picked. A row is
+    Selected when this table was posted with its amount, or on a first render when r.prefill (a
+    renewal's held lines) or when it is the only resource. static/js/request-amounts.js moves
+    rows between the groups. -#}
+{% macro amounts_table(resources, form, field_errors) -%}
+{%- set _posted = form and (form.get('amounts_present') or ' amount_' in ' ' ~ form.keys() | join(' ')) -%}
+{%- set _selected = [] -%}{%- set _available = [] -%}
+{%- for r in resources -%}
+    {%- set _value = form.get('amount_' ~ r.resource_id) if form else none -%}
+    {%- set _ = (_selected if (_value if _posted else (r.prefill or resources | length == 1))
+                 else _available).append((loop.index, r)) -%}
+{%- endfor %}
+{% if not resources %}
+<p class="small text-muted">This request names no resources.</p>
+{% else %}
+<table class="table table-sm align-middle mb-2 amounts-table" data-amounts>
+    <thead class="table-subtle">
+        <tr><th>Resource</th><th class="col-num">Amount</th><th class="col-shrink">Limit</th>
+            <th class="col-shrink"><span class="visually-hidden">Actions</span></th></tr>
+    </thead>
+    <tbody data-amount-group="selected">
+        <tr class="table-subtle fw-semibold amount-group"><td colspan="4">Selected</td></tr>
+        <tr data-amount-empty{% if _selected %} hidden{% endif %}><td colspan="4" class="small text-muted">Nothing selected yet. Click a resource below to request it.</td></tr>
+        {% for order, r in _selected %}{{ _amount_row(r, form, field_errors, True, order) }}{% endfor %}
+    </tbody>
+    <tbody data-amount-group="available"{% if not _available %} hidden{% endif %}>
+        <tr class="table-subtle fw-semibold amount-group"><td colspan="4">Available</td></tr>
+        {% for order, r in _available %}{{ _amount_row(r, form, field_errors, False, order) }}{% endfor %}
+    </tbody>
+</table>
+<input type="hidden" name="amounts_present" value="1">
+<p class="form-text mt-0">Click a resource under Available to request it. Its amount starts at the default; change it as you like.</p>
+{% endif %}
+{%- endmacro %}
+
+{#- Hidden inputs that carry an earlier page's answers forward, from the posted form. -#}
+{% macro carry(form, names) -%}
+{%- for name in names if form and form.get(name) %}<input type="hidden" name="{{ name }}" value="{{ form.get(name) }}">{% endfor -%}
+{%- endmacro %}
+
+{#- A New's people on a review; *private* (a visitor's) shows what was typed, never a match. -#}
+{% macro roster_facts(roster, private=false) -%}
+{%- if roster %}
+<dt class="col-sm-4">People</dt>
+<dd class="col-sm-8">
+    <ul class="list-unstyled mb-0">
+    {%- for p in roster %}
+        <li>{{ p.first_name }} {{ p.last_name }} <span class="text-muted">&lt;{{ p.email }}&gt;</span>
+        {%- if not private %} <span class="text-muted small">{{ 'in XRAS as ' ~ p.username if p.username else 'added when the project starts' }}</span>{% endif %}</li>
+    {%- endfor %}
+    </ul>
+    {%- if private %}<span class="text-muted small">Anyone with an NCAR account joins when the project starts; the others are invited then to request one.</span>{% endif %}
+</dd>
+{%- endif %}
+{%- endmacro %}
+
+{#- One supporting grant on a review. -#}
+{% macro grant_facts(grant, agencies=none) -%}
+{%- if grant %}
+{%- set _agency = (agencies or []) | selectattr(0, 'equalto', grant.fundingAgencyId) | map(attribute=1) | first %}
+<dt class="col-sm-4">Grant</dt>
+<dd class="col-sm-8">{% if _agency %}{{ _agency }} {% endif %}<span class="font-monospace">{{ grant.grantNumber }}</span>{% if grant.title %}, {{ grant.title }}{% endif %}
+    {%- if grant.beginDate or grant.endDate %} <span class="text-muted">({{ grant.beginDate | fmt_date }} to {{ grant.endDate | fmt_date }})</span>{% endif %}</dd>
+{%- endif %}
+{%- endmacro %}
+
+{#- One PDF to attach: a file input the review and the resume share. -#}
+{% macro document_field(id, name, label, note, gate=False) -%}
+<div class="mb-2">
+    <label for="{{ id }}" class="form-label small mb-1">{{ label }} <span class="text-danger">*</span>
+        <span class="text-muted">({{ note }})</span></label>
+    <input type="file" class="form-control form-control-sm" id="{{ id }}" name="{{ name }}" accept="application/pdf,.pdf"
+           {%- if gate %} data-gate-check data-gate-label="attach the {{ label }}"{% endif %}>
+</div>
+{%- endmacro %}
+
+{#- The line that warns a form's first page what the review will ask for. -#}
+{% macro attach_note(documents) -%}
+{%- if documents %}
+<span class="d-block">You'll attach the {{ documents | map(attribute='label') | join(' and ') }} on the review page.</span>
+{%- endif %}
+{%- endmacro %}

@@ -54,22 +54,28 @@ def providers() -> List[AwardProvider]:
 
 
 def providers_for(source_name: Optional[str],
-                  contract_number: Optional[str]) -> List[AwardProvider]:
+                  contract_number: Optional[str],
+                  pool: Optional[List[AwardProvider]] = None) -> List[AwardProvider]:
     """Candidate providers, source-specific ones first.
 
     A provider that names a ``source`` knows that agency's own system and
     carries more fields, so it is always tried before a generic fallback
     that merely happens to cover the same award.
     """
-    eligible = [p for p in _PROVIDERS
+    eligible = [p for p in (pool if pool is not None else _PROVIDERS)
                 if p.supports(source_name, contract_number)]
     return ([p for p in eligible if p.source is not None]
             + [p for p in eligible if p.source is None])
 
 
-def resolve_award(source_name: Optional[str],
-                  contract_number: Optional[str]) -> Optional[AwardRecord]:
+def resolve_award(source_name: Optional[str], contract_number: Optional[str], *,
+                  exact: bool = False,
+                  providers: Optional[List[AwardProvider]] = None) -> Optional[AwardRecord]:
     """Look *contract_number* up, returning the first provider that knows it.
+
+    *exact* forbids each provider's fuzzy fallback; its answers are cached apart, so a fuzzy
+    hit cached for the operator's form is never served to an exact caller. *providers*
+    overrides the pool, as for :func:`search_awards`.
 
     Returns:
         The record, or ``None`` when no provider can serve this source /
@@ -85,9 +91,10 @@ def resolve_award(source_name: Optional[str],
     if not number:
         return None
 
-    for provider in providers_for(source_name, number):
-        record = cached_lookup(provider.name, number,
-                               lambda p=provider: p.fetch(number))
+    for provider in providers_for(source_name, number, pool=providers):
+        record = cached_lookup(provider.name + (':exact' if exact else ''), number,
+                               lambda p=provider: (p.fetch(number, exact=True) if exact
+                                                   else p.fetch(number)))
         if record is not None:
             return record
         logger.debug('award lookup: %s has no record for %r',

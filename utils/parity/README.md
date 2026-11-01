@@ -60,7 +60,7 @@ SCSG0001 and NCIS0001; `--sample-size`, `--heuv-projects`), the usernames on the
 usage reports (cap 60), and the inactive projects those users are assigned to. Every
 ported route is fetched from both stacks (`--workers` concurrent requests, default 4,
 ~2 minutes) and compared as raw bytes after **only** the named fixes F1-F9 of
-`docs/plans/HEUV_API_PORT.md` §6 are applied to legacy. Any other difference fails.
+`docs/plans/implemented/HEUV_API_PORT.md` §6 are applied to legacy. Any other difference fails.
 Row sets are compared in both directions, and an informational check prints the §7
 ruleset counters (group surplus, status pairs, charge deltas by hierarchy, threshold
 amounts, holdings). Each route also reports p50 latency on both stacks.
@@ -153,6 +153,8 @@ Comparison tolerances (lifted from the retired
   codes) — same DB-mirror lag.
 - **≤5 items** on DEAD/live status inconsistencies.
 - **≤3 users missing** per project+resource node in fstree.
+- **≤5 nodes** where fstree's lifecycle `accountStatus` (No Account, Waiting, Expired,
+  No Allocation, Disabled) differs, compared both ways on the per-resource payloads.
 - **None** on fstree facility shares. These are compared per resource against
   `/api/v1/fstree_access/{resource}`, because the all-resource payload carries
   one share per facility. SAMuel's per-resource shares must also sum to 100

@@ -9,7 +9,7 @@ the data produces, not just the ones a template author pictured:
 - an icon-only button names its verb in ``aria-label``;
 - a retired row is tagged, not ``opacity-50`` (which also faded its buttons).
 
-Design record: docs/plans/ADMIN_TABLE_POLISH.md.
+Design record: docs/plans/implemented/ADMIN_TABLE_POLISH.md.
 """
 from html.parser import HTMLParser
 
@@ -27,6 +27,7 @@ CARDS = [
     '/admin/htmx/contracts-table',
     '/admin/htmx/facilities',
     '/admin/htmx/mnemonic-codes-table',
+    '/allocations/xras/configuration/cards',
 ]
 
 

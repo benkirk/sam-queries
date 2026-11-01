@@ -182,7 +182,7 @@ docs/
 │   ├── CHARGING_INTEGRATION.md       # HPC charge ingest integration
 │   └── HPC_DATA_COLLECTORS_GUIDE.md  # Collector implementation guide
 ├── plans/                     # Active plans (implemented/ holds shipped ones)
-├── xras/                      # XRAS integration: design, sprints, cutover runbook
+├── xras/                      # XRAS integration: the reference, runbook, playbook and probe records; sprint records under plans/implemented
 └── presentations/             # Pointer: SAMuel decks live in quarto-docs-framework
 
 ../

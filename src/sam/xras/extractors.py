@@ -28,7 +28,7 @@ Two traps would silently produce wrong data:
    and ``Education`` each name two different ``allocation_type`` rows.
 
 Verified against ``~/codes/sam`` at tag 2.0.3. See
-``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``.
+``docs/plans/implemented/XRAS_SPRINT_C.md``.
 """
 
 import re
@@ -563,7 +563,7 @@ _UNRESOLVED = object()
 
 def resolve_mnemonic_code(session, action, errs: ActionErrors, *,
                           pi_username: Optional[str],
-                          pi=_UNRESOLVED) -> Optional[MnemonicCode]:
+                          pi=_UNRESOLVED, preset: Optional[int] = None) -> Optional[MnemonicCode]:
     """The three-letter code the new project's projcode will be minted from.
 
     ``pi_username`` is passed rather than read off the action because resolving it is
@@ -615,6 +615,11 @@ def resolve_mnemonic_code(session, action, errs: ActionErrors, *,
     override = lookup_request_override(session, get_field(action, 'requestNumber'), 'mnemonic')
     if override is not None:
         row = session.get(MnemonicCode, override.mnemonic_code_id)
+        if row is not None and row.is_active:
+            return row
+    # The code the PI's New carried from SAM's form (``xras_submission``), when still active.
+    if preset is not None:
+        row = session.get(MnemonicCode, preset)
         if row is not None and row.is_active:
             return row
 

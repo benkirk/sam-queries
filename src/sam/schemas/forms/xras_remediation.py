@@ -46,7 +46,8 @@ _COMMENT_MAX = 4000
 _USERNAME_MAX = 64
 
 
-def _clean(value):
+def clean_text(value) -> str:
+    """*value* stripped, ``''`` for ``None``: the shape a required text field is measured in."""
     return (value or '').strip()
 
 
@@ -75,8 +76,8 @@ class XrasMergeForm(HtmxFormSchema):
 
     @post_load
     def _exactly_one_target(self, data, **kwargs):
-        candidate = _clean(data.get('candidate'))
-        override = _clean(data.get('target_username'))
+        candidate = clean_text(data.get('candidate'))
+        override = clean_text(data.get('target_username'))
 
         if candidate and override and candidate != override:
             raise ValidationError({'target_username': [
@@ -89,7 +90,7 @@ class XrasMergeForm(HtmxFormSchema):
                 'Select the real XRAS identity to merge into.']})
 
         data['target_username'] = target
-        data['comment'] = _clean(data.get('comment')) or None
+        data['comment'] = clean_text(data.get('comment')) or None
         data.pop('candidate', None)
         return data
 
@@ -109,7 +110,7 @@ class XrasRemediationReasonForm(HtmxFormSchema):
     @post_load
     def _reject_whitespace_only(self, data, **kwargs):
         """``_strip_empty_strings`` drops ``''`` but not ``'   '``."""
-        comment = _clean(data.get('comment'))
+        comment = clean_text(data.get('comment'))
         if not comment:
             raise ValidationError({'comment': ['This field is required.']})
         data['comment'] = comment
@@ -149,19 +150,19 @@ class XrasRoleForm(HtmxFormSchema):
 
     @post_load
     def _normalize(self, data, **kwargs):
-        username = _clean(data.get('username'))
+        username = clean_text(data.get('username'))
         if not username:
             raise ValidationError({'username': ['This field is required.']})
 
         allowed = _role_names()
-        role = _clean(data.get('role_type'))
+        role = clean_text(data.get('role_type'))
         if role not in allowed:
             raise ValidationError({'role_type': [
                 f"Must be one of: {', '.join(allowed)}."]})
 
         data['username'] = username
         data['role_type'] = role
-        data['comment'] = _clean(data.get('comment')) or None
+        data['comment'] = clean_text(data.get('comment')) or None
         return data
 
 
@@ -184,7 +185,7 @@ class XrasResourceAmountForm(HtmxFormSchema):
 
     @post_load
     def _normalize(self, data, **kwargs):
-        data['comment'] = _clean(data.get('comment')) or None
+        data['comment'] = clean_text(data.get('comment')) or None
         return data
 
 
@@ -206,16 +207,16 @@ class XrasActionDatesForm(HtmxFormSchema):
         if begin and end and end < begin:
             raise ValidationError({'end_date': [
                 'End date must not precede the begin date.']})
-        data['comment'] = _clean(data.get('comment')) or None
+        data['comment'] = clean_text(data.get('comment')) or None
         return data
 
 
 #: UI bounds for the free-text metadata fields. Generous — the real limit is
 #: XRAS's, which a too-long value surfaces as a 400 the modal renders. `abstract`
 #: and `userComments` are long-form; title/shortTitle are one-liners.
-_TITLE_MAX = 500
+XRAS_TITLE_MAX = 500
 _SHORT_TITLE_MAX = 255
-_LONGTEXT_MAX = 20000
+XRAS_LONGTEXT_MAX = 20000
 
 
 class XrasRequestAttributesForm(HtmxFormSchema):
@@ -229,14 +230,14 @@ class XrasRequestAttributesForm(HtmxFormSchema):
     their existing values.
     """
 
-    title = f.Str(required=True, validate=v.Length(min=1, max=_TITLE_MAX))
+    title = f.Str(required=True, validate=v.Length(min=1, max=XRAS_TITLE_MAX))
     short_title = f.Str(load_default=None,
                         validate=v.Length(max=_SHORT_TITLE_MAX))
-    abstract = f.Str(load_default=None, validate=v.Length(max=_LONGTEXT_MAX))
+    abstract = f.Str(load_default=None, validate=v.Length(max=XRAS_LONGTEXT_MAX))
 
     @post_load
     def _normalize(self, data, **kwargs):
-        title = _clean(data.get('title'))
+        title = clean_text(data.get('title'))
         if not title:
             raise ValidationError({'title': ['This field is required.']})
         data['title'] = title
@@ -250,7 +251,7 @@ class XrasActionFieldsForm(HtmxFormSchema):
     """Edit an action's text fields. Just ``user_comments`` in B2a."""
 
     user_comments = f.Str(load_default=None,
-                          validate=v.Length(max=_LONGTEXT_MAX))
+                          validate=v.Length(max=XRAS_LONGTEXT_MAX))
 
 
 class XrasAddActionForm(HtmxFormSchema):
@@ -260,7 +261,7 @@ class XrasAddActionForm(HtmxFormSchema):
 
     @post_load
     def _check(self, data, **kwargs):
-        chosen = _clean(data.get('action_type'))
+        chosen = clean_text(data.get('action_type'))
         if chosen not in XRAS_ACTION_TYPES:
             raise ValidationError({'action_type': [
                 f"Must be one of: {', '.join(XRAS_ACTION_TYPES)}."]})
@@ -291,7 +292,7 @@ class XrasRequestOverrideForm(HtmxFormSchema):
     @post_load
     def _check(self, data, **kwargs):
         from sam.integration.xras import XRAS_REQUEST_OVERRIDE_KINDS
-        kind = _clean(data.get('kind'))
+        kind = clean_text(data.get('kind'))
         if kind not in XRAS_REQUEST_OVERRIDE_KINDS:
             raise ValidationError({'kind': [
                 f"Must be one of: {', '.join(XRAS_REQUEST_OVERRIDE_KINDS)}."]})
@@ -301,6 +302,6 @@ class XrasRequestOverrideForm(HtmxFormSchema):
         if kind != 'mnemonic':
             data['mnemonic_code_id'] = None
         data['kind'] = kind
-        data['comment'] = _clean(data.get('comment')) or None
-        data['request_number'] = _clean(data.get('request_number')) or None
+        data['comment'] = clean_text(data.get('comment')) or None
+        data['request_number'] = clean_text(data.get('request_number')) or None
         return data

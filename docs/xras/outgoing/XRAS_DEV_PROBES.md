@@ -5,7 +5,7 @@
 anything was pushed from XRAS-dev to samuel-dev. Claude made every API call; Ben made every
 approve and post click in the admin app. It answers the "no clean test loop" gap of
 [`XRAS_SUBMISSION.md`](../../plans/XRAS_SUBMISSION.md) § 5 and the experiments of
-[`XRAS_REQUEST_TICKETS.md`](../../plans/XRAS_REQUEST_TICKETS.md) § 9, except those that
+[`XRAS_REQUEST_TICKETS.md`](../../plans/implemented/XRAS_REQUEST_TICKETS.md) § 9, except those that
 need a SAM-authored submit (§ 7).
 
 Same method as [`XRAS_WRITE_PROBES.md`](XRAS_WRITE_PROBES.md) § 1: one attempt per write,
@@ -32,7 +32,7 @@ so only the two that answer are shown.
 
 | Endpoint family | `submit` | `report` | Notes |
 |---|---|---|---|
-| `announcements`, `funding_agencies`, `opportunities` (all, list, by id), `panels`, `resources`, `types/*`, rule book `required_fields` | 200 | 200 | `types/grants` is empty, as in production. NSF is `fundingAgencyId` 1 |
+| `announcements`, `funding_agencies`, `opportunities` (all, list, by id), `panels`, `resources`, `types/*`, rule book `required_fields` | 200 | 200 | `types/grants` is empty, as in production. `funding_agencies`: 19 rows, identical on production (read 2026-10-30): NSF 1 first, Other 19 last; the grant form's agency picker reads it |
 | `people/<u>`, `search/people`, `permissions/<u>` | 200 | 200 | not proxied to SAM (no action-log row) |
 | `orcid/check_status/<u>` | 200 | 401 | deprecated |
 | `projects` | 404 | 404 | SAM's own 404 envelope, via the proxy (§ 1) |
@@ -219,14 +219,12 @@ The card's Activate on UHSS0004 (09:00), now through the shared `activate_projec
 With Exploratory · New · Action Approved · PI deleted from demo template 154, NCAR4094 (1439637,
 benkirk-only) was approved and posted: sam_dev #29 → UHSS0006, gone from Recent submissions, no
 Notify button. XRAS computes the button from the rules at read time; re-adding the rule restored
-it. Record: `docs/plans/XRAS_NOTICES_CUTOVER.md` § 8.
+it. Record: `docs/plans/implemented/XRAS_NOTICES_CUTOVER.md` § 8.
 
 ## 7. Open, and what unblocks it
 
 | Open | Blocked on |
 |---|---|
-| A parked action on a renamed family (#7, #8) | the admin app's repost re-sends the New; re-filing, or SAM-side log resolution (`XRAS_SUBMISSION.md` § 4.6) |
-| A phase-1 action on a family already numbered by its projcode | a demo family under a projcode on which benkirk holds a PI role |
 | An approval without a click | a `review`/`admin` demo key or an auto-approve rule (Steve) |
 
 ## 8. Final state left on XRAS-dev
@@ -248,3 +246,5 @@ it. Record: `docs/plans/XRAS_NOTICES_CUTOVER.md` § 8.
 | samuel-dev, 2026-10-15 | UHSS0005 (active, auto-activated); UHSS0004 activated by the card; `xras_action_log` #23–#26; `xras_remediation_event` #6–#8; `account_request` #23, #24 dismissed; dry-run tickets `DRY-SAM-XR-1439539` (NCAR4088) and `-1439604` |
 | 1439637 / **UHSS0006** (minted as NCAR4094, § 6.4) | Approved and posted 2026-10-19; not notified; PI and Allocation Manager benkirk; sam_dev #29, activation #5, rename #9 |
 | 1439605 / NCAR4093 | Approved; post refused 2026-10-19 (`harrter` absent); demo template 154 back to 11 rules after § 6.4 |
+| 2026-10-27 submission probes | soft-deleted New drafts 1439703 (documents 304037, 304038), 1439704, 1439705 (grant 174568); Extension 373019 on 1439571 soft-deleted (dates row 241159). Record: `XRAS_SUBMISSION.md`'s sprint doc, `XRAS_SUBMISSION_SPRINT1.md` § 9 |
+| 2026-10-31 sprint-2 probes (`../../plans/implemented/XRAS_SUBMISSION_SPRINT2.md` § 7) | soft-deleted New draft 1439870 (roles: the placeholder as PI and Allocation Manager, benkirk and `nobody1031-probe` as User); persons `samr9001-user-p1031a` and `nobody1031-probe` **deleted**, merged into benkirk |

@@ -32,3 +32,8 @@ def test_the_card_shows_it_for_sam_only(auth_client):
     html = auth_client.get('/admin/htmx/configuration').data.decode()
     assert html.count('DB clock') == 1
     assert 's from app' in html
+
+
+def test_the_xras_tile_shows_the_submit_lever_off_in_tests(auth_client):
+    html = auth_client.get('/admin/htmx/configuration').get_data(as_text=True)
+    assert 'XRAS_SUBMIT_ENABLED' in html and 'Users may file' in html

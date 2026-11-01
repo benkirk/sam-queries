@@ -1,0 +1,90 @@
+{#- The review of a request: what it asks for, SAM's preflight, the documents the rule book names
+    (a Renewal or New), the agreement, then Back (stage=edit, a New's stage=request) or Submit
+    (stage=submit). Context: the form's, plus data (the loaded form: end_date | amounts,
+    user_comments | abstract and begin_date, grant, verdict, review_error). -#}
+{% from 'dashboards/fragments/xras_bits.html' import agreement %}
+{% from 'dashboards/user/partials/request_bits.html' import request_title, carry, document_field, grant_facts, roster_facts, verdict_note %}
+{% set _new = action_type == 'New' %}
+{{ request_title('Review the ' ~ action_type ~ (' request' if _new else ''), meta=project.projcode if project else None) }}
+<form hx-post="{{ post_url }}" hx-target="#xrasRequestModalBody" hx-swap="innerHTML"
+      {%- if documents %} hx-encoding="multipart/form-data"{% endif %}
+      hx-disabled-elt="find button[type='submit']" hx-disinherit="hx-disabled-elt" novalidate>
+    <div class="modal-body">
+        <dl class="row small mb-2">
+            {% if _new %}
+            <dt class="col-sm-4">Opportunity</dt>
+            <dd class="col-sm-8">{{ opportunity.opportunity_name }}</dd>
+            <dt class="col-sm-4">Title</dt>
+            <dd class="col-sm-8 text-break">{{ data.title }}</dd>
+            <dt class="col-sm-4">Project code</dt>
+            <dd class="col-sm-8"><span class="font-monospace">{{ chosen_mnemonic or (sam_state.mnemonic.code if sam_state.mnemonic else '—') }}</span>
+                <span class="text-muted">letters; XRAS numbers the request when you submit</span></dd>
+            {% if data.admin_username %}
+            <dt class="col-sm-4">Project admin</dt>
+            <dd class="col-sm-8">{{ chosen_admin or data.admin_username }}</dd>
+            {% endif %}
+            {{ roster_facts(data.draft.roster if data.draft else none, roster_private) }}
+            {% else %}
+            <dt class="col-sm-4">XRAS request</dt>
+            <dd class="col-sm-8 font-monospace">{{ decision.request_number }}</dd>
+            {% endif %}
+            {% if action_type == 'Extension' %}
+            <dt class="col-sm-4">New end date</dt>
+            <dd class="col-sm-8">{{ data.end_date | fmt_date }}{% if floor %} <span class="text-muted">(from {{ floor | fmt_date }})</span>{% endif %}</dd>
+            {% else %}
+            {% if action_type in ('Renewal', 'New') %}
+            <dt class="col-sm-4">Window</dt>
+            <dd class="col-sm-8">{{ data.begin_date | fmt_date }} to {{ data.end_date | fmt_date }}</dd>
+            {% endif %}
+            {% for r in resources if r.resource_id in data.amounts %}
+            <dt class="col-sm-4">{{ r.name }}</dt>
+            <dd class="col-sm-8">{% if r.yes_no %}Yes{% else %}{{ data.amounts[r.resource_id] | fmt_number(raw=True) }} {{ r.units }}{% endif %}</dd>
+            {% endfor %}
+            {% endif %}
+            {{ grant_facts(data.grant, grant_agencies) }}
+            {% if action_type in ('Renewal', 'New') %}
+            <dt class="col-sm-4">Abstract</dt>
+            <dd class="col-sm-8 text-break">{{ data.abstract | truncate(300) }}</dd>
+            {% else %}
+            <dt class="col-sm-4">Why</dt>
+            <dd class="col-sm-8 text-break">{{ data.user_comments }}</dd>
+            {% endif %}
+        </dl>
+        {{ verdict_note(data.verdict) }}
+        {% for d in documents %}
+        {{ document_field('xrasRequestDoc' ~ loop.index, 'document_' ~ d.code, d.label,
+                          'PDF' ~ (', at most ' ~ d.hard_page_limit ~ ' pages' if d.hard_page_limit else ''),
+                          gate=True) }}
+        {% endfor %}
+        <p class="small text-muted mb-2">Submitting sends this to XRAS for review. You can follow it
+            on {{ (request_urls or {}).get('where') or 'My Requests' }}.</p>
+        {% if action_type == 'Extension' %}
+        <input type="hidden" name="end_date" value="{{ data.end_date.isoformat() }}">
+        {% else %}
+        {% for rid, amount in data.amounts.items() %}<input type="hidden" name="amount_{{ rid }}" value="{{ amount | fmt_input }}">{% endfor %}
+        {% endif %}
+        {% if _new %}
+        {{ carry(form, carry_fields) }}
+        <input type="hidden" name="begin_date" value="{{ data.begin_date.isoformat() }}">
+        <input type="hidden" name="end_date" value="{{ data.end_date.isoformat() }}">
+        {% elif action_type == 'Renewal' %}
+        {{ carry(form, grant_inputs) }}
+        <input type="hidden" name="begin_date" value="{{ data.begin_date.isoformat() }}">
+        <input type="hidden" name="end_date" value="{{ data.end_date.isoformat() }}">
+        <input type="hidden" name="abstract" value="{{ data.abstract }}">
+        {% else %}
+        <input type="hidden" name="user_comments" value="{{ data.user_comments }}">
+        {% endif %}
+        {{ agreement(eula_sha, error=data.review_error, gate=True,
+                     terms_url=(request_urls or {}).get('terms')) }}
+    </div>
+    <div class="modal-footer">
+        <span class="small text-muted me-auto" data-gate-hint role="status"></span>
+        <button type="submit" name="stage" value="{{ 'request' if _new else 'edit' }}" class="btn btn-secondary">
+            <i class="fa-solid fa-arrow-left"></i> Back</button>
+        <button type="submit" name="stage" value="submit" class="btn btn-primary" data-gate-submit
+                data-busy="Sending to XRAS. This can take a few seconds."
+                {% if data.verdict.status == 'failed' %}data-gate-blocked disabled title="SAM could not apply this; go back and change it"{% endif %}>
+            <span class="spinner-border spinner-border-sm busy-spinner" aria-hidden="true"></span><i class="fa-solid fa-paper-plane busy-icon"></i> Submit</button>
+    </div>
+</form>

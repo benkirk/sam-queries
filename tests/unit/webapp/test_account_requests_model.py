@@ -54,6 +54,21 @@ class TestTheInvariants:
                                   last_name='B', purpose='submission',
                                   created_by='benkirk')
 
+    def test_a_visitors_own_submission_learns_its_placeholder_later(self, session):
+        """/request: the row exists before SAM mints the XRAS person at submit."""
+        row = AccountRequest.create(session, email='a@x.edu', first_name='A', last_name='B',
+                                    purpose='submission', created_by='self')
+        assert row.xras_username is None
+        row.attach_placeholder(' Samr7-User-A1B2C3 ')
+        assert row.xras_username == 'samr7-user-a1b2c3'
+        row.attach_placeholder('samr7-user-a1b2c3')            # the same name again is a no-op
+        with pytest.raises(ValueError, match='already names'):
+            row.attach_placeholder('samr7-user-ffffff')
+
+    def test_only_a_submission_carries_a_placeholder(self, session):
+        with pytest.raises(ValueError, match='only a submission'):
+            make_account_request(session).attach_placeholder('x-user-y')
+
     def test_standalone_carries_no_project(self, session):
         project = make_project(session)
         with pytest.raises(ValueError, match='standalone'):
@@ -334,3 +349,61 @@ class TestTheInvitationLink:
         assert stamped.eula_sha == 'abc' and stamped.eula_accepted_at == self.SENT
         bare = make_account_request(session, eula_sha='abc')
         assert bare.eula_sha is None and bare.eula_accepted_at is None
+
+
+class TestTheVisitorHold:
+    """A /request registration stays off NUSD's queue until its New is approved (3a)."""
+
+    def _row(self, session, **kw):
+        from factories import next_seq
+        from sam.core.account_requests import AccountRequest
+        return AccountRequest.create(
+            session, email=f'zz.held.{next_seq("1")}@example.invalid', first_name='Vis',
+            last_name='Itor', verified_by='self', **{'purpose': 'submission',
+                                                     'created_by': 'self', **kw})
+
+    def test_it_is_held_until_requested_and_the_queue_agrees(self, session):
+        from factories import next_seq
+        from sam.core.account_requests import AccountRequest
+        from sam.queries.account_requests import queue_requests
+        held = self._row(session)
+        swept = self._row(session, created_by='sweep', xras_username=f'zz{next_seq("1")}-user-ab')
+        assert held.is_held and not swept.is_held
+        ids = {r.account_request_id for r in queue_requests(session)}
+        assert held.account_request_id not in ids and swept.account_request_id in ids
+        held.mark_requested()
+        assert not held.is_held
+        assert held.account_request_id in {r.account_request_id for r in queue_requests(session)}
+        assert session.query(AccountRequest).filter(
+            AccountRequest.is_held,
+            AccountRequest.account_request_id == swept.account_request_id).count() == 0
+
+    def test_the_approvals_refusal_names_the_registration(self, session):
+        from datetime import datetime
+        from factories import next_seq
+        from sam.integration.xras_submission import XrasSubmission
+        from sam.manage.account_requests import refused_visitor_registration
+        row = self._row(session)
+        request_id = int(next_seq('7'))
+        XrasSubmission.create(session, action_type='New', created_by='registration:1',
+                              xa_user='samr1-user-a1b2c3', eula_sha='a' * 40,
+                              eula_accepted_at=datetime.now(), payload={},
+                              request_id=request_id, registration_id=row.account_request_id)
+        refused = ['PI samr1-user-a1b2c3 is not in database', 'Username x is missing']
+        assert refused_visitor_registration(session, request_id, refused) is row
+        assert refused_visitor_registration(session, request_id, ['Missing pi role']) is None
+        assert refused_visitor_registration(session, request_id + 1, refused) is None
+
+    def test_the_release_names_an_active_holder_and_not_a_lapsed_one(self, session):
+        """The account ticket is noise when one active SAM user already holds the address;
+        an inactive holder, or nobody, still gets one."""
+        from factories import make_email_address, make_user
+        from sam.manage.account_requests import release_visitor_registration
+        known, lapsed, fresh = self._row(session), self._row(session), self._row(session)
+        active = make_user(session)
+        make_email_address(session, active, email=known.email)
+        make_email_address(session, make_user(session, active=False), email=lapsed.email)
+        assert release_visitor_registration(session, known) == active.username
+        assert release_visitor_registration(session, lapsed) is None
+        assert release_visitor_registration(session, fresh) is None
+        assert all(r.requested_at is not None for r in (known, lapsed, fresh)), 'all released'

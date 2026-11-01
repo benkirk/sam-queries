@@ -387,8 +387,8 @@ def handle_htmx_form_post(
 
 def institution_options():
     """The datalist options for a ``datalist_field('organization', ...)``:
-    live institution names matching what was typed. One view behind two
-    routes (the login-gated invite form, the anonymous public form), each
+    live institution names matching what was typed. One view behind three
+    routes (the invite form, the public form, the visitor's request), each
     keeping its own decorators."""
     from sam.queries.admin import search_institutions
     from webapp.extensions import db
@@ -400,7 +400,7 @@ def institution_options():
 
 def register_typeahead(bp, *, rule, endpoint, permission, search, template,
                        ctx_key, min_len=2, any_facility=False,
-                       active_only_default=False):
+                       active_only_default=False, guard=None):
     """Register a search-as-you-type GET endpoint on ``bp``.
 
     Standard shape shared by the FK pickers and admin search boxes:
@@ -412,7 +412,8 @@ def register_typeahead(bp, *, rule, endpoint, permission, search, template,
     Args:
         rule / endpoint: URL rule and endpoint name — passed explicitly so
                          existing template ``hx-get`` URLs stay stable.
-        permission:      Permission gating the endpoint.
+        permission:      Permission gating the endpoint; ``None`` means any
+                         logged-in user (a picker on the user dashboard).
         any_facility:    use ``require_permission_any_facility`` instead of
                          ``require_permission`` (scoped-manager pickers).
         search:          callable ``(q, active_only) -> list`` running the
@@ -424,6 +425,9 @@ def register_typeahead(bp, *, rule, endpoint, permission, search, template,
         min_len:         minimum query length (below -> empty response).
         active_only_default: default for ``read_active_only`` when the
                          param is absent (see that helper's docstring).
+        guard:           replaces ``login_required`` + ``permission``: a decorator
+                         that admits the request its own way (a signed token in
+                         the rule) and may take the rule's URL arguments.
     """
     # Local imports: cycle — rbac and several blueprints import from this
     # module at import time.
@@ -433,7 +437,7 @@ def register_typeahead(bp, *, rule, endpoint, permission, search, template,
         require_permission, require_permission_any_facility,
     )
 
-    def view():
+    def view(**_url_args):
         q = (_request.args.get('q') or '').strip()
         if len(q) < min_len:
             return ''
@@ -442,8 +446,14 @@ def register_typeahead(bp, *, rule, endpoint, permission, search, template,
         return render_template(template, q=q, **{ctx_key: search(q, active_only)})
 
     view.__name__ = endpoint
-    gate = (require_permission_any_facility(permission) if any_facility
-            else require_permission(permission))
+    if guard is not None:
+        bp.add_url_rule(rule, endpoint=endpoint, view_func=guard(view))
+        return
+    if permission is None:
+        gate = (lambda f: f)
+    else:
+        gate = (require_permission_any_facility(permission) if any_facility
+                else require_permission(permission))
     bp.add_url_rule(rule, endpoint=endpoint,
                     view_func=login_required(gate(view)))
 

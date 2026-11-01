@@ -194,7 +194,7 @@ def _collapse_superseded(alloc: Allocation) -> None:
     Legacy SAM ignores ``allocation.deleted`` in sysacct, directory access and
     the fairShareTree, so a superseded row left at full length stays live there
     beside its replacement. An end before the start is not an option: legacy's
-    ``DateRange.validateStartEnd`` throws. See docs/plans/HARD_DELETE_AUDIT.md §1.
+    ``DateRange.validateStartEnd`` throws. See docs/plans/implemented/HARD_DELETE_AUDIT.md §1.
     """
     alloc.end_date = end_of_day(alloc.start_date)
 

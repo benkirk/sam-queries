@@ -317,8 +317,9 @@ def _xras_request_ticket() -> Dict[str, Any]:
         'other_blockers': ['Cannot find contract for grant number "AGS-2146709" ("2146709")'],
         'pointers': ['To fix a contract: create it from the seeded form (Admin > Contracts), '
                      "or waive it with the request's contract override."],
-        'queued': [{'id': 41, 'name': 'Ada Lovelace', 'email': 'ada.lovelace@example.edu',
-                    'purpose': 'submission', 'state': 'submitted'}],
+        'queued': [{'id': 41, 'handle': 'SAM-AR-41', 'name': 'Ada Lovelace',
+                    'email': 'ada.lovelace@example.edu', 'purpose': 'submission',
+                    'state': 'submitted'}],
         'merges': [{'placeholder': 'jane-user-1a2b', 'target': 'jlead'}],
         'card_url': 'https://sam.hpc.ucar.edu/allocations/xras?view=remediations',
     }
@@ -509,6 +510,7 @@ VARIABLE_NOTES: Dict[str, str] = {
     'pointers': 'One line per blocker kind saying where it is fixed.',
     'queued': "Open account requests for the roster in SAM's Accounts queue.",
     'queued.id': 'The SAM account-request id.',
+    'queued.handle': "SAM-AR-<id>, the handle its account ticket carries.",
     'queued.name': "The requester's name.",
     'queued.email': "The requester's email address.",
     'queued.purpose': "One of 'standalone', 'enrollment', 'submission', 'reactivation'.",

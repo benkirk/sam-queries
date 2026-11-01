@@ -1,0 +1,18 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{% from 'dashboards/fragments/form_fields.html' import checkbox_field with context %}
+{% from 'dashboards/allocations/partials/allocation_guide_fields.html' import guide_fields with context %}
+{# htmx: Edit allocation type guide (loaded into #editAllocationGuideFormContainer). The XRAS type is fixed. #}
+{{ modal_title('editAllocationGuideModalLabel', guide.title, 'signs-post',
+               meta='XRAS type ' ~ guide.xras_allocation_type_id) }}
+
+{% call htmx_form(
+    url_for('allocations_dashboard.htmx_allocation_guide_edit', allocation_type_guide_id=guide.allocation_type_guide_id),
+    '#editAllocationGuideFormContainer',
+    'Save Changes',
+    is_edit=True,
+    errors=errors
+) %}
+        {{ guide_fields(guide, 'editAllocationGuide') }}
+        {{ checkbox_field('active', 'Active', default=guide.active, id='editAllocationGuideActive') }}
+{% endcall %}

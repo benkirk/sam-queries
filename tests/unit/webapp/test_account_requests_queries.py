@@ -215,7 +215,8 @@ class TestStampAccountRequests:
         stamp_account_requests(session, worklist)
         assert worklist[0]['account_request'] == {
             'id': row.account_request_id, 'state': 'claimed', 'assignee': 'op',
-            'requested_at': None, 'fulfilled': False, 'creation_time': row.creation_time}
+            'requested_at': None, 'held': False, 'fulfilled': False,
+            'creation_time': row.creation_time}
         assert worklist[1]['account_request'] is None
 
     def test_an_empty_worklist_is_a_no_op(self, session):

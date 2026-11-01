@@ -29,7 +29,7 @@ legacy leaves no trace.
 
 WARNING: if Transfer traffic ever appears, this is the thing to notice. The
 query is ``status='manual' AND action_type='Transfer'``. See
-``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``, *Write primitives* item 5.
+``docs/plans/implemented/XRAS_SPRINT_C.md``, *Write primitives* item 5.
 """
 
 import logging

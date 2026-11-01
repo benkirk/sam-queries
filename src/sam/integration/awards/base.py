@@ -109,8 +109,9 @@ class AwardProvider(ABC):
         """Whether this provider can attempt *contract_number*. No I/O."""
 
     @abstractmethod
-    def fetch(self, contract_number: str) -> Optional[AwardRecord]:
-        """Look the award up.
+    def fetch(self, contract_number: str, *, exact: bool = False) -> Optional[AwardRecord]:
+        """Look the award up; *exact* forbids any fuzzy fallback (a provider that only
+        matches exactly ignores it).
 
         Returns:
             The record, or ``None`` when the source has no such award.
