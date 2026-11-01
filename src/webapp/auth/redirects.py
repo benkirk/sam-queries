@@ -15,6 +15,8 @@ def is_safe_redirect(target):
 
 def current_target():
     """The page the visitor was on, or None. For htmx it is the page (HX-Current-URL), not the fragment."""
+    if request.blueprint == 'auth':
+        return None   # /auth/logout as next signs the visitor straight out again
     if request.headers.get('HX-Request'):
         page = urlparse(request.headers.get('HX-Current-URL', ''))
         target = page.path + (f'?{page.query}' if page.query else '')

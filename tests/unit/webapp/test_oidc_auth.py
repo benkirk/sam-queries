@@ -493,6 +493,12 @@ class TestLoginReturnsToTarget:
         assert resp.status_code == 302
         assert self._next(resp.headers['Location']) == '/user/requests?view=open'
 
+    def test_a_signed_out_logout_carries_no_next(self, client):
+        """A stale tab's Logout must not become next: signing in would sign straight out."""
+        resp = client.get('/auth/logout')
+        assert resp.status_code == 302
+        assert self._next(resp.headers['Location']) is None
+
     def test_an_htmx_request_carries_its_page_not_the_fragment(self, client):
         resp = client.get('/user/requests', headers={
             'HX-Request': 'true',
