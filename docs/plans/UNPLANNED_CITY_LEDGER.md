@@ -2336,12 +2336,21 @@ wired right on its own, and nothing joined it to the way in.
   - The reopen fetches with `htmx.ajax`, because a just-swapped opener clicked before htmx bound
     it opened an empty dialog (job history).
   - Pinned by `e2e/test_chart_expand_return.py`, which fails on staging.
+  - N8 replaced this commit's mechanism; the behavior stays.
 - [x] N5, legibility:
   - A registry item's `active_endpoints` may be a mapping that names each sub-page's crumb:
     Configuration's three panels, Mnemonic Codes, Last seen and XRAS Configuration.
   - One `aria-current` per trail.
   - Manage Project has one trail per viewer and no Back button.
   - `?from=admin` resource trails are only for viewers who can open Admin.
+- [x] N8, friction: Back and Forward walk the view dialogs (`modal-history.js`).
+  - The quick-views and the expanded chart (`data-dialog-history`) get one entry each, naming
+    the GET that filled them. Back, Forward, a reload and a return make the page match.
+  - The close button steps back, so a chain unwinds. Form dialogs take no entry.
+  - The popstate listener runs before htmx's and stops its snapshot restore between dialog
+    entries.
+  - This replaced N4's in-memory return and `?expand` marker. Ben chose the symmetric design
+    after the first prototype left a dead Back press and a Forward trap (2026-11-01).
 - [x] Skill: the Findability heuristic.
 
 **Tried and dropped:**
@@ -2355,8 +2364,9 @@ wired right on its own, and nothing joined it to the way in.
 
 - [ ] N6: the job and directory explorers open in a new tab (`target="_blank"`) with no trail.
 - [ ] N7: page titles in six formats; one `X — SAM` through a block in `base.html`.
-- [ ] N8: Back closes an open dialog instead of leaving the page. Prototyped on `nav-polish-n8`; see
-  #887 for the cost; it waits on Ben.
+- [ ] `test_chart_fingerprints` fails on clean staging on 2026-11-01: the 18 status-history
+  charts (node type, queue cores and GPUs) move. That is a DST day, so the fixture's window
+  probably depends on the date. It was not read further.
 - [ ] Tab and pill state lives only in localStorage on the job-history, disk-scan and allocation
   cards, so those views cannot be linked to.
 - [ ] Resource details for staff reached through a quick-view says "My Accounts" for a project
