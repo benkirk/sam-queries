@@ -92,6 +92,18 @@
                                     </div>
                                 </div>
                                 {% else %}
+                                {% set _entry = public_entry_points() %}
+                                {% if _entry %}
+                                <div class="nav-item dropdown">
+                                    <a class="nav-link dropdown-toggle" href="#" id="getAccessDropdown" role="button"
+                                       data-bs-toggle="dropdown" aria-expanded="false">Get access</a>
+                                    <div class="dropdown-menu dropdown-menu-end" aria-labelledby="getAccessDropdown">
+                                        {% for label, url, icon in _entry %}
+                                        <a class="dropdown-item" href="{{ url }}"><i class="{{ icon }} me-2" aria-hidden="true"></i>{{ label }}</a>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% endif %}
                                 <a class="nav-link" href="{{ url_for('auth.login') }}">Login</a>
                                 {% endif %}
                             </div>
@@ -235,6 +247,7 @@
     <script src="{{ url_for('static', filename='js/dashboard-init.js') }}"></script>
     <script src="{{ url_for('static', filename='js/admin-cards.js') }}"></script>
     <script src="{{ url_for('static', filename='js/modals.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/modal-history.js') }}"></script>
     <script src="{{ url_for('static', filename='js/form-helpers.js') }}"></script>
     <script src="{{ url_for('static', filename='js/submit-gate.js') }}"></script>
     <script src="{{ url_for('static', filename='js/lazy-loading.js') }}"></script>

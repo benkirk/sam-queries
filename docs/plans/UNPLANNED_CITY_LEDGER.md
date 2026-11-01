@@ -50,6 +50,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-31 | `dfef6f6f` + sweep 32 (the My Requests window, #877) | 53 / 65 / 26 | 1 (2) | 21 / 67 | 20 (20), 2 kept | 5,332 / 53 / 7 | 109 (54) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 6 |
 | 2026-10-31 | `283fe47c` (#878-#882 as merged), before sweep 33 | 60 / 73 / 26 | 1 (2) | 28 / 89 | 20 (20), 2 kept | 5,425 / 53 / 7 | 109 (54) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 7 |
 | 2026-10-31 | `283fe47c` + sweep 33 (the sprint-2 window) | 51 / 63 / 26 | 1 (2) | 26 / 83 | 20 (20), 2 kept | 5,425 / 53 / 7 | 109 (54) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 5 |
+| 2026-11-01 | `af62e41d` + sweep 34 (navigation) | 51 / 63 / 26 | 1 (2) | 26 / 83 | 20 (20), 2 kept | 5,498 / 54 / 8 | 109 (54) | 0 / 0 | 0 | 5 / 6 | 17 (13) | 5 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -2301,6 +2302,79 @@ guide (Ben, 2026-10-31).
 - [ ] `tests/api/test_xras_access.py::TestDispatchArms` fails three or four tests under `-n 4`
   on `origin/staging` itself (two runs on a clean worktree) and passes serially: a parallel-order
   flake, not read further.
+
+## 34. 2026-11-01: area sweep, navigation (the menu, the trail, sign-in and Back)
+
+**Mode:** area, the navigation chrome. These are the nav registry (`webapp/utils/nav.py`), the
+navbar and drawer, breadcrumbs, the login page, the public forms' entry points, and dialog
+history. **End commit:** `af62e41d`. Ben's four reports were all one shape: each feature was
+wired right on its own, and nothing joined it to the way in.
+
+- My Requests was a tab and not a nav item.
+- `/register` and `/request` linked only to themselves.
+- The sunburst's handoff to a quick-view kept no record.
+- The login lost its target twice. The unauthorized handlers built no `next`, and the login
+  page's forms and SSO link dropped any `next` they were given. The register gates' docstring
+  promised the round trip, and their test checked only the first hop.
+
+**Done** (one commit each, #887 on `nav-polish`):
+
+- [x] N1, default route: `webapp/auth/redirects.py` builds and checks `next`.
+  - For htmx, the target is the page in `HX-Current-URL`, not the fragment.
+  - `/\host` is refused.
+  - The handlers and the four register gates use it, and the login forms and SSO link keep it.
+  - A signed-in `/auth/login?next=` follows it, and `oidc_login` drops a stale `oidc_next`.
+- [x] N2, gap: My Requests is a registry item, and the drawer has My Dashboard.
+  `test_every_section_tab_is_in_the_nav` fails on a strip tab the registry cannot locate.
+- [x] N3, gap: `nav.public_entry_points()` covers each public form that serves a visitor here:
+  mounted, not login-gated, and for `/request` the XRAS visitor lever on. It drives the login
+  page's "New to NCAR?" block and a signed-out "Get access" menu. Nothing renders in production
+  yet.
+- [x] N4, friction: the expanded sunburst comes back.
+  - Closing a quick-view opened from it reshows it, unless another dialog took over.
+  - `?expand=<opener key>` reopens it on load and on Back.
+  - The reopen fetches with `htmx.ajax`, because a just-swapped opener clicked before htmx bound
+    it opened an empty dialog (job history).
+  - Pinned by `e2e/test_chart_expand_return.py`, which fails on staging.
+  - N8 replaced this commit's mechanism; the behavior stays.
+- [x] N5, legibility:
+  - A registry item's `active_endpoints` may be a mapping that names each sub-page's crumb:
+    Configuration's three panels, Mnemonic Codes, Last seen and XRAS Configuration.
+  - One `aria-current` per trail.
+  - Manage Project has one trail per viewer and no Back button.
+  - `?from=admin` resource trails are only for viewers who can open Admin.
+- [x] N8, friction: Back and Forward walk the view dialogs (`modal-history.js`).
+  - The quick-views and the expanded chart (`data-dialog-history`) get one entry each, naming
+    the GET that filled them. Back, Forward, a reload and a return make the page match.
+  - The close button steps back, so a chain unwinds. Form dialogs take no entry.
+  - The popstate listener runs before htmx's and stops its snapshot restore between dialog
+    entries.
+  - This replaced N4's in-memory return and `?expand` marker. Ben chose the symmetric design
+    after the first prototype left a dead Back press and a Forward trap (2026-11-01).
+- [x] Skill: the Findability heuristic.
+
+**Tried and dropped:**
+
+- The status-history trails' Derecho fallback. Node-type history accepts only Casper, and queue
+  history's fallback fires only on a URL nothing links to.
+- The add-member hint's "email help@ucar.edu". Production has invitations on, so the hint already
+  links the Invitations tab.
+
+**Open:**
+
+- [ ] N6: the job and directory explorers open in a new tab (`target="_blank"`) with no trail.
+- [ ] N7: page titles in six formats; one `X — SAM` through a block in `base.html`.
+- [x] `test_chart_fingerprints` failed on clean staging on 2026-11-01, the DST change: the
+  dual-panel charts labelled their time axis with today's zone (`fmt.local_tz_label()` read
+  `now`). They now name the plotted window's zone ('MST/MDT' across a change), and the snapshot
+  says MST for the March fixture whatever the date.
+- [ ] Tab and pill state lives only in localStorage on the job-history, disk-scan and allocation
+  cards, so those views cannot be linked to.
+- [ ] Resource details for staff reached through a quick-view says "My Accounts" for a project
+  that is not theirs.
+- [ ] `/dev/gallery` has no inbound link (dev only).
+- [ ] Logging in from the navbar's Login link returns to the role default, not the page. That is
+  deliberate for now: a status-page visitor most likely wants their dashboard.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 

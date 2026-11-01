@@ -33,7 +33,7 @@ import time
 import bcrypt
 from functools import wraps
 from typing import Callable, Iterable, Optional
-from flask import request, jsonify, current_app, g, make_response, url_for
+from flask import request, jsonify, current_app, g, make_response
 from flask_limiter.util import get_remote_address
 from flask_login import current_user
 from webapp.utils.rbac import has_permission, Permission
@@ -367,7 +367,8 @@ def login_or_token_required(
                 # plain API callers get a JSON 401.
                 if request.headers.get('HX-Request'):
                     response = make_response('', 401)
-                    response.headers['HX-Redirect'] = url_for('auth.login')
+                    from webapp.auth.redirects import login_url
+                    response.headers['HX-Redirect'] = login_url()
                     return response
                 return jsonify({'error': 'Authentication required'}), 401
 

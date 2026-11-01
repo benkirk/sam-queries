@@ -9,7 +9,8 @@ Consumed by:
 The in-page ``page_tabs`` strips in each section's ``base_*.html`` keep their
 own tab lists on purpose: they carry request-specific labels and visibility
 (reservation counts, the impersonation-aware "X's Accounts" label,
-``my_data_available``) that the global registry can't know cheaply.
+``my_data_available``) that the global registry can't know cheaply. Every tab
+endpoint must still be a registry item (``test_every_section_tab_is_in_the_nav``).
 
 Register in the app factory:
     app.context_processor(nav_context_processor)
@@ -149,8 +150,9 @@ def _my_events_available():
 # Section keys: 'blueprint' drives section-level active state; 'endpoint' is
 # the section's default page (what the navbar label links to). Item keys:
 # 'active_endpoints' lists sub-pages that count as "on this item" (same idea
-# as the page_tabs macro). 'visible' callables gate rendering; omitted means
-# always visible (within a visible section).
+# as the page_tabs macro); as a mapping it also names each sub-page's crumb,
+# so the trail reads Section > Item > Sub-page. 'visible' callables gate
+# rendering; omitted means always visible (within a visible section).
 
 NAV_SECTIONS = (
     {
@@ -162,6 +164,8 @@ NAV_SECTIONS = (
         'items': (
             {'endpoint': 'user_dashboard.accounts', 'label': 'My Accounts',
              'icon': 'fa-solid fa-file-invoice-dollar'},
+            {'endpoint': 'user_dashboard.my_requests_page', 'label': 'My Requests',
+             'icon': 'fa-solid fa-paper-plane'},
             {'endpoint': 'user_dashboard.info', 'label': 'User Information',
              'icon': 'fa-solid fa-circle-user'},
             {'endpoint': 'user_dashboard.my_data', 'label': 'My Data',
@@ -209,7 +213,7 @@ NAV_SECTIONS = (
              'icon': 'fa-solid fa-scale-balanced'},
             {'endpoint': 'allocations_dashboard.xras', 'label': 'XRAS',
              'icon': 'fa-solid fa-plug', 'visible': _can_view_xras,
-             'active_endpoints': ('allocations_dashboard.xras_configuration',)},
+             'active_endpoints': {'allocations_dashboard.xras_configuration': 'Configuration'}},
         ),
     },
     {
@@ -225,11 +229,12 @@ NAV_SECTIONS = (
              'icon': 'fa-solid fa-folder-tree'},
             {'endpoint': 'admin_dashboard.users_groups', 'label': 'Users & Groups',
              'icon': 'fa-solid fa-users',
-             'active_endpoints': ('admin_dashboard.users_last_seen',)},
+             'active_endpoints': {'admin_dashboard.users_last_seen': 'Last seen'}},
             {'endpoint': 'admin_dashboard.resources', 'label': 'Resources',
              'icon': 'fa-solid fa-server'},
             {'endpoint': 'admin_dashboard.organizations', 'label': 'Organizations',
-             'icon': 'fa-solid fa-sitemap'},
+             'icon': 'fa-solid fa-sitemap',
+             'active_endpoints': {'admin_dashboard.organizations_mnemonics': 'Mnemonic Codes'}},
             {'endpoint': 'admin_dashboard.contracts', 'label': 'Contracts',
              'icon': 'fa-solid fa-file-signature'},
             {'endpoint': 'admin_dashboard.facilities', 'label': 'Facilities & Allocations',
@@ -245,7 +250,10 @@ NAV_SECTIONS = (
             {'endpoint': 'admin_dashboard.roles', 'label': 'Roles & access',
              'icon': 'fa-solid fa-user-shield', 'visible': _can_manage_roles},
             {'endpoint': 'admin_dashboard.configuration', 'label': 'Configuration',
-             'icon': 'fa-solid fa-sliders', 'visible': _can_view_config},
+             'icon': 'fa-solid fa-sliders', 'visible': _can_view_config,
+             'active_endpoints': {'admin_dashboard.notifications': 'Notifications',
+                                  'admin_dashboard.rate_limits': 'Rate limiting',
+                                  'admin_dashboard.scheduled_tasks': 'Scheduled tasks'}},
         ),
     },
 )
@@ -312,9 +320,30 @@ def nav_locate(endpoint):
     return None, None
 
 
+def public_entry_points():
+    """The public forms a signed-out visitor can use on this deployment, as (label, url, icon).
+
+    A form is listed only when it serves the visitor: mounted, and not bounced to login by
+    ACCOUNT_REGISTRATION_LOGIN_REQUIRED. /request also needs the XRAS visitor lever.
+    """
+    if current_app.config.get('ACCOUNT_REGISTRATION_LOGIN_REQUIRED', False):
+        return []
+    from flask import url_for
+    points = []
+    if 'register' in current_app.blueprints:
+        points.append(('Request an NCAR account', url_for('register.form'), 'fa-solid fa-user-plus'))
+    if 'allocation_request' in current_app.blueprints:
+        from webapp.utils.xras import interactive_config
+        if interactive_config().visitor_submit_configured:
+            points.append(('Request an allocation', url_for('allocation_request.overview'),
+                           'fa-solid fa-paper-plane'))
+    return points
+
+
 def nav_context_processor():
-    """Template context: ``nav_sections()`` (callable) and ``nav_locate``."""
+    """Template context: ``nav_sections()``, ``nav_locate`` and ``public_entry_points()``."""
     return {
         'nav_sections': resolve_nav_sections,
         'nav_locate': nav_locate,
+        'public_entry_points': public_entry_points,
     }

@@ -198,7 +198,8 @@
         if (opener && opener.offsetParent !== null) opener.click();
     }
 
-    // Reopening shows the spinner, never the previous chart while the next loads.
+    // Reopening shows the spinner, never the previous chart while the next loads. Back,
+    // Forward and the close button walk dialogs through modal-history.js.
     var expandLoading = null;
     document.addEventListener('show.bs.modal', function (e) {
         if (e.target.id !== 'chartExpandModal' || expandLoading) return;

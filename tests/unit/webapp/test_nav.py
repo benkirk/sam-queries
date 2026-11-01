@@ -7,6 +7,8 @@ permission-driven per request; ``nav_locate`` maps endpoints to their
 section/item for breadcrumb derivation.
 """
 
+import pytest
+
 from webapp.utils.nav import NAV_SECTIONS, nav_locate
 
 
@@ -47,6 +49,21 @@ class TestNavLocate:
             assert s['endpoint'] in app.view_functions
             for i in s['items']:
                 assert i['endpoint'] in app.view_functions, i['endpoint']
+
+    def test_every_section_tab_is_in_the_nav(self):
+        """A tab added to a section strip and not to the registry is a page the menu
+        cannot reach (My Requests was one)."""
+        import re
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[3] / 'src/webapp/templates/dashboards'
+        strips = list(root.glob('*/base_*.html'))
+        assert len(strips) >= 4
+        missing = sorted(
+            f'{f.name}: {ep}'
+            for f in strips
+            for ep in re.findall(r"'endpoint':\s*'([a-z_]+\.[a-z_]+)'", f.read_text())
+            if nav_locate(ep)[1] is None)
+        assert not missing, missing
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +154,37 @@ class TestBreadcrumbs:
         # active (unlinked) crumb.
         assert 'aria-current="page">Transactions' in html
 
+    def test_my_requests_is_in_the_menu_and_the_trail(self, auth_client):
+        html = auth_client.get('/user/requests').get_data(as_text=True)
+        assert 'aria-current="page">My Requests' in html
+        assert html.count('href="/user/requests"') >= 3   # navbar, drawer, tab strip
+
+    @pytest.mark.parametrize('path, parent, leaf', [
+        ('/admin/htmx/notifications', 'Configuration', 'Notifications'),
+        ('/admin/htmx/rate-limits', 'Configuration', 'Rate limiting'),
+        ('/admin/htmx/tasks', 'Configuration', 'Scheduled tasks'),
+        ('/admin/users/last-seen', 'Users &amp; Groups', 'Last seen'),
+        ('/admin/organizations/mnemonics', 'Organizations', 'Mnemonic Codes'),
+        ('/allocations/xras/configuration', 'XRAS', 'Configuration'),
+    ])
+    def test_sub_pages_name_their_parent(self, auth_client, path, parent, leaf):
+        import re
+        resp = auth_client.get(path)
+        if resp.status_code == 404:
+            pytest.skip(f'{path} not mounted here')
+        trail = re.search(r'<nav aria-label="breadcrumb" class="sam-breadcrumbs">(.*?)</nav>',
+                          resp.get_data(as_text=True), re.S).group(1)
+        assert f'>{parent}</a>' in trail, trail
+        assert f'aria-current="page">{leaf}<' in trail, trail
+
+    def test_only_the_last_crumb_is_current(self, auth_client, active_project):
+        import re
+        html = auth_client.get(f'/admin/project/{active_project.projcode}/edit').get_data(as_text=True)
+        trail = re.search(r'class="sam-breadcrumbs">(.*?)</nav>', html, re.S).group(1)
+        assert trail.count('aria-current') == 1
+        assert f'aria-current="page">Manage {active_project.projcode}<' in trail
+        assert '>Projects</a>' in trail and 'Back to Dashboard' not in html
+
     def test_no_breadcrumbs_outside_registry(self, client):
         html = client.get('/auth/login').get_data(as_text=True)
         assert 'sam-breadcrumbs' not in html
@@ -145,3 +193,36 @@ class TestBreadcrumbs:
         """The referrer-based .back-link machinery is fully retired."""
         html = auth_client.get('/user/accounts').get_data(as_text=True)
         assert 'back-link' not in html
+
+
+class TestPublicEntryPoints:
+    """The public forms are linked only where they serve a signed-out visitor."""
+
+    def test_login_page_and_navbar_link_the_open_form(self, client):
+        login = client.get('/auth/login').get_data(as_text=True)
+        assert 'href="/register/"' in login and 'New to NCAR?' in login
+        status = client.get('/status/derecho').get_data(as_text=True)
+        assert 'id="getAccessDropdown"' in status
+        assert status.count('href="/register/"') == 2      # navbar + drawer
+
+    def test_nothing_when_the_form_bounces_to_login(self, app, client, monkeypatch):
+        monkeypatch.setitem(app.config, 'ACCOUNT_REGISTRATION_LOGIN_REQUIRED', True)
+        assert 'New to NCAR?' not in client.get('/auth/login').get_data(as_text=True)
+        assert 'getAccessDropdown' not in client.get('/status/derecho').get_data(as_text=True)
+
+    def test_request_link_needs_the_visitor_lever(self, app, monkeypatch):
+        from types import SimpleNamespace
+        import webapp.utils.xras as xras
+        if 'allocation_request' not in app.blueprints:
+            pytest.skip('allocation_request blueprint not mounted')
+        with app.test_request_context('/auth/login'):
+            from webapp.utils.nav import public_entry_points
+            monkeypatch.setattr(xras, 'interactive_config',
+                                lambda: SimpleNamespace(visitor_submit_configured=False))
+            assert 'Request an allocation' not in [p[0] for p in public_entry_points()]
+            monkeypatch.setattr(xras, 'interactive_config',
+                                lambda: SimpleNamespace(visitor_submit_configured=True))
+            assert 'Request an allocation' in [p[0] for p in public_entry_points()]
+
+    def test_signed_in_users_see_no_get_access(self, auth_client):
+        assert 'getAccessDropdown' not in auth_client.get('/user/accounts').get_data(as_text=True)

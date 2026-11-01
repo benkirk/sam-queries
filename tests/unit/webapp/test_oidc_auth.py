@@ -480,6 +480,76 @@ class TestOpenRedirectProtection:
             assert 'evil.com' not in location
 
 
+class TestLoginReturnsToTarget:
+    """A sign-in lands on the page that sent the visitor to it, through every hop."""
+
+    @staticmethod
+    def _next(location):
+        from urllib.parse import parse_qs, urlparse
+        return parse_qs(urlparse(location).query).get('next', [None])[0]
+
+    def test_a_page_request_carries_itself_as_next(self, client):
+        resp = client.get('/user/requests?view=open')
+        assert resp.status_code == 302
+        assert self._next(resp.headers['Location']) == '/user/requests?view=open'
+
+    def test_a_signed_out_logout_carries_no_next(self, client):
+        """A stale tab's Logout must not become next: signing in would sign straight out."""
+        resp = client.get('/auth/logout')
+        assert resp.status_code == 302
+        assert self._next(resp.headers['Location']) is None
+
+    def test_an_htmx_request_carries_its_page_not_the_fragment(self, client):
+        resp = client.get('/user/requests', headers={
+            'HX-Request': 'true',
+            'HX-Current-URL': 'https://sam.example.org/allocations/projects?tab=xras'})
+        assert resp.status_code == 401
+        assert self._next(resp.headers['HX-Redirect']) == '/allocations/projects?tab=xras'
+
+    def test_the_login_forms_keep_next(self, client):
+        import html
+        import re
+        page = client.get('/auth/login?next=/user/requests').data.decode()
+        actions = re.findall(r'<form method="POST" action="([^"]+)"', page)
+        assert actions and all(self._next(html.unescape(a)) == '/user/requests' for a in actions)
+        resp = client.post(html.unescape(actions[0]),
+                           data={'username': 'benkirk', 'password': 'test'})
+        assert resp.headers['Location'].endswith('/user/requests')
+
+    def test_the_sso_link_keeps_next(self, app):
+        import html
+        import re
+        app.config['AUTH_PROVIDER'] = 'oidc'
+        try:
+            page = app.test_client().get('/auth/login?next=/user/info').data.decode()
+        finally:
+            app.config['AUTH_PROVIDER'] = 'stub'
+        href = re.search(r'href="([^"]*/auth/oidc/login[^"]*)"', page).group(1)
+        assert self._next(html.unescape(href)) == '/user/info'
+
+    def test_oidc_login_stores_next_and_drops_a_stale_one(self, app):
+        app.extensions['oauth'] = MagicMock()
+        try:
+            with app.test_client() as c:
+                c.get('/auth/oidc/login?next=/user/info')
+                with c.session_transaction() as sess:
+                    assert sess['oidc_next'] == '/user/info'
+                c.get('/auth/oidc/login')
+                with c.session_transaction() as sess:
+                    assert 'oidc_next' not in sess
+        finally:
+            app.extensions.pop('oauth', None)
+
+    def test_a_signed_in_visit_to_login_follows_next(self, auth_client):
+        resp = auth_client.get('/auth/login?next=/user/info')
+        assert resp.headers['Location'].endswith('/user/info')
+
+    @pytest.mark.parametrize('target', ['/\\evil.com', '//evil.com', 'evil.com', 'https://evil.com/'])
+    def test_unsafe_targets_are_refused(self, target):
+        from webapp.auth.redirects import is_safe_redirect
+        assert not is_safe_redirect(target)
+
+
 class TestLogout:
     """Test logout behavior for stub and OIDC modes."""
 
