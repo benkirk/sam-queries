@@ -60,8 +60,6 @@
         },
     };
 
-    var QUICK_VIEWS = Object.keys(MODAL_ROUTES).map(function (k) { return MODAL_ROUTES[k].container; });
-
     // Must match charts/links.py SCHEME.
     var SCHEME = '#sam/';
 
@@ -200,107 +198,19 @@
         if (opener && opener.offsetParent !== null) opener.click();
     }
 
-    // The open chart survives a quick-view and a page visit. A quick-view opened from
-    // it shows it again on close, unless the visitor moved on to another dialog, and
-    // ?expand=<opener key> in the address bar reopens it on load (so Back lands on it).
-    var EXPAND_PARAM = 'expand';
-    var handoff = null;   // 'pending' while the chart hides, 'open' once the quick-view shows
-
-    function expandKey(opener) {
-        var s = opener.getAttribute('hx-get') || '', h = 5381;
-        for (var i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
-        return h.toString(36);
-    }
-
-    function setExpandParam(key) {
-        try {
-            var url = new URL(window.location.href);
-            if (key) url.searchParams.set(EXPAND_PARAM, key);
-            else url.searchParams.delete(EXPAND_PARAM);
-            if (url.href !== window.location.href) history.replaceState(history.state, '', url.href);
-        } catch (_) {}
-    }
-
-    // Its opener may arrive in a slow lazy panel (job history), so retry on each settle
-    // for a while; the visitor's first click or key cancels it, so it never jumps in late.
-    var REOPEN_MS = 30000;
-    var pendingKey = null;
-    var pendingUntil = 0;
-
-    function cancelPending() {
-        if (pendingKey) { pendingKey = null; setExpandParam(null); }
-    }
-
-    function reopenPending() {
-        if (!pendingKey) return;
-        if (Date.now() > pendingUntil) { cancelPending(); return; }
-        var openers = document.querySelectorAll('[data-chart-expand-opener]');
-        for (var i = 0; i < openers.length; i++) {
-            var opener = openers[i];
-            if (expandKey(opener) === pendingKey && opener.offsetParent !== null) {
-                pendingKey = null;
-                bootstrap.Modal.getOrCreateInstance(document.getElementById('chartExpandModal')).show(opener);
-                htmx.ajax('GET', opener.getAttribute('hx-get'),
-                          {source: opener, target: '#chartExpandModalBody', swap: 'innerHTML'});
-                return;
-            }
-        }
-    }
-
-    function startReopen(now) {
-        var key;
-        try { key = new URL(window.location.href).searchParams.get(EXPAND_PARAM); } catch (_) { return; }
-        if (!key || document.querySelector('.modal.show')) return;
-        pendingKey = key;
-        pendingUntil = Date.now() + REOPEN_MS;
-        if (now) reopenPending();
-        setTimeout(reopenPending, REOPEN_MS + 500);
-    }
-
-    // Fetch with htmx.ajax, not opener.click(): a just-swapped opener may not be bound
-    // yet, and its click opened an empty dialog (Back to job history did exactly that).
-    document.addEventListener('DOMContentLoaded', function () { startReopen(false); });
-    window.addEventListener('pageshow', function (e) { if (e.persisted) startReopen(true); });
-    document.addEventListener('htmx:load', reopenPending);
-    ['pointerdown', 'keydown'].forEach(function (t) {
-        document.addEventListener(t, function (e) { if (e.isTrusted) cancelPending(); }, true);
-    });
-
-    // Reopening shows the spinner, never the previous chart while the next loads.
+    // Reopening shows the spinner, never the previous chart while the next loads. Back,
+    // Forward and the close button walk dialogs through modal-history.js.
     var expandLoading = null;
-    function resetExpand() {
-        setExpandParam(null);
-        if (!expandLoading) return;
-        document.getElementById('chartExpandModalBody').innerHTML = expandLoading.body;
-        document.getElementById('chartExpandModalTitle').textContent = expandLoading.title;
-    }
-
-    document.addEventListener('shown.bs.modal', function (e) {
-        if (handoff === 'pending' && QUICK_VIEWS.indexOf(e.target.id) !== -1) handoff = 'open';
-    });
     document.addEventListener('show.bs.modal', function (e) {
-        if (e.target.id !== 'chartExpandModal') {
-            if (handoff === 'open') { handoff = null; resetExpand(); }   // moved on: no return
-            return;
-        }
-        var opener = e.relatedTarget;
-        if (opener && opener.hasAttribute && opener.hasAttribute('data-chart-expand-opener')) {
-            setExpandParam(expandKey(opener));
-        }
-        if (expandLoading) return;
+        if (e.target.id !== 'chartExpandModal' || expandLoading) return;
         var body = document.getElementById('chartExpandModalBody');
         expandLoading = {body: body.innerHTML,
                          title: document.getElementById('chartExpandModalTitle').textContent};
     });
     document.addEventListener('hidden.bs.modal', function (e) {
-        if (e.target.id !== 'chartExpandModal') {
-            if (handoff === 'open' && QUICK_VIEWS.indexOf(e.target.id) !== -1) {
-                handoff = null;
-                bootstrap.Modal.getOrCreateInstance(document.getElementById('chartExpandModal')).show();
-            }
-            return;
-        }
-        if (!handoff) resetExpand();   // handed to a quick-view: keep the chart and the marker
+        if (e.target.id !== 'chartExpandModal' || !expandLoading) return;
+        document.getElementById('chartExpandModalBody').innerHTML = expandLoading.body;
+        document.getElementById('chartExpandModalTitle').textContent = expandLoading.title;
     });
 
     document.addEventListener('click', function (e) {
@@ -351,7 +261,6 @@
             // Bootstrap does not stack modals: close the expand modal first.
             var expand = a.closest('#chartExpandModal');
             if (expand) {
-                handoff = 'pending';
                 expand.addEventListener('hidden.bs.modal', open, {once: true});
                 bootstrap.Modal.getOrCreateInstance(expand).hide();
             } else {
