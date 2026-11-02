@@ -52,7 +52,8 @@ Appendix C.
   group card) are report-only for different reasons, and the panel note says which: a project
   group flows SAM to directory through the sync daemon (its SAM side is the sync's own
   `project_group` row); an adhoc group is authored in Google Groups and reaches SAM through
-  the directory, a path that is not live yet. Panel ids carry the entity id because the user
+  the directory, a path that is not live yet (a local add/remove over either group, with a NUSD
+  ticket and a watch, is planned in `docs/plans/UNIX_GROUP_MASK.md`). Panel ids carry the entity id because the user
   and project cards also open inside a modal. The Organizations card is cached per user: a
   config flip shows after `sam-admin cache --refresh`.
 - **CLI and the nightly report.** `sam-search user|project <k> --directory` render the same

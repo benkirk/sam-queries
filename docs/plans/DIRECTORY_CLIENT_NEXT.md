@@ -198,3 +198,5 @@ history, the Workday winter shift), all withheld.
 Applying anything to groups (SAM to directory is the daemon's path; its creates are the
 upstream issue in § 2); the Google-to-LDAP adhoc path; the F1 move of the check after the
 reply (soak-gated); any `DIRECTORY_APPLY_*` lever in a values file.
+A local add/remove over an adhoc or project group, with a NUSD ticket and a watch until
+upstream agrees, is `UNIX_GROUP_MASK.md`.
