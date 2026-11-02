@@ -99,6 +99,9 @@ Run each pass and collect findings. The examples are real.
     ran twice per click). Also look for `toISOString()` used as a local calendar date.
   - Prefer moving a feature's rules into its own file, as `allocations.css` did, over adding
     another section to `dashboard.css`.
+  - Counts: a count badge on a row label, or over the list it heads, repeats what is on
+    screen. Keep a count that describes a pane not shown (a tab, a pill) or needs action;
+    a count that matters is a column (sweep 35 dropped 19).
   - Tables: a header wider than its column's figures (measure the label against the widest
     cell with a `Range`, never by eye). `.col-num` / `.col-shrink` headers wrap at their spaces
     by default, so anything that must not lead a line (a sort icon, `#`) joins its word with

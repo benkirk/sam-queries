@@ -51,7 +51,7 @@ The families:
   `multiselect_filter`, `checkbox_field`, `readonly_display`, `fk_search_field`,
   `form_errors_panel`), and `modal_form.htmx_form`.
 - **Tables** — `pagination.pagination`, `sort_link.sort_link(extra_qs=, fixed_dir=)` / `sort_header`,
-  `table_bits.pane_toolbar` / `group_count` / `state_tag` / `share_bar` /
+  `table_bits.pane_toolbar` / `state_tag` / `share_bar` /
   `alloc_meter`, and `shared/project_tree.allocation_cells` for allocation rows
   (shared pools included; `sort=`, `units=`). §7 has the column vocabulary.
 - **Modals** — `modals.modal_scaffold` (the shell), `modals.modal_title` (a fragment
@@ -141,7 +141,7 @@ flex row. Gates: `test_collapse_trigger_rows`, `e2e/test_phone_wraps.py` (`ui_sn
 ## 7. Table columns and action cells
 
 The vocabulary lives in `components.css` § Data tables; markup helpers in
-`fragments/table_bits.html` (`pane_toolbar`, `group_count`, `state_tag`).
+`fragments/table_bits.html` (`pane_toolbar`, `state_tag`).
 
 - **Columns**: every column but one is `.col-shrink` (or `.col-num`: right
   aligned, tabular); the one left over takes the slack, as `.cell-truncate`
@@ -153,8 +153,8 @@ The vocabulary lives in `components.css` § Data tables; markup helpers in
 - **Client sort** (`sortable_table.js`): `.sortable-header` + `data-sort` on the
   `<th>`, and a `data-sort-value` on every `<td>` (no text fallback; ISO dates,
   a sentinel for none).
-- **Group rows**: one spanning label cell + `group_count(n)`, never a Count
-  column that is empty on every child row. Child rows indent with `.cell-child`.
+- **Group rows**: one spanning label cell, no count badge (a count that matters is a
+  column); children indent `.cell-child`. Badges are one size: no `fs-*`/`small`/padding.
 - **Retired rows**: `.row-inactive` on the `<tr>` + `state_tag('expired')`
   (or decommissioned, inactive); not `opacity-50`, which also fades the buttons.
 - **Actions** never wrap (without `nowrap` every row doubled: 94 px on NSF
