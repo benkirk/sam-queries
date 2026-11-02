@@ -239,7 +239,7 @@
       <tbody>{{ user_rows.render_user_rows(sample_users, can_view_users=False) }}</tbody>
     </table>
   {% endcall %}
-  {% call specimen('table_bits + .col-* / .btn-row', 'admin data table: shrink columns, one truncating column, group count, retired row, row actions') %}
+  {% call specimen('table_bits + .col-* / .btn-row', 'admin data table: shrink columns, one truncating column, group row, retired row, row actions') %}
     {% call table_bits.pane_toolbar('2 types, 3 resources') %}
       <button type="button" class="btn btn-sm btn-primary"><i class="fa-solid fa-plus me-1"></i>Resource</button>
     {% endcall %}
