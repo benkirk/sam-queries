@@ -178,8 +178,13 @@ in `HTMX_FRAGMENT_SHELL_DEPS`), CSP lint, action cells, Font Awesome names.
 
 ## 8. DDL and rollout
 
-The SAM schema is never migrated by SAM, but additive tables are routine; follow the
-`external_ticket` steps (`implemented/TICKET_PROVIDER.md` § 8.3):
+The table lives in the SAM database (Ben, 2026-11-02): SAM never migrates its schema,
+but an additive table is routine and Ben applies the script himself. The no-DDL homes
+were weighed and set aside: `manual_task` (a legacy free-text table SAMuel never reads),
+`notification_log` (the mail ledger; the Notifications card counts its rows), an encoded
+`adhoc_group_tag` (rewritten by every PUT, and projects have no tag table), and a
+`system_status` table (Alembic, no DBA, but every SAM-side reader would need the second
+bind handed in). Follow the `external_ticket` steps (`implemented/TICKET_PROVIDER.md` § 8.3):
 
 1. a `CREATE TABLE IF NOT EXISTS` script under scripts/sql/ in the
    `create_external_ticket.sql` idiom (InnoDB, utf8mb3 except `note`, verification
@@ -228,7 +233,8 @@ The SAM schema is never migrated by SAM, but additive tables are routine; follow
 
 ## 11. Decisions
 
-Ben, 2026-11-02: a mask table rather than columns on the entry table; group-wide rows,
+Ben, 2026-11-02: a mask table in the SAM database, applied by SQL script, rather than
+columns on the entry table or a no-DDL encoding (§ 8); group-wide rows,
 materialized across the group's branches as the daemon does; the mask honored inside
 `sync_group` now that Tomcat no longer serves the daemon; a new ticket kind named
 "HPC group"; the mask generalizes to project groups with an optional time limit and no
