@@ -124,7 +124,7 @@
                         <td class="col-shrink small">{{ c.start_date | fmt_date }}</td>
                         <td class="col-shrink small">
                             {{ c.end_date | fmt_date }}
-                            {{- contract_status_badge(c, extra='ms-1 small') }}
+                            {{- contract_status_badge(c) }}
                         </td>
                         <td class="text-end text-nowrap">
                             <span class="row-actions">

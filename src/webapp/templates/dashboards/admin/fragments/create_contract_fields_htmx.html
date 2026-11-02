@@ -95,7 +95,7 @@
                    search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
                    required=True,
                    placeholder='Search by name or username…',
-                   badge_class='bg-primary py-1 px-2',
+                   badge_class='bg-primary',
                    id_prefix='createContractPI') }}
 {{ person_hint('createContractPI', pi_hint) }}
 
@@ -103,7 +103,7 @@
                    search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
                    optional_text='(optional — the program manager at the funding source)',
                    placeholder='Search by name or username…',
-                   badge_class='bg-secondary py-1 px-2',
+                   badge_class='bg-secondary',
                    id_prefix='createContractMonitor') }}
 {{ person_hint('createContractMonitor', monitor_hint) }}
 

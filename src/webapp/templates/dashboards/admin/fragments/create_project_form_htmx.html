@@ -26,7 +26,7 @@
                                    search_url=url_for('admin_dashboard.htmx_project_search_for_parent'),
                                    optional_text='(optional — makes this a sub-project)',
                                    placeholder='Search by project code or title…',
-                                   badge_class='bg-secondary text-light py-1 px-2 font-monospace',
+                                   badge_class='bg-secondary text-light font-monospace',
                                    search_class='form-control form-control-sm',
                                    id_prefix='createProjectParent') }}
             </div>
@@ -139,7 +139,7 @@
                                    search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
                                    required=True,
                                    placeholder='Search by name or username…',
-                                   badge_class='bg-primary py-1 px-2',
+                                   badge_class='bg-primary',
                                    search_class='form-control form-control-sm',
                                    label_class='form-label fw-semibold',
                                    id_prefix='createProjectLead') }}
@@ -156,7 +156,7 @@
                 {{ fk_search_field('project_admin_user_id', 'Project Admin',
                                    search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
                                    placeholder='Search by name or username…',
-                                   badge_class='bg-secondary py-1 px-2',
+                                   badge_class='bg-secondary',
                                    search_class='form-control form-control-sm',
                                    id_prefix='createProjectAdmin') }}
             </div>
@@ -184,7 +184,7 @@
                 {{ fk_search_field('contract_id', 'Contract',
                                    search_url=url_for('admin_dashboard.htmx_contract_search_for_project'),
                                    placeholder='Search by contract number or title…',
-                                   badge_class='bg-warning text-dark py-1 px-2 font-monospace',
+                                   badge_class='bg-warning text-dark font-monospace',
                                    search_class='form-control form-control-sm',
                                    id_prefix='createProjectContract') }}
             </div>
@@ -195,7 +195,7 @@
                 {{ fk_search_field('organization_id', 'Organization',
                                    search_url=url_for('admin_dashboard.htmx_org_search_for_project'),
                                    placeholder='Search by name or acronym…',
-                                   badge_class='bg-info text-dark py-1 px-2',
+                                   badge_class='bg-info text-dark',
                                    search_class='form-control form-control-sm',
                                    id_prefix='createProjectOrg') }}
                 {# Org-context hint: suggest the picked org's soft-linked

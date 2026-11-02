@@ -476,7 +476,7 @@
     required       - True for asterisk
     placeholder    - search input placeholder text
     badge_class    - CSS classes for the selected badge
-                     (default 'bg-info py-1 px-2'; pass 'bg-primary py-1 px-2' for project leads, etc.)
+                     (default 'bg-info'; pass 'bg-primary' for project leads, etc.)
     selected_id    - initial value for the hidden input (used on form re-render after error)
     selected_label - initial label shown in the badge (e.g. existing record's display_name)
     id_prefix      - prefix for element ids; default derived from `name`
@@ -484,7 +484,7 @@
 {% macro fk_search_field(name, label, search_url,
                          required=False, optional_text='(optional)',
                          placeholder='Search…',
-                         badge_class='bg-info py-1 px-2',
+                         badge_class='bg-info',
                          search_class='form-control',
                          selected_id='', selected_label='',
                          id_prefix=None, label_class='form-label',
