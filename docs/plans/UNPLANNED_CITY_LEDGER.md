@@ -51,6 +51,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-31 | `283fe47c` (#878-#882 as merged), before sweep 33 | 60 / 73 / 26 | 1 (2) | 28 / 89 | 20 (20), 2 kept | 5,425 / 53 / 7 | 109 (54) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 7 |
 | 2026-10-31 | `283fe47c` + sweep 33 (the sprint-2 window) | 51 / 63 / 26 | 1 (2) | 26 / 83 | 20 (20), 2 kept | 5,425 / 53 / 7 | 109 (54) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 5 |
 | 2026-11-01 | `af62e41d` + sweep 34 (navigation) | 51 / 63 / 26 | 1 (2) | 26 / 83 | 20 (20), 2 kept | 5,498 / 54 / 8 | 109 (54) | 0 / 0 | 0 | 5 / 6 | 17 (13) | 5 |
+| 2026-11-01 | `32972b63` + sweep 35 (badges) | 51 / 63 / 26 | 1 (2) | 26 / 83 | 20 (20), 2 kept | 5,485 / 54 / 8 | 107 (53) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 5 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -1722,7 +1723,7 @@ finding spanned every card, so a commit per surface kept each one testable):
 - [ ] Dates write on NCAR4081: XRAS dev refused `allocationDateId=240823 not found in
   actionId=371320` (404), although its own read lists that date on that action. The pairing and
   handler predate this sweep; the refusal rendered inline. An XRAS-side question, not a UI one.
-- [ ] The small badge size could go app-wide (Ben liked it); a separate call, every page moves.
+- [x] The small badge size could go app-wide (Ben liked it): sweep 35.
 - [ ] Still Submission-bound: entry 12's list, and flash -> `showToast` for the editors' success.
 - [ ] The XRAS log's facet chips and filter panel are page-tier while the cards are card-tier;
   the log has no `facet_clear_all` (its form also carries the age and request fields).
@@ -2375,6 +2376,54 @@ wired right on its own, and nothing joined it to the way in.
 - [ ] `/dev/gallery` has no inbound link (dev only).
 - [ ] Logging in from the navbar's Login link returns to the role default, not the page. That is
   deliberate for now: a status-page visitor most likely wants their dashboard.
+
+## 35. 2026-11-01: area sweep, badge size and count badges
+
+**Mode:** area, `css` + `templates`, every `.badge` in the app. **End commit:** `32972b63`.
+Sweep 22 gave the XRAS page a small badge and left "app-wide" open. The global `.badge` was
+0.75rem bold in 6px x 12px padding, 26px tall; Ben: "comically large". Sweep 21 had ruled row-label
+counts noise, but `group_count` still put one on 11 group rows.
+
+**Done** (one commit each, on `badge-size-sweep`):
+
+- [x] B1, legibility: one badge size app-wide, the XRAS one (0.6875rem semi-bold, 0.15rem/0.4rem,
+  17.8px tall). The XRAS override and `state-tag`'s copy go. Outliers fold: `status_badge(small=)`
+  and two inline 0.7em styles, a no-op `small`, two `fs-6`, the FK picker's `py-1 px-2` (17 sites).
+- [x] B2, delete: count badges that repeat what is on screen.
+  - 11 group and tree rows. Each counted the child rows shown on expand; the toolbar carries
+    the totals.
+  - The Allocations tree's sat beside a Count column holding a different number.
+  - The Organizations one counted `g.areas` unfiltered under Active only (a bug, gone with it).
+  - 8 bare header totals over the list below them.
+  - Invitations' "N enrolled" is plain text.
+  - `group_count` and `tree_label_cell(count=)` go.
+- [x] B3, ratchet: `test_no_count_badges_in_rows` (rendered admin cards and the accounts queue);
+  it fails on staging's templates. Skills: wire-dashboard §7, and the Counts heuristic here.
+
+**Proof:** `utils/profiling/badge_sweep/measure.py` (untracked) measured badge heights and WCAG
+contrast on staging (5053) and the branch (5052), both themes. Every hue went from 26 to 17.8px.
+Contrast was unchanged, since only size moved. The XRAS page measured identical. The by-eye pairs
+are 18 pages x 6 states, from `ui_snapshots.py`.
+
+**Deviations from the NCAR brand / Unity:** sweep 22's "one badge size page-wide" is now app-wide.
+
+**Tried and dropped:**
+
+- Derecho's Online/Offline `.status-badge` pills at badge size (54 to 18px). Ben, after a side by
+  side: keep them big, a tile's headline value. They render only when per-node login data is
+  missing.
+- Dropping the worded header status lines (XRAS `queue_badges`, the Account Requests line,
+  "N waiting") and the tab and pill counts. These say what the rows do not, or describe a pane
+  not on screen (Ben).
+
+**Open:**
+
+- [ ] `state-tag` in light measures 3.81:1 (11px text on `--surface-tertiary`), under 4.5:1. This
+  predates the sweep; it was already 11px on XRAS.
+- [ ] `get_aoi_groups_with_areas` still `selectinload`s `areas`, which nothing on the
+  Organizations card reads now.
+- [ ] Badges carry redundant ink utilities (`text-dark`, `text-light`) that the muted palette's
+  `!important` overrides; 7 FK-picker callers.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
