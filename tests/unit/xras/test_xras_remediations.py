@@ -2955,3 +2955,29 @@ class TestARosterWriteReadsTheRequestTwice:
         family = [p for m, p in seen if m == 'GET' and '/request_numbers/' in p]
         assert len(family) == 2, seen
         assert [m for m, _ in seen].count('POST') == 1
+
+
+class TestTheTypePopover:
+
+    def test_the_type_cell_carries_the_gist(self, auth_client, configured):
+        payload = _payload()
+        payload['title'] = 'Turbulence at scale'
+        payload['actions'][0].update(resources=[
+            {'displayResourceName': 'Derecho', 'amount': '1000.0',
+             'resourceUnits': 'Core-hours', 'type': 'Requested'}])
+        _publish(payload)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'data-bs-trigger="hover focus"' in body
+        assert 'data-bs-title="Turbulence at scale"' in body
+        assert 'Supplement requesting Derecho 1,000 Core-hours.' in body
+
+    def test_a_row_swept_before_the_gist_shows_the_plain_label(self, auth_client, configured):
+        _publish(_payload())
+        entry = xras_cache.load_requests_index()
+        for row in entry['rows']:
+            row.pop('gist', None)
+        xras_cache.store_requests_index(entry)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'data-bs-trigger="hover focus"' not in body
+        assert '>Supplement</span>' in body
+

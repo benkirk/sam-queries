@@ -291,6 +291,61 @@ def latest_action_type(actions) -> Optional[str]:
     return latest.get('action_type')
 
 
+_GIST_TITLE_MAX = 80
+
+
+def _join(items: Sequence[str]) -> str:
+    return items[0] if len(items) == 1 else ', '.join(items[:-1]) + ' and ' + items[-1]
+
+
+def request_gist(payload: Mapping[str, Any]) -> Optional[Dict[str, Optional[str]]]:
+    """``{'title', 'ask'}``: the request's title and, in a sentence, what its in-flight action asks for.
+
+    The card's Type popover. Same action rule as :func:`latest_action_type`; the
+    requested lines and dates are that action's ``Requested`` stage.
+    """
+    from sam.fmt import date_str, number
+
+    actions = [a for a in (payload.get('actions') or [])
+               if isinstance(a, dict) and a.get('actionType')]
+    if not actions:
+        return None
+    in_flight = [a for a in actions
+                 if a.get('actionStatus') in ('Submitted', 'Under Review')]
+    action = max(in_flight or actions, key=lambda a: a.get('actionId') or 0)
+    kind = strip_or_none(action.get('actionType'))
+
+    asked = []
+    for r in action.get('resources') or ():
+        if not isinstance(r, dict) or r.get('type') != 'Requested':
+            continue
+        name = strip_or_none(r.get('displayResourceName')) or 'a resource'
+        try:
+            amount = number(float(r.get('amount')))
+        except (TypeError, ValueError):
+            asked.append(name)
+            continue
+        units = strip_or_none(r.get('resourceUnits'))
+        asked.append(f'{name} {amount}' + (f' {units}' if units else ''))
+    requested = [d for d in action.get('allocationDates') or ()
+                 if isinstance(d, dict) and d.get('allocationDateType') == 'Requested']
+    end = parse_wire_date(requested[0].get('endDate')) if requested else None
+
+    if kind == 'Extension':
+        now = parse_wire_date(payload.get('endDate'))
+        ask = (f'Extension to {date_str(end)}' if end else 'Extension')
+        ask += f' (now ends {date_str(now)}).' if now and end else '.'
+    else:
+        lead = 'New project' if kind == 'New' else kind
+        ask = f'{lead} requesting {_join(asked)}' if asked else f'{lead} request'
+        ask += f', through {date_str(end)}.' if end and kind != 'Supplement' else '.'
+
+    title = strip_or_none(payload.get('title') or payload.get('shortTitle'))
+    if title and len(title) > _GIST_TITLE_MAX:
+        title = title[:_GIST_TITLE_MAX - 1].rstrip() + '…'
+    return {'title': title, 'ask': ask}
+
+
 #: Blocker categories a swept request can be stuck on, in display order. The slug
 #: is what the facet filter round-trips; the label is the chip text.
 BLOCKER_LABELS = (('person', 'Person'), ('mnemonic', 'Mnemonic'), ('contract', 'Contract'),
@@ -453,6 +508,8 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
         # The in-flight action type, precomputed for the card's Type column and
         # its facet — the single "what kind of handoff is this" admin shows.
         'latest_action_type': latest_action_type(actions),
+        # The Type popover: title + what the in-flight action asks for.
+        'gist': request_gist(payload),
         # Worst pending verdict, precomputed for the card's roll-up badge:
         # would fail > would park (manual) > incomplete > would land.
         'preflight_rollup': _preflight_rollup(preflights),
