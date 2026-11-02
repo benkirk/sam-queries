@@ -33,7 +33,7 @@
             <tr class="table-subtle fw-semibold cursor-pointer"
                 {% if f.id is not none %}data-facility-id="{{ f.id }}"{% endif %}
                 {{ collapse_toggle(f_body) }}>
-                {{ tree_label_cell(f.facility, count=f.types|length, count_title='Allocation types') }}
+                {{ tree_label_cell(f.facility) }}
                 <td class="col-num fw-normal">{{ f.count | fmt_number }}</td>
                 <td class="col-num">{{ f.total_amount | fmt_number }}</td>
                 {% if not is_storage %}<td class="col-num">{{ f.alloc | fmt_number }}</td>{% endif %}

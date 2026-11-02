@@ -1,7 +1,7 @@
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button, delete_row_button with context %}
 {% from 'dashboards/fragments/contract_bits.html' import contract_user_link, nsf_program_link, contract_status_badge with context %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
-{% from 'dashboards/fragments/table_bits.html' import pane_toolbar, group_count, state_tag %}
+{% from 'dashboards/fragments/table_bits.html' import pane_toolbar, state_tag %}
 {#
   htmx: All Contracts table — grouped by funding source.
 
@@ -68,8 +68,7 @@
                         <td colspan="7" class="{{ cs_cursor }}" {{ cs_attrs }}>
                             <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon{{ ' invisible' if not cs_contracts }}"></i>
                             {{ cs.contract_source }}
-                            {%- if cs_contracts %}{{ group_count(cs_contracts|length, title='Contracts from this source') }}
-                            {%- else %}<span class="text-muted small fw-normal fst-italic ms-2">none</span>{% endif %}
+                            {%- if not cs_contracts %}<span class="text-muted small fw-normal fst-italic ms-2">none</span>{% endif %}
                             {%- if not cs.active %}{{ state_tag('inactive') }}{% endif %}
                         </td>
                         <td class="text-end text-nowrap">
