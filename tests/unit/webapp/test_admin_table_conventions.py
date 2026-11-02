@@ -7,10 +7,12 @@ the data produces, not just the ones a template author pictured:
 - every body row spans exactly the header's width (a short ``colspan`` left
   the Organizations empty state one column narrow);
 - an icon-only button names its verb in ``aria-label``;
-- a retired row is tagged, not ``opacity-50`` (which also faded its buttons).
+- a retired row is tagged, not ``opacity-50`` (which also faded its buttons);
+- no bare-number badge in a body row: it repeats the child rows below it.
 
 Design record: docs/plans/implemented/ADMIN_TABLE_POLISH.md.
 """
+import re
 from html.parser import HTMLParser
 
 import pytest
@@ -140,6 +142,18 @@ def test_retired_rows_are_tagged_not_faded(card):
     assert not faded, f'{url}: use .row-inactive + state_tag, not opacity-50: {faded[:5]}'
 
 
+_BARE_NUMBER = re.compile(r'[\d,.]+[KMB]?')
+
+
+def test_no_count_badges_in_rows(card):
+    url, _, root = card
+    counts = [' '.join(row.all_text().split())[:40]
+              for table in root.find_all('table') for body in table.kids('tbody')
+              for row in body.kids('tr') for badge in row.find_all('span')
+              if 'badge' in badge.classes and _BARE_NUMBER.fullmatch(badge.all_text().strip())]
+    assert not counts, f'{url}: a count that matters is a column: {counts[:5]}'
+
+
 def test_the_accounts_card_follows_the_conventions(auth_client, session, monkeypatch):
     """The queue card, rendered with rows: the shared snapshot has none, and the
     route's own connection cannot see this test's, so its row source is patched."""
@@ -163,4 +177,5 @@ def test_the_accounts_card_follows_the_conventions(auth_client, session, monkeyp
     test_rows_span_the_header(card)
     test_icon_only_buttons_are_labelled(card)
     test_retired_rows_are_tagged_not_faded(card)
+    test_no_count_badges_in_rows(card)
     assert 'row-inactive' in html and 'claimed · operator1' in html

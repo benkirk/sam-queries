@@ -16,7 +16,7 @@
 
 {# Heading: type badge + date + optional propagated chip. #}
 <div class="mb-3 d-flex align-items-center flex-wrap gap-2">
-    <span class="badge bg-secondary fs-6">{{ r.transaction_type }}</span>
+    <span class="badge bg-secondary">{{ r.transaction_type }}</span>
     <span class="text-muted">·</span>
     <span class="text-body-emphasis">{{ r.creation_time | fmt_date }}</span>
     {% if r.propagated %}

@@ -118,7 +118,6 @@
     <div class="card-body border-top">
         <h6 class="mb-2">
             <i class="fa-solid fa-folder-open"></i> Linked Projects
-            <span class="badge bg-secondary ms-1">{{ linked_projects | length }}</span>
         </h6>
         {% if linked_projects %}
         <div class="table-responsive">
@@ -137,7 +136,7 @@
                         <td>
                             {{ project_link(pc.project.projcode, can_view_projects, admin=True) }}
                             {% if not pc.project.active %}
-                            {{ status_badge('inactive', extra='ms-1', small=True) }}
+                            {{ status_badge('inactive', extra='ms-1') }}
                             {% endif %}
                         </td>
                         <td class="small">{{ pc.project.title }}</td>

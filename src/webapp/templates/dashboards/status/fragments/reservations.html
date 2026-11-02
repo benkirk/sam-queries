@@ -17,7 +17,6 @@
 
 {% macro reservation_table(reservations, show_system=False, heading='h6') %}
 <{{ heading }} class="mb-2 mt-4"><i class="fa-solid fa-calendar-days"></i> Maintenance &amp; Reservations
-    {% if reservations %}<span class="badge bg-secondary count-badge ms-1">{{ reservations | length }}</span>{% endif %}
 </{{ heading }}>
 {% if reservations %}
 <div class="table-responsive reservation-table mb-3">

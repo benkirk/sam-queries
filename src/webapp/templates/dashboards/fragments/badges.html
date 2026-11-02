@@ -5,7 +5,7 @@
       {% from 'dashboards/fragments/badges.html' import status_badge %}
       {{ status_badge('inactive') }}
       {{ status_badge('locked', extra='ms-1') }}
-      {{ status_badge('expired', extra='ms-1', small=True) }}
+      {{ status_badge('expired', extra='ms-1') }}
 
   Known states (case-insensitive): active, inactive, locked, expired,
   plus the seven xras_action_log states (received, processed, manual, failed,
@@ -111,12 +111,11 @@
   The table rows keep theirs, which is where the explanation is actually useful.
 #}
 {#- quiet=True drops the hue for a neutral state-tag: a log where most rows are fine. -#}
-{% macro status_badge(state, extra='', small=False, label=None, tooltip=True, quiet=False) -%}
+{% macro status_badge(state, extra='', label=None, tooltip=True, quiet=False) -%}
 {%- set key = state|lower -%}
 {%- set variant = 'state-tag' if quiet else _STATUS_VARIANTS.get(key, 'bg-secondary') -%}
 {%- set text = label if label is not none else _STATUS_LABELS.get(key, state) -%}
 {%- set tip = _STATUS_TOOLTIPS.get(key) if tooltip else None -%}
 <span class="badge {{ variant }}{% if extra %} {{ extra }}{% endif %}"
-      {%- if tip %} data-bs-toggle="tooltip" data-bs-title="{{ tip }}"{% endif %}
-      {%- if small %} style="font-size:0.7em;"{% endif %}>{{ text }}</span>
+      {%- if tip %} data-bs-toggle="tooltip" data-bs-title="{{ tip }}"{% endif %}>{{ text }}</span>
 {%- endmacro %}

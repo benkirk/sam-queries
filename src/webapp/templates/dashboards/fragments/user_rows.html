@@ -83,8 +83,8 @@ hx-target="#userDetailsModalBody" hx-swap="innerHTML"
             <strong>{{ u.display_name }}</strong>
             {% endif %}
             {% if u.active is defined %}
-                {% if not u.active %}{{ status_badge('inactive', extra='ms-1', small=True) }}
-                {% elif u.locked %}{{ status_badge('locked', extra='ms-1', small=True) }}{% endif %}
+                {% if not u.active %}{{ status_badge('inactive', extra='ms-1') }}
+                {% elif u.locked %}{{ status_badge('locked', extra='ms-1') }}{% endif %}
             {% endif %}
         </td>
         <td data-sort-value="{{ u.username }}"

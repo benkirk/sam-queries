@@ -1,7 +1,7 @@
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
 {% from 'dashboards/admin/fragments/institution_filters.html' import institution_filters %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
-{% from 'dashboards/fragments/table_bits.html' import pane_toolbar, group_count %}
+{% from 'dashboards/fragments/table_bits.html' import pane_toolbar %}
 {#
   Admin Institutions table fragment (HTMX-swapped).
 
@@ -93,7 +93,6 @@
                 <td colspan="{{ ncols - 1 }}" class="cursor-pointer" {{ collapse_toggle(it_toggle) }}>
                     <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
                     {{ it.type }}
-                    {{- group_count(insts|length, title='Institutions of this type') }}
                 </td>
                 <td class="text-end text-nowrap">
                     <span class="row-actions">

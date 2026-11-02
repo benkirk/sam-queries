@@ -73,7 +73,7 @@
                     <div class="mb-1">
                         {{ email.email_address }}
                         {% if email.is_primary %}
-                        <span class="badge bg-info ms-1" style="font-size:0.7em;">PRIMARY</span>
+                        <span class="badge bg-info ms-1">PRIMARY</span>
                         {% endif %}
                     </div>
                     {% else %}
@@ -433,7 +433,7 @@
                         <td>
                             {{ ex.end_date | fmt_date }}
                             {% if not ex.is_currently_active %}
-                            {{ status_badge('expired', extra='ms-1', small=True) }}
+                            {{ status_badge('expired', extra='ms-1') }}
                             {% endif %}
                         </td>
                         <td>{{ ex.time_limit_hours }}</td>

@@ -19,7 +19,6 @@
 <h5 id="nsfProgramContractsModalTitle" class="modal-title" hx-swap-oob="true">
     {{ program.nsf_program_name }}
     {% if not program.is_active %}{{ status_badge('inactive', extra='ms-1') }}{% endif %}
-    <span class="badge bg-secondary ms-1">{{ contracts | length }}</span>
 </h5>
 
 {% if contracts %}
