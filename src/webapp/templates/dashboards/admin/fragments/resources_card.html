@@ -1,7 +1,7 @@
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button, delete_row_button with context %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/contract_bits.html' import contract_user_link with context %}
-{% from 'dashboards/fragments/table_bits.html' import pane_toolbar, group_count, state_tag, share_bar %}
+{% from 'dashboards/fragments/table_bits.html' import pane_toolbar, state_tag, share_bar %}
 {#
   Admin: Resources Card Body (lazy-loaded into the Resources collapsible section)
   Contains three tabs: Resources (types+resources combined), Machines, Queues.
@@ -88,7 +88,6 @@
                             <td colspan="4" class="tree-cell cursor-pointer text-nowrap" style="--depth: 0;" {{ collapse_toggle(rt_toggle) }}>
                                 <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
                                 {{ rt.resource_type }}
-                                {{- group_count(type_resources|length, title='Resources of this type') }}
                                 {% if rt.grace_period_days is not none %}
                                 <span class="text-muted small fw-normal ms-2"
                                       title="Days an allocation's jobs may still charge after it ends">{{ rt.grace_period_days }}-day grace</span>
@@ -341,7 +340,6 @@
                             <td colspan="4" class="cursor-pointer" {{ collapse_toggle(q_toggle) }}>
                                 <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
                                 {{ r.resource_name }}
-                                {{- group_count(r_queues|length, title='Queues on this resource') }}
                             </td>
                             <td class="text-end text-nowrap">
                                 {% if has_permission(Permission.DELETE_RESOURCES) %}
@@ -404,7 +402,7 @@
             {# Wallclock Exemptions #}
             <div class="section-heading d-flex flex-wrap align-items-center gap-2 border-top mt-3 px-3 py-2">
                 <i class="fa-solid fa-clock text-muted"></i>
-                <span class="fw-semibold">Wallclock exemptions{{ group_count(exemptions|length) }}</span>
+                <span class="fw-semibold">Wallclock exemptions</span>
                 <span class="text-muted small me-auto">per-user overrides of a queue's wallclock limit</span>
                 {% if has_permission(Permission.EDIT_USERS) %}
                 <button type="button" class="btn btn-sm btn-primary"
@@ -446,7 +444,6 @@
                             <td colspan="7">
                                 <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
                                 {{ group['resource'].resource_name }}
-                                {{- group_count(group['rows']|length, title='Exemptions on this resource') }}
                             </td>
                         </tr>
                     </tbody>

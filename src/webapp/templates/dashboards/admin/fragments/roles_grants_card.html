@@ -9,7 +9,6 @@
 <div class="card mb-3">
     <div class="card-header py-2 d-flex flex-wrap align-items-center gap-3">
         <strong>Grants</strong>
-        <span class="badge bg-secondary">{{ grants | length | fmt_number }}</span>
         <form class="ms-auto form-check form-switch mb-0 small"
               hx-get="{{ url_for('admin_dashboard.roles_grants_card') }}"
               hx-target="#grantsCard" hx-swap="innerHTML" hx-trigger="change" hx-include="this">

@@ -49,13 +49,13 @@ class TestUserDirectory:
         result = runner.invoke(search, ['--format', 'json', 'user', user.username, '--directory'])
         assert result.exit_code == 0, result.output
         view = json.loads(result.stdout)['directory']
-        assert (view['found'], view['record']['username'], view['would_apply']) == (True, user.username, 0)
+        assert (view['found'], view['record']['username'], view['would_apply']) == (True, user.username, 1)
         assert [(r['category'], r['field'], r['disposition']) for r in view['rows']] == [
-            ('name', 'first_name', 'withheld')]
+            ('name', 'first_name', 'would apply')]
         assert configured.calls == [('person', user.upid)]
         rich = runner.invoke(search, ['user', user.username, '--directory'])
         assert rich.exit_code == 0, rich.output
-        assert 'Directory drift for' in rich.output and 'Levers on: none' in rich.output
+        assert 'Directory drift for' in rich.output and 'Automatic apply on sync: none' in rich.output
 
     def test_unavailable_and_absent(self, runner, configured, user):
         configured.raise_with = DirectoryUnavailable('timeout')
@@ -163,12 +163,13 @@ class TestDirectoryApply:
         assert 'applied=1[name:1]' in result.output and 'Directory apply for' in result.output
         assert user.first_name == 'Someone Else'
 
-    def test_withheld_without_a_lever(self, runner, configured, user):
-        _seed(configured, user, first_name='Someone Else')
+    def test_the_operator_needs_no_lever(self, runner, configured, user):
+        _seed(configured, user, first_name='Someone Else', unix_uid=user.unix_uid + 1)
         result = runner.invoke(admin, ['--format', 'json', 'user', user.username,
                                        '--directory-apply', '--dry-run'])
         data = json.loads(result.stdout)
-        assert data['applied'] == [] and [d['category'] for d in data['withheld']] == ['name']
+        assert [d['category'] for d in data['applied']] == ['name']
+        assert [d['category'] for d in data['withheld']] == ['unix_uid']
 
     def test_unavailable_is_an_error_and_not_found_is_not_found(self, runner, configured, user):
         configured.raise_with = DirectoryUnavailable('timeout')

@@ -916,11 +916,11 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    ========================================================================= */
 
 .badge {
-    padding: 6px 12px;
-    font-size: 0.75rem;
-    font-weight: 700;
+    padding: 0.15rem 0.4rem;
+    font-size: 0.6875rem;
+    font-weight: var(--font-weight-semi-bold);
     border-radius: var(--radius-sm);
-    letter-spacing: 0.3px;
+    letter-spacing: 0.02em;
 }
 
 /* Note: the hyphenated `.badge-success` / `.badge-primary` / etc. variants

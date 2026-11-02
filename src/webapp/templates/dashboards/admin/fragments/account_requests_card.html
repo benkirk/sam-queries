@@ -1,5 +1,4 @@
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle, drill_toggle %}
-{% from 'dashboards/fragments/table_bits.html' import group_count %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_grid_row, facet_row %}
 {% from 'dashboards/fragments/search_box.html' import filter_search %}
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
@@ -146,7 +145,6 @@
                         {% else %}
                         {{ group.label }}
                         {% endif %}
-                        {{- group_count(group.rows | length) }}
                     </td>
                 </tr>
             </tbody>

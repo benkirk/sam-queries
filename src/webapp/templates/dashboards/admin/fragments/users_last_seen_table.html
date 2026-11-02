@@ -48,7 +48,7 @@
                     {% if r.status == 'not in SAM' %}<code>{{ r.username }}</code>
                     <span class="badge bg-secondary ms-1" title="No SAM user has this username">not in SAM</span>
                     {% else %}{{ user_link(r.username, True, compact=True) }}
-                    {%- if r.status != 'active' %}{{ status_badge(r.status, extra='ms-1', small=True) }}{% endif %}{% endif %}
+                    {%- if r.status != 'active' %}{{ status_badge(r.status, extra='ms-1') }}{% endif %}{% endif %}
                 </td>
                 <td class="d-none d-md-table-cell">{{ r.name or '—' }}</td>
                 <td class="text-nowrap">

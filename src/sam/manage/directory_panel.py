@@ -29,7 +29,7 @@ def directory_reader():
 def _base(config: DirectoryConfig) -> Dict[str, Any]:
     return {'available': True, 'configured': config.configured, 'error': '', 'found': False,
             'record': None, 'rows': [], 'would_apply': 0, 'withheld': 0,
-            'apply_kinds': sorted(config.apply_kinds), 'result': None}
+            'apply_kinds': sorted(config.apply_kinds), 'result': None, 'sync': False}
 
 
 def _read(state: Dict[str, Any], read, key):
@@ -62,7 +62,7 @@ def _rows(result: ReconcileResult, values) -> List[Dict[str, Any]]:
     rows = []
     for d in result.report.discrepancies:
         sam_value, directory_value = values(d)
-        if not sam_value and d.sam_id is not None:
+        if not sam_value and d.sam_id is not None and d.kind != 'person':   # a person's sam_id is the user
             sam_value = f'row {d.sam_id}'
         if not directory_value and d.directory_id:
             directory_value = d.directory_id
@@ -91,6 +91,10 @@ def _person_values(user, record):
             if d.field == 'primary':
                 return (user.primary_email or '',
                         next((e.address for e in record.emails if e.primary), ''))
+            if d.field == 'extra':
+                directory = {e.address.lower() for e in record.emails}
+                return ', '.join(e.email_address for e in user.email_addresses
+                                 if e.email_address.lower() not in directory), ''
             return '', ', '.join(e.address for e in record.emails if e.address.lower() not in sam)
         if d.category == 'phone':
             return (', '.join(f'{p.phone_type.phone_type if p.phone_type else ""}: {p.phone_number}'
@@ -102,10 +106,14 @@ def _person_values(user, record):
 
 def person_panel(session, user, *, record=None, applied: Optional[ReconcileResult] = None,
                  now: Optional[datetime] = None) -> Dict[str, Any]:
-    """The person as the directory holds them, their affiliations, and SAM's drift."""
+    """The person as the directory holds them, their affiliations, and SAM's drift.
+
+    The dry run is the operator's Sync (``for_operator``), so each row says what a click writes.
+    """
     config = DirectoryConfig.from_environment()
     state = _base(config)
     state['upid'] = user.upid
+    state['sync'] = True
     if user.upid is None:
         state['available'] = False
         state['error'] = 'no upid'
@@ -133,7 +141,8 @@ def person_panel(session, user, *, record=None, applied: Optional[ReconcileResul
         'name': insts[c.institution_id].name if c.institution_id in insts else '',
         'sponsor': c.admin_org, 'start': c.start, 'end': c.end, 'active': c.active,
         'source': c.source} for c in record.collaborations]
-    result = reconcile_person(session, user, record, config=config, now=now, dry_run=True)
+    result = reconcile_person(session, user, record, config=config.for_operator(), now=now,
+                              dry_run=True)
     return _finish(state, result, _person_values(user, record), applied)
 
 

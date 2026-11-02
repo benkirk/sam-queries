@@ -367,8 +367,9 @@ webapp:
     # CHECK_ON_SYNC "1" reads each record the daemon PUTs and logs the differences, fail-open;
     # nothing PUTs here until the daemon's SAM_URL flips, so it is armed, not firing. The
     # per-kind write levers DIRECTORY_APPLY_<KIND> (person, position, collaboration,
-    # organization, institution, group) are absent on purpose: absent is off. Drift gate:
-    # tests/unit/gates/test_helm_directory_levers.py.
+    # organization, institution, group) are absent on purpose: absent is off. They gate the hook
+    # only; an operator's Sync (user panel, sam-admin --directory-apply) writes the person-side
+    # kinds regardless. Drift gate: tests/unit/gates/test_helm_directory_levers.py.
     DIRECTORY_PROVIDER: "ucar"
     DIRECTORY_URL: "ldap://ldap.ucar.edu"
     DIRECTORY_CHECK_ON_SYNC: "1"

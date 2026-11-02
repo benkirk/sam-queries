@@ -20,7 +20,7 @@ from sqlalchemy import func
 from sam.core.groups import AdhocGroup
 from sam.core.organizations import (Institution, InstitutionType, Organization,
                                     UserInstitution, UserOrganization)
-from sam.core.users import AcademicStatus, EmailAddress, Phone, PhoneType, User
+from sam.core.users import AcademicStatus, Phone, PhoneType, User
 from sam.dates import end_of_day
 from sam.integration.directory.base import (CollaborationRecord, DirectoryReader,
                                             GroupRecord, InstitutionRecord,
@@ -31,7 +31,7 @@ from sam.integration.directory.compare import (
     compare_person,
 )
 from sam.integration.directory.config import DirectoryConfig
-from sam.manage.ldapsync import apply_active_transition, state_prov_id
+from sam.manage.ldapsync import apply_active_transition, state_prov_id, sync_emails
 from sam.queries.directory import (snapshot_from_group, snapshot_from_institution,
                                    snapshot_from_organization, snapshot_from_user)
 
@@ -143,19 +143,12 @@ def _person_field(r: _Reconciler, session, user: User, record: PersonRecord, d: 
 
 
 def _email(r: _Reconciler, user: User, record: PersonRecord, d: Discrepancy) -> None:
-    def mutate():
-        by_address = {row.email_address.lower(): row for row in user.email_addresses}
-        for e in record.emails:
-            row = by_address.get(e.address.lower())
-            if row is None:
-                row = EmailAddress(email_address=e.address, is_primary=e.primary)
-                user.email_addresses.append(row)
-                by_address[e.address.lower()] = row
-        primary = next((e.address.lower() for e in record.emails if e.primary), None)
-        if primary is not None:
-            for row in user.email_addresses:
-                row.is_primary = row.email_address.lower() == primary
-    r.apply(d, mutate, value=d.field)
+    """The sync's own rule: the directory's addresses and primary, SAM-only ones deleted."""
+    if not record.emails:            # never leave a person with no address
+        r.withhold(d)
+        return
+    wanted = [{'email': e.address, 'primary': e.primary} for e in record.emails]
+    r.apply(d, lambda: sync_emails(user, wanted), value=d.field)
 
 
 def _phone(r: _Reconciler, session, user: User, record: PersonRecord, d: Discrepancy) -> None:
@@ -374,6 +367,7 @@ def reconcile_from_directory(session, kind: str, key, *, reader: DirectoryReader
                             dry_run=dry_run, on_reactivate=on_reactivate)
 
 
-def log_result(result: ReconcileResult, key) -> None:
-    logger.info('ldapsync: directory apply %s %s key=%s %s ids=%s', result.kind, result.key, key,
-                result.fragment(), ','.join(result.report.ids()[:10]) or '-')
+def log_result(result: ReconcileResult, key, *, by: str = '') -> None:
+    logger.info('ldapsync: directory apply %s %s key=%s %s ids=%s%s', result.kind, result.key, key,
+                result.fragment(), ','.join(result.report.ids()[:10]) or '-',
+                f' by={by}' if by else '')

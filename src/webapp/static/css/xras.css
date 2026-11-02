@@ -102,14 +102,6 @@
     font-family: var(--bs-font-monospace);
 }
 
-/* One badge size across the XRAS page and its dialog, so a hue and a neutral
-   tag line up wherever they meet. */
-.xras-section .badge,
-#xrasModal .badge {
-    padding: 0.15rem 0.4rem;
-    font-size: 0.6875rem;
-}
-
 /* A comment count riding on its row button. */
 .btn-row-count {
     margin-left: 0.2rem;

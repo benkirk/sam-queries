@@ -78,7 +78,7 @@
             <td>{{ contract_user_link(e.sponsor, can_view_users) }}</td>
             <td class="text-nowrap cursor-pointer" {{ collapse_toggle(eid) }}
                 title="{{ e.enrollees | length }} enrolled; {{ e.fulfilled }} of {{ e.total }} requests fulfilled; {{ e.open }} still waiting">
-                <span class="badge bg-secondary">{{ e.enrollees | length }} enrolled</span>
+                {{ e.enrollees | length | fmt_number }} enrolled
                 {% if e.open %}<span class="badge bg-body-secondary text-body-secondary border">{{ e.open }} waiting</span>{% endif %}
             </td>
             <td class="text-end text-nowrap">

@@ -1,6 +1,6 @@
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
-{% from 'dashboards/fragments/table_bits.html' import group_count, state_tag %}
+{% from 'dashboards/fragments/table_bits.html' import state_tag %}
 {#
   Admin: Disk Resource Root Directories section, at the bottom of the
   Resources sub-tab pane. Same shape as the Wallclock Exemptions table.
@@ -8,12 +8,10 @@
   Context:
     disk_resources_with_roots : list[Resource] with .root_directories collection
 #}
-{% set _total_roots = namespace(n=0) %}
-{% for r in disk_resources_with_roots %}{% set _total_roots.n = _total_roots.n + r.root_directories|length %}{% endfor %}
 
 <div class="section-heading d-flex flex-wrap align-items-center gap-2 border-top mt-3 px-3 py-2">
     <i class="fa-solid fa-folder-tree text-muted"></i>
-    <span class="fw-semibold">Disk root directories{{ group_count(_total_roots.n) }}</span>
+    <span class="fw-semibold">Disk root directories</span>
     <span class="text-muted small me-auto">path prefixes that attribute project directories to a disk resource</span>
     {% if has_permission(Permission.EDIT_RESOURCES) %}
     <button type="button" class="btn btn-sm btn-primary"
@@ -44,7 +42,6 @@
                 <td colspan="3">
                     <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
                     {{ r.resource_name }}
-                    {{- group_count(r.root_directories|length, title='Root directories on this resource') }}
                 </td>
             </tr>
         </tbody>

@@ -57,7 +57,7 @@
                            search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
                            optional_text='(optional — the program manager at the funding source)',
                            placeholder='Search by name or username…',
-                           badge_class='bg-secondary py-1 px-2',
+                           badge_class='bg-secondary',
                            selected_id=contract.contract_monitor_user_id or '',
                            selected_label=(contract.contract_monitor.display_name
                                            if contract.contract_monitor else ''),
@@ -67,7 +67,7 @@
                            search_url=url_for('admin_dashboard.htmx_search_nsf_programs'),
                            optional_text='(optional)',
                            placeholder='Search programs…',
-                           badge_class='bg-info py-1 px-2',
+                           badge_class='bg-info',
                            selected_id=contract.nsf_program_id or '',
                            selected_label=(contract.nsf_program.nsf_program_name
                                            if contract.nsf_program else ''),

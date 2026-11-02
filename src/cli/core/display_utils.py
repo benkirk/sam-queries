@@ -108,6 +108,10 @@ def directory_drift(ctx: Context, view: dict, subject: str, *, report_only: str 
         ctx.console.print('[green]✓[/] SAM matches the directory.', style='dim')
     if report_only:
         ctx.console.print(report_only, style='dim')
+    elif view.get('sync'):
+        ctx.console.print(f"--directory-apply writes {view['would_apply']}, withholds {view['withheld']}."
+                          f" Automatic apply on sync: {', '.join(view['apply_kinds']) or 'none'}.",
+                          style='dim')
     else:
         ctx.console.print(f"Levers on: {', '.join(view['apply_kinds']) or 'none'}."
                           f" {view['would_apply']} would apply, {view['withheld']} withheld.",

@@ -3,10 +3,9 @@
   (.col-shrink, .col-num, .cell-truncate, .btn-row) live in components.css.
 
     {% call pane_toolbar('5 types, 18 resources') %}<button ...>{% endcall %}
-    {{ group_count(3) }}            count badge on a group header row
     {{ state_tag('decommissioned', title='Since 2024-01-31') }}
     {{ share_bar(31.0, slot=3) }}   bar + number; slot = facility color family
-    {{ tree_label_cell('UNIV', count=4) }}   chevron + name cell of a collapse-toggle row
+    {{ tree_label_cell('UNIV') }}   chevron + name cell of a collapse-toggle row
     {{ alloc_meter(53.0, elapsed_pct=48.0, slot=2) }}   % used bar with a time-elapsed tick
     {{ alloc_meter(28.9, pool_pct=61.8) }}   a shared row: own share solid over the pool's
 #}
@@ -17,10 +16,6 @@
     <span class="text-muted small me-auto">{{ summary }}</span>
     {%- if caller is defined %}{{ caller() }}{% endif %}
 </div>
-{%- endmacro %}
-
-{% macro group_count(n, title='') -%}
-<span class="badge bg-secondary count-badge ms-2"{% if title %} title="{{ title }}"{% endif %}>{{ n | fmt_number }}</span>
 {%- endmacro %}
 
 {# A neutral fact about a row (why it is dim), not a signal. #}
@@ -57,10 +52,9 @@
 {%- endmacro %}
 
 {# The first cell of a tree row that toggles a collapse (the row carries collapse_toggle). #}
-{% macro tree_label_cell(label, depth=0, count=None, count_title='', cls='') -%}
+{% macro tree_label_cell(label, depth=0, cls='') -%}
 <td class="tree-cell{{ ' tree-d%d' % depth if depth }} text-nowrap{{ ' ' ~ cls if cls }}" style="--depth: {{ depth }};">
     <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
     {{- '' }}<span class="tree-label">{{ label }}</span>
-    {%- if count is not none %}{{ group_count(count, title=count_title) }}{% endif %}
 </td>
 {%- endmacro %}

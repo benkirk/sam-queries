@@ -239,7 +239,7 @@
       <tbody>{{ user_rows.render_user_rows(sample_users, can_view_users=False) }}</tbody>
     </table>
   {% endcall %}
-  {% call specimen('table_bits + .col-* / .btn-row', 'admin data table: shrink columns, one truncating column, group count, retired row, row actions') %}
+  {% call specimen('table_bits + .col-* / .btn-row', 'admin data table: shrink columns, one truncating column, group row, retired row, row actions') %}
     {% call table_bits.pane_toolbar('2 types, 3 resources') %}
       <button type="button" class="btn btn-sm btn-primary"><i class="fa-solid fa-plus me-1"></i>Resource</button>
     {% endcall %}
@@ -252,7 +252,7 @@
         <tbody>
           <tr class="table-subtle fw-semibold">
             <td colspan="3" class="cursor-pointer" {{ collapse.collapse_toggle('gallery-table-group', expanded=true) }}>
-              <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>HPC{{ table_bits.group_count(3) }}
+              <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>HPC
             </td>
             <td class="text-end text-nowrap"><span class="row-actions">
               <button type="button" class="btn btn-row" title="Edit type" aria-label="Edit type"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>

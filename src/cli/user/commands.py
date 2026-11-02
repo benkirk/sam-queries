@@ -251,7 +251,7 @@ class UserAdminCommand(UserSearchCommand):
         return EXIT_SUCCESS if report.instant is not None else EXIT_NOT_FOUND
 
     def _directory_apply(self, username: str, dry_run: bool) -> int:
-        """Patch the user from the directory record, per the ``DIRECTORY_APPLY_<KIND>`` levers."""
+        """Patch the user from the directory record: the operator's Sync, person-side kinds regardless of the levers."""
         from sam.integration._config import config_bool, config_int
         from sam.integration.directory import DirectoryUnavailable
         from sam.integration.directory.config import DirectoryConfig
@@ -261,7 +261,7 @@ class UserAdminCommand(UserSearchCommand):
         from sam.manage.lifecycle import restore_on_reactivate
         if self.ctx.output_format == 'json' and not dry_run:
             return refuse_json_write('directory_apply', '--directory-apply (add --dry-run)')
-        config = DirectoryConfig.from_environment()
+        config = DirectoryConfig.from_environment().for_operator()
         if not config.configured:
             self.ctx.stderr_console.print('No directory is configured (DIRECTORY_URL is empty).',
                                           style='bold red')
