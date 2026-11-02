@@ -624,6 +624,18 @@ class TestRoleChanges:
                                 role='Reviewer', client=client)
         assert client.add_role.call_count == 0
 
+    def test_a_role_change_can_defer_the_card_patch(self, factory, monkeypatch):
+        patched = []
+        monkeypatch.setattr(service, 'refresh_index_entry',
+                            lambda n, **kw: patched.append(n) or True)
+        client = MagicMock()
+        client.remove_role.return_value = _result('remove_role')
+        outcome = service.change_role(
+            factory, add=False, request_number='EXAM0001', request_id=900001,
+            username='newbie', operator='benkirk', xa_user='pi-user',
+            role_id=580030, client=client, refresh=lambda: False)
+        assert patched == [] and outcome.patched is False
+
     def test_the_role_choices_carry_every_spelling(self):
         choices = service.role_choices()
         assert {c['id'] for c in choices} == {13, 14, 19}
@@ -1021,3 +1033,88 @@ class TestTheRename:
         monkeypatch.setattr('sam.integration.xras_api.config.xras_write_configured',
                             lambda *a: write)
         assert service.rename_armed() is armed
+
+
+# make PI
+
+def _member(username, role, type_id, role_id):
+    return {'username': username, 'role_type': role, 'role_type_id': type_id,
+            'role_id': role_id}
+
+
+_ADVISOR_AND_STUDENT = [_member('advisor', 'PI', 13, 1),
+                        _member('student', 'Allocation Manager', 14, 3)]
+
+
+class TestMakePi:
+    """The order XRAS allows: SAM acts as the PI, and a PI cannot remove their only role."""
+
+    def _client(self, fail_on=None):
+        client = MagicMock()
+        calls = []
+
+        def add(request_id, role, username, *, request_number, xa_user):
+            calls.append(('add', username, role.name, xa_user))
+            if fail_on == ('add', username):
+                raise XrasWriteRejected('nope', status=400)
+            return _result('add_role', extra={'role_id': 99})
+
+        def remove(request_id, role_id, *, request_number, xa_user):
+            calls.append(('remove', role_id, xa_user))
+            if fail_on == ('remove', role_id):
+                raise XrasWriteRejected("can't delete your only role", status=400)
+            return _result('remove_role')
+        client.add_role.side_effect = add
+        client.remove_role.side_effect = remove
+        return client, calls
+
+    def _run(self, factory, monkeypatch, roster, client, target_role_id=3):
+        patched = []
+        monkeypatch.setattr(service, 'refresh_index_entry',
+                            lambda n, **kw: patched.append(n) or True)
+        outcome = service.make_pi(
+            factory, request_number='EXAM0001', request_id=900001, roster=roster,
+            target_role_id=target_role_id, operator='benkirk', xa_user='advisor',
+            client=client)
+        return outcome, patched
+
+    def test_the_swap_runs_in_the_order_xras_allows(self, factory, session, monkeypatch):
+        client, calls = self._client()
+        outcome, patched = self._run(factory, monkeypatch, _ADVISOR_AND_STUDENT, client)
+        assert calls == [('add', 'student', 'PI', 'advisor'),
+                         ('add', 'advisor', 'User', 'student'),
+                         ('remove', 1, 'student'),
+                         ('remove', 3, 'student')]
+        assert outcome.completed and outcome.failure is None
+        assert outcome.landed == ('added student as PI', 'kept advisor as User',
+                                  'removed advisor as PI',
+                                  'removed student as Allocation Manager')
+        assert patched == ['EXAM0001'], 'the card is patched once, at the end'
+        ops = [r.operation for r in session.query(XrasRemediationEvent)
+               .filter(XrasRemediationEvent.request_number == 'EXAM0001')
+               .order_by(XrasRemediationEvent.xras_remediation_event_id)]
+        assert ops[-4:] == ['add_role', 'add_role', 'remove_role', 'remove_role']
+
+    def test_an_old_pi_already_holding_user_is_not_added_again(self, factory, monkeypatch):
+        roster = _ADVISOR_AND_STUDENT + [_member('advisor', 'User', 19, 2)]
+        client, calls = self._client()
+        outcome, _ = self._run(factory, monkeypatch, roster, client)
+        assert [c[0] for c in calls] == ['add', 'remove', 'remove']
+        assert outcome.completed
+
+    def test_it_stops_at_the_first_failure_and_says_which(self, factory, monkeypatch):
+        client, calls = self._client(fail_on=('remove', 1))
+        outcome, patched = self._run(factory, monkeypatch, _ADVISOR_AND_STUDENT, client)
+        assert len(calls) == 3, 'nothing after the failed step is sent'
+        assert not outcome.completed
+        assert outcome.landed == ('added student as PI', 'kept advisor as User')
+        label, failed = outcome.failure
+        assert label == 'removing advisor as PI' and failed.status == 'rejected'
+        assert patched == ['EXAM0001'], 'what landed still reaches the card'
+
+    def test_a_refused_first_step_changes_nothing_and_patches_nothing(
+            self, factory, monkeypatch):
+        client, calls = self._client(fail_on=('add', 'student'))
+        outcome, patched = self._run(factory, monkeypatch, _ADVISOR_AND_STUDENT, client)
+        assert len(calls) == 1 and outcome.landed == () and patched == []
+
