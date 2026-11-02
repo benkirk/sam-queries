@@ -2384,7 +2384,7 @@ Sweep 22 gave the XRAS page a small badge and left "app-wide" open. The global `
 0.75rem bold in 6px x 12px padding, 26px tall; Ben: "comically large". Sweep 21 had ruled row-label
 counts noise, but `group_count` still put one on 11 group rows.
 
-**Done** (one commit each, on `badge-size-sweep`):
+**Done** (one commit each, #891 on `badge-size-sweep`):
 
 - [x] B1, legibility: one badge size app-wide, the XRAS one (0.6875rem semi-bold, 0.15rem/0.4rem,
   17.8px tall). The XRAS override and `state-tag`'s copy go. Outliers fold: `status_badge(small=)`
