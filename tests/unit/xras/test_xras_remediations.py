@@ -2790,3 +2790,194 @@ class TestTheTicketKey:
         self._own_request()
         body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'NUSD ticket for this refused post' not in body
+
+
+# make PI: the one-click swap for a student who filed with their advisor as PI
+
+def _advisor_and_student():
+    payload = _detail_payload()
+    payload['roles'] = [
+        {'person': {'username': 'pi-user', 'firstName': 'P', 'lastName': 'Eye',
+                    'isReconciled': True},
+         'roles': [{'roleId': 1, 'role': 'PI', 'roleTypeId': 13}]},
+        {'person': {'username': 'ghost-user-abcde', 'firstName': 'G', 'lastName': 'Host',
+                    'isReconciled': True},
+         'roles': [{'roleId': 2, 'role': 'User', 'roleTypeId': 19}]},
+        {'person': {'username': 'student', 'firstName': 'S', 'lastName': 'Tudent',
+                    'isReconciled': True},
+         'roles': [{'roleId': 3, 'role': 'Allocation Manager', 'roleTypeId': 14}]}]
+    return payload
+
+
+def _outcome(*steps, patched=True):
+    from sam.manage.xras_remediation import MakePiOutcome, RemediationOutcome
+    return MakePiOutcome(tuple((verb, what, RemediationOutcome(1, status=status, error=error))
+                               for verb, what, status, error in steps), patched)
+
+
+class TestMakePi:
+    MAKE = '/allocations/xras_role_make_pi/EXAM0001/'
+
+    def _body(self, auth_client):
+        return auth_client.get('/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+
+    def test_the_button_is_on_a_real_non_pi_row_only(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_advisor_and_student())
+        body = self._body(auth_client)
+        assert self.MAKE + '3"' in body
+        assert self.MAKE + '1"' not in body, 'not on the PI'
+        assert self.MAKE + '2"' not in body, 'not on a placeholder'
+        assert 'fa-crown text-muted' in body, 'the PI row carries the crown'
+        assert 'student: Allocation Manager → PI; pi-user: PI → User.' in body
+        assert 'data-confirm-variant="warning"' in body, 'consequential, not destructive'
+
+    def test_it_is_disabled_with_writes_off(self, auth_client, configured, monkeypatch):
+        _reader(monkeypatch, payload=_advisor_and_student())
+        body = self._body(auth_client)
+        button = body[body.index(self.MAKE + '3"') - 400:body.index(self.MAKE + '3"')]
+        assert 'disabled' in button
+
+    def test_the_pi_and_a_placeholder_are_refused(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_advisor_and_student())
+        called = []
+        monkeypatch.setattr('sam.manage.xras_remediation.make_pi',
+                            lambda *a, **k: called.append(k))
+        pi = auth_client.post(self.MAKE + '1')
+        assert 'already the PI' in pi.get_data(as_text=True)
+        assert 'HX-Trigger' not in pi.headers
+        ghost = auth_client.post(self.MAKE + '2').get_data(as_text=True)
+        assert 'placeholder' in ghost and called == []
+
+    def test_a_completed_swap_flashes_every_step(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_advisor_and_student())
+        seen = []
+
+        def fake(*a, **k):
+            seen.append(k)
+            return _outcome(('add', 'student as PI', 'verified', None),
+                            ('keep', 'pi-user as User', 'verified', None))
+        monkeypatch.setattr('sam.manage.xras_remediation.make_pi', fake)
+        response = auth_client.post(self.MAKE + '3')
+        body = response.get_data(as_text=True)
+        assert 'student is now the PI: added student as PI; kept pi-user as User.' in body
+        assert response.headers.get('HX-Trigger') == 'refreshXrasTab'
+        assert (seen[0]['target_role_id'], seen[0]['xa_user']) == (3, 'pi-user')
+
+    def test_a_stopped_swap_says_what_landed_and_what_failed(
+            self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_advisor_and_student())
+        monkeypatch.setattr(
+            'sam.manage.xras_remediation.make_pi',
+            lambda *a, **k: _outcome(('add', 'student as PI', 'verified', None),
+                                     ('remove', 'pi-user as PI', 'rejected', 'nope')))
+        response = auth_client.post(self.MAKE + '3')
+        body = response.get_data(as_text=True)
+        assert 'Make PI stopped: removing pi-user as PI failed (nope).' in body
+        assert 'Done so far: added student as PI.' in body
+        assert response.headers.get('HX-Trigger') == 'refreshXrasTab', 'one step landed'
+
+
+class TestRefusalsLeaveTheCardsAlone:
+
+    def test_removing_the_acting_pis_only_role_says_what_works(
+            self, auth_client, armed, monkeypatch):
+        from sam.manage.xras_remediation import RemediationOutcome
+        _reader(monkeypatch, payload=_advisor_and_student())
+        monkeypatch.setattr(
+            'sam.manage.xras_remediation.change_role',
+            lambda *a, **k: RemediationOutcome(1, status='rejected',
+                                               error="can't delete your only role"))
+        response = auth_client.post('/allocations/xras_role_remove/EXAM0001/1')
+        assert "use Make PI on the new PI&#39;s row" in response.get_data(as_text=True)
+        assert 'HX-Trigger' not in response.headers
+
+    def test_a_refused_add_does_not_reload_the_cards(self, auth_client, armed, monkeypatch):
+        client = _reader(monkeypatch)
+        client.get_person.return_value = None
+        response = auth_client.post('/allocations/xras_role_add/EXAM0001',
+                                    data={'username': 'nobody', 'role_type': 'User'})
+        assert 'HX-Trigger' not in response.headers
+
+
+class TestARosterWriteReadsTheRequestTwice:
+    """Once before the write and once to verify it: route, verify-before, card patch and
+    dialog re-render share the first read, and the write forces the second."""
+
+    def test_an_add(self, auth_client, armed, monkeypatch):
+        from sam.integration.xras_api import XrasApiClient
+        from sam.integration.xras_api.admin_client import XrasAdminClient
+        from sam.manage import xras_remediation
+
+        state = {'added': False}
+        seen = []
+
+        def route(method, url, **_kw):
+            path = url.split('api.xras.org', 1)[-1]
+            seen.append((method, path))
+            payload = _payload(placeholder=False)
+            if state['added']:
+                payload['roles'].append(
+                    {'person': {'username': 'student', 'isReconciled': True},
+                     'roles': [{'roleId': 77, 'role': 'User', 'roleTypeId': 19}]})
+            if method == 'POST':
+                state['added'] = True
+                result = {'roleId': 77}
+            elif '/reports/request_numbers/' in path:
+                result = [payload]
+            elif path.startswith('/v1/people/'):
+                result = {'username': 'student'}
+            else:
+                result = []
+            resp = MagicMock(status_code=200, text='')
+            resp.json.return_value = {'result': result}
+            return resp
+
+        def reader(cls, *a, **k):
+            client = XrasApiClient(XrasApiConfig.from_environment())
+            client.session.request = route
+            return client
+
+        def admin(cls, *a, **k):
+            client = XrasAdminClient(XrasApiConfig.from_environment(),
+                                     reader=reader(XrasApiClient))
+            client.session.request = route
+            return client
+        from sam.integration.xras_api import XrasApiConfig
+        monkeypatch.setattr(XrasApiClient, 'from_environment', classmethod(reader))
+        monkeypatch.setattr(XrasAdminClient, 'from_environment', classmethod(admin))
+        monkeypatch.setattr(xras_remediation, '_open_event', lambda *a, **k: None)
+        monkeypatch.setattr(xras_remediation, '_close_event', lambda *a, **k: None)
+
+        body = auth_client.post('/allocations/xras_role_add/EXAM0001',
+                                data={'username': 'student', 'role_type': 'User'}
+                                ).get_data(as_text=True)
+        assert 'Added student as User' in body
+        family = [p for m, p in seen if m == 'GET' and '/request_numbers/' in p]
+        assert len(family) == 2, seen
+        assert [m for m, _ in seen].count('POST') == 1
+
+
+class TestTheTypePopover:
+
+    def test_the_type_cell_carries_the_gist(self, auth_client, configured):
+        payload = _payload()
+        payload['title'] = 'Turbulence at scale'
+        payload['actions'][0].update(resources=[
+            {'displayResourceName': 'Derecho', 'amount': '1000.0',
+             'resourceUnits': 'Core-hours', 'type': 'Requested'}])
+        _publish(payload)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'data-bs-trigger="hover focus"' in body
+        assert 'data-bs-title="Turbulence at scale"' in body
+        assert 'Supplement requesting Derecho 1,000 Core-hours.' in body
+
+    def test_a_row_swept_before_the_gist_shows_the_plain_label(self, auth_client, configured):
+        _publish(_payload())
+        entry = xras_cache.load_requests_index()
+        for row in entry['rows']:
+            row.pop('gist', None)
+        xras_cache.store_requests_index(entry)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'data-bs-trigger="hover focus"' not in body
+        assert '>Supplement</span>' in body
+

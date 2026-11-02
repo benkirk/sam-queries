@@ -45,6 +45,7 @@ from sam.integration.xras_api import (
     xras_api_configured,
     xras_write_configured,
 )
+from sam.integration.xras_api.read_memo import read_memo
 from sam.manage import management_transaction
 from sam.manage import xras_remediation as remediation
 from sam.projects.projects import Project
@@ -1226,7 +1227,7 @@ class _XrasRoleAddHandler(_XrasRemediationHandler):
         return _render_detail(
             self.request_number,
             flash_error=' '.join(str(m) for m in messages)
-            or 'Could not add the role.')
+            or 'Could not add the role.', changed=False)
 
 
 def _safe_roles_context(request_number):
@@ -1250,7 +1251,15 @@ def _safe_roles_context(request_number):
 @login_required
 @require_permission(Permission.MANAGE_XRAS)
 def xras_role_add(request_number: str):
-    return _XrasRoleAddHandler(request_number=request_number).handle()
+    with read_memo():
+        return _XrasRoleAddHandler(request_number=request_number).handle()
+
+
+def _only_role_hint(reason):
+    """XRAS refuses removing the acting PI's only role; say what works instead."""
+    if 'only role' in (reason or '').casefold():
+        return " Add the new PI first, or use Make PI on the new PI's row."
+    return ''
 
 
 @bp.route('/xras_role_remove/<path:request_number>/<int:role_id>',
@@ -1265,39 +1274,103 @@ def xras_role_remove(request_number: str, role_id: int):
     """
     # The roster editor is inline in the detail modal, so every outcome
     # re-renders that modal in place (with a flash), not a separate roles view.
-    context = _safe_roles_context(request_number)
-    if not context['xa_user'] or context['request_id'] is None:
-        return _render_detail(
-            request_number,
-            flash_error='XRAS could not be read, so nothing was changed.')
+    with read_memo():
+        context = _safe_roles_context(request_number)
+        if not context['xa_user'] or context['request_id'] is None:
+            return _render_detail(
+                request_number, changed=False,
+                flash_error='XRAS could not be read, so nothing was changed.')
 
-    target = next((r for r in context['roster'] if r.get('role_id') == role_id),
-                  None)
+        target = next((r for r in context['roster'] if r.get('role_id') == role_id),
+                      None)
+        if target is None:
+            return _render_detail(request_number, changed=False,
+                                  flash_error='That role is no longer on the roster.')
+
+        try:
+            outcome = remediation.change_role(
+                _session_factory, add=False, request_number=request_number,
+                request_id=context['request_id'], username=target.get('username'),
+                operator=acting_username(), xa_user=context['xa_user'],
+                role_id=role_id)
+        except XrasWriteNotConfigured:
+            return _render_detail(
+                request_number, changed=False,
+                flash_error='XRAS writes are switched off for this deployment. '
+                            'Nothing was sent.')
+
+        if outcome.status == 'verified':
+            return _render_detail(
+                request_number,
+                flash=f"Removed {target.get('username')} ({target.get('role_type')}).")
+        reason = outcome.error or 'XRAS did not confirm it'
+        return _render_detail(
+            request_number, changed=outcome.status != 'rejected',
+            flash_error=f'Removal did not complete: {reason}.{_only_role_hint(reason)} '
+                        'The attempt is recorded in the remediation log.')
+
+
+@bp.route('/xras_role_make_pi/<path:request_number>/<int:role_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_role_make_pi(request_number: str, role_id: int):
+    """Make the holder of one roster row the PI: the old PI stays on as User.
+
+    A student who files with their advisor as PI is the common case. The steps and
+    their order are ``remediation.make_pi``'s; each is audited, and the dialog
+    re-renders once with what landed.
+    """
+    with read_memo():
+        context = _safe_roles_context(request_number)
+        if not context['xa_user'] or context['request_id'] is None:
+            return _render_detail(
+                request_number, changed=False,
+                flash_error='XRAS could not be read, so nothing was changed.')
+        target = next((r for r in context['roster'] if r.get('role_id') == role_id),
+                      None)
+        refusal = _make_pi_refusal(target, context['roster'])
+        if refusal:
+            return _render_detail(request_number, changed=False, flash_error=refusal)
+        try:
+            outcome = remediation.make_pi(
+                _session_factory, request_number=request_number,
+                request_id=context['request_id'], roster=context['roster'],
+                target_role_id=role_id, operator=acting_username(),
+                xa_user=context['xa_user'])
+        except XrasWriteNotConfigured:
+            return _render_detail(
+                request_number, changed=False,
+                flash_error='XRAS writes are switched off for this deployment. '
+                            'Nothing was sent.')
+        return _render_make_pi(request_number, target['username'], outcome)
+
+
+def _make_pi_refusal(target, roster):
+    """Why this row cannot be made PI, or ``''``."""
+    from sam.integration.xras_api.vocabulary import PI_ROLE_TYPE_ID
     if target is None:
-        return _render_detail(
-            request_number, flash_error='That role is no longer on the roster.')
+        return 'That role is no longer on the roster.'
+    name = (target.get('username') or '').casefold()
+    if any(r.get('role_type_id') == PI_ROLE_TYPE_ID
+           and (r.get('username') or '').casefold() == name for r in roster):
+        return f"{target.get('username')} is already the PI."
+    if target.get('placeholder'):
+        return (f"{target.get('username')} is a placeholder; merge it into its SAM "
+                'account before making it the PI.')
+    return ''
 
-    try:
-        outcome = remediation.change_role(
-            _session_factory, add=False, request_number=request_number,
-            request_id=context['request_id'], username=target.get('username'),
-            operator=acting_username(), xa_user=context['xa_user'],
-            role_id=role_id)
-    except XrasWriteNotConfigured:
-        return _render_detail(
-            request_number,
-            flash_error='XRAS writes are switched off for this deployment. '
-                        'Nothing was sent.')
 
-    if outcome.status == 'verified':
-        return _render_detail(
-            request_number,
-            flash=f"Removed {target.get('username')} ({target.get('role_type')}).")
-    reason = outcome.error or 'XRAS did not confirm it'
+def _render_make_pi(request_number, username, outcome):
+    landed = '; '.join(outcome.landed)
+    if outcome.completed:
+        return _render_detail(request_number, flash=f'{username} is now the PI: {landed}.')
+    label, failed = outcome.failure
+    reason = failed.error or 'XRAS did not confirm it'
+    done = f' Done so far: {landed}.' if landed else ' Nothing was changed.'
     return _render_detail(
-        request_number,
-        flash_error=f'Removal did not complete: {reason}. The attempt is '
-                    'recorded in the remediation log.')
+        request_number, changed=bool(landed),
+        flash_error=f'Make PI stopped: {label} failed ({reason}).{done} Every attempt '
+                    'is recorded in the remediation log.')
 
 
 _RESOURCE_FORM = 'dashboards/allocations/partials/xras_resource_form.html'

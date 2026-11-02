@@ -60,14 +60,15 @@
    extra_class lets a caller merge in additional classes (e.g. badge styling)
    while keeping the help-term cue and tooltip wiring.
    stop_propagation=True inside a data-action row, or the click runs the row's action.
+   trigger: the rich popover's Bootstrap trigger ('hover focus' also opens on hover).
 #}
-{% macro term(label, text, rich=False, title=None, placement='top', extra_class='', stop_propagation=False) -%}
+{% macro term(label, text, rich=False, title=None, placement='top', extra_class='', stop_propagation=False, trigger='focus') -%}
 <span class="help-term{% if extra_class %} {{ extra_class }}{% endif %}"
       tabindex="0"
       {%- if stop_propagation %} data-stop-propagation{% endif %}
       {%- if rich %}
       data-bs-toggle="popover"
-      data-bs-trigger="focus"
+      data-bs-trigger="{{ trigger }}"
       data-bs-html="true"
       {%- if title %} data-bs-title="{{ title | forceescape }}"{% endif %}
       data-bs-content="{{ text | forceescape }}"

@@ -14,7 +14,7 @@ from flask import Response, current_app, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from sam.core.users import User
-from sam.integration.xras_api.vocabulary import document_type_label
+from sam.integration.xras_api.vocabulary import PI_ROLE_TYPE_ID, document_type_label
 from sam.integration.xras_api import (
     XrasSourceUnavailable,
     fos_name_map,
@@ -295,6 +295,7 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
         'role_options': _role_options(),
         'role_add_url': url_for('allocations_dashboard.xras_role_add',
                                 request_number=request_number),
+        'pi_role_type_id': PI_ROLE_TYPE_ID,
         'flash': flash,
         'flash_error': flash_error,
     }
@@ -404,11 +405,12 @@ def xras_document_preview(request_number: str, action_id: int, document_id: int)
         log_label='xras document preview')
 
 
-def _render_detail(request_number, *, flash=None, flash_error=None):
+def _render_detail(request_number, *, flash=None, flash_error=None, changed=True):
     """Re-render the detail modal in place after a write, with a flash.
 
     The write is already done, verified and recorded by the time this runs, so
     an outage here only costs the operator a fresh view — the change stands.
+    *changed* False (a refusal) skips the card reloads behind the dialog.
     """
     try:
         context = _detail_context(request_number, flash=flash,
@@ -420,7 +422,8 @@ def _render_detail(request_number, *, flash=None, flash_error=None):
         return _dialog_message(f'{note} The card may lag until the next hourly sweep.',
                                variant='danger' if flash_error else 'success')
     response = current_app.make_response(render_template(_DETAIL_FORM, **context))
-    response.headers['HX-Trigger'] = 'refreshXrasTab'
+    if changed:
+        response.headers['HX-Trigger'] = 'refreshXrasTab'
     return response
 
 

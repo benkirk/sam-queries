@@ -296,6 +296,9 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
 }
 .help-icon:hover,
 .help-icon:focus-visible { color: var(--text-secondary); }
+/* A popover title is Bootstrap's <h3 class="popover-header">; the site's h3 scale
+   (42 px lines at desktop) double-spaced its 16 px text. */
+.popover-header { line-height: var(--bs-body-line-height); }
 .help-term {
     cursor: help;
     text-decoration: underline dotted;

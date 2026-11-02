@@ -2514,6 +2514,13 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_role_make_pi",
+    "/allocations/xras_role_make_pi/<path:request_number>/<int:role_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_role_remove",
     "/allocations/xras_role_remove/<path:request_number>/<int:role_id>",
     [

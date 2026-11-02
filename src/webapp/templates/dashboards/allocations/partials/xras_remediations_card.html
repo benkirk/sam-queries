@@ -1,4 +1,4 @@
-{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/help.html' import help_icon, term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_xras_pending_work, g_xras_mnemonic_strip, g_xras_contract_strip, g_xras_identity_strip with context %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle, drill_toggle %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_grid_row, facet_row %}
@@ -295,7 +295,9 @@
                         {% if row.document_count %}{{ icon_count('fa-paperclip', row.document_count, (row.document_count | fmt_plural('document')) ~ ': ' ~ (row.document_types | map('xras_document_type') | join(', '))) }}{% endif %}
                     </td>
                     {# `latest_action_type` is absent on a snapshot swept before it existed. #}
-                    <td class="text-nowrap">{{ type_label(row.latest_action_type) if row.latest_action_type else '—' }}</td>
+                    {# `gist` is absent on a snapshot swept before it existed: the plain label. #}
+                    <td class="text-nowrap">{% if row.gist and row.latest_action_type %}{{ term(type_label(row.latest_action_type), row.gist.ask, rich=True, title=row.gist.title, placement='right', trigger='hover focus') }}
+                        {%- else %}{{ type_label(row.latest_action_type) if row.latest_action_type else '—' }}{% endif %}</td>
                     <td class="text-nowrap">{{ tag(row.status or '—') }}</td>
                     {% set lead = row.pi.name or row.pi.username or '—' %}
                     <td class="cell-truncate" title="{{ lead }}">{{ lead }}</td>
