@@ -735,6 +735,10 @@ tasks:
     # Disabled: account_queue_digest         (mails NUSD the open queue; Mon 08:00 MT.
     #                                         NUSD's handoff is the per-request
     #                                         ticket, NOTIFY_ACCOUNT_TICKET_TO)
+    #           unix_group_masks             (hourly :40; expires, confirms and re-asserts
+    #                                         the operators' unix group masks against the
+    #                                         directory, reads only. UNIX_GROUP_MASK.md;
+    #                                         named here until its first weeks on dev are read)
     #
     # WARNING: this is an ENUMERATION and it is fail-OPEN. `disabled_tasks()` in
     # src/scheduling/runner.py is a case-sensitive exact match against registry
@@ -750,7 +754,7 @@ tasks:
     # `sam-admin tasks --run X --force` cannot override it.
     # directory_report: the nightly read-only sweep of ldap.ucar.edu against SAM (counts only);
     # named here until its first weeks on dev are read (docs/plans/DIRECTORY_CLIENT_NEXT.md).
-    SAM_TASKS_DISABLED: "account_queue_digest,directory_report"
+    SAM_TASKS_DISABLED: "account_queue_digest,directory_report,unix_group_masks"
     # Arms xras_rename's write (the XRAS_WRITE_ENABLED warning in webapp.env), and with
     # XRAS_SUBMIT_ANONYMOUS_ENABLED (absent here) the reconcile's placeholder merge.
     # Removing it disarms both without a code change.
