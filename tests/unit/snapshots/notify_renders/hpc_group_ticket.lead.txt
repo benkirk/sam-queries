@@ -1,0 +1,14 @@
+NUSD: please add alovelace (Ada Lovelace) to the unix group cgdoce (gid 2800) upstream, in Google Groups.
+
+Group:        cgdoce (gid 2800, adhoc)
+Member:       alovelace (Ada Lovelace)
+Change:       add
+Requested by: benkirk on 2026-11-02 17:28
+Note:         RC-39483
+
+What SAM did: SAM wrote alovelace into cgdoce's entries on hpc, hpc-data and hpc-dev; the HPC hosts pick it up from SAM's directory feed.
+
+SAM reads the directory every hour and closes its side of this change once upstream agrees. If the change should not happen, say so here and an operator withdraws it in SAM.
+SAM mask:     #12  https://sam.hpc.ucar.edu/admin/users/group-masks?q=cgdoce
+
+Filed by the NSF NCAR Systems Accounting Manager when the change was made in SAM.

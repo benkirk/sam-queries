@@ -342,6 +342,7 @@ def _hpc_group_ticket() -> Dict[str, Any]:
                    "the HPC hosts pick it up from SAM's directory feed.",
         'mask_id': 12,
         'masks_url': 'https://sam.hpc.ucar.edu/admin/users/group-masks?q=cgdoce',
+        'requested_by': 'benkirk',
     }
 
 
@@ -531,6 +532,7 @@ VARIABLE_NOTES: Dict[str, str] = {
     'applied': 'What SAM did locally when the mask opened.',
     'mask_id': 'The SAM mask id.',
     'masks_url': 'Link to the Group masks tab in SAM, filtered to the group, or empty.',
+    'requested_by': 'The operator who opened the mask in SAM.',
     'request_number': 'The XRAS request number as last posted (NCAR#### or the projcode).',
     'xras_request_id': "The XRAS requestId, stable across the request's rename.",
     'title': 'The request title as XRAS posted it, or empty.',

@@ -250,7 +250,7 @@ def build_mask_ticket_message(mask: UnixGroupMask, *, group_name: str, branches:
             'opened_at': fmt.date_str(mask.creation_time, fmt='%Y-%m-%d %H:%M'),
             'expires_at': fmt.date_str(mask.expires_at) if mask.expires_at else '',
             'note': mask.note or '', 'applied': applied, 'mask_id': mask.mask_id,
-            'masks_url': masks_url,
+            'masks_url': masks_url, 'requested_by': mask.requested_by,
         },
         entity=(MASK_ENTITY, mask.mask_id),
         dedup_key=f'{MASK_TICKET_KIND}:{mask.mask_id}',
