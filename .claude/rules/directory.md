@@ -77,7 +77,7 @@ Appendix C.
   PUT, so the mirror cannot revert one; `group_populator` and `project_groups` apply a project
   mask at read time (the member only where they hold an account; the grant reaches LDAP
   through the daemon's feed). The hourly `unix_group_masks` task expires, confirms against
-  `reader.group(gid)` and re-asserts; ⚠️ it ships named in prod's `SAM_TASKS_DISABLED`. An
+  `reader.group(gid)` and re-asserts, live in prod and dev. An
   adhoc mask files NUSD's `hpc_group` ticket from the webapp; the panels list each open mask
   with whether the directory agrees.
 - **Logs** carry usernames and row ids, like the rest of the ldapsync logger; personal names,

@@ -65,14 +65,13 @@ class TestRegistration:
         assert match
         assert lease_for(TASKS[NAME].expected_runtime).total_seconds() > int(match.group(1))
 
-    def test_it_ships_switched_off_in_prod_and_on_in_dev(self):
-        """WARNING: `SAM_TASKS_DISABLED` is fail-OPEN: a registered task dispatches on the next
-        wake unless the chart names it. Prod names it until its first weeks on dev are read;
-        dev runs it. Delete the prod half in the commit that clears the switch."""
-        for env, expect in (('values.yaml', True), ('values-dev.yaml', False)):
+    def test_it_runs_in_prod_and_dev(self):
+        """`SAM_TASKS_DISABLED` is fail-OPEN; the task is live in both (Ben, 2026-11-02) and a
+        values edit that names it again is a deliberate switch-off, so this test says so."""
+        for env in ('values.yaml', 'values-dev.yaml'):
             values = (REPO_ROOT / 'helm' / env).read_text()
             line, = [ln for ln in values.splitlines() if ln.strip().startswith('SAM_TASKS_DISABLED:')]
-            assert (NAME in line) is expect, (env, line)
+            assert NAME not in line, (env, line)
 
     def test_the_task_never_names_a_ticket_writer(self):
         text = (REPO_ROOT / 'src' / 'scheduling' / 'tasks' / 'unix_group_masks.py').read_text()

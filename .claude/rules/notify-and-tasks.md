@@ -145,7 +145,7 @@ an unreadable directory fails the run. Rule: `.claude/rules/directory.md`.
 `reader.group(gid)` read per gid, re-asserts a drifted entry row, and counts the rest;
 `detail` carries the counts, `message` the headline. Reads only: it never files or comments
 (the ticket is the webapp's, `hpc_group`). Transactional, so `--dry-run` is the runner's
-rollback. **Ships named in prod's `SAM_TASKS_DISABLED`**; dev runs it. Record:
+rollback. Live in prod and dev (its writes are SAM's own mask and entry rows). Record:
 `docs/plans/UNIX_GROUP_MASK.md` § 4.
 
 ### The account-request tasks

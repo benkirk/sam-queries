@@ -1,8 +1,8 @@
 # Unix group masks: local add/remove over a mirrored group, with a ticket and a watch
 
-**Status:** built 2026-11-02 (PR #893), as recorded here; the decisions in § 11 are Ben's.
-Rollout: the DDL on prod MySQL and dev Postgres by Ben (§ 8), the watch task switched on in
-prod after its first weeks on dev (§ 4).
+**Status:** built 2026-11-02 (PR #893), as recorded here; the decisions in § 10 are Ben's.
+Rollout: the DDL applied on prod MySQL and dev Postgres (§ 8); the watch task runs in prod
+from the first roll (§ 4).
 
 SAM does not create unix groups and never will from this design: upstream mints the gid.
 What SAM does is hold a **signed delta** over a group it already knows, so an operator's add
@@ -94,10 +94,11 @@ scheduler's view) is untouched.
 
 `TaskResult.detail` carries the counts; an unreadable directory stops the reads and says so
 in the headline. The task never files or comments (`test_no_other_task_reaches_a_ticket_writer`)
-and reads the four `DIRECTORY_*` keys the CronJob already forwards. **Named in prod's
-`SAM_TASKS_DISABLED`** (the list is fail-open); dev runs it. Until prod runs it, a project
-mask stops applying at `expires_at` on its own (the readers check it) but an overdue adhoc
-mask keeps its rows until a sweep or a withdrawal.
+and reads the four `DIRECTORY_*` keys the CronJob already forwards. It runs in prod and dev
+(Ben, 2026-11-02; the `SAM_TASKS_DISABLED` list is fail-open and does not name it). A project
+mask stops applying at `expires_at` on its own (the readers check it), but only a sweep takes
+an overdue adhoc mask's rows back and bumps an expired project grant's `last_modified`, so
+switching the task off leaves both until a withdrawal.
 
 ## 5. The ticket
 
@@ -153,6 +154,9 @@ three surfaces; all writes are `EDIT_GROUPS` (held by `allocation_admin`: NUSD a
 - A member with no unix account on a branch: allowed; the grant is invisible there until
   they hold one (the invariant in § 1 is never relaxed).
 - A project mask must carry `expires_at`, 90 days at most; an adhoc mask may be open-ended.
+- Open: a `remove` of a project's lead or admin. `group_populator` honors it, `project_groups`
+  keeps them (a group with no lead is the worse state in LDAP), so the hosts and the directory
+  would disagree. If anyone asks, refuse it in `open_mask` beside the primary-gid guard.
 - A project mask also passes the operator's facility scope for `EDIT_GROUPS`.
 
 ## 8. DDL and rollout
