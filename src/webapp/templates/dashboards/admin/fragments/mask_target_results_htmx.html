@@ -1,0 +1,13 @@
+{# htmx: the group-mask target picker's rows: adhoc groups and projects, one gid each #}
+{% if targets %}
+{% for t in targets %}
+<button type="button" class="list-group-item list-group-item-action w-100 text-start fk-search-result"
+        data-fk-id="{{ t.gid }}" data-fk-label="{{ t.name }} (gid {{ t.gid }}, {{ t.kind }})">
+    <strong>{{ t.name }}</strong>
+    <span class="badge bg-secondary ms-2">{{ t.kind }}</span>
+    <small class="text-muted ms-2">gid {{ t.gid }}{% if t.detail %} · {{ t.detail | truncate(50) }}{% endif %}</small>
+</button>
+{% endfor %}
+{% else %}
+<div class="list-group-item text-muted small py-2">No groups or projects found</div>
+{% endif %}

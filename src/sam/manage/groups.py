@@ -2,13 +2,14 @@
 
 Flask-free: the webapp passes the RBAC catalog's group subjects in. An adhoc mask
 is written through to ``adhoc_system_account_entry`` here and protected inside
-``sync_group``; a project mask is applied by the readers.
+``sync_group``; a project mask is applied by the readers. Several members opened
+together form one batch under the head mask (one ticket per batch).
 """
 
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import FrozenSet, Optional
+from typing import FrozenSet, List, Optional, Sequence, Tuple
 
 from sqlalchemy import func
 
@@ -20,6 +21,7 @@ from sam.queries.group_masks import open_mask_for
 logger = logging.getLogger(__name__)
 
 ENTRY_USERNAME_WIDTH = 12     # adhoc_system_account_entry.username
+MASK_BATCH_MAX = 20           # members one submit may name
 
 
 class MaskError(ValueError):
@@ -34,6 +36,10 @@ class MaskTarget:
     group: Optional[AdhocGroup] = None
     project: Optional[Project] = None
 
+    @property
+    def label(self) -> str:
+        return f'{self.name} (gid {self.gid}, {self.kind})'
+
 
 def resolve_target(session, gid: int) -> MaskTarget:
     """The adhoc group holding ``gid``, else the project; neither is a refusal (SAM never creates a group)."""
@@ -46,11 +52,36 @@ def resolve_target(session, gid: int) -> MaskTarget:
     raise MaskError(f'No adhoc group or project holds gid {gid}.')
 
 
-def open_mask(session, *, gid: int, username: str, op: str, requested_by: str,
-              note=None, expires_at: Optional[datetime] = None, now: Optional[datetime] = None,
-              protected_groups: FrozenSet[str] = frozenset(),
-              may_touch_protected: bool = False) -> UnixGroupMask:
-    """Open one mask after the guards; an adhoc mask is materialized at once. Raises ``MaskError``."""
+def parse_usernames(text: str) -> Tuple[List[str], List[str]]:
+    """One username per line, blank and ``#`` lines skipped: ``(names, problems)``, problems naming lines."""
+    names: List[str] = []
+    problems: List[str] = []
+    seen: dict = {}
+    for number, raw in enumerate((text or '').splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith('#'):
+            continue
+        if ' ' in line or len(line) > 35:
+            problems.append(f'line {number}: expected one username')
+            continue
+        key = line.lower()
+        if key in seen:
+            problems.append(f'line {number}: duplicate of line {seen[key]}')
+            continue
+        seen[key] = number
+        names.append(line)
+    if len(names) > MASK_BATCH_MAX:
+        problems.append(f'At most {MASK_BATCH_MAX} members at once; open another mask for the rest.')
+    if not names and not problems:
+        problems.append('Name at least one member.')
+    return names, problems
+
+
+def check_mask(session, *, gid: int, username: str, op: str, now: Optional[datetime] = None,
+               protected_groups: FrozenSet[str] = frozenset(),
+               may_touch_protected: bool = False) -> Tuple[MaskTarget, User, Optional[UnixGroupMask]]:
+    """The guards of ``open_mask`` without the write: the target, the user, and an overdue
+    standing row the open would expire. Raises ``MaskError``."""
     now = now or datetime.now()
     target = resolve_target(session, gid)
     user = User.get_by_username(session, (username or '').strip())
@@ -71,13 +102,32 @@ def open_mask(session, *, gid: int, username: str, op: str, requested_by: str,
     standing = open_mask_for(session, gid=gid, username=user.username)
     if standing is not None and standing.is_open_at(now):
         raise MaskError(f'An open {standing.op} already stands for {user.username} on {target.name}.')
+    return target, user, standing
+
+
+def open_mask(session, *, gid: int, username: str, op: str, requested_by: str,
+              note=None, expires_at: Optional[datetime] = None, now: Optional[datetime] = None,
+              protected_groups: FrozenSet[str] = frozenset(),
+              may_touch_protected: bool = False, batch_id: Optional[int] = None) -> UnixGroupMask:
+    """Open one mask after the guards; an adhoc mask is materialized at once. Raises ``MaskError``."""
+    now = now or datetime.now()
+    checked = check_mask(session, gid=gid, username=username, op=op, now=now,
+                         protected_groups=protected_groups, may_touch_protected=may_touch_protected)
+    return _open_checked(session, *checked, gid=gid, op=op, requested_by=requested_by, note=note,
+                         expires_at=expires_at, now=now, batch_id=batch_id)
+
+
+def _open_checked(session, target: MaskTarget, user: User, standing: Optional[UnixGroupMask], *,
+                  gid: int, op: str, requested_by: str, note, expires_at: Optional[datetime],
+                  now: datetime, batch_id: Optional[int] = None) -> UnixGroupMask:
+    """The write behind ``check_mask``'s verdict: expire the overdue row, open, materialize."""
     if standing is not None:
         # Overdue and not yet swept by the watcher: it ends here, as the watcher would end it.
         close_mask(session, standing, resolution='expired', by=requested_by, now=now)
     try:
         mask = UnixGroupMask.create(session, unix_gid=gid, kind=target.kind, username=user.username,
                                     op=op, requested_by=requested_by, note=note,
-                                    expires_at=expires_at, when=now)
+                                    expires_at=expires_at, when=now, batch_id=batch_id)
     except ValueError as exc:
         raise MaskError(str(exc)) from exc
     if target.kind == 'adhoc':
@@ -85,6 +135,30 @@ def open_mask(session, *, gid: int, username: str, op: str, requested_by: str,
         logger.info('group mask %s: %s %s on %s, %d entry rows', mask.mask_id, op,
                     user.username, target.name, changed)
     return mask
+
+
+def open_masks(session, *, gid: int, usernames: Sequence[str], op: str, requested_by: str,
+               note=None, expires_at: Optional[datetime] = None, now: Optional[datetime] = None,
+               protected_groups: FrozenSet[str] = frozenset(),
+               may_touch_protected: bool = False) -> List[UnixGroupMask]:
+    """One batch, head first, every row stamped with the head's id; every guard runs once,
+    before anything is written, so a refusal names the member and leaves nothing behind."""
+    if not usernames:
+        raise MaskError('Name at least one member.')
+    if len(usernames) > MASK_BATCH_MAX:
+        raise MaskError(f'At most {MASK_BATCH_MAX} members at once.')
+    now = now or datetime.now()
+    checked = [check_mask(session, gid=gid, username=name, op=op, now=now,
+                          protected_groups=protected_groups, may_touch_protected=may_touch_protected)
+               for name in usernames]
+    if len({user.username for _, user, _ in checked}) < len(checked):
+        raise MaskError('A member is named twice.')
+    masks: List[UnixGroupMask] = []
+    for verdict in checked:
+        masks.append(_open_checked(session, *verdict, gid=gid, op=op, requested_by=requested_by,
+                                   note=note, expires_at=expires_at, now=now,
+                                   batch_id=masks[0].mask_id if masks else None))
+    return masks
 
 
 def _entries(group: AdhocGroup, username: str):
@@ -159,7 +233,7 @@ def sweep_masks(session, reader, *, now: datetime, by: str) -> dict:
     if not rows:
         return counts
     adhoc = [r for r in rows if r.kind == 'adhoc']
-    tickets = mask_tickets(session, [r.mask_id for r in adhoc])
+    tickets = mask_tickets(session, adhoc)
     names = sorted({r.username.lower() for r in adhoc})
     upids = dict(session.query(func.lower(User.username), User.upid)
                  .filter(func.lower(User.username).in_(names))) if names else {}

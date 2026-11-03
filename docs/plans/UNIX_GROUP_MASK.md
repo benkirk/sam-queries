@@ -1,8 +1,10 @@
 # Unix group masks: local add/remove over a mirrored group, with a ticket and a watch
 
-**Status:** built 2026-11-02 (PR #893), as recorded here; the decisions in § 10 are Ben's.
-Rollout: the DDL applied on prod MySQL and dev Postgres (§ 8); the watch task runs in prod
-from the first roll (§ 4).
+**Status:** built 2026-11-02 (PR #893), live on prod 2026-11-03 (mask #1: `igrooms` into
+`cgdoce`, RC-40785, confirmed by the first sweep); the follow-on of 2026-11-03 (one target
+picker, a batch of members under one ticket, § 2 `batch_id`) as recorded here. The decisions
+in § 10 are Ben's. Rollout: the DDL applied on prod MySQL and dev Postgres (§ 8); the watch
+task runs in prod from the first roll (§ 4).
 
 SAM does not create unix groups and never will from this design: upstream mints the gid.
 What SAM does is hold a **signed delta** over a group it already knows, so an operator's add
@@ -46,12 +48,16 @@ keyed by **gid** so one row shape covers both kinds; the gid spaces are disjoint
 | `requested_by`, `note`, `creation_time` | who, why, when (app clock, naive Mountain) |
 | `expires_at` | NULL means "until upstream agrees"; a project mask must carry one, 90 days at most |
 | `closed_at`, `resolution`, `closed_by` | `confirmed`, `expired` or `withdrawn` |
+| `batch_id` | the head mask of the batch that opened the row; a row opened alone heads itself (`create` stamps it), NULL only on rows older than the column; readers use `head_id` |
 
 No foreign keys (the `external_ticket` convention). One open row per (gid, username) is an
-application rule in `open_mask` (MySQL has no partial unique index); an overdue open row is
+application rule in `check_mask` (MySQL has no partial unique index); an overdue open row is
 expired on the way when a new one opens. ORM: `UnixGroupMask` (`SessionMixin`; `create`,
-`update`, `close`, `is_active` on `closed_at`, `is_open_at(now)` adds the expiry). The ticket,
-when there is one, is `external_ticket(entity_type='unix_group_mask', entity_id=mask_id)`.
+`update`, `close`, `is_active` on `closed_at`, `is_open_at(now)` adds the expiry). Several
+members named in one submit are one **batch**: `open_masks` checks every name first, then
+opens them head first with the head's id in `batch_id`. The ticket, when there is one, is
+`external_ticket(entity_type='unix_group_mask', entity_id=<head mask_id>)`; a member reaches
+it through its head (`mask_tickets` takes rows).
 
 ## 3. How a mask takes effect
 
@@ -109,15 +115,18 @@ webapp after the write commits (`webapp/dashboards/admin/group_mask_tickets.py`,
 - kind `hpc_group` in `KINDS` (`src/sam/integration/tickets/base.py`);
   `JIRA_HPC_GROUP_REQUEST_TYPE_ID` 31 ("General help" until the desk has an "HPC group"
   type) and `JIRA_HPC_GROUP_LABELS` `sam-hpc-group` in `webapp.env`.
-- handle `SAM-GM-<mask_id>` in the summary; notify kind `hpc_group_ticket` (family
-  `account`, template `src/sam/notify/templates/hpc_group_ticket.txt`), dedup
-  `hpc_group_ticket:<mask_id>`; link `external_ticket('unix_group_mask', mask_id)`. The body
-  carries the group, the member, the change, the note, what SAM did locally and when, and
-  the masks-tab link; the ticket says upstream (Google Groups) is what NUSD changes.
+- one ticket per batch: handle `SAM-GM-<head mask_id>` in the summary; notify kind
+  `hpc_group_ticket` (family `account`, template `src/sam/notify/templates/hpc_group_ticket.txt`),
+  dedup `hpc_group_ticket:<head>`; link `external_ticket('unix_group_mask', head)`. The body
+  asks for the members by name in one sentence ("Please add 'a' (A) and 'b' (B) to the unix
+  group 'cgdoce' (gid 2800) in Google Groups, since it is the authoritative record of group
+  membership"), lists them, and carries the change, the note, when and who; a single member
+  renders as before. No branch names: NUSD acts on the group.
 - mail fallback to `NOTIFY_ACCOUNT_TICKET_TO` when no provider is armed or it fails; the
   hourly learn half looks up both handle families (`LEARN_KINDS` in `tickets/learn.py`) so a
   mailed ticket's key is linked later.
-- a Withdraw posts one internal comment when the provider can; the ticket is NUSD's to close.
+- a Withdraw posts one internal comment on the batch's ticket when the provider can, naming
+  the member and whether the others on the ticket still stand; the ticket is NUSD's to close.
 - the success line names the ticket key, or says no ticket path is configured.
 
 ## 6. UI
@@ -128,9 +137,12 @@ three surfaces; all writes are `EDIT_GROUPS` (held by `allocation_admin`: NUSD a
 - **Admin > Users & Groups > Group masks** (`dashboards/admin/group_masks_routes.py`, the
   Last seen shape): every mask with kind and state chips, a group-or-user search, an
   open-only switch, sortable columns, pagination; Edit (a `CrudSpec` over expiry and note)
-  and Withdraw. New mask opens one form: an adhoc-group picker (gid) or a project picker,
-  the user picker, the op, the expiry, the note. The table refreshes itself on
-  `reloadGroupMasks`.
+  and Withdraw. New mask opens one form: one picker over adhoc groups and projects (rows
+  tagged with kind and gid, `search_mask_targets`), a members box (one username per line, up
+  to 20, fed by an append-mode search whose rows are bare usernames), the op, the expiry, the
+  note. Every guard runs per member in `clean()` (`check_mask`), so one re-render lists every
+  problem under the box with the picker's chip kept; the open is all-or-nothing. The table
+  refreshes itself on `reloadGroupMasks`.
 - **Adhoc card**: Add member and Remove member open the same form pinned to the group; a
   Pending changes list under them (self-refreshing) with Withdraw; `reloadGroupCard`
   re-renders the card by name. Materialized rows render like any member.
@@ -158,13 +170,15 @@ three surfaces; all writes are `EDIT_GROUPS` (held by `allocation_admin`: NUSD a
   keeps them (a group with no lead is the worse state in LDAP), so the hosts and the directory
   would disagree. If anyone asks, refuse it in `open_mask` beside the primary-gid guard.
 - A project mask also passes the operator's facility scope for `EDIT_GROUPS`.
+- The guards are `check_mask`, read-only; `open_mask` calls it and writes; `open_masks` runs
+  it for every member of a batch before the first write.
 
 ## 8. DDL and rollout
 
 The table lives in the SAM database: SAM never migrates its schema, but an additive table is
 routine and Ben applies the script himself. The `external_ticket` steps
 (`implemented/TICKET_PROVIDER.md` § 8.3) were followed: the script with its verification
-SELECTs (0 rows, 12 columns, 3 indexes, 0 FKs), the `_BOOTSTRAP_TABLES` tuple in
+SELECTs (0 rows, 13 columns, 4 indexes, 0 FKs), the `_BOOTSTRAP_TABLES` tuple in
 `tests/conftest.py`, the pin in `tests/integration/test_schema_validation.py` (utf8mb4
 `note`), the anonymizer purge, the factory.
 
@@ -172,6 +186,12 @@ SELECTs (0 rows, 12 columns, 3 indexes, 0 FKs), the `_BOOTSTRAP_TABLES` tuple in
 mysql -u <hpc-writer> -h <host> -p sam < scripts/sql/create_unix_group_mask.sql
 psql -h csg-postgres.k8s.ucar.edu -d sam_dev -f scripts/sql/create_unix_group_mask_pg.sql
 ```
+
+`batch_id` came after the table (2026-11-03): `scripts/sql/alter_unix_group_mask_batch.sql`
+and its `_pg.sql` twin, idempotent, applied BEFORE the code that selects the column rolls.
+The committed test blob already carried the table and the bootstrap only creates missing
+ones, so the column reached CI by applying the ALTER to the :3307 container and regenerating
+the blob (`make -C containers/sam-sql-dev regen-lfs-blob`), committed with the DDL.
 
 Rehearsed twice on the local MySQL and on the :3307 test container (idempotent). Prod got
 the table 2026-11-02; sam_dev too, and the twin ends with `ALTER TABLE ... OWNER TO sam_dev`

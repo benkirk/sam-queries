@@ -10,7 +10,8 @@
 -- ORM: src/sam/core/groups.py (UnixGroupMask). Pinned by
 -- tests/integration/test_schema_validation.py.
 --
--- NO DROP. Created empty; rows appear when an operator opens a mask.
+-- NO DROP. Created empty; rows appear when an operator opens a mask. A table created
+-- before batch_id existed takes alter_unix_group_mask_batch.sql instead.
 -- ===========================================================================
 
 -- ---------------------------------------------------------------------------
@@ -33,9 +34,11 @@ CREATE TABLE IF NOT EXISTS unix_group_mask (
   closed_at      DATETIME         NULL,
   resolution     VARCHAR(16)      NULL,   -- confirmed | expired | withdrawn
   closed_by      VARCHAR(35)      NULL,   -- username or task:<name>
+  batch_id       INT              NULL,   -- head mask of the batch (its own mask_id when alone)
   PRIMARY KEY (mask_id),
   KEY unix_group_mask_gid (unix_gid, closed_at),
-  KEY unix_group_mask_user (username)
+  KEY unix_group_mask_user (username),
+  KEY unix_group_mask_batch (batch_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
 
 -- ---------------------------------------------------------------------------
@@ -43,11 +46,11 @@ CREATE TABLE IF NOT EXISTS unix_group_mask (
 -- ---------------------------------------------------------------------------
 SELECT COUNT(*) AS rows_expect_0 FROM unix_group_mask;
 
-SELECT COUNT(*) AS columns_expect_12
+SELECT COUNT(*) AS columns_expect_13
   FROM information_schema.COLUMNS
  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'unix_group_mask';
 
-SELECT COUNT(DISTINCT INDEX_NAME) AS indexes_expect_3
+SELECT COUNT(DISTINCT INDEX_NAME) AS indexes_expect_4
   FROM information_schema.STATISTICS
  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'unix_group_mask';
 

@@ -71,9 +71,10 @@ Appendix C.
   list) and the CronJob forwards the four `DIRECTORY_*` read keys by name; never a
   `DIRECTORY_APPLY_<KIND>` (`helm/tests/test-cronjob-render.sh`).
 - **Group masks** (`docs/plans/UNIX_GROUP_MASK.md`): an operator's add/remove over a group SAM
-  does not own, `unix_group_mask` keyed by gid. `sam/manage/groups.py::open_mask` runs the
-  guards (an RBAC grant-subject group needs `MANAGE_ROLES`, passed in by the webapp) and
-  writes an adhoc mask through the entry rows; `sync_group` applies the open masks after the
+  does not own, `unix_group_mask` keyed by gid. `sam/manage/groups.py::check_mask` runs the
+  guards (an RBAC grant-subject group needs `MANAGE_ROLES`, passed in by the webapp),
+  `open_mask` writes an adhoc mask through the entry rows, and `open_masks` opens a batch of
+  members under one head (`batch_id`) and one ticket; `sync_group` applies the open masks after the
   PUT, so the mirror cannot revert one; `group_populator` and `project_groups` apply a project
   mask at read time (the member only where they hold an account; the grant reaches LDAP
   through the daemon's feed). The hourly `unix_group_masks` task expires, confirms against
