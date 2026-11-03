@@ -28,6 +28,13 @@ class TestCreate:
         assert row.is_open_at(T0 + timedelta(days=6))
         assert not row.is_open_at(T0 + timedelta(days=7))
 
+    def test_a_row_heads_itself_unless_given_a_batch(self, session):
+        head = make_unix_group_mask(session, unix_gid=-9, username='a', when=T0)
+        assert head.batch_id == head.mask_id == head.head_id
+        member = make_unix_group_mask(session, unix_gid=-9, username='b', when=T0,
+                                      batch_id=head.mask_id)
+        assert member.batch_id == head.mask_id and member.head_id == head.mask_id
+
     @pytest.mark.parametrize('kwargs', [{'kind': 'other'}, {'op': 'drop'}, {'username': ' '},
                                         {'requested_by': ''},
                                         {'expires_at': T0 - timedelta(hours=1)}])

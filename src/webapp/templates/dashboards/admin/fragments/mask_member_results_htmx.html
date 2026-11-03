@@ -1,0 +1,20 @@
+{# htmx: the group-mask member picker's rows; the label is the bare username, since a pick
+   lands as one line of the members box (append mode) #}
+{% if users %}
+{% for user in users %}
+<div class="list-group-item list-group-item-action p-2 fk-search-result"
+     data-fk-id="{{ user.user_id }}" data-fk-label="{{ user.username }}">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <strong class="font-monospace">{{ user.username }}</strong>
+            <small class="ms-1 text-muted">{{ user.display_name }}</small>
+        </div>
+        {% if user.primary_email %}
+        <small class="text-muted">{{ user.primary_email }}</small>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="list-group-item text-muted small py-2">No users found</div>
+{% endif %}

@@ -1,7 +1,8 @@
-Please add 'alovelace' (Ada Lovelace) to the unix group 'cgdoce' (gid 2800) in Google Groups, since it is the authoritative record of group membership.
+Please add 'alovelace' (Ada Lovelace) and 'cbabbage' (Charles Babbage) to the unix group 'cgdoce' (gid 2800) in Google Groups, since it is the authoritative record of group membership.
 
 Group:        cgdoce (gid 2800)
-Member:       alovelace (Ada Lovelace)
+Members:      alovelace (Ada Lovelace)
+              cbabbage (Charles Babbage)
 Change:       add
 Requested by: benkirk on 2026-11-02 17:28
 Note:         RC-39483

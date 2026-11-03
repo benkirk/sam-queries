@@ -7,7 +7,7 @@ from typing import List
 import pytest
 from sqlalchemy.orm import Session
 
-from factories import make_adhoc_group, make_adhoc_group_tag
+from factories import make_adhoc_group, make_adhoc_group_tag, make_user
 from factories.tickets import FakeTicketProvider
 from sam import ExternalTicket
 from sam.core.groups import UnixGroupMask
@@ -74,14 +74,20 @@ def ctx(app):
     from webapp.extensions import db
     made = []
 
-    def build(op='add'):
+    def build(op='add', others=()):
         group = make_adhoc_group(db.session)
         make_adhoc_group_tag(db.session, group, 'hpc')
         row = UnixGroupMask.create(db.session, unix_gid=group.unix_gid, kind='adhoc',
                                    username='benkirk', op=op, requested_by='benkirk',
                                    note='RC-39483')
         made.append(row.mask_id)
-        return row, group
+        rows = [row]
+        for name in others:
+            rows.append(UnixGroupMask.create(db.session, unix_gid=group.unix_gid, kind='adhoc',
+                                             username=name, op=op, requested_by='benkirk',
+                                             batch_id=row.mask_id))
+            made.append(rows[-1].mask_id)
+        return (rows if others else row), group
 
     with app.test_request_context('/'):
         yield build
@@ -89,6 +95,8 @@ def ctx(app):
         with Session(db.engine) as s:
             s.query(ExternalTicket).filter(ExternalTicket.entity_type == 'unix_group_mask',
                                            ExternalTicket.entity_id.in_(made)).delete()
+            # A test that committed its batch (the sibling count reads committed rows) cleans up here.
+            s.query(UnixGroupMask).filter(UnixGroupMask.mask_id.in_(made)).delete()
             s.commit()
 
 
@@ -102,7 +110,7 @@ def _links(app, mask_id):
 def test_files_through_the_provider_and_links_the_key(app, ctx, mailer, provider):
     from webapp.dashboards.admin.group_mask_tickets import send_mask_ticket
     mask, group = ctx()
-    result = send_mask_ticket(mask, group_name=group.group_name, branches=['hpc', 'hpc-data'],
+    result = send_mask_ticket([mask], group_name=group.group_name, branches=['hpc', 'hpc-data'],
                               requested_by='oper')
     assert (result.status, result.detail) == ('sent', f'{provider.prefix}-1')
     draft, = provider.created
@@ -110,6 +118,7 @@ def test_files_through_the_provider_and_links_the_key(app, ctx, mailer, provider
     assert draft.summary == f'Unix group change: add benkirk to {group.group_name} [SAM-GM-{mask.mask_id}]'
     assert draft.body.startswith(f"Please add 'benkirk' (Ben Kirk) to the unix group '{group.group_name}' (gid {group.unix_gid}) in Google Groups, since it is the authoritative record of group membership.")
     assert f'Group:        {group.group_name} (gid {group.unix_gid})' in draft.body
+    assert 'Member:       benkirk (Ben Kirk)\nChange:       add\n' in draft.body
     assert 'RC-39483' in draft.body
     assert 'hpc' not in draft.body.split('SAM mask')[0], 'NUSD never sees a branch'
     assert draft.link_url.endswith(f'/admin/users/group-masks?q={group.group_name}')
@@ -124,7 +133,7 @@ def test_a_provider_outage_mails_the_ticket(app, ctx, mailer, provider):
     from webapp.dashboards.admin.group_mask_tickets import send_mask_ticket
     provider.raise_with = TicketSourceUnavailable('down')
     mask, group = ctx(op='remove')
-    result = send_mask_ticket(mask, group_name=group.group_name, branches=['hpc'], requested_by='oper')
+    result = send_mask_ticket([mask], group_name=group.group_name, branches=['hpc'], requested_by='oper')
     assert result.status == 'sent'
     message, = mailer.mailed
     assert message.recipient.address == 'help@example.invalid'
@@ -136,20 +145,61 @@ def test_no_path_configured_files_nothing(app, ctx, mailer, monkeypatch):
     from webapp.dashboards.admin.group_mask_tickets import send_mask_ticket
     monkeypatch.setitem(app.config, 'NOTIFY_ACCOUNT_TICKET_TO', '')
     mask, group = ctx()
-    assert send_mask_ticket(mask, group_name=group.group_name, branches=['hpc'], requested_by='o') is None
+    assert send_mask_ticket([mask], group_name=group.group_name, branches=['hpc'], requested_by='o') is None
     assert mailer.mailed == [] and mailer.ledger.rows == []
 
 
 def test_withdraw_comments_on_the_linked_ticket(app, ctx, mailer, provider):
     from webapp.dashboards.admin.group_mask_tickets import comment_withdrawn, send_mask_ticket
     mask, group = ctx()
-    send_mask_ticket(mask, group_name=group.group_name, branches=['hpc'], requested_by='oper')
+    send_mask_ticket([mask], group_name=group.group_name, branches=['hpc'], requested_by='oper')
     from webapp.extensions import db
     # The link committed on its own session; db.session's snapshot predates it.
     with Session(db.engine) as fresh:
         assert comment_withdrawn(mask, by='benkirk', session=fresh) is True
     key, text, internal = provider.comments[-1]
     assert key == f'{provider.prefix}-1' and internal and 'Withdrawn in SAM by benkirk' in text
+    assert "the add of 'benkirk'" in text and 'Nothing more is needed upstream.' in text
+
+
+def test_a_batch_files_one_ticket_on_the_head(app, ctx, mailer, provider):
+    from webapp.dashboards.admin.group_mask_tickets import send_mask_ticket
+    from webapp.extensions import db
+    from sam.queries.group_masks import mask_tickets
+    other = make_user(db.session)
+    (head, member), group = ctx(others=[other.username])
+    result = send_mask_ticket([head, member], group_name=group.group_name, branches=['hpc'],
+                              requested_by='oper')
+    assert result.status == 'sent'
+    draft, = provider.created
+    assert draft.handle == f'SAM-GM-{head.mask_id}'
+    assert draft.summary == f'Unix group change: add 2 members to {group.group_name} [SAM-GM-{head.mask_id}]'
+    assert draft.body.startswith(f"Please add 'benkirk' (Ben Kirk) and '{other.username}' ({other.display_name}) to the unix group")
+    assert f'Members:      benkirk (Ben Kirk)\n              {other.username} ({other.display_name})\nChange:' in draft.body
+    assert f'SAM mask:     #{head.mask_id}' in draft.body
+    assert _links(app, head.mask_id) == [('fake', 'created', 'oper')] and _links(app, member.mask_id) == []
+    with Session(db.engine) as fresh:
+        found = mask_tickets(fresh, [head, member])
+    assert found[head.mask_id]['key'] == found[member.mask_id]['key'] == f'{provider.prefix}-1'
+
+
+def test_withdraw_on_a_shared_ticket_counts_the_rest(app, ctx, mailer, provider):
+    from webapp.dashboards.admin.group_mask_tickets import comment_withdrawn, send_mask_ticket
+    from webapp.extensions import db
+    other = make_user(db.session)
+    (head, member), group = ctx(others=[other.username])
+    send_mask_ticket([head, member], group_name=group.group_name, branches=['hpc'], requested_by='oper')
+    # Nothing here commits: the link lives on its own session (hence `fresh`), the siblings on the
+    # mask's. A committed open mask would be swept by every other worker's sweep test.
+    with Session(db.engine) as fresh:
+        assert comment_withdrawn(member, by='benkirk', session=fresh) is True
+        key, text, _ = provider.comments[-1]
+        assert key == f'{provider.prefix}-1'
+        assert f"the add of '{other.username}'" in text
+        assert 'The other 1 member(s) on this ticket still stand.' in text
+        head.close(resolution='withdrawn', by='benkirk')
+        assert comment_withdrawn(member, by='benkirk', session=fresh) is True
+    assert 'Nothing more is needed upstream.' in provider.comments[-1][1]
 
 
 def test_the_tab_row_reads_the_linked_ticket(app, ctx, mailer, provider):
@@ -157,9 +207,9 @@ def test_the_tab_row_reads_the_linked_ticket(app, ctx, mailer, provider):
     from webapp.extensions import db
     from sam.queries.group_masks import mask_tickets
     mask, group = ctx()
-    result = send_mask_ticket(mask, group_name=group.group_name, branches=['hpc'], requested_by='oper')
+    result = send_mask_ticket([mask], group_name=group.group_name, branches=['hpc'], requested_by='oper')
     assert result.status == 'sent', result
     with Session(db.engine) as fresh:
-        found = mask_tickets(fresh, [mask.mask_id])[mask.mask_id]
+        found = mask_tickets(fresh, [mask])[mask.mask_id]
     # The registry does not know the fake, so no URL; a stored provider's browse_url fills it.
     assert (found['key'], found['url'], found['status']) == (f'{provider.prefix}-1', '', 'Waiting for support')

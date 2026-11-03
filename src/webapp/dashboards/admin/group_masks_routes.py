@@ -1,22 +1,23 @@
 """Admin -> Users & Groups -> Group masks: an operator's add/remove over a mirrored unix
 group (docs/plans/UNIX_GROUP_MASK.md § 6). The tab lists every mask; the adhoc group card
-and the admin project card open the same form pinned to their group. Reads are
-``VIEW_GROUPS``, writes ``EDIT_GROUPS``; a mask over an RBAC grant-subject group needs
-``MANAGE_ROLES`` and a project mask the project's facility.
+and the admin project card open the same form pinned to their group. One submit names up
+to 20 members and opens them as one batch under one ticket. Reads are ``VIEW_GROUPS``,
+writes ``EDIT_GROUPS``; a mask over an RBAC grant-subject group needs ``MANAGE_ROLES`` and
+a project mask the project's facility.
 """
 
 from datetime import date, datetime, timedelta
 
 from flask import render_template, request, url_for
 from flask_login import current_user, login_required
+from marshmallow import ValidationError
 
 from sam.core.groups import PROJECT_MASK_MAX_DAYS, AdhocGroup, UnixGroupMask
-from sam.core.users import User
 from sam.dates import end_of_day
-from sam.manage.groups import MaskError, close_mask, open_mask, resolve_target
-from sam.projects.projects import Project
+from sam.manage.groups import (MASK_BATCH_MAX, MaskError, check_mask, close_mask, open_masks,
+                               parse_usernames, resolve_target)
 from sam.queries.group_masks import (MASK_FLAGS, MASK_SORTS, MASK_STATES, filter_mask_views,
-                                     mask_views, sort_mask_views)
+                                     mask_views, search_mask_targets, sort_mask_views)
 from sam.schemas.forms import EditGroupMaskForm, OpenGroupMaskForm, WithdrawGroupMaskForm
 from webapp.auth.impersonation import acting_username
 from webapp.extensions import db
@@ -146,70 +147,90 @@ def htmx_group_mask_form():
 class _OpenMaskHandler(HtmxFormHandler):
     schema_cls = OpenGroupMaskForm
     template = FORM
-    error_prefix = 'The mask was not opened'
+    error_prefix = 'The masks were not opened'
     success_message = 'Mask opened.'
     exception_map = ((MaskError, str),)
 
-    def clean(self, data):
-        gid = data.get('unix_gid')
-        if data.get('project_id'):
-            project = db.session.get(Project, data['project_id'])
-            if project is None:
-                raise FormError('That project does not exist.')
-            if project.unix_gid is None:
-                raise FormError(f'{project.projcode} has no unix gid in SAM.')
-            gid = project.unix_gid
-        if not gid:
-            raise FormError('Pick a group or a project.')
-        username = (data.get('username') or '').strip()
-        if not username and data.get('user_id'):
-            user = db.session.get(User, data['user_id'])
-            username = user.username if user else ''
-        if not username:
-            raise FormError('Pick a user.')
-        expires = data.get('expires_at')
-        return {'gid': gid, 'username': username, 'op': data['op'], 'note': data.get('note'),
-                'expires_at': end_of_day(datetime.combine(expires, datetime.min.time()))
-                if expires else None}
+    def _guard_flags(self):
+        return dict(protected_groups=active_catalog().group_subjects,
+                    may_touch_protected=has_permission(current_user, Permission.MANAGE_ROLES))
 
-    def perform(self, data):
-        target = resolve_target(db.session, data['gid'])
-        if target.kind == 'project' and not has_permission_for_facility(
+    def clean(self, data):
+        """Every guard runs here, per member, so one re-render shows every problem."""
+        errors = {}
+        gid, target = data.get('unix_gid'), None
+        if not gid:
+            errors['unix_gid'] = ['Pick a group or a project.']
+        else:
+            try:
+                target = resolve_target(db.session, gid)
+            except MaskError as exc:
+                errors['unix_gid'] = [str(exc)]
+        if target is not None and target.kind == 'project' and not has_permission_for_facility(
                 current_user, Permission.EDIT_GROUPS, target.project.facility_name):
             raise FormError(f'{target.name} is outside your facility scope.')
-        self.group_name = target.name
-        self.branches = target.group.branch_names(db.session) if target.group else []
-        return open_mask(db.session, requested_by=acting_username(),
-                         protected_groups=active_catalog().group_subjects,
-                         may_touch_protected=has_permission(current_user, Permission.MANAGE_ROLES),
-                         **data)
+        pinned_one = (data.get('username') or '').strip()
+        names, problems = parse_usernames(pinned_one or data.get('usernames') or '')
+        expires = data.get('expires_at')
+        expires_at = end_of_day(datetime.combine(expires, datetime.min.time())) if expires else None
+        if target is not None and target.kind == 'project' and expires_at is None:
+            errors['expires_at'] = [f'A project grant needs an end date, at most {PROJECT_MASK_MAX_DAYS} days out.']
+        if target is not None and len(names) <= MASK_BATCH_MAX:     # past the cap, refuse unchecked
+            for name in names:
+                try:
+                    check_mask(db.session, gid=gid, username=name, op=data['op'], **self._guard_flags())
+                except MaskError as exc:
+                    problems.append(str(exc))
+        if problems:
+            if pinned_one:
+                raise FormError(*problems)         # the card's member is a hidden field
+            errors['usernames'] = problems
+        if errors:
+            raise ValidationError(errors)
+        self.target = target
+        return {'gid': gid, 'usernames': names, 'op': data['op'], 'note': data.get('note'),
+                'expires_at': expires_at}
 
-    def after_commit(self, result):
-        """NUSD's ticket, for an adhoc mask only; a project grant files nothing."""
+    def perform(self, data):
+        self.success_message = 'Masks opened.' if len(data['usernames']) > 1 else 'Mask opened.'
+        self.group_name = self.target.name
+        self.branches = self.target.group.branch_names(db.session) if self.target.group else []
+        return open_masks(db.session, requested_by=acting_username(), **self._guard_flags(), **data)
+
+    def after_commit(self, masks):
+        """NUSD's ticket, for an adhoc batch only; a project grant files nothing."""
         self.ticket = None
-        if result.kind == 'adhoc':
-            self.ticket = send_mask_ticket(result, group_name=self.group_name,
+        if masks[0].kind == 'adhoc':
+            self.ticket = send_mask_ticket(masks, group_name=self.group_name,
                                            branches=self.branches, requested_by=acting_username())
 
     def context(self):
         form = request.form
         pinned = form.get('pinned')
-        return _form_context(_pinned_target(form.get('unix_gid')) if pinned else None,
-                             form.get('username') if pinned else None,
-                             form.get('op') if pinned == 'op' else None)
+        if pinned:
+            return _form_context(_pinned_target(form.get('unix_gid')), form.get('username') or None,
+                                 form.get('op') if pinned == 'op' else None)
+        # The picker draws its chip from <name>_display, which the browser never posts.
+        data = form.to_dict()
+        target = _pinned_target(form.get('unix_gid'))
+        if target is not None:
+            data['unix_gid_display'] = target.label
+        return {**_form_context(), 'form': data}
 
-    def detail(self, result):
-        what = f'{result.op} {result.username} on {self.group_name}'
+    def detail(self, masks):
+        head = masks[0]
+        who = head.username if len(masks) == 1 else f'{len(masks)} members'
+        what = f'{head.op} {who} on {self.group_name}'
         ticket = getattr(self, 'ticket', None)
         if ticket is None:
-            return what if result.kind == 'project' else f'{what}; no ticket path is configured'
+            return what if head.kind == 'project' else f'{what}; no ticket path is configured'
         if ticket.status == 'sent':
             return f'{what}; NUSD ticket {ticket.detail}'
         return f'{what}; ticket {ticket.status}'
 
-    def triggers(self, result):
+    def triggers(self, masks):
         t = modal_triggers('reloadGroupMasks')
-        if result.kind == 'adhoc':
+        if masks[0].kind == 'adhoc':
             t['reloadGroupCard'] = self.group_name
         return t
 
@@ -277,24 +298,19 @@ def htmx_group_mask_withdraw(mask_id):
 
 # --- pickers ---------------------------------------------------------------------------
 
-def _search_groups_fk(q, active_only):
-    from sam.queries.lookups import search_groups_by_pattern
-    return search_groups_by_pattern(db.session, q, limit=15, active_only=True)
-
-
-def _search_projects_fk(q, active_only):
-    from sam.queries.projects import search_projects_by_code_or_title
-    return search_projects_by_code_or_title(db.session, q, limit=10)
+def _search_members(q, active_only):
+    from sam.queries.users import search_users_by_pattern
+    return search_users_by_pattern(db.session, q, limit=15, active_only=True)
 
 
 register_typeahead(
-    bp, rule='/htmx/search/groups-fk', endpoint='htmx_search_groups_fk',
-    permission=Permission.EDIT_GROUPS, search=_search_groups_fk,
-    template='dashboards/admin/fragments/group_search_results_fk_htmx.html', ctx_key='groups',
+    bp, rule='/htmx/search/mask-targets', endpoint='htmx_search_mask_targets',
+    permission=Permission.EDIT_GROUPS, search=lambda q, _a: search_mask_targets(db.session, q),
+    template='dashboards/admin/fragments/mask_target_results_htmx.html', ctx_key='targets',
 )
 
 register_typeahead(
-    bp, rule='/htmx/search/projects-for-mask', endpoint='htmx_search_projects_for_mask',
-    permission=Permission.EDIT_GROUPS, search=_search_projects_fk,
-    template='dashboards/admin/fragments/project_search_results_fk_htmx.html', ctx_key='projects',
+    bp, rule='/htmx/search/mask-members', endpoint='htmx_search_mask_members',
+    permission=Permission.EDIT_GROUPS, search=_search_members,
+    template='dashboards/admin/fragments/mask_member_results_htmx.html', ctx_key='users',
 )

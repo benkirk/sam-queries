@@ -1548,8 +1548,15 @@
     ]
   ],
   [
-    "admin_dashboard.htmx_search_groups_fk",
-    "/admin/htmx/search/groups-fk",
+    "admin_dashboard.htmx_search_mask_members",
+    "/admin/htmx/search/mask-members",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_search_mask_targets",
+    "/admin/htmx/search/mask-targets",
     [
       "GET"
     ]
@@ -1578,13 +1585,6 @@
   [
     "admin_dashboard.htmx_search_projects",
     "/admin/htmx/search-projects",
-    [
-      "GET"
-    ]
-  ],
-  [
-    "admin_dashboard.htmx_search_projects_for_mask",
-    "/admin/htmx/search/projects-for-mask",
     [
       "GET"
     ]
