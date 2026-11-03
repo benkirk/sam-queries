@@ -29,6 +29,19 @@ def _links(session, row):
 
 
 class TestLearn:
+    def test_a_mailed_group_mask_ticket_is_learned_by_its_handle(self, session, fake_provider):
+        from factories import make_unix_group_mask
+        from sam.queries.group_masks import mask_ticket_handle
+        mask = make_unix_group_mask(session, unix_gid=-99, username='x')
+        make_notification_log(session, kind='hpc_group_ticket', status='sent',
+                              entity_type='unix_group_mask', entity_id=mask.mask_id,
+                              dedup_key=f'hpc_group_ticket:{mask.mask_id}', age=timedelta(days=1))
+        fake_provider.add(mask_ticket_handle(mask.mask_id), key='FAKE-GM')
+        learn_ticket_keys(session, fake_provider, clock=CLOCK, limit=500)
+        link, = session.query(ExternalTicket).filter_by(entity_type='unix_group_mask',
+                                                        entity_id=mask.mask_id).all()
+        assert (link.ticket_key, link.origin) == ('FAKE-GM', 'learned')
+
     def test_a_hit_inserts_a_learned_row(self, session, fake_provider):
         row = _mailed(session)
         fake_provider.add(ticket_handle(row.account_request_id), key='FAKE-7',

@@ -33,6 +33,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from sam.core.groups import DEFAULT_COMMON_GROUP, DEFAULT_COMMON_GROUP_GID
+from sam.queries.group_masks import project_masks
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +287,30 @@ def group_populator(
         grp = b['groups'].setdefault(group_name, {'gid': None, 'usernames': set()})
         grp['usernames'].add(username)
         branch_accounts.setdefault(branch_name, set()).add(username)
+
+    # --- 1b. Project masks (docs/plans/UNIX_GROUP_MASK.md section 3) ---
+    # An add puts the group on the project's account branches whatever the
+    # allocation's end or the project's flag, and the member only where they
+    # hold an account (the dependent-account gate holds for masks too); a
+    # remove subtracts. The lead and admin are not special here.
+    scope_user = params['username']     # the loops above rebind `username`
+    for m in project_masks(session, now=datetime.now()):
+        if scope_user is not None and m.username.lower() != scope_user.lower():
+            continue
+        name = m.projcode.lower()
+        for branch_name in m.branches:
+            if access_branch is not None and branch_name != access_branch:
+                continue
+            if m.op == 'add':
+                if m.username not in branch_accounts.get(branch_name, ()):
+                    continue
+                b = branches.setdefault(branch_name, {'groups': {}})
+                grp = b['groups'].setdefault(name, {'gid': m.gid, 'usernames': set()})
+                grp['usernames'].add(m.username)
+            else:
+                grp = branches.get(branch_name, {}).get('groups', {}).get(name)
+                if grp is not None:
+                    grp['usernames'].discard(m.username)
 
     # --- 2. Explicit adhoc groups (tags -> access branch) ---
     rows = session.execute(_SQL_ADHOC_GROUPS, params).fetchall()

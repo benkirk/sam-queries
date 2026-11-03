@@ -484,6 +484,7 @@ def group_card(group_name):
         # Same gate as the user_card route the member rows target.
         can_view_users=has_permission_any_facility(current_user, Permission.VIEW_USERS),
         directory=directory_readable(),
+        can_edit_groups=has_permission(current_user, Permission.EDIT_GROUPS),
     )
 
 
@@ -1309,4 +1310,4 @@ def htmx_queues_for_resource():
 # Domain route modules — must be imported AFTER bp is defined
 # ============================================================================
 
-from . import resources_routes, facilities_routes, orgs_routes, contracts_routes, projects_routes, configuration_routes, rate_limits_routes, notifications_routes, tasks_routes, last_seen_routes, account_requests_routes, events_routes, roles_routes, directory_routes  # noqa: E402, F401
+from . import resources_routes, facilities_routes, orgs_routes, contracts_routes, projects_routes, configuration_routes, rate_limits_routes, notifications_routes, tasks_routes, last_seen_routes, group_masks_routes, account_requests_routes, events_routes, roles_routes, directory_routes  # noqa: E402, F401

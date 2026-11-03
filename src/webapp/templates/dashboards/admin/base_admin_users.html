@@ -11,6 +11,8 @@
     {'endpoint': 'admin_dashboard.users_groups', 'label': 'Search', 'icon': 'fa-solid fa-magnifying-glass'},
     {'endpoint': 'admin_dashboard.users_last_seen', 'label': 'Last seen', 'icon': 'fa-solid fa-clock-rotate-left',
      'visible': has_permission(Permission.VIEW_USERS)},
+    {'endpoint': 'admin_dashboard.users_group_masks', 'label': 'Group masks', 'icon': 'fa-solid fa-user-pen',
+     'visible': has_permission_any_facility(Permission.VIEW_GROUPS)},
 ]) }}
 
 {% block users_content %}{% endblock %}

@@ -5,6 +5,17 @@
 {{ directory_state(panel, 'The directory has no group for gid ' ~ panel.gid ~ '.'
    ~ (' ' ~ panel.absent_note if panel.absent_note else ''),
    'users-slash', unavailable=(panel.name ~ ' has no unix gid in SAM, so there is nothing to look up.') if panel.error == 'no gid' else '') }}
+{% if panel.masks %}
+<ul class="modal-facts mb-3">
+    {% for m in panel.masks %}
+    <li><i class="fa-solid fa-user-pen" aria-hidden="true"></i>mask: {{ m.op }} {{ user_link(m.username, has_permission(Permission.VIEW_USERS), compact=True) }} ·
+        {% if m.agrees is true %}<span class="text-success">the directory agrees</span>
+        {% elif m.agrees is false %}<span class="text-warning">the directory does not agree yet</span>
+        {% elif m.upid is none %}<span class="text-muted">no upid, so the directory cannot confirm it</span>
+        {% else %}<span class="text-muted">no record to compare</span>{% endif %}</li>
+    {% endfor %}
+</ul>
+{% endif %}
 {% if panel.found %}
 {% set rec = panel.record %}
 <ul class="modal-facts mb-3">

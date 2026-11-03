@@ -12,6 +12,8 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import func
+
 from sam.core.organizations import Institution, Organization
 from sam.core.users import User
 from sam.integration.directory import DirectoryUnavailable
@@ -19,6 +21,7 @@ from sam.integration.directory.config import DirectoryConfig
 from sam.manage.directory import (ReconcileResult, reconcile_group, reconcile_institution,
                                   reconcile_organization, reconcile_person)
 from sam.queries.directory import snapshot_from_group
+from sam.queries.group_masks import open_mask_rows
 
 def directory_reader():
     """The configured reader, imported by path so ``ldap3`` stays out of the import graph."""
@@ -195,12 +198,13 @@ def _group_panel(session, gid: Optional[int], *, kind: str, key: str, roles: Dic
     config = DirectoryConfig.from_environment()
     state = _base(config)
     state.update(gid=gid, kind=kind, name=key, managers=[], report_note=REPORT_NOTES[kind],
-                 absent_note=absent_note)
+                 absent_note=absent_note, masks=[])
     if gid is None:
         state['available'] = False
         state['error'] = 'no gid'
         return state
     record = _load(state, directory_reader().group, gid, record)
+    state['masks'] = mask_agreement(session, gid, record)
     if record is None:
         return state
     snap = snapshot_from_group(session, gid, project=project, group=group)
@@ -224,6 +228,25 @@ def _group_panel(session, gid: Optional[int], *, kind: str, key: str, roles: Dic
                     label(d.directory_id) if d.directory_id else '')
         return d.sam_value, d.directory_value
     return _finish(state, result, values, None)
+
+
+def mask_agreement(session, gid: int, record) -> List[Dict[str, Any]]:
+    """The open masks on ``gid`` against the record the panel fetched: ``agrees`` is True,
+    False, or None when nothing can be read (no record, or a login with no upid)."""
+    rows = open_mask_rows(session, gids=[gid])
+    if not rows:
+        return []
+    upids = dict(session.query(func.lower(User.username), User.upid)
+                 .filter(func.lower(User.username).in_(sorted({r.username.lower() for r in rows}))))
+    out = []
+    for r in rows:
+        upid = upids.get(r.username.lower())
+        agrees = None
+        if record is not None and upid is not None:
+            agrees = (upid in record.member_upids) == (r.op == 'add')
+        out.append({'mask_id': r.mask_id, 'username': r.username, 'op': r.op,
+                    'kind': r.kind, 'agrees': agrees, 'upid': upid})
+    return out
 
 
 def project_group_panel(session, project, *, record=None) -> Dict[str, Any]:

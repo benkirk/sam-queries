@@ -35,6 +35,12 @@ class TestProduction:
         assert (env['JIRA_BASE_URL'], env['JIRA_PROJECT_KEY'], env['JIRA_SERVICE_DESK_ID'],
                 env['JIRA_REQUEST_TYPE_ID']) == ('https://ithelp.ucar.edu', 'RC', '3', '20')
 
+    def test_the_group_mask_kind_files_as_general_help(self):
+        """Webapp-only: the mask's ticket is filed from the form (UNIX_GROUP_MASK.md section 5)."""
+        env = _values()['webapp']['env']
+        assert (env['JIRA_HPC_GROUP_REQUEST_TYPE_ID'],
+                env['JIRA_HPC_GROUP_LABELS']) == ('31', 'sam-hpc-group')
+
     def test_the_token_comes_from_openbao(self):
         creds = _values()['webapp']['jiraCredentials']
         assert creds == {'enabled': True, 'useExternalSecret': True,

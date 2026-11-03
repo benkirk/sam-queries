@@ -1,0 +1,10 @@
+{% from 'dashboards/fragments/modals.html' import modal_scaffold %}
+{#
+  Group-mask shells, included by shared/project_details_modal.html so every page that can
+  show the admin project card has them; the masks tab and the adhoc group card (admin
+  pages) target the same ids. Inside the project modal the opener is the
+  show-detail-modal action, never data-bs-toggle.
+#}
+{{ modal_scaffold('groupMaskModal', 'Group mask', icon='user-pen', container_id='groupMaskFormContainer') }}
+
+{{ modal_scaffold('editGroupMaskModal', 'Edit mask', icon='edit', container_id='editGroupMaskFormContainer') }}

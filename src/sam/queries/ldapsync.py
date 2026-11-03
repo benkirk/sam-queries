@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from sam.core.groups import GidAllocation
 from sam.dates import end_of_day, from_epoch_millis
 from sam.queries.directory_access import ACCESS_GRACE_PERIOD, grace_cutoff
+from sam.queries.group_masks import project_mask_feed
 from sam.text import ci_unique
 
 logger = logging.getLogger(__name__)
@@ -340,6 +341,23 @@ def project_groups(session: Session, since: Optional[datetime] = None, *,
     for r in session.execute(_scoped(_SQL_PROJECT_BRANCHES, project_id), params):
         branches[r.project_id].add(r.branch)
 
+    # Project masks (docs/plans/UNIX_GROUP_MASK.md section 3): a grant reaches the
+    # directory through this feed, so its open and close stamps also bump last_modified.
+    masks, mask_times = project_mask_feed(session, now=now)
+    for m in masks:
+        if project_id is not None and m.project_id != project_id:
+            continue
+        key = _member_key(ROLE_LOGIN if m.is_role else '', m.upid, m.username)
+        if key is None:
+            logger.warning('projectGroup: mask %s names %s, who has no upid; skipped',
+                           m.mask_id, m.username)
+            continue
+        if m.op == 'add':
+            members[m.project_id].add(key)
+            branches[m.project_id] |= m.branches
+        else:
+            members[m.project_id].discard(key)
+
     times = {r.project_id: r for r in session.execute(
         _scoped(_SQL_MEMBERSHIP_TIMES, project_id, 'a.project_id'), scope)}
     projects = session.execute(_scoped(_SQL_PROJECTS, project_id), scope).all()
@@ -361,6 +379,8 @@ def project_groups(session: Session, since: Optional[datetime] = None, *,
         t = times.get(p.project_id)
         if t is not None:
             last_modified = max(x for x in (last_modified, t.max_modified, t.max_created) if x)
+        if p.unix_gid in mask_times:
+            last_modified = max(x for x in (last_modified, mask_times[p.unix_gid]) if x)
         if since is not None and last_modified is not None and last_modified < since:
             continue
 

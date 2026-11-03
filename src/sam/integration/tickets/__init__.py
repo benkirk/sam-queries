@@ -6,7 +6,7 @@ bring in ``requests`` and are imported by path.
 """
 
 from sam.integration.tickets.base import (ACCOUNT_KIND, DEFAULT_AUTOMATION_NOTE,
-                                          KINDS, TicketDraft,
+                                          HPC_GROUP_KIND, KINDS, TicketDraft,
                                           TicketNotConfigured, TicketProvider,
                                           TicketRef, TicketRejected,
                                           TicketSourceUnavailable,
@@ -14,7 +14,8 @@ from sam.integration.tickets.base import (ACCOUNT_KIND, DEFAULT_AUTOMATION_NOTE,
 from sam.integration.tickets.models import ExternalTicket
 
 __all__ = [
-    'ACCOUNT_KIND', 'DEFAULT_AUTOMATION_NOTE', 'ExternalTicket', 'KINDS', 'TicketDraft',
+    'ACCOUNT_KIND', 'DEFAULT_AUTOMATION_NOTE', 'ExternalTicket', 'HPC_GROUP_KIND', 'KINDS',
+    'TicketDraft',
     'TicketNotConfigured',
     'TicketProvider', 'TicketRef', 'TicketRejected', 'TicketSourceUnavailable',
     'XRAS_REQUEST_KIND',

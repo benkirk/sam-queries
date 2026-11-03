@@ -263,6 +263,17 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
         facility_aware=False,
         family='account',
     ),
+    # NUSD's ticket for an operator's add/remove over an adhoc unix group
+    # (docs/plans/UNIX_GROUP_MASK.md section 5): SAM made the change locally and
+    # upstream has to follow. Text-only, keyed on the mask row alone.
+    NotificationKind(
+        key='hpc_group_ticket',
+        label='Unix group change ticket (NUSD)',
+        template_base='hpc_group_ticket',
+        default_subscribed=True,
+        facility_aware=False,
+        family='account',
+    ),
     # The `lifecycle` family: operator-initiated, tree-aware, onboarding-rich
     # project notices, distinct from the XRAS-driven xras_* kinds above. They
     # introduce the in-tree allocation-adjustment and member-management surfaces

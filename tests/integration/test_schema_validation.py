@@ -485,6 +485,7 @@ UTF8MB4_COLUMNS = {
     ('account_request', 'fulfill_error'),
     ('account_request_event', 'name'),
     ('account_request_event', 'instructions'),
+    ('unix_group_mask', 'note'),
 }
 
 #: Every table the charset-split tests read. Add a table here when it joins
@@ -493,7 +494,7 @@ _CHARSET_SPLIT_TABLES = (
     'xras_action_log', 'xras_activation_event', 'xras_remediation_event',
     'xras_request_override', 'notification_log',
     'notification_template_override', 'account_request',
-    'account_request_event',
+    'account_request_event', 'unix_group_mask',
 )
 
 
@@ -854,6 +855,37 @@ class TestCriticalSchemas:
         fks = session.execute(text("""
             SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'external_ticket'
+               AND REFERENCED_TABLE_NAME IS NOT NULL
+        """)).scalar()
+        assert fks == 0, 'no foreign keys by design'
+
+    def test_unix_group_mask_schema(self, session):
+        """Operator group masks: keyed by gid, no FKs, app clock, prose note."""
+        db_cols = get_db_columns(session, 'unix_group_mask')
+        expected = {'mask_id', 'unix_gid', 'kind', 'username', 'op', 'requested_by',
+                    'note', 'creation_time', 'expires_at', 'closed_at', 'resolution',
+                    'closed_by'}
+        assert set(db_cols.keys()) == expected, set(db_cols.keys()) ^ expected
+        assert db_cols['mask_id']['key'] == 'PRI'
+        assert db_cols['username']['type'] == 'varchar(35)'
+        for col in ('note', 'expires_at', 'closed_at', 'resolution', 'closed_by'):
+            assert db_cols[col]['nullable'] is True, col
+        indexed = session.execute(text("""
+            SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX)
+              FROM information_schema.STATISTICS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'unix_group_mask'
+               AND INDEX_NAME = 'unix_group_mask_gid'
+        """)).scalar()
+        assert indexed == 'unix_gid,closed_at'
+        default = session.execute(text("""
+            SELECT COLUMN_DEFAULT FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'unix_group_mask'
+               AND COLUMN_NAME = 'creation_time'
+        """)).scalar()
+        assert default is None, 'creation_time is stamped from the app clock'
+        fks = session.execute(text("""
+            SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'unix_group_mask'
                AND REFERENCED_TABLE_NAME IS NOT NULL
         """)).scalar()
         assert fks == 0, 'no foreign keys by design'

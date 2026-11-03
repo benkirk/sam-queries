@@ -182,6 +182,51 @@ class TestProjectGroups:
         assert [r['name'] for r in q.project_groups(session, project_id=other.project_id)] == [other.projcode]
 
 
+class TestProjectGroupMasks:
+    """A project mask flows to the directory through this feed (UNIX_GROUP_MASK.md section 3)."""
+
+    def _mask(self, session, project, user, op='add', **kw):
+        from factories import make_unix_group_mask
+        return make_unix_group_mask(session, unix_gid=project.unix_gid, kind='project',
+                                    username=user.username, op=op,
+                                    expires_at=datetime.now() + timedelta(days=7), **kw)
+
+    def test_a_grant_joins_the_upids_and_keeps_the_branch_tag(self, session, hpc_branch):
+        project, lead = _branch_project(session, hpc_branch,
+                                        end_date=datetime.now() - timedelta(days=200))
+        project.unix_gid = 98_000_000 + next_int('mask_gid')
+        session.flush()
+        assert _project_row(session, project)['tags'] == ['exclude-from-google']
+        guest = make_user(session, upid=True, login_type_id=_login_type_id(session, 'user_login'))
+        self._mask(session, project, guest)
+        row = _project_row(session, project)
+        assert row['upids'] == sorted([lead.upid, guest.upid])
+        assert row['tags'][0] == 'hpc'
+        assert q.project_group(session, project) == row
+
+    def test_a_remove_drops_a_member_but_never_the_lead(self, session, hpc_branch):
+        project, lead = _branch_project(session, hpc_branch)
+        project.unix_gid = 98_000_000 + next_int('mask_gid')
+        session.flush()
+        self._mask(session, project, lead, op='remove')
+        assert _project_row(session, project)['upids'] == [lead.upid]
+
+    def test_open_and_close_stamps_feed_since(self, session, hpc_branch):
+        project, _ = _branch_project(session, hpc_branch)
+        project.unix_gid = 98_000_000 + next_int('mask_gid')
+        session.flush()
+        guest = make_user(session, upid=True, login_type_id=_login_type_id(session, 'user_login'))
+        # Whole seconds: the column has none, and a reload would read back less than `later`.
+        later = (datetime.now() + timedelta(days=1)).replace(microsecond=0)
+        mask = self._mask(session, project, guest, when=later)
+        assert any(p['name'] == project.projcode for p in q.project_groups(session, since=later))
+        mask.close(resolution='withdrawn', by='op', when=later + timedelta(days=1))
+        assert any(p['name'] == project.projcode
+                   for p in q.project_groups(session, since=later + timedelta(days=1)))
+        assert all(p['name'] != project.projcode
+                   for p in q.project_groups(session, since=later + timedelta(days=2)))
+
+
 class TestReadSince:
 
     @pytest.mark.parametrize('raw, expected', [

@@ -198,6 +198,19 @@ document.body.addEventListener('reloadUserCard', function(evt) {
     }
 });
 
+// Reload the group card after a mask change; the trigger's value is the group name.
+document.body.addEventListener('reloadGroupCard', function(evt) {
+    var name = evt.detail.value;
+    var container = document.getElementById('groupCardContainer');
+    var baseUrl = container ? container.getAttribute('data-reload-url') : null;
+    if (baseUrl && name) {
+        setTimeout(function() {
+            htmx.ajax('GET', baseUrl + name,
+                      {target: '#groupCardContainer', swap: 'innerHTML'});
+        }, 300);
+    }
+});
+
 // Styled confirmation modal
 // Replaces the browser-native confirm() dialog that HTMX uses for hx-confirm.
 // Opens a singleton Bootstrap modal (rendered in dashboards/base.html via the

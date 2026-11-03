@@ -9,6 +9,7 @@ from sam.core.groups import (
     AdhocGroup,
     AdhocGroupTag,
     AdhocSystemAccountEntry,
+    UnixGroupMask,
     GidAllocation,
 )
 from sam.core.organizations import (
@@ -359,3 +360,12 @@ def make_adhoc_system_account_entry(session, group: AdhocGroup, username: str,
     session.add(row)
     session.flush()
     return row
+
+
+def make_unix_group_mask(session, *, unix_gid: int, username: str, kind: str = 'adhoc',
+                         op: str = 'add', requested_by: str = 'operator', note=None,
+                         expires_at=None, when=None) -> UnixGroupMask:
+    """One ``unix_group_mask`` row via the model's ``create()``; no entry rows are touched."""
+    return UnixGroupMask.create(session, unix_gid=unix_gid, kind=kind, username=username,
+                                op=op, requested_by=requested_by, note=note,
+                                expires_at=expires_at, when=when)

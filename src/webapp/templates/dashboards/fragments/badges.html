@@ -47,6 +47,9 @@
     'succeeded':  'bg-success',
     'partial':    'bg-warning',
     'skipped':    'bg-secondary',
+    'pending':    'bg-info',
+    'confirmed':  'bg-success',
+    'withdrawn':  'bg-secondary',
 } -%}
 {%- set _STATUS_LABELS = {
     'active':     'Active',
@@ -68,6 +71,9 @@
     'succeeded':  'Succeeded',
     'partial':    'Partial',
     'skipped':    'Skipped',
+    'pending':    'Pending',
+    'confirmed':  'Confirmed',
+    'withdrawn':  'Withdrawn',
 } -%}
 {# Hover explanations — applied as a Bootstrap tooltip (tooltip-init.js) so the
    badge is self-documenting wherever it appears. #}
@@ -91,6 +97,9 @@
     'succeeded':  'Ran to completion with nothing to report.',
     'partial':    'Completed, but some unit of work inside it failed. See the detail.',
     'skipped':    'Not run on purpose — the slot was already settled, or the task is in SAM_TASKS_DISABLED.',
+    'pending':    'Open: SAM applies this change now; upstream has not yet agreed.',
+    'confirmed':  'The directory now agrees, so upstream is the source again.',
+    'withdrawn':  'Closed by an operator; SAM\'s local change was reversed.',
 } -%}
 
 
