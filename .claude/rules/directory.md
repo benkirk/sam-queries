@@ -5,7 +5,12 @@ paths:
   - "src/sam/manage/directory.py"
   - "src/sam/manage/directory_panel.py"
   - "src/webapp/dashboards/admin/directory_routes.py"
+  - "src/sam/manage/groups.py"
+  - "src/sam/queries/group_masks.py"
+  - "src/scheduling/tasks/unix_group_masks.py"
+  - "src/webapp/dashboards/admin/group_masks_routes.py"
   - "tests/unit/directory/**/*"
+  - "tests/unit/manage/test_group_masks.py"
   - "tests/factories/directory.py"
 ---
 
@@ -52,8 +57,7 @@ Appendix C.
   group card) are report-only for different reasons, and the panel note says which: a project
   group flows SAM to directory through the sync daemon (its SAM side is the sync's own
   `project_group` row); an adhoc group is authored in Google Groups and reaches SAM through
-  the directory, a path that is not live yet (a local add/remove over either group, with a NUSD
-  ticket and a watch, is planned in `docs/plans/UNIX_GROUP_MASK.md`). Panel ids carry the entity id because the user
+  the directory, a path that is not live yet. Panel ids carry the entity id because the user
   and project cards also open inside a modal. The Organizations card is cached per user: a
   config flip shows after `sam-admin cache --refresh`.
 - **CLI and the nightly report.** `sam-search user|project <k> --directory` render the same
@@ -66,6 +70,16 @@ Appendix C.
   category with capped keys. ⚠️ The task is named in prod's `SAM_TASKS_DISABLED` (fail-open
   list) and the CronJob forwards the four `DIRECTORY_*` read keys by name; never a
   `DIRECTORY_APPLY_<KIND>` (`helm/tests/test-cronjob-render.sh`).
+- **Group masks** (`docs/plans/UNIX_GROUP_MASK.md`): an operator's add/remove over a group SAM
+  does not own, `unix_group_mask` keyed by gid. `sam/manage/groups.py::open_mask` runs the
+  guards (an RBAC grant-subject group needs `MANAGE_ROLES`, passed in by the webapp) and
+  writes an adhoc mask through the entry rows; `sync_group` applies the open masks after the
+  PUT, so the mirror cannot revert one; `group_populator` and `project_groups` apply a project
+  mask at read time (the member only where they hold an account; the grant reaches LDAP
+  through the daemon's feed). The hourly `unix_group_masks` task expires, confirms against
+  `reader.group(gid)` and re-asserts; ⚠️ it ships named in prod's `SAM_TASKS_DISABLED`. An
+  adhoc mask files NUSD's `hpc_group` ticket from the webapp; the panels list each open mask
+  with whether the directory agrees.
 - **Logs** carry usernames and row ids, like the rest of the ldapsync logger; personal names,
   email addresses and phone numbers are counted in a `Discrepancy`, never valued.
 - **Tests** never open a socket: `tests/conftest.py::_no_outbound_ldap` guards
