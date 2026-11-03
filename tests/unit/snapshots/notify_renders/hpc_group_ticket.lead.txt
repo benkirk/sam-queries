@@ -6,7 +6,7 @@ Change:       add
 Requested by: benkirk on 2026-11-02 17:28
 Note:         RC-39483
 
-SAM has already made this change on its side, so the HPC systems see it now. SAM checks the directory hourly and closes its side once the group there agrees; nothing else is needed from NUSD after the change upstream.
+SAM has already made this change on its side, so the HPC systems see it now. SAM checks the directory hourly and closes its side once the upstream group matches; nothing else is needed from NUSD after the change upstream.
 SAM mask:     #12  https://sam.hpc.ucar.edu/admin/users/group-masks?q=cgdoce
 
 Filed by the NSF NCAR Systems Accounting Manager when the change was made in SAM.

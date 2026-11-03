@@ -7,7 +7,7 @@ Requested by: {{ requested_by }} on {{ opened_at }}
 {% if expires_at %}Until:        {{ expires_at }}
 {% endif %}{% if note %}Note:         {{ note }}
 {% endif %}
-SAM has already made this change on its side, so the HPC systems see it now. SAM checks the directory hourly and closes its side once the group there agrees; nothing else is needed from NUSD after the change upstream.
+SAM has already made this change on its side, so the HPC systems see it now. SAM checks the directory hourly and closes its side once the upstream group matches; nothing else is needed from NUSD after the change upstream.
 SAM mask:     #{{ mask_id }}{% if masks_url %}  {{ masks_url }}{% endif %}
 
 Filed by the NSF NCAR Systems Accounting Manager when the change was made in SAM.
