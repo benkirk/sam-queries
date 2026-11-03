@@ -39,6 +39,7 @@ _SUBJECTS = {
     'account_request_received': 'Your NCAR HPC account request has been received',
     'account_ticket': "New HPC User Request 'Ada Lovelace' for WRF-OCT-2026 [SAM-AR-41]",
     'xras_request_ticket': 'XRAS request NCAR4391 cannot be posted [SAM-XR-1446100]',
+    'hpc_group_ticket': 'Unix group change: add alovelace to cgdoce [SAM-GM-12]',
     'project_renewal': 'Your NSF NCAR project SCSG0001 has been renewed',
     'project_activation': 'Your NSF NCAR project SCSG0001 is now active',
     'project_adjustment': 'Your NSF NCAR project SCSG0001 allocations have been updated',
@@ -325,6 +326,25 @@ def _xras_request_ticket() -> Dict[str, Any]:
     }
 
 
+def _hpc_group_ticket() -> Dict[str, Any]:
+    return {
+        'group_name': 'cgdoce',
+        'gid': 2800,
+        'kind': 'adhoc',
+        'source': 'Google Groups',
+        'username': 'alovelace',
+        'display_name': 'Ada Lovelace',
+        'op': 'add',
+        'opened_at': '2026-11-02 17:28',
+        'expires_at': '',
+        'note': 'RC-39483',
+        'applied': "SAM wrote alovelace into cgdoce's entries on hpc, hpc-data and hpc-dev; "
+                   "the HPC hosts pick it up from SAM's directory feed.",
+        'mask_id': 12,
+        'masks_url': 'https://sam.hpc.ucar.edu/admin/users/group-masks?q=cgdoce',
+    }
+
+
 def sample_context(kind: str, facility: Optional[str] = None) -> Dict[str, Any]:
     """A builder-shaped context for ``kind``; raises ValueError on an unknown kind."""
     key = get_kind(kind).key
@@ -346,6 +366,8 @@ def sample_context(kind: str, facility: Optional[str] = None) -> Dict[str, Any]:
         return _account_ticket()
     if key == 'xras_request_ticket':
         return _xras_request_ticket()
+    if key == 'hpc_group_ticket':
+        return _hpc_group_ticket()
     if key in _LIFECYCLE_ACTIONS:
         return _lifecycle(key)
     return _xras(key)
@@ -497,6 +519,18 @@ VARIABLE_NOTES: Dict[str, str] = {
     'middle_name': "The requester's middle name, or empty.",
     'note': "The requester's purpose note or the sponsor's comment, one line, or empty.",
     'request_id': 'The SAM account-request id.',
+    'group_name': 'The unix group name, e.g. cgdoce.',
+    'gid': 'The unix gid.',
+    'kind': "'adhoc' or 'project': which kind of group the mask is over.",
+    'source': 'Where the group is authored upstream (Google Groups).',
+    'username': 'The member the change is about.',
+    'display_name': "The member's display name, or empty.",
+    'op': "'add' or 'remove'.",
+    'opened_at': 'When the operator opened the mask in SAM.',
+    'expires_at': 'When the mask ends on its own, or empty for until upstream agrees.',
+    'applied': 'What SAM did locally when the mask opened.',
+    'mask_id': 'The SAM mask id.',
+    'masks_url': 'Link to the Group masks tab in SAM, filtered to the group, or empty.',
     'request_number': 'The XRAS request number as last posted (NCAR#### or the projcode).',
     'xras_request_id': "The XRAS requestId, stable across the request's rename.",
     'title': 'The request title as XRAS posted it, or empty.',

@@ -27,7 +27,8 @@ DEFAULT_AUTOMATION_NOTE = (
 #: (request type, desk, labels) on these names, like ``sam.notify`` families.
 ACCOUNT_KIND = 'account'
 XRAS_REQUEST_KIND = 'xras_request'
-KINDS: Tuple[str, ...] = (ACCOUNT_KIND, XRAS_REQUEST_KIND)
+HPC_GROUP_KIND = 'hpc_group'
+KINDS: Tuple[str, ...] = (ACCOUNT_KIND, XRAS_REQUEST_KIND, HPC_GROUP_KIND)
 
 
 class TicketSourceUnavailable(Exception):

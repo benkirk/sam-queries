@@ -480,6 +480,10 @@ webapp:
     #   38 Install/update HPC software. 18 and 20 require only summary + description (what we send).
     JIRA_REQUEST_TYPE_ID: "20"            # "Add a user"
     JIRA_LABELS: "sam-account-request"
+    # The unix group mask's ticket (docs/plans/UNIX_GROUP_MASK.md section 5): "General
+    # help" until the desk has an "HPC group" request type.
+    JIRA_HPC_GROUP_REQUEST_TYPE_ID: "31"
+    JIRA_HPC_GROUP_LABELS: "sam-hpc-group"
 
   # Each block below syncs one secret from OpenBao. `enabled: false` skips it;
   # `useExternalSecret: false` skips the ExternalSecret CRD so the secret can be

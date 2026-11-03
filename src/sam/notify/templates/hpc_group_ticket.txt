@@ -1,0 +1,15 @@
+NUSD: please {{ op }} {{ username }}{% if display_name %} ({{ display_name }}){% endif %} {{ 'to' if op == 'add' else 'from' }} the unix group {{ group_name }} (gid {{ gid }}) upstream, in {{ source }}.
+
+Group:        {{ group_name }} (gid {{ gid }}, {{ kind }})
+Member:       {{ username }}{% if display_name %} ({{ display_name }}){% endif %}
+Change:       {{ op }}
+Requested by: {{ requested_by }} on {{ opened_at }}
+{% if expires_at %}Until:        {{ expires_at }}
+{% endif %}{% if note %}Note:         {{ note }}
+{% endif %}
+What SAM did: {{ applied }}
+
+SAM reads the directory every hour and closes its side of this change once upstream agrees. If the change should not happen, say so here and an operator withdraws it in SAM.
+SAM mask:     #{{ mask_id }}{% if masks_url %}  {{ masks_url }}{% endif %}
+
+Filed by the NSF NCAR Systems Accounting Manager when the change was made in SAM.

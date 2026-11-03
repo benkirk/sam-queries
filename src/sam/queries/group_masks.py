@@ -171,6 +171,7 @@ def mask_views(session, *, now: datetime, gids: Optional[Iterable[int]] = None,
     lower = sorted({r.username.lower() for r in rows})
     upids = {u.lower(): upid for u, upid in session.query(User.username, User.upid)
              .filter(func.lower(User.username).in_(lower))} if lower else {}
+    tickets = mask_tickets(session, [r.mask_id for r in rows if r.kind == 'adhoc'])
     out = []
     for r in rows:
         upid = upids.get(r.username.lower())
@@ -179,7 +180,7 @@ def mask_views(session, *, now: datetime, gids: Optional[Iterable[int]] = None,
             'group_name': names.get(r.unix_gid, ''), 'username': r.username, 'op': r.op,
             'state': r.state, 'open': r.is_open_at(now),
             'unconfirmable': r.kind == 'adhoc' and upid is None,
-            'ticket': None,
+            'ticket': tickets.get(r.mask_id),
         })
     return out
 
@@ -205,3 +206,70 @@ def sort_mask_views(rows: List[dict], sort_by: Optional[str], sort_dir: str) -> 
     }
     key = keys.get(sort_by or 'created', keys['created'])
     return sorted(rows, key=key, reverse=(sort_dir != 'asc'))
+
+
+# --- NUSD's ticket (adhoc masks only) ------------------------------------------------
+
+MASK_ENTITY = 'unix_group_mask'
+MASK_TICKET_KIND = 'hpc_group_ticket'
+UPSTREAM_SOURCE = 'Google Groups'
+
+
+def mask_ticket_handle(mask_id: int) -> str:
+    """``SAM-GM-<id>``: the ticket's lookup handle (``ticket_handle`` for account requests)."""
+    return f'SAM-GM-{mask_id}'
+
+
+def mask_ticket_subject(mask: UnixGroupMask, group_name: str) -> str:
+    return (f'Unix group change: {mask.op} {mask.username} '
+            f'{"to" if mask.op == "add" else "from"} {group_name} '
+            f'[{mask_ticket_handle(mask.mask_id)}]')
+
+
+def build_mask_ticket_message(mask: UnixGroupMask, *, group_name: str, branches: Iterable[str],
+                              display_name: str, recipient: str, requested_by: str,
+                              sender: Optional[str] = None, masks_url: str = ''):
+    """NUSD's ticket for an adhoc mask: every field one line, no HTML, keyed on the row alone."""
+    from sam import fmt
+    from sam.notify.base import Message, Recipient
+    branches = list(branches)
+    where = (', '.join(branches[:-1]) + ' and ' + branches[-1]) if len(branches) > 1 else ''.join(branches)
+    verb = 'wrote' if mask.op == 'add' else 'removed'
+    joiner = 'into' if mask.op == 'add' else 'from'
+    applied = (f"SAM {verb} {mask.username} {joiner} {group_name}'s entries on {where or 'its branches'}"
+               f" at {fmt.date_str(mask.creation_time, fmt='%Y-%m-%d %H:%M')}; the HPC hosts pick it up"
+               " from SAM's directory feed.")
+    return Message(
+        kind=MASK_TICKET_KIND,
+        recipient=Recipient(recipient.strip(), name='NUSD', role='operator'),
+        subject=mask_ticket_subject(mask, group_name),
+        context={
+            'group_name': group_name, 'gid': mask.unix_gid, 'kind': mask.kind,
+            'source': UPSTREAM_SOURCE, 'username': mask.username,
+            'display_name': display_name or '', 'op': mask.op,
+            'opened_at': fmt.date_str(mask.creation_time, fmt='%Y-%m-%d %H:%M'),
+            'expires_at': fmt.date_str(mask.expires_at) if mask.expires_at else '',
+            'note': mask.note or '', 'applied': applied, 'mask_id': mask.mask_id,
+            'masks_url': masks_url,
+        },
+        entity=(MASK_ENTITY, mask.mask_id),
+        dedup_key=f'{MASK_TICKET_KIND}:{mask.mask_id}',
+        requested_by=requested_by,
+        sender=sender,
+    )
+
+
+def mask_tickets(session, mask_ids: Iterable[int]) -> Dict[int, dict]:
+    """``{mask_id: {key url status closed_at}}`` for the oldest ticket on each mask."""
+    from sam.integration.tickets.queries import tickets_for
+    found = tickets_for(session, MASK_ENTITY, mask_ids)
+    if not found:
+        return {}
+    from sam.integration.tickets.registry import provider_for_stored   # imports requests
+    providers = {name: provider_for_stored(name)
+                 for name in {t.provider for ts in found.values() for t in ts}}
+    return {mid: {'key': ts[0].ticket_key,
+                  'url': providers[ts[0].provider].browse_url(ts[0].ticket_key)
+                         if providers[ts[0].provider] else '',
+                  'status': ts[0].status or '', 'closed_at': ts[0].closed_at}
+            for mid, ts in found.items()}

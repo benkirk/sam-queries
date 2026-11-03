@@ -30,6 +30,7 @@ from webapp.utils.rbac import (Permission, active_catalog, has_permission,
 
 from .blueprint import bp
 from .crud import CrudSpec, register_crud
+from .group_mask_tickets import comment_withdrawn, send_mask_ticket
 
 _FORM_ID = 'groupMasksFilterForm'
 _TARGET_ID = 'groupMasksTableContainer'
@@ -174,10 +175,18 @@ class _OpenMaskHandler(HtmxFormHandler):
                 current_user, Permission.EDIT_GROUPS, target.project.facility_name):
             raise FormError(f'{target.name} is outside your facility scope.')
         self.group_name = target.name
+        self.branches = target.group.branch_names(db.session) if target.group else []
         return open_mask(db.session, requested_by=acting_username(),
                          protected_groups=active_catalog().group_subjects,
                          may_touch_protected=has_permission(current_user, Permission.MANAGE_ROLES),
                          **data)
+
+    def after_commit(self, result):
+        """NUSD's ticket, for an adhoc mask only; a project grant files nothing."""
+        self.ticket = None
+        if result.kind == 'adhoc':
+            self.ticket = send_mask_ticket(result, group_name=self.group_name,
+                                           branches=self.branches, requested_by=acting_username())
 
     def context(self):
         form = request.form
@@ -187,7 +196,13 @@ class _OpenMaskHandler(HtmxFormHandler):
                              form.get('op') if pinned == 'op' else None)
 
     def detail(self, result):
-        return f'{result.op} {result.username} on gid {result.unix_gid}'
+        what = f'{result.op} {result.username} on {self.group_name}'
+        ticket = getattr(self, 'ticket', None)
+        if ticket is None:
+            return what if result.kind == 'project' else f'{what}; no ticket path is configured'
+        if ticket.status == 'sent':
+            return f'{what}; NUSD ticket {ticket.detail}'
+        return f'{what}; ticket {ticket.status}'
 
     def triggers(self, result):
         t = modal_triggers('reloadGroupMasks')
@@ -233,6 +248,10 @@ class _WithdrawHandler(HtmxFormHandler):
 
     def perform(self, data):
         return close_mask(db.session, self.mask, resolution='withdrawn', by=acting_username())
+
+    def after_commit(self, result):
+        if result.kind == 'adhoc':
+            comment_withdrawn(result, by=acting_username())
 
     def triggers(self, result):
         t = modal_triggers('reloadGroupMasks')
