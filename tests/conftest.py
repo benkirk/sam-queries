@@ -492,6 +492,8 @@ _BOOTSTRAP_TABLES = (
      'sam.accounting.allocation_type_limits:AllocationTypeResourceLimit'),
     ('allocation_type_guide', 'create_allocation_type_guide.sql',
      'sam.accounting.allocation_type_guide:AllocationTypeGuide'),
+    ('unix_group_mask', 'create_unix_group_mask.sql',
+     'sam.core.groups:UnixGroupMask'),
 )
 
 

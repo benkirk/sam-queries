@@ -55,6 +55,7 @@ from .core.groups import (
     GidAllocation,
     GidPoolSummary,
     NoAvailableGidError,
+    UnixGroupMask,
 )
 
 # 4. Resources
@@ -263,7 +264,7 @@ __all__ = [
     'Organization', 'UserOrganization', 'Institution', 'InstitutionType',
     'UserInstitution', 'MnemonicCode', 'ProjectOrganization',
     # Core - Groups
-    'AdhocGroup', 'AdhocGroupTag', 'AdhocSystemAccountEntry',
+    'AdhocGroup', 'AdhocGroupTag', 'AdhocSystemAccountEntry', 'UnixGroupMask',
     'GidAllocation', 'GidPoolSummary', 'NoAvailableGidError',
     # Resources
     'Resource', 'ResourceType', 'ResourceShell', 'DiskResourceRootDirectory',

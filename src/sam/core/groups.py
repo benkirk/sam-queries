@@ -1,7 +1,9 @@
 #-------------------------------------------------------------------------bh-
 # Common Imports:
 from dataclasses import dataclass
+from datetime import timedelta
 from ..base import *
+from ..text import strip_or_none
 #-------------------------------------------------------------------------eh-
 
 
@@ -75,6 +77,13 @@ class AdhocGroup(Base, ActiveFlagMixin):
         """
         return session.query(cls).filter(cls.unix_gid == unix_gid).first()
 
+    def branch_names(self, session) -> List[str]:
+        """The access branches this group's tags name (what ``sync_group`` calls ``matching``), as stored."""
+        from ..security.access import AccessBranch
+        branches = {name.lower(): name for (name,) in session.query(AccessBranch.name)}
+        return list(dict.fromkeys(branches[t.tag.lower()] for t in self.tags
+                                  if t.tag.lower() in branches))
+
     def __str__(self):
         return f"{self.group_name}"
 
@@ -129,6 +138,134 @@ class AdhocSystemAccountEntry(Base):
 
     def __repr__(self):
         return f"<AdhocSystemAccountEntry(id={self.entry_id}, username='{self.username}', branch='{self.access_branch_name}')>"
+
+
+#----------------------------------------------------------------------------
+MASK_KINDS = ('adhoc', 'project')
+MASK_OPS = ('add', 'remove')
+MASK_RESOLUTIONS = ('confirmed', 'expired', 'withdrawn')
+PROJECT_MASK_MAX_DAYS = 90
+
+
+class UnixGroupMask(Base, SessionMixin):
+    """An operator's standing add/remove over one group member, keyed by gid.
+
+    No FKs (the ``external_ticket`` convention); ``kind`` is resolved from the
+    gid when the row opens. DDL: ``scripts/sql/create_unix_group_mask.sql``.
+    """
+    __tablename__ = 'unix_group_mask'
+    __table_args__ = (
+        Index('unix_group_mask_gid', 'unix_gid', 'closed_at'),
+        Index('unix_group_mask_user', 'username'),
+    )
+
+    mask_id = Column(Integer, primary_key=True, autoincrement=True)
+    unix_gid = Column(Integer, nullable=False)
+    kind = Column(String(8), nullable=False)
+    username = Column(String(35), nullable=False)
+    op = Column(String(8), nullable=False)
+    requested_by = Column(String(35), nullable=False)
+    note = Column(String(255))
+    # App clock, naive-Mountain, no server_default.
+    creation_time = Column(DateTime, nullable=False)
+    expires_at = Column(DateTime)
+    closed_at = Column(DateTime)
+    resolution = Column(String(16))
+    closed_by = Column(String(35))
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Open: not yet closed. Expiry is a close the watcher stamps; see ``is_open_at``."""
+        return self.closed_at is None
+
+    @is_active.expression
+    def is_active(cls):
+        return cls.closed_at.is_(None)
+
+    def is_open_at(self, now: datetime) -> bool:
+        """Open and not past ``expires_at``: the row the readers honor."""
+        return self.closed_at is None and (self.expires_at is None or self.expires_at > now)
+
+    @property
+    def is_expired(self) -> bool:
+        return self.resolution == 'expired' or (
+            self.closed_at is None and self.expires_at is not None
+            and self.expires_at <= datetime.now())
+
+    @property
+    def state(self) -> str:
+        """``pending`` while open, else the resolution; an overdue open row reads ``expired``."""
+        if self.closed_at is not None:
+            return self.resolution or 'closed'
+        return 'expired' if self.is_expired else 'pending'
+
+    @classmethod
+    def create(cls, session, *, unix_gid: int, kind: str, username: str, op: str,
+               requested_by: str, note=None, expires_at: Optional[datetime] = None,
+               when: Optional[datetime] = None) -> 'UnixGroupMask':
+        """Raises ``ValueError`` on an unknown kind or op, an empty name, or a project mask without an expiry."""
+        if kind not in MASK_KINDS:
+            raise ValueError(f'kind must be one of {", ".join(MASK_KINDS)}')
+        if op not in MASK_OPS:
+            raise ValueError(f'op must be one of {", ".join(MASK_OPS)}')
+        username = strip_or_none(username, width=35)
+        requested_by = strip_or_none(requested_by, width=35)
+        if not username or not requested_by:
+            raise ValueError('username and requested_by are required')
+        now = when or datetime.now()
+        if expires_at is not None and expires_at <= now:
+            raise ValueError('expires_at must be in the future')
+        if kind == 'project':
+            if expires_at is None:
+                raise ValueError('a project mask must carry an expiry')
+            if expires_at > now + timedelta(days=PROJECT_MASK_MAX_DAYS):
+                raise ValueError(f'a project mask may run at most {PROJECT_MASK_MAX_DAYS} days')
+        row = cls(unix_gid=unix_gid, kind=kind, username=username, op=op,
+                  requested_by=requested_by, note=strip_or_none(note, width=255),
+                  creation_time=now, expires_at=expires_at)
+        session.add(row)
+        session.flush()
+        return row
+
+    def update(self, *, note=None, expires_at=None, clear_expiry: bool = False,
+               now: Optional[datetime] = None) -> 'UnixGroupMask':
+        """Edit the expiry and note of an open row; a project mask keeps an expiry."""
+        if self.closed_at is not None:
+            raise ValueError('a closed mask cannot be edited')
+        now = now or datetime.now()
+        if note is not None:
+            self.note = strip_or_none(note, width=255)
+        if clear_expiry:
+            if self.kind == 'project':
+                raise ValueError('a project mask must carry an expiry')
+            self.expires_at = None
+        elif expires_at is not None:
+            if expires_at <= now:
+                raise ValueError('expires_at must be in the future')
+            if self.kind == 'project' and expires_at > now + timedelta(days=PROJECT_MASK_MAX_DAYS):
+                raise ValueError(f'a project mask may run at most {PROJECT_MASK_MAX_DAYS} days')
+            self.expires_at = expires_at
+        self.session.flush()
+        return self
+
+    def close(self, *, resolution: str, by: str, when: Optional[datetime] = None) -> 'UnixGroupMask':
+        """Stamp the row closed once; a second close raises."""
+        if resolution not in MASK_RESOLUTIONS:
+            raise ValueError(f'resolution must be one of {", ".join(MASK_RESOLUTIONS)}')
+        if self.closed_at is not None:
+            raise ValueError('the mask is already closed')
+        self.closed_at = when or datetime.now()
+        self.resolution = resolution
+        self.closed_by = strip_or_none(by, width=35)
+        self.session.flush()
+        return self
+
+    def __str__(self):
+        return f'{self.op} {self.username} gid={self.unix_gid}'
+
+    def __repr__(self):
+        return (f"<UnixGroupMask(id={self.mask_id}, gid={self.unix_gid}, kind='{self.kind}', "
+                f"op='{self.op}', username='{self.username}', state='{self.state}')>")
 
 
 # ---------------------------------------------------------------------------
