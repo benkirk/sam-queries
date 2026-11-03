@@ -9,7 +9,8 @@ from factories import (make_adhoc_group, make_adhoc_group_tag, make_adhoc_system
                        make_project, make_unix_group_mask, make_user)
 from factories.directory import FakeDirectory, make_group_record
 from sam.integration.directory import DirectoryUnavailable
-from sam.manage.groups import open_mask, sweep_headline, sweep_masks
+from sam.integration.tickets.models import ExternalTicket
+from sam.manage.groups import open_mask, open_masks, sweep_headline, sweep_masks
 from scheduling.registry import TASKS, TaskContext
 from scheduling.schedules import Hourly
 
@@ -130,6 +131,22 @@ class TestSweep:
         counts = sweep_masks(session, fake, now=NOW, by='task:t')
         assert mask.is_active and counts['reasserted'] == 1 and counts['confirmed'] == 0
         assert _rows(group) == [('hpc', user.username)]
+
+    def test_a_closed_shared_ticket_flags_every_member(self, session):
+        group = _group(session)
+        users = [make_user(session, upid=True) for _ in range(2)]
+        head, other = open_masks(session, gid=group.unix_gid, usernames=[u.username for u in users],
+                                 op='add', requested_by='op', now=T0)
+        ticket = ExternalTicket.create(session, provider='fake', ticket_key=f'FGMT-{head.mask_id}',
+                                       entity_type='unix_group_mask', entity_id=head.mask_id,
+                                       origin='created', requested_by='op', status='Closed')
+        ticket.closed_at = NOW - timedelta(hours=1)
+        session.flush()
+        fake = FakeDirectory()
+        fake.add(make_group_record(gid=group.unix_gid, name=group.group_name, member_upids=(1,)))
+        counts = sweep_masks(session, fake, now=NOW, by='task:t')
+        assert counts['flagged'] == 2 and counts['confirmed'] == 0
+        assert head.is_active and other.is_active
 
     def test_a_login_without_a_upid_is_counted_not_read(self, session):
         group, user = _group(session), make_user(session)

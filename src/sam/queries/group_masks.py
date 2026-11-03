@@ -4,13 +4,14 @@ honor (docs/plans/UNIX_GROUP_MASK.md § 3). SQLAlchemy and ``sam`` models only."
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, FrozenSet, Iterable, List, Optional, Tuple
+from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Tuple
 
 from sqlalchemy import bindparam, func, or_, text
 
 from sam.core.groups import UnixGroupMask
 from sam.core.users import User
 from sam.projects.projects import Project
+from sam.sqlcompat import ci_like
 
 
 def _open_at(query, now: datetime):
@@ -137,6 +138,33 @@ def project_mask_times(session) -> Dict[int, datetime]:
 
 # --- the masks tab ---------------------------------------------------------------
 
+def search_mask_targets(session, q: str, *, limit: int = 15) -> List[dict]:
+    """The picker's rows: active adhoc groups, then projects holding a gid, matched on
+    name, code, title or gid. An inactive project stays offered: the straggler's grant
+    is the point."""
+    from sam.queries.lookups import search_groups_by_pattern
+    q = (q or '').strip()
+    if not q:
+        return []
+    out = [{'kind': 'adhoc', 'gid': g.unix_gid, 'name': g.group_name, 'detail': ''}
+           for g in search_groups_by_pattern(session, q, limit=limit, active_only=True)]
+    match = or_(ci_like(Project.projcode, f'%{q}%'), ci_like(Project.title, f'%{q}%'))
+    if q.isdigit():
+        match = or_(match, Project.unix_gid == int(q))
+    projects = (session.query(Project).filter(Project.unix_gid.isnot(None), match)
+                .order_by(Project.projcode).limit(limit).all())
+    out += [{'kind': 'project', 'gid': p.unix_gid, 'name': p.projcode, 'detail': p.title or ''}
+            for p in projects]
+    return out
+
+
+def batch_siblings_open(session, mask: UnixGroupMask) -> int:
+    """Open rows that share ``mask``'s ticket, ``mask`` itself excluded."""
+    return (session.query(func.count(UnixGroupMask.mask_id))
+            .filter(UnixGroupMask.batch_id == mask.head_id, UnixGroupMask.mask_id != mask.mask_id,
+                    UnixGroupMask.is_active).scalar() or 0)
+
+
 MASK_STATES = ('pending', 'confirmed', 'expired', 'withdrawn')
 #: Conditions an open row can carry beside its state; the tab's Flags facet.
 MASK_FLAGS = ('ticket closed', 'no upid', 'no ticket')
@@ -173,7 +201,7 @@ def mask_views(session, *, now: datetime, gids: Optional[Iterable[int]] = None,
     lower = sorted({r.username.lower() for r in rows})
     upids = {u.lower(): upid for u, upid in session.query(User.username, User.upid)
              .filter(func.lower(User.username).in_(lower))} if lower else {}
-    tickets = mask_tickets(session, [r.mask_id for r in rows if r.kind == 'adhoc'])
+    tickets = mask_tickets(session, [r for r in rows if r.kind == 'adhoc'])
     out = []
     for r in rows:
         upid = upids.get(r.username.lower())
@@ -233,57 +261,73 @@ def mask_ticket_handle(mask_id: int) -> str:
     return f'SAM-GM-{mask_id}'
 
 
-def mask_ticket_subject(mask: UnixGroupMask, group_name: str) -> str:
-    return (f'Unix group change: {mask.op} {mask.username} '
-            f'{"to" if mask.op == "add" else "from"} {group_name} '
-            f'[{mask_ticket_handle(mask.mask_id)}]')
+def _oxford(parts: Sequence[str]) -> str:
+    parts = list(parts)
+    return (', '.join(parts[:-1]) + ' and ' + parts[-1]) if len(parts) > 1 else ''.join(parts)
 
 
-def build_mask_ticket_message(mask: UnixGroupMask, *, group_name: str, branches: Iterable[str],
-                              display_name: str, recipient: str, requested_by: str,
+def mask_ticket_subject(masks: Sequence[UnixGroupMask], group_name: str) -> str:
+    head = masks[0]
+    who = head.username if len(masks) == 1 else f'{len(masks)} members'
+    return (f'Unix group change: {head.op} {who} '
+            f'{"to" if head.op == "add" else "from"} {group_name} '
+            f'[{mask_ticket_handle(head.mask_id)}]')
+
+
+def build_mask_ticket_message(masks: Sequence[UnixGroupMask], *, group_name: str,
+                              branches: Iterable[str], display_names: Dict[str, str],
+                              recipient: str, requested_by: str,
                               sender: Optional[str] = None, masks_url: str = ''):
-    """NUSD's ticket for an adhoc mask: every field one line, no HTML, keyed on the row alone."""
+    """NUSD's ticket for one batch of adhoc masks (head first): every field one line, no HTML."""
     from sam import fmt
     from sam.notify.base import Message, Recipient
+    head = masks[0]
     branches = list(branches)
-    where = (', '.join(branches[:-1]) + ' and ' + branches[-1]) if len(branches) > 1 else ''.join(branches)
-    verb = 'wrote' if mask.op == 'add' else 'removed'
-    joiner = 'into' if mask.op == 'add' else 'from'
+    where = _oxford(branches)
+    members = [{'username': m.username, 'display_name': display_names.get(m.username) or ''}
+               for m in masks]
+    members_line = _oxford([f"'{m['username']}'" + (f" ({m['display_name']})" if m['display_name'] else '')
+                            for m in members])
+    verb = 'wrote' if head.op == 'add' else 'removed'
+    joiner = 'into' if head.op == 'add' else 'from'
     # Kept in the ledger context for the operator's record; the ticket text does not use it,
     # since NUSD acts on the group name and never sees a branch.
-    applied = (f"SAM {verb} {mask.username} {joiner} {group_name}'s entries on {where or 'its branches'}"
-               f" at {fmt.date_str(mask.creation_time, fmt='%Y-%m-%d %H:%M')}.")
+    applied = (f"SAM {verb} {_oxford([m.username for m in masks])} {joiner} {group_name}'s entries"
+               f" on {where or 'its branches'} at {fmt.date_str(head.creation_time, fmt='%Y-%m-%d %H:%M')}.")
     return Message(
         kind=MASK_TICKET_KIND,
         recipient=Recipient(recipient.strip(), name='NUSD', role='operator'),
-        subject=mask_ticket_subject(mask, group_name),
+        subject=mask_ticket_subject(masks, group_name),
         context={
-            'group_name': group_name, 'gid': mask.unix_gid, 'kind': mask.kind,
-            'source': UPSTREAM_SOURCE, 'username': mask.username,
-            'display_name': display_name or '', 'op': mask.op,
-            'opened_at': fmt.date_str(mask.creation_time, fmt='%Y-%m-%d %H:%M'),
-            'expires_at': fmt.date_str(mask.expires_at) if mask.expires_at else '',
-            'note': mask.note or '', 'applied': applied, 'mask_id': mask.mask_id,
-            'masks_url': masks_url, 'requested_by': mask.requested_by,
+            'group_name': group_name, 'gid': head.unix_gid, 'kind': head.kind,
+            'source': UPSTREAM_SOURCE, 'members': members, 'members_line': members_line,
+            'member_count': len(members), 'op': head.op,
+            'opened_at': fmt.date_str(head.creation_time, fmt='%Y-%m-%d %H:%M'),
+            'expires_at': fmt.date_str(head.expires_at) if head.expires_at else '',
+            'note': head.note or '', 'applied': applied, 'mask_id': head.mask_id,
+            'masks_url': masks_url, 'requested_by': head.requested_by,
         },
-        entity=(MASK_ENTITY, mask.mask_id),
-        dedup_key=f'{MASK_TICKET_KIND}:{mask.mask_id}',
+        entity=(MASK_ENTITY, head.mask_id),
+        dedup_key=f'{MASK_TICKET_KIND}:{head.mask_id}',
         requested_by=requested_by,
         sender=sender,
     )
 
 
-def mask_tickets(session, mask_ids: Iterable[int]) -> Dict[int, dict]:
-    """``{mask_id: {key url status closed_at}}`` for the oldest ticket on each mask."""
+def mask_tickets(session, masks: Iterable[UnixGroupMask]) -> Dict[int, dict]:
+    """``{mask_id: {key url status closed_at}}``: the oldest ticket on each mask's batch head."""
     from sam.integration.tickets.queries import tickets_for
-    found = tickets_for(session, MASK_ENTITY, mask_ids)
+    head_of = {m.mask_id: m.head_id for m in masks}
+    found = tickets_for(session, MASK_ENTITY, set(head_of.values())) if head_of else {}
     if not found:
         return {}
     from sam.integration.tickets.registry import provider_for_stored   # imports requests
     providers = {name: provider_for_stored(name)
                  for name in {t.provider for ts in found.values() for t in ts}}
-    return {mid: {'key': ts[0].ticket_key,
-                  'url': providers[ts[0].provider].browse_url(ts[0].ticket_key)
-                         if providers[ts[0].provider] else '',
-                  'status': ts[0].status or '', 'closed_at': ts[0].closed_at}
-            for mid, ts in found.items()}
+
+    def view(ts):
+        return {'key': ts[0].ticket_key,
+                'url': providers[ts[0].provider].browse_url(ts[0].ticket_key)
+                       if providers[ts[0].provider] else '',
+                'status': ts[0].status or '', 'closed_at': ts[0].closed_at}
+    return {mid: view(found[head]) for mid, head in head_of.items() if head in found}

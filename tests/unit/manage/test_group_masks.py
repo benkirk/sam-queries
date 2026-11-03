@@ -5,8 +5,11 @@ import pytest
 
 from factories import (make_adhoc_group, make_adhoc_group_tag, make_adhoc_system_account_entry,
                        make_project, make_user, next_int)
-from sam.manage.groups import MaskError, close_mask, open_mask, resolve_target
-from sam.queries.group_masks import open_masks, project_mask_times, project_masks
+from sam import UnixGroupMask
+from sam.manage.groups import (MASK_BATCH_MAX, MaskError, check_mask, close_mask, open_mask,
+                               open_masks as open_batch, parse_usernames, resolve_target)
+from sam.queries.group_masks import (batch_siblings_open, open_masks, project_mask_times,
+                                     project_masks)
 
 T0 = datetime(2026, 11, 2, 9, 0)
 
@@ -157,3 +160,76 @@ class TestClose:
         with pytest.raises(MaskError, match='already closed'):
             close_mask(session, mask, resolution='withdrawn', by='op', now=T0)
         assert open_masks(session, now=T0, gids=[group.unix_gid]) == {}
+
+
+class TestParseUsernames:
+    def test_lines_blanks_and_comments(self):
+        names, problems = parse_usernames('alice\n\n# a comment\n  Bob  \n')
+        assert names == ['alice', 'Bob'] and problems == []
+
+    def test_problems_name_their_lines(self):
+        names, problems = parse_usernames('alice\nnot a user\nALICE\n' + 'x' * 36)
+        assert names == ['alice']
+        assert problems == ['line 2: expected one username', 'line 3: duplicate of line 1',
+                            'line 4: expected one username']
+
+    def test_the_cap_and_the_empty_box(self):
+        names, problems = parse_usernames('\n'.join(f'u{i}' for i in range(MASK_BATCH_MAX + 1)))
+        assert len(names) == MASK_BATCH_MAX + 1 and problems == [
+            f'At most {MASK_BATCH_MAX} members at once; open another mask for the rest.']
+        assert parse_usernames('# nobody\n') == ([], ['Name at least one member.'])
+
+
+class TestOpenBatch:
+    def test_every_row_names_the_head_and_shares_one_clock(self, session):
+        group = _group(session)
+        users = [make_user(session) for _ in range(3)]
+        masks = open_batch(session, gid=group.unix_gid, usernames=[u.username for u in users],
+                           op='add', requested_by='op', now=T0)
+        head = masks[0]
+        assert [m.username for m in masks] == [u.username for u in users]
+        assert {m.batch_id for m in masks} == {head.mask_id} and head.head_id == head.mask_id
+        assert {m.creation_time for m in masks} == {T0}
+        assert len(_rows(group)) == 6
+        assert batch_siblings_open(session, head) == 2
+        close_mask(session, masks[1], resolution='withdrawn', by='op', now=T0)
+        assert batch_siblings_open(session, head) == 1
+
+    def test_a_single_heads_itself(self, session):
+        group, user = _group(session), make_user(session)
+        (mask,) = open_batch(session, gid=group.unix_gid, usernames=[user.username], op='add',
+                             requested_by='op', now=T0)
+        assert mask.batch_id == mask.mask_id and batch_siblings_open(session, mask) == 0
+
+    def test_a_refusal_on_the_second_name_writes_nothing(self, session):
+        group, user = _group(session), make_user(session)
+        with pytest.raises(MaskError, match='No user named'):
+            open_batch(session, gid=group.unix_gid, usernames=[user.username, 'no-such-user-zz'],
+                       op='add', requested_by='op', now=T0)
+        assert _rows(group) == []
+        assert session.query(UnixGroupMask).filter(UnixGroupMask.unix_gid == group.unix_gid).count() == 0
+
+    def test_an_empty_or_oversized_list_is_refused(self, session):
+        group = _group(session)
+        with pytest.raises(MaskError, match='at least one'):
+            open_batch(session, gid=group.unix_gid, usernames=[], op='add', requested_by='op', now=T0)
+        with pytest.raises(MaskError, match='At most'):
+            open_batch(session, gid=group.unix_gid, usernames=[f'u{i}' for i in range(MASK_BATCH_MAX + 1)],
+                       op='add', requested_by='op', now=T0)
+
+
+class TestCheckMask:
+    def test_it_reports_without_writing_and_returns_the_overdue_row(self, session):
+        group, user = _group(session), make_user(session)
+        target, found, standing = check_mask(session, gid=group.unix_gid, username=user.username,
+                                             op='add', now=T0)
+        assert (target.kind, target.label, found.username, standing) == (
+            'adhoc', f'{group.group_name} (gid {group.unix_gid}, adhoc)', user.username, None)
+        assert _rows(group) == []
+        overdue = open_mask(session, gid=group.unix_gid, username=user.username, op='add',
+                            requested_by='op', expires_at=T0 + timedelta(hours=1), now=T0)
+        later = T0 + timedelta(days=1)
+        assert check_mask(session, gid=group.unix_gid, username=user.username, op='add',
+                          now=later)[2] is overdue
+        with pytest.raises(MaskError, match='already stands'):
+            check_mask(session, gid=group.unix_gid, username=user.username, op='add', now=T0)
