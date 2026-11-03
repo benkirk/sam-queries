@@ -8,13 +8,14 @@
 {% from 'dashboards/fragments/group_mask_bits.html' import mask_flags, ticket_link, withdraw_button %}
 {#
   Group masks table (HTMX fragment). Context: rows (sam.queries.group_masks.mask_views),
-  total, filters, kind_facets, state_facets, page, sort, sortable_columns, form_id,
+  total, filters, kind_facets, state_facets, flag_facets, page, sort, sortable_columns, form_id,
   target_id, fragment_url, can_edit.
 #}
 <div class="facet-grid mb-2">
     {{ facet_row('Kind', kind_facets, form_id, 'kind', [filters.kind] if filters.kind else []) }}
     {{ facet_row('State', state_facets, form_id, 'state', filters.state) }}
-    {{ facet_clear_all(form_id, filters.kind or filters.state or filters.search) }}
+    {{ facet_row('Flags', flag_facets, form_id, 'flag', filters.flag) }}
+    {{ facet_clear_all(form_id, filters.kind or filters.state or filters.flag or filters.search) }}
 </div>
 
 <div id="groupMaskNotice-tab"></div>

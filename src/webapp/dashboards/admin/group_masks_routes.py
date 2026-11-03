@@ -15,8 +15,8 @@ from sam.core.users import User
 from sam.dates import end_of_day
 from sam.manage.groups import MaskError, close_mask, open_mask, resolve_target
 from sam.projects.projects import Project
-from sam.queries.group_masks import (MASK_SORTS, MASK_STATES, filter_mask_views, mask_views,
-                                     sort_mask_views)
+from sam.queries.group_masks import (MASK_FLAGS, MASK_SORTS, MASK_STATES, filter_mask_views,
+                                     mask_views, sort_mask_views)
 from sam.schemas.forms import EditGroupMaskForm, OpenGroupMaskForm, WithdrawGroupMaskForm
 from webapp.auth.impersonation import acting_username
 from webapp.extensions import db
@@ -46,6 +46,7 @@ def _filters(args):
     return {
         'kind': kind if kind in ('adhoc', 'project') else None,
         'state': [s for s in read_multi(args, 'state') if s in MASK_STATES],
+        'flag': [f for f in read_multi(args, 'flag') if f in MASK_FLAGS],
         'search': (args.get('q') or '').strip() or None,
         'sort_by': sort['sort_by'] or 'created',
         'sort_dir': sort['sort_dir'],
@@ -75,13 +76,14 @@ def users_group_masks_table():
     filters = _filters(request.args)
     now = datetime.now()
     rows = mask_views(db.session, now=now, open_only=read_active_only(request.args))
-    kind_counts = {}
-    state_counts = {}
+    kind_counts, state_counts, flag_counts = {}, {}, {}
     for r in filter_mask_views(rows, q=filters['search']):
         kind_counts[r['kind']] = kind_counts.get(r['kind'], 0) + 1
         state_counts[r['state']] = state_counts.get(r['state'], 0) + 1
+        for f in r['flags']:
+            flag_counts[f] = flag_counts.get(f, 0) + 1
     rows = sort_mask_views(filter_mask_views(rows, kind=filters['kind'], states=filters['state'],
-                                             q=filters['search']),
+                                             flags=filters['flag'], q=filters['search']),
                            filters['sort_by'], filters['sort_dir'])
     page_n = read_page(request.args)['n']
     start = (page_n - 1) * _PER_PAGE
@@ -90,6 +92,7 @@ def users_group_masks_table():
         rows=rows[start:start + _PER_PAGE], total=len(rows), filters=filters,
         kind_facets=build_facet_strip(kind_counts, ('adhoc', 'project')),
         state_facets=build_facet_strip(state_counts, MASK_STATES),
+        flag_facets=build_facet_strip(flag_counts, MASK_FLAGS),
         page={'n': page_n, 'per_page': _PER_PAGE},
         sort={'sort_by': filters['sort_by'], 'sort_dir': filters['sort_dir']},
         sortable_columns=MASK_SORTS, form_id=_FORM_ID, target_id=_TARGET_ID,

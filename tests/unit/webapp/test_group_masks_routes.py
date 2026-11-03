@@ -57,7 +57,12 @@ class TestPages:
         html = auth_client.get(TABLE, query_string={'active_only': '1', 'q': 'zz-mask'}).get_data(as_text=True)
         assert 'csg' in html and 'Pending' in html and 'RC-00000 smoke' in html
         assert 'no upid' in html, 'a username no user holds can never be confirmed'
+        assert 'no ticket' in html, 'nothing was filed for it'
         assert 'Withdraw' in html and 'New mask' in html
+        html = auth_client.get(TABLE, query_string={'active_only': '1', 'q': 'zz-mask', 'flag': 'no upid'}).get_data(as_text=True)
+        assert 'zz-mask-test' in html
+        html = auth_client.get(TABLE, query_string={'active_only': '1', 'q': 'zz-mask', 'flag': 'ticket closed'}).get_data(as_text=True)
+        assert 'zz-mask-test' not in html
         html = auth_client.get(TABLE, query_string={'active_only': '1', 'kind': 'project', 'q': 'zz-mask'}).get_data(as_text=True)
         assert 'zz-mask-test' not in html
 

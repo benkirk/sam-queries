@@ -40,9 +40,9 @@
                            for="groupMasksActiveOnly">Open masks only</label>
                 </div>
             </div>
-            {{ facet_fields(['kind', 'state'], single=['kind'], sort=filters,
+            {{ facet_fields(['kind', 'state', 'flag'], single=['kind'], sort=filters,
                             selected={'kind': [filters.kind] if filters.kind else [],
-                                      'state': filters.state}) }}
+                                      'state': filters.state, 'flag': filters.flag}) }}
         </form>
     </div>
 </div>

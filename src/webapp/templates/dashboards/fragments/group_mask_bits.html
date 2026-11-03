@@ -19,9 +19,14 @@
 </button>
 {%- endmacro %}
 
+{#- The same three conditions as the tab's Flags facet (MASK_FLAGS), from `row.flags`. #}
 {% macro mask_flags(r) -%}
-{%- if r.unconfirmable and r.open %} <span class="badge bg-secondary" title="This login has no upid, so the directory can never confirm it; it closes by withdrawal or expiry.">no upid</span>{% endif -%}
-{%- if r.ticket and r.ticket.closed_at and r.open %} <span class="badge bg-warning text-dark" title="NUSD closed the ticket but the directory still disagrees; withdraw or follow up.">ticket closed</span>{% endif -%}
+{%- for f in r.flags or [] -%}
+{%- if f == 'ticket closed' %} <span class="badge bg-warning text-dark" title="NUSD closed the ticket but the directory still disagrees; withdraw or follow up.">ticket closed</span>
+{%- elif f == 'no upid' %} <span class="badge bg-secondary" title="This login has no upid, so the directory can never confirm it; it closes by withdrawal or expiry.">no upid</span>
+{%- elif f == 'no ticket' %} <span class="badge bg-secondary" title="No ticket reached NUSD for this change: no ticket path was configured, or a mailed one is not linked yet.">no ticket</span>
+{%- endif -%}
+{%- endfor -%}
 {%- endmacro %}
 
 {% macro ticket_link(t) -%}

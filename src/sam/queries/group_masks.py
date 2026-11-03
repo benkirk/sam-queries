@@ -138,6 +138,8 @@ def project_mask_times(session) -> Dict[int, datetime]:
 # --- the masks tab ---------------------------------------------------------------
 
 MASK_STATES = ('pending', 'confirmed', 'expired', 'withdrawn')
+#: Conditions an open row can carry beside its state; the tab's Flags facet.
+MASK_FLAGS = ('ticket closed', 'no upid', 'no ticket')
 MASK_SORTS = ('created', 'expires', 'group', 'user', 'state')
 
 
@@ -175,23 +177,34 @@ def mask_views(session, *, now: datetime, gids: Optional[Iterable[int]] = None,
     out = []
     for r in rows:
         upid = upids.get(r.username.lower())
+        ticket = tickets.get(r.mask_id)
+        is_open = r.is_open_at(now)
+        flags = []
+        if r.kind == 'adhoc' and is_open:
+            if ticket and ticket['closed_at']:
+                flags.append('ticket closed')
+            if upid is None:
+                flags.append('no upid')
+            if ticket is None:
+                flags.append('no ticket')
         out.append({
             'mask': r, 'mask_id': r.mask_id, 'gid': r.unix_gid, 'kind': r.kind,
             'group_name': names.get(r.unix_gid, ''), 'username': r.username, 'op': r.op,
-            'state': r.state, 'open': r.is_open_at(now),
+            'state': r.state, 'open': is_open,
             'unconfirmable': r.kind == 'adhoc' and upid is None,
-            'ticket': tickets.get(r.mask_id),
+            'ticket': ticket, 'flags': flags,
         })
     return out
 
 
-def filter_mask_views(rows: List[dict], *, kind: Optional[str] = None, states=(),
+def filter_mask_views(rows: List[dict], *, kind: Optional[str] = None, states=(), flags=(),
                       q: Optional[str] = None) -> List[dict]:
     needle = (q or '').strip().lower()
-    states = set(states or ())
+    states, flags = set(states or ()), set(flags or ())
     return [r for r in rows
             if (not kind or r['kind'] == kind)
             and (not states or r['state'] in states)
+            and (not flags or flags & set(r['flags']))
             and (not needle or needle in r['group_name'].lower() or needle in r['username'].lower())]
 
 
