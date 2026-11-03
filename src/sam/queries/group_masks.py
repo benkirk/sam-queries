@@ -236,9 +236,10 @@ def build_mask_ticket_message(mask: UnixGroupMask, *, group_name: str, branches:
     where = (', '.join(branches[:-1]) + ' and ' + branches[-1]) if len(branches) > 1 else ''.join(branches)
     verb = 'wrote' if mask.op == 'add' else 'removed'
     joiner = 'into' if mask.op == 'add' else 'from'
+    # Kept in the ledger context for the operator's record; the ticket text does not use it,
+    # since NUSD acts on the group name and never sees a branch.
     applied = (f"SAM {verb} {mask.username} {joiner} {group_name}'s entries on {where or 'its branches'}"
-               f" at {fmt.date_str(mask.creation_time, fmt='%Y-%m-%d %H:%M')}; the HPC hosts pick it up"
-               " from SAM's directory feed.")
+               f" at {fmt.date_str(mask.creation_time, fmt='%Y-%m-%d %H:%M')}.")
     return Message(
         kind=MASK_TICKET_KIND,
         recipient=Recipient(recipient.strip(), name='NUSD', role='operator'),

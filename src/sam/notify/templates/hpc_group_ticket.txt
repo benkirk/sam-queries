@@ -1,15 +1,13 @@
-NUSD: please {{ op }} {{ username }}{% if display_name %} ({{ display_name }}){% endif %} {{ 'to' if op == 'add' else 'from' }} the unix group {{ group_name }} (gid {{ gid }}) upstream, in {{ source }}.
+Please {{ op }} {{ username }}{% if display_name %} ({{ display_name }}){% endif %} {{ 'to' if op == 'add' else 'from' }} the unix group {{ group_name }} (gid {{ gid }}) in {{ source }}.
 
-Group:        {{ group_name }} (gid {{ gid }}, {{ kind }})
+Group:        {{ group_name }} (gid {{ gid }})
 Member:       {{ username }}{% if display_name %} ({{ display_name }}){% endif %}
 Change:       {{ op }}
 Requested by: {{ requested_by }} on {{ opened_at }}
 {% if expires_at %}Until:        {{ expires_at }}
 {% endif %}{% if note %}Note:         {{ note }}
 {% endif %}
-What SAM did: {{ applied }}
-
-SAM reads the directory every hour and closes its side of this change once upstream agrees. If the change should not happen, say so here and an operator withdraws it in SAM.
+SAM has already made this change on its side, so the HPC systems see it now. SAM checks the directory hourly and closes its side once the group there agrees; nothing else is needed from NUSD after the change upstream.
 SAM mask:     #{{ mask_id }}{% if masks_url %}  {{ masks_url }}{% endif %}
 
 Filed by the NSF NCAR Systems Accounting Manager when the change was made in SAM.

@@ -338,8 +338,7 @@ def _hpc_group_ticket() -> Dict[str, Any]:
         'opened_at': '2026-11-02 17:28',
         'expires_at': '',
         'note': 'RC-39483',
-        'applied': "SAM wrote alovelace into cgdoce's entries on hpc, hpc-data and hpc-dev; "
-                   "the HPC hosts pick it up from SAM's directory feed.",
+        'applied': "SAM wrote alovelace into cgdoce's entries on hpc, hpc-data and hpc-dev at 2026-11-02 17:28.",
         'mask_id': 12,
         'masks_url': 'https://sam.hpc.ucar.edu/admin/users/group-masks?q=cgdoce',
         'requested_by': 'benkirk',
@@ -529,7 +528,7 @@ VARIABLE_NOTES: Dict[str, str] = {
     'op': "'add' or 'remove'.",
     'opened_at': 'When the operator opened the mask in SAM.',
     'expires_at': 'When the mask ends on its own, or empty for until upstream agrees.',
-    'applied': 'What SAM did locally when the mask opened.',
+    'applied': 'What SAM did locally when the mask opened (recorded; the ticket text does not show it).',
     'mask_id': 'The SAM mask id.',
     'masks_url': 'Link to the Group masks tab in SAM, filtered to the group, or empty.',
     'requested_by': 'The operator who opened the mask in SAM.',
