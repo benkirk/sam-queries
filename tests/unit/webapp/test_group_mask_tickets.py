@@ -183,13 +183,16 @@ def test_a_batch_files_one_ticket_on_the_head(app, ctx, mailer, provider):
     assert found[head.mask_id]['key'] == found[member.mask_id]['key'] == f'{provider.prefix}-1'
 
 
-def test_withdraw_on_a_shared_ticket_counts_the_rest(app, ctx, mailer, provider):
+def test_withdraw_on_a_shared_ticket_counts_the_rest(app, ctx, mailer, provider, committed_rows):
     from webapp.dashboards.admin.group_mask_tickets import comment_withdrawn, send_mask_ticket
     from webapp.extensions import db
     other = make_user(db.session)
     (head, member), group = ctx(others=[other.username])
     send_mask_ticket([head, member], group_name=group.group_name, branches=['hpc'], requested_by='oper')
-    db.session.commit()      # the sibling count and the link both read committed rows; ctx deletes them
+    # The sibling count and the link both read committed rows: ctx deletes the masks, and the
+    # group and user it also committed would otherwise collide with a later worker's sequence.
+    db.session.commit()
+    committed_rows(group), committed_rows(other)
     with Session(db.engine) as fresh:
         assert comment_withdrawn(member, by='benkirk', session=fresh) is True
         key, text, _ = provider.comments[-1]
