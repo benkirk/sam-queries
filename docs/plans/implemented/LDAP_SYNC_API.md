@@ -444,9 +444,11 @@ on both group routes. Responses: permit `{<idField>, purgeable, message}`; purge
    (see its README). Then the cutover rehearsal on samuel-dev: a test daemon instance with `SAM_URL` pointed at
    `https://samuel-dev.k8s.ucar.edu`, `--test-connections` first, then one add-file
    replay; watch with `scripts/cirrus_watch.sh --env dev`.
-6. Production cutover: flip `SAM_URL` in `prod/.env`, restart the syncd container
-   (`podman stop`/`start`; the systemd unit is disabled and `podman-compose up` recreates
-   the other containers), watch the first pass. Rollback is the same variable.
+6. Production cutover (done 2026-11-02 16:24 MST): test first with
+   `podman-compose --profile test run --rm --no-deps -e SAM_URL=<new> syncdTest`, flip
+   `SAM_URL` in `prod/.env`, then `podman-compose up -d --no-deps --force-recreate syncd`.
+   A container reads `env_file` only at creation, so `podman stop`/`start` keeps the old
+   URL. Rollback is the same variable and the same recreate.
 
 ## 7. Risks (ranked)
 

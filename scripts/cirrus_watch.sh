@@ -330,6 +330,33 @@ else
     fi
 fi
 
+# --- 2a. the LDAP sync daemon (sam-app's syncd, on prod since 2026-11-02) ---
+# A 5xx FAILs: the daemon drops a refused record until its next full reload. A 401
+# is LWP's first-call handshake, one per daemon restart. Directory lines are report-only.
+if [[ "$K8S_OK" -ne 0 && "$LOGS_RC" -eq 0 && "$SAM_ENV" == "prod" ]]; then
+    LS=$(printf '%s\n' "$LOGS" | awk '
+        / webapp\.run — [A-Z]+ \/api\/protected\/admin\/ldapsync\// {
+            # The first 3-digit field is the status: BWK awk compares "→" equal to "—".
+            for(i=1;i<=NF;i++) if($i ~ /^[1-5][0-9][0-9]$/){ st=$i; ms=$(i+1); break }
+            sub(/^\(/,"",ms); op=$0; sub(/.*\/ldapsync\//,"",op); sub(/[ ?\/].*/,"",op)
+            n++; c[st]++; ops[op]++; if(ms+0>mx) mx=ms+0 }
+        /ldapsync: directory check / { chk++; if($0 !~ /sam=drift=0/) drift++ }
+        /ldapsync: directory apply / { if($0 ~ / by=/) op++; else app++ }
+        END{
+            if(!n && !chk){ print "ldapsync: quiet"; exit }
+            line=sprintf("ldapsync: %d call(s)", n)
+            for(k in c) line=line sprintf(" %s=%d", k, c[k])
+            line=line sprintf(" max=%.0fms ·", mx)
+            for(k in ops) line=line sprintf(" %s %d", k, ops[k])
+            line=line sprintf(" · directory check %d (drift %d)", chk, drift)
+            if(app) line=line sprintf(" apply %d", app)
+            if(op) line=line sprintf(" · operator sync %d", op)
+            print line; printf "5XX=%d\n", c["500"]+c["502"]+c["503"]+c["504"] }')
+    printf '%s\n' "$LS" | grep -v '^5XX='
+    LS5=$(printf '%s\n' "$LS" | sed -n 's/^5XX=//p')
+    [[ "${LS5:-0}" -gt 0 ]] && fail "ldapsync: ${LS5} 5xx to the sync daemon (it drops those records)"
+fi
+
 # --- 2b. load context (DB tier + app-pod CPU) -------------------------------
 # The discriminator for a slow expensive endpoint: DB-bound vs app queueing.
 # Fail-soft: a missing metric prints n/a, never aborts the tick.

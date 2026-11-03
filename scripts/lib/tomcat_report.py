@@ -24,7 +24,7 @@ FAMILIES = [
     ('sysacct/directoryaccess', 'ported'),
     ('sysacct/groupstatus', 'ported'),
     ('dasg/diskquota', 'ported'),
-    ('ldapsync/', 'ported'),
+    ('ldapsync/', 'cutover'),     # sam-app's syncd posts to SAMuel since 2026-11-02
     ('admin/userlifecycle', 'ported'),
     ('admin/userPurge', 'ported'),
     ('admin/groupPurge', 'ported'),
@@ -226,7 +226,9 @@ def report_traffic(r, recs, tick, to):
           + '   [now (same window a week ago)]')
     hour = datetime.fromtimestamp(to, MT).hour
     for k in labels:
-        if k not in EXCLUDED and base_label[k] >= 5 and by_label[k] == 0 and 7 <= hour < 19:
+        # A cut-over caller's silence is the point; its return is the cutover flag's job.
+        if (k not in EXCLUDED and status_of(k) != 'cutover' and base_label[k] >= 5
+                and by_label[k] == 0 and 7 <= hour < 19):
             r.flag('WARN', f'MISSING caller {k}: 0 now, {base_label[k]} a week ago')
     for (cl, ua), n in sorted(new.items(), key=lambda kv: -kv[1])[:5]:
         r.flag('WARN', f"NEW caller (unmapped): client={cl} ua={ua} x{n} on {','.join(sorted(newfam[(cl, ua)]))}")
@@ -297,7 +299,7 @@ def report_app(r, recs, state, tick, app_label):
     mix = ' '.join(f'{m} {st}x{n}' for (m, st), n in sorted(puts.items())) or 'no calls'
     r.say(f"syncd: files {sync.get('applied', 0)} applied · {mix} · deferred {sync.get('defer', 0)}"
           f" · errors {sync.get('errors', 0)} · last {utc_day(last) if last else '-'}"
-          f" (≈ tomcat saw {seen} from {app_label})")
+          f" (legacy saw {seen} from {app_label})")
     for (m, st), n in puts.items():
         if st != '200' and m == 'PUT':
             r.flag('FAIL', f'syncd PUT answered {st} x{n}')
