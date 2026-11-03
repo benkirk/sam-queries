@@ -463,7 +463,7 @@
                         {% endif %}
                     </div>
                     {% if project.unix_gid %}
-                    <p class="text-muted mb-1"><small>Adds one user to <code>{{ project.projcode | lower }}</code> (gid {{ project.unix_gid }}) for a set time, on the branches where they hold an account, whatever the allocation's end. No ticket is filed.</small></p>
+                    <p class="text-muted mb-1"><small>Adds users to <code>{{ project.projcode | lower }}</code> (gid {{ project.unix_gid }}) for a set time, on the branches where they hold an account, whatever the allocation's end. No ticket is filed.</small></p>
                     {{ pending_list(project.unix_gid) }}
                     {% else %}
                     <p class="text-muted mb-0"><small>This project has no unix gid in SAM, so there is no group to change.</small></p>

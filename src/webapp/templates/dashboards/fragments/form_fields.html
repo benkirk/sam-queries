@@ -535,6 +535,22 @@
 {% endmacro %}
 
 
+{# append-mode picker (fk-picker.js): a pick adds its data-fk-label as a line to the
+   textarea at `target` (a CSS id selector) and clears itself; nothing is posted by it. #}
+{% macro fk_append_search(target, label, search_url, placeholder='Search…', id=None) %}
+{%- set _id = id or (target | replace('#', '') ~ 'Search') -%}
+<div class="mb-3 fk-picker" data-fk-append="{{ target }}">
+    <label class="form-label small text-muted" for="{{ _id }}">{{ label }}</label>
+    <input type="text" class="form-control form-control-sm fk-picker-search" id="{{ _id }}"
+           name="q" autocomplete="off" placeholder="{{ placeholder }}"
+           hx-get="{{ search_url }}"
+           hx-target="next .fk-picker-results" hx-swap="innerHTML"
+           hx-trigger="input changed delay:300ms">
+    <div class="list-group mt-1 fk-picker-results"></div>
+</div>
+{% endmacro %}
+
+
 {# error panel (use inside htmx_form body when errors var is in scope) #}
 {#
   The htmx_form wrapper macro displays errors automatically when imported

@@ -1,14 +1,14 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
 {% from 'dashboards/fragments/modals.html' import modal_title %}
-{% from 'dashboards/fragments/form_fields.html' import date_field, fk_search_field, select_field, textarea_field, readonly_display with context %}
+{% from 'dashboards/fragments/form_fields.html' import date_field, fk_append_search, fk_search_field, select_field, textarea_field, readonly_display with context %}
 {#
-  htmx: open a group mask (loaded into #groupMaskFormContainer). Unpinned from the
-  masks tab (group or project picker, user picker, op); pinned from a card
+  htmx: open a batch of group masks (loaded into #groupMaskFormContainer). Unpinned from
+  the masks tab (one group-or-project picker, the members box, op); pinned from a card
   (target set, and username or op fixed). Context: target (MaskTarget or none),
   pinned_username, pinned_op, today, default_expiry, max_expiry, errors, form.
 #}
 {% set _title = ('Grant access to ' ~ target.name) if target and target.kind == 'project'
-                else (((pinned_op | capitalize) ~ ' a member of ' ~ target.name) if target and pinned_op
+                else ((('Add members to ' if pinned_op == 'add' else 'Remove members from ') ~ target.name) if target and pinned_op
                 else ('Change ' ~ target.name if target else 'New group mask')) %}
 {{ modal_title('groupMaskModalLabel', _title, 'user-pen') }}
 
@@ -17,24 +17,24 @@
     {% if target %}
     <input type="hidden" name="unix_gid" value="{{ target.gid }}">
     <input type="hidden" name="pinned" value="{{ 'op' if pinned_op else '1' }}">
-    {{ readonly_display('Group', target.name ~ ' (gid ' ~ target.gid ~ ', ' ~ target.kind ~ ')', muted=False) }}
+    {{ readonly_display('Group', target.label, muted=False) }}
     {% else %}
-    <p class="text-muted small mb-2">Pick an adhoc group or a project; SAM never creates a group.</p>
-    {{ fk_search_field('unix_gid', 'Adhoc group',
-                       search_url=url_for('admin_dashboard.htmx_search_groups_fk'),
-                       placeholder='Group name or gid…', id_prefix='groupMaskGroup') }}
-    {{ fk_search_field('project_id', 'Project',
-                       search_url=url_for('admin_dashboard.htmx_search_projects_for_mask'),
-                       placeholder='Project code or title…', id_prefix='groupMaskProject') }}
+    {{ fk_search_field('unix_gid', 'Group or project', required=True,
+                       search_url=url_for('admin_dashboard.htmx_search_mask_targets'),
+                       placeholder='Group name, project code or gid…', id_prefix='groupMaskTarget',
+                       help='Pick an adhoc group or a project; SAM never creates a group.') }}
     {% endif %}
 
     {% if pinned_username %}
     <input type="hidden" name="username" value="{{ pinned_username }}">
     {{ readonly_display('Member', pinned_username, muted=False) }}
     {% else %}
-    {{ fk_search_field('user_id', 'Member', required=True,
-                       search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
-                       placeholder='Username, first or last name…', id_prefix='groupMaskUser') }}
+    {{ textarea_field('usernames', 'Members', required=True, rows=3, id='groupMaskMembers',
+                      placeholder='one username per line',
+                      help='One username per line, up to 20; blank lines and # comments are ignored.') }}
+    {{ fk_append_search('#groupMaskMembers', 'Add a user',
+                        url_for('admin_dashboard.htmx_search_mask_members'),
+                        placeholder='Username, first or last name…', id='groupMaskMemberSearch') }}
     {% endif %}
 
     {% if pinned_op %}

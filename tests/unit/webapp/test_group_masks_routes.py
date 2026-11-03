@@ -80,31 +80,44 @@ class TestPages:
 
 
 class TestForm:
-    def test_unpinned_form_offers_both_pickers(self, auth_client):
+    def test_unpinned_form_offers_one_picker_and_a_members_box(self, auth_client):
         html = auth_client.get(FORM).get_data(as_text=True)
         assert 'New group mask' in html
-        assert 'search/groups-fk' in html and 'search/projects-for-mask' in html
+        assert 'search/mask-targets' in html and 'search/mask-members' in html
+        assert 'search/groups-fk' not in html and 'projects-for-mask' not in html
+        assert 'id="groupMaskMembers"' in html and 'data-fk-append="#groupMaskMembers"' in html
         assert 'name="op"' in html
 
     def test_pinned_form_fixes_the_group_and_op(self, auth_client):
         html = auth_client.get(FORM, query_string={'gid': CSG_GID, 'op': 'remove'}).get_data(as_text=True)
-        assert 'Remove a member of csg' in html
+        assert 'Remove members from csg' in html and f'csg (gid {CSG_GID}, adhoc)' in html
         assert f'value="{CSG_GID}"' in html and 'value="remove"' in html
-        assert 'search/groups-fk' not in html
+        assert 'search/mask-targets' not in html and 'data-fk-append="#groupMaskMembers"' in html
 
     def test_unknown_gid_falls_back_to_unpinned(self, auth_client):
         html = auth_client.get(FORM, query_string={'gid': 424242424}).get_data(as_text=True)
         assert 'New group mask' in html
 
-    def test_a_refusal_re_renders_the_form(self, auth_client):
+    def test_a_pinned_refusal_re_renders_the_form(self, auth_client):
         resp = auth_client.post(CREATE, data={'unix_gid': CSG_GID, 'pinned': '1',
                                               'username': 'no-such-user-xyz', 'op': 'add'})
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
         assert 'No user named' in html and f'value="{CSG_GID}"' in html
 
+    def test_every_bad_line_renders_under_the_box_and_the_chip_survives(self, auth_client):
+        resp = auth_client.post(CREATE, data={'unix_gid': CSG_GID, 'op': 'add',
+                                              'usernames': 'no-such-user-xyz\nnot a name\nno-such-user-xyz'})
+        html = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        assert 'No user named' in html and 'no-such-user-xyz' in html      # the quotes are escaped
+        assert 'line 2: expected one username' in html and 'line 3: duplicate of line 1' in html
+        assert 'form-control is-invalid' in html.split('id="groupMaskMembers"')[0].rsplit('<textarea', 1)[1]
+        assert f'value="{CSG_GID}"' in html and f'csg (gid {CSG_GID}, adhoc)' in html, 'the chip survives'
+        assert 'no-such-user-xyz\nnot a name' in html, 'the box keeps the operator\'s lines'
+
     def test_nothing_picked_is_refused(self, auth_client):
-        html = auth_client.post(CREATE, data={'op': 'add', 'user_id': '1'}).get_data(as_text=True)
+        html = auth_client.post(CREATE, data={'op': 'add', 'usernames': 'benkirk'}).get_data(as_text=True)
         assert 'Pick a group or a project' in html
 
     def test_withdraw_of_a_missing_mask_is_404(self, auth_client):
@@ -116,9 +129,14 @@ class TestForm:
 
 
 class TestPickers:
-    def test_group_picker_returns_gids(self, auth_client):
-        html = auth_client.get('/admin/htmx/search/groups-fk', query_string={'q': 'csg'}).get_data(as_text=True)
+    def test_target_picker_mixes_adhoc_groups_and_projects(self, auth_client):
+        html = auth_client.get('/admin/htmx/search/mask-targets', query_string={'q': 'csg'}).get_data(as_text=True)
+        assert f'data-fk-id="{CSG_GID}"' in html and f'data-fk-label="csg (gid {CSG_GID}, adhoc)"' in html
+        html = auth_client.get('/admin/htmx/search/mask-targets', query_string={'q': 'SCSG0001'}).get_data(as_text=True)
+        assert ', project)"' in html and '>project<' in html
+        html = auth_client.get('/admin/htmx/search/mask-targets', query_string={'q': str(CSG_GID)}).get_data(as_text=True)
         assert f'data-fk-id="{CSG_GID}"' in html
 
-    def test_project_picker_renders(self, auth_client):
-        assert auth_client.get('/admin/htmx/search/projects-for-mask', query_string={'q': 'SCSG'}).status_code == 200
+    def test_member_picker_labels_bare_usernames(self, auth_client):
+        html = auth_client.get('/admin/htmx/search/mask-members', query_string={'q': 'benkirk'}).get_data(as_text=True)
+        assert 'data-fk-label="benkirk"' in html
