@@ -404,6 +404,38 @@ def test_project_page_route_read_model_stale(auth_client, route_count_queries,
 
 
 # ---------------------------------------------------------------------------
+# Exchange-allocation form: candidate usage is one batched build, so a stale
+# tree is re-projected once, not once per candidate (408 queries in prod).
+# ---------------------------------------------------------------------------
+
+def _exchange_form(auth_client, route_count_queries, stem, target):
+    """Run the form within its baseline; return the gate lookups it made."""
+    url = '/admin/htmx/exchange-allocation-form/{}/{}'.format(*target[:2])
+    with _lookups() as seen:
+        _route_within(stem, auth_client, route_count_queries, url)
+    assert 'name="from_allocation_id"' in auth_client.get(url).get_data(as_text=True)
+    return [(l.reason, l.patched) for l in seen]
+
+
+def test_exchange_form_route(auth_client, route_count_queries, _exchange_target):
+    assert len(_exchange_form(auth_client, route_count_queries, 'exchange_form_route',
+                              _exchange_target)) <= 1
+
+
+def test_exchange_form_route_read_model(auth_client, route_count_queries, _exchange_target,
+                                        read_model_on_committed):
+    assert len(_exchange_form(auth_client, route_count_queries, 'exchange_form_route_read_model',
+                              _exchange_target)) == 1
+
+
+def test_exchange_form_route_read_model_stale(auth_client, route_count_queries, _exchange_target,
+                                              read_model_on_committed_stale_exchange):
+    seen = _exchange_form(auth_client, route_count_queries, 'exchange_form_route_read_model_stale',
+                          _exchange_target)
+    assert seen == [('ok-patched', 1)], f'a stale tree must be re-projected once, saw {seen}'
+
+
+# ---------------------------------------------------------------------------
 # Project Directories card: every row's project is joined in, and the
 # Project's selectin `accounts` load is suppressed -- one query per distinct
 # project (x2 with the cascade) was 895 queries / 5 s in prod.
