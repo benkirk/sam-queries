@@ -9,6 +9,7 @@ from sqlalchemy import event
 
 from factories import (
     make_adhoc_group,
+    make_adhoc_group_tag,
     make_adhoc_system_account_entry,
     make_email_address,
     make_institution,
@@ -22,6 +23,7 @@ from factories import (
 )
 from sam.core.groups import AdhocGroup
 from sam.core.users import AcademicStatus, LoginType, User
+from sam.manage.groups import close_mask, open_mask
 from sam.manage.ldapsync import SyncValidationError, sync_group, sync_user
 from sam.schemas.forms.ldapsync import GroupSyncInput, UserSyncInput
 
@@ -337,6 +339,30 @@ class TestGroup:
         before = project.unix_gid
         _group(session, key=project.projcode)
         assert project.unix_gid == before
+
+    def test_a_put_does_not_revert_an_open_mask(self, session):
+        group = make_adhoc_group(session)
+        make_adhoc_group_tag(session, group, 'hpc')
+        session.expire(group, ['tags'])
+        alice, bob = make_user(session), make_user(session)
+        make_adhoc_system_account_entry(session, group, bob.username)
+        session.expire(group, ['system_accounts'])
+        open_mask(session, gid=group.unix_gid, username=alice.username, op='add', requested_by='op')
+        open_mask(session, gid=group.unix_gid, username=bob.username, op='remove', requested_by='op')
+        _group(session, key=group.group_name, posixGid=group.unix_gid,
+               usernames=[bob.username.upper(), 'carol'])
+        assert {(e.access_branch_name, e.username) for e in group.system_accounts} == {
+            ('hpc', alice.username), ('hpc', 'carol')}
+
+    def test_a_confirmed_mask_is_a_no_op(self, session):
+        group = make_adhoc_group(session)
+        make_adhoc_group_tag(session, group, 'hpc')
+        session.expire(group, ['tags'])
+        alice = make_user(session)
+        mask = open_mask(session, gid=group.unix_gid, username=alice.username, op='add', requested_by='op')
+        close_mask(session, mask, resolution='confirmed', by='task:unix_group_masks')
+        _group(session, key=group.group_name, posixGid=group.unix_gid, usernames=['carol'])
+        assert [e.username for e in group.system_accounts] == ['carol']
 
     def test_ncar_is_never_adhoc(self, session):
         gid, _ = _group(session, key='ncar')

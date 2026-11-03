@@ -22,7 +22,9 @@ from sam.core.users import AcademicStatus, EmailAddress, LoginType, Phone, Phone
 from sam.dates import end_of_day
 from sam.geography import Country, StateProv
 from sam.manage.employment import Affiliation, match
+from sam.manage.groups import ENTRY_USERNAME_WIDTH
 from sam.projects.projects import Project
+from sam.queries.group_masks import open_masks
 from sam.security.access import AccessBranch
 from sam.text import ci_unique, strip_or_none
 
@@ -371,7 +373,6 @@ def sync_user(session, data: dict, *, now: Optional[datetime] = None,
 # ---------------------------------------------------------------------------
 
 NCAR_GROUP = 'ncar'
-ENTRY_USERNAME_WIDTH = 12     # adhoc_system_account_entry.username
 
 
 def sync_group(session, data: dict) -> int:
@@ -438,6 +439,12 @@ def sync_group(session, data: dict) -> int:
         logger.warning('ldapsync: group %s members too long for an entry, skipped: %s',
                        key, long_names)
     wanted = {(b, u) for b in matching for u in usernames if len(u) <= ENTRY_USERNAME_WIDTH}
+    # An operator's open mask outranks the PUT: a pending add or remove survives the mirror.
+    adds, removes = open_masks(session, now=datetime.now(), gids=[gid]).get(gid, (set(), set()))
+    if adds or removes:
+        wanted = {(b, u) for b, u in wanted if u.lower() not in removes}
+        present = {(b, u.lower()) for b, u in wanted}
+        wanted |= {(b, u) for b in matching for u in adds if (b, u) not in present}
     for row in list(group.system_accounts):
         if (row.access_branch_name, row.username) not in wanted:
             group.system_accounts.remove(row)
