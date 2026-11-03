@@ -99,6 +99,11 @@ def check_mask(session, *, gid: int, username: str, op: str, now: Optional[datet
             raise MaskError(f'{user.username} is longer than an entry allows ({ENTRY_USERNAME_WIDTH}).')
     if op == 'remove' and user.primary_gid == gid:
         raise MaskError(f'{user.username} has {target.name} as their primary group; change that first.')
+    if op == 'remove' and target.kind == 'project' and user.user_id in (
+            target.project.project_lead_user_id, target.project.project_admin_user_id):
+        # group_populator would honor it while project_groups keeps the lead, so the hosts
+        # and the directory would disagree (docs/plans/UNIX_GROUP_MASK.md § 7).
+        raise MaskError(f'{user.username} leads or administers {target.name}; change that first.')
     standing = open_mask_for(session, gid=gid, username=user.username)
     if standing is not None and standing.is_open_at(now):
         raise MaskError(f'An open {standing.op} already stands for {user.username} on {target.name}.')

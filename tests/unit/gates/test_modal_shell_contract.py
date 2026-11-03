@@ -392,7 +392,7 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # user_link uses data-action="show-user-details" (no data-modal-id) plus a
     # data-bs-toggle opener, so both the shell and its body are real deps.
     'dashboards/fragments/user_rows.html': [
-        'userDetailsModal', 'userDetailsModalBody'],
+        'groupMaskFormContainer', 'groupMaskModal', 'userDetailsModal', 'userDetailsModalBody'],
     'dashboards/shared/project_tree.html': [
         'allocateDownFormContainer', 'allocateDownModal', 'editAllocationFormContainer',
         'editAllocationModal', 'exchangeAllocationFormContainer', 'exchangeAllocationModal',

@@ -143,9 +143,11 @@ three surfaces; all writes are `EDIT_GROUPS` (held by `allocation_admin`: NUSD a
   note. Every guard runs per member in `clean()` (`check_mask`), so one re-render lists every
   problem under the box with the picker's chip kept; the open is all-or-nothing. The table
   refreshes itself on `reloadGroupMasks`.
-- **Adhoc card**: Add member and Remove member open the same form pinned to the group; a
-  Pending changes list under them (self-refreshing) with Withdraw; `reloadGroupCard`
-  re-renders the card by name. Materialized rows render like any member.
+- **Adhoc card**: Add member and Remove member open the same form pinned to the group, and
+  every member row carries a Remove pinned to that member (a primary-gid member shows a lock,
+  since the guard refuses it); a Pending changes list under them (self-refreshing) with
+  Withdraw; `reloadGroupCard` re-renders the card by name. Materialized rows render like any
+  member.
 - **Admin project card**: Group access with Grant access (pinned, 7 days by default, 90 at
   most), the pending list and Withdraw. The card also opens inside `#projectDetailsModal`,
   so its opener is the `show-detail-modal` action and the shells
@@ -153,6 +155,11 @@ three surfaces; all writes are `EDIT_GROUPS` (held by `allocation_admin`: NUSD a
 - **Directory panels**: one line per open mask saying whether the directory agrees, from
   the record the panel already fetched (`mask_agreement`). The GET still never writes.
 - `status_badge` gained `pending`, `confirmed` and `withdrawn`; `ticket_link` is one macro.
+- **CLI**: `sam-admin masks list | open | withdraw` (`src/cli/group_masks/`), the same manage
+  layer; the shell credential is the authorization (as for `rbac`), the grant-subject guard
+  stays (`--allow-protected` lifts it), `--dry-run` runs every guard and allows JSON, and an
+  adhoc open files NUSD's ticket through the webapp's routine in a borrowed app context, so
+  the shell's `TICKET_PROVIDER` and mail levers decide whether a ticket leaves.
 
 ## 7. Guards (`open_mask`)
 
@@ -222,6 +229,6 @@ unconfirmable; the table and ORM names; the 90-day cap; the interim request type
 
 Creating or deleting groups (`CREATE_GROUPS`, `DELETE_GROUPS` stay withheld); the Google
 Groups to LDAP path and the daemon's own bugs (`DIRECTORY_CLIENT_NEXT.md` § 2); any
-`DIRECTORY_APPLY_GROUP` lever; `groupstatus` (`sam/queries/project_access.py`); a CLI verb
-(the manage layer is Flask-free so one can follow); auto-closing a ticket; a per-row Remove
-on the adhoc card's member tables (the shared `render_user_rows` macro has no action slot).
+`DIRECTORY_APPLY_GROUP` lever; `groupstatus` (`sam/queries/project_access.py`); auto-closing
+a ticket; an "HPC group" Jira request type (the desk has none yet; `JIRA_HPC_GROUP_REQUEST_TYPE_ID`
+stays 31, General help, until NUSD adds one).
