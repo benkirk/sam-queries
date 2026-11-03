@@ -151,12 +151,14 @@ class UnixGroupMask(Base, SessionMixin):
     """An operator's standing add/remove over one group member, keyed by gid.
 
     No FKs (the ``external_ticket`` convention); ``kind`` is resolved from the
-    gid when the row opens. DDL: ``scripts/sql/create_unix_group_mask.sql``.
+    gid when the row opens. DDL: ``scripts/sql/create_unix_group_mask.sql``
+    (+ ``alter_unix_group_mask_batch.sql``).
     """
     __tablename__ = 'unix_group_mask'
     __table_args__ = (
         Index('unix_group_mask_gid', 'unix_gid', 'closed_at'),
         Index('unix_group_mask_user', 'username'),
+        Index('unix_group_mask_batch', 'batch_id'),
     )
 
     mask_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -172,6 +174,13 @@ class UnixGroupMask(Base, SessionMixin):
     closed_at = Column(DateTime)
     resolution = Column(String(16))
     closed_by = Column(String(35))
+    # The head mask of the batch that opened this row (one ticket per batch); a row opened
+    # alone heads itself. NULL only on rows that predate the column.
+    batch_id = Column(Integer)
+
+    @property
+    def head_id(self) -> int:
+        return self.batch_id or self.mask_id
 
     @hybrid_property
     def is_active(self) -> bool:
@@ -202,7 +211,7 @@ class UnixGroupMask(Base, SessionMixin):
     @classmethod
     def create(cls, session, *, unix_gid: int, kind: str, username: str, op: str,
                requested_by: str, note=None, expires_at: Optional[datetime] = None,
-               when: Optional[datetime] = None) -> 'UnixGroupMask':
+               when: Optional[datetime] = None, batch_id: Optional[int] = None) -> 'UnixGroupMask':
         """Raises ``ValueError`` on an unknown kind or op, an empty name, or a project mask without an expiry."""
         if kind not in MASK_KINDS:
             raise ValueError(f'kind must be one of {", ".join(MASK_KINDS)}')
@@ -222,9 +231,12 @@ class UnixGroupMask(Base, SessionMixin):
                 raise ValueError(f'a project mask may run at most {PROJECT_MASK_MAX_DAYS} days')
         row = cls(unix_gid=unix_gid, kind=kind, username=username, op=op,
                   requested_by=requested_by, note=strip_or_none(note, width=255),
-                  creation_time=now, expires_at=expires_at)
+                  creation_time=now, expires_at=expires_at, batch_id=batch_id)
         session.add(row)
         session.flush()
+        if row.batch_id is None:
+            row.batch_id = row.mask_id
+            session.flush()
         return row
 
     def update(self, *, note=None, expires_at=None, clear_expiry: bool = False,

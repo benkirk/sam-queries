@@ -864,19 +864,21 @@ class TestCriticalSchemas:
         db_cols = get_db_columns(session, 'unix_group_mask')
         expected = {'mask_id', 'unix_gid', 'kind', 'username', 'op', 'requested_by',
                     'note', 'creation_time', 'expires_at', 'closed_at', 'resolution',
-                    'closed_by'}
+                    'closed_by', 'batch_id'}
         assert set(db_cols.keys()) == expected, set(db_cols.keys()) ^ expected
         assert db_cols['mask_id']['key'] == 'PRI'
         assert db_cols['username']['type'] == 'varchar(35)'
-        for col in ('note', 'expires_at', 'closed_at', 'resolution', 'closed_by'):
+        for col in ('note', 'expires_at', 'closed_at', 'resolution', 'closed_by', 'batch_id'):
             assert db_cols[col]['nullable'] is True, col
         indexed = session.execute(text("""
-            SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX)
+            SELECT INDEX_NAME, GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX)
               FROM information_schema.STATISTICS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'unix_group_mask'
-               AND INDEX_NAME = 'unix_group_mask_gid'
-        """)).scalar()
-        assert indexed == 'unix_gid,closed_at'
+               AND INDEX_NAME IN ('unix_group_mask_gid', 'unix_group_mask_batch')
+             GROUP BY INDEX_NAME
+        """)).fetchall()
+        assert dict(indexed) == {'unix_group_mask_gid': 'unix_gid,closed_at',
+                                 'unix_group_mask_batch': 'batch_id'}
         default = session.execute(text("""
             SELECT COLUMN_DEFAULT FROM information_schema.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'unix_group_mask'
