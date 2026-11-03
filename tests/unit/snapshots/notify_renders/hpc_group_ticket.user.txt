@@ -1,4 +1,4 @@
-Please add alovelace (Ada Lovelace) to the unix group cgdoce (gid 2800) in Google Groups.
+Please add 'alovelace' (Ada Lovelace) to the unix group 'cgdoce' (gid 2800) in Google Groups, since it is the authoritative record of group membership.
 
 Group:        cgdoce (gid 2800)
 Member:       alovelace (Ada Lovelace)

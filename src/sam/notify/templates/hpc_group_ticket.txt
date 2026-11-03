@@ -1,4 +1,4 @@
-Please {{ op }} {{ username }}{% if display_name %} ({{ display_name }}){% endif %} {{ 'to' if op == 'add' else 'from' }} the unix group {{ group_name }} (gid {{ gid }}) in {{ source }}.
+Please {{ op }} '{{ username }}'{% if display_name %} ({{ display_name }}){% endif %} {{ 'to' if op == 'add' else 'from' }} the unix group '{{ group_name }}' (gid {{ gid }}) in {{ source }}, since it is the authoritative record of group membership.
 
 Group:        {{ group_name }} (gid {{ gid }})
 Member:       {{ username }}{% if display_name %} ({{ display_name }}){% endif %}

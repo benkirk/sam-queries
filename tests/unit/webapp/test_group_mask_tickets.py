@@ -108,7 +108,7 @@ def test_files_through_the_provider_and_links_the_key(app, ctx, mailer, provider
     draft, = provider.created
     assert draft.handle == f'SAM-GM-{mask.mask_id}' and draft.kind == 'hpc_group'
     assert draft.summary == f'Unix group change: add benkirk to {group.group_name} [SAM-GM-{mask.mask_id}]'
-    assert draft.body.startswith(f'Please add benkirk (Ben Kirk) to the unix group {group.group_name} (gid {group.unix_gid}) in Google Groups.')
+    assert draft.body.startswith(f"Please add 'benkirk' (Ben Kirk) to the unix group '{group.group_name}' (gid {group.unix_gid}) in Google Groups, since it is the authoritative record of group membership.")
     assert f'Group:        {group.group_name} (gid {group.unix_gid})' in draft.body
     assert 'RC-39483' in draft.body
     assert 'hpc' not in draft.body.split('SAM mask')[0], 'NUSD never sees a branch'
