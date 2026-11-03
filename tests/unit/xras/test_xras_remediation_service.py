@@ -1090,10 +1090,11 @@ class TestMakePi:
                                   'removed advisor as PI',
                                   'removed student as Allocation Manager')
         assert patched == ['EXAM0001'], 'the card is patched once, at the end'
+        mine = factory.created[XrasRemediationEvent]
         ops = [r.operation for r in session.query(XrasRemediationEvent)
-               .filter(XrasRemediationEvent.request_number == 'EXAM0001')
+               .filter(XrasRemediationEvent.xras_remediation_event_id.in_(mine))
                .order_by(XrasRemediationEvent.xras_remediation_event_id)]
-        assert ops[-4:] == ['add_role', 'add_role', 'remove_role', 'remove_role']
+        assert ops == ['add_role', 'add_role', 'remove_role', 'remove_role']
 
     def test_an_old_pi_already_holding_user_is_not_added_again(self, factory, monkeypatch):
         roster = _ADVISOR_AND_STUDENT + [_member('advisor', 'User', 19, 2)]
