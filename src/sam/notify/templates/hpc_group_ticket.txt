@@ -1,8 +1,10 @@
-Please {{ op }} '{{ username }}'{% if display_name %} ({{ display_name }}){% endif %} {{ 'to' if op == 'add' else 'from' }} the unix group '{{ group_name }}' (gid {{ gid }}) in {{ source }}, since it is the authoritative record of group membership.
+Please {{ op }} {{ members_line }} {{ 'to' if op == 'add' else 'from' }} the unix group '{{ group_name }}' (gid {{ gid }}) in {{ source }}, since it is the authoritative record of group membership.
 
 Group:        {{ group_name }} (gid {{ gid }})
-Member:       {{ username }}{% if display_name %} ({{ display_name }}){% endif %}
-Change:       {{ op }}
+{% if member_count == 1 %}Member:       {{ members[0].username }}{% if members[0].display_name %} ({{ members[0].display_name }}){% endif %}
+{% else %}Members:      {% for m in members %}{{ m.username }}{% if m.display_name %} ({{ m.display_name }}){% endif %}{% if not loop.last %}
+              {% endif %}{% endfor %}
+{% endif %}Change:       {{ op }}
 Requested by: {{ requested_by }} on {{ opened_at }}
 {% if expires_at %}Until:        {{ expires_at }}
 {% endif %}{% if note %}Note:         {{ note }}
