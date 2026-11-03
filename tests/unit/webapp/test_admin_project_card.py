@@ -24,6 +24,15 @@ class TestAdminProjectCardReloadHook:
         assert resp.status_code == 200
         assert f'data-projcode="{projcode}"' in resp.get_data(as_text=True)
 
+    def test_card_carries_the_group_access_section(self, auth_client, active_project):
+        """The admin card's Grant access opens the mask form by action, never by toggle (it
+        also renders inside #projectDetailsModal)."""
+        html = auth_client.get(CARD_URL.format(active_project.projcode)).get_data(as_text=True)
+        assert 'Group access' in html
+        if active_project.unix_gid:
+            assert f'group-masks/pending?gid={active_project.unix_gid}' in html
+            assert 'data-action="show-detail-modal" data-modal-id="groupMaskModal"' in html
+
 
 SHARED_ROW = ("{% from 'dashboards/shared/project_tree.html' import allocation_cells with context %}"
               "{{ allocation_cells(res, true) }}")

@@ -17,6 +17,7 @@ from sam.queries.xras_requests import (
     latest_action_type,
     person_roles_from_payload,
     request_family,
+    request_gist,
     request_index_entry,
     resolve_pi,
     roster_from_payload,
@@ -665,3 +666,59 @@ class TestLivePendingNumbers:
         assert live_pending_numbers(session, [
             _payload(requestId=1, requestNumber='ZZZZ9996', isDeleted=True),
             _payload(requestId=2, requestNumber='ZZZZ9996')]) == {'ZZZZ9996'}
+
+
+def _line_item(name, amount, units='Core-hours', stage='Requested'):
+    return {'resourceId': 1, 'displayResourceName': name, 'amount': amount,
+            'resourceUnits': units, 'type': stage}
+
+
+def _action(kind, *, resources=(), end=None, status='Submitted', action_id=7):
+    action = {'actionId': action_id, 'actionType': kind, 'actionStatus': status,
+              'resources': list(resources)}
+    if end:
+        action['allocationDates'] = [{'allocationDateType': 'Requested',
+                                      'beginDate': '2026-12-01', 'endDate': end}]
+    return action
+
+
+class TestTheGist:
+    """The Type popover: what the in-flight action asks for, in a sentence."""
+
+    def test_a_new_project_lists_what_it_requests_and_through_when(self):
+        gist = request_gist(_payload(title='Turbulence at scale', actions=[_action(
+            'New', end='2027-11-30', resources=[
+                _line_item('Derecho', '500000.0'), _line_item('Campaign Store', '20', 'TB'),
+                _line_item('Derecho', '400000.0', stage='Approved')])]))
+        assert gist == {'title': 'Turbulence at scale',
+                        'ask': 'New project requesting Derecho 500K Core-hours and '
+                               'Campaign Store 20 TB, through 2027-11-30.'}
+
+    def test_a_supplement_names_its_lines_without_a_date(self):
+        gist = request_gist(_payload(actions=[_action(
+            'Supplement', end='2027-11-30', resources=[_line_item('Casper', '1000.0')])]))
+        assert gist['ask'] == 'Supplement requesting Casper 1,000 Core-hours.'
+
+    def test_an_extension_says_from_when_to_when(self):
+        gist = request_gist(_payload(endDate='2026-12-31',
+                                     actions=[_action('Extension', end='2027-06-30')]))
+        assert gist['ask'] == 'Extension to 2027-06-30 (now ends 2026-12-31).'
+
+    def test_it_reads_the_in_flight_action_not_the_newest(self):
+        gist = request_gist(_payload(actions=[
+            _action('Supplement', resources=[_line_item('Casper', '10')], action_id=7),
+            _action('Extension', status='Approved', action_id=9)]))
+        assert gist['ask'].startswith('Supplement')
+
+    def test_a_long_title_is_cut_and_an_empty_ask_still_reads(self):
+        gist = request_gist(_payload(title='x' * 120, actions=[_action('Renewal')]))
+        assert len(gist['title']) == 80 and gist['title'].endswith('…')
+        assert gist['ask'] == 'Renewal request.'
+
+    def test_no_typed_action_means_no_gist(self):
+        assert request_gist(_payload(actions=[{'actionId': 1}])) is None
+
+    def test_the_entry_carries_it(self):
+        entry = request_index_entry(_payload(actions=[_action('Renewal')]))
+        assert entry['gist']['ask'] == 'Renewal request.'
+

@@ -1,0 +1,23 @@
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/user_rows.html' import user_link %}
+{% from 'dashboards/fragments/group_mask_bits.html' import mask_flags, ticket_link, withdraw_button %}
+{# The open masks on one gid, under the adhoc group card and the admin project card.
+   Context: rows (mask_views, open only), gid, can_edit. #}
+<div id="groupMaskNotice-{{ gid }}"></div>
+{% if rows %}
+<ul class="list-unstyled mb-0 small">
+    {% for r in rows %}
+    {% set m = r.mask %}
+    <li class="d-flex flex-wrap align-items-center gap-2 py-1">
+        {% if r.op == 'add' %}<i class="fa-solid fa-user-plus text-success" aria-hidden="true"></i>{% else %}<i class="fa-solid fa-user-minus text-danger" aria-hidden="true"></i>{% endif %}
+        <span>{{ r.op }} {{ user_link(r.username, has_permission(Permission.VIEW_USERS), compact=True) }}</span>
+        {{ status_badge(r.state) }}{{ mask_flags(r) }}
+        <span class="text-muted">{{ m.requested_by }}, {{ m.creation_time | fmt_date }}{% if m.expires_at %}, until {{ m.expires_at | fmt_date }}{% endif %}{% if m.note %} · {{ m.note }}{% endif %}</span>
+        {% if r.ticket %}<span>{{ ticket_link(r.ticket) }}</span>{% endif %}
+        {% if can_edit %}<span class="row-actions ms-auto">{{ withdraw_button(m, '#groupMaskNotice-' ~ gid) }}</span>{% endif %}
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p class="text-muted small mb-0">No pending changes.</p>
+{% endif %}

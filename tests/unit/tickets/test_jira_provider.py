@@ -77,7 +77,8 @@ class TestKinds:
         cfg = JiraConfig.from_environment()
         assert cfg.for_kind('account') == JiraKind('3', '20', ('sam-account-request',))
         assert cfg.for_kind('xras_request') == cfg.for_kind('account')
-        assert set(cfg.kinds) == {'account', 'xras_request'}
+        assert cfg.for_kind('hpc_group') == cfg.for_kind('account')
+        assert set(cfg.kinds) == {'account', 'xras_request', 'hpc_group'}
 
     def test_a_suffixed_key_overrides_one_field_and_the_rest_fall_back(self, monkeypatch):
         monkeypatch.setenv('JIRA_ACCOUNT_REQUEST_TYPE_ID', '21')
@@ -97,7 +98,8 @@ class TestKinds:
         defaults = {'service_desk': '3', 'request_type': '20',
                     'labels': 'sam-account-request'}
         assert JiraConfig().summary()['kinds'] == {'account': defaults,
-                                                   'xras_request': defaults}
+                                                   'xras_request': defaults,
+                                                   'hpc_group': defaults}
 
 
 class TestAuth:

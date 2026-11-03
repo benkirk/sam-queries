@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/user_rows.html' import render_user_rows, user_table_head %}
+{% from 'dashboards/fragments/group_mask_bits.html' import pending_list %}
 
 {# Admin: render a single AdhocGroup.
 
@@ -11,8 +12,9 @@
      is_admin:          bool (admin-only UI gate)
      can_view_users:    bool — user rows open the user-details modal
      directory:         bool — a directory is configured; the admin card's Directory section
+     can_edit:          bool — EDIT_GROUPS: the Add/Remove member buttons and the pending list
 #}
-{% macro render_group_card(group, members_by_branch=None, primary_gid_users=None, is_admin=False, can_view_users=False, directory=False) %}
+{% macro render_group_card(group, members_by_branch=None, primary_gid_users=None, is_admin=False, can_view_users=False, directory=False, can_edit=False) %}
 {% set members_by_branch = members_by_branch or {} %}
 {% set primary_gid_users = primary_gid_users or [] %}
 {% set branches = members_by_branch.keys() | list %}
@@ -115,10 +117,36 @@
 
         </div>{# /.row #}
 
-        {# Members by branch (tabbed) #}
-        {% if branches %}
+        {# Members by branch (tabbed). Add/Remove open the mask form pinned to this group
+           (docs/plans/UNIX_GROUP_MASK.md): the change lands in SAM now and NUSD gets a ticket. #}
+        {% if branches or (is_admin and can_edit) %}
         <hr class="my-4">
-        <h6><i class="fa-solid fa-users"></i> Members by Access Branch</h6>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+            <h6 class="mb-0"><i class="fa-solid fa-users"></i> Members by Access Branch</h6>
+            {% if is_admin and can_edit and group.is_active %}
+            <span class="d-flex gap-2">
+                <button type="button" class="btn btn-sm btn-outline-primary"
+                        data-bs-toggle="modal" data-bs-target="#groupMaskModal"
+                        hx-get="{{ url_for('admin_dashboard.htmx_group_mask_form', gid=group.unix_gid, op='add') }}"
+                        hx-target="#groupMaskFormContainer" hx-trigger="click">
+                    <i class="fa-solid fa-user-plus" aria-hidden="true"></i> Add member
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary"
+                        data-bs-toggle="modal" data-bs-target="#groupMaskModal"
+                        hx-get="{{ url_for('admin_dashboard.htmx_group_mask_form', gid=group.unix_gid, op='remove') }}"
+                        hx-target="#groupMaskFormContainer" hx-trigger="click">
+                    <i class="fa-solid fa-user-minus" aria-hidden="true"></i> Remove member
+                </button>
+            </span>
+            {% endif %}
+        </div>
+        {% if is_admin %}
+        <div class="mb-3">
+            <strong class="small"><i class="fa-solid fa-user-pen" aria-hidden="true"></i> Pending changes</strong>
+            {{ pending_list(group.unix_gid) }}
+        </div>
+        {% endif %}
+        {% if branches %}
         <ul class="nav nav-tabs" role="tablist">
             {% for b in branches %}
             <li class="nav-item" role="presentation">
@@ -153,6 +181,7 @@
             </div>
             {% endfor %}
         </div>
+        {% endif %}
         {% endif %}
 
     </div>{# /.card-body #}

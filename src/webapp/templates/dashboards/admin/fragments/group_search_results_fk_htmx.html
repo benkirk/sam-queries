@@ -1,0 +1,14 @@
+{# htmx: adhoc group results for an FK picker; the id is the unix gid. #}
+{% if groups %}
+{% for g in groups %}
+<button type="button"
+        class="list-group-item list-group-item-action w-100 text-start fk-search-result"
+        data-fk-id="{{ g.unix_gid }}"
+        data-fk-label="{{ g.group_name }} (gid {{ g.unix_gid }})">
+    <strong>{{ g.group_name }}</strong>
+    <small class="text-muted ms-2">gid {{ g.unix_gid }}</small>
+</button>
+{% endfor %}
+{% else %}
+<div class="list-group-item text-muted">No groups found</div>
+{% endif %}

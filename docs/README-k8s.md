@@ -344,7 +344,7 @@ until it has been reviewed on its own, so the dispatcher wakes as usual and the
 untried task writes a `skipped` row instead of running. Today
 `cleanup_status_snapshots`, `deactivate_expired_projects`, `xras_sweep`,
 `expiration_notices`, `refresh_allocation_state`, `account_requests_reconcile`,
-`xras_rename`, `xras_request_tickets` and `xras_notices` are live; `account_queue_digest` and
+`xras_rename`, `xras_request_tickets`, `xras_notices` and `unix_group_masks` are live; `account_queue_digest` and
 `directory_report` (dev runs it) are off (dev also turns off the mail and account-request tasks). Enabling one is a
 reviewable one-line commit; `xras_rename` also needs `XRAS_WRITE_ENABLED` in `tasks.env`,
 and `xras_request_tickets` its ticket levers and floor there (`XRAS_PHASE_C_AND_TICKETS.md` § 4).
@@ -385,7 +385,7 @@ that needs no task to actually do anything:
 ```bash
 helm upgrade --install samuel ./helm -f helm/values.yaml -f helm/values-local.yaml \
   -n samuel-local --set tasks.enabled=true --set tasks.schedule='*/5 * * * *' \
-  --set 'tasks.env.SAM_TASKS_DISABLED=account_queue_digest\,account_requests_reconcile\,cleanup_status_snapshots\,deactivate_expired_projects\,directory_report\,expiration_notices\,refresh_allocation_state\,xras_notices\,xras_rename\,xras_request_tickets\,xras_sweep'
+  --set 'tasks.env.SAM_TASKS_DISABLED=account_queue_digest\,account_requests_reconcile\,cleanup_status_snapshots\,deactivate_expired_projects\,directory_report\,expiration_notices\,refresh_allocation_state\,unix_group_masks\,xras_notices\,xras_rename\,xras_request_tickets\,xras_sweep'
 ```
 
 ⚠️ `--set` **replaces** the list rather than adding to it, and the commas need

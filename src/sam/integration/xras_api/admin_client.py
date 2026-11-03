@@ -280,6 +280,8 @@ class XrasAdminClient(_XrasTransport):
         have applied, and only the verifying read can say which. The error text
         comes back so it can be recorded alongside the verdict.
         """
+        from sam.integration.xras_api.read_memo import forget
+        forget()            # whatever this write touches must be read fresh after it
         url = self._url(path)
         try:
             response = self.session.request(

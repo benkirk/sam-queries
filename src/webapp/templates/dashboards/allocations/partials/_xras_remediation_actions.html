@@ -1,7 +1,7 @@
 {#
   The roster editor inside the request dialog: one row per role, edited inline.
   Context: row (request_index_entry: request_number, pi, roster[] with role_id),
-  write_enabled, xa_user, role_options, role_add_url.
+  write_enabled, xa_user, role_options, role_add_url, pi_role_type_id.
   WARNING: no data-bs-toggle="modal" here; every control swaps #xrasModalBody (#464).
   The offers are snapshot-derived (`rules{allowedOperations}` reading is parked):
   drawing a button XRAS refuses is fine, hiding one that would work is not.
@@ -15,6 +15,8 @@
     {% if row.pi.username %}SAM acts as <code>{{ row.pi.username }}</code> (project lead) for changes to this request.
     {% else %}No project lead on this request: XRAS will refuse changes to it.{% endif %}
 </p>
+{# Scrolls rather than clipping its action column in the 500 px dialog a tablet gets. #}
+<div class="table-responsive">
 <table class="table table-sm align-middle mb-2">
     <tbody>
     {# WARNING: one row per ROLE (removal is keyed on role_id), but a merge is per
@@ -31,7 +33,7 @@
                    hx-target="#xrasModalBody" hx-swap="innerHTML">{{ member.username }}</a>
             </td>
             <td>{{ member.name or '—' }}</td>
-            <td class="col-shrink">{{ member.role_type or '—' }}
+            <td class="col-shrink">{% if member.role_type_id == pi_role_type_id %}<i class="fa-solid fa-crown text-muted me-1" aria-hidden="true"></i>{% endif %}{{ member.role_type or '—' }}
                 {%- if member.active == false %} {{ tag('ended', title="This role's date window is over in XRAS.") }}{% endif %}</td>
             <td class="col-shrink text-end text-nowrap">
                 {% if member.placeholder and member.username not in merge_offered %}
@@ -45,6 +47,20 @@
                 {% endif %}
                 {% if member.role_id is not none %}
                 <span class="row-actions">
+                {% if member.role_type_id != pi_role_type_id and not member.placeholder
+                      and member.username != row.pi.username %}
+                {# One click for the swap a student's advisor-as-PI request needs; the order
+                   XRAS allows is the service's (sam.manage.xras_remediation.make_pi). #}
+                {{ write_button('Make ' ~ member.username ~ ' PI', 'crown',
+                                url_for('allocations_dashboard.xras_role_make_pi', request_number=row.request_number,
+                                        role_id=member.role_id),
+                                write_enabled, post=True, variant='primary',
+                                confirm='Make ' ~ member.username ~ ' PI on ' ~ row.request_number ~ '? '
+                                        ~ member.username ~ ': ' ~ (member.role_type or 'role') ~ ' → PI'
+                                        ~ ((('; ' ~ row.pi.username ~ ': PI → User') if row.pi.username and row.pi.username != member.username else '')) ~ '.',
+                                confirm_title='Make PI in XRAS', confirm_label='Make PI',
+                                confirm_variant='warning') }}
+                {% endif %}
                 {{ write_button('Remove ' ~ member.username ~ ' as ' ~ member.role_type, 'user-minus',
                                 url_for('allocations_dashboard.xras_role_remove', request_number=row.request_number,
                                         role_id=member.role_id),
@@ -60,6 +76,7 @@
     {% endfor %}
     </tbody>
 </table>
+</div>
 
 {# Add a role. The handler resolves the username against XRAS and refuses one XRAS
    does not know, so this cannot mint a placeholder; errors arrive as the flash. #}

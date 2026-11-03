@@ -202,7 +202,8 @@ class TestProjectPanel:
         finally:
             event.remove(engine, 'before_cursor_execute', listen)
         assert panel['managers'][0]['role'] == 'lead'
-        assert len(seen) <= 8, seen
+        # Two of these are the group masks: the project feed's one read and the panel's.
+        assert len(seen) <= 10, seen
 
 
 class TestGroupPanel:

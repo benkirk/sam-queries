@@ -198,6 +198,13 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # Edit allocation's in-body buttons re-render into its own scaffold container (every
     # page shipping project_details_modal.html, plus resource_details).
     'dashboards/admin/fragments/edit_allocation_form_htmx.html': ['editAllocationFormContainer'],
+    # The group-mask openers (the masks tab's New mask, the adhoc card's Add/Remove
+    # member). Both load only into admin pages, and base_admin.html includes
+    # group_mask_modals.html; the form that lands in the shell carries no toggle.
+    'dashboards/admin/fragments/group_masks_table.html': [
+        'groupMaskFormContainer', 'groupMaskModal'],
+    'dashboards/user/partials/group_card.html': [
+        'groupMaskFormContainer', 'groupMaskModal'],
     'dashboards/admin/fragments/bulk_deactivate_project_directories_form_htmx.html': [
         'bulkDeactivateProjectDirectoriesFormContainer'],
     'dashboards/admin/fragments/bulk_deactivate_project_directories_preview_htmx.html': [
@@ -393,8 +400,12 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/jobs/jobs_histogram.html': [
         'projectDetailsModal', 'projectDetailsModalBody',
         'userDetailsModal', 'userDetailsModalBody'],
+    # groupMaskFormContainer: the admin card's Grant access (admin_origin only, so admin
+    # pages), opened with the show-detail-modal action because the card also sits inside
+    # #projectDetailsModal; the scan sees the hx-target, not the action's modal id.
     'dashboards/user/partials/project_card.html': [
-        'contractDetailsModalBody', 'editAllocationFormContainer', 'editAllocationModal'],
+        'contractDetailsModalBody', 'editAllocationFormContainer', 'editAllocationModal',
+        'groupMaskFormContainer'],
     'dashboards/user/partials/user_card.html': [
         'addExemptionFormContainer', 'addExemptionModal',
         'editExemptionFormContainer', 'editExemptionModal', 'groupMembersModal',
@@ -507,6 +518,7 @@ PAGES_WITH_PROJECT_MODAL = {
     '/admin/account-requests': 'dashboards/admin/account_requests.html',
     '/admin/users-groups': 'dashboards/admin/users_groups.html',
     '/admin/users/last-seen': 'dashboards/admin/users_last_seen.html',
+    '/admin/users/group-masks': 'dashboards/admin/users_group_masks.html',
     '/admin/events': 'dashboards/admin/events.html',
     '/allocations/projects': 'dashboards/allocations/projects.html',
     '/allocations/transactions': 'dashboards/allocations/transactions.html',

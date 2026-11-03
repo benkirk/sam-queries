@@ -78,7 +78,7 @@ def test_render_matches_snapshot(renderer, kind, facility, stem, role):
 
 
 def test_every_stem_is_covered():
-    assert len(STEMS) == 18, STEMS
+    assert len(STEMS) == 19, STEMS
 
 
 @pytest.mark.skipif(REGEN, reason='regenerating')

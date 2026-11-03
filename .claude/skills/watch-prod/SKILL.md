@@ -143,6 +143,8 @@ Processed (2xx) rows → one line. Keep the "known-open, don't re-flag" list
 `known-open-dev`). The tick prints it back under its header, so edit the file as
 items come and go. Never write the list into a timer's prompt: the prompt outlives
 the item, and a deleted Job stayed "do not re-flag" for the life of one timer.
+The `ldapsync:` line is the LDAP sync daemon's calls since its 2026-11-02 repoint; any
+5xx FAILs. Read it with `watch-tomcat` §4.
 
 ## 4. The daily full sweep is expected
 

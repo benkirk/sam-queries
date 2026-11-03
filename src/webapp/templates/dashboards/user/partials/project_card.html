@@ -4,6 +4,7 @@
 {% from 'dashboards/fragments/table_bits.html' import state_tag %}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_usage_bar, g_contract_status with context %}
+{% from 'dashboards/fragments/group_mask_bits.html' import pending_list %}
 
 {# Macro: Project Information Section; caller() fills the heading row's right end (Manage Project). #}
 {% macro render_project_info(project) %}
@@ -442,6 +443,31 @@
                     <div id="projectDirectoryPanel-{{ project.project_id }}">
                         <p class="text-muted mb-0"><small>Reads this project's unix group from the directory and lists the differences against SAM's membership.</small></p>
                     </div>
+                </div>
+                {% endif %}
+
+                {# Group access (docs/plans/UNIX_GROUP_MASK.md): a temporary member of the project's
+                   unix group. The card also opens inside #projectDetailsModal, so the opener is the
+                   show-detail-modal action, never data-bs-toggle. #}
+                {% if admin_origin and has_permission(Permission.EDIT_GROUPS) %}
+                <div class="mt-3 pt-3 border-top">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <strong><i class="fa-solid fa-user-pen"></i> Group access</strong>
+                        {% if project.unix_gid %}
+                        <button type="button" class="btn btn-sm btn-outline-primary"
+                                data-action="show-detail-modal" data-modal-id="groupMaskModal"
+                                hx-get="{{ url_for('admin_dashboard.htmx_group_mask_form', gid=project.unix_gid, op='add') }}"
+                                hx-target="#groupMaskFormContainer" hx-trigger="click">
+                            <i class="fa-solid fa-user-plus" aria-hidden="true"></i> Grant access
+                        </button>
+                        {% endif %}
+                    </div>
+                    {% if project.unix_gid %}
+                    <p class="text-muted mb-1"><small>Adds one user to <code>{{ project.projcode | lower }}</code> (gid {{ project.unix_gid }}) for a set time, on the branches where they hold an account, whatever the allocation's end. No ticket is filed.</small></p>
+                    {{ pending_list(project.unix_gid) }}
+                    {% else %}
+                    <p class="text-muted mb-0"><small>This project has no unix gid in SAM, so there is no group to change.</small></p>
+                    {% endif %}
                 </div>
                 {% endif %}
 

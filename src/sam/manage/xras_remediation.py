@@ -50,7 +50,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -584,7 +584,7 @@ def _action_op(operation, session_factory, *, request_number, request_id,
 
 def change_role(session_factory, *, add, request_number, request_id, username,
                 operator, xa_user, role=None, role_id=None, comment=None,
-                client=None) -> RemediationOutcome:
+                client=None, refresh=None) -> RemediationOutcome:
     """Add *username* to the request's roster in *role*, or remove *role_id*.
 
     Add and remove are one function because they are one operator gesture — a
@@ -626,7 +626,83 @@ def change_role(session_factory, *, add, request_number, request_id, username,
                          role_id=None if add else role_id,
                          role_type=resolved.name if resolved else None,
                          comment=comment),
-        request_number=request_number, client=client, close_extra=close_extra)
+        request_number=request_number, client=client, close_extra=close_extra,
+        refresh=refresh)
+
+
+_MAKE_PI_VERBS = {'add': ('added', 'adding'), 'keep': ('kept', 'keeping'),
+                  'remove': ('removed', 'removing')}
+
+
+@dataclass(frozen=True)
+class MakePiOutcome:
+    """The steps :func:`make_pi` ran, in order, as ``(verb, what, outcome)``; the last may have failed."""
+    steps: Tuple[Tuple[str, str, RemediationOutcome], ...]
+    patched: bool = False
+
+    @property
+    def completed(self) -> bool:
+        return bool(self.steps) and all(o.status == 'verified' for _, _, o in self.steps)
+
+    @property
+    def landed(self) -> Tuple[str, ...]:
+        """``('added ebenedict as PI', ...)``: the steps XRAS confirmed."""
+        return tuple(f'{_MAKE_PI_VERBS[verb][0]} {what}'
+                     for verb, what, o in self.steps if o.status == 'verified')
+
+    @property
+    def failure(self) -> Optional[Tuple[str, RemediationOutcome]]:
+        """``('removing kristenr as PI', outcome)`` for the step that stopped it, else ``None``."""
+        return next(((f'{_MAKE_PI_VERBS[verb][1]} {what}', o)
+                     for verb, what, o in self.steps if o.status != 'verified'), None)
+
+
+def make_pi(session_factory, *, request_number, request_id, roster, target_role_id,
+            operator, xa_user, client=None) -> MakePiOutcome:
+    """Make the holder of *target_role_id* the request's PI, in the order XRAS allows.
+
+    XRAS refuses to remove a role-holder's only role when SAM acts as that person, so
+    removing the old PI first fails. The order here: add the target as PI (acting as
+    the current PI), keep each old PI on the roster as User and drop their PI role
+    (acting as the new PI), then drop the target's old role. Each step is its own
+    audited write; the first that does not verify stops the rest. The card is patched
+    once, at the end.
+    """
+    from sam.integration.xras_api.vocabulary import PI_ROLE_TYPE_ID, role_type
+
+    user_type = role_type('User').type_id
+    target = next(r for r in roster if r.get('role_id') == target_role_id)
+    new_pi = target['username']
+    old_pi_roles = [r for r in roster if r.get('role_type_id') == PI_ROLE_TYPE_ID
+                    and r.get('role_id') is not None
+                    and (r.get('username') or '').casefold() != new_pi.casefold()]
+    holds_user = {(r.get('username') or '').casefold() for r in roster
+                  if r.get('role_type_id') == user_type}
+
+    plan = [('add', f'{new_pi} as PI',
+             dict(add=True, username=new_pi, role='PI', xa_user=xa_user))]
+    for username in dict.fromkeys(r['username'] for r in old_pi_roles):
+        if username.casefold() not in holds_user:
+            plan.append(('keep', f'{username} as User',
+                         dict(add=True, username=username, role='User', xa_user=new_pi)))
+    for r in old_pi_roles:
+        plan.append(('remove', f"{r['username']} as PI",
+                     dict(add=False, username=r['username'], role_id=r['role_id'],
+                          xa_user=new_pi)))
+    plan.append(('remove', f"{new_pi} as {target.get('role_type') or 'their old role'}",
+                 dict(add=False, username=new_pi, role_id=target_role_id, xa_user=new_pi)))
+
+    steps = []
+    for verb, what, kwargs in plan:
+        outcome = change_role(session_factory, request_number=request_number,
+                              request_id=request_id, operator=operator, client=client,
+                              refresh=lambda: False, **kwargs)
+        steps.append((verb, what, outcome))
+        if outcome.status != 'verified':
+            break
+    landed = any(o.status == 'verified' for _, _, o in steps)
+    patched = landed and refresh_index_entry(request_number, session_factory=session_factory)
+    return MakePiOutcome(tuple(steps), patched)
 
 
 # the request editor (Part B): resources & allocation dates

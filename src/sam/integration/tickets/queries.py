@@ -35,17 +35,18 @@ def tickets_for(session: Session, entity_type: str,
 
 
 def learn_candidates(session: Session, *, now: datetime, max_age_days: int,
-                     limit: int) -> List[int]:
-    """Account-request ids whose ticket mail was ``sent`` within the window and
-    that have no ``external_ticket`` row yet. Newest first, so a mail the desk
-    never ingested sinks instead of starving new ones."""
-    linked = exists().where(ExternalTicket.entity_type == ACCOUNT_REQUEST,
+                     limit: int, entity_type: str = ACCOUNT_REQUEST,
+                     kind: str = TICKET_KIND) -> List[int]:
+    """Entity ids whose ticket mail was ``sent`` within the window and that have no
+    ``external_ticket`` row yet. Newest first, so a mail the desk never ingested
+    sinks instead of starving new ones."""
+    linked = exists().where(ExternalTicket.entity_type == entity_type,
                             ExternalTicket.entity_id == NotificationLog.entity_id)
     newest = func.max(NotificationLog.creation_time)
     stmt = (select(NotificationLog.entity_id)
-            .where(NotificationLog.kind == TICKET_KIND,
+            .where(NotificationLog.kind == kind,
                    NotificationLog.status == 'sent',
-                   NotificationLog.entity_type == ACCOUNT_REQUEST,
+                   NotificationLog.entity_type == entity_type,
                    NotificationLog.entity_id.is_not(None),
                    NotificationLog.creation_time >= now - timedelta(days=max_age_days),
                    ~linked)

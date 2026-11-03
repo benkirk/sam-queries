@@ -21,6 +21,7 @@ from sam.integration.tickets.queries import (ACCOUNT_REQUEST, learn_candidates,
                                              refresh_candidates)
 from sam.integration.tickets.registry import read_providers
 from sam.queries.account_notices import ticket_handle
+from sam.queries.group_masks import MASK_ENTITY, MASK_TICKET_KIND, mask_ticket_handle
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,9 @@ MAX_AGE_DAYS = 60
 STALE_AFTER = timedelta(minutes=50)
 #: Reads per pass, each half; a pasted roster is easily 40 open tickets.
 DEFAULT_LOOKUP_MAX = 50
+#: What a mailed ticket is looked up by: (entity_type, ledger kind, the handle builder).
+LEARN_KINDS = ((ACCOUNT_REQUEST, 'account_ticket', ticket_handle),
+               (MASK_ENTITY, MASK_TICKET_KIND, mask_ticket_handle))
 
 
 def learn_ticket_keys(session: Session, provider: TicketProvider, *,
@@ -39,30 +43,33 @@ def learn_ticket_keys(session: Session, provider: TicketProvider, *,
     """Find the ticket each recently mailed request produced; insert a ``learned`` row per hit.
     A miss writes nothing, so a mail not yet ingested is retried next hour."""
     counts: Dict[str, Any] = {'checked': 0, 'learned': 0, 'missed': 0, 'error': ''}
-    for request_id in learn_candidates(session, now=clock, max_age_days=MAX_AGE_DAYS,
-                                       limit=limit):
-        counts['checked'] += 1
-        try:
-            ref = provider.find(ticket_handle(request_id))
-        except TicketSourceUnavailable as exc:
-            counts['error'] = str(exc)
-            logger.warning('tickets: learn stopped at request %s: %s', request_id, exc)
+    for entity_type, kind, handle in LEARN_KINDS:
+        if counts['error']:
             break
-        if ref is None:
-            counts['missed'] += 1
-            continue
-        try:
-            with session.begin_nested():
-                ExternalTicket.create(session, provider=provider.name, ticket_key=ref.key,
-                                      entity_type=ACCOUNT_REQUEST, entity_id=request_id,
-                                      origin='learned', requested_by=REQUESTED_BY,
-                                      status=ref.status, closed=ref.closed,
-                                      synced_at=clock, when=clock)
-        except IntegrityError:
-            logger.warning('tickets: %s already linked; request %s not linked',
-                           ref.key, request_id)
-            continue
-        counts['learned'] += 1
+        for entity_id in learn_candidates(session, now=clock, max_age_days=MAX_AGE_DAYS,
+                                          limit=limit, entity_type=entity_type, kind=kind):
+            counts['checked'] += 1
+            try:
+                ref = provider.find(handle(entity_id))
+            except TicketSourceUnavailable as exc:
+                counts['error'] = str(exc)
+                logger.warning('tickets: learn stopped at %s %s: %s', entity_type, entity_id, exc)
+                break
+            if ref is None:
+                counts['missed'] += 1
+                continue
+            try:
+                with session.begin_nested():
+                    ExternalTicket.create(session, provider=provider.name, ticket_key=ref.key,
+                                          entity_type=entity_type, entity_id=entity_id,
+                                          origin='learned', requested_by=REQUESTED_BY,
+                                          status=ref.status, closed=ref.closed,
+                                          synced_at=clock, when=clock)
+            except IntegrityError:
+                logger.warning('tickets: %s already linked; %s %s not linked',
+                               ref.key, entity_type, entity_id)
+                continue
+            counts['learned'] += 1
     return counts
 
 

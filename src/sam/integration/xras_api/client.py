@@ -200,15 +200,24 @@ class _XrasTransport:
             XrasSourceUnavailable: every attempt failed, or an unparseable
                 body. A 4xx raises whatever :meth:`_client_error` raises.
         """
+        from sam.integration.xras_api import read_memo
+        key = (self._CONTEXT, self._url(path), repr(sorted((params or {}).items())),
+               xa_user, context)
+        cached = read_memo.lookup(key)
+        if cached is not read_memo.MISS:
+            return cached
         response = self._send_get(path, params=params, xa_user=xa_user, context=context)
         if response is None:
+            read_memo.remember(key, None)
             return None
         try:
             body = response.json()
         except ValueError as exc:
             raise XrasSourceUnavailable(
                 f'{self._url(path)} returned non-JSON body: {exc}') from exc
-        return _unwrap(body)
+        result = _unwrap(body)
+        read_memo.remember(key, result)
+        return result
 
     def _get_bytes(self, path: str, *, max_bytes: int,
                    xa_user: Optional[str] = None,

@@ -24,13 +24,14 @@
 {% endif %}
 {% endmacro %}
 
+{% from 'dashboards/fragments/group_mask_bits.html' import ticket_link %}
 {#- Help-desk ticket rows for the collapsed body; `v` is the request_views dict. #}
 {#- dt/dd pairs for a `dl.row`; empty when the request has no ticket. #}
 {% macro ticket_details(v) %}
 {% for t in v.tickets or [] %}
 <dt class="col-sm-3">{% if loop.first %}Ticket{% endif %}</dt>
 <dd class="col-sm-9">
-    {%- if t.url %}<a href="{{ t.url }}" target="_blank" rel="noopener" class="font-monospace">{{ t.key }}</a>{% else %}<span class="font-monospace">{{ t.key }}</span>{% endif %}
+    {{- ticket_link({'key': t.key, 'url': t.url}) }}
     {%- if t.status %} · {{ t.status }}{% endif %}
     {%- if t.closed_at %}, closed {{ t.closed_at | fmt_date }}{% endif %}
     <span class="text-muted">({{ 'filed by SAM' if t.origin == 'created' else 'found after the mail' }})</span>

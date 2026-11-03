@@ -1,0 +1,93 @@
+{% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_row %}
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/pagination.html' import pagination %}
+{% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
+{% from 'dashboards/fragments/user_rows.html' import user_link %}
+{% from 'dashboards/fragments/table_bits.html' import pane_toolbar %}
+{% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
+{% from 'dashboards/fragments/group_mask_bits.html' import mask_flags, ticket_link, withdraw_button %}
+{#
+  Group masks table (HTMX fragment). Context: rows (sam.queries.group_masks.mask_views),
+  total, filters, kind_facets, state_facets, flag_facets, page, sort, sortable_columns, form_id,
+  target_id, fragment_url, can_edit.
+#}
+<div class="facet-grid mb-2">
+    {{ facet_row('Kind', kind_facets, form_id, 'kind', [filters.kind] if filters.kind else []) }}
+    {{ facet_row('State', state_facets, form_id, 'state', filters.state) }}
+    {{ facet_row('Flags', flag_facets, form_id, 'flag', filters.flag) }}
+    {{ facet_clear_all(form_id, filters.kind or filters.state or filters.flag or filters.search) }}
+</div>
+
+<div id="groupMaskNotice-tab"></div>
+
+{% call pane_toolbar(total | fmt_plural('mask', 'masks')) %}
+{% if can_edit %}
+<button type="button" class="btn btn-sm btn-primary"
+        data-bs-toggle="modal" data-bs-target="#groupMaskModal"
+        hx-get="{{ url_for('admin_dashboard.htmx_group_mask_form') }}"
+        hx-target="#groupMaskFormContainer" hx-trigger="click">
+    <i class="fa-solid fa-plus" aria-hidden="true"></i> New mask
+</button>
+{% endif %}
+{% endcall %}
+
+<div class="table-responsive">
+    <table class="table table-sm table-striped table-hover align-middle mb-0">
+        <thead class="table-subtle">
+            <tr>
+                <th class="col-shrink">{{ sort_header('group', 'Group') }}</th>
+                <th class="col-shrink">{{ sort_header('user', 'Member') }}</th>
+                <th class="col-shrink">Change</th>
+                <th>Note</th>
+                <th class="col-shrink d-none d-md-table-cell">{{ sort_header('created', 'Requested') }}</th>
+                <th class="col-shrink">{{ sort_header('expires', 'Expires') }}</th>
+                <th class="col-shrink">{{ sort_header('state', 'State') }}</th>
+                <th class="col-shrink d-none d-md-table-cell">Ticket</th>
+                <th class="col-shrink"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            {% set m = r.mask %}
+            <tr class="{{ 'row-inactive' if not r.open }}">
+                <td class="col-shrink text-nowrap">
+                    {% if r.kind == 'adhoc' %}
+                    <a href="{{ url_for('admin_dashboard.users_groups', groupname=r.group_name) }}" class="font-monospace">{{ r.group_name or r.gid }}</a>
+                    {% else %}
+                    <span class="font-monospace">{{ r.group_name or r.gid }}</span>
+                    {% endif %}
+                    <span class="badge bg-secondary ms-1" title="gid {{ r.gid }}">{{ r.kind }}</span>
+                </td>
+                <td class="col-shrink text-nowrap">{{ user_link(r.username, has_permission(Permission.VIEW_USERS), compact=True) }}</td>
+                <td class="col-shrink">
+                    {% if r.op == 'add' %}<i class="fa-solid fa-user-plus text-success me-1" aria-hidden="true"></i>add
+                    {% else %}<i class="fa-solid fa-user-minus text-danger me-1" aria-hidden="true"></i>remove{% endif %}
+                </td>
+                <td class="cell-truncate" title="{{ m.note or '' }}">{{ m.note or '—' }}</td>
+                <td class="col-shrink text-nowrap d-none d-md-table-cell small">
+                    {{ m.requested_by }} <span class="text-muted">{{ m.creation_time | fmt_date }}</span>
+                </td>
+                <td class="col-shrink text-nowrap">{% if m.expires_at %}{{ m.expires_at | fmt_date }}{% else %}<span class="text-muted" title="Until upstream agrees">open-ended</span>{% endif %}</td>
+                <td class="col-shrink text-nowrap">{{ status_badge(r.state) }}{{ mask_flags(r) }}</td>
+                <td class="col-shrink d-none d-md-table-cell">{{ ticket_link(r.ticket) }}</td>
+                <td class="col-shrink text-end text-nowrap">
+                    {% if can_edit and m.is_active %}
+                    <span class="row-actions">
+                    {{ edit_modal_button(url_for('admin_dashboard.htmx_group_mask_edit_form', mask_id=m.mask_id),
+                                         modal_id='editGroupMaskModal', target_id='editGroupMaskFormContainer',
+                                         title='Edit expiry or note', permission=Permission.EDIT_GROUPS) }}
+                    {{ withdraw_button(m, '#groupMaskNotice-tab') }}
+                    </span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="9" class="text-muted text-center py-4">No masks match these filters.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if total %}
+{{ pagination(page, total, fragment_url, target_id, form_id, sort) }}
+{% endif %}
