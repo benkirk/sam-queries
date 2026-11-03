@@ -27,9 +27,15 @@ CREATE TABLE IF NOT EXISTS unix_group_mask (
 CREATE INDEX IF NOT EXISTS unix_group_mask_gid  ON unix_group_mask (unix_gid, closed_at);
 CREATE INDEX IF NOT EXISTS unix_group_mask_user ON unix_group_mask (username);
 
--- Verification: 0 rows, 12 columns, 3 indexes (the primary key included).
+-- Applied as the superuser, the table would belong to postgres and the app's role could
+-- not read it (permission denied, samuel-dev 2026-11-02). Every app table is sam_dev's.
+ALTER TABLE unix_group_mask OWNER TO sam_dev;
+
+-- Verification: 0 rows, 12 columns, 3 indexes (the primary key included), owner sam_dev.
 SELECT COUNT(*) AS rows_expect_0 FROM unix_group_mask;
 SELECT COUNT(*) AS columns_expect_12 FROM information_schema.columns
  WHERE table_schema = current_schema() AND table_name = 'unix_group_mask';
 SELECT COUNT(*) AS indexes_expect_3 FROM pg_indexes
+ WHERE schemaname = current_schema() AND tablename = 'unix_group_mask';
+SELECT tableowner AS owner_expect_sam_dev FROM pg_tables
  WHERE schemaname = current_schema() AND tablename = 'unix_group_mask';

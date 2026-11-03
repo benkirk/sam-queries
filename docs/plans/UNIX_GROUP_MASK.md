@@ -169,9 +169,10 @@ mysql -u <hpc-writer> -h <host> -p sam < scripts/sql/create_unix_group_mask.sql
 psql -h csg-postgres.k8s.ucar.edu -d sam_dev -f scripts/sql/create_unix_group_mask_pg.sql
 ```
 
-Rehearsed twice on the local MySQL and on the :3307 test container (idempotent). Prod gets
-the table before the deploy; samuel-dev needs the Postgres twin before the deploy (or a
-`make refresh-dev`, which builds it from the ORM). Helm: the task name in
+Rehearsed twice on the local MySQL and on the :3307 test container (idempotent). Prod got
+the table 2026-11-02; sam_dev too, and the twin ends with `ALTER TABLE ... OWNER TO sam_dev`
+because a superuser apply left the table unreadable by the app's role (a `make refresh-dev`
+builds it from the ORM as `sam_dev`). Helm: the task name in
 `SAM_TASKS_DISABLED`, the two `JIRA_HPC_GROUP_*` keys in `webapp.env`.
 
 ## 9. What was proven on the laptop
