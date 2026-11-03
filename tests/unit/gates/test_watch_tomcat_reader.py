@@ -189,9 +189,19 @@ class TestReport:
     def test_missing_caller_in_business_hours(self, tmp_path):
         host = ['host', f'now={NOW}', 'up_s=1', f'jvm_start={JVM}', 'jvm_pid=1', 'tomcat_pct=5', 'rotated=-']
         base = [['base', 'heuv/user', '54.85.201.121', 'Ruby', '200', '6'],
-                ['base', 'ssg/queue', '128.117.65.3', 'curl', '200', '9']]
+                ['base', 'ssg/queue', '128.117.65.3', 'curl', '200', '9'],
+                ['base', 'ssg/queue', '128.117.211.150', 'python', '200', '9']]
         text, warn, _ = report([host, *base, ['probe', str(NOW - 60), '30']], tmp_path, CMAP, state=f'LASTJVM={JVM}\n')
-        assert 'MISSING caller heuv/portal' in text and 'MISSING caller self' not in text and warn == 1
+        assert 'MISSING caller ssg/150' in text and 'MISSING caller self' not in text and warn == 1
+        assert 'MISSING caller heuv/portal' not in text, "a cut-over caller's silence is the point"
+
+    def test_a_legacy_ldapsync_call_after_the_repoint_fails(self, tmp_path):
+        host = ['host', f'now={NOW}', 'up_s=1', f'jvm_start={JVM}', 'jvm_pid=1', 'tomcat_pct=5', 'rotated=-']
+        api = ['api', 'ldapsync/user', '128.117.177.140', 'libwww-perl/6.52', '200', '2', '300', '400']
+        cmap = CMAP + 'ldapsync/sam-app ldapsync/ 128.117.177.140 libwww\n'
+        text, _, fail = report([host, api, ['probe', str(NOW - 60), '30']], tmp_path, cmap,
+                               state=f'LASTJVM={JVM}\n')
+        assert 'legacy cutover hit: ldapsync/user 128.117.177.140' in text and fail == 1
 
     def test_restart_and_baseline(self, logs, tmp_path):
         text, _, _ = report(window(logs), tmp_path, CMAP)

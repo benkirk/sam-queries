@@ -14,7 +14,8 @@ The legacy counterpart of `watch-prod`, and as thin: the reading rules for a
 tick (report only what changed, escalate a trend not an outlier, known-open is
 not re-flagged) are `watch-prod` §1-§3. This skill carries what is specific to
 legacy. Its first job is the **cutover**: legacy's API traffic, family by
-family, should only fall as ports land and callers repoint. AMIE is out of
+family, should only fall as ports land and callers repoint, until **nothing uses
+legacy**: every API caller and every person on its web pages (Ben, 2026-11-02). AMIE is out of
 scope and ignored by path (`/api/protected/amie/`): it is not ported and will be
 rebuilt on a new protocol if it is ever needed.
 
@@ -56,14 +57,16 @@ they line up with `cirrus_watch.sh` and the ingress probe reports.
 | `probe:` | the per-minute `GET /` health check (user agent `libwww-perl`; someone else's) | WARN silent > 5 min |
 | `app:` | sam-app: uptime, the zoo's slapd / syncd / ldif processor and their start, `/data` use | WARN one missing; WARN `zoo restarted` (a start moved > 5 min); `/data` ≥ 85 % |
 | `zoo:` | printed only when a zoo repo's deployed HEAD moved: repo, old → new, commit time, subject | WARN (a deploy by George, now on our timeline) |
-| `syncd:` | the daemon's own log in the window: files applied, calls by status, deferrals, error lines, last activity; `≈` the tomcat side's count for `ldapsync/sam-app` | FAIL any non-200 PUT; WARN another non-2xx call or an error line |
+| `syncd:` | the daemon's own log in the window: files applied, calls by status, deferrals, error lines, last activity; `legacy saw N`, 0 since the repoint (SAMuel's side is the prod tick's `ldapsync:` line) | FAIL any non-200 PUT; WARN another non-2xx call or an error line |
 | `cutover` | on the first tick of a Mountain day: yesterday per status group and the top families, against the same weekday a week earlier | info: the trend is the point |
 
 `callers:` flags: **NEW** for an unmapped client that got past authentication
 (prints client, user agent and families: label it); **MISSING** when a label had
-≥ 5 calls in last week's window and none now, 07:00-19:00 Mountain; **refused**
+≥ 5 calls in last week's window and none now, 07:00-19:00 Mountain, except a
+label on a `cutover` family, whose silence is the goal; **refused**
 when a mapped caller gets 401/403 (key revoked or rotated); **FAIL** for any
-authenticated call to a `cutover` family (`xras/` 2026-08-24, `heuv/` 2026-10-23), WARN
+authenticated call to a `cutover` family (`xras/` 2026-08-24, `heuv/` 2026-10-23,
+`ldapsync/` 2026-11-02), WARN
 unauthenticated, `self` and `watch` exempt; WARN for a `retired`
 family answering. A 401 from an unmapped client is a scanner and is never NEW.
 
@@ -107,7 +110,16 @@ reader never touches a container or service manager. **Never open a `.env` or
 anything under the secrets directory**, even where the mode allows it; a test
 gates the reader's text. amie-sam-mediator and acct-sam-etl are not running by
 design and are never flagged. Quiet weekends are normal, so `last` is info.
-When the syncd repoints to SAMuel, this section moves beside `watch-prod`.
+Since 2026-11-02 16:24 MST the syncd posts to SAMuel prod (`SAM_URL` repointed;
+rollback is the same variable). `ldapsync/` is a `cutover` family: an authenticated
+legacy call FAILs (a rollback or a regression), and `ldapsync/sam-app` is never
+MISSING. What SAMuel received is the prod tick's `ldapsync:` line: calls by status,
+the slowest, calls by endpoint, the directory check's report-only lines (and how many
+found drift), hook applies and operator Syncs (`by=`). `ldapsync: quiet` is normal; the
+daemon calls only when LDAP changes. **Any 5xx FAILs**: the daemon drops a refused
+record until its next full reload. A 401 then a 200 in the same second is LWP's
+first-call handshake, once per restart. A gap between `syncd:` PUTs here and that
+line is a lost update.
 
 ## 5. Correlating with our own timelines
 
