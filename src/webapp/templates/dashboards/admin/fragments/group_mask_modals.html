@@ -1,0 +1,9 @@
+{% from 'dashboards/fragments/modals.html' import modal_scaffold %}
+{#
+  Group-mask shells, included by base_admin.html: the masks tab, the adhoc group card and
+  the admin project card (which also opens inside #projectDetailsModal, so its opener uses
+  data-action="show-detail-modal") all target these ids.
+#}
+{{ modal_scaffold('groupMaskModal', 'Group mask', icon='user-pen', container_id='groupMaskFormContainer') }}
+
+{{ modal_scaffold('editGroupMaskModal', 'Edit mask', icon='edit', container_id='editGroupMaskFormContainer') }}

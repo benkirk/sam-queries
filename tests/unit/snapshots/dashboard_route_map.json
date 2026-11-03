@@ -841,6 +841,48 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_group_mask_create",
+    "/admin/htmx/group-mask-create",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_group_mask_edit",
+    "/admin/htmx/group-mask-edit/<int:mask_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_group_mask_edit_form",
+    "/admin/htmx/group-mask-edit-form/<int:mask_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_group_mask_form",
+    "/admin/htmx/group-mask-form",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_group_mask_withdraw",
+    "/admin/htmx/group-mask-withdraw/<int:mask_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_group_masks_pending",
+    "/admin/htmx/group-masks/pending",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_institution_create",
     "/admin/htmx/institution-create",
     [
@@ -1506,6 +1548,13 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_search_groups_fk",
+    "/admin/htmx/search/groups-fk",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_search_mnemonic_targets",
     "/admin/htmx/search-mnemonic-targets",
     [
@@ -1529,6 +1578,13 @@
   [
     "admin_dashboard.htmx_search_projects",
     "/admin/htmx/search-projects",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_search_projects_for_mask",
+    "/admin/htmx/search/projects-for-mask",
     [
       "GET"
     ]
@@ -1851,6 +1907,20 @@
   [
     "admin_dashboard.user_card",
     "/admin/user/<username>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.users_group_masks",
+    "/admin/users/group-masks",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.users_group_masks_table",
+    "/admin/htmx/users/group-masks",
     [
       "GET"
     ]

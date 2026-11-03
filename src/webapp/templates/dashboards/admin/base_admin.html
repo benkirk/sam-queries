@@ -27,7 +27,7 @@
     {'endpoint': 'admin_dashboard.projects', 'label': 'Projects', 'icon': 'fa-solid fa-folder-open',
      'active_endpoints': ['admin_dashboard.projects_directories']},
     {'endpoint': 'admin_dashboard.users_groups',  'label': 'Users & Groups', 'icon': 'fa-solid fa-users',
-     'active_endpoints': ['admin_dashboard.users_last_seen']},
+     'active_endpoints': ['admin_dashboard.users_last_seen', 'admin_dashboard.users_group_masks']},
     {'endpoint': 'admin_dashboard.resources',     'label': 'Resources', 'icon': 'fa-solid fa-server'},
     {'endpoint': 'admin_dashboard.organizations', 'label': 'Organizations', 'icon': 'fa-solid fa-sitemap',
      'active_endpoints': ['admin_dashboard.organizations_mnemonics']},
@@ -60,6 +60,8 @@
 {% include 'dashboards/admin/fragments/facility_modals.html' %}
 
 {% include 'dashboards/admin/fragments/organization_modals.html' %}
+
+{% include 'dashboards/admin/fragments/group_mask_modals.html' %}
 
 {% endblock %}
 

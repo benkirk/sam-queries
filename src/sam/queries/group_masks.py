@@ -126,3 +126,75 @@ def project_mask_times(session) -> Dict[int, datetime]:
                          func.max(UnixGroupMask.closed_at)) \
         .filter(UnixGroupMask.kind == 'project').group_by(UnixGroupMask.unix_gid)
     return {gid: max(t for t in (created, closed) if t) for gid, created, closed in rows}
+
+
+# --- the masks tab ---------------------------------------------------------------
+
+MASK_STATES = ('pending', 'confirmed', 'expired', 'withdrawn')
+MASK_SORTS = ('created', 'expires', 'group', 'user', 'state')
+
+
+def group_names(session, gids: Iterable[int]) -> Dict[int, str]:
+    """``{gid: name}`` over adhoc groups and projects; a gid nobody holds is absent."""
+    gids = sorted(set(gids))
+    if not gids:
+        return {}
+    from sam.core.groups import AdhocGroup
+    names = {g.unix_gid: g.group_name for g in session.query(AdhocGroup)
+             .filter(AdhocGroup.unix_gid.in_(gids))}
+    for p in session.query(Project).filter(Project.unix_gid.in_([g for g in gids if g not in names])):
+        names[p.unix_gid] = p.projcode
+    return names
+
+
+def mask_views(session, *, now: datetime, gids: Optional[Iterable[int]] = None,
+               open_only: bool = False) -> List[dict]:
+    """Every mask (or those on ``gids``) as a display row: the group's name, the member's
+    upid (``None`` means the directory can never confirm it), the state at ``now``."""
+    q = session.query(UnixGroupMask)
+    if gids is not None:
+        gids = list(gids)
+        if not gids:
+            return []
+        q = q.filter(UnixGroupMask.unix_gid.in_(gids))
+    if open_only:
+        q = q.filter(UnixGroupMask.is_active)
+    rows = q.order_by(UnixGroupMask.creation_time.desc(), UnixGroupMask.mask_id.desc()).all()
+    names = group_names(session, (r.unix_gid for r in rows))
+    lower = sorted({r.username.lower() for r in rows})
+    upids = {u.lower(): upid for u, upid in session.query(User.username, User.upid)
+             .filter(func.lower(User.username).in_(lower))} if lower else {}
+    out = []
+    for r in rows:
+        upid = upids.get(r.username.lower())
+        out.append({
+            'mask': r, 'mask_id': r.mask_id, 'gid': r.unix_gid, 'kind': r.kind,
+            'group_name': names.get(r.unix_gid, ''), 'username': r.username, 'op': r.op,
+            'state': r.state, 'open': r.is_open_at(now),
+            'unconfirmable': r.kind == 'adhoc' and upid is None,
+            'ticket': None,
+        })
+    return out
+
+
+def filter_mask_views(rows: List[dict], *, kind: Optional[str] = None, states=(),
+                      q: Optional[str] = None) -> List[dict]:
+    needle = (q or '').strip().lower()
+    states = set(states or ())
+    return [r for r in rows
+            if (not kind or r['kind'] == kind)
+            and (not states or r['state'] in states)
+            and (not needle or needle in r['group_name'].lower() or needle in r['username'].lower())]
+
+
+def sort_mask_views(rows: List[dict], sort_by: Optional[str], sort_dir: str) -> List[dict]:
+    keys = {
+        'created': lambda r: r['mask'].creation_time,
+        'expires': lambda r: r['mask'].expires_at or datetime.max,
+        'group': lambda r: (r['group_name'].lower(), r['username'].lower()),
+        'user': lambda r: (r['username'].lower(), r['group_name'].lower()),
+        'state': lambda r: (MASK_STATES.index(r['state']) if r['state'] in MASK_STATES else 9,
+                            r['mask'].creation_time),
+    }
+    key = keys.get(sort_by or 'created', keys['created'])
+    return sorted(rows, key=key, reverse=(sort_dir != 'asc'))

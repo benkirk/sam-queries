@@ -1,0 +1,15 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{% from 'dashboards/fragments/form_fields.html' import date_field, textarea_field, readonly_display with context %}
+{# htmx: edit an open mask's expiry and note (loaded into #editGroupMaskFormContainer).
+   Context: mask, today, errors, form. #}
+{{ modal_title('editGroupMaskModalLabel', mask.op ~ ' ' ~ mask.username ~ ' (gid ' ~ mask.unix_gid ~ ')', 'edit') }}
+
+{% call htmx_form(url_for('admin_dashboard.htmx_group_mask_edit', mask_id=mask.mask_id),
+                  '#editGroupMaskFormContainer', 'Save Changes', is_edit=True, errors=errors) %}
+    {{ readonly_display('Requested', mask.requested_by ~ ', ' ~ (mask.creation_time | fmt_date)) }}
+    {{ date_field('expires_at', 'Until', required=(mask.kind == 'project'), default=mask.expires_at,
+                  min=today, id='editGroupMaskExpires',
+                  help='Blank keeps an adhoc mask until the directory agrees; a project grant keeps a date.') }}
+    {{ textarea_field('note', 'Note', rows=2, maxlength=255, default=mask.note or '', id='editGroupMaskNote') }}
+{% endcall %}

@@ -1,0 +1,40 @@
+{#
+  Pieces of the group-mask surfaces (docs/plans/UNIX_GROUP_MASK.md § 6): the Withdraw
+  button, the flags beside a state badge, a ticket key, and the pending list a card embeds.
+
+      {{ withdraw_button(mask, '#groupMaskNotice-123') }}
+      {{ mask_flags(row) }}            row from sam.queries.group_masks.mask_views
+      {{ ticket_link(row.ticket) }}    {key, url, status} or none
+      {{ pending_list(gid) }}          self-refreshing list of the open masks on one gid
+#}
+
+{# A consequential verb keeps its word. The response lands in `target` (a notice slot). #}
+{% macro withdraw_button(mask, target) -%}
+<button type="button" class="btn btn-row btn-row-danger"
+        title="Withdraw this mask" aria-label="Withdraw this mask"
+        hx-post="{{ url_for('admin_dashboard.htmx_group_mask_withdraw', mask_id=mask.mask_id) }}"
+        hx-target="{{ target }}" hx-swap="innerHTML"
+        hx-confirm="Withdraw the {{ mask.op }} of {{ mask.username }}?{% if mask.kind == 'adhoc' %} SAM's entry rows go back to what upstream says.{% endif %}">
+    <i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Withdraw
+</button>
+{%- endmacro %}
+
+{% macro mask_flags(r) -%}
+{%- if r.unconfirmable and r.open %} <span class="badge bg-secondary" title="This login has no upid, so the directory can never confirm it; it closes by withdrawal or expiry.">no upid</span>{% endif -%}
+{%- if r.ticket and r.ticket.closed_at and r.open %} <span class="badge bg-warning text-dark" title="NUSD closed the ticket but the directory still disagrees; withdraw or follow up.">ticket closed</span>{% endif -%}
+{%- endmacro %}
+
+{% macro ticket_link(t) -%}
+{%- if t -%}
+{%- if t.url %}<a href="{{ t.url }}" target="_blank" rel="noopener" class="font-monospace">{{ t.key }}</a>{% else %}<span class="font-monospace">{{ t.key }}</span>{% endif -%}
+{%- if t.status %} <span class="text-muted small">{{ t.status }}</span>{% endif -%}
+{%- else %}<span class="text-muted">—</span>{% endif -%}
+{%- endmacro %}
+
+{# The slot refills itself on reloadGroupMasks, so a card inside a modal needs no listener. #}
+{% macro pending_list(gid) -%}
+<div hx-get="{{ url_for('admin_dashboard.htmx_group_masks_pending', gid=gid) }}"
+     hx-trigger="load, reloadGroupMasks from:body" hx-swap="innerHTML">
+    <span class="text-muted small"><i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i> Loading pending changes…</span>
+</div>
+{%- endmacro %}

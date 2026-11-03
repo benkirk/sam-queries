@@ -1,0 +1,59 @@
+{% extends 'dashboards/admin/base_admin_users.html' %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_fields %}
+{% from 'dashboards/fragments/search_box.html' import filter_search %}
+{#
+  Admin -> Users & Groups -> Group masks: every operator add/remove over a mirrored
+  unix group (docs/plans/UNIX_GROUP_MASK.md). The chips, sort headers and pagination
+  write into this one form. Context: filters, active_only, form_id, target_id, fragment_url.
+#}
+
+{% block title %}Admin: Group masks - SAM{% endblock %}
+
+{% block users_content %}
+<div class="card inner-card mb-3">
+    <div class="card-header mb-3">
+        <h5><i class="fa-solid fa-user-pen"></i> Group masks</h5>
+        <span class="text-muted small">
+            A mask adds or removes one member of a unix group SAM does not own, at once and
+            through the next sync. An adhoc group's change is written to SAM's entries and
+            handed to NUSD as a ticket; a project group's change lasts until its expiry.
+        </span>
+    </div>
+    <div class="card-body">
+        <form id="{{ form_id }}"
+              hx-get="{{ fragment_url }}"
+              hx-target="#{{ target_id }}"
+              hx-swap="innerHTML"
+              hx-trigger="submit, change"
+              class="d-flex flex-wrap align-items-center gap-3">
+            <div>
+                {{ filter_search('groupMasksSearch', 'q', fragment_url, target_id,
+                                 'Group or user', value=filters.search,
+                                 placeholder='Group or user') }}
+            </div>
+            <div>
+                <div class="form-check form-switch mb-0">
+                    <input type="checkbox" class="form-check-input"
+                           id="groupMasksActiveOnly" name="active_only" value="1"
+                           {% if active_only %}checked{% endif %}>
+                    <label class="form-check-label small text-muted fw-normal"
+                           for="groupMasksActiveOnly">Open masks only</label>
+                </div>
+            </div>
+            {{ facet_fields(['kind', 'state'], single=['kind'], sort=filters,
+                            selected={'kind': [filters.kind] if filters.kind else [],
+                                      'state': filters.state}) }}
+        </form>
+    </div>
+</div>
+
+<div id="{{ target_id }}"
+     hx-get="{{ fragment_url }}"
+     hx-include="#{{ form_id }}"
+     hx-trigger="load, reloadGroupMasks from:body"
+     hx-swap="innerHTML">
+    <div class="text-muted small p-3">
+        <i class="fa-solid fa-circle-notch fa-spin"></i> Loading…
+    </div>
+</div>
+{% endblock %}

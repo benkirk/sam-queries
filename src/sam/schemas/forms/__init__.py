@@ -262,6 +262,11 @@ from .operational import (
     AdminCreateWallclockExemptionForm,
     EditWallclockExemptionForm,
 )
+from .groups import (
+    OpenGroupMaskForm,
+    EditGroupMaskForm,
+    WithdrawGroupMaskForm,
+)
 # XRAS pending-activation worklist — operator form posts, a normal HtmxFormSchema.
 # Its own module precisely so it is not confused with the block below.
 from .xras_activation import (
@@ -402,6 +407,8 @@ __all__ = [
     'CreateWallclockExemptionForm',
     'AdminCreateWallclockExemptionForm',
     'EditWallclockExemptionForm',
+    # Group masks
+    'OpenGroupMaskForm', 'EditGroupMaskForm', 'WithdrawGroupMaskForm',
     # XRAS action ingest
     'XrasActivationEventForm',
     'XrasDismissForm',
