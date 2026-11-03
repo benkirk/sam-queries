@@ -24,13 +24,14 @@
 
 {# Sortable header row (sortable_table.js): Name sorts by "last, first",
    the left-hand handle by displayed first name. #}
-{% macro user_table_head() %}
+{% macro user_table_head(actions=false) %}
     <tr>
         <th class="sortable-header" data-sort="text" title="Sort by last name"><span
             class="sort-handle" data-sort-attr="sort-first"
             title="Sort by first name"></span>Name</th>
         <th class="sortable-header" data-sort="text">Username</th>
         <th class="sortable-header" data-sort="text">Email</th>
+        {% if actions %}<th class="text-end"><span class="visually-hidden">Actions</span></th>{% endif %}
     </tr>
 {% endmacro %}
 
@@ -65,7 +66,10 @@ hx-target="#userDetailsModalBody" hx-swap="innerHTML"
 {%- else -%}<span class="text-muted">—</span>{%- endif -%}
 {%- endmacro %}
 
-{% macro render_user_rows(users, can_view_users=false) %}
+{# remove_gid: an adhoc group's gid adds a per-row Remove that opens the group-mask form
+   pinned to that member (admin pages only: the shells live there); locked_usernames
+   (the group's primary-gid members) get a lock instead, since a remove is refused. #}
+{% macro render_user_rows(users, can_view_users=false, remove_gid=None, locked_usernames=()) %}
     {% for u in users %}
     {% set email = (u.primary_email if u.primary_email is defined else u.email) %}
     <tr{% if u.is_active is defined and not u.is_active %} class="text-muted"{% endif %}>
@@ -97,6 +101,21 @@ hx-target="#userDetailsModalBody" hx-swap="innerHTML"
             <span class="text-muted">N/A</span>
             {% endif %}
         </td>
+    {% if remove_gid %}
+        <td class="text-end text-nowrap">
+            {% if u.username in locked_usernames %}
+            <span class="text-muted small" title="Primary group; change that first"><i class="fa-solid fa-lock" aria-hidden="true"></i></span>
+            {% else %}
+            <button type="button" class="btn btn-row btn-row-danger" title="Remove {{ u.username }} from the group"
+                    aria-label="Remove {{ u.username }} from the group"
+                    data-bs-toggle="modal" data-bs-target="#groupMaskModal"
+                    hx-get="{{ url_for('admin_dashboard.htmx_group_mask_form', gid=remove_gid, op='remove', username=u.username) }}"
+                    hx-target="#groupMaskFormContainer" hx-trigger="click">
+                <i class="fa-solid fa-user-minus" aria-hidden="true"></i>
+            </button>
+            {% endif %}
+        </td>
+        {% endif %}
     </tr>
     {% endfor %}
 {% endmacro %}

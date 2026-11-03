@@ -8,8 +8,9 @@
   pinned_username, pinned_op, today, default_expiry, max_expiry, errors, form.
 #}
 {% set _title = ('Grant access to ' ~ target.name) if target and target.kind == 'project'
+                else ((('Add ' if pinned_op == 'add' else 'Remove ') ~ pinned_username ~ (' to ' if pinned_op == 'add' else ' from ') ~ target.name) if target and pinned_op and pinned_username
                 else ((('Add members to ' if pinned_op == 'add' else 'Remove members from ') ~ target.name) if target and pinned_op
-                else ('Change ' ~ target.name if target else 'New group mask')) %}
+                else ('Change ' ~ target.name if target else 'New group mask'))) %}
 {{ modal_title('groupMaskModalLabel', _title, 'user-pen') }}
 
 {% call htmx_form(url_for('admin_dashboard.htmx_group_mask_create'), '#groupMaskFormContainer',
