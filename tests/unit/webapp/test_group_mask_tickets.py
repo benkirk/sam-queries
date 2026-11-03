@@ -183,25 +183,22 @@ def test_a_batch_files_one_ticket_on_the_head(app, ctx, mailer, provider):
     assert found[head.mask_id]['key'] == found[member.mask_id]['key'] == f'{provider.prefix}-1'
 
 
-def test_withdraw_on_a_shared_ticket_counts_the_rest(app, ctx, mailer, provider, committed_rows):
+def test_withdraw_on_a_shared_ticket_counts_the_rest(app, ctx, mailer, provider):
     from webapp.dashboards.admin.group_mask_tickets import comment_withdrawn, send_mask_ticket
     from webapp.extensions import db
     other = make_user(db.session)
     (head, member), group = ctx(others=[other.username])
     send_mask_ticket([head, member], group_name=group.group_name, branches=['hpc'], requested_by='oper')
-    # The sibling count and the link both read committed rows: ctx deletes the masks, and the
-    # group and user it also committed would otherwise collide with a later worker's sequence.
-    db.session.commit()
-    committed_rows(group), committed_rows(other)
+    # Nothing here commits: the link lives on its own session (hence `fresh`), the siblings on the
+    # mask's. A committed open mask would be swept by every other worker's sweep test.
     with Session(db.engine) as fresh:
         assert comment_withdrawn(member, by='benkirk', session=fresh) is True
         key, text, _ = provider.comments[-1]
         assert key == f'{provider.prefix}-1'
         assert f"the add of '{other.username}'" in text
         assert 'The other 1 member(s) on this ticket still stand.' in text
-        fresh.get(UnixGroupMask, head.mask_id).close(resolution='withdrawn', by='benkirk')
-        fresh.commit()
-        assert comment_withdrawn(fresh.get(UnixGroupMask, member.mask_id), by='benkirk', session=fresh)
+        head.close(resolution='withdrawn', by='benkirk')
+        assert comment_withdrawn(member, by='benkirk', session=fresh) is True
     assert 'Nothing more is needed upstream.' in provider.comments[-1][1]
 
 

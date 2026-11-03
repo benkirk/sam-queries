@@ -107,9 +107,9 @@ def comment_withdrawn(mask: UnixGroupMask, *, by: str, session=None) -> bool:
     provider = ticket_provider()
     if provider is None:
         return False
-    session = session or db.session
-    rows = tickets_for(session, MASK_ENTITY, [mask.head_id]).get(mask.head_id, [])
-    others = batch_siblings_open(session, mask) if rows else 0
+    rows = tickets_for(session or db.session, MASK_ENTITY, [mask.head_id]).get(mask.head_id, [])
+    # The siblings live where the mask does; `session` is for the link, which committed on its own.
+    others = batch_siblings_open(mask.session, mask) if rows else 0
     rest = (f'The other {others} member(s) on this ticket still stand.' if others
             else 'Nothing more is needed upstream.')
     posted = False
