@@ -116,6 +116,13 @@ class TestForm:
         assert f'value="{CSG_GID}"' in html and f'csg (gid {CSG_GID}, adhoc)' in html, 'the chip survives'
         assert 'no-such-user-xyz\nnot a name' in html, 'the box keeps the operator\'s lines'
 
+    def test_past_the_cap_no_name_is_checked(self, auth_client):
+        from sam.manage.groups import MASK_BATCH_MAX
+        names = '\n'.join(f'no-such-user-{i}' for i in range(MASK_BATCH_MAX + 1))
+        html = auth_client.post(CREATE, data={'unix_gid': CSG_GID, 'op': 'add',
+                                              'usernames': names}).get_data(as_text=True)
+        assert f'At most {MASK_BATCH_MAX} members' in html and 'No user named' not in html
+
     def test_nothing_picked_is_refused(self, auth_client):
         html = auth_client.post(CREATE, data={'op': 'add', 'usernames': 'benkirk'}).get_data(as_text=True)
         assert 'Pick a group or a project' in html

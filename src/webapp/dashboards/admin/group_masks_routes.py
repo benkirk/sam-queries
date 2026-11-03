@@ -14,8 +14,8 @@ from marshmallow import ValidationError
 
 from sam.core.groups import PROJECT_MASK_MAX_DAYS, AdhocGroup, UnixGroupMask
 from sam.dates import end_of_day
-from sam.manage.groups import (MaskError, check_mask, close_mask, open_masks, parse_usernames,
-                               resolve_target)
+from sam.manage.groups import (MASK_BATCH_MAX, MaskError, check_mask, close_mask, open_masks,
+                               parse_usernames, resolve_target)
 from sam.queries.group_masks import (MASK_FLAGS, MASK_SORTS, MASK_STATES, filter_mask_views,
                                      mask_views, search_mask_targets, sort_mask_views)
 from sam.schemas.forms import EditGroupMaskForm, OpenGroupMaskForm, WithdrawGroupMaskForm
@@ -175,7 +175,7 @@ class _OpenMaskHandler(HtmxFormHandler):
         expires_at = end_of_day(datetime.combine(expires, datetime.min.time())) if expires else None
         if target is not None and target.kind == 'project' and expires_at is None:
             errors['expires_at'] = [f'A project grant needs an end date, at most {PROJECT_MASK_MAX_DAYS} days out.']
-        if target is not None:
+        if target is not None and len(names) <= MASK_BATCH_MAX:     # past the cap, refuse unchecked
             for name in names:
                 try:
                     check_mask(db.session, gid=gid, username=name, op=data['op'], **self._guard_flags())
