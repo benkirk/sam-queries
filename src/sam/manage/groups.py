@@ -111,9 +111,16 @@ def open_mask(session, *, gid: int, username: str, op: str, requested_by: str,
               may_touch_protected: bool = False, batch_id: Optional[int] = None) -> UnixGroupMask:
     """Open one mask after the guards; an adhoc mask is materialized at once. Raises ``MaskError``."""
     now = now or datetime.now()
-    target, user, standing = check_mask(session, gid=gid, username=username, op=op, now=now,
-                                        protected_groups=protected_groups,
-                                        may_touch_protected=may_touch_protected)
+    checked = check_mask(session, gid=gid, username=username, op=op, now=now,
+                         protected_groups=protected_groups, may_touch_protected=may_touch_protected)
+    return _open_checked(session, *checked, gid=gid, op=op, requested_by=requested_by, note=note,
+                         expires_at=expires_at, now=now, batch_id=batch_id)
+
+
+def _open_checked(session, target: MaskTarget, user: User, standing: Optional[UnixGroupMask], *,
+                  gid: int, op: str, requested_by: str, note, expires_at: Optional[datetime],
+                  now: datetime, batch_id: Optional[int] = None) -> UnixGroupMask:
+    """The write behind ``check_mask``'s verdict: expire the overdue row, open, materialize."""
     if standing is not None:
         # Overdue and not yet swept by the watcher: it ends here, as the watcher would end it.
         close_mask(session, standing, resolution='expired', by=requested_by, now=now)
@@ -134,23 +141,23 @@ def open_masks(session, *, gid: int, usernames: Sequence[str], op: str, requeste
                note=None, expires_at: Optional[datetime] = None, now: Optional[datetime] = None,
                protected_groups: FrozenSet[str] = frozenset(),
                may_touch_protected: bool = False) -> List[UnixGroupMask]:
-    """One batch, head first, every row stamped with the head's id; every guard runs before
-    anything is written, so a refusal names the member and leaves nothing behind."""
+    """One batch, head first, every row stamped with the head's id; every guard runs once,
+    before anything is written, so a refusal names the member and leaves nothing behind."""
     if not usernames:
         raise MaskError('Name at least one member.')
     if len(usernames) > MASK_BATCH_MAX:
         raise MaskError(f'At most {MASK_BATCH_MAX} members at once.')
     now = now or datetime.now()
-    for name in usernames:
-        check_mask(session, gid=gid, username=name, op=op, now=now,
-                   protected_groups=protected_groups, may_touch_protected=may_touch_protected)
+    checked = [check_mask(session, gid=gid, username=name, op=op, now=now,
+                          protected_groups=protected_groups, may_touch_protected=may_touch_protected)
+               for name in usernames]
+    if len({user.username for _, user, _ in checked}) < len(checked):
+        raise MaskError('A member is named twice.')
     masks: List[UnixGroupMask] = []
-    for name in usernames:
-        masks.append(open_mask(session, gid=gid, username=name, op=op, requested_by=requested_by,
-                               note=note, expires_at=expires_at, now=now,
-                               protected_groups=protected_groups,
-                               may_touch_protected=may_touch_protected,
-                               batch_id=masks[0].mask_id if masks else None))
+    for verdict in checked:
+        masks.append(_open_checked(session, *verdict, gid=gid, op=op, requested_by=requested_by,
+                                   note=note, expires_at=expires_at, now=now,
+                                   batch_id=masks[0].mask_id if masks else None))
     return masks
 
 
