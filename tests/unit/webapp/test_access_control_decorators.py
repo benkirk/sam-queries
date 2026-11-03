@@ -37,7 +37,9 @@ def mini_app():
     app = Flask(__name__)
     app.config['TESTING'] = True
     app.config['SECRET_KEY'] = 'test'
-    LoginManager(app)
+    # A loader, or resolving Flask-Login's proxy raises "Missing user_loader": on Python 3.15
+    # `mock.patch` inspects the object it replaces, which resolves the proxy (3.13 does not).
+    LoginManager(app).user_loader(lambda _user_id: None)
     return app
 
 
