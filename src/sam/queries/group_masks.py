@@ -87,14 +87,22 @@ _SQL_PROJECT_ACCOUNT_BRANCHES = text("""
 """).bindparams(bindparam('ids', expanding=True))
 
 
-def project_masks(session, *, now: datetime) -> List[ProjectMask]:
-    """Every open project mask at ``now``, resolved; a gid no project holds is skipped."""
-    rows = _open_at(session.query(UnixGroupMask), now).filter(UnixGroupMask.kind == 'project').all()
-    if not rows:
-        return []
+def project_mask_feed(session, *, now: datetime) -> Tuple[List[ProjectMask], Dict[int, datetime]]:
+    """One read of every project mask: the open ones resolved, and ``{gid: latest open or
+    close stamp}`` over all of them (the sync's incremental ``since`` must see a grant
+    appear and vanish). A gid no project holds is skipped."""
+    rows = session.query(UnixGroupMask).filter(UnixGroupMask.kind == 'project').all()
+    times: Dict[int, datetime] = {}
+    for r in rows:
+        stamp = max(t for t in (r.creation_time, r.closed_at) if t)
+        if r.unix_gid not in times or times[r.unix_gid] < stamp:
+            times[r.unix_gid] = stamp
+    open_rows = [r for r in rows if r.is_open_at(now)]
+    if not open_rows:
+        return [], times
     projects = {p.unix_gid: p for p in session.query(Project)
-                .filter(Project.unix_gid.in_(sorted({r.unix_gid for r in rows})))}
-    names = sorted({r.username.lower() for r in rows})
+                .filter(Project.unix_gid.in_(sorted({r.unix_gid for r in open_rows})))}
+    names = sorted({r.username.lower() for r in open_rows})
     users = {u.username.lower(): u for u in session.query(User)
              .filter(func.lower(User.username).in_(names))}
     branches = defaultdict(set)
@@ -103,7 +111,7 @@ def project_masks(session, *, now: datetime) -> List[ProjectMask]:
         for r in session.execute(_SQL_PROJECT_ACCOUNT_BRANCHES, {'ids': ids}):
             branches[r.project_id].add(r.branch)
     out = []
-    for r in rows:
+    for r in open_rows:
         project = projects.get(r.unix_gid)
         if project is None:
             continue
@@ -115,17 +123,16 @@ def project_masks(session, *, now: datetime) -> List[ProjectMask]:
             is_role=bool(user is not None and user.login_type is not None
                          and user.login_type.type == 'role_login'),
             op=r.op, branches=frozenset(branches.get(project.project_id, ()))))
-    return out
+    return out, times
+
+
+def project_masks(session, *, now: datetime) -> List[ProjectMask]:
+    """Every open project mask at ``now``, resolved."""
+    return project_mask_feed(session, now=now)[0]
 
 
 def project_mask_times(session) -> Dict[int, datetime]:
-    """``{gid: latest open or close stamp}`` over every project mask: the sync's
-    incremental ``since`` must see a grant appear and vanish."""
-    rows = session.query(UnixGroupMask.unix_gid,
-                         func.max(UnixGroupMask.creation_time),
-                         func.max(UnixGroupMask.closed_at)) \
-        .filter(UnixGroupMask.kind == 'project').group_by(UnixGroupMask.unix_gid)
-    return {gid: max(t for t in (created, closed) if t) for gid, created, closed in rows}
+    return project_mask_feed(session, now=datetime.now())[1]
 
 
 # --- the masks tab ---------------------------------------------------------------

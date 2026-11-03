@@ -449,3 +449,105 @@ class TestBuildDirectoryAccessResponse:
 
     def test_empty_inputs_return_empty_directories(self):
         assert build_directory_access_response({}, {}) == {'accessBranchDirectories': []}
+
+
+class TestProjectMasks:
+    """A project mask (docs/plans/UNIX_GROUP_MASK.md section 3): the grant appears only where
+    the member holds an account, the project's allocation end and active flag do not matter,
+    a remove subtracts, and expiry ends it."""
+
+    @pytest.fixture
+    def branch(self, session):
+        """``(branch_name, project, resource)``: an isolated branch whose one project expired 200 days ago."""
+        from sam.security.access import AccessBranch as AB
+        resource = make_resource(session)
+        branch_name = resource.resource_name
+        access_branch = AB(name=branch_name)
+        session.add(access_branch)
+        session.flush()
+        session.add(AccessBranchResource(access_branch_id=access_branch.access_branch_id,
+                                         resource_id=resource.resource_id))
+        session.flush()
+        project = make_project(session)
+        project.unix_gid = 97_000_000 + hash(branch_name) % 1_000_000
+        account = make_account(session, project=project, resource=resource)
+        make_allocation(session, account=account, start_date=datetime.now() - timedelta(days=400),
+                        end_date=datetime.now() - timedelta(days=200))
+        session.flush()
+        return branch_name, project, resource
+
+    def _mask(self, session, project, username, op='add', days=7):
+        from factories import make_unix_group_mask
+        return make_unix_group_mask(session, unix_gid=project.unix_gid, kind='project', username=username,
+                                    op=op, expires_at=datetime.now() + timedelta(days=days))
+
+    def _live_member(self, session, branch_name, resource):
+        """A user with an account on the branch through another, live project."""
+        other = make_project(session)
+        account = make_account(session, project=other, resource=resource)
+        make_allocation(session, account=account)
+        session.query(AccountUser).filter_by(account_id=account.account_id).update(
+            {'start_date': datetime.now() - timedelta(days=1)})
+        session.flush()
+        return other.lead.username
+
+    def test_an_expired_project_is_gone_without_a_mask(self, session, branch):
+        branch_name, project, _ = branch
+        groups = group_populator(session, access_branch=branch_name).get(branch_name, {}).get('groups', {})
+        assert project.projcode.lower() not in groups
+
+    def test_a_grant_appears_where_the_member_holds_an_account(self, session, branch):
+        branch_name, project, resource = branch
+        member = self._live_member(session, branch_name, resource)
+        self._mask(session, project, member)
+        groups = group_populator(session, access_branch=branch_name)[branch_name]['groups']
+        assert groups[project.projcode.lower()] == {'gid': project.unix_gid, 'usernames': {member}}
+        scoped = group_populator(session, access_branch=branch_name, username=member)[branch_name]
+        assert member in scoped['groups'][project.projcode.lower()]['usernames']
+
+    def test_a_grant_to_someone_without_an_account_is_invisible(self, session, branch):
+        branch_name, project, _ = branch
+        self._mask(session, project, make_user(session).username)
+        groups = group_populator(session, access_branch=branch_name).get(branch_name, {}).get('groups', {})
+        assert project.projcode.lower() not in groups
+
+    def test_an_inactive_project_still_takes_a_grant(self, session, branch):
+        branch_name, project, resource = branch
+        project.active = False
+        session.flush()
+        member = self._live_member(session, branch_name, resource)
+        self._mask(session, project, member)
+        groups = group_populator(session, access_branch=branch_name)[branch_name]['groups']
+        assert member in groups[project.projcode.lower()]['usernames']
+
+    def test_a_remove_subtracts_a_live_member(self, session, branch):
+        branch_name, project, resource = branch
+        make_allocation(session, account=project.accounts[0])      # live again
+        session.query(AccountUser).filter(AccountUser.account_id == project.accounts[0].account_id).update(
+            {'start_date': datetime.now() - timedelta(days=1)})
+        session.flush()
+        lead = project.lead.username
+        before = group_populator(session, access_branch=branch_name)[branch_name]['groups']
+        assert lead in before[project.projcode.lower()]['usernames']
+        self._mask(session, project, lead, op='remove')
+        after = group_populator(session, access_branch=branch_name)[branch_name]['groups']
+        assert lead not in after[project.projcode.lower()]['usernames']
+        assert lead in after[DEFAULT_COMMON_GROUP]['usernames'], 'the account itself stays'
+
+    def test_the_scope_is_the_parameter_not_the_last_member_row(self, session, branch):
+        """The member loop rebinds ``username``; the unscoped read must still honor every mask."""
+        branch_name, project, resource = branch
+        first = self._live_member(session, branch_name, resource)
+        self._live_member(session, branch_name, resource)          # a later row than `first`
+        self._mask(session, project, first)
+        groups = group_populator(session, access_branch=branch_name)[branch_name]['groups']
+        assert first in groups[project.projcode.lower()]['usernames']
+
+    def test_an_expired_grant_is_gone(self, session, branch):
+        branch_name, project, resource = branch
+        member = self._live_member(session, branch_name, resource)
+        mask = self._mask(session, project, member)
+        mask.expires_at = datetime.now() - timedelta(seconds=1)
+        session.flush()
+        groups = group_populator(session, access_branch=branch_name).get(branch_name, {}).get('groups', {})
+        assert project.projcode.lower() not in groups

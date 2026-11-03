@@ -33,3 +33,8 @@
    the include across base_admin / base_user / base_allocations / base_status
    and the one-off pages, and silently breaking whichever gets forgotten. #}
 {% include 'dashboards/shared/contract_details_modal.html' %}
+
+{# And the group-mask shells: the admin project card's Grant access targets them, and that
+   card opens inside this modal on any page carrying it. The masks tab and the adhoc group
+   card (admin pages, which include this modal) use the same shells. #}
+{% include 'dashboards/admin/fragments/group_mask_modals.html' %}

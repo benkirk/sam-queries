@@ -400,8 +400,12 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/jobs/jobs_histogram.html': [
         'projectDetailsModal', 'projectDetailsModalBody',
         'userDetailsModal', 'userDetailsModalBody'],
+    # groupMaskFormContainer: the admin card's Grant access (admin_origin only, so admin
+    # pages), opened with the show-detail-modal action because the card also sits inside
+    # #projectDetailsModal; the scan sees the hx-target, not the action's modal id.
     'dashboards/user/partials/project_card.html': [
-        'contractDetailsModalBody', 'editAllocationFormContainer', 'editAllocationModal'],
+        'contractDetailsModalBody', 'editAllocationFormContainer', 'editAllocationModal',
+        'groupMaskFormContainer'],
     'dashboards/user/partials/user_card.html': [
         'addExemptionFormContainer', 'addExemptionModal',
         'editExemptionFormContainer', 'editExemptionModal', 'groupMembersModal',
