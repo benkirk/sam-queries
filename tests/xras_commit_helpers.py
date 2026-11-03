@@ -24,6 +24,10 @@ def tracking_factory(engine, *models):
                         created[m].append(getattr(o, pks[m].key))
         return session
 
+    # The ids this factory's sessions wrote, per model: a test that reads them back must
+    # select by these, since every test in a file shares one request number and the
+    # service commits for real, so another xdist worker's rows interleave by id.
+    make.created = created
     try:
         yield make
     finally:
