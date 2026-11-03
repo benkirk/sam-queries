@@ -192,6 +192,7 @@ class _OpenMaskHandler(HtmxFormHandler):
                 'expires_at': expires_at}
 
     def perform(self, data):
+        self.success_message = 'Masks opened.' if len(data['usernames']) > 1 else 'Mask opened.'
         self.group_name = self.target.name
         self.branches = self.target.group.branch_names(db.session) if self.target.group else []
         return open_masks(db.session, requested_by=acting_username(), **self._guard_flags(), **data)
