@@ -78,6 +78,17 @@ class TestPages:
         assert 'Add member' in html and 'Remove member' in html
         assert 'Pending changes' in html and 'group-masks/pending?gid=1564' in html
 
+    def test_every_member_row_has_a_remove_pinned_to_it(self, auth_client):
+        html = auth_client.get('/admin/group/csg').get_data(as_text=True)
+        assert f'group-mask-form?gid={CSG_GID}&amp;op=remove&amp;username=' in html
+        assert html.count('Remove ') > 2, 'one per member row, beside the header button'
+        assert '<span class="visually-hidden">Actions</span>' in html
+
+    def test_the_pinned_member_form_names_them(self, auth_client):
+        html = auth_client.get(FORM, query_string={'gid': CSG_GID, 'op': 'remove', 'username': 'benkirk'}).get_data(as_text=True)
+        assert 'Remove benkirk from csg' in html
+        assert 'name="username" value="benkirk"' in html and 'groupMaskMembers' not in html
+
 
 class TestForm:
     def test_unpinned_form_offers_one_picker_and_a_members_box(self, auth_client):

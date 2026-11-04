@@ -127,6 +127,17 @@ class TestOpenProject:
         assert project_masks(session, now=T0 + timedelta(days=8)) == [
             m for m in project_masks(session, now=T0 + timedelta(days=8)) if m.mask_id != mask.mask_id]
 
+    def test_the_lead_and_admin_cannot_be_removed(self, session):
+        project, other = _project(session), make_user(session)
+        project.project_admin_user_id = other.user_id
+        session.flush()
+        for user in (project.lead, other):
+            with pytest.raises(MaskError, match='leads or administers'):
+                open_mask(session, gid=project.unix_gid, username=user.username, op='remove',
+                          requested_by='op', expires_at=T0 + timedelta(days=1), now=T0)
+        open_mask(session, gid=project.unix_gid, username=other.username, op='add',
+                  requested_by='op', expires_at=T0 + timedelta(days=1), now=T0)
+
     def test_an_inactive_project_still_takes_a_mask(self, session):
         project, user = _project(session), make_user(session)
         project.active = False

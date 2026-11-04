@@ -58,9 +58,12 @@ exists() { psql -d postgres -Atc "SELECT 1 FROM pg_database WHERE datname = '$1'
 info "seeding $TARGET_DB from $SOURCE_DB on $PGHOST as $PGUSER (task_run data excluded)"
 
 # --clean --if-exists makes the reseed idempotent; a first seed into an empty
-# database simply has nothing to drop.
+# database simply has nothing to drop. --single-transaction keeps the dev collectors
+# out: without it they insert into a half-restored table whose sequence still starts
+# at 1 (pg_restore sets sequences last), and the primary key then fails on a
+# duplicated id (2026-11-03). Their writes wait on the lock and land after the commit.
 if ! pg_dump -Fc --exclude-table-data=task_run "$SOURCE_DB" \
-     | pg_restore -d "$TARGET_DB" --clean --if-exists --no-owner --no-privileges --exit-on-error; then
+     | pg_restore -d "$TARGET_DB" --clean --if-exists --no-owner --no-privileges --single-transaction; then
     echo -e "  ${RED}✘${NC} dump/restore failed; $TARGET_DB may be partially restored" >&2
     exit 2
 fi

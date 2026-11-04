@@ -28,6 +28,7 @@ from cli.contracts.commands import ContractsAuditCommand
 from cli.last_seen.commands import LastSeenCommand
 from cli.security.commands import RbacCommand
 from cli.directory.commands import DirectoryReportCommand
+from cli.group_masks.commands import MasksCommand
 from cli.tasks.commands import TasksCommand
 from cli.xras.commands import XrasCommand
 from sam.queries.xras_actions import XRAS_ACTION_STATUSES
@@ -872,6 +873,55 @@ def directory():
 def directory_report(ctx: Context, kind, limit, verbose):
     """Compare every directory record with SAM: counts by kind and category, sample keys."""
     sys.exit(DirectoryReportCommand(ctx).execute(kind=kind, limit=limit))
+
+
+@cli.group()
+def masks():
+    """Unix group masks: an operator's add/remove over a mirrored group (docs/plans/UNIX_GROUP_MASK.md)."""
+
+
+@masks.command('list')
+@click.option('--all', 'everything', is_flag=True, help='Closed masks too (default: open only)')
+@click.option('--kind', type=click.Choice(['adhoc', 'project']), help='One kind of group')
+@click.option('--state', 'states', multiple=True,
+              type=click.Choice(['pending', 'confirmed', 'expired', 'withdrawn']))
+@click.option('--flag', 'flags', multiple=True,
+              type=click.Choice(['ticket closed', 'no upid', 'no ticket']))
+@click.option('-q', '--search', 'q', metavar='TEXT', help='Group or member substring')
+@verbose_option()
+@pass_context
+def masks_list(ctx: Context, everything, kind, states, flags, q, verbose):
+    """Every mask, newest first, with its state, flags and NUSD ticket."""
+    sys.exit(MasksCommand(ctx).list(open_only=not everything, kind=kind, states=states, flags=flags, q=q))
+
+
+@masks.command('open')
+@click.argument('target', metavar='GROUP|PROJCODE|GID')
+@click.argument('usernames', nargs=-1, required=True, metavar='USERNAME...')
+@click.option('--remove', is_flag=True, help='Remove the members instead of adding them')
+@click.option('--until', metavar='DAYS|DATE',
+              help='Expiry as 7d/2w or YYYY-MM-DD; a project grant defaults to 7 days (90 at most)')
+@click.option('--note', metavar='TEXT', help='Why, and the ticket that asked for it')
+@click.option('--allow-protected', is_flag=True,
+              help='Touch a group that grants a SAMuel role (the webapp needs MANAGE_ROLES)')
+@click.option('--dry-run', is_flag=True, help='Run every guard, write nothing')
+@verbose_option()
+@pass_context
+def masks_open(ctx: Context, target, usernames, remove, until, note, allow_protected, dry_run, verbose):
+    """Open one batch of masks (one ticket for an adhoc group); JSON only with --dry-run."""
+    sys.exit(MasksCommand(ctx).open(target=target, usernames=usernames,
+                                    op='remove' if remove else 'add', until=until, note=note,
+                                    allow_protected=allow_protected, dry_run=dry_run))
+
+
+@masks.command('withdraw')
+@click.argument('mask_id', type=int)
+@click.option('--dry-run', is_flag=True, help='Show what would close, write nothing')
+@verbose_option()
+@pass_context
+def masks_withdraw(ctx: Context, mask_id, dry_run, verbose):
+    """Withdraw an open mask (an adhoc one takes its entry rows back); JSON only with --dry-run."""
+    sys.exit(MasksCommand(ctx).withdraw(mask_id=mask_id, dry_run=dry_run))
 
 
 @cli.command()

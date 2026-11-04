@@ -56,6 +56,7 @@ sam-search --format json project SCSG0001 | jq          # JSON envelopes everywh
 sam-admin user benkirk --validate ; sam-admin user <u> --deactivation | --restore-deactivation [--dry-run]   # the identity sync's closure undo
 sam-admin user <u> --directory-apply [--dry-run]        # the operator's Sync (person-side kinds, levers gate only the hook); JSON refused for the live write
 sam-admin directory report [--kind K] [--limit N]       # the directory sweep: counts by kind and category (a verb group, see below)
+sam-admin masks list [--all] | open GROUP|PROJCODE|GID USER... [--remove --until 7d --note T --allow-protected --dry-run] | withdraw ID   # unix group masks (verb group)
 sam-admin project SCSG0001 --validate ; sam-admin project SCSG0001 --reconcile   # reconcile = everyone on every resource
 sam-admin project --reconcile-lead-admin --all --dry-run   # bulk, active resources only; drop --dry-run to write
 sam-admin accounting --disk --dry-run                   # summary rebuild/reconcile ops
