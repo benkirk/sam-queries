@@ -1,8 +1,9 @@
-{#- One allocation type as a card (sam/xras/allocation_overview.py TypeCard), in three
-    variants: `full` (the /request overview), `pick` (the New dialog's type stage), `admin`
-    (Allocations > XRAS > Configuration). Styles: static/css/request-types.css.
-    `start_url` is the full card's Start link; the caller wraps the cards in .type-card-list.
-    `admin` is a dict: `audience_labels`, `outage`; import this file with context there. -#}
+{#- One allocation type (sam/xras/allocation_overview.py TypeCard), in three variants: `row`
+    (the /request overview's accordion row, its card inside), `pick` (the New dialog's type stage),
+    `admin` (Allocations > XRAS > Configuration); and `type_compare_table`, the dialog's summary.
+    Styles: static/css/request-types.css. `start_url` is the row card's Start link; the caller
+    wraps rows in .type-index, admin cards in .type-card-list. `admin` is a dict: `audience_labels`,
+    `outage`; import this file with context there. -#}
 {% from 'dashboards/fragments/table_bits.html' import state_tag %}
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
 
@@ -41,6 +42,68 @@
 <p class="type-card-notes mb-2"><i class="fa-solid fa-key me-1" aria-hidden="true"></i>Access to
     {{ card.access | map(attribute='name') | join(', ') }}{% if card.amounts %}, without an amount to choose{% endif %}.</p>
 {% endif %}
+{%- endmacro %}
+
+{#- The comparison columns, with their fallbacks (TypeCard.who, .requires). Each cell carries its
+    column name, hidden on a wide screen and shown where the row stacks. -#}
+{% macro _overview_cells(card, cell='span') %}
+{%- for label, value in [("What it's for", card.purpose), ('Who can apply', card.who), ('What you need', card.requires)] %}
+<{{ cell }} class="type-row-cell{{ ' is-empty' if not value }}"><span class="type-row-label">{{ label }}</span>
+{%- if value %}{{ value }}{% else %}<span class="text-muted" title="Not stated">—</span>{% endif %}</{{ cell }}>
+{%- endfor %}
+{%- endmacro %}
+
+{#- The New dialog's summary of the types: one row each, an open type's name selects its radio. -#}
+{% macro type_compare_table(cards) %}
+<div class="table-responsive type-compare-table">
+    <table class="table table-sm align-middle mb-0" aria-label="Allocation types compared">
+        <thead class="table-subtle">
+            <tr><th class="col-shrink">Type</th><th>What it's for</th><th>Who can apply</th><th>What you need</th></tr>
+        </thead>
+        <tbody>
+        {% for card in cards %}
+            <tr>
+                <td class="col-shrink fw-bold">{% if card.is_open %}<label class="type-compare-name" for="pick-{{ card.anchor }}">{{ card.title }}</label>{% else %}<span class="text-muted">{{ card.title }}</span>{% endif %}</td>
+                {{ _overview_cells(card, cell='td') }}
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{%- endmacro %}
+
+{#- The card's body under its head: summary, facts, amounts, notes, Start or why not. -#}
+{% macro _card_body(card, start_url) %}
+    {% if card.summary %}<p class="mb-2">{{ card.summary }}</p>{% endif %}
+    {{ _facts(card) }}
+    {{ _ledger(card) }}
+    {% if card.notes %}<p class="type-card-notes">{{ card.notes }}</p>{% endif %}
+    <div class="type-card-foot">
+        {% if card.is_open and start_url %}
+        <a class="btn btn-primary" href="{{ start_url }}">
+            <i class="fa-solid fa-arrow-right" aria-hidden="true"></i> Request {{ card.title }}
+        </a>
+        {% else %}
+        <span class="text-muted"><i class="fa-regular fa-clock" aria-hidden="true"></i> {{ card.reason }}</span>
+        {% endif %}
+    </div>
+{%- endmacro %}
+
+{#- The /request row: the summary line is text only (the chevron, the type, the comparison
+    columns); opening it shows the card. Rows open independently, so two can be compared. -#}
+{% macro _row(card, start_url, open=False) %}
+<details class="type-row{{ ' is-closed' if not card.is_open }}" id="{{ card.anchor }}"{{ ' open' if open }}>
+    <summary class="type-row-line">
+        <span class="type-row-type">
+            <i class="fa-solid fa-chevron-right small text-muted collapse-icon" aria-hidden="true"></i>
+            <span class="type-row-title">{{ card.title }}</span>
+            {%- if card.cadence %} <span class="type-card-cadence">{{ card.cadence }}</span>{% endif %}
+            {%- if not card.is_open %} <span class="type-row-shut"><i class="fa-regular fa-clock" aria-hidden="true"></i> Not open now</span>{% endif %}
+        </span>
+        {{ _overview_cells(card) }}
+    </summary>
+    <div class="type-row-body">{{ _card_body(card, start_url) }}</div>
+</details>
 {%- endmacro %}
 
 {#- The admin's ledger: the SAM type's limit rows, retired ones too, each with its edit pencil. -#}
@@ -118,6 +181,13 @@
         {% endif %}
     </div>
     {% if card.summary %}<p class="mb-2">{{ card.summary }}</p>{% endif %}
+    {% if card.guide is not none %}
+    <dl class="type-card-overview">
+        {%- for label, value in [("What it's for", card.purpose), ('Who can apply', card.eligibility), ('What you need', card.requirements)] %}
+        <div><dt>{{ label }}</dt><dd{% if not value %} class="text-muted fst-italic"{% endif %}>{{ value or 'not set' }}</dd></div>
+        {%- endfor %}
+    </dl>
+    {% endif %}
     {{ _facts(card) }}
     {{ _admin_ledger(card) }}
     {% if card.notes %}<p class="type-card-notes">{{ card.notes }}</p>{% endif %}
@@ -159,26 +229,6 @@
 </label>
 {%- endmacro %}
 
-{% macro type_card(card, variant='full', pick_name=None, start_url=None, admin=None) %}
-{% if variant == 'admin' %}{{ _admin_card(card, admin) }}{% elif variant == 'pick' %}{{ _pick_card(card, pick_name) }}{% else %}
-<section class="type-card{{ ' is-closed' if not card.is_open }}" aria-labelledby="{{ card.anchor }}">
-    <div class="type-card-head">
-        <h2 id="{{ card.anchor }}">{{ card.title }}</h2>
-        {% if card.cadence %}<span class="type-card-cadence">{{ card.cadence }}</span>{% endif %}
-    </div>
-    {% if card.summary %}<p class="mb-2">{{ card.summary }}</p>{% endif %}
-    {{ _facts(card) }}
-    {{ _ledger(card) }}
-    {% if card.notes %}<p class="type-card-notes">{{ card.notes }}</p>{% endif %}
-    <div class="type-card-foot">
-        {% if card.is_open and start_url %}
-        <a class="btn btn-primary" href="{{ start_url }}">
-            <i class="fa-solid fa-arrow-right" aria-hidden="true"></i> Request {{ card.title }}
-        </a>
-        {% else %}
-        <span class="text-muted"><i class="fa-regular fa-clock" aria-hidden="true"></i> {{ card.reason }}</span>
-        {% endif %}
-    </div>
-</section>
-{% endif %}
+{% macro type_card(card, variant='row', pick_name=None, start_url=None, admin=None, open=False) %}
+{% if variant == 'admin' %}{{ _admin_card(card, admin) }}{% elif variant == 'pick' %}{{ _pick_card(card, pick_name) }}{% else %}{{ _row(card, start_url, open) }}{% endif %}
 {%- endmacro %}

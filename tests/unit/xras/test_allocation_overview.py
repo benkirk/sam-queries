@@ -6,8 +6,8 @@ import pytest
 
 from sam.accounting.allocation_type_guide import AllocationTypeGuide
 from sam.accounting.allocation_type_limits import AllocationTypeResourceLimit
-from sam.integration.xras_api.rule_book import RuleBook
-from sam.xras.allocation_overview import allocation_type_overview
+from sam.integration.xras_api.rule_book import DocumentRule, RuleBook
+from sam.xras.allocation_overview import TypeCard, allocation_type_overview
 from sam.xras.audiences import VISITOR_AUDIENCES
 
 
@@ -158,3 +158,26 @@ class TestTheUnguidedTypes:
         (card,) = self._named(session, sam_type.allocation_type, audiences=None,
                               include_unguided=True)
         assert card.guide is not None and card.xras_allocation_type_id == type_id
+
+
+class TestTheComparisonColumns:
+
+    def _card(self, **kw):
+        return TypeCard(**{'xras_allocation_type_id': 1, 'title': 'T', 'summary': None,
+                           'funding': None, 'cadence': None, 'notes': None, **kw})
+
+    def test_the_guides_own_lines_win(self):
+        card = self._card(eligibility='Grad students', requirements='A letter',
+                          audience='university', funding='NSF award required')
+        assert (card.who, card.requires) == ('Grad students', 'A letter')
+
+    def test_empty_lines_fall_back_to_the_audience_funding_and_documents(self):
+        rules = RuleBook(documents=(DocumentRule('a', 'Advisor Letter'),
+                                    DocumentRule('b', 'Optional', required=False)))
+        card = self._card(audience='university', funding='No external funding award', rules=rules)
+        assert card.who == 'University'
+        assert card.requires == 'No external funding award; Advisor Letter'
+
+    def test_nothing_known_is_none(self):
+        card = self._card()
+        assert (card.purpose, card.who, card.requires) == (None, None, None)

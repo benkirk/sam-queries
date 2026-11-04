@@ -944,7 +944,7 @@ class TestTheNewForm:
         monkeypatch.setattr(registry, 'user_audiences', lambda user: frozenset(audiences))
         html = client.get(NEW).get_data(as_text=True)
         mine, _, others = html.partition('<details class="type-card-others">')
-        return mine, others
+        return mine.partition('role="radiogroup"')[2], others
 
     def test_staff_see_their_types_first_and_the_rest_disclosed(self, auth_client, monkeypatch,
                                                                  by_audience):
@@ -969,7 +969,8 @@ class TestTheNewForm:
         from sam.core.users import User
         from sam.xras.audiences import user_audiences
         mine = user_audiences(User.get_by_username(session, 'benkirk'))
-        html = auth_client.get(NEW).get_data(as_text=True).partition('<details')[0]
+        html = auth_client.get(NEW).get_data(as_text=True).partition(
+            '<details class="type-card-others">')[0]
         assert (by_audience['ncar'].title in html) == ('ncar' in mine)
 
     def test_an_outage_still_shows_the_types(self, auth_client, newable, monkeypatch,
@@ -984,6 +985,18 @@ class TestTheNewForm:
         assert 'XRAS is not answering' in html and by_audience['everyone'].title in html
         assert 'type="radio" name="opportunity_id" id="pick-type-' in html
         assert ' disabled>' in html
+
+    def test_the_summary_table_names_my_types_and_selects_an_open_ones_radio(
+            self, auth_client, monkeypatch, by_audience):
+        import sam.xras.audiences as registry
+        monkeypatch.setattr(registry, 'user_audiences', lambda user: frozenset({'university'}))
+        html = auth_client.get(NEW).get_data(as_text=True)
+        table = html.partition('<details class="type-compare">')[2].partition('</details>')[0]
+        assert '<summary>Allocation types</summary>' in table
+        uni, closed = by_audience['university'], by_audience['closed']
+        assert f'for="pick-type-{uni.xras_type}">{uni.title}</label>' in table
+        assert f'>{closed.title}</span>' in table and f'pick-type-{closed.xras_type}' not in table
+        assert by_audience['ncar'].title not in table
 
     def test_choosing_nothing_or_a_closed_type_returns_to_the_stage(self, auth_client, newable):
         for chosen in ('', 532223):

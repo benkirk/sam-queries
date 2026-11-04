@@ -8,7 +8,8 @@
 -- (frequency, funding eligibility; the limits come from
 -- allocation_type_resource_limit). A NULL summary falls back to XRAS's own
 -- description. Inserts only absent types, so a re-run never overwrites an
--- edit made on the admin card. The two dialects must carry the same rows
+-- edit made on the admin card. The comparison-table copy is
+-- seed_allocation_type_guide_overview_pg.sql. The two dialects must carry the same rows
 -- (tests/unit/models/test_allocation_type_guide.py).
 -- ===========================================================================
 
