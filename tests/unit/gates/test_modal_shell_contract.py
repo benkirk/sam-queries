@@ -393,10 +393,14 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # data-bs-toggle opener, so both the shell and its body are real deps.
     'dashboards/fragments/user_rows.html': [
         'groupMaskFormContainer', 'groupMaskModal', 'userDetailsModal', 'userDetailsModalBody'],
+    # The empty-row Add/Share openers ship only on the admin tree (empty_actions);
+    # edit_project.html carries both shells, Resource Details never renders them.
     'dashboards/shared/project_tree.html': [
+        'addAllocationFormContainer', 'addAllocationModal',
         'allocateDownFormContainer', 'allocateDownModal', 'editAllocationFormContainer',
         'editAllocationModal', 'exchangeAllocationFormContainer', 'exchangeAllocationModal',
-        'reclaimFormContainer', 'reclaimModal'],
+        'reclaimFormContainer', 'reclaimModal',
+        'shareAllocationFormContainer', 'shareAllocationModal'],
     'dashboards/jobs/jobs_histogram.html': [
         'projectDetailsModal', 'projectDetailsModalBody',
         'userDetailsModal', 'userDetailsModalBody'],

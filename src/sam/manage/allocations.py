@@ -32,6 +32,8 @@ __all__ = [
     'align_project_allocations',
     'exchange_allocations',
     'propagate_allocation_to_subprojects',
+    'share_refusal',
+    'share_with_subproject',
     'detach_allocation',
     'link_allocation_to_parent',
     'get_partitioned_descendant_sum',
@@ -895,6 +897,41 @@ def propagate_allocation_to_subprojects(
         created.append(new_alloc)
 
     return created, skipped
+
+
+def share_refusal(parent_allocation: Allocation, project, account,
+                  now: Optional[datetime] = None) -> Optional[str]:
+    """Why ``project`` cannot share ``parent_allocation``, or None when it can.
+
+    ``account`` is the project's live account on the allocation's resource, or None.
+    NOTE: any live allocation refuses, expired included; propagation would skip it.
+    """
+    parent = parent_allocation.account.project
+    resource = parent_allocation.account.resource.resource_name
+    if project.parent_id != parent.project_id:
+        return f'{project.projcode} is not a sub-project of {parent.projcode}.'
+    if not project.active:
+        return f'{project.projcode} is inactive.'
+    if not parent_allocation.is_active_at(now):
+        return f"{parent.projcode}'s {resource} allocation #{parent_allocation.allocation_id} is not current."
+    if account is not None and account.live_allocations:
+        return f'{project.projcode} already has an allocation on {resource}.'
+    return None
+
+
+def share_with_subproject(session: Session, parent_allocation: Allocation, project,
+                          user_id: int) -> Allocation:
+    """Give one sub-project a share of its parent's current allocation. Does NOT commit."""
+    from sam.accounting.accounts import Account
+
+    account = Account.get_by_project_and_resource(
+        session, project.project_id, parent_allocation.account.resource_id)
+    reason = share_refusal(parent_allocation, project, account)
+    if reason:
+        raise ValueError(reason)
+    created, _ = propagate_allocation_to_subprojects(
+        session, parent_allocation, [project], user_id=user_id)
+    return created[0]
 
 
 def detach_allocation(session: Session, allocation_id: int, user_id: int) -> Allocation:

@@ -388,6 +388,17 @@
         });
     });
 
+    /* A lazy modal's [data-autofocus] field takes focus once both the fragment and the
+     * open modal are in; shown.bs.modal fires after Bootstrap's focus trap grabs focus. */
+    function focusModalField(modal) {
+        var el = modal && modal.classList.contains('show') && modal.querySelector('[data-autofocus]');
+        if (el) { el.focus(); }
+    }
+    document.body.addEventListener('shown.bs.modal', function (evt) { focusModalField(evt.target); });
+    document.body.addEventListener('htmx:afterSettle', function (evt) {
+        focusModalField(evt.target.closest ? evt.target.closest('.modal') : null);
+    });
+
     /* Per-swap initialization */
 
     function initCreateProjectForm() {
