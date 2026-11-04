@@ -18,6 +18,7 @@ Endpoints tested:
     POST /admin/htmx/reclaim/<allocation_id>
 """
 import os
+import re
 
 import pytest
 
@@ -381,3 +382,58 @@ class TestStorageGate:
             assert 'an allocations administrator makes this change' in resp.get_data(as_text=True), url
         session.expire_all()
         assert get_carveout_frontier(session, alloc).carve_total == frontier.carve_total
+
+
+@pytest.fixture
+def exchange_target(session):
+    """``(projcode, resource_id)`` whose subtree holds the most exchange candidates."""
+    from sqlalchemy import text
+    row = session.execute(text("""
+        SELECT p.projcode, a.resource_id
+        FROM project p
+        JOIN project d ON d.tree_root = p.tree_root AND d.active IS TRUE
+            AND d.tree_left > p.tree_left AND d.tree_right < p.tree_right
+        JOIN account a ON a.project_id = d.project_id AND a.deleted IS FALSE
+        JOIN allocation al ON al.account_id = a.account_id AND al.deleted IS FALSE
+            AND al.parent_allocation_id IS NULL
+            AND al.start_date <= NOW() AND (al.end_date IS NULL OR al.end_date >= NOW())
+        WHERE p.active IS TRUE
+        GROUP BY p.project_id, p.projcode, a.resource_id
+        ORDER BY COUNT(DISTINCT al.allocation_id) DESC, p.project_id
+        LIMIT 1
+    """)).first()
+    if row is None:
+        pytest.skip("snapshot has no exchange candidates")
+    return row[0], row[1]
+
+
+class TestExchangeCandidates:
+
+    def test_used_matches_per_project_usage(self, app, exchange_target):
+        from sam.projects.projects import Project
+        from webapp.dashboards.admin.projects_routes import _exchange_candidates
+        from webapp.extensions import db
+        projcode, resource_id = exchange_target
+        with app.app_context():
+            project = db.session.query(Project).filter_by(projcode=projcode).one()
+            candidates, resource = _exchange_candidates(project, resource_id)
+            assert len(candidates) >= 2
+            for c in candidates:
+                usage = db.session.get(Project, c['project_id']).get_detailed_allocation_usage(
+                    resource_name=resource.resource_name)
+                assert c['used'] == pytest.approx(usage[resource.resource_name]['used']), c
+
+    def test_forged_endpoint_rerenders_candidates(self, auth_client, exchange_target):
+        projcode, resource_id = exchange_target
+        form = auth_client.get(
+            f'/admin/htmx/exchange-allocation-form/{projcode}/{resource_id}').get_data(as_text=True)
+        resp = auth_client.post(
+            f'/admin/htmx/exchange-allocation/{projcode}',
+            data={'resource_id': resource_id, 'amount': '1',
+                  'from_allocation_id': str(_BOGUS), 'to_allocation_id': str(_BOGUS + 1)})
+        assert 'HX-Trigger' not in resp.headers
+        html = resp.get_data(as_text=True)
+        assert 'Selected allocation is not in this project' in html
+        offered = re.findall(r'<option value="(\d+)"', form)
+        assert len(offered) >= 4      # both selects, two or more candidates each
+        assert re.findall(r'<option value="(\d+)"', html) == offered

@@ -1,0 +1,40 @@
+{#
+  Admin: Edit Project — Share modal, loaded into #shareAllocationFormContainer from an
+  empty tree row's Share button. Gives one sub-project a shared allocation on its
+  immediate parent's current pool (share_with_subproject).
+
+  Context: allocation (the parent's), parent, project (the sub-project), resource,
+  refusal (why it cannot, or none), errors.
+#}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{% from 'dashboards/fragments/help.html' import term with context %}
+{% from 'dashboards/fragments/glossary.html' import g_shared_alloc with context %}
+
+{{ modal_title('shareAllocationModalLabel', 'Share ' ~ resource.resource_name ~ ' with ' ~ project.projcode,
+               'link', meta=parent.projcode) }}
+
+{%- set unit = resource.resource_type.resource_type | alloc_unit(allocation.amount) if resource.resource_type else '' %}
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_share_allocation', allocation_id=allocation.allocation_id, projcode=project.projcode),
+    '#shareAllocationFormContainer',
+    'Share',
+    submit_icon='link',
+    errors=errors or ([refusal] if refusal else none),
+    submit_disabled=refusal is not none
+) %}
+  <ul class="modal-facts">
+    <li>
+      <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+      {{ parent.projcode }}'s {{ resource.resource_name }} allocation #{{ allocation.allocation_id }}:
+      <strong>{{ allocation.amount | fmt_number }}</strong>{% if unit %} {{ unit }}{% endif %},
+      {{ allocation.start_date | fmt_date }} → {{ (allocation.end_date | fmt_date) if allocation.end_date else 'open-ended' }}.
+    </li>
+    <li>
+      <i class="fa-solid fa-link" aria-hidden="true"></i>
+      {{ project.projcode }} gets a {{ term('shared allocation', g_shared_alloc(), rich=True, title='Shared allocation') }}:
+      its use draws on this pool, and the amount and dates follow {{ parent.projcode }}'s.
+    </li>
+  </ul>
+  <p class="small text-muted mb-0">Other sub-projects of {{ parent.projcode }} are not changed.</p>
+{% endcall %}

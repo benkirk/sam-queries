@@ -248,15 +248,14 @@ def read_model_on_stale(session, monkeypatch, perf_subtree_project):
     monkeypatch.setenv('READ_MODEL_ENABLED', '1')
 
 
-@pytest.fixture
-def read_model_on_committed_stale(app, SessionFactory, monkeypatch, _subtree_project_id):
-    """Feed and COMMIT, then stamp one committed allocation; both are undone."""
+def _committed_stale(app, SessionFactory, monkeypatch, project_id):
+    """Feed and COMMIT, then stamp one committed allocation of ``project_id``; both are undone."""
     from sam.queries.allocation_state import db_now
     from sam.summaries.allocation_state import AccountAllocationState
     s = SessionFactory()
     try:
         _feed_read_model(s)
-        alloc = _an_allocation_of(s, _subtree_project_id)
+        alloc = _an_allocation_of(s, project_id)
         allocation_id, was = alloc.allocation_id, alloc.modified_time
         alloc.modified_time = db_now(s)
         s.commit()
@@ -272,3 +271,47 @@ def read_model_on_committed_stale(app, SessionFactory, monkeypatch, _subtree_pro
         s.commit()
     finally:
         s.close()
+
+
+@pytest.fixture
+def read_model_on_committed_stale(app, SessionFactory, monkeypatch, _subtree_project_id):
+    yield from _committed_stale(app, SessionFactory, monkeypatch, _subtree_project_id)
+
+
+@pytest.fixture(scope="session")
+def _exchange_target(engine):
+    """``(projcode, resource_id, candidate_project_id)``: the compute resource and
+    project whose subtree (two levels or deeper) holds the most exchange candidates."""
+    from sqlalchemy import text as _text
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, autoflush=False, future=True)
+    with Session() as s:
+        row = s.execute(_text("""
+            SELECT p.projcode, r.resource_id, MIN(d.project_id)
+            FROM project p
+            JOIN project d
+              ON d.tree_root = p.tree_root AND d.active = TRUE
+             AND d.tree_left > p.tree_left AND d.tree_right < p.tree_right
+            JOIN account a ON a.project_id = d.project_id AND a.deleted = FALSE
+            JOIN resources r ON r.resource_id = a.resource_id
+            JOIN resource_type rt ON rt.resource_type_id = r.resource_type_id
+            JOIN allocation al
+              ON al.account_id = a.account_id AND al.deleted = FALSE
+             AND al.parent_allocation_id IS NULL
+             AND al.start_date <= NOW() AND (al.end_date IS NULL OR al.end_date >= NOW())
+            WHERE p.active = TRUE AND rt.resource_type IN ('HPC', 'DAV')
+              AND d.parent_id <> p.project_id
+            GROUP BY p.project_id, p.projcode, r.resource_id
+            ORDER BY COUNT(DISTINCT al.allocation_id) DESC, p.project_id, r.resource_id
+            LIMIT 1
+        """)).first()
+    assert row is not None, (
+        "snapshot has no active project with grandchild exchange candidates on a compute resource"
+    )
+    return row[0], row[1], row[2]
+
+
+@pytest.fixture
+def read_model_on_committed_stale_exchange(app, SessionFactory, monkeypatch, _exchange_target):
+    yield from _committed_stale(app, SessionFactory, monkeypatch, _exchange_target[2])

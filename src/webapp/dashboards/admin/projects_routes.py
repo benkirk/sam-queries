@@ -940,16 +940,14 @@ def htmx_project_allocation_tree(project):
                                                     resource_type_lookup.get(rname))
         }
 
-    # Resolve resource_id by name so the Exchange button's URL can target
-    # /htmx/exchange-allocation-form/<projcode>/<resource_id>. Only needed
-    # when exchange eligibility is non-empty.
+    # resource_id by name, for the Exchange URL and the empty-row Add/Share actions.
     resource_id_by_name = {}
-    if exchange_eligible_resources:
+    if resource_type_lookup:
         from sam.resources.resources import Resource
         resource_id_by_name = {
             r.resource_name: r.resource_id
             for r in db.session.query(Resource)
-            .filter(Resource.resource_name.in_(exchange_eligible_resources))
+            .filter(Resource.resource_name.in_(resource_type_lookup))
             .all()
         }
 
@@ -1001,6 +999,9 @@ def htmx_project_allocation_tree(project):
                 'has_targets': bool(frontier.carve_children or frontier.open_projects),
             }
 
+    empty_actions = _empty_row_actions(all_nodes, resources_by_projcode, resource_id_by_name,
+                                       resource_type_lookup, account_index, can_modify_allocs)
+
     # Grace-window warning: every displayed root allocation expired (shown only
     # for the customary 90-day post-expiry window), so the view is not active.
     grace_window_end = _grace_window_end(
@@ -1021,7 +1022,45 @@ def htmx_project_allocation_tree(project):
         exchange_eligible_resources=exchange_eligible_resources,
         resource_id_by_name=resource_id_by_name,
         visible_projcodes={n.projcode for n in all_nodes},
+        empty_actions=empty_actions,
     )
+
+
+def _empty_row_actions(all_nodes, resources_by_projcode, resource_id_by_name,
+                       resource_type_lookup, account_index, can_add):
+    """``{(projcode, resource_name): {add_url, share_url}}`` for active rows showing no allocation.
+    Add uses the grid's held rule; Share uses ``share_refusal``, gated like allocate-down."""
+    from sam.manage.allocations import share_refusal
+    now = datetime.now()
+    by_id = {n.project_id: n for n in all_nodes}
+    steward = {}   # parent project_id -> can_allocate_residual
+    actions = {}
+    for node in all_nodes:
+        if not node.active:
+            continue
+        parent = by_id.get(node.parent_id)
+        for rname, rid in resource_id_by_name.items():
+            if resources_by_projcode[node.projcode].get(rname):
+                continue
+            account = account_index.get((node.project_id, rid))
+            entry = {}
+            if can_add and not (account and account.allocations):
+                entry['add_url'] = url_for('admin_dashboard.htmx_add_allocation_form',
+                                           projcode=node.projcode, resource_id=rid)
+            parent_account = account_index.get((parent.project_id, rid)) if parent else None
+            pool = next((a for a in parent_account.live_allocations if a.is_active_at(now)),
+                        None) if parent_account else None
+            if pool is not None and share_refusal(pool, node, account, now) is None:
+                if parent.project_id not in steward:
+                    steward[parent.project_id] = can_allocate_residual(current_user, parent)
+                if steward[parent.project_id] and steward_tools_allowed(
+                        current_user, parent, resource_type_lookup.get(rname)):
+                    entry['share_url'] = url_for('admin_dashboard.htmx_share_allocation_form',
+                                                 allocation_id=pool.allocation_id,
+                                                 projcode=node.projcode)
+            if entry:
+                actions[(node.projcode, rname)] = entry
+    return actions
 
 
 def _visible_tree_nodes(root, tree, by_project):
@@ -1062,8 +1101,9 @@ def _existing_allocation_ends(project) -> dict:
     return ends
 
 
-def _add_allocation_context(project) -> dict:
-    """Template context for the Add Allocations grid (GET and error re-render)."""
+def _add_allocation_context(project, focus_resource_id=None) -> dict:
+    """Template context for the Add Allocations grid (GET and error re-render).
+    ``focus_resource_id`` (a tree row's Add) shows that row and focuses its amount."""
     from sam.enums import ResourceTypeName
     from sam.resources.resources import Resource
 
@@ -1080,7 +1120,9 @@ def _add_allocation_context(project) -> dict:
             'resource': r,
             'held': held,
             'existing_end': existing.get(r.resource_id),
-            'optional': not held and r.resource_name not in COMMON_ALLOCATION_RESOURCES,
+            'optional': (not held and r.resource_name not in COMMON_ALLOCATION_RESOURCES
+                         and r.resource_id != focus_resource_id),
+            'focus': not held and r.resource_id == focus_resource_id,
         })
     rank = {name: i for i, name in enumerate(_RESOURCE_TYPE_ORDER)}
     resource_groups = [
@@ -1118,7 +1160,7 @@ def htmx_add_allocation_form(project):
     """Return the Add Allocations grid (loaded into modal on button click)."""
     return render_template(
         'dashboards/admin/fragments/add_allocation_form_htmx.html',
-        **_add_allocation_context(project),
+        **_add_allocation_context(project, request.args.get('resource_id', type=int)),
     )
 
 
@@ -1251,7 +1293,7 @@ def _exchange_candidates(project, resource_id, active_at=None):
 
     subtree = {
         p.project_id: p for p in project.get_descendants(include_self=False)
-        if p.active
+        if p.is_active
     }
     if not subtree:
         return [], resource
@@ -1276,17 +1318,20 @@ def _exchange_candidates(project, resource_id, active_at=None):
         .all()
     )
 
+    # 'used' for the FROM overdraft preview / server check: one batched build for
+    # every candidate project (one read-model lookup, not one per candidate).
+    from sam.queries.dashboard import build_user_projects_resources_batched
+    cand_projects = list({acct.project_id: subtree[acct.project_id] for _, acct in rows}.values())
+    usage = build_user_projects_resources_batched(
+        db.session, cand_projects, active_at=active_at,
+        resource_name=resource.resource_name, with_project_metadata=False,
+    )
+    used_by_project = {pid: res_rows[-1]['used'] for pid, res_rows in usage.items() if res_rows}
+
     candidates = []
     for alloc, acct in rows:
-        proj = subtree.get(acct.project_id)
-        if proj is None:
-            continue
-        # Per-project 'used' for the FROM overdraft preview / server check.
-        usage = proj.get_detailed_allocation_usage(
-            resource_name=resource.resource_name,
-            active_at=active_at,
-        )
-        used = usage.get(resource.resource_name, {}).get('used', 0.0) if usage else 0.0
+        proj = subtree[acct.project_id]
+        used = used_by_project.get(proj.project_id, 0.0)
         candidates.append({
             'allocation_id': alloc.allocation_id,
             'amount': alloc.amount,
@@ -1383,6 +1428,7 @@ class _ExchangeAllocationHandler(HtmxFormHandler):
         except (TypeError, ValueError):
             self.resource_id = None
         self.active_at = _parse_active_at_arg(request.form.get('active_at', ''))
+        self.candidates = None
 
     def form_input(self):
         if self.resource_id is None:
@@ -1392,8 +1438,9 @@ class _ExchangeAllocationHandler(HtmxFormHandler):
     def clean(self, data):
         # Restrict endpoints to the edit-page project's subtree — prevents
         # forged allocation IDs from outside the authorized scope.
-        candidates, self.resource = _exchange_candidates(
+        self.candidates, self.resource = _exchange_candidates(
             self.project, self.resource_id, active_at=self.active_at)
+        candidates = self.candidates
         if self.resource is not None and not _steward_tool_ok(self.project, self.resource):
             raise FormError(_ADMIN_ONLY)
         by_id = {c['allocation_id']: c for c in candidates}
@@ -1424,11 +1471,13 @@ class _ExchangeAllocationHandler(HtmxFormHandler):
         return data['amount']
 
     def context(self):
-        candidates, resource = (
-            _exchange_candidates(self.project, self.resource_id,
-                                 active_at=self.active_at)
-            if self.resource_id else ([], None)
-        )
+        if self.candidates is not None:
+            candidates, resource = self.candidates, self.resource
+        elif self.resource_id:
+            candidates, resource = _exchange_candidates(self.project, self.resource_id,
+                                                        active_at=self.active_at)
+        else:
+            candidates, resource = [], None
         return {
             'project': self.project,
             'resource': resource,
@@ -2835,6 +2884,83 @@ def htmx_link_allocation_to_parent(allocation):
 def htmx_propagate_to_remaining(allocation):
     """Create child allocations for active descendants that don't yet have one."""
     return _PropagateAllocationHandler(allocation=allocation).handle()
+
+
+_SHARE_TEMPLATE = 'dashboards/admin/fragments/share_allocation_form_htmx.html'
+
+
+def _share_target(projcode):
+    from sam.projects.projects import Project
+    project = Project.get_by_projcode(db.session, projcode)
+    if project is None:
+        abort(404)
+    return project
+
+
+def _share_context(allocation, project):
+    return {'allocation': allocation, 'project': project,
+            'parent': allocation.account.project, 'resource': allocation.account.resource}
+
+
+def _share_refusal(allocation, project):
+    """The domain refusal, else the steward resource-type gate's."""
+    from sam.accounting.accounts import Account
+    from sam.manage.allocations import share_refusal
+    account = Account.get_by_project_and_resource(
+        db.session, project.project_id, allocation.account.resource_id)
+    reason = share_refusal(allocation, project, account)
+    if reason is None and not _steward_tool_ok(allocation.account.project, allocation.account.resource):
+        reason = _ADMIN_ONLY
+    return reason
+
+
+class _ShareAllocationHandler(HtmxFormHandler):
+    """Give one sub-project a shared allocation on its parent's current pool."""
+
+    schema_cls = HtmxFormSchema   # no input
+    template = _SHARE_TEMPLATE
+    error_prefix = 'Error sharing allocation'
+    success_message = 'Allocation shared.'
+    exception_map = ((ValueError, lambda e: str(e)),)
+
+    def clean(self, data):
+        reason = _share_refusal(self.allocation, self.project)
+        if reason:
+            raise FormError(reason)
+        return data
+
+    def perform(self, data):
+        from sam.manage.allocations import share_with_subproject
+        return share_with_subproject(db.session, self.allocation, self.project,
+                                     current_user.user_id)
+
+    def context(self):
+        return {**_share_context(self.allocation, self.project), 'refusal': None}
+
+    def triggers(self, result):
+        return {'closeActiveModal': {}, 'reloadAllocationTree': self.project.projcode}
+
+    def detail(self, result):
+        return (f"{self.project.projcode} now shares {self.allocation.account.project.projcode}'s "
+                f'{self.allocation.account.resource.resource_name} allocation (#{result.allocation_id}).')
+
+
+@bp.route('/htmx/share-allocation-form/<int:allocation_id>/<projcode>')
+@login_required
+@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_share_allocation_form(allocation, projcode):
+    """Confirm sharing the parent's allocation with one sub-project (loaded into a modal)."""
+    project = _share_target(projcode)
+    return render_template(_SHARE_TEMPLATE, **_share_context(allocation, project),
+                           refusal=_share_refusal(allocation, project))
+
+
+@bp.route('/htmx/share-allocation/<int:allocation_id>/<projcode>', methods=['POST'])
+@login_required
+@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_share_allocation(allocation, projcode):
+    """Give one sub-project a shared allocation on its parent's current pool."""
+    return _ShareAllocationHandler(allocation=allocation, project=_share_target(projcode)).handle()
 
 
 # ---------------------------------------------------------------------------

@@ -272,5 +272,17 @@
     "user_my_requests_new_route": {
         "queries": 32,
         "notes": "measured 26 (2026-10-31, benkirk, 7 guide rows, six resources each): the signed-in user's context, the PI read through NewRequestForm._pi() (its selectin relationships, as the describe page pays) with its current organization and institution, then the guide rows, the type ids, the limits and the resource map once for every card. Flat in cards"
+    },
+    "exchange_form_route": {
+        "queries": 35,
+        "notes": "measured 28 (2026-11-03) on the deepest compute subtree with the most candidates (18 in the snapshot), live; was 147 when each candidate ran its own usage build. Flat in candidates"
+    },
+    "exchange_form_route_read_model": {
+        "queries": 32,
+        "notes": "measured 25 (2026-11-03), served; was 146"
+    },
+    "exchange_form_route_read_model_stale": {
+        "queries": 55,
+        "notes": "measured 43 (2026-11-03): one re-projection, pinned by the lookup observer; was 414 (one per candidate)"
     }
 }

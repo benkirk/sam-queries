@@ -113,7 +113,8 @@
         <tr>
           <td class="fw-semibold">{{ resource_name }}</td>
           {{ allocation_cells(root_alloc, true) }}
-          {{ allocation_actions(root_alloc, true, can_modify_allocations and root_alloc and not root_alloc.is_inheriting) }}
+          {{ allocation_actions(root_alloc, true, can_modify_allocations and root_alloc and not root_alloc.is_inheriting,
+                                empty=empty_actions.get((root.projcode, resource_name)) if empty_actions else none) }}
         </tr>
       </tbody>
       {% else %}
@@ -145,7 +146,7 @@
       <tbody id="{{ body_id }}" class="collapse alloc-tree-body">
         {{ project_tree_rows([root], current_projcode=projcode, can_view=true, visible=visible_projcodes,
                              alloc_by_projcode=alloc_by_projcode, can_edit_allocations=can_modify_allocations,
-                             exchange_url=_exchange_url) }}
+                             exchange_url=_exchange_url, empty_actions=empty_actions, resource_name=resource_name) }}
       </tbody>
       {% endif %}
       {% endfor %}

@@ -1611,6 +1611,20 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_share_allocation",
+    "/admin/htmx/share-allocation/<int:allocation_id>/<projcode>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_share_allocation_form",
+    "/admin/htmx/share-allocation-form/<int:allocation_id>/<projcode>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_user_directory",
     "/admin/htmx/user/<username>/directory",
     [

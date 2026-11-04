@@ -85,7 +85,7 @@
           </tr>
           {% for row in g.rows %}
           {%- set rid = row.resource.resource_id -%}
-          <tr class="{{ 'alloc-optional' if row.optional }}">
+          <tr class="{{ 'alloc-optional' if row.optional }}{{ 'table-active' if row.focus }}">
             <td class="ps-3">
               <label class="mb-0 text-nowrap fw-semibold{{ ' text-muted' if row.held }}" for="addAllocAmt{{ rid }}">{{ row.resource.resource_name }}</label>
             </td>
@@ -98,7 +98,7 @@
                 <input type="number" class="form-control form-control-sm text-end alloc-amount"
                        id="addAllocAmt{{ rid }}" name="amount_{{ rid }}"
                        min="0.01" step="any" inputmode="decimal" placeholder=" "
-                       data-number-preview
+                       data-number-preview{% if row.focus %} data-autofocus{% endif %}
                        value="{{ form.get('amount_' ~ rid, '') if form else '' }}">
                 <span class="number-preview small text-primary fw-semibold text-nowrap"></span>
               </div>
