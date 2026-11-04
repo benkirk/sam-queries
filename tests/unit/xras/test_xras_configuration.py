@@ -112,6 +112,11 @@ class TestTheCards:
         card = html.split(f'>{guide.title}</h2>')[1].split('</section>')[0]
         assert 'Not on the request page' in card and 'allocation-guide-edit-form' in card
 
+    def test_the_comparison_copy_shows_and_a_gap_says_not_set(self, auth_client, committed_guide):
+        guide = committed_guide(purpose='A course or workshop')
+        card = _titles(auth_client).split(f'>{guide.title}</h2>')[1].split('</section>')[0]
+        assert '<dd>A course or workshop</dd>' in card and card.count('>not set</dd>') == 2
+
     def test_an_open_type_names_its_opportunity(self, auth_client, three, monkeypatch):
         from webapp.dashboards.allocations.xras import configuration_routes
         from webapp.utils import xras as xras_utils

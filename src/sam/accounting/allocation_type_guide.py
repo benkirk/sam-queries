@@ -33,6 +33,9 @@ class AllocationTypeGuide(Base, SessionMixin, ActiveFlagMixin):
     allocation_type = Column(String(20))
     title = Column(String(64), nullable=False)
     summary = Column(Text)
+    purpose = Column(String(128))
+    eligibility = Column(String(128))
+    requirements = Column(String(128))
     funding = Column(String(128))
     cadence = Column(String(64))
     notes = Column(Text)
@@ -43,7 +46,8 @@ class AllocationTypeGuide(Base, SessionMixin, ActiveFlagMixin):
     creation_time = Column(DateTime, nullable=False)
     modified_time = Column(DateTime)
 
-    _TEXT = ('allocation_type', 'title', 'summary', 'funding', 'cadence', 'notes', 'audience')
+    _TEXT = ('allocation_type', 'title', 'summary', 'purpose', 'eligibility', 'requirements',
+             'funding', 'cadence', 'notes', 'audience')
 
     @staticmethod
     def _check(title, audience) -> None:
@@ -61,7 +65,9 @@ class AllocationTypeGuide(Base, SessionMixin, ActiveFlagMixin):
                allocation_type: Optional[str] = None, summary: Optional[str] = None,
                funding: Optional[str] = None, cadence: Optional[str] = None,
                notes: Optional[str] = None, audience: Optional[str] = None,
-               display_order: int = 0) -> 'AllocationTypeGuide':
+               display_order: int = 0, purpose: Optional[str] = None,
+               eligibility: Optional[str] = None,
+               requirements: Optional[str] = None) -> 'AllocationTypeGuide':
         """Raises ``ValueError`` on a blank title, an unknown audience or a type already guided."""
         audience = cls._clean(audience)
         cls._check(title, audience)
@@ -73,6 +79,8 @@ class AllocationTypeGuide(Base, SessionMixin, ActiveFlagMixin):
                   allocation_type=cls._clean(allocation_type), summary=cls._clean(summary),
                   funding=cls._clean(funding), cadence=cls._clean(cadence),
                   notes=cls._clean(notes), audience=audience, display_order=display_order,
+                  purpose=cls._clean(purpose), eligibility=cls._clean(eligibility),
+                  requirements=cls._clean(requirements),
                   created_by=str(created_by)[:35], active=True,
                   creation_time=now, modified_time=now)
         session.add(row)

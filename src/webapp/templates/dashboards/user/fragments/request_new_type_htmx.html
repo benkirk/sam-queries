@@ -1,15 +1,21 @@
-{#- A New's first stage, into #xrasRequestModalBody: the allocation types as radio cards
-    (type_cards.type_card, variant pick), the PI's audiences first, the rest behind a
-    disclosure. Context: eligible, others (TypeCard), outage, post_url, errors. -#}
+{#- A New's first stage, into #xrasRequestModalBody: a collapsed summary table, then the
+    allocation types as radio cards (type_cards.type_card, variant pick), the PI's audiences
+    first, the rest behind a disclosure. Context: eligible, others (TypeCard), outage, post_url, errors. -#}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
 {% from 'dashboards/user/partials/request_bits.html' import request_title %}
-{% from 'dashboards/fragments/type_cards.html' import type_card %}
+{% from 'dashboards/fragments/type_cards.html' import type_card, type_compare_table %}
 {{ request_title('New request') }}
 {% call htmx_form(post_url, '#xrasRequestModalBody', 'Next', submit_icon='arrow-right', errors=errors) %}
     <input type="hidden" name="stage" value="type">
     <p class="type-card-pick-lede">Choose the type of allocation.</p>
     {% if outage %}
     <p class="small text-warning-emphasis"><i class="fa-solid fa-triangle-exclamation me-1" aria-hidden="true"></i>XRAS is not answering, so no type can be started now.</p>
+    {% endif %}
+    {% if eligible | length > 1 %}
+    <details class="type-compare">
+        <summary>Allocation types</summary>
+        {{ type_compare_table(eligible) }}
+    </details>
     {% endif %}
     <div class="list-group type-card-picks" role="radiogroup" aria-label="Allocation types for you">
     {% for card in eligible %}

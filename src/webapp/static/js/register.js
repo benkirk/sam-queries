@@ -49,8 +49,20 @@
     window.samHumanCheckPassed = function () { humanPassed = true; syncHumanCheck(); };
     window.samHumanCheckReset = function () { humanPassed = false; syncHumanCheck(); };
 
+    /* /request: a #type-... link opens that type's row (the rows are <details>). */
+    function openLinkedRow() {
+        var id = decodeURIComponent(location.hash.slice(1));
+        var row = id && document.getElementById(id);
+        if (!row || !row.classList.contains('type-row')) { return; }
+        row.open = true;
+        var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        row.scrollIntoView({ block: 'start', behavior: still ? 'auto' : 'smooth' });
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         each(document.querySelectorAll('[data-register-gate]'), wireGate);
         syncHumanCheck();
+        openLinkedRow();
     });
+    window.addEventListener('hashchange', openLinkedRow);
 })();

@@ -26,8 +26,8 @@ from webapp.utils.xras import interactive_config, report_opportunities, type_car
 from .. import bp
 
 _PARTIALS = 'dashboards/allocations/partials'
-_GUIDE_FIELDS = ('title', 'allocation_type', 'summary', 'funding', 'cadence', 'notes',
-                 'audience', 'display_order')
+_GUIDE_FIELDS = ('title', 'allocation_type', 'summary', 'purpose', 'eligibility', 'requirements',
+                 'funding', 'cadence', 'notes', 'audience', 'display_order')
 
 
 @bp.route('/xras/configuration')

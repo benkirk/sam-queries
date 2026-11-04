@@ -56,6 +56,7 @@ class TestTheForms:
             as_text=True)
         assert 'name="summary"' in html and f'XRAS type {a_guide.xras_type}' in html
         assert 'name="allocation_type"' in html and '<option value="Everyone"' not in html
+        assert all(f'name="{n}"' in html for n in ('purpose', 'eligibility', 'requirements'))
 
     def test_the_sam_type_is_a_select_of_the_active_types(self, auth_client):
         from sam.accounting.allocations import AllocationType
@@ -92,3 +93,10 @@ class TestTheSchema:
         assert data['summary'] is None and data['audience'] is None
         with pytest.raises(ValidationError):
             EditAllocationTypeGuideForm().load({'title': 'T', 'audience': 'everyone'})
+
+    def test_the_comparison_lines_are_short_and_optional(self):
+        from marshmallow import ValidationError
+        data = EditAllocationTypeGuideForm().load({'title': 'T', 'purpose': 'A course'})
+        assert data['purpose'] == 'A course' and data['eligibility'] is None
+        with pytest.raises(ValidationError):
+            EditAllocationTypeGuideForm().load({'title': 'T', 'requirements': 'x' * 129})

@@ -18,6 +18,7 @@ import re
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from sam.accounting.allocation_type_guide import AllocationTypeGuide, guides_for_audiences
+from sam.xras.audiences import AUDIENCE_LABELS
 
 
 #: Display order of the resources a card lists; any other sorts after, by name.
@@ -63,6 +64,22 @@ class TypeCard:
     allocation_type: Optional[str] = None
     guide: Optional[AllocationTypeGuide] = None
     limits: Tuple[Dict[str, Any], ...] = ()
+    purpose: Optional[str] = None
+    eligibility: Optional[str] = None
+    requirements: Optional[str] = None
+
+    @property
+    def who(self) -> Optional[str]:
+        """The comparison table's eligibility: the guide's line, else the audience's label."""
+        return self.eligibility or AUDIENCE_LABELS.get(self.audience)
+
+    @property
+    def requires(self) -> Optional[str]:
+        """The guide's requirements, else its funding line and the rule book's required documents."""
+        if self.requirements:
+            return self.requirements
+        docs = [d.label for d in (self.rules.documents if self.rules else ()) if d.required]
+        return '; '.join([self.funding] * bool(self.funding) + docs) or None
 
     @property
     def published(self) -> bool:
@@ -181,7 +198,9 @@ def allocation_type_overview(session, opportunities: Sequence[Mapping[str, Any]]
             funding=guide.funding, cadence=guide.cadence, notes=guide.notes,
             opportunity=opp, resources=resources, rules=rules, reason=_reason(opp),
             audience=guide.audience, allocation_type=guide.allocation_type, guide=guide,
-            limits=_ledger(every.get(guide.allocation_type, {}))))
+            limits=_ledger(every.get(guide.allocation_type, {})),
+            purpose=guide.purpose, eligibility=guide.eligibility,
+            requirements=guide.requirements))
     for name in unguided:
         cards.append(TypeCard(
             xras_allocation_type_id=None, title=name, summary=None, funding=None, cadence=None,

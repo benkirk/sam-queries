@@ -58,6 +58,12 @@ class TestUpdate:
         with pytest.raises(ValueError):
             row.update(title=' ')
 
+    def test_the_comparison_columns_round_trip(self, session, xras_type):
+        row = _guide(session, xras_type, purpose=' A course ', eligibility='Instructors')
+        assert (row.purpose, row.eligibility, row.requirements) == ('A course', 'Instructors', None)
+        row.update(requirements='A class roster', eligibility='')
+        assert (row.eligibility, row.requirements) == (None, 'A class roster')
+
     def test_an_unknown_field_is_a_type_error(self, session, xras_type):
         with pytest.raises(TypeError):
             _guide(session, xras_type).update(colour='blue')
@@ -92,6 +98,16 @@ class TestTheSeed:
         body = re.compile(r'^\s+(?:UNION ALL )?SELECT \d+.*$', re.M)
         assert len(body.findall(mysql)) == 7
         assert body.findall(mysql) == body.findall(pg)
+
+    def test_both_dialects_carry_the_same_overview_copy(self):
+        def updates(name):
+            text = (REPO_ROOT / 'scripts' / 'sql' / name).read_text()
+            return re.findall(r'^UPDATE allocation_type_guide .*?;$', text, re.M | re.S)
+        mysql = updates('seed_allocation_type_guide_overview.sql')
+        assert len(mysql) == 5 and mysql == updates('seed_allocation_type_guide_overview_pg.sql')
+        for stmt in mysql:
+            assert 'purpose IS NULL AND eligibility IS NULL AND requirements IS NULL' in stmt
+            assert all(len(v) <= 128 for v in re.findall(r"= '([^']*)'", stmt))
 
     def test_every_seeded_audience_is_known(self):
         for _, _, title, _, audience in _seed_rows('seed_allocation_type_guide.sql'):

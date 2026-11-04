@@ -15,6 +15,17 @@
 {{ textarea_field('summary', 'Who it is for', rows=3, maxlength=4000,
                   default=guide.summary if guide else '', id=prefix ~ 'Summary',
                   help="Empty: the page shows XRAS's own description.") }}
+<p class="form-text mt-0 mb-1">The comparison table: one short phrase each, about 60 characters.
+    Empty: the page shows the audience, or the funding line and required documents.</p>
+{{ text_field('purpose', "What it's for", maxlength=128,
+              default=guide.purpose if guide else '', id=prefix ~ 'Purpose',
+              placeholder='Small projects, or first runs before a Large request') }}
+{{ text_field('eligibility', 'Who can apply', maxlength=128,
+              default=guide.eligibility if guide else '', id=prefix ~ 'Eligibility',
+              placeholder='U.S. university researchers with an NSF award') }}
+{{ text_field('requirements', 'What you need', maxlength=128,
+              default=guide.requirements if guide else '', id=prefix ~ 'Requirements',
+              placeholder='An NSF award that supports the computing') }}
 <div class="row g-2">
     <div class="col-md-6">
         {{ text_field('funding', 'Funding eligibility', maxlength=128,

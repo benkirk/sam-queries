@@ -141,8 +141,16 @@ class TestTheOverview:
 
     def test_a_type_with_no_opportunity_shows_without_start(self, client, visitor):
         html = client.get('/request/').get_data(as_text=True)
-        closed = html.split('Probeclosed')[1].split('</section>')[0]
+        closed = html.split('Probeclosed')[1].split('</details>')[0]
         assert 'Not open for requests now.' in closed and '/request/start/' not in closed
+
+    def test_each_type_is_a_row_that_opens_to_its_card(self, client, visitor, type_id):
+        html = client.get('/request/').get_data(as_text=True)
+        row = html.split(f'<details class="type-row" id="type-{type_id}">')[1].split('</details>')[0]
+        line, _, body = row.partition('</summary>')
+        assert 'Probeopen' in line and 'href=' not in line, 'the summary holds text only'
+        assert 'href="/request/start/777001"' in body
+        assert line.count('title="Not stated">—</span>') == 3, 'no copy, audience or documents'
 
     def test_the_rule_book_says_an_award_is_needed(self, client, visitor):
         assert 'Your award number' in client.get('/request/').get_data(as_text=True)
