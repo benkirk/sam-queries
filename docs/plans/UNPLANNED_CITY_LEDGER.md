@@ -2491,3 +2491,9 @@ sunburst, which started on the allocations page and then moved to job history.
   deletion signal the task can read (an XRAS read per open ticket, or a mark the sweep leaves),
   a `TicketProvider.close(key, resolution)` beside `comment`, and its own Jira smoke. Deferred
   on purpose; post-then-delete is rare. Build it when one shows up.
+- [ ] One batched usage build over many projects (#900, `_exchange_candidates`): two callers
+  still loop `Project.get_detailed_allocation_usage` per project, so each project pays its own
+  read-model lookup (a stale tree re-projects once per project) plus job-statistics queries.
+  `api/v1/users.py:49` (`_serialize_dashboard_format`, the signed-in user's projects; few per
+  user, user-facing) and `sam/queries/expiration_notices.py:158` (one per expiring project;
+  background task). Found 2026-11-03.

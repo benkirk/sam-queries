@@ -1251,7 +1251,7 @@ def _exchange_candidates(project, resource_id, active_at=None):
 
     subtree = {
         p.project_id: p for p in project.get_descendants(include_self=False)
-        if p.active
+        if p.is_active
     }
     if not subtree:
         return [], resource
@@ -1276,17 +1276,20 @@ def _exchange_candidates(project, resource_id, active_at=None):
         .all()
     )
 
+    # 'used' for the FROM overdraft preview / server check: one batched build for
+    # every candidate project (one read-model lookup, not one per candidate).
+    from sam.queries.dashboard import build_user_projects_resources_batched
+    cand_projects = list({acct.project_id: subtree[acct.project_id] for _, acct in rows}.values())
+    usage = build_user_projects_resources_batched(
+        db.session, cand_projects, active_at=active_at,
+        resource_name=resource.resource_name, with_project_metadata=False,
+    )
+    used_by_project = {pid: res_rows[-1]['used'] for pid, res_rows in usage.items() if res_rows}
+
     candidates = []
     for alloc, acct in rows:
-        proj = subtree.get(acct.project_id)
-        if proj is None:
-            continue
-        # Per-project 'used' for the FROM overdraft preview / server check.
-        usage = proj.get_detailed_allocation_usage(
-            resource_name=resource.resource_name,
-            active_at=active_at,
-        )
-        used = usage.get(resource.resource_name, {}).get('used', 0.0) if usage else 0.0
+        proj = subtree[acct.project_id]
+        used = used_by_project.get(proj.project_id, 0.0)
         candidates.append({
             'allocation_id': alloc.allocation_id,
             'amount': alloc.amount,
@@ -1383,6 +1386,7 @@ class _ExchangeAllocationHandler(HtmxFormHandler):
         except (TypeError, ValueError):
             self.resource_id = None
         self.active_at = _parse_active_at_arg(request.form.get('active_at', ''))
+        self.candidates = None
 
     def form_input(self):
         if self.resource_id is None:
@@ -1392,8 +1396,9 @@ class _ExchangeAllocationHandler(HtmxFormHandler):
     def clean(self, data):
         # Restrict endpoints to the edit-page project's subtree — prevents
         # forged allocation IDs from outside the authorized scope.
-        candidates, self.resource = _exchange_candidates(
+        self.candidates, self.resource = _exchange_candidates(
             self.project, self.resource_id, active_at=self.active_at)
+        candidates = self.candidates
         if self.resource is not None and not _steward_tool_ok(self.project, self.resource):
             raise FormError(_ADMIN_ONLY)
         by_id = {c['allocation_id']: c for c in candidates}
@@ -1424,11 +1429,13 @@ class _ExchangeAllocationHandler(HtmxFormHandler):
         return data['amount']
 
     def context(self):
-        candidates, resource = (
-            _exchange_candidates(self.project, self.resource_id,
-                                 active_at=self.active_at)
-            if self.resource_id else ([], None)
-        )
+        if self.candidates is not None:
+            candidates, resource = self.candidates, self.resource
+        elif self.resource_id:
+            candidates, resource = _exchange_candidates(self.project, self.resource_id,
+                                                        active_at=self.active_at)
+        else:
+            candidates, resource = [], None
         return {
             'project': self.project,
             'resource': resource,
