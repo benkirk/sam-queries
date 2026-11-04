@@ -29,7 +29,7 @@
         <tbody>
         {% for r in card.amounts %}
             <tr>
-                <td>{{ r.name }}{% if r.units %} <span class="text-muted small">{{ r.units | lower }}</span>{% endif %}</td>
+                <td>{{ r.name }}{% if r.units %} <span class="text-muted small">{{ r.units | fmt_unit }}</span>{% endif %}</td>
                 <td class="col-num">{{ r.limit.default_amount | fmt_number(raw=True) if r.limit and r.limit.default_amount is not none else '—' }}</td>
                 <td class="col-num">{{ r.limit.max_amount | fmt_number(raw=True) if r.limit and r.limit.max_amount is not none else 'no set limit' }}</td>
             </tr>

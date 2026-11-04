@@ -497,6 +497,12 @@ def size(
 
 # Framework integration
 
+def unit_label(value: Optional[str]) -> str:
+    """An XRAS unit in lower case except its initialisms: ``GPU hours``, ``core-hours``; its ``TB`` is SAM's ``TiB``."""
+    words = [w if w.isupper() and len(w) > 1 else w.lower() for w in (value or '').split()]
+    return ' '.join('TiB' if w == 'TB' else w for w in words)
+
+
 def plural(value, singular: str, plural_form: Optional[str] = None,
            *, raw: bool = False) -> str:
     """``3 pushes`` / ``1 push`` — the count (via :func:`number`) and the noun that agrees with it."""
@@ -549,6 +555,7 @@ def register_jinja_filters(target) -> None:
     env.filters['fmt_ago']      = ago
     env.filters['fmt_age']      = age
     env.filters['fmt_plural']   = plural
+    env.filters['fmt_unit']     = unit_label
     env.filters['to_local_dt']  = to_local_dt
     # Resource-type allocation unit label ('hours' / 'TiB' / None). Used on
     # the headline "<n> allocated" figures. Usage:
