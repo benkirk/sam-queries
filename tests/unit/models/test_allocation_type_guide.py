@@ -104,7 +104,7 @@ class TestTheSeed:
             text = (REPO_ROOT / 'scripts' / 'sql' / name).read_text()
             return re.findall(r'^UPDATE allocation_type_guide .*?;$', text, re.M | re.S)
         mysql = updates('seed_allocation_type_guide_overview.sql')
-        assert len(mysql) == 5 and mysql == updates('seed_allocation_type_guide_overview_pg.sql')
+        assert len(mysql) == 7 and mysql == updates('seed_allocation_type_guide_overview_pg.sql')
         for stmt in mysql:
             assert 'purpose IS NULL AND eligibility IS NULL AND requirements IS NULL' in stmt
             assert all(len(v) <= 128 for v in re.findall(r"= '([^']*)'", stmt))
