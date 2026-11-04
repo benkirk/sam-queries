@@ -579,3 +579,10 @@ class TestLocalTzLabel:
 
     def test_no_instant_is_now(self):
         assert fmt.local_tz_label() in ('MST', 'MDT')
+
+
+class TestUnitLabel:
+
+    def test_initialisms_keep_their_case_and_the_rest_lowers(self):
+        assert [fmt.unit_label(u) for u in ('Core-hours', 'GPU Hours', 'TB', 'Yes / No', None)] == \
+            ['core-hours', 'GPU hours', 'TiB', 'yes / no', '']

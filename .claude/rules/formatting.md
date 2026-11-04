@@ -25,6 +25,7 @@ Jinja2 filters are registered in `create_app()` — use them in every template.
 | Hours / charge factors / relative time | `fmt_hours`, `fmt_factor`, `fmt_ago` | `fmt.hours(x)`, … |
 | Count + agreeing noun (`3 pushes`) | `{{ n \| fmt_plural('push', 'pushes') }}` | `fmt.plural(n, 'push', 'pushes')` |
 | UTC→local, allocation units | `to_local_dt`, `alloc_unit` | — |
+| An XRAS unit string (`GPU hours`, `TiB`, `core-hours`) | `{{ units \| fmt_unit }}` | `fmt.unit_label(units)` |
 
 **Key behaviors**
 - Numbers ≤ 100,000 → exact with commas (`34,283`); above → compact (`68.6M`)

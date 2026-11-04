@@ -41,7 +41,7 @@
     {{ type_card(card, start_url=url_for('allocation_request.start', opportunity_id=card.opportunity.opportunity_id) if card.is_open, open=cards | length == 1) }}
 {% endfor %}
 </div>
-<p class="type-index-note">Every type supports Earth system science and related research at U.S. institutions.</p>
+<p class="type-index-note">All of these are for Earth System Science and related research at U.S. institutions.</p>
 {% else %}
 <p class="text-muted fst-italic">No allocation types are listed here yet.</p>
 {% endif %}
