@@ -4,6 +4,7 @@
 --   Apply with:  psql -h csg-postgres.k8s.ucar.edu -d sam_dev \
 --                     -f scripts/sql/create_allocation_type_guide_pg.sql
 --   then:        ... -f scripts/sql/seed_allocation_type_guide_pg.sql
+--   then:        ... -f scripts/sql/seed_allocation_type_guide_overview_pg.sql
 --
 -- Same columns and keys as the MySQL script. NO DROP; idempotent.
 -- ===========================================================================
@@ -14,6 +15,9 @@ CREATE TABLE IF NOT EXISTS allocation_type_guide (
   allocation_type     VARCHAR(20)           NULL,
   title               VARCHAR(64)       NOT NULL,
   summary             TEXT                  NULL,
+  purpose             VARCHAR(128)          NULL,
+  eligibility         VARCHAR(128)          NULL,
+  requirements        VARCHAR(128)          NULL,
   funding             VARCHAR(128)          NULL,
   cadence             VARCHAR(64)           NULL,
   notes               TEXT                  NULL,
@@ -26,8 +30,8 @@ CREATE TABLE IF NOT EXISTS allocation_type_guide (
   CONSTRAINT allocation_type_guide_xras_type UNIQUE (xras_allocation_type_id)
 );
 
--- Verification: 14 columns, 2 indexes (the primary key and the XRAS type).
-SELECT COUNT(*) AS columns_expect_14 FROM information_schema.columns
+-- Verification: 17 columns, 2 indexes (the primary key and the XRAS type).
+SELECT COUNT(*) AS columns_expect_17 FROM information_schema.columns
  WHERE table_schema = current_schema() AND table_name = 'allocation_type_guide';
 SELECT COUNT(*) AS indexes_expect_2 FROM pg_indexes
  WHERE schemaname = current_schema() AND tablename = 'allocation_type_guide';

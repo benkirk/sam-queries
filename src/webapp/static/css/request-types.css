@@ -127,3 +127,125 @@
 .type-card-others { margin-top: 1rem; }
 .type-card-others > summary { color: var(--text-link); cursor: pointer; }
 .type-card-chosen { margin-bottom: 0.75rem; }
+
+/* The /request overview: one accordion row per type. The head and each summary share one grid;
+   the summary holds text only, and its body is the card, indented under the columns. */
+.type-index {
+    --type-index-cols: minmax(8rem, 0.9fr) repeat(3, minmax(0, 1fr));
+    margin: 1.25rem 0 0.5rem;
+    border-top: 1px solid var(--border-default);
+}
+.type-index-head,
+.type-row-line {
+    display: grid;
+    grid-template-columns: var(--type-index-cols);
+    gap: 0.25rem 1.25rem;
+    padding: 0.65rem 0.75rem 0.65rem 0;
+}
+.type-index-head {
+    color: var(--text-secondary);
+    font-size: var(--font-size-xsm);
+    font-weight: var(--font-weight-bold);
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-default);
+}
+.type-index-head > :first-child { padding-left: 1.75rem; }
+.type-row { border-bottom: 1px solid var(--border-default); }
+.type-row-line {
+    cursor: pointer;
+    list-style: none;
+    font-size: var(--font-size-xsm);
+    color: var(--text-primary);
+}
+.type-row-line::-webkit-details-marker { display: none; }
+.type-row-line:hover { background-color: rgba(var(--ncar-teal-rgb), 0.08); }
+.type-row-line:focus-visible { outline: 2px solid var(--text-link); outline-offset: -2px; }
+/* The chevron hangs in the gutter, so a wrapped title, cadence or closed note keeps its edge. */
+.type-row-type {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.5rem;
+    padding-left: 1.75rem;
+}
+.type-row-type .collapse-icon { position: absolute; left: 0.25rem; top: 0.35em; }
+.type-row[open] > .type-row-line .collapse-icon { transform: rotate(90deg); }
+.type-row-title {
+    flex-basis: 100%;
+    color: var(--text-heading);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-bold);
+}
+.type-row.is-closed .type-row-title { color: var(--text-secondary); }
+.type-row-shut { color: var(--text-secondary); font-size: var(--font-size-xxsm); }
+/* Each cell names its column for a screen reader; the name shows only where the row stacks. */
+.type-row-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+.type-row-label::after { content: ': '; }
+/* The open row carries the card's accent rule (inset, so open and closed keep one width), and its
+   body sits under the comparison columns, on the summary's own grid. */
+.type-row[open] { box-shadow: inset 3px 0 0 var(--text-link); }
+.type-row.is-closed[open] { box-shadow: inset 3px 0 0 var(--border-default); }
+.type-row-body {
+    display: grid;
+    grid-template-columns: var(--type-index-cols);
+    column-gap: 1.25rem;
+    padding: 0.25rem 0.75rem 1rem 0;
+}
+/* min-width 0: a grid item's auto minimum would let the amounts table push past the sheet. */
+.type-row-body > * { grid-column: 2 / -1; min-width: 0; }
+.type-index-note {
+    color: var(--text-secondary);
+    font-size: var(--font-size-xsm);
+}
+@media (max-width: 767.98px) {
+    .type-index-head { display: none; }
+    .type-row-line,
+    .type-row-body { grid-template-columns: 1fr; }
+    .type-row-body > * { grid-column: 1; }
+    .type-row-cell { padding-left: 1.75rem; color: var(--text-secondary); }
+    .type-row-cell.is-empty { display: none; }
+    .type-row-body { padding-left: 0.75rem; }
+    .type-row-label {
+        position: static;
+        width: auto;
+        height: auto;
+        overflow: visible;
+        clip-path: none;
+        color: var(--text-heading);
+        font-weight: var(--font-weight-bold);
+    }
+}
+
+/* The New dialog's summary table above the radio cards. */
+.type-compare { margin-bottom: 0.75rem; }
+.type-compare > summary { color: var(--text-link); cursor: pointer; margin-bottom: 0.5rem; }
+.type-compare-table { font-size: var(--font-size-xsm); }
+.type-compare-name { cursor: pointer; color: var(--text-link); margin: 0; }
+@media (max-width: 767.98px) {
+    .type-compare-table thead { display: none; }
+    .type-compare-table :is(table, tbody, tr, td) { display: block; }
+    .type-compare-table tr { padding: 0.5rem 0; border-bottom: 1px solid var(--border-default); }
+    .type-compare-table td { border: 0; padding: 0.1rem 0; }
+    .type-compare-table td.type-row-cell { padding-left: 0; }
+}
+
+/* The admin card's comparison-table copy, so a gap shows. */
+.type-card-overview {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0 0.75rem;
+    font-size: var(--font-size-xsm);
+    margin: 0 0 0.5rem;
+}
+.type-card-overview > div { display: contents; }
+.type-card-overview dt { color: var(--text-secondary); font-weight: var(--font-weight-regular); }
+.type-card-overview dd { margin: 0; }

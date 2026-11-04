@@ -5,6 +5,7 @@
 --   Apply with:  mysql -u <hpc-writer> -h <host> -p sam \
 --                      < scripts/sql/create_allocation_type_guide.sql
 --   then:        ... < scripts/sql/seed_allocation_type_guide.sql
+--   then:        ... < scripts/sql/seed_allocation_type_guide_overview.sql
 --   Postgres (sam_dev): the same two files with _pg.
 --
 -- One row per XRAS allocation type (allocationTypeInfo.allocationTypeId).
@@ -24,6 +25,9 @@ CREATE TABLE IF NOT EXISTS allocation_type_guide (
   allocation_type     VARCHAR(20)          NULL,   -- SAM allocation_type name, for the limits
   title               VARCHAR(64)  CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   summary             TEXT         CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+  purpose             VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+  eligibility         VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+  requirements        VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
   funding             VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
   cadence             VARCHAR(64)  CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
   notes               TEXT         CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
@@ -38,7 +42,7 @@ CREATE TABLE IF NOT EXISTS allocation_type_guide (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
 
 -- Verification. All three must match, or the table is not as tested.
-SELECT COUNT(*) AS columns_expect_14
+SELECT COUNT(*) AS columns_expect_17
   FROM information_schema.COLUMNS
  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'allocation_type_guide';
 

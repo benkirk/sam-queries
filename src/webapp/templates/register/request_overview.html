@@ -1,9 +1,9 @@
 {% extends 'register/base_register.html' %}
 {% from 'dashboards/fragments/type_cards.html' import type_card %}
 {#
-  /request step 1: every allocation type a visitor may file, laid out before anything
-  starts (sam/xras/allocation_overview.py). Plain links, no htmx. Context: cards
-  (TypeCard), outage (XRAS did not answer), step.
+  /request step 1: every allocation type a visitor may file, one accordion row each
+  (type_card variant row; sam/xras/allocation_overview.py). Plain links, no htmx; register.js
+  opens the row a #type-... link names. Context: cards (TypeCard), outage, step.
 #}
 {% block title %}Request an NCAR allocation{% endblock %}
 {% block sheet_class %} register-sheet-wide{% endblock %}
@@ -14,10 +14,10 @@
 {% include 'register/_preview_banner.html' %}
 <p class="register-lede">
     NSF NCAR allocates time on its supercomputer (Derecho), its analysis cluster
-    (Casper) and its storage. Each kind of allocation below says who it is for, how
-    much you can ask for, and what the request needs. Pick the one that fits your
-    work; CISL reviews every request, and an NCAR account is created for you once
-    yours is approved.
+    (Casper) and its storage. Find the type of allocation that fits your work below,
+    then open its row to see how much you can ask for and to start a request. CISL
+    reviews every request, and an NCAR account is created for you once yours is
+    approved.
 </p>
 <div class="register-callout">
     <p><i class="fa-solid fa-user-check" aria-hidden="true"></i>
@@ -32,11 +32,17 @@
 </div>
 {% endif %}
 
-<div class="type-card-list">
+{% if cards %}
+<div class="type-index">
+    <div class="type-index-head" aria-hidden="true">
+        <span>Type</span><span>What it's for</span><span>Who can apply</span><span>What you need</span>
+    </div>
 {% for card in cards %}
-    {{ type_card(card, start_url=url_for('allocation_request.start', opportunity_id=card.opportunity.opportunity_id) if card.is_open) }}
-{% else %}
-    <p class="text-muted fst-italic">No allocation types are listed here yet.</p>
+    {{ type_card(card, start_url=url_for('allocation_request.start', opportunity_id=card.opportunity.opportunity_id) if card.is_open, open=cards | length == 1) }}
 {% endfor %}
 </div>
+<p class="type-index-note">Every type supports Earth system science and related research at U.S. institutions.</p>
+{% else %}
+<p class="text-muted fst-italic">No allocation types are listed here yet.</p>
+{% endif %}
 {% endblock %}
