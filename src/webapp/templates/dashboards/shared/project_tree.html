@@ -65,9 +65,24 @@
 
 {#- Edit / allocate-down / reclaim / exchange for one row. exchange_url is set by the caller only
     when 2+ descendants hold dedicated allocations; it shows on the current row only.
-    edit_url replaces the admin edit form's URL (Resource Details uses the user route). -#}
-{% macro allocation_actions(res, is_current=false, can_edit=false, exchange_url=none, edit_url=none) -%}
+    edit_url replaces the admin edit form's URL (Resource Details uses the user route).
+    empty ({add_url, share_url}, either optional) fills a row with no allocation. -#}
+{% macro allocation_actions(res, is_current=false, can_edit=false, exchange_url=none, edit_url=none, empty=none) -%}
 <td class="text-end text-nowrap"><span class="row-actions">
+  {%- if not res and empty -%}
+    {%- if empty.share_url -%}
+  <button type="button" class="btn btn-row btn-row-primary"
+          hx-get="{{ empty.share_url }}" hx-target="#shareAllocationFormContainer"
+          data-bs-toggle="modal" data-bs-target="#shareAllocationModal"
+          title="Share the parent's allocation" aria-label="Share the parent's allocation"><i class="fa-solid fa-link"></i></button>
+    {%- endif -%}
+    {%- if empty.add_url -%}
+  <button type="button" class="btn btn-row"
+          hx-get="{{ empty.add_url }}" hx-target="#addAllocationFormContainer"
+          data-bs-toggle="modal" data-bs-target="#addAllocationModal"
+          title="Add an allocation" aria-label="Add an allocation"><i class="fa-solid fa-plus"></i></button>
+    {%- endif -%}
+  {%- endif -%}
   {%- if can_edit and res and res.allocation_id -%}
   <button type="button" class="btn btn-row"
           hx-get="{{ edit_url or url_for('admin_dashboard.htmx_edit_allocation_form', allocation_id=res.allocation_id) }}"
@@ -112,10 +127,12 @@
 {#- Picker mode (Resource Details' scope tree): href(node) returns a row's URL, or nothing for
     a muted row titled idle_title; value(node) fills a trailing number cell. Both are macros
     taking the node. visible (a set of projcodes) replaces active_only as the whole
-    visibility rule when given; an inactive row it admits is muted and tagged. -#}
+    visibility rule when given; an inactive row it admits is muted and tagged.
+    empty_actions is keyed (projcode, resource_name), so it needs resource_name. -#}
 {% macro project_tree_rows(nodes, depth=0, current_projcode='', can_view=false, active_only=false,
                            alloc_by_projcode=none, can_edit_allocations=false, exchange_url=none,
-                           href=none, link_attrs='', idle_title='', value=none, visible=none) %}
+                           href=none, link_attrs='', idle_title='', value=none, visible=none,
+                           empty_actions=none, resource_name=none) %}
 {%- for node in nodes -%}
 {%- set is_active = node.active if node.active is defined else true -%}
 {%- set shown = (node.projcode in visible) if visible is not none else (not active_only or is_active) -%}
@@ -144,7 +161,8 @@
   {%- if alloc_by_projcode is not none -%}
   {%- set res = alloc_by_projcode.get(node.projcode) -%}
   {{ allocation_cells(res, can_view) }}
-  {{ allocation_actions(res, is_current, can_edit_allocations, exchange_url) }}
+  {{ allocation_actions(res, is_current, can_edit_allocations, exchange_url,
+                        empty=empty_actions.get((node.projcode, resource_name)) if empty_actions else none) }}
   {%- endif %}
 </tr>
 {%- if visible is not none -%}
@@ -155,7 +173,7 @@
 {%- if children -%}
 {{ project_tree_rows(children | sort(attribute='projcode'), depth + 1, current_projcode, can_view, active_only,
                      alloc_by_projcode, can_edit_allocations, exchange_url,
-                     href, link_attrs, idle_title, value, visible) }}
+                     href, link_attrs, idle_title, value, visible, empty_actions, resource_name) }}
 {%- endif -%}
 {%- endif -%}
 {%- endfor -%}
