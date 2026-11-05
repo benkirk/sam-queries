@@ -167,8 +167,19 @@ class TestMergedCopyRemoved:
         assert p.stderr.readline().strip() == 'READY'
         assert len(_leftovers(lane)) == 1
         os.killpg(p.pid, sig)
-        p.communicate(timeout=20)
+        # Flaky only under whole-suite load (docs/plans/NHD_ENV_LAYERS_SIGNAL_FLAKE.md): the
+        # message carries what the next failure needs to tell a lost trap from a held pipe.
+        try:
+            _out, err = p.communicate(timeout=20)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            _out, err = p.communicate()
+            pytest.fail(f'{sig.name}: the lane was still running after 20 s, so a child kept '
+                        f'the pipes open; stderr tail: {err[-500:]!r}')
         deadline = time.monotonic() + 5
         while _leftovers(lane) and time.monotonic() < deadline:
             time.sleep(0.05)
-        assert _leftovers(lane) == []
+        # The trap's exit is 128 + signal; any other rc means bash died without running it.
+        assert (p.returncode, _leftovers(lane)) == (128 + sig.value, []), (
+            f'{sig.name}: rc={p.returncode} (trap exit would be {128 + sig.value}) '
+            f'leftovers={_leftovers(lane)} stderr tail: {err[-500:]!r}')
