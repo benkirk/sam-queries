@@ -97,7 +97,10 @@ check_dev() {
   same_on_both "$deploy" "$cron" XRAS_API_BASE ""
   [[ -n "$xras_base" && "$xras_base" != "$(env_value "$prod" XRAS_API_BASE)" ]] || { red "FAIL: dev must not point at production XRAS (XRAS_API_BASE='$xras_base')"; return 1; }
   grep -q 'api.xras.org' <<<"$xras_base" && { red "FAIL: dev XRAS_API_BASE must not name api.xras.org"; return 1; }
-  grep -q 'admin-ncar' <<<"$(env_value "$deploy" XRAS_ADMIN_URL)" && { red "FAIL: dev XRAS_ADMIN_URL must not name admin-ncar (operator links land on the demo)"; return 1; }
+  local admin_url
+  admin_url=$(env_value "$deploy" XRAS_ADMIN_URL)
+  [[ -n "$admin_url" ]] || { red "FAIL: dev must set XRAS_ADMIN_URL (unset, the code defaults to admin-ncar)"; return 1; }
+  grep -q 'admin-ncar' <<<"$admin_url" && { red "FAIL: dev XRAS_ADMIN_URL must not name admin-ncar (operator links land on the demo)"; return 1; }
   same_on_both "$deploy" "$cron" XRAS_OUTGOING_ENABLED "1"
   [[ "$(env_value "$deploy" XRAS_WRITE_ENABLED)" == "1" ]] || { red "FAIL: XRAS_WRITE_ENABLED must be 1 on dev (the demo instance is the write test bed)"; return 1; }
   [[ "$(env_value "$deploy" XRAS_RENAME_ENABLED)" == "1" ]] || { red "FAIL: XRAS_RENAME_ENABLED must be 1 on dev (the after-reply rename's test bed)"; return 1; }
@@ -298,6 +301,7 @@ expect_reject --set webapp.env.AUTH_PROVIDER=stub
 expect_reject --set webapp.env.NOTIFY_ENABLED=1
 expect_reject --set webapp.env.XRAS_API_BASE=https://api.xras.org
 expect_reject --set webapp.env.XRAS_ADMIN_URL=https://admin-ncar.xras.org
+expect_reject --set webapp.env.XRAS_ADMIN_URL=null
 expect_reject --set-string webapp.env.XRAS_SUBMIT_ENABLED=0
 expect_reject --set-string tasks.env.XRAS_SUBMIT_ENABLED=1
 expect_reject --set-string webapp.env.XRAS_SUBMIT_ANONYMOUS_ENABLED=0
@@ -327,4 +331,4 @@ expect_reject --set tasks.env.SAM_TASKS_DISABLED=xras_notices
 expect_reject --set podDisruptionBudget.enabled=true
 expect_reject --set-string "webapp.env.API_KEYS_COLLECTOR=${prod_hash}"
 
-green "OK: samuel-dev renders authenticated, mute, on XRAS demo, on its own data, disjoint from prod (38 rejections proven)"
+green "OK: samuel-dev renders authenticated, mute, on XRAS demo, on its own data, disjoint from prod ($(grep -c '^expect_reject ' "$0") rejections proven)"
