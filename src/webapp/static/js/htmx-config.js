@@ -112,6 +112,9 @@ function _reloadAdminCard(sectionId, checkboxId) {
     var cb = document.getElementById(checkboxId);
     var params = new URLSearchParams();
     if (cb && cb.checked) { params.set('active_only', '1'); }
+    // A section with chips names its hidden facet form; the reload keeps that state.
+    var facets = s.dataset.facetForm && document.getElementById(s.dataset.facetForm);
+    if (facets) { new FormData(facets).forEach(function(v, k) { if (v !== '') params.append(k, v); }); }
     var tab = s.querySelector('[data-tab-url-param] .nav-link.active[data-tab-param-value]');
     if (tab) { params.set(tab.closest('[data-tab-url-param]').dataset.tabUrlParam, tab.dataset.tabParamValue); }
     var qs = params.toString();

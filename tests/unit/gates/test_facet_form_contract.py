@@ -23,6 +23,7 @@ SURFACES = [
     ('/admin/users/last-seen', ['/admin/htmx/users/last-seen']),
     ('/admin/organizations/mnemonics', ['/admin/htmx/mnemonic-codes-table']),
     ('/admin/roles', ['/admin/htmx/roles/grants']),
+    ('/admin/contracts', ['/admin/htmx/contracts-table?active_only=1']),
 ]
 
 #: Draws chips only for values its rows carry, and the snapshot has no rows.
@@ -81,11 +82,13 @@ def test_every_chip_writes_into_a_real_control(auth_client, page, fragments):
 
 def _facet_sets():
     from webapp.dashboards.admin.account_requests_routes import _FACETS, _FORM_ID
+    from webapp.dashboards.admin.contracts_routes import CONTRACT_FACETS, CONTRACTS_FORM_ID
     from webapp.dashboards.admin.roles_routes import GRANT_FACETS, GRANTS_FORM_ID
     from webapp.dashboards.allocations.xras import _shared, remediation
     return [
         ('/admin/account-requests', _FORM_ID, _FACETS),
         ('/admin/roles', GRANTS_FORM_ID, GRANT_FACETS),
+        ('/admin/contracts', CONTRACTS_FORM_ID, CONTRACT_FACETS),
         ('/allocations/xras', _shared._XRAS_ACTIVITY_FORM_ID, _shared.ACTIVITY_FACETS),
         ('/allocations/xras', _shared._ACCOUNTS_FORM_ID, _shared.ACCOUNT_FACETS),
         ('/allocations/xras', remediation._REMEDIATION_FORM_ID,

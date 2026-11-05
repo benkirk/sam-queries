@@ -2,6 +2,8 @@
 {% from 'dashboards/fragments/contract_bits.html' import contract_user_link, nsf_program_link, contract_status_badge with context %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/table_bits.html' import pane_toolbar, state_tag %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_row %}
+{% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {#
   htmx: All Contracts table — grouped by funding source.
 
@@ -19,6 +21,10 @@
   a card region and the search box above already targets it. Source, PI,
   Monitor and NSF-program links keep their modals, which exist page-level
   via base_admin.
+
+  Chips (NSF program, end date) and sort write into the page's hidden
+  #contracts-filters form. Sort orders contracts within each source. While a
+  chip is on, sources with no match drop out and the rest render open.
 #}
         {% call pane_toolbar(contracts|length ~ ' contract' ~ ('s' if contracts|length != 1 else '')) %}
             {% if has_permission(Permission.CREATE_CONTRACTS) %}
@@ -40,28 +46,34 @@
             </button>
             {% endif %}
         {% endcall %}
+        <div class="facet-grid mb-2">
+            {{ facet_row('NSF program', facet_values.program, form_id, 'program', active=selected.program) }}
+            {{ facet_row('Ends', facet_values.ends, form_id, 'ends', active=selected.ends) }}
+            {{ facet_clear_all(form_id, filtered) }}
+        </div>
         <div class="table-responsive" id="contractsTable">
             <table class="table table-sm table-hover align-middle mb-0">
                 <thead class="table-subtle">
                     <tr>
-                        <th class="col-shrink">Number</th>
+                        <th class="col-shrink">{{ sort_header('number', 'Number') }}</th>
                         <th>Title</th>
                         <th class="col-shrink">PI</th>
                         <th class="col-shrink">Monitor</th>
                         <th class="col-shrink">NSF program</th>
-                        <th class="col-shrink">Start</th>
-                        <th class="col-shrink">End</th>
+                        <th class="col-shrink">{{ sort_header('start', 'Start') }}</th>
+                        <th class="col-shrink">{{ sort_header('end', 'End') }}</th>
                         <th class="col-shrink text-end">Actions</th>
                     </tr>
                 </thead>
                 {% if contract_sources %}
                 {% for cs in contract_sources %}
                 {% set cs_contracts = contracts | selectattr('contract_source_id', 'equalto', cs.contract_source_id) | list %}
+                {% if cs_contracts or not filtered %}
                 {# A source is a collapse trigger only when it has something to
                    reveal; most are empty under active-only and would look
                    clickable and do nothing. The trigger goes on the spanning
                    cell, never the <tr> (see dashboards/fragments/collapse.html). #}
-                {% set cs_attrs  = collapse_toggle('contract-source-' ~ cs.contract_source_id) if cs_contracts else '' %}
+                {% set cs_attrs  = collapse_toggle('contract-source-' ~ cs.contract_source_id, expanded=filtered) if cs_contracts else '' %}
                 {% set cs_cursor = ' cursor-pointer' if cs_contracts else '' %}
                 <tbody>
                     <tr class="table-subtle fw-semibold">
@@ -90,8 +102,8 @@
                     </tr>
                 </tbody>
                 {% if cs_contracts %}
-                <tbody class="collapse" id="contract-source-{{ cs.contract_source_id }}">
-                    {% for c in cs_contracts | sort(attribute='contract_number') %}
+                <tbody class="collapse{{ ' show' if filtered }}" id="contract-source-{{ cs.contract_source_id }}">
+                    {% for c in cs_contracts %}
                     <tr class="{{ 'row-inactive' if not c.is_active }}">
                         {# The shared detail modal, not #contractCardContainer: the
                            card sits above the search boxes, so from far down the
@@ -144,6 +156,7 @@
                     </tr>
                     {% endfor %}
                 </tbody>
+                {% endif %}
                 {% endif %}
                 {% endfor %}
                 {% else %}

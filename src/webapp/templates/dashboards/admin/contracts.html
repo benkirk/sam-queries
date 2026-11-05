@@ -1,6 +1,7 @@
 {% extends 'dashboards/admin/base_admin.html' %}
 {% from 'dashboards/fragments/search_box.html' import active_switch %}
 {% from 'dashboards/fragments/search_box.html' import active_toggle_search %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_form %}
 
 {% block title %}Admin: Contracts - SAM{% endblock %}
 
@@ -152,14 +153,19 @@
                 <h5 class="mb-0"><i class="fa-solid fa-table-list"></i> All Contracts</h5>
                 {{ active_switch('contractsTableActiveOnly',
                                  url_for('admin_dashboard.htmx_contracts_table'),
-                                 'contractsTableSection') }}
+                                 'contractsTableSection', include='#contracts-filters, this') }}
             </div>
             {# Defaults ON, unlike the search box above: an unfiltered
                2,225-row browse table is a different proposition from a
                search you have already narrowed by typing. #}
+            {# Chip and sort state, outside the swap target. The switch rides
+               along by id, so it is the only source of active_only. #}
+            {{ facet_form('contracts-filters', ['program', 'ends'], sort=True) }}
             <div id="contractsTableSection"
-                 hx-get="{{ url_for('admin_dashboard.htmx_contracts_table') }}?active_only=1"
-                 hx-trigger="load once"
+                 hx-get="{{ url_for('admin_dashboard.htmx_contracts_table') }}"
+                 hx-trigger="load once, submit from:#contracts-filters"
+                 hx-include="#contracts-filters, #contractsTableActiveOnly"
+                 data-facet-form="contracts-filters"
                  hx-swap="innerHTML">
                 <div class="card-body text-center text-muted py-4" role="status">
                     <i class="fa-solid fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
