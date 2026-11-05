@@ -403,6 +403,12 @@ def test_project_page_route_read_model_stale(auth_client, route_count_queries,
         f'{[(l.reason, l.patched) for l in seen]}')
 
 
+def test_users_me_projects_dashboard_route(auth_client, route_count_queries):
+    """One batched usage build for the signed-in user's projects, not one per project."""
+    _route_within("users_me_projects_dashboard_route", auth_client, route_count_queries,
+                  '/api/v1/users/me/projects?format=dashboard')
+
+
 # ---------------------------------------------------------------------------
 # Exchange-allocation form: candidate usage is one batched build, so a stale
 # tree is re-projected once, not once per candidate (408 queries in prod).
