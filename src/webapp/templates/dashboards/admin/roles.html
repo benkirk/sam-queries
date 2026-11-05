@@ -1,4 +1,5 @@
 {% extends 'dashboards/base.html' %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_form %}
 {#
   Roles & access: the samuel_role_* catalog behind the Configuration tile's
   "Details »". MANAGE_ROLES on every route, so the gate is not here.
@@ -6,7 +7,8 @@
   Three tabs, deep-linked via ?tab= (data-tab-url-param): grants (who holds
   what), roles (the bundles), check (what one subject resolves to).
 
-  Context: active_tab, source ('defaults' | 'db')
+  Context: active_tab, source ('defaults' | 'db'), grant_facets, grants_form_id
+  The Grants chip state lives in the hidden form, outside the card's swap target.
 #}
 
 {% block extra_css %}
@@ -51,9 +53,11 @@
 <div class="tab-content" id="rolesTabsContent">
 <div class="tab-pane fade{{ ' show active' if active_tab == 'grants' }}" id="grants-pane"
      role="tabpanel" aria-labelledby="grants-tab">
+    {{ facet_form(grants_form_id, grant_facets, sort=True) }}
     <div id="grantsCard"
          hx-get="{{ url_for('admin_dashboard.roles_grants_card') }}"
-         hx-trigger="load, reloadGrantsCard from:body"
+         hx-trigger="load, reloadGrantsCard from:body, submit from:#{{ grants_form_id }}"
+         hx-include="#{{ grants_form_id }}"
          hx-swap="innerHTML">
         <div class="text-muted small p-3">
             <i class="fa-solid fa-circle-notch fa-spin"></i> Loading grants…

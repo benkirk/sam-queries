@@ -20,9 +20,9 @@ contract delete (retires by end_date, not an active flag).
 
 import logging
 
-from flask import render_template, request
+from flask import render_template, request, url_for
 from flask_login import current_user, login_required
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import partial
 from sqlalchemy import func
 
@@ -30,11 +30,14 @@ from sam.sqlcompat import ci_like
 
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.fk_validation import validate_fk_existence
+from webapp.utils.facets import Facet, FacetSet
 from webapp.utils.htmx import (
     htmx_not_found,
     modal_triggers,
     read_active_only,
+    read_sort,
     register_typeahead,
+    sort_rows,
 )
 from webapp.extensions import db, cache, fresh_requested, user_aware_cache_key
 from webapp.utils.rbac import (
@@ -264,6 +267,36 @@ def _contract_create_context(form=None, **extra):
     return ctx
 
 
+CONTRACTS_FORM_ID = 'contracts-filters'
+_ENDS_LABELS = {'ended': 'Ended', 'year': 'Within a year', 'later': 'Later',
+                'open': 'No end date'}
+# Funding source is the table's grouping, so it is not a chip.
+CONTRACT_FACETS = FacetSet(
+    Facet('program', by_count=True, limit=12),
+    Facet('ends', order=tuple(_ENDS_LABELS), labels=_ENDS_LABELS, hide_zero=True),
+)
+_CONTRACT_SORT = {
+    'number': lambda v: v['contract'].contract_number,
+    'start': lambda v: v['contract'].start_date,
+    'end': lambda v: v['contract'].end_date,
+}
+
+
+def _ends_bucket(end_date, now):
+    if end_date is None:
+        return 'open'
+    if end_date < now:
+        return 'ended'
+    return 'year' if end_date < now + timedelta(days=365) else 'later'
+
+
+def _contract_views(contracts):
+    now = datetime.now()
+    return [{'contract': c, 'ends': _ends_bucket(c.end_date, now),
+             'program': c.nsf_program.nsf_program_name if c.nsf_program else None}
+            for c in contracts]
+
+
 @bp.route('/htmx/contracts-table')
 @login_required
 @require_permission_any_facility(Permission.VIEW_CONTRACTS)
@@ -279,7 +312,7 @@ def htmx_contracts_table():
     whereas this is a browse table over 2,225 rows.
 
     That default is expressed in the **template** — the checkbox ships
-    `checked` and the section's initial `hx-get` carries `?active_only=1` —
+    `checked` and the section's requests include it by id —
     NOT as `default=True` here. htmx omits an unchecked checkbox entirely, so
     absent has to mean off; reading it as on makes the toggle a no-op
     (measured: unchecking re-fetched without the param and still returned the
@@ -291,10 +324,20 @@ def htmx_contracts_table():
     if active_only:
         cs_q = cs_q.filter(ContractSource.is_active)
 
+    views = _contract_views(get_contracts_with_pi(db.session, active_only=active_only))
+    selected = CONTRACT_FACETS.read(request.args)
+    facet_values = CONTRACT_FACETS.strips(views, selected)
+    views = CONTRACT_FACETS.apply(views, selected)
+    sort = read_sort(request.args, _CONTRACT_SORT, default_dir='asc')
     return render_template(
         'dashboards/admin/fragments/contracts_table_htmx.html',
         contract_sources=cs_q.all(),
-        contracts=get_contracts_with_pi(db.session, active_only=active_only),
+        contracts=[v['contract'] for v in sort_rows(views, sort, _CONTRACT_SORT)],
+        filtered=any(selected.values()),
+        facet_values=facet_values, selected=selected,
+        sort=sort, sortable_columns=set(_CONTRACT_SORT),
+        form_id=CONTRACTS_FORM_ID, target_id='contractsTableSection',
+        fragment_url=url_for('admin_dashboard.htmx_contracts_table'),
         active_only=active_only,
         # Gate the PI/Monitor links on the user_card route's own permission
         # so a click can never 403. Safe under @cache.cached because the key

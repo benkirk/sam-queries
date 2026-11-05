@@ -52,6 +52,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-31 | `283fe47c` + sweep 33 (the sprint-2 window) | 51 / 63 / 26 | 1 (2) | 26 / 83 | 20 (20), 2 kept | 5,425 / 53 / 7 | 109 (54) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 5 |
 | 2026-11-01 | `af62e41d` + sweep 34 (navigation) | 51 / 63 / 26 | 1 (2) | 26 / 83 | 20 (20), 2 kept | 5,498 / 54 / 8 | 109 (54) | 0 / 0 | 0 | 5 / 6 | 17 (13) | 5 |
 | 2026-11-01 | `32972b63` + sweep 35 (badges) | 51 / 63 / 26 | 1 (2) | 26 / 83 | 20 (20), 2 kept | 5,485 / 54 / 8 | 107 (53) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 5 |
+| 2026-11-04 | `03fdc1af` + sweep 36 (tables without chips) | 51 / 63 / 26 | 1 (2) | 28 / 91 | 20 (20), 2 kept | 5,610 / 54 / 9 | 107 (53) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 5 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -2424,6 +2425,33 @@ are 18 pages x 6 states, from `ui_snapshots.py`.
   Organizations card reads now.
 - [ ] Badges carry redundant ink utilities (`text-dark`, `text-light`) that the muted palette's
   `!important` overrides; 7 FK-picker callers.
+
+## 36. 2026-11-04: area sweep, `templates`, tables without sort or chips
+
+**Mode:** area, `templates`, every `<table>` with no facet chips. **End commit:** `03fdc1af`.
+Ben: the Roles & access Grants table (the Configuration tile's "Details »") had no sort and no
+chips. A census of the ~80 table templates found one other browse table that needed both.
+
+**Done** (one commit each, on `table-chips-sweep`):
+
+- [x] T1, propagate: Grants gets `FacetSet` chips (Subject, Holds, Facility), `filter_search` and
+  server sort; the state lives in a hidden form outside `#grantsCard`. Facet names avoid the add
+  form's fields, which the card renders from `request.args`.
+- [x] T2, legibility: client sort on Abandoned users (Expirations).
+- [x] T3, legibility: client sort on the Roles card (ten-odd rows, no chips).
+- [x] T4, propagate: All Contracts (2,262 rows) gets NSF-program and Ends chips and sort within each
+  source. A chip drops sources with no match and opens the rest, since filtering inside closed
+  groups looked like nothing happened. `_reloadAdminCard` carries a section's `data-facet-form`.
+
+**Left alone, on purpose:** Transactions and Adjustments (page filter panel via `audit_filters`,
+which the inventory grep missed), the resource and organization trees (grouped already), the
+status tables, events, rate limits, and the per-person lists (My Requests, My Events, members,
+invitations).
+
+**Tried and dropped:** a State chip (active / revoked) for Grants. An absent chip would mean
+"include revoked", changing the default; Show revoked stays a View switch, as on Account requests.
+
+**Open:** none.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
