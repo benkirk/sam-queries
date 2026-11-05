@@ -34,6 +34,27 @@
 <span class="badge bg-danger"{% if title %} title="{{ title }}"{% endif %}>{{ label }}</span>
 {%- endmacro %}
 
+{#- A status tag's hover: the request's own status when it differs, and a newer action
+    the in-flight one outranks. `newer` is newer_than_in_flight()'s dict or none; its date is
+    when XRAS received the action (XRAS keeps no approval timestamp). -#}
+{% macro status_note(action_status, request_status, newer) -%}
+{%- set notes = [] -%}
+{%- if request_status and request_status != action_status %}{% set _ = notes.append('Request: ' ~ request_status) %}{% endif -%}
+{%- if newer %}{% set _ = notes.append('Newer ' ~ (newer.action_type or 'action') ~ ' ' ~ newer.action_id
+                                    ~ ((' (entered ' ~ (newer.entry_date | fmt_date) ~ ')') if newer.entry_date else '')
+                                    ~ ': ' ~ (newer.action_status or '?')) %}{% endif -%}
+{{- notes | join(' · ') -}}
+{%- endmacro %}
+
+{#- An action's page in the XRAS admin app, and its Process tab (approve, post). -#}
+{% macro xras_admin_links(action_id) -%}
+{%- set href = xras_admin_url(action=action_id) -%}
+{%- if href %}<span class="row-actions">
+<a class="btn btn-row" href="{{ href }}" target="_blank" rel="noopener" title="Open action {{ action_id }} in XRAS" aria-label="Open action {{ action_id }} in XRAS"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>
+<a class="btn btn-row" href="{{ xras_admin_url(action=action_id, process=True) }}" target="_blank" rel="noopener" title="Process action {{ action_id }} in XRAS" aria-label="Process action {{ action_id }} in XRAS"><i class="fa-solid fa-gavel" aria-hidden="true"></i></a>
+</span>{% endif -%}
+{%- endmacro %}
+
 {% macro type_label(action_type) -%}
 {%- if action_type %}<span class="xras-type">{{ action_type }}</span>
 {%- else %}<span class="text-muted" title="Body could not be parsed">—</span>{% endif -%}

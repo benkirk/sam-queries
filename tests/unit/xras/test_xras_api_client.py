@@ -145,6 +145,20 @@ class TestConfiguration:
         monkeypatch.setenv('XRAS_API_BASE', 'https://api.xras.org/')
         assert XrasApiConfig.from_environment().base_url == 'https://api.xras.org'
 
+    def test_admin_links(self, monkeypatch):
+        monkeypatch.delenv('XRAS_ADMIN_URL', raising=False)
+        config = XrasApiConfig.from_environment()
+        assert config.admin_link(action=410071) == 'https://admin-ncar.xras.org/actions/410071'
+        assert config.admin_link(action=410071, process=True) == (
+            'https://admin-ncar.xras.org/actions/410071/show_process')
+        assert config.admin_link(q='a b&c') == 'https://admin-ncar.xras.org/search_all?q=a+b%26c'
+        assert config.admin_link(action=None) is None and config.admin_link(q='') is None
+
+    def test_the_admin_url_follows_the_environment(self, monkeypatch):
+        monkeypatch.setenv('XRAS_ADMIN_URL', 'https://xras-admin-demo.xsede.org/')
+        assert XrasApiConfig.from_environment().admin_link(action=7) == (
+            'https://xras-admin-demo.xsede.org/actions/7')
+
     def test_unconfigured_raises_a_subclass_of_unavailable(self, monkeypatch):
         monkeypatch.delenv('XRAS_OUTGOING_ENABLED', raising=False)
         monkeypatch.delenv('XRAS_API_KEY', raising=False)

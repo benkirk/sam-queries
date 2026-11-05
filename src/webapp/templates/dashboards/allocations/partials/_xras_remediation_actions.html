@@ -31,6 +31,9 @@
                    hx-get="{{ url_for('allocations_dashboard.xras_user_detail',
                                       username=member.username) }}?request_number={{ row.request_number }}"
                    hx-target="#xrasModalBody" hx-swap="innerHTML">{{ member.username }}</a>
+                {%- set xras_person = xras_admin_url(q=member.username) %}
+                {%- if xras_person %} <a class="text-muted small" href="{{ xras_person }}" target="_blank" rel="noopener"
+                   title="Find {{ member.username }} in the XRAS admin app" aria-label="Find {{ member.username }} in XRAS"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>{% endif %}
             </td>
             <td>{{ member.name or '—' }}</td>
             <td class="col-shrink">{% if member.role_type_id == pi_role_type_id %}<i class="fa-solid fa-crown text-muted me-1" aria-hidden="true"></i>{% endif %}{{ member.role_type or '—' }}

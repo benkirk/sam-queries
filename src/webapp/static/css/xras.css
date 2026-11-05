@@ -240,12 +240,19 @@
     border-left: 3px solid var(--text-link);
 }
 
+/* The collapse button fills the row; the XRAS links sit outside it (no <a> in a <button>). */
+.xras-action-headrow {
+    display: flex;
+    align-items: center;
+    padding-right: 0.5rem;
+}
+
 .xras-action-head {
     display: flex;
+    flex: 1 1 auto;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
-    width: 100%;
     padding: 0.5rem 0.75rem;
     border: 0;
     background: none;
