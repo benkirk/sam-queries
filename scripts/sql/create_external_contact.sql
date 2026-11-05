@@ -6,7 +6,7 @@
 --
 -- A funding agency's program officer, or a PI with no SAM account, without a
 -- users row. user_id links the contact when the person IS a SAM user.
--- Design: docs/plans/EXTERNAL_CONTACTS.md. ORM: src/sam/projects/contracts.py
+-- Design: docs/plans/implemented/EXTERNAL_CONTACTS.md. ORM: src/sam/projects/contracts.py
 -- (ExternalContact). Pinned by tests/integration/test_schema_validation.py.
 -- Apply BEFORE alter_contract_external_contacts.sql. NO DROP; idempotent.
 -- ===========================================================================

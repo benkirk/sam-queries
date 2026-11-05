@@ -354,10 +354,9 @@ _AWARD_WARM_CAP = 25
 
 
 def _warm_awards(ctx, session, payloads, detail) -> None:
-    """Fetch the NSF award of each missing contract into the award cache, so a post finds it.
+    """Under ``XRAS_AUTO_CONTRACTS``, cache the NSF award of each missing contract for the post.
 
-    Behind ``XRAS_AUTO_CONTRACTS``. The post reads the cache only and never waits on
-    NSF; an outage here logs and costs the next run nothing.
+    The post reads the cache only; an outage here logs and ends the pass.
     """
     from sam.integration.awards import AwardSourceUnavailable, cached_award, resolve_award
     from sam.projects.contracts import Contract

@@ -3,7 +3,8 @@
 **Status: roadmap, 2026-10-15.** Phase A (renames) is live in production (#819, #820). B is live
 in production (built in #828, armed by #831; first case NCAR4407 → UMMM0018, 2026-10-15); D is built and on in samuel-dev, and armed for production in PR #845 with a
 since-floor (D's item 2 deferred); C is planned, with D's production arming, in
-[`implemented/XRAS_PHASE_C_AND_TICKETS.md`](implemented/XRAS_PHASE_C_AND_TICKETS.md) (2026-10-19); E is not started. This file sequences the work and points at the plans that hold the
+[`implemented/XRAS_PHASE_C_AND_TICKETS.md`](implemented/XRAS_PHASE_C_AND_TICKETS.md) (2026-10-19); E is built (`implemented/EXTERNAL_CONTACTS.md`, 2026-11-05), on in samuel-dev and
+off in production until its dev proof (`XRAS_AUTO_CONTRACTS`). This file sequences the work and points at the plans that hold the
 detail; it holds the decisions, not the designs.
 
 ## 1. The goal
@@ -26,7 +27,7 @@ new projcode into XRAS's "Edit Request Number", and sending the notification fro
 | Activate the project | live: after the reply, behind `XRAS_AUTO_ACTIVATE` (on in both; `sam/manage/xras_activation.py`); NUSD no longer activates by hand | — | B |
 | Notify, New | manual Notify button; sent from XRAS today | must follow activation; XRAS's own notify mail | C |
 | Notify, extend/supplement/adjust/update | built: the `xras_notices` task (1-day delay), disabled in production | soak; XRAS's own notify mail | C |
-| Contracts | 422 with a seeded create form (Admin → Contracts), or the `ignore_contract` override | `contract.principal_investigator_user_id` is NOT NULL and SAM never creates a user; award lookup is NSF first, then USAspending (`resolve_award`, `sam/integration/awards`) | E |
+| Contracts | the post creates one from its NSF award the sweep cached (`XRAS_AUTO_CONTRACTS`); otherwise a 422 with one-click Create on the strip, the seeded form, or `ignore_contract` | non-NSF awards; an award whose PI differs from the request's | E |
 | Users absent or inactive, ARC placeholders | the sweep files `account_request` rows (live); the request ticket (`xras_request_tickets`): dev on dry-run, prod armed with a floor (#845) | users come only from IGA and the LDAP sync | D |
 | XRAS's own notify mail | on | the Action Approved rules on the NCAR process's notification templates, which we own (§ 3, C) | C (cutover step) |
 
@@ -122,8 +123,10 @@ What the plan must hold (`implemented/XRAS_REQUEST_TICKETS.md` §§ 3, 4, 8):
    sweep's row for it stays open in NUSD's queue for good (scenario 6, row #22 on dev).
    `merge_placeholder` closes the source's rows with the target as the reason.
 
-**E. Contracts where resolvable.** For an award `resolve_award` finds (NSF, else USAspending)
-whose PI resolves to a SAM user, create the contract at post time; otherwise it is a checklist
+**E. Contracts where resolvable.** Built 2026-11-05 (`implemented/EXTERNAL_CONTACTS.md`). An
+NSF award the sweep cached becomes the contract at post time, as the last step of a post that
+otherwise applies; its PI and monitor are a SAM user, matched against the request's roster
+first, or an external contact. No NSF call sits on the POST. Non-NSF awards stay a checklist
 item on the request's ticket.
 
 ## 4. Order and dependencies

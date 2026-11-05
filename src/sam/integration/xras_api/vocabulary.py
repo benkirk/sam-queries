@@ -115,8 +115,7 @@ NSF_FUNDING_AGENCY_ID = 1
 def with_named_agencies(payload: dict) -> dict:
     """*payload* with each NSF grant's ``fundingAgency`` named, as the push names it.
 
-    ``reports`` carries only ``fundingAgencyId``; the preflight reads the name, so a
-    contract it may create from an NSF award needs it. Other agencies stay unnamed.
+    ``reports`` carries only ``fundingAgencyId``; the preflight's contract create reads the name.
     """
     grants = payload.get('grants') if isinstance(payload, dict) else None
     if not grants:

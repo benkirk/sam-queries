@@ -1,7 +1,7 @@
 """Contracts built from people and awards: the one place a PI or monitor is placed.
 
 A person who is a SAM user goes on the contract's user FK; one who is not becomes an
-``ExternalContact`` (docs/plans/EXTERNAL_CONTACTS.md). ``plan_contract_from_award`` turns a
+``ExternalContact`` (docs/plans/implemented/EXTERNAL_CONTACTS.md). ``plan_contract_from_award`` turns a
 fetched award into a contract plan, refusing when the award does not fit the request;
 ``apply_contract_plan`` writes it. The XRAS post, the Remediations Create button and the
 create form share this. Nothing here commits.
@@ -125,9 +125,8 @@ def plan_contract_from_award(session, record: Optional[AwardRecord], *, source: 
                              ) -> Tuple[Optional[ContractPlan], Optional[str]]:
     """``(plan, None)`` or ``(None, reason)``; never writes.
 
-    People resolve against *roster_users* first (a PI who arrives with this post is a
-    user, not a contact), then any SAM user, then become a contact. *wire_pi_name* is
-    the requester's PI for the grant; a different surname means a different award.
+    People resolve against *roster_users* first, then any SAM user, then become contacts. A
+    *wire_pi_name* (the request's PI for the grant) with another surname means another award.
     """
     from sam.xras.extractors import contract_candidates, extract_core_number
     if (record is None or not record.contract_number or not (record.title or '').strip()

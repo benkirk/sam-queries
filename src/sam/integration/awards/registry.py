@@ -104,11 +104,7 @@ def resolve_award(source_name: Optional[str], contract_number: Optional[str], *,
 
 def cached_award(source_name: Optional[str], contract_number: Optional[str], *,
                  exact: bool = True) -> Optional[AwardRecord]:
-    """The record :func:`resolve_award` cached for this number, or ``None``; never fetches.
-
-    For a caller that must not wait on a third party (the XRAS post), so a miss and
-    "no such award" both read as ``None``.
-    """
+    """The record :func:`resolve_award` cached, or ``None`` (a miss or no such award); never fetches."""
     number = (contract_number or '').strip()
     if not number:
         return None

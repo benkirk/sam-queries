@@ -70,7 +70,7 @@ def normalize_email(value: Optional[str]) -> Optional[str]:
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
 class ExternalContact(Base, SessionMixin):
-    """A contract PI or monitor who need not be a SAM user (docs/plans/EXTERNAL_CONTACTS.md).
+    """A contract PI or monitor who need not be a SAM user (docs/plans/implemented/EXTERNAL_CONTACTS.md).
 
     A SAM user goes on the contract's user FK; a contact holds the person who is not one.
     ``user_id`` links a contact whose person later gets an account. No FKs (the
@@ -155,10 +155,7 @@ class ExternalContact(Base, SessionMixin):
     @classmethod
     def find_or_create(cls, session, *, name: str, email: Optional[str] = None,
                        organization: Optional[str] = None) -> 'ExternalContact':
-        """The contact with this email, else one with this name and no email, else a new one.
-
-        A name alone matches only an email-less contact: two people may share a name.
-        """
+        """By email; a name alone matches only an email-less contact (two people may share one)."""
         found = cls.get_by_email(session, email)
         if found is None and normalize_email(email) is None and (name or '').strip():
             found = (session.query(cls)
@@ -169,10 +166,7 @@ class ExternalContact(Base, SessionMixin):
         return cls.create(session, name=name, email=email, organization=organization)
 
     def link_user(self, user) -> int:
-        """Link *user* to this contact and put them on its contracts' empty user FKs.
-
-        Returns the number of contract columns filled. The contact columns stay set.
-        """
+        """Link *user* and fill this contact's contracts' empty user FKs; returns columns filled."""
         self.user_id = user.user_id
         self.modified_time = datetime.now()
         filled = 0
@@ -189,10 +183,9 @@ class ExternalContact(Base, SessionMixin):
 
     @classmethod
     def link_matching_users(cls, session) -> int:
-        """Link every unlinked contact whose email a SAM user holds; returns contacts linked.
+        """Link each unlinked contact whose email one SAM user holds (a shared address is skipped).
 
-        The backstop for a PI who was external when the contract was made and has an
-        account now. An address two users share is skipped rather than guessed.
+        The backstop for a PI who was external when the contract was made and has an account now.
         """
         from sam.core.users import EmailAddress, User
         rows = (session.query(cls, EmailAddress.user_id)

@@ -5,7 +5,7 @@
 --                      < scripts/sql/alter_contract_external_contacts.sql
 --
 -- A SAM-user PI or monitor stays on the user FK; one who is not goes on the
--- contact column (docs/plans/EXTERNAL_CONTACTS.md). Every contract still has a
+-- contact column (docs/plans/implemented/EXTERNAL_CONTACTS.md). Every contract still has a
 -- PI, by one column or the other (an application rule).
 -- WARNING: legacy SAM's contract editor (/app/contract/edit) fails once an active
 -- contract has a NULL PI user; Ben accepted that 2026-11-05. Legacy never writes

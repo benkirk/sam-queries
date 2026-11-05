@@ -50,7 +50,7 @@ they line up with `cirrus_watch.sh` and the ingress probe reports.
 |---|---|---|
 | `http:` | one authenticated `GET /api/protected/admin/ldapsync/groupTag` (220 B, ~0.2 s on 2026-10-10), user agent `sam-tomcat-watch/1` | FAIL 5xx or no answer; WARN non-200 or > 4 s |
 | `host:` | uptime, JVM pid and start, `/tomcat` use, newest `catalina.out.<stamp>` | WARN `tomcat restarted` (JVM start moved > 5 min); WARN `/tomcat` ≥ 85 %; FAIL no java |
-| `web:` | API calls by status class, p50/p95 (bucketed, 2xx/3xx only), JSF `app`, `saml`, `other`, and `scan` (non-`protected` `/api/` paths: scanners) | FAIL a 5xx to any caller but `self`/`watch` |
+| `web:` | API calls by status class, p50/p95 (bucketed, 2xx/3xx only), JSF `app`, `saml`, `other`, and `scan` (non-`protected` `/api/` paths: scanners) | FAIL a 5xx to any caller but `self`/`watch`; WARN any `/app/contract/` hit (legacy's contract editor fails on an external-contact PI: point its user at SAMuel) |
 | `callers:` | authenticated calls per map label, then the same Mountain wall-clock window a week ago in parentheses | see below |
 | `slow:` | up to 3 API calls over 4 s, with UTC time and label | info |
 | `errors:` | `sam.log` ERROR and `catalina.out` SEVERE in the window, top classes with first/last time | WARN > 5 in the window; WARN a class not seen before |

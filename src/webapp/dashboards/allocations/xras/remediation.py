@@ -466,8 +466,7 @@ def _other_blockers(request_numbers, rows) -> list:
 def _stamp_one_click(summary, rows) -> None:
     """Mark the NSF targets a click can create: the contract is each request's only blocker.
 
-    Any other blocker waits for the post, which creates the contract once it clears: a
-    contract made now could name a contact for a PI whose account is still pending.
+    Otherwise the post creates it: made now, it could name a contact for a pending PI.
     """
     if not has_permission(current_user, Permission.CREATE_CONTRACTS):
         return

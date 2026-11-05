@@ -122,6 +122,11 @@ nobody reviewed. The opportunity-map precedent
 overwrites a human's row) is the house answer — **auto-propose, one-click
 confirm**. Recorded here so it is not re-litigated.
 
+Revisited 2026-11-05 (Ben; `EXTERNAL_CONTACTS.md`): the post now creates the contract,
+but only from an award the sweep already cached, so no outbound call sits on the POST, and
+only as the last step of a post that otherwise applies. NSF's record is the reviewed source;
+a PI who differs from the request's refuses the create.
+
 ## Phase 1 implementation map (refined 2026-08-24, building on PR #482)
 
 One PR, four ordered commits. Every path below was read, not assumed.
