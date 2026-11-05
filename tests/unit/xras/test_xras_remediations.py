@@ -3098,10 +3098,12 @@ class TestTheRecommenderNote:
     CARD = 'webapp.dashboards.allocations.xras.remediation.request_notes_by_number'
 
     def _note(self, session, **kw):
-        from factories import make_request_note
+        from factories import make_request_note, next_seq
         kw.setdefault('admin_comment', 'Approved as requested for one year.')
         kw.setdefault('action_id', 7)
-        return make_request_note(session, request_number='EXAM0001', rationale='Inside every rule.',
+        # The lookups are patched, so the row's own number is free: a fixed one deadlocks
+        # two xdist workers inserting the same uncommitted PK (InnoDB 1213).
+        return make_request_note(session, request_number=next_seq('NOTEUI'), rationale='Inside every rule.',
                                  values={'hours_by_resource': {'Derecho': 1000000},
                                          'requested_hours': {'Derecho': 1200000}}, **kw)
 
