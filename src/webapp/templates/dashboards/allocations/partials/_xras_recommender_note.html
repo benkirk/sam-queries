@@ -1,0 +1,58 @@
+{% from 'dashboards/fragments/xras_bits.html' import attention, section_label, tag, xras_admin_links %}
+{% from 'dashboards/fragments/clipboard.html' import copy_button %}
+{#
+  A tool's latest note on this request, inside #xrasModalBody. Context: note (an
+  XrasRequestNote). Read-only: the operator copies the comment into XRAS's Process tab.
+  Every link is http(s), validated at ingest. Design: docs/plans/ARC_RECOMMENDER_NOTES.md § 4.
+#}
+{% macro finding_list(findings) -%}
+<ul class="xras-note-findings">
+    {% for f in findings %}
+    <li><span class="xras-note-severity">{{ f.severity }}</span> {{ f.message }}
+        {%- for s in f.sources or () %}
+        <a href="{{ s.url }}" target="_blank" rel="noopener noreferrer" title="{{ s.url }}">{{ s.label }} <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>
+        {%- endfor %}
+    </li>
+    {% endfor %}
+</ul>
+{%- endmacro %}
+
+{% set values = note.values %}
+{{ section_label('Recommender') }}
+<section>
+<p class="xras-request-meta">
+    {% if note.decision == 'approve' %}{{ tag(note.decision_phrase) }}{% else %}{{ attention(note.decision_phrase) }}{% endif %}
+    <span>as of {{ note.generated_at | fmt_date(fmt='%Y-%m-%d %H:%M') }}{% if note.ruleset_version %} · ruleset {{ note.ruleset_version }}{% endif %} · run {{ note.run_id }}</span>
+</p>
+
+{% if note.button or note.end_date or values.hours_by_resource or values.requested_hours %}
+<ul class="modal-facts">
+    {% if note.button %}<li><i class="fa-solid fa-hand-pointer" aria-hidden="true"></i>Button: {{ note.button }}</li>{% endif %}
+    {% if note.end_date %}<li><i class="fa-solid fa-calendar" aria-hidden="true"></i>End date: {{ note.end_date | fmt_date }}</li>{% endif %}
+    {% if values.hours_by_resource %}<li><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i>Hours: {% for name, hours in values.hours_by_resource | dictsort %}{{ name }} {{ hours | fmt_number }}{{ ' · ' if not loop.last }}{% endfor %}</li>{% endif %}
+    {% if values.requested_hours %}<li><i class="fa-solid fa-inbox" aria-hidden="true"></i>Requested: {% for name, hours in values.requested_hours | dictsort %}{{ name }} {{ hours | fmt_number }}{{ ' · ' if not loop.last }}{% endfor %}</li>{% endif %}
+</ul>
+{% endif %}
+
+{% if note.admin_comment %}
+<div class="xras-note-comment">
+    <p class="small mb-0 stat-pre">{{ note.admin_comment }}</p>
+    <div class="xras-note-paste">
+        {{ copy_button(note.admin_comment, label='Copy admin comment', done='Admin comment copied.') }}
+        {% if note.action_id %}{{ xras_admin_links(note.action_id) }}{% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% set judge = note.findings_to_judge %}
+{% set checked = note.findings_checked %}
+{% if judge %}<p class="xras-note-heading">Needs your judgement</p>{{ finding_list(judge) }}{% endif %}
+{% if checked %}<p class="xras-note-heading">Already checked</p>{{ finding_list(checked) }}{% endif %}
+{% if note.pi_history %}<p class="small text-muted mb-1">{{ note.pi_history }}</p>{% endif %}
+{% if note.rationale %}
+<details class="xras-disclosure">
+    <summary>Rationale</summary>
+    <p class="small mb-0 stat-pre">{{ note.rationale }}</p>
+</details>
+{% endif %}
+</section>

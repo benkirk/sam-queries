@@ -3085,3 +3085,57 @@ class TestTheTypePopover:
         assert 'data-bs-trigger="hover focus"' not in body
         assert '>Supplement</span>' in body
 
+
+
+class TestTheRecommenderNote:
+    """A tool's note in the request dialog (ARC_RECOMMENDER_NOTES.md § 4).
+
+    Route reads go through ``db.session``, which cannot see the test session's rows, so the
+    lookups are patched to hand back a note built in the test session.
+    """
+
+    MODALS = 'webapp.dashboards.allocations.xras.modals.lookup_request_notes'
+
+    def _note(self, session, **kw):
+        from factories import make_request_note
+        kw.setdefault('admin_comment', 'Approved as requested for one year.')
+        kw.setdefault('action_id', 7)
+        return make_request_note(session, request_number='EXAM0001', rationale='Inside every rule.',
+                                 values={'hours_by_resource': {'Derecho': 1000000},
+                                         'requested_hours': {'Derecho': 1200000}}, **kw)
+
+    def _dialog(self, auth_client, monkeypatch, notes):
+        monkeypatch.setattr(self.MODALS, lambda session, number: notes)
+        _reader(monkeypatch, payload=_detail_payload())
+        return auth_client.get('/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+
+    def test_the_dialog_shows_the_note_with_copy_and_sources(self, auth_client, armed,
+                                                             monkeypatch, session):
+        body = self._dialog(auth_client, monkeypatch, [self._note(session)])
+        assert 'Needs a person to review' in body
+        assert 'run 2026-11-05T06:00' in body
+        assert 'data-copy="Approved as requested for one year."' in body
+        assert 'Copy admin comment' in body
+        assert 'Process action 7 in XRAS' in body
+        assert 'Needs your judgement' in body and 'Already checked' in body
+        assert 'NSF award 2320667' in body and 'Inside every rule.' in body
+        assert 'Requested: Derecho 1.20M' in body
+
+    def test_every_note_link_opens_without_a_referrer(self, auth_client, armed,
+                                                      monkeypatch, session):
+        body = self._dialog(auth_client, monkeypatch, [self._note(session)])
+        start = body.index('Recommender</h6>')
+        section = body[start:body.index('</section>', start)]
+        links = re.findall(r'<a [^>]*href="https?://[^"]*"[^>]*>', section)
+        note_links = [a for a in links if 'nsf.gov' in a]
+        assert note_links and all('rel="noopener noreferrer"' in a for a in note_links)
+        assert 'data-bs-toggle="modal"' not in section
+
+    def test_no_note_no_section(self, auth_client, armed, monkeypatch):
+        body = self._dialog(auth_client, monkeypatch, [])
+        assert 'Recommender</h6>' not in body
+        assert 'Copy admin comment' not in body
+
+    def test_approve_reads_as_a_tag_not_attention(self, auth_client, armed, monkeypatch, session):
+        body = self._dialog(auth_client, monkeypatch, [self._note(session, decision='approve')])
+        assert '<span class="badge state-tag">Ready to approve</span>' in body

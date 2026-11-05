@@ -9,7 +9,7 @@ commit). Two PRs: this repo (the table, the endpoint, the dialog and the card), 
 - [x] `XrasRequestNote` model, `scripts/sql/create_xras_request_note{,_pg}.sql`, schema pins, factory
 - [x] `Permission.POST_XRAS_NOTES`, the default grant to `apikey:heuv`
 - [x] `POST /api/v1/xras/notes`: blueprint, form schema, `record_run_notes`, output schema, tests
-- [ ] Dialog section `_xras_recommender_note.html` with the copy button and source links
+- [x] Dialog section `_xras_recommender_note.html` with the copy button and source links
 - [ ] Card marker on the remediation card, one query per render
 - [ ] Rename follows the note (`_rekey_overrides`)
 - [ ] DDL applied: local, test container, LFS blob, `sam_dev`, prod; RBAC grant on dev and prod
