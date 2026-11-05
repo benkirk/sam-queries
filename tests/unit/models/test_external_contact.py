@@ -113,3 +113,19 @@ def test_link_matching_users_skips_a_shared_address(session):
     session.flush()
     ExternalContact.link_matching_users(session)
     assert contact.user_id is None
+
+
+def test_find_or_create_refreshes_a_found_contact(session):
+    """The edit form's prefilled Name and Organization are editable, so a change must persist."""
+    address = _address()
+    first = ExternalContact.find_or_create(session, name='Pat Doe', email=address)
+    again = ExternalContact.find_or_create(session, name='Patricia Doe', email=address.upper(),
+                                           organization='Uni')
+    assert again is first and first.name == 'Patricia Doe' and first.organization == 'Uni'
+    assert first.modified_time is not None
+    stamp = first.modified_time
+    assert ExternalContact.find_or_create(session, name='patricia doe', email=address) is first
+    assert first.name == 'Patricia Doe' and first.modified_time == stamp
+    bare = ExternalContact.find_or_create(session, name=f"Bare {next_seq('XCB')}")
+    assert ExternalContact.find_or_create(session, name=bare.name, organization='Lab') is bare
+    assert bare.organization == 'Lab' and bare.email is None

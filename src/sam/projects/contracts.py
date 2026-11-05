@@ -155,15 +155,29 @@ class ExternalContact(Base, SessionMixin):
     @classmethod
     def find_or_create(cls, session, *, name: str, email: Optional[str] = None,
                        organization: Optional[str] = None) -> 'ExternalContact':
-        """By email; a name alone matches only an email-less contact (two people may share one)."""
+        """By email; a name alone matches only an email-less contact (two people may share one).
+
+        A found contact takes the newer name and organization: the edit form shows them as
+        editable, and the agency's record is the reviewed source.
+        """
         found = cls.get_by_email(session, email)
         if found is None and normalize_email(email) is None and (name or '').strip():
             found = (session.query(cls)
                      .filter(func.lower(cls.name) == name.strip().lower(), cls.email.is_(None))
                      .order_by(cls.external_contact_id).first())
         if found is not None:
-            return found
+            return found.refresh(name=name, organization=organization)
         return cls.create(session, name=name, email=email, organization=organization)
+
+    def refresh(self, *, name: Optional[str] = None,
+                organization: Optional[str] = None) -> 'ExternalContact':
+        """Take a name or organization that differs from this contact's; blanks change nothing."""
+        changes = {}
+        if (name or '').strip() and name.strip().casefold() != self.name.casefold():
+            changes['name'] = name
+        if (organization or '').strip() and organization.strip() != (self.organization or ''):
+            changes['organization'] = organization
+        return self.update(**changes) if changes else self
 
     def link_user(self, user) -> int:
         """Link *user* and fill this contact's contracts' empty user FKs; returns columns filled."""
