@@ -23,6 +23,7 @@ from sam.core.organizations import ProjectOrganization
 from sam.core.users import User
 from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
 from sam.projects.contracts import (
+    ExternalContact,
     Contract, ContractSource, NSFProgram, ProjectContract,
 )
 from sam.projects.projects import DefaultProject, Project
@@ -247,6 +248,8 @@ def make_contract(
     monitor: Optional[User] = None,
     nsf_program: Optional[NSFProgram] = None,
     url: Optional[str] = None,
+    pi_contact: Optional[ExternalContact] = None,
+    monitor_contact: Optional[ExternalContact] = None,
 ) -> Contract:
     """Build and flush a fresh Contract row.
 
@@ -258,7 +261,7 @@ def make_contract(
     nullable columns — the contract audit's checks turn on exactly these, so
     pass them explicitly when a test needs a clean row.
     """
-    if pi is None:
+    if pi is None and pi_contact is None:
         pi = make_user(session)
     if source is None:
         source = make_contract_source(session)
@@ -273,8 +276,10 @@ def make_contract(
         contract_source_id=source.contract_source_id,
         contract_number=contract_number,
         title=title,
-        principal_investigator_user_id=pi.user_id,
+        principal_investigator_user_id=pi.user_id if pi else None,
         contract_monitor_user_id=monitor.user_id if monitor else None,
+        pi_contact_id=pi_contact.external_contact_id if pi_contact else None,
+        monitor_contact_id=monitor_contact.external_contact_id if monitor_contact else None,
         nsf_program_id=nsf_program.nsf_program_id if nsf_program else None,
         url=url,
         start_date=start_date,
@@ -283,6 +288,18 @@ def make_contract(
     session.add(contract)
     session.flush()
     return contract
+
+
+def make_external_contact(session, *, name: Optional[str] = None,
+                          email: Optional[str] = None,
+                          organization: Optional[str] = None,
+                          user: Optional[User] = None) -> ExternalContact:
+    """Build and flush a contract contact; a unique email by default."""
+    tag = next_seq('XC')
+    return ExternalContact.create(
+        session, name=name or f'Contact {tag}',
+        email=email if email is not None else f'{tag.lower()}@example.org',
+        organization=organization, user_id=user.user_id if user else None)
 
 
 def make_project_contract(

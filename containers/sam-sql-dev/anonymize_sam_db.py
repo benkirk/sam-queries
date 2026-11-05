@@ -861,6 +861,28 @@ class SAMAnonymizer:
         print(f"[✓] Anonymized {count} contracts")
         return count
 
+    def anonymize_external_contacts(self, session: Session) -> int:
+        """Replace every contract contact's name, email and organization; keep the rows.
+
+        The rows stay so contracts that name a contact keep their PI. These people have
+        no users row, so the username map cannot reach them.
+        """
+        print("\n[*] Anonymizing external_contact table...")
+        if not self._table_exists(session, 'external_contact'):
+            print("[!] external_contact not present in source — skipping")
+            return 0
+        count = session.execute(text("SELECT COUNT(*) FROM external_contact")).scalar() or 0
+        if not self.dry_run:
+            session.execute(text(
+                "UPDATE external_contact SET "
+                "name = CONCAT('Contact ', external_contact_id), "
+                "email = CONCAT('contact', external_contact_id, '@example.org'), "
+                "organization = NULL"))
+            session.commit()
+        self.stats['external_contacts_anonymized'] = count
+        print(f"[✓] Anonymized {count} external contacts")
+        return count
+
     def anonymize_charge_summary_table(self, session: Session, table_name: str, id_column: str) -> int:
         """
         Anonymize charge summary tables (comp_charge_summary, dav_charge_summary, etc.).
@@ -1206,6 +1228,7 @@ class SAMAnonymizer:
                 self.anonymize_organizations(session)
                 self.anonymize_projects(session)
                 self.anonymize_contracts(session)
+                self.anonymize_external_contacts(session)
 
                 # Anonymize charge summary tables (have user_id + username + act_username)
                 print("\n" + "=" * 70)

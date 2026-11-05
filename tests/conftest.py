@@ -496,6 +496,8 @@ _BOOTSTRAP_TABLES = (
      'sam.core.groups:UnixGroupMask'),
     ('xras_request_note', 'create_xras_request_note.sql',
      'sam.integration.xras:XrasRequestNote'),
+    ('external_contact', 'create_external_contact.sql',
+     'sam.projects.contracts:ExternalContact'),
 )
 
 

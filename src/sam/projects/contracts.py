@@ -1,6 +1,9 @@
 #-------------------------------------------------------------------------bh-
 # Common Imports:
 import re
+from typing import NamedTuple
+
+from sqlalchemy import literal
 
 from ..base import *
 from ..sqlcompat import ci_like
@@ -58,6 +61,183 @@ class _Unchanged:
 UNCHANGED = _Unchanged()
 
 
+def normalize_email(value: Optional[str]) -> Optional[str]:
+    """Lower-cased and stripped, or ``None`` when *value* is not an address."""
+    text = (value or '').strip().lower()
+    return text if '@' in text else None
+
+
+#-------------------------------------------------------------------------bm-
+#----------------------------------------------------------------------------
+class ExternalContact(Base, SessionMixin):
+    """A contract PI or monitor who need not be a SAM user (docs/plans/EXTERNAL_CONTACTS.md).
+
+    A SAM user goes on the contract's user FK; a contact holds the person who is not one.
+    ``user_id`` links a contact whose person later gets an account. No FKs (the
+    ``external_ticket`` convention); ``email`` is stored lower-cased, so its unique key is
+    case-insensitive on every backend. DDL: ``scripts/sql/create_external_contact.sql``.
+    """
+    __tablename__ = 'external_contact'
+    __table_args__ = (
+        Index('external_contact_email', 'email', unique=True),
+        Index('external_contact_user', 'user_id', unique=True),
+    )
+
+    external_contact_id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=False)
+    email = Column(String(255))
+    organization = Column(String(255))
+    user_id = Column(Integer)
+    # App clock, naive-Mountain, no server_default.
+    creation_time = Column(DateTime, nullable=False)
+    modified_time = Column(DateTime)
+
+    user = relationship('User', primaryjoin='foreign(ExternalContact.user_id) == User.user_id',
+                        back_populates='external_contact')
+    pi_contracts = relationship(
+        'Contract', primaryjoin='foreign(Contract.pi_contact_id) == ExternalContact.external_contact_id',
+        back_populates='pi_contact')
+    monitored_contracts = relationship(
+        'Contract',
+        primaryjoin='foreign(Contract.monitor_contact_id) == ExternalContact.external_contact_id',
+        back_populates='monitor_contact')
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """A contact has no lifecycle of its own."""
+        return True
+
+    @is_active.expression
+    def is_active(cls):
+        return literal(True)
+
+    @property
+    def label(self) -> str:
+        """'Name <email>', or the name alone."""
+        return f'{self.name} <{self.email}>' if self.email else self.name
+
+    @classmethod
+    def create(cls, session, *, name: str, email: Optional[str] = None,
+               organization: Optional[str] = None,
+               user_id: Optional[int] = None) -> 'ExternalContact':
+        """Create a contact; *email* is normalized, and a non-address is dropped."""
+        if not name or not name.strip():
+            raise ValueError('name is required')
+        obj = cls(name=name.strip(), email=normalize_email(email),
+                  organization=(organization or '').strip() or None, user_id=user_id,
+                  creation_time=datetime.now())
+        session.add(obj)
+        session.flush()
+        return obj
+
+    def update(self, *, name: Optional[str] = None, email: Optional[str] = None,
+               organization: Optional[str] = None) -> 'ExternalContact':
+        """Change name, email or organization; an empty email or organization clears it."""
+        if name is not None:
+            if not name.strip():
+                raise ValueError('name is required')
+            self.name = name.strip()
+        if email is not None:
+            self.email = normalize_email(email)
+        if organization is not None:
+            self.organization = organization.strip() or None
+        self.modified_time = datetime.now()
+        self.session.flush()
+        return self
+
+    @classmethod
+    def get_by_email(cls, session, email: Optional[str]) -> Optional['ExternalContact']:
+        address = normalize_email(email)
+        if address is None:
+            return None
+        return session.query(cls).filter(cls.email == address).one_or_none()
+
+    @classmethod
+    def find_or_create(cls, session, *, name: str, email: Optional[str] = None,
+                       organization: Optional[str] = None) -> 'ExternalContact':
+        """The contact with this email, else one with this name and no email, else a new one.
+
+        A name alone matches only an email-less contact: two people may share a name.
+        """
+        found = cls.get_by_email(session, email)
+        if found is None and normalize_email(email) is None and (name or '').strip():
+            found = (session.query(cls)
+                     .filter(func.lower(cls.name) == name.strip().lower(), cls.email.is_(None))
+                     .order_by(cls.external_contact_id).first())
+        if found is not None:
+            return found
+        return cls.create(session, name=name, email=email, organization=organization)
+
+    def link_user(self, user) -> int:
+        """Link *user* to this contact and put them on its contracts' empty user FKs.
+
+        Returns the number of contract columns filled. The contact columns stay set.
+        """
+        self.user_id = user.user_id
+        self.modified_time = datetime.now()
+        filled = 0
+        for contract in self.pi_contracts:
+            if contract.principal_investigator_user_id is None:
+                contract.principal_investigator_user_id = user.user_id
+                filled += 1
+        for contract in self.monitored_contracts:
+            if contract.contract_monitor_user_id is None:
+                contract.contract_monitor_user_id = user.user_id
+                filled += 1
+        self.session.flush()
+        return filled
+
+    @classmethod
+    def link_matching_users(cls, session) -> int:
+        """Link every unlinked contact whose email a SAM user holds; returns contacts linked.
+
+        The backstop for a PI who was external when the contract was made and has an
+        account now. An address two users share is skipped rather than guessed.
+        """
+        from sam.core.users import EmailAddress, User
+        rows = (session.query(cls, EmailAddress.user_id)
+                .join(EmailAddress, func.lower(EmailAddress.email_address) == cls.email)
+                .filter(cls.user_id.is_(None), cls.email.isnot(None))
+                .all())
+        by_contact: Dict[int, Set[int]] = {}
+        contacts = {}
+        for contact, user_id in rows:
+            by_contact.setdefault(contact.external_contact_id, set()).add(user_id)
+            contacts[contact.external_contact_id] = contact
+        linked = 0
+        for contact_id, user_ids in by_contact.items():
+            if len(user_ids) != 1:
+                continue
+            user = session.get(User, next(iter(user_ids)))
+            if user is None or user.external_contact is not None:
+                continue
+            contacts[contact_id].link_user(user)
+            linked += 1
+        return linked
+
+    def __str__(self):
+        return self.label
+
+    def __repr__(self):
+        return f"<ExternalContact(id={self.external_contact_id}, name='{self.name}')>"
+
+
+class ContractPerson(NamedTuple):
+    """A contract's PI or monitor, whichever column holds them; the user wins."""
+    name: Optional[str]
+    email: Optional[str]
+    user: Optional[object]
+    contact: Optional[ExternalContact]
+
+
+def _contract_person(user, contact) -> Optional[ContractPerson]:
+    if user is not None:
+        return ContractPerson(user.display_name, user.primary_email, user, contact)
+    if contact is not None:
+        return ContractPerson(contact.name, contact.email, None, contact)
+    return None
+
+
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
 class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
@@ -77,6 +257,8 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
         Index('contract_contract_monitor_user_fk', 'contract_monitor_user_id'),
         Index('contract_nsf_program_fk', 'nsf_program_id'),
         Index('contract_contract_number_uk', 'contract_number', unique=True),
+        Index('contract_pi_contact', 'pi_contact_id'),
+        Index('contract_monitor_contact', 'monitor_contact_id'),
     )
 
     contract_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -86,15 +268,34 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
     title = Column(String(255), nullable=False)
     url = Column(String(1000))
 
-    principal_investigator_user_id = Column(Integer, ForeignKey('users.user_id'),
-                                           nullable=False)
+    # A PI is on the user FK or, when not a SAM user, on pi_contact_id: one is always set.
+    principal_investigator_user_id = Column(Integer, ForeignKey('users.user_id'))
     contract_monitor_user_id = Column(Integer, ForeignKey('users.user_id'))
+    # No FK constraints (the external_ticket convention); legacy SAM never writes these.
+    pi_contact_id = Column(Integer)
+    monitor_contact_id = Column(Integer)
     nsf_program_id = Column(Integer, ForeignKey('nsf_program.nsf_program_id'))
 
     contract_monitor = relationship('User', foreign_keys=[contract_monitor_user_id], back_populates='monitored_contracts')
     contract_source = relationship('ContractSource', back_populates='contracts')
     nsf_program = relationship('NSFProgram', back_populates='contracts')
     principal_investigator = relationship('User', foreign_keys=[principal_investigator_user_id], back_populates='pi_contracts')
+    pi_contact = relationship(
+        'ExternalContact',
+        primaryjoin='foreign(Contract.pi_contact_id) == ExternalContact.external_contact_id',
+        back_populates='pi_contracts')
+    monitor_contact = relationship(
+        'ExternalContact',
+        primaryjoin='foreign(Contract.monitor_contact_id) == ExternalContact.external_contact_id',
+        back_populates='monitored_contracts')
+
+    @property
+    def pi_person(self) -> Optional[ContractPerson]:
+        return _contract_person(self.principal_investigator, self.pi_contact)
+
+    @property
+    def monitor_person(self) -> Optional[ContractPerson]:
+        return _contract_person(self.contract_monitor, self.monitor_contact)
     projects = relationship('ProjectContract', back_populates='contract')
 
     def update(
@@ -105,6 +306,7 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         contract_monitor_user_id=UNCHANGED,
+        monitor_contact_id=UNCHANGED,
         nsf_program_id=UNCHANGED,
     ) -> 'Contract':
         """
@@ -126,6 +328,7 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
                 nullable FKs and the edit form's pickers submit an empty
                 value for "cleared". Callers that only touch other fields
                 (e.g. the expire-contract route) must not wipe them.
+            monitor_contact_id: New external-contact monitor; same rule
             nsf_program_id: New NSF program; same ``None``/``UNCHANGED`` rule
 
         Returns:
@@ -154,6 +357,9 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
         if contract_monitor_user_id is not UNCHANGED:
             self.contract_monitor_user_id = contract_monitor_user_id
 
+        if monitor_contact_id is not UNCHANGED:
+            self.monitor_contact_id = monitor_contact_id
+
         if nsf_program_id is not UNCHANGED:
             self.nsf_program_id = nsf_program_id
 
@@ -169,10 +375,12 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
         title: str,
         start_date: datetime,
         contract_source_id: int,
-        principal_investigator_user_id: int,
+        principal_investigator_user_id: Optional[int] = None,
+        pi_contact_id: Optional[int] = None,
         url: Optional[str] = None,
         end_date: Optional[datetime] = None,
         contract_monitor_user_id: Optional[int] = None,
+        monitor_contact_id: Optional[int] = None,
         nsf_program_id: Optional[int] = None,
     ) -> 'Contract':
         """
@@ -181,7 +389,7 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
         ``contract_monitor_user_id`` (the funding source's program manager)
         and ``nsf_program_id`` are optional: 98% and 99% of existing rows
         respectively carry one, but neither column is NOT NULL and non-NSF
-        sources have no program.
+        sources have no program. The PI is a SAM user or an external contact; one is required.
 
         NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
         """
@@ -191,6 +399,8 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
             raise ValueError("title is required")
         if end_date is not None and end_date <= start_date:
             raise ValueError("end_date must be after start_date")
+        if principal_investigator_user_id is None and pi_contact_id is None:
+            raise ValueError("a principal investigator (user or external contact) is required")
 
         obj = cls(
             contract_number=contract_number.strip(),
@@ -201,6 +411,8 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
             contract_source_id=contract_source_id,
             principal_investigator_user_id=principal_investigator_user_id,
             contract_monitor_user_id=contract_monitor_user_id,
+            pi_contact_id=pi_contact_id,
+            monitor_contact_id=monitor_contact_id,
             nsf_program_id=nsf_program_id,
         )
         session.add(obj)
