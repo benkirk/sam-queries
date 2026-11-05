@@ -439,7 +439,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
             return out
         for project_id, user_id in session.execute(
                 select(Account.project_id, AccountUser.user_id).join(Account).where(
-                    Account.project_id.in_(out),
+                    Account.project_id.in_(list(out)),
                     or_(AccountUser.end_date.is_(None), AccountUser.end_date >= datetime.now()))):
             out[project_id].add(user_id)
         if not rows_only:
