@@ -212,3 +212,36 @@ class TestTheSampleContextMatchesTheBuilder:
         message = _build(expiring)[0]
         assert (set(message.context['resources'][0])
                 == set(sample_context('expiration')['resources'][0]))
+
+
+class TestRecipients:
+    """The roster is loaded once for every project; roles and membership stay per project."""
+
+    def test_lead_admin_and_members_per_project(self, session, expiring):
+        from factories.projects import make_account_user
+        project, rows = expiring
+        admin = _with_email(session, make_user(session), 'admin@example.edu')
+        member = _with_email(session, make_user(session), 'member@example.edu')
+        make_user(session)  # no address: never a recipient
+        project.project_admin_user_id = admin.user_id
+        make_account_user(session, project.accounts[0], member)
+
+        other_lead = _with_email(session, make_user(session), 'other@example.edu')
+        other = make_project(session, lead=other_lead)
+        resource = make_resource(session)
+        other_alloc = make_allocation(
+            session, account=make_account(session, project=other, resource=resource),
+            amount=10.0, start_date=datetime.now() - timedelta(days=30),
+            end_date=datetime.now() + timedelta(days=5))
+        session.flush()
+        session.expire_all()
+
+        msgs = build_expiration_messages(
+            rows + [(other, other_alloc, resource.resource_name, 5)],
+            requested_by='pytest', milestone=MILESTONES[0])
+        by_project = {}
+        for m in msgs:
+            by_project.setdefault(m.context['project_code'], {})[m.recipient.address] = m.recipient.role
+        assert by_project[project.projcode] == {
+            'lead@example.edu': 'lead', 'admin@example.edu': 'admin', 'member@example.edu': 'user'}
+        assert by_project[other.projcode] == {'other@example.edu': 'lead'}

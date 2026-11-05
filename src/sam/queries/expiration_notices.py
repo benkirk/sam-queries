@@ -121,6 +121,27 @@ def _usage(projects):
     return usage_by_resource(projects[0].session, projects)
 
 
+def _members(projects):
+    """``{project_id: [User]}`` (lead, admin and row holders) from one id query and one User load.
+
+    Loading a User fires its selectin relationships (accounts, led and admin projects, each
+    cascading further); the notice reads names and emails only, so those stay unloaded.
+    """
+    if not projects:
+        return {}
+    from sqlalchemy.orm import lazyload, selectinload
+    from sam.core.users import User
+    from sam.projects.projects import Project
+    session = projects[0].session
+    ids = Project.member_ids_by_project(session, projects)
+    wanted = set().union(*ids.values())
+    users = {u.user_id: u for u in session.query(User).options(
+        lazyload(User.accounts), lazyload(User.led_projects), lazyload(User.admin_projects),
+        selectinload(User.email_addresses)).filter(User.user_id.in_(wanted))} if wanted else {}
+    return {pid: [users[i] for i in sorted(member_ids) if i in users]
+            for pid, member_ids in ids.items()}
+
+
 def build_expiration_messages(
         expiring_data: Sequence[Tuple], *,
         requested_by: str,
@@ -160,6 +181,7 @@ def build_expiration_messages(
 
     projects = [rows[0]['project'] for rows in projects_map.values()]
     usage_by_project = _usage(projects)
+    members = _members(projects)
 
     messages = []
     for projcode, resources_data in projects_map.items():
@@ -213,7 +235,7 @@ def build_expiration_messages(
         # Build recipients dict: email -> (name, role)
         # Start with every project user (lead and admin included), role 'user'
         recipients = {}
-        for user in project.users:
+        for user in members[project.project_id]:
             if user.primary_email:
                 recipients[user.primary_email] = (user.display_name, 'user')
 
