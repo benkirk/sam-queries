@@ -35,12 +35,14 @@
 {%- endmacro %}
 
 {#- A status tag's hover: the request's own status when it differs, and a newer action
-    the in-flight one outranks. `newer` is newer_than_in_flight()'s dict or none. -#}
+    the in-flight one outranks. `newer` is newer_than_in_flight()'s dict or none; its date is
+    when XRAS received the action (XRAS keeps no approval timestamp). -#}
 {% macro status_note(action_status, request_status, newer) -%}
 {%- set notes = [] -%}
 {%- if request_status and request_status != action_status %}{% set _ = notes.append('Request: ' ~ request_status) %}{% endif -%}
-{%- if newer %}{% set _ = notes.append('Newer ' ~ (newer.action_type or 'action') ~ ' ' ~ newer.action_id ~ ': '
-                                    ~ (newer.action_status or '?') ~ ((' ' ~ (newer.entry_date | fmt_date)) if newer.entry_date else '')) %}{% endif -%}
+{%- if newer %}{% set _ = notes.append('Newer ' ~ (newer.action_type or 'action') ~ ' ' ~ newer.action_id
+                                    ~ ((' (entered ' ~ (newer.entry_date | fmt_date) ~ ')') if newer.entry_date else '')
+                                    ~ ': ' ~ (newer.action_status or '?')) %}{% endif -%}
 {{- notes | join(' · ') -}}
 {%- endmacro %}
 

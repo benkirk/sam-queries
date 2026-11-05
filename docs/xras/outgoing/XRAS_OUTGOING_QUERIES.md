@@ -313,7 +313,7 @@ conflicts[{conflictId, conflictType, conflictPerson}], publications[]
 
 | Field | Values |
 |---|---|
-| `requestStatus` | Submitted, Approved, Rejected, Incomplete, Under Review (the filter's full enum; Approved/Rejected/Incomplete observed) |
+| `requestStatus` | Submitted, Approved, Rejected, Incomplete, Under Review (the filter's full enum; Approved/Rejected/Incomplete observed). **Stays at the New's value**: an approved request whose Extension or Supplement is still Submitted reads `Approved` (NRAL0035, UTAM0017, 2026-11-04), so a current state is read from the in-flight action (`in_flight_action`), never from this field |
 | `requestType` | New, Renewal |
 | `actionType` | New, Renewal, Supplement, Extension, Transfer, Adjustment, Date Adjustment |
 | `actionStatus` | Approved, Declined, Incomplete — and, at the action level, **Submitted** and **Under Review** (probed 2026-08-23: 4 each among the newest 455 actions; an action awaiting review on an Approved request carries its own status) |

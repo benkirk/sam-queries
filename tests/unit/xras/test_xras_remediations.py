@@ -1830,6 +1830,17 @@ class TestTheHeadlineActionAndXrasLinks:
         assert '>Submitted<' in header and '/actions/9"' in header
         assert 'Newer Supplement 10: Approved' in header
 
+    def test_the_headline_actions_section_opens_beside_the_latest(
+            self, auth_client, armed, monkeypatch):
+        payload = _detail_payload()
+        payload['actions'] += [{'actionId': 9, 'actionType': 'Supplement', 'actionStatus': 'Submitted'},
+                               {'actionId': 10, 'actionType': 'Supplement', 'actionStatus': 'Approved'}]
+        body = self._body(auth_client, monkeypatch, payload)
+        assert 'class="collapse show" id="xras-action-9"' in body, 'the headline action'
+        assert 'class="collapse show" id="xras-action-10"' in body, 'the latest keeps its badge and stays open'
+        assert 'class="collapse" id="xras-action-7"' in body or 'class="collapse" id="xras-action-8"' in body
+        assert body.count('>latest<') == 1
+
     def test_the_card_names_the_newer_action_on_hover(self, auth_client, armed):
         payload = _payload('EXAM0004')
         payload['actions'] += [{'actionId': 8, 'actionType': 'Supplement', 'actionStatus': 'Submitted'},
@@ -1837,7 +1848,8 @@ class TestTheHeadlineActionAndXrasLinks:
                                 'entryDate': datetime.now().strftime('%Y-%m-%dT01:34:47Z')}]
         _publish(payload)
         body = auth_client.get(FRAGMENT + '?show_all=1&status=Submitted').get_data(as_text=True)
-        assert f"Request: Approved · Newer Supplement 9: Approved {datetime.now():%Y-%m-%d}" in body
+        assert (f"Request: Approved · Newer Supplement 9 (entered {datetime.now():%Y-%m-%d}): Approved"
+                in body), 'the date is when XRAS received it, not an approval date (XRAS keeps none)'
 
     def test_a_roster_username_searches_xras(self, auth_client, armed, monkeypatch):
         body = self._body(auth_client, monkeypatch, _detail_payload())
