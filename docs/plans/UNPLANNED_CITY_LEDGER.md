@@ -2491,9 +2491,18 @@ sunburst, which started on the allocations page and then moved to job history.
   deletion signal the task can read (an XRAS read per open ticket, or a mark the sweep leaves),
   a `TicketProvider.close(key, resolution)` beside `comment`, and its own Jira smoke. Deferred
   on purpose; post-then-delete is rare. Build it when one shows up.
-- [ ] One batched usage build over many projects (#900, `_exchange_candidates`): two callers
-  still loop `Project.get_detailed_allocation_usage` per project, so each project pays its own
+- [x] One batched usage build over many projects (#900, `_exchange_candidates`): two callers
+  still looped `Project.get_detailed_allocation_usage` per project, so each project paid its own
   read-model lookup (a stale tree re-projects once per project) plus job-statistics queries.
-  `api/v1/users.py:49` (`_serialize_dashboard_format`, the signed-in user's projects; few per
-  user, user-facing) and `sam/queries/expiration_notices.py:158` (one per expiring project;
-  background task). Found 2026-11-03.
+  Found 2026-11-03; done 2026-11-04 on `usage-loops-batched`.
+  - `usage_by_resource` (`sam/queries/dashboard.py`) is the one keyed batch;
+    `get_detailed_allocation_usage` and `_exchange_candidates` use it too.
+  - `build_expiration_messages`: one usage build and one roster load
+    (`Project.member_ids_by_project`, Users without their project cascades). Local MySQL, a
+    229-project end-date cluster: 5,068 statements to 43 (8.3 s to 0.35 s). The roster was the
+    larger half, 2,972.
+  - `_serialize_dashboard_format`: 216 to 75 for a 14-project user.
+  - Parity: exact on MySQL; on Postgres within 1e-9, since its float sums move between two runs
+    of the same code. Perf pins `build_expiration_messages{,_read_model}` (one gate lookup) and
+    `users_me_projects_dashboard_route`.
+  - Left alone: `sam/queries/xras_notices.py:240`, one project per call, a handful per run.
