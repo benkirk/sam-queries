@@ -744,11 +744,11 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
                                       include_adjustments: bool = True,
                                       active_at: Optional[datetime] = None) -> Dict[str, Dict[str, Any]]:
         """Usage by resource name: the dashboard builder's rows for this project, plus job statistics."""
-        from sam.queries.dashboard import build_user_projects_resources_batched
-        rows = build_user_projects_resources_batched(
+        from sam.queries.dashboard import usage_by_resource
+        rows = usage_by_resource(
             self.session, [self], active_at=active_at, include_adjustments=include_adjustments,
-            resource_name=resource_name, with_project_metadata=False,
-        ).get(self.project_id, [])
+            resource_name=resource_name,
+        ).get(self.project_id, {}).values()
         now = active_at or datetime.now()
         accounts = {a.account_id: a for a in self.accounts}
 

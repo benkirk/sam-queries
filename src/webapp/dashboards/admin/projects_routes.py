@@ -1320,13 +1320,12 @@ def _exchange_candidates(project, resource_id, active_at=None):
 
     # 'used' for the FROM overdraft preview / server check: one batched build for
     # every candidate project (one read-model lookup, not one per candidate).
-    from sam.queries.dashboard import build_user_projects_resources_batched
+    from sam.queries.dashboard import usage_by_resource
     cand_projects = list({acct.project_id: subtree[acct.project_id] for _, acct in rows}.values())
-    usage = build_user_projects_resources_batched(
-        db.session, cand_projects, active_at=active_at,
-        resource_name=resource.resource_name, with_project_metadata=False,
-    )
-    used_by_project = {pid: res_rows[-1]['used'] for pid, res_rows in usage.items() if res_rows}
+    usage = usage_by_resource(db.session, cand_projects, active_at=active_at,
+                              resource_name=resource.resource_name)
+    used_by_project = {pid: by_name[resource.resource_name]['used']
+                       for pid, by_name in usage.items() if resource.resource_name in by_name}
 
     candidates = []
     for alloc, acct in rows:
