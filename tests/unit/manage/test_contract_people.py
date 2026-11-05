@@ -135,3 +135,20 @@ class TestPlan:
     def test_no_award_is_refused(self, session):
         assert plan_contract_from_award(session, None, source=self._source(session)) == (
             None, INCOMPLETE_AWARD)
+
+    def test_a_roster_user_wins_by_surname_alone(self, session):
+        """NSF's "C Spencer Jones" is roster user Spencer Jones when nobody else shares the name."""
+        pi = make_user(session, first_name='Spencer', last_name=f"Jones{next_seq('J')}")
+        other = make_user(session, first_name='Ada', last_name=f"Roe{next_seq('R')}")
+        record = _record(pi=PersonRef(name=f'C Spencer {pi.last_name}', email=_address('NSFPI')))
+        plan, reason = plan_contract_from_award(session, record, source=self._source(session),
+                                                roster_users=[other, pi])
+        assert reason is None and plan.pi.user is pi
+
+    def test_two_roster_users_sharing_a_surname_make_a_contact(self, session):
+        last = f"Jones{next_seq('J')}"
+        users = [make_user(session, first_name=first, last_name=last) for first in ('Spencer', 'Casey')]
+        record = _record(pi=PersonRef(name=f'Pat {last}', email=_address('NSFPI')))
+        plan, _ = plan_contract_from_award(session, record, source=self._source(session),
+                                           roster_users=users)
+        assert not plan.pi.is_user

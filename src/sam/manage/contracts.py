@@ -97,7 +97,8 @@ class ContractPlan:
 
 
 def _roster_match(person: PersonRef, roster_users: Iterable[User]) -> Optional[User]:
-    """The request's own user this agency person is: by email, else one surname+first match."""
+    """The request's own user this agency person is: by email, else one first+surname match,
+    else the one roster user with that surname (NSF writes "C Spencer Jones" for Spencer Jones)."""
     users = [u for u in roster_users if u is not None]
     address = (person.email or '').strip().lower()
     if address:
@@ -109,6 +110,9 @@ def _roster_match(person: PersonRef, roster_users: Iterable[User]) -> Optional[U
         return None
     hits = [u for u in users
             if _fold(u.last_name)[-1:] == tokens[-1:] and _fold(u.first_name)[:1] == tokens[:1]]
+    if len(hits) == 1:
+        return hits[0]
+    hits = [u for u in users if _fold(u.last_name)[-1:] == tokens[-1:]]
     return hits[0] if len(hits) == 1 else None
 
 
