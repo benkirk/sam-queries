@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/table_bits.html' import state_tag %}
 {#
   The Roles pane: every role with its parent, direct and effective counts, and
   how many active grants name it. Edit and New load the editor into #roleEditor,
@@ -17,27 +18,27 @@
     <div class="card-body">
         <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
-            <thead>
+            <thead class="table-subtle">
                 <tr>
-                    <th>Name</th>
-                    <th>Extends</th>
-                    <th class="text-end">Direct</th>
-                    <th class="text-end">Effective</th>
-                    <th class="text-end">Grants</th>
-                    <th>Description</th>
-                    <th></th>
+                    <th class="col-shrink sortable-header" data-sort="text">Name</th>
+                    <th class="col-shrink sortable-header" data-sort="text">Extends</th>
+                    <th class="col-num sortable-header" data-sort="numeric">Direct</th>
+                    <th class="col-num sortable-header" data-sort="numeric">Effective</th>
+                    <th class="col-num sortable-header" data-sort="numeric">Grants</th>
+                    <th class="sortable-header" data-sort="text">Description</th>
+                    <th class="col-shrink"></th>
                 </tr>
             </thead>
             <tbody>
                 {% for r in roles %}
-                <tr{{ ' class="text-muted"' | safe if not r.row.active }}>
-                    <td><span class="font-monospace">{{ r.row.name }}</span>
-                        {% if not r.row.active %}<span class="badge bg-secondary ms-1">inactive</span>{% endif %}</td>
-                    <td>{{ r.extends or '' }}</td>
-                    <td class="text-end">{{ r.direct | fmt_number }}</td>
-                    <td class="text-end">{{ r.effective | fmt_number }}</td>
-                    <td class="text-end">{{ r.holders | fmt_number }}</td>
-                    <td class="small">{{ r.row.description or '' }}</td>
+                <tr{{ ' class="row-inactive"' | safe if not r.row.active }}>
+                    <td class="text-nowrap" data-sort-value="{{ r.row.name }}"><span class="font-monospace">{{ r.row.name }}</span>
+                        {%- if not r.row.active %}{{ state_tag('inactive') }}{% endif %}</td>
+                    <td class="text-nowrap" data-sort-value="{{ r.extends or '' }}">{{ r.extends or '' }}</td>
+                    <td class="col-num" data-sort-value="{{ r.direct }}">{{ r.direct | fmt_number }}</td>
+                    <td class="col-num" data-sort-value="{{ r.effective }}">{{ r.effective | fmt_number }}</td>
+                    <td class="col-num" data-sort-value="{{ r.holders }}">{{ r.holders | fmt_number }}</td>
+                    <td class="small" data-sort-value="{{ r.row.description or '' }}">{{ r.row.description or '' }}</td>
                     <td class="text-end text-nowrap">
                         <button type="button" class="btn btn-row" title="Edit"
                                 aria-label="Edit {{ r.row.name }}"

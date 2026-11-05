@@ -87,7 +87,8 @@ class TestThePage:
         assert 'grantSubjectUser_search' not in html
 
     def test_the_roles_card_and_the_new_role_editor_render(self, auth_client):
-        assert auth_client.get(ROLES).status_code == 200
+        roles = auth_client.get(ROLES)
+        assert roles.status_code == 200 and b'sortable-header' in roles.data
         html = auth_client.get(NEW_ROLE).get_data(as_text=True)
         assert 'name="permissions"' in html and 'value="view_projects"' in html
         assert 'name="active"' not in html
