@@ -4,7 +4,7 @@
   Context: request_number, payload (GET /v1/reports/request_numbers/<n>, self-
   describing: displayResourceName + resourceUnits + type per resource), row (its
   request_index_entry), family, detail_actions, documents, grants, fos_names, flash /
-  flash_error, write_enabled, configured, admin_context_available, is_xras_admin,
+  flash_error, write_enabled, configured, admin_context_available, is_xras_admin, headline_action,
   plus the roster and override includes' keys.
   The editors render whether or not writes are on: a disabled control teaches
   that a switch exists. Every control swaps this body; none toggles a modal (#464).
@@ -14,11 +14,16 @@
 {% if flash %}<p class="xras-flash text-success-emphasis"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> {{ flash }}</p>{% endif %}
 {% if flash_error %}<p class="xras-flash text-danger-emphasis"><i class="fa-solid fa-circle-xmark" aria-hidden="true"></i> {{ flash_error }}</p>{% endif %}
 
-{# The request at a glance: its state, kind, opportunity and dates, one line. #}
+{# The request at a glance: the in-flight action's state and kind (the card's rule), opportunity
+   and dates. requestStatus/requestType stay at the New's: a note only when they differ. #}
+{% set latest_action = headline_action %}
+{% set action_status = latest_action.action_status if latest_action else none %}
 <p class="xras-request-meta">
-    {{ tag(payload.requestStatus or '—') }}
+    {{ tag(action_status or payload.requestStatus or '—') }}
     {% if payload.isDeleted %}{{ alarm('deleted in XRAS') }}{% endif %}
-    {% if payload.requestType %}<span>{{ payload.requestType }}</span>{% endif %}
+    {% if latest_action and latest_action.action_type %}<span>{{ latest_action.action_type }}</span>
+    {%- elif payload.requestType %}<span>{{ payload.requestType }}</span>{% endif %}
+    {% if action_status and payload.requestStatus and payload.requestStatus != action_status %}<span title="The request's own status in XRAS">request {{ payload.requestStatus | lower }}</span>{% endif %}
     {% if payload.opportunity_name %}
     <span>
         {# The opportunity opens in place, carrying this number for a Back link. #}
@@ -33,8 +38,7 @@
     {# The current handoff's date, as the card shows it; the request's own when it differs. #}
     {% if row and (row.activity_date or row.submit_date) %}<span>submitted {{ (row.activity_date or row.submit_date) | fmt_date }}</span>{% endif %}
     {% if row and row.activity_date and row.submit_date and row.activity_date != row.submit_date %}<span>created {{ row.submit_date | fmt_date }}</span>{% endif %}
-    {# The latest action: /requests/<id> in XRAS opens the original New instead. #}
-    {% set latest_action = detail_actions | selectattr('is_latest') | first %}
+    {# That action: /requests/<id> in XRAS opens the original New instead. #}
     {% set xras_href = xras_admin_url(action=latest_action.action_id) if latest_action else none %}
     {% if xras_href %}
     <a class="ms-auto" href="{{ xras_href }}" target="_blank" rel="noopener" title="Open action {{ latest_action.action_id }} in the XRAS admin app">Open in XRAS <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>

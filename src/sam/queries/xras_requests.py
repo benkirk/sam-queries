@@ -276,19 +276,19 @@ def _preflight_rollup(preflights: Optional[Mapping[Any, dict]]) -> Optional[str]
     return None
 
 
-def latest_action_type(actions) -> Optional[str]:
-    """The request's in-flight action type — what admin.xras.org names it.
-
-    The action still in flight (Submitted / Under Review) if any, else the newest
-    by ``action_id``. ``None`` only when no action carries a type.
-    """
+def in_flight_action(actions) -> Optional[Mapping[str, Any]]:
+    """The request's in-flight action: Submitted / Under Review if any, else the newest typed one."""
     typed = [a for a in (actions or []) if a.get('action_type')]
     if not typed:
         return None
     in_flight = [a for a in typed
                  if a.get('action_status') in ('Submitted', 'Under Review')]
-    latest = max(in_flight or typed, key=lambda a: a.get('action_id') or 0)
-    return latest.get('action_type')
+    return max(in_flight or typed, key=lambda a: a.get('action_id') or 0)
+
+
+def latest_action_type(actions) -> Optional[str]:
+    """The in-flight action's type — what admin.xras.org names the request."""
+    return (in_flight_action(actions) or {}).get('action_type')
 
 
 _GIST_TITLE_MAX = 80
@@ -508,6 +508,9 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
         # The in-flight action type, precomputed for the card's Type column and
         # its facet — the single "what kind of handoff is this" admin shows.
         'latest_action_type': latest_action_type(actions),
+        # Its status beside it: requestStatus stays at the New's (an approved
+        # request with a Submitted Extension reads Approved), so the card shows this.
+        'latest_action_status': (in_flight_action(actions) or {}).get('action_status'),
         # The Type popover: title + what the in-flight action asks for.
         'gist': request_gist(payload),
         # Worst pending verdict, precomputed for the card's roll-up badge:

@@ -992,10 +992,30 @@ class TestRendering:
         assert 'newer than the sweep' in body
 
     def test_status_chips_filter(self, auth_client, armed):
-        _publish(_payload('EXAM0001'), _payload('EXAM0002', status='Submitted'))
+        _publish(_payload('EXAM0001'),
+                 _payload('EXAM0002', status='Submitted', action_status='Submitted'))
         body = auth_client.get(
             FRAGMENT + '?show_all=1&status=Submitted').get_data(as_text=True)
         assert 'EXAM0002' in body and 'EXAM0001' not in body
+
+    def test_status_is_the_in_flight_actions_not_the_requests(self, auth_client, armed):
+        """NRAL0035, 2026-11-04: requestStatus stays Approved while its Extension waits."""
+        payload = _payload('EXAM0003')
+        payload['actions'].append({'actionId': 8, 'actionType': 'Extension',
+                                   'actionStatus': 'Submitted'})
+        _publish(payload, _payload('EXAM0001'))
+        body = auth_client.get(
+            FRAGMENT + '?show_all=1&status=Submitted').get_data(as_text=True)
+        assert 'EXAM0003' in body and 'EXAM0001' not in body
+        assert 'title="Request: Approved"' in body
+
+    def test_an_old_snapshot_filters_on_the_request_status(self, auth_client, armed):
+        row = request_index_entry(_payload('EXAM0002', status='Submitted'))
+        del row['latest_action_status']
+        xras_cache.store_requests_index({'generated_at': datetime.now(), 'rows': [row]})
+        body = auth_client.get(
+            FRAGMENT + '?show_all=1&status=Submitted').get_data(as_text=True)
+        assert 'EXAM0002' in body
 
     def test_the_type_column_shows_the_in_flight_action_not_a_count(
             self, auth_client, armed):
@@ -1789,6 +1809,25 @@ class TestTheModalLinksIntoXras:
         body = self._body(auth_client, monkeypatch, _detail_payload())
         for head in re.findall(r'<button[^>]*xras-action-head.*?</button>', body, re.S):
             assert '<a ' not in head
+
+    def test_the_header_names_the_latest_actions_status_and_type(
+            self, auth_client, armed, monkeypatch):
+        payload = _detail_payload()
+        payload['actions'].append({'actionId': 9, 'actionType': 'Extension',
+                                   'actionStatus': 'Submitted'})
+        body = self._body(auth_client, monkeypatch, payload)
+        header = body[body.index('xras-request-meta'):body.index('xras-request-title')]
+        assert '>Submitted<' in header and '>Extension<' in header
+        assert 'request approved' in header and '>New<' not in header
+
+    def test_a_pending_action_outranks_a_newer_applied_one(self, auth_client, armed, monkeypatch):
+        """UWKU0002, 2026-11-04: Supplement 399592 Submitted, 403457 Approved; the card says Submitted."""
+        payload = _detail_payload()
+        payload['actions'] += [{'actionId': 9, 'actionType': 'Supplement', 'actionStatus': 'Submitted'},
+                               {'actionId': 10, 'actionType': 'Supplement', 'actionStatus': 'Approved'}]
+        body = self._body(auth_client, monkeypatch, payload)
+        header = body[body.index('xras-request-meta'):body.index('xras-request-title')]
+        assert '>Submitted<' in header and '/actions/9"' in header
 
     def test_a_roster_username_searches_xras(self, auth_client, armed, monkeypatch):
         body = self._body(auth_client, monkeypatch, _detail_payload())

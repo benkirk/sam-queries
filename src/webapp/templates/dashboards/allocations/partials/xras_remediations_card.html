@@ -298,7 +298,9 @@
                     {# `gist` is absent on a snapshot swept before it existed: the plain label. #}
                     <td class="text-nowrap">{% if row.gist and row.latest_action_type %}{{ term(type_label(row.latest_action_type), row.gist.ask, rich=True, title=row.gist.title, placement='right', trigger='hover focus') }}
                         {%- else %}{{ type_label(row.latest_action_type) if row.latest_action_type else '—' }}{% endif %}</td>
-                    <td class="text-nowrap">{{ tag(row.status or '—') }}</td>
+                    {# The type's own status; the request's stays at its New's (`latest_action_status` absent: an old snapshot). #}
+                    {% set action_status = row.latest_action_status or row.status %}
+                    <td class="text-nowrap">{{ tag(action_status or '—', title=('Request: ' ~ row.status) if row.status and row.status != action_status else '') }}</td>
                     {% set lead = row.pi.name or row.pi.username or '—' %}
                     <td class="cell-truncate" title="{{ lead }}">{{ lead }}</td>
                     {# `is defined`: a row swept before `admin` existed has no such key. #}

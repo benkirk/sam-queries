@@ -471,6 +471,20 @@ class TestPreflightRollup:
         assert _preflight_rollup({1: None}) is None
 
 
+class TestLatestActionStatus:
+    """requestStatus stays at the New's; the card shows the in-flight action's."""
+
+    def test_an_approved_request_with_a_submitted_extension_reads_submitted(self):
+        payload = _payload()
+        payload['actions'] = [{'actionId': 1, 'actionType': 'New', 'actionStatus': 'Approved'},
+                              {'actionId': 2, 'actionType': 'Extension',
+                               'actionStatus': 'Submitted'}]
+        entry = request_index_entry(payload)
+        assert entry['status'] == 'Approved'
+        assert (entry['latest_action_type'], entry['latest_action_status']) == (
+            'Extension', 'Submitted')
+
+
 class TestLatestActionType:
     """The Type column's in-flight pick — what admin.xras.org names it."""
 
