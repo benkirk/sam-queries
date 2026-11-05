@@ -27,7 +27,7 @@ def _number():
 def fetched(monkeypatch):
     monkeypatch.setenv('XRAS_AUTO_CONTRACTS', '1')
     calls = []
-    monkeypatch.setattr(awards, 'cached_award', lambda *a, **k: None)
+    monkeypatch.setattr(awards, 'award_is_cached', lambda *a, **k: False)
     monkeypatch.setattr(awards, 'resolve_award',
                         lambda source, number, exact=False: calls.append(number))
     return calls
@@ -62,7 +62,7 @@ def test_the_cap(session, fetched, monkeypatch):
 
 def test_an_outage_stops_the_run_without_raising(session, monkeypatch):
     monkeypatch.setenv('XRAS_AUTO_CONTRACTS', '1')
-    monkeypatch.setattr(awards, 'cached_award', lambda *a, **k: None)
+    monkeypatch.setattr(awards, 'award_is_cached', lambda *a, **k: False)
 
     def _down(*a, **k):
         raise awards.AwardSourceUnavailable('down')
@@ -80,3 +80,11 @@ def test_with_named_agencies_names_only_nsf():
     agencies = [g.get('fundingAgency') for g in with_named_agencies(payload)['grants']]
     assert agencies == ['NSF', None, 'DOE']
     assert 'fundingAgency' not in payload['grants'][0]
+
+
+def test_a_cached_answer_is_not_fetched_again(session, fetched, monkeypatch):
+    """A definite "no such award" is cached as None; it counts as cached, not warmed."""
+    monkeypatch.setattr(awards, 'award_is_cached', lambda *a, **k: True)
+    detail = {}
+    xras_sweep._warm_awards(_ctx(), session, [_payload(_number())], detail)
+    assert fetched == [] and detail['awards'] == {'warmed': 0, 'cached': 1, 'unavailable': 0}

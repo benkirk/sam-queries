@@ -23,6 +23,7 @@ from sam.integration.awards.client import AwardHttpClient
 from sam.integration.awards.nsf import NsfAwardProvider, nsf_award_id
 from sam.integration.awards.people import resolve_person
 from sam.integration.awards.registry import (
+    award_is_cached,
     build_providers,
     cached_award,
     providers,
@@ -46,6 +47,7 @@ __all__ = [
     'UNAVAILABLE_FIELD_LABELS',
     'UsaSpendingProvider',
     'award_id_candidates',
+    'award_is_cached',
     'build_providers',
     'cached_award',
     'nsf_award_id',

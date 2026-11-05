@@ -358,7 +358,7 @@ def _warm_awards(ctx, session, payloads, detail) -> None:
 
     The post reads the cache only; an outage here logs and ends the pass.
     """
-    from sam.integration.awards import AwardSourceUnavailable, cached_award, resolve_award
+    from sam.integration.awards import AwardSourceUnavailable, award_is_cached, resolve_award
     from sam.projects.contracts import Contract
     from sam.xras.extractors import contract_candidates, extract_core_number, has_core_number
     from sam.xras.handlers._fields import auto_contracts_armed
@@ -380,7 +380,8 @@ def _warm_awards(ctx, session, payloads, detail) -> None:
             if (Contract.get_by_number(session, number) is not None
                     or contract_candidates(session, extract_core_number(number))):
                 continue
-            if cached_award('NSF', number, exact=True) is not None:
+            # A cached "no such award" is cached too: it must not count as warmed or spend the cap.
+            if award_is_cached('NSF', number, exact=True):
                 tally['cached'] += 1
                 continue
             if tally['warmed'] >= _AWARD_WARM_CAP:

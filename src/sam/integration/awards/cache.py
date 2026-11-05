@@ -61,9 +61,14 @@ def cached_lookup(provider_name: str, contract_number: str,
         compute)
 
 
-def peek_lookup(provider_name: str, contract_number: str) -> Optional[Any]:
+#: ``peek_lookup``'s "nothing cached", distinct from a cached ``None`` (a definite no such award).
+MISSING = object()
+
+
+def peek_lookup(provider_name: str, contract_number: str, default: Any = None) -> Optional[Any]:
     """What :func:`cached_lookup` holds for this award, without asking the provider."""
-    return _CACHE.peek('default', (provider_name, normalize_contract_number(contract_number)))
+    return _CACHE.peek('default', (provider_name, normalize_contract_number(contract_number)),
+                       default)
 
 
 def cached_search(provider_name: str, query: str, limit: int,
