@@ -607,12 +607,16 @@ def htmx_contract_award_lookup():
         if not person:
             continue
         user = resolve_person(db.session, person)
+        role = 'pi' if field.startswith('principal') else 'monitor'
         if user is not None:
             form[field] = str(user.user_id)
             form[f'{field}_display'] = _user_label(user)
+            form[f'{role}_contact_name'] = form[f'{role}_contact_email'] = ''
         else:
             extra[hint_key] = person
             _clear_picker(form, field)
+            form[f'{role}_contact_name'] = person.name or ''
+            form[f'{role}_contact_email'] = person.email or ''
 
     if record.program_name:
         program = (
@@ -705,9 +709,19 @@ class _ContractCreateHandler(HtmxFormHandler):
         return data
 
     def perform(self, data):
+        from sam.manage.contracts import person_columns
+        people = {k: data.pop(k, None) for k in list(data)
+                  if k.endswith('_user_id') or '_contact_' in k}
         kwargs = {k: v for k, v in data.items() if k != 'contract_mode'}
         kwargs['start_date'] = datetime.combine(kwargs['start_date'],
                                                 datetime.min.time())
+        for role, user_key in (('pi', 'principal_investigator_user_id'),
+                               ('monitor', 'contract_monitor_user_id')):
+            kwargs.update(person_columns(
+                db.session, role, user_id=people.get(user_key),
+                name=people.get(f'{role}_contact_name'),
+                email=people.get(f'{role}_contact_email'),
+                organization=people.get(f'{role}_contact_organization')))
         return Contract.create(db.session, **kwargs)
 
     def context(self):
@@ -759,6 +773,17 @@ def htmx_contract_delete(contract_id):
 # its own *CONTRACTS family, so contract administration can be granted
 # without conferring write on organizations, institutions and AOIs.
 
+def _monitor_edit_kwargs(data):
+    """The edit form's monitor: a picked user, else the typed contact, else none (cleared)."""
+    from sam.manage.contracts import person_columns
+    cols = person_columns(db.session, 'monitor', user_id=data['contract_monitor_user_id'],
+                          name=data.get('monitor_contact_name'),
+                          email=data.get('monitor_contact_email'),
+                          organization=data.get('monitor_contact_organization'))
+    return {'contract_monitor_user_id': cols.get('contract_monitor_user_id'),
+            'monitor_contact_id': cols.get('monitor_contact_id')}
+
+
 _contract_spec = partial(
     CrudSpec,
     triggers=_CONTRACT_TRIGGERS,
@@ -786,8 +811,8 @@ _CONTRACT_CRUD_SPECS = (
             url=data['url'],
             start_date=datetime.combine(data['start_date'], datetime.min.time()),
             end_date=data['end_date'],
-            contract_monitor_user_id=data['contract_monitor_user_id'],
             nsf_program_id=data['nsf_program_id'],
+            **_monitor_edit_kwargs(data),
         ),
         # create is bespoke (htmx_contract_create_form / htmx_contract_create):
         # it needs FK-existence checks and a contract_number uniqueness

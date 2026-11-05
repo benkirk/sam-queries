@@ -98,6 +98,32 @@ class TestCreateContractFormSchema:
         assert data['nsf_program_id'] is None
 
 
+class TestPiIsAUserOrAContact:
+
+    def _form(self, **extra):
+        form = {'contract_number': 'AGS-1852977', 'title': 'A contract',
+                'start_date': '2018-10-01', 'contract_source_id': '1'}
+        form.update(extra)
+        return form
+
+    def test_neither_is_a_form_level_error(self):
+        with pytest.raises(ValidationError) as exc:
+            CreateContractForm().load(self._form())
+        assert '_schema' in exc.value.messages
+
+    def test_a_contact_name_alone_is_enough(self):
+        data = CreateContractForm().load(self._form(pi_contact_name='Pat Doe',
+                                                    pi_contact_email=''))
+        assert data['principal_investigator_user_id'] is None
+        assert data['pi_contact_name'] == 'Pat Doe' and data['pi_contact_email'] is None
+
+    def test_a_bad_contact_email_is_rejected(self):
+        with pytest.raises(ValidationError) as exc:
+            CreateContractForm().load(self._form(pi_contact_name='Pat',
+                                                 pi_contact_email='not-an-address'))
+        assert 'pi_contact_email' in exc.value.messages
+
+
 class TestEditContractFormSchema:
 
     def test_carries_monitor_and_program(self):
@@ -325,6 +351,17 @@ class TestCreateForm:
         assert 'contract_monitor_user_id' in body
         assert 'nsf_program_id' in body
 
+    def test_renders_the_contact_fields(self, auth_client):
+        body = auth_client.get(CREATE_FORM_URL).get_data(as_text=True)
+        for name in ('pi_contact_name', 'pi_contact_email', 'monitor_contact_name'):
+            assert f'name="{name}"' in body
+
+    def test_no_pi_at_all_is_a_form_error(self, auth_client):
+        resp = auth_client.post(CREATE_URL, data={
+            'contract_number': 'ZZ-0000001', 'title': 't', 'start_date': '2026-01-01',
+            'contract_source_id': '1'})
+        assert 'external contact' in resp.get_data(as_text=True)
+
     def test_invalid_post_rerenders_without_success_trigger(self, auth_client):
         resp = auth_client.post(CREATE_URL, data={})
         assert resp.status_code == 200
@@ -442,6 +479,16 @@ class TestAwardLookup:
         assert 'Nobody Atall' in body
         assert 'no matching SAM user' in body
         assert 'search-suggested-person' in body
+
+    def test_unresolved_person_prefills_the_contact_fields(self, auth_client):
+        record = _award(pi=PersonRef(name='Nobody Atall', email='nobody@example.test'),
+                        monitor=None)
+        with patch('sam.integration.awards.resolve_award', return_value=record):
+            body = auth_client.get(LOOKUP_URL, query_string=self._args()).get_data(as_text=True)
+        name = body.split('name="pi_contact_name"')[1][:200]
+        email = body.split('name="pi_contact_email"')[1][:200]
+        assert 'value="Nobody Atall"' in name and 'value="nobody@example.test"' in email
+        assert 'saved as the external contact below' in body
 
     def test_unresolved_person_clears_a_stale_pick(self, auth_client):
         """Refetching a different award must not keep the previous PI.

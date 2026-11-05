@@ -62,6 +62,29 @@
                            selected_label=(contract.contract_monitor.display_name
                                            if contract.contract_monitor else ''),
                            id_prefix='editContractMonitor') }}
+        {%- set mc = contract.monitor_contact if not contract.contract_monitor else none %}
+        <div class="mb-3">
+            <div class="form-text mb-1">
+                <i class="fa-solid fa-address-card me-1"></i>Not a SAM user? Enter the monitor as
+                an external contact, used only when no user is picked.
+            </div>
+            <div class="row g-2">
+                <div class="col-md-5">
+                    {{ text_field('monitor_contact_name', 'Name', maxlength=255, optional_text='',
+                                  default=mc.name if mc else '', id='editContractMonitorContactName') }}
+                </div>
+                <div class="col-md-4">
+                    {{ text_field('monitor_contact_email', 'Email', type='email', maxlength=255,
+                                  optional_text='', default=mc.email if mc else '',
+                                  id='editContractMonitorContactEmail') }}
+                </div>
+                <div class="col-md-3">
+                    {{ text_field('monitor_contact_organization', 'Organization', maxlength=255,
+                                  optional_text='', default=mc.organization if mc else '',
+                                  id='editContractMonitorContactOrg') }}
+                </div>
+            </div>
+        </div>
 
         {{ fk_search_field('nsf_program_id', 'NSF Program',
                            search_url=url_for('admin_dashboard.htmx_search_nsf_programs'),
