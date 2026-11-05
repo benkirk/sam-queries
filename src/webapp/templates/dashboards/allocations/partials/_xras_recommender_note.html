@@ -29,8 +29,8 @@
 <ul class="modal-facts">
     {% if note.button %}<li><i class="fa-solid fa-hand-pointer" aria-hidden="true"></i>Button: {{ note.button }}</li>{% endif %}
     {% if note.end_date %}<li><i class="fa-solid fa-calendar" aria-hidden="true"></i>End date: {{ note.end_date | fmt_date }}</li>{% endif %}
-    {% if values.hours_by_resource %}<li><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i>Hours: {% for name, hours in values.hours_by_resource | dictsort %}{{ name }} {{ hours | fmt_number }}{{ ' · ' if not loop.last }}{% endfor %}</li>{% endif %}
-    {% if values.requested_hours %}<li><i class="fa-solid fa-inbox" aria-hidden="true"></i>Requested: {% for name, hours in values.requested_hours | dictsort %}{{ name }} {{ hours | fmt_number }}{{ ' · ' if not loop.last }}{% endfor %}</li>{% endif %}
+    {% if values.hours_by_resource %}<li><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i>Hours: {% for name, hours in values.hours_by_resource | dictsort %}{{ name }} {{ hours | fmt_number(raw=True) }}{{ ' · ' if not loop.last }}{% endfor %}</li>{% endif %}
+    {% if values.requested_hours %}<li><i class="fa-solid fa-inbox" aria-hidden="true"></i>Requested: {% for name, hours in values.requested_hours | dictsort %}{{ name }} {{ hours | fmt_number(raw=True) }}{{ ' · ' if not loop.last }}{% endfor %}</li>{% endif %}
 </ul>
 {% endif %}
 

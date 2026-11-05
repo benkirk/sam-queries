@@ -3120,7 +3120,8 @@ class TestTheRecommenderNote:
         assert 'Process action 7 in XRAS' in body
         assert 'Needs your judgement' in body and 'Already checked' in body
         assert 'NSF award 2320667' in body and 'Inside every rule.' in body
-        assert 'Requested: Derecho 1.20M' in body
+        # raw: the operator types these into the XRAS Process page
+        assert 'Hours: Derecho 1,000,000' in body and 'Requested: Derecho 1,200,000' in body
 
     def test_every_note_link_opens_without_a_referrer(self, auth_client, armed,
                                                       monkeypatch, session):
