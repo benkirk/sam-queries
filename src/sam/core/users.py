@@ -82,6 +82,9 @@ class User(Base, TimestampMixin, SessionMixin):
     default_projects = relationship('DefaultProject', back_populates='user', cascade='all, delete-orphan')
     disk_charge_summaries = relationship('DiskChargeSummary', back_populates='user')
     disk_charges = relationship('DiskCharge', back_populates='user')
+    external_contact = relationship(
+        'ExternalContact', primaryjoin='foreign(ExternalContact.user_id) == User.user_id',
+        back_populates='user', uselist=False)
     email_addresses = relationship('EmailAddress', back_populates='user', lazy='selectin', order_by='EmailAddress.is_primary.desc()', cascade='all, delete-orphan')
     hpc_charge_summaries = relationship('HPCChargeSummary', back_populates='user')
     hpc_charges = relationship('HPCCharge', back_populates='user')

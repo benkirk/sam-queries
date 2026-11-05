@@ -170,8 +170,9 @@ PI's institution or NCAR lab (MnemonicCode). Contracts: src/sam/projects/contrac
 contract_source and nsf_program; 2,162 of 2,225 contracts are NSF
 (docs/plans/implemented/CONTRACT_IMPORTING_PLAN.md). project_contract is many-to-many. Area of
 interest: src/sam/projects/areas.py. External contacts: sam-queries
-docs/plans/EXTERNAL_CONTACTS.md, a proposal that needs a coordinated change with legacy SAM
-(107 PI-only users; 325 of 388 monitors never had an account). `sam-search awards` asks NSF and
+docs/plans/implemented/EXTERNAL_CONTACTS.md: a contract PI or monitor need not be a SAM user
+(107 PI-only users; 325 of 388 monitors never had an account), and an XRAS post creates its
+missing contract from the NSF award. `sam-search awards` asks NSF and
 USAspending directly and checks each award against SAM. Usage reports and the xlsx export slice by facility and
 allocation type; nothing rolls usage up by organization or contract yet.
 :::

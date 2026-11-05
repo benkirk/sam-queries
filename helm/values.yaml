@@ -440,6 +440,10 @@ webapp:
     # XRAS_POST_AUTOMATION.md § 3 B); "0" leaves it to the card's Activate. Armed after the
     # samuel-dev smoke (#828), NUSD told; pinned in tests/unit/gates/test_xras_admin_client.py.
     XRAS_AUTO_ACTIVATE: "1"
+    # A post creates its missing contract from the NSF award the sweep cached, as the last
+    # step of a post that otherwise applies (docs/plans/implemented/EXTERNAL_CONTACTS.md).
+    # MUST equal tasks.env's, so the preflight predicts the post. "0" | "1".
+    XRAS_AUTO_CONTRACTS: "0"
     # The New's award mail right after that activation (phase C); xras_notices backstops it.
     # Neither sends before the cutover floor, which MUST equal tasks.env's (pinned by
     # helm/tests/test-dev-render.sh): SAMuel mails from 08:00 MT 2026-10-20 (Ben).
@@ -647,6 +651,8 @@ tasks:
     # cutoff also means the first production run is not a multi-year DELETE.
     # The default lives in src/system_status/retention.py; this overrides it.
     STATUS_RETENTION_DAYS: "365"
+    # Equals webapp.env's: the sweep's preflight and its award warm-up follow it. "0" | "1".
+    XRAS_AUTO_CONTRACTS: "0"
     # expiration_notices
     # Runaway guard: the task fails BEFORE sending anything if its audience
     # exceeds this. ~4.7x the measured peak of 535 (2026-11-23, catching the
@@ -760,6 +766,10 @@ tasks:
     # XRAS_SUBMIT_ANONYMOUS_ENABLED (absent here) the reconcile's placeholder merge.
     # Removing it disarms both without a code change.
     XRAS_WRITE_ENABLED: "1"
+    # account_requests_reconcile merges each "Ready to merge" placeholder (5 a run, never a
+    # retry) and dismisses a fulfilled placeholder request XRAS no longer holds. Needs the
+    # write lever above. Tasks env only. "0" | "1".
+    XRAS_AUTO_MERGE: "1"
     # xras_request_tickets files on the RC desk's "Allocations" type (18; the list is beside
     # webapp.env JIRA_REQUEST_TYPE_ID), smoked as RC-40559 2026-10-15.
     JIRA_XRAS_REQUEST_REQUEST_TYPE_ID: "18"

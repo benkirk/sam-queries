@@ -101,15 +101,17 @@ def _check_contract(contract) -> List[Dict]:
     if is_funding_account_program(program):
         findings.append((FUNDING_ACCOUNT_PROGRAM, {'nsf_program': program}))
 
-    if (contract.contract_monitor_user_id is not None
+    if ((contract.contract_monitor_user_id is not None
             and contract.contract_monitor_user_id
-            == contract.principal_investigator_user_id):
+            == contract.principal_investigator_user_id)
+            or (contract.monitor_contact_id is not None
+                and contract.monitor_contact_id == contract.pi_contact_id)):
         findings.append((MONITOR_IS_PI, {
             'username': (contract.principal_investigator.username
                          if contract.principal_investigator else None),
         }))
 
-    if nsf and contract.contract_monitor_user_id is None:
+    if nsf and contract.monitor_person is None:
         findings.append((MISSING_MONITOR, {}))
 
     if nsf:

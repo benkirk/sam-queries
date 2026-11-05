@@ -486,6 +486,8 @@ UTF8MB4_COLUMNS = {
     ('account_request_event', 'name'),
     ('account_request_event', 'instructions'),
     ('unix_group_mask', 'note'),
+    ('external_contact', 'name'),
+    ('external_contact', 'organization'),
     ('xras_request_note', 'values_json'),
     ('xras_request_note', 'admin_comment'),
     ('xras_request_note', 'rationale'),
@@ -499,7 +501,7 @@ _CHARSET_SPLIT_TABLES = (
     'xras_action_log', 'xras_activation_event', 'xras_remediation_event',
     'xras_request_override', 'notification_log',
     'notification_template_override', 'account_request',
-    'account_request_event', 'unix_group_mask', 'xras_request_note',
+    'account_request_event', 'unix_group_mask', 'xras_request_note', 'external_contact',
 )
 
 
@@ -919,6 +921,52 @@ class TestCriticalSchemas:
                AND REFERENCED_TABLE_NAME IS NOT NULL
         """)).scalar()
         assert fks == 0, 'no foreign keys by design'
+
+    def test_external_contact_schema(self, session):
+        """Contract contacts: no FKs, app clock, unique lower-cased email and user link."""
+        db_cols = get_db_columns(session, 'external_contact')
+        expected = {'external_contact_id', 'name', 'email', 'organization', 'user_id',
+                    'creation_time', 'modified_time'}
+        assert set(db_cols.keys()) == expected, set(db_cols.keys()) ^ expected
+        assert db_cols['external_contact_id']['key'] == 'PRI'
+        for col in ('email', 'organization', 'user_id', 'modified_time'):
+            assert db_cols[col]['nullable'] is True, col
+        unique = session.execute(text("""
+            SELECT INDEX_NAME, GROUP_CONCAT(COLUMN_NAME) FROM information_schema.STATISTICS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'external_contact'
+               AND NON_UNIQUE = 0 AND INDEX_NAME <> 'PRIMARY'
+             GROUP BY INDEX_NAME
+        """)).fetchall()
+        assert dict(unique) == {'external_contact_email': 'email',
+                                'external_contact_user': 'user_id'}
+        fks = session.execute(text("""
+            SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'external_contact'
+               AND REFERENCED_TABLE_NAME IS NOT NULL
+        """)).scalar()
+        assert fks == 0, 'no foreign keys by design'
+
+    def test_contract_external_contact_columns(self, session):
+        """The PI user is optional; the two contact columns are indexed and carry no FK."""
+        db_cols = get_db_columns(session, 'contract')
+        assert db_cols['principal_investigator_user_id']['nullable'] is True
+        for col in ('pi_contact_id', 'monitor_contact_id'):
+            assert db_cols[col]['nullable'] is True, col
+        indexed = session.execute(text("""
+            SELECT INDEX_NAME, GROUP_CONCAT(COLUMN_NAME) FROM information_schema.STATISTICS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'contract'
+               AND INDEX_NAME IN ('contract_pi_contact', 'contract_monitor_contact')
+             GROUP BY INDEX_NAME
+        """)).fetchall()
+        assert dict(indexed) == {'contract_pi_contact': 'pi_contact_id',
+                                 'contract_monitor_contact': 'monitor_contact_id'}
+        fks = session.execute(text("""
+            SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'contract'
+               AND COLUMN_NAME IN ('pi_contact_id', 'monitor_contact_id')
+               AND REFERENCED_TABLE_NAME IS NOT NULL
+        """)).scalar()
+        assert fks == 0
 
     def test_samuel_roles_schema(self, session):
         """The role catalog: three tables, no FKs, app clock, names not ids."""

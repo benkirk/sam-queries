@@ -139,12 +139,25 @@ def _looks_like_different_award(divergences: List[Dict]) -> bool:
     return _MISMATCH_SIGNATURE <= {d['field'] for d in divergences}
 
 
-def _compare_person(session, field: str, sam_user, person_ref, record):
+def _same_contact(contact, person_ref) -> bool:
+    """Whether an external contact is the agency's person: by email, else by name."""
+    if contact.email and person_ref.email:
+        return contact.email == person_ref.email.strip().lower()
+    return (contact.name or '').strip().lower() == (person_ref.name or '').strip().lower()
+
+
+def _compare_person(session, field: str, sam_user, person_ref, record, contact=None):
     """``(divergence, hint)`` for one person field — at most one is non-None."""
     if field in record.unavailable_fields or not person_ref:
         return None, None
 
     resolved = awards.resolve_person(session, person_ref)
+    if sam_user is None and contact is not None:
+        if resolved is not None:
+            return {'field': field, 'sam': contact.label, 'source': resolved.username}, None
+        if _same_contact(contact, person_ref):
+            return None, None
+        return {'field': field, 'sam': contact.label, 'source': person_ref.label}, None
     if resolved is None:
         # Rule 2: the agency's person is not a SAM user.  Suggest, don't
         # impose — carry the raw label so an operator can search or create.
@@ -229,10 +242,12 @@ def compare_contract(session, contract, record=None) -> Dict:
 
     sam_people = {'pi': contract.principal_investigator,
                   'monitor': contract.contract_monitor}
+    contacts = {'pi': contract.pi_contact, 'monitor': contract.monitor_contact}
     source_people = {'pi': record.pi, 'monitor': record.monitor}
     for field in PERSON_FIELDS:
         divergence, hint = _compare_person(session, field, sam_people[field],
-                                           source_people[field], record)
+                                           source_people[field], record,
+                                           contact=contacts[field])
         if divergence:
             divergences.append(divergence)
         if hint:

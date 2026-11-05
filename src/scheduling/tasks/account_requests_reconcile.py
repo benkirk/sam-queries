@@ -8,8 +8,10 @@ when ``JIRA_ENABLED``, it learns help-desk ticket keys and refreshes their statu
 
 Then, behind ``XRAS_SUBMIT_ANONYMOUS_ENABLED`` and ``XRAS_WRITE_ENABLED`` in tasks.env,
 it merges each fulfilled ``/request`` placeholder into its account in XRAS
-(``merge_fulfilled_visitors``): its one XRAS write, skipped by ``--dry-run``. The merge
-reads committed rows, so a row this pass fulfilled merges on the next.
+(``merge_fulfilled_visitors``), skipped by ``--dry-run``. The merge
+reads committed rows, so a row this pass fulfilled merges on the next. Behind
+``XRAS_AUTO_MERGE`` it merges each "Ready to merge" placeholder too, and dismisses a
+fulfilled placeholder request XRAS no longer holds (``merge_ready_placeholders``).
 Otherwise the database alone, which the runner's rollback covers. Never a tracker
 write: it reaches the tracker through ``read_providers`` alone. Design:
 docs/plans/implemented/ACCOUNT_REGISTRATION.md, docs/plans/implemented/TICKET_PROVIDER.md,
@@ -38,6 +40,10 @@ DEFAULT_PURGE_DAYS = 7
 
 #: The audit actor of the placeholder merge (a ``TASK_WRITABLE_OPERATIONS`` write).
 OPERATOR = 'task:account_requests_reconcile'
+
+#: "Ready to merge" merges and stale-request XRAS reads per run: a merge has no undo.
+MERGE_CAP = 5
+STALE_CAP = 10
 
 #: Tracker reads per pass (learn and refresh each); ``$SAM_TASKS_TICKET_LOOKUP_MAX``.
 DEFAULT_TICKET_LOOKUP_MAX = 50
@@ -81,16 +87,21 @@ def account_requests_reconcile(ctx) -> TaskResult:
         tickets = {'skipped': True, 'reason': f'{type(exc).__name__}: {exc}'}
     ctx.logger.info('account requests: %s', describe(tickets))
     merges = _merge_visitors(ctx)
+    ready, stale = _merge_ready(ctx)
     return TaskResult(
         detail={**counts, 'purge_days': days, 'clock': clock.isoformat(),
-                'tickets': tickets, 'merges': merges},
+                'tickets': tickets, 'merges': merges, 'ready_merges': ready, 'stale': stale},
         # An enrollment failure is a data condition a human fixes on the card
         # (the row stays in the queue with its reason); it is not a red Job.
         message=(f"{counts['fulfilled']} fulfilled, {counts['enrolled']} "
                  f"enrolled, {counts['enroll_failed']} enrollment failure(s), "
                  f"{counts['purged']} purged; {describe(tickets)}"
                  + (f"; {len(merges['merged'])} placeholder(s) merged"
-                    if merges.get('merged') else '')),
+                    if merges.get('merged') else '')
+                 + (f"; {len(ready['merged'])} ready placeholder(s) merged"
+                    if ready.get('merged') else '')
+                 + (f"; {stale['closed']} stale request(s) closed"
+                    if stale.get('closed') else '')),
     )
 
 
@@ -112,3 +123,29 @@ def _merge_visitors(ctx) -> dict:
     ctx.logger.info('account requests: placeholders %d due, %d merged, %d waiting, %d failed',
                     out['due'], len(out['merged']), out['waiting'], out['failed'])
     return {**out, 'merged': [list(m[:2]) for m in out['merged']]}
+
+
+def _merge_ready(ctx):
+    """The "Ready to merge" pass, then the stale-request close; fail-open, like the visitor merge."""
+    from sam.integration.xras_api.config import XrasApiConfig
+    from sam.manage.xras_remediation import close_stale_placeholders, merge_ready_placeholders
+    from scheduling.tasks._notice_common import new_sam_session
+    if not XrasApiConfig.from_environment().auto_merge_configured:
+        return {'skipped': 'lever off'}, {'skipped': 'lever off'}
+    if ctx.dry_run:
+        return {'skipped': 'dry run'}, {'skipped': 'dry run'}
+    factory = lambda: new_sam_session(ctx.sam_session)    # noqa: E731
+    try:
+        ready = merge_ready_placeholders(factory, operator=OPERATOR, cap=MERGE_CAP)
+    except Exception as exc:                          # noqa: BLE001
+        ctx.logger.exception('account requests: the ready-to-merge pass failed')
+        ready = {'skipped': f'{type(exc).__name__}: {exc}'}
+    try:
+        stale = close_stale_placeholders(factory, operator=OPERATOR, cap=STALE_CAP)
+    except Exception as exc:                          # noqa: BLE001
+        ctx.logger.exception('account requests: the stale-request pass failed')
+        stale = {'skipped': f'{type(exc).__name__}: {exc}'}
+    ctx.logger.info('account requests: ready to merge %s; stale %s', ready, stale)
+    if ready.get('merged'):
+        ready = {**ready, 'merged': [list(m) for m in ready['merged']]}
+    return ready, stale

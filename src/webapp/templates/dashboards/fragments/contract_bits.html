@@ -39,6 +39,21 @@
 
 
 {#
+  A contract's PI or monitor (`Contract.pi_person` / `monitor_person`): a SAM user renders
+  as contract_user_link; an external contact as its name and email, never a link.
+#}
+{% macro contract_person_link(person, can_view_users, compact=False) -%}
+{%- if person and person.user -%}
+{{ contract_user_link(person.user, can_view_users, compact=compact) }}
+{%- elif person -%}
+<span title="External contact{% if person.email %}: {{ person.email }}{% endif %}">{{ person.name }}</span>
+{%- if not compact and person.email %} <small class="text-muted">({{ person.email }})</small>{% endif -%}
+{%- else -%}
+{% if compact %}—{% else %}<span class="text-muted">—</span>{% endif %}
+{%- endif -%}
+{%- endmacro %}
+
+{#
   `label` overrides the link text — the Organizations card's NSF Programs tab
   points its "# Contracts" cell at the same drill-down as the name cell, since
   the count was previously a dead number with nowhere to go.

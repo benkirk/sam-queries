@@ -219,8 +219,12 @@ def report_traffic(r, recs, tick, to):
     scan = sum(int(n[0]) for n in recs['scan'])
     mix = ' '.join(f'{k} {fmt(v)}' for k, v in sorted(status_mix.items()))
     r.say(f"web: api {fmt(total)} ({mix or 'none'}) p50 {percentile(lat, .5) if lat else '-'}ms"
-          f" p95 {percentile(lat, .95) if lat else '-'}ms · app {fmt(web['app'])} · saml {fmt(web['saml'])}"
+          f" p95 {percentile(lat, .95) if lat else '-'}ms · app {fmt(web['app'] + web['contract'])} · saml {fmt(web['saml'])}"
           f" · other {fmt(web['other'])} · scan {fmt(scan)}")
+    if web['contract']:
+        # Legacy's contract editor 500s on a contract whose PI is an external contact
+        # (docs/plans/implemented/EXTERNAL_CONTACTS.md); its users belong on SAMuel's Contracts page.
+        r.flag('WARN', f"legacy contract editor used: /app/contract x{web['contract']}")
     labels = sorted(set(by_label) | set(base_label), key=lambda k: (k in EXCLUDED, -by_label[k], k))
     r.say('callers: ' + (' · '.join(f'{k} {by_label[k]} ({base_label[k]})' for k in labels) or 'none')
           + '   [now (same window a week ago)]')

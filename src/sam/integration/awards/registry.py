@@ -16,7 +16,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from sam.integration.awards.base import (
     AwardProvider, AwardRecord, AwardSourceUnavailable,
 )
-from sam.integration.awards.cache import cached_lookup, cached_search
+from sam.integration.awards.cache import MISSING, cached_lookup, cached_search, peek_lookup
 from sam.integration.awards.client import AwardHttpClient
 from sam.integration.awards.nsf import NsfAwardProvider
 from sam.integration.awards.usaspending import UsaSpendingProvider
@@ -100,6 +100,28 @@ def resolve_award(source_name: Optional[str], contract_number: Optional[str], *,
         logger.debug('award lookup: %s has no record for %r',
                      provider.name, number)
     return None
+
+
+def cached_award(source_name: Optional[str], contract_number: Optional[str], *,
+                 exact: bool = True) -> Optional[AwardRecord]:
+    """The record :func:`resolve_award` cached, or ``None`` (a miss or no such award); never fetches."""
+    number = (contract_number or '').strip()
+    if not number:
+        return None
+    for provider in providers_for(source_name, number):
+        record = peek_lookup(provider.name + (':exact' if exact else ''), number)
+        if record is not None:
+            return record
+    return None
+
+
+def award_is_cached(source_name: Optional[str], contract_number: Optional[str], *,
+                    exact: bool = True) -> bool:
+    """Whether :func:`resolve_award` has an answer cached, a record or a definite none; never fetches."""
+    number = (contract_number or '').strip()
+    return bool(number) and any(
+        peek_lookup(provider.name + (':exact' if exact else ''), number, MISSING) is not MISSING
+        for provider in providers_for(source_name, number))
 
 
 def search_providers(sources: Optional[Iterable[str]] = None,

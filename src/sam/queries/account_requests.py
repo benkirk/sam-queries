@@ -95,6 +95,24 @@ def visitors_to_merge(session: Session) -> List[tuple]:
     return [tuple(r) for r in rows]
 
 
+def stale_placeholder_requests(session: Session, exclude=()) -> List[AccountRequest]:
+    """Open, fulfilled, sweep-filed rows naming an ARC placeholder, oldest first, minus *exclude*.
+
+    The placeholder's person has an account now; one no pending push names was usually
+    merged in XRAS by hand, leaving this row open.
+    """
+    from sam.queries.xras_accounts import is_placeholder
+    skip = {str(u).casefold() for u in exclude if u}
+    rows = (session.query(AccountRequest)
+            .filter(AccountRequest.purpose == PURPOSE_SUBMISSION,
+                    AccountRequest.created_by == CREATED_BY_SWEEP,
+                    AccountRequest.state.in_(OPEN_STATES), AccountRequest.merged_at.is_(None),
+                    AccountRequest.user_id.isnot(None), AccountRequest.xras_username.isnot(None))
+            .order_by(AccountRequest.account_request_id).all())
+    return [r for r in rows
+            if is_placeholder(r.xras_username) and r.xras_username.casefold() not in skip]
+
+
 def all_requests(session: Session) -> List[AccountRequest]:
     """Every row, newest first -- the "show everything" view."""
     return (session.query(AccountRequest)

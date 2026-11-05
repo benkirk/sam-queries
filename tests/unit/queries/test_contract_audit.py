@@ -159,6 +159,14 @@ class TestNsfScoping:
         session.flush()
         assert MISSING_MONITOR in _checks_for(session, clean_contract)
 
+    def test_a_contact_monitor_is_not_missing(self, session, clean_contract):
+        from tests.factories.projects import make_external_contact
+        clean_contract.contract_monitor_user_id = None
+        clean_contract.monitor_contact_id = make_external_contact(session).external_contact_id
+        session.flush()
+        session.expire(clean_contract)
+        assert MISSING_MONITOR not in _checks_for(session, clean_contract)
+
     def test_nsf_contract_missing_program_is_flagged(self, session, clean_contract):
         clean_contract.nsf_program_id = None
         session.flush()

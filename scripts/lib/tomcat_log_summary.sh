@@ -43,6 +43,8 @@ function family(p,   s, n) {
     sub(/[?#].*/, "", p); gsub(/\/\/+/, "/", p)
     if (p == "/" || p == "") return "root"
     n = split(p, s, "/")
+    # The legacy contract editor gets its own family: it fails on a contract with an external-contact PI.
+    if (s[2] == "app" && s[3] == "contract") return "web:contract"
     if (s[2] != "api") return s[2] == "app" ? "web:app" : (s[2] == "saml" ? "web:saml" : "web:other")
     if (s[3] == "xras") return "xras/" clean(s[4])
     if (s[3] != "protected") return "scan"

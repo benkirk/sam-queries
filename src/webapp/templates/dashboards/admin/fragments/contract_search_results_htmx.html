@@ -23,8 +23,8 @@
         {{ contract_status_badge(contract) }}
     </div>
     <small class="text-muted">{{ contract.title[:110] }}{% if contract.title | length > 110 %}…{% endif %}</small>
-    {% if contract.principal_investigator %}
-    <br><small class="text-muted">PI: {{ contract.principal_investigator.display_name }}</small>
+    {% if contract.pi_person %}
+    <br><small class="text-muted">PI: {{ contract.pi_person.name }}</small>
     {% endif %}
 </button>
 {% endfor %}

@@ -234,6 +234,8 @@ def get_contracts_with_pi(session, active_only=False, with_source=False):
             .lazyload(User.accounts),
         selectinload(Contract.contract_monitor)
             .lazyload(User.email_addresses),
+        selectinload(Contract.pi_contact),
+        selectinload(Contract.monitor_contact),
         selectinload(Contract.nsf_program),
     ).order_by(Contract.contract_number)
     if with_source:
@@ -275,6 +277,8 @@ def get_contract_detail(session, contract_id):
                 .lazyload(User.accounts),
             selectinload(Contract.contract_monitor)
                 .lazyload(User.email_addresses),
+            selectinload(Contract.pi_contact),
+            selectinload(Contract.monitor_contact),
             selectinload(Contract.projects)
                 .joinedload(ProjectContract.project),
         )
@@ -309,6 +313,7 @@ def get_nsf_program_contracts(session, nsf_program_id):
                 .lazyload(User.accounts),
             selectinload(Contract.principal_investigator)
                 .lazyload(User.email_addresses),
+            selectinload(Contract.pi_contact),
         )
         .filter(Contract.nsf_program_id == nsf_program_id)
         .order_by(Contract.contract_number)

@@ -190,7 +190,10 @@ highest-value surface on this page:
   **Reactivate**, and **Merge** when an active SAM account already holds a placeholder's
   email (every active SAM account resolves in XRAS, so it is a merge target already) —
   the card's "Ready to merge" rows, the Remediations identity strip, and
-  `sam-admin xras --identity-report`. Account creation is manual; the worklist tells you
+  `sam-admin xras --identity-report`. `account_requests_reconcile` merges each "Ready to
+  merge" row on its own every 15 minutes (`XRAS_AUTO_MERGE`, 5 a run), including an
+  approved request not yet posted. It never retries a merge a task already tried: a refused
+  one stays on the card for you. Account creation is manual; the worklist tells you
   *who*, *why*, and — behind `MANAGE_XRAS` — with what person detail to create them from.
 - ⚠️ **`placeholder` is a flag on the row, not a third classification.** A placeholder
   identity is still either absent or inactive. Do not filter on it expecting a bucket.
@@ -235,10 +238,15 @@ A **missing Allocation Manager is not an error**; a missing PI is.
 
 ### 4. `Cannot find contract for grant number "{grant}" ("{core}")`
 
-⚠️ **The `New` handler LINKS a contract, it does not create one.** A grant number SAM has
-never seen is a 422 naming the *contract*, not the grant.
+⚠️ **The handler LINKS a contract; it creates one only from a cached NSF award.** A grant
+number SAM has never seen is a 422 naming the *contract*, not the grant, unless
+`XRAS_AUTO_CONTRACTS` is on and the sweep has cached that number's NSF award: then the post
+creates the contract as its last step, its PI and monitor a SAM user or an external contact
+(`docs/plans/implemented/EXTERNAL_CONTACTS.md`).
 
-**Fix:** create or link the contract in SAM first, then ask XRAS to re-post.
+**Fix:** create or link the contract in SAM first, then ask XRAS to re-post. When the
+contract is a request's only blocker, the strip's **create** does it from the NSF award in
+one confirm; with another blocker it reads "waits on", and the re-post creates it.
 `sam-admin xras --contract-report` ranks the numbers to create by the pushes
 each unblocks, and the Remediations card's contract strip opens Admin →
 Contracts with the New Contract form seeded from the wire

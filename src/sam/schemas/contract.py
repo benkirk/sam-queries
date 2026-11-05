@@ -41,7 +41,9 @@ class ContractSummarySchema(BaseSchema):
             'is_active',
             'url',
             'pi_username',
+            'pi_name',
             'monitor_username',
+            'monitor_name',
             'nsf_program',
         )
 
@@ -49,6 +51,8 @@ class ContractSummarySchema(BaseSchema):
     contract_source = fields.Method('get_contract_source')
     pi_username = fields.Method('get_pi_username')
     monitor_username = fields.Method('get_monitor_username')
+    pi_name = fields.Method('get_pi_name')
+    monitor_name = fields.Method('get_monitor_name')
     nsf_program = fields.Method('get_nsf_program')
     is_active = fields.Method('get_is_active')
 
@@ -64,6 +68,13 @@ class ContractSummarySchema(BaseSchema):
     def get_monitor_username(self, obj):
         """Get the contract monitor's username (nullable column)."""
         return obj.contract_monitor.username if obj.contract_monitor else None
+
+    def get_pi_name(self, obj):
+        """The PI's name, a SAM user's or an external contact's."""
+        return obj.pi_person.name if obj.pi_person else None
+
+    def get_monitor_name(self, obj):
+        return obj.monitor_person.name if obj.monitor_person else None
 
     def get_nsf_program(self, obj):
         """Get the NSF program name (nullable column)."""

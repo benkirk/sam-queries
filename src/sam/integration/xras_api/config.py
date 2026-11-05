@@ -101,6 +101,8 @@ class XrasApiConfig:
     #: Fifth lever: a New filed by a visitor with no SAM account (/request/). The webapp mounts
     #: the door; in the task env it arms the placeholder merge (``visitor_merge_configured``).
     submit_anonymous_enabled: bool = False
+    #: Task env only: merge each "Ready to merge" placeholder (``auto_merge_configured``).
+    auto_merge_enabled: bool = False
     api_key: str = ''
     base_url: str = DEFAULT_BASE_URL
     admin_url: str = DEFAULT_ADMIN_URL
@@ -122,6 +124,7 @@ class XrasApiConfig:
             submit_action_types=parse_submit_action_types(
                 _config_str('XRAS_SUBMIT_ACTION_TYPES', '')),
             submit_anonymous_enabled=_config_bool('XRAS_SUBMIT_ANONYMOUS_ENABLED', False),
+            auto_merge_enabled=_config_bool('XRAS_AUTO_MERGE', False),
             api_key=_config_str('XRAS_API_KEY', ''),
             base_url=(_config_str('XRAS_API_BASE', DEFAULT_BASE_URL)
                       or DEFAULT_BASE_URL).rstrip('/'),
@@ -206,6 +209,11 @@ class XrasApiConfig:
         lever, so the task pod (no submit levers) can arm it too."""
         return bool(self.submit_anonymous_enabled and self.write_configured)
 
+    @property
+    def auto_merge_configured(self) -> bool:
+        """True when a "Ready to merge" placeholder may be merged by the task: its lever and writes."""
+        return bool(self.auto_merge_enabled and self.write_configured)
+
     def summary(self) -> Dict[str, Any]:
         """Config for the Admin -> Configuration card. **Never** the key.
 
@@ -220,6 +228,7 @@ class XrasApiConfig:
             'submit_action_types': [t for t in SUBMIT_ACTION_TYPES
                                     if t in self.submit_action_types],
             'submit_anonymous_enabled': self.submit_anonymous_enabled,
+            'auto_merge_enabled': self.auto_merge_enabled,
             'api_key_set': bool(self.api_key),
             'base_url': self.base_url,
             'admin_url': self.admin_url,

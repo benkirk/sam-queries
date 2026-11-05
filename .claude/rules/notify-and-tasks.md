@@ -152,9 +152,11 @@ rollback. Live in prod and dev (its writes are SAM's own mask and entry rows). R
 
 `account_requests_reconcile` (every 15 min, **live in prod**: stamps fulfilled
 requests, enrolls inside a savepoint so one project without accounts cannot fail the
-pass, purges unverified public rows past `SAM_TASKS_ACCOUNT_PURGE_DAYS`; its one XRAS
-write, merging a fulfilled `/request` placeholder, needs `XRAS_SUBMIT_ANONYMOUS_ENABLED`
-in `tasks.env`, which only dev carries) and
+pass, purges unverified public rows past `SAM_TASKS_ACCOUNT_PURGE_DAYS`; its XRAS
+writes are merges: a fulfilled `/request` placeholder's needs `XRAS_SUBMIT_ANONYMOUS_ENABLED`
+in `tasks.env`, which only dev carries; behind `XRAS_AUTO_MERGE`, on in both, it also merges
+each "Ready to merge" placeholder, 5 a run and never a retry, and dismisses a fulfilled
+placeholder request XRAS no longer holds) and
 `account_queue_digest` (Mon 08:00 MT, one message, reconciles first, `SAM_TASKS_ACCOUNT_MAX`
 on the row count, an empty queue sends nothing; **ships named in `SAM_TASKS_DISABLED`**).
 

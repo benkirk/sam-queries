@@ -1158,3 +1158,143 @@ class TestMakePi:
         outcome, patched = self._run(factory, monkeypatch, _ADVISOR_AND_STUDENT, client)
         assert len(calls) == 1 and outcome.landed == () and patched == []
 
+
+
+class TestTheReadyMerge:
+    """The Accounts card's "Ready to merge" set, merged by the reconcile task (XRAS_AUTO_MERGE)."""
+
+    @pytest.fixture
+    def ready(self, monkeypatch):
+        targets = []
+        monkeypatch.setattr(service, 'ready_to_merge', lambda session: list(targets))
+        monkeypatch.setattr('sam.integration.xras.task_merge_attempts',
+                            lambda session, names: set())
+        return targets
+
+    @pytest.fixture
+    def merged(self, monkeypatch):
+        calls = []
+
+        def fake(factory, **kw):
+            calls.append(kw)
+            return MagicMock(succeeded=True)
+        monkeypatch.setattr(service, 'merge_placeholder', fake)
+        return calls
+
+    @staticmethod
+    def _target(source='kmerk-user-92wap', into='katarinam'):
+        return {'username': source, 'target_username': into, 'target_active': True,
+                'email': 'k@uni.example'}
+
+    def test_a_ready_placeholder_merges_as_the_task(self, factory, ready, merged):
+        ready.append(self._target())
+        client = MagicMock()
+        client.get_person.return_value = {'username': 'x'}
+        out = service.merge_ready_placeholders(factory, operator='task:t', cap=5, client=client)
+        assert out['merged'] == [('kmerk-user-92wap', 'katarinam')]
+        assert merged[0]['source_username'] == 'kmerk-user-92wap'
+        assert merged[0]['operator'] == 'task:t' and 'resolves to katarinam' in merged[0]['comment']
+
+    def test_a_target_xras_does_not_hold_waits(self, factory, ready, merged):
+        ready.append(self._target())
+        client = MagicMock()
+        client.get_person.side_effect = lambda name: None if name == 'katarinam' else {'u': name}
+        out = service.merge_ready_placeholders(factory, operator='task:t', cap=5, client=client)
+        assert out['waiting'] == 1 and merged == []
+
+    def test_a_placeholder_already_gone_is_not_merged(self, factory, ready, merged):
+        ready.append(self._target())
+        client = MagicMock()
+        client.get_person.return_value = None
+        out = service.merge_ready_placeholders(factory, operator='task:t', cap=5, client=client)
+        assert out['gone'] == 1 and merged == []
+
+    def test_a_placeholder_a_task_already_tried_is_never_retried(self, factory, ready, merged,
+                                                               monkeypatch):
+        ready.append(self._target())
+        monkeypatch.setattr('sam.integration.xras.task_merge_attempts',
+                            lambda session, names: {'kmerk-user-92wap'})
+        client = MagicMock()
+        out = service.merge_ready_placeholders(factory, operator='task:t', cap=5, client=client)
+        assert out['refused'] == 1 and merged == []
+        client.get_person.assert_not_called()
+
+    def test_the_cap(self, factory, ready, merged):
+        ready.extend(self._target(f'p{i}-user-aaaaa', f'u{i}') for i in range(4))
+        client = MagicMock()
+        client.get_person.return_value = {'u': 1}
+        out = service.merge_ready_placeholders(factory, operator='task:t', cap=2, client=client)
+        assert len(out['merged']) == 2 and len(merged) == 2
+
+    def test_an_outage_stops_the_pass(self, factory, ready, merged):
+        ready.extend([self._target(), self._target('other-user-bbbbb', 'u2')])
+        client = MagicMock()
+        client.get_person.side_effect = XrasSourceUnavailable('down')
+        out = service.merge_ready_placeholders(factory, operator='task:t', cap=5, client=client)
+        assert out['waiting'] == 1 and merged == []
+
+    def test_the_ready_set_keeps_only_active_merge_targets(self, session, monkeypatch):
+        from types import SimpleNamespace
+        from sam.queries import xras_accounts, xras_identity_report
+        monkeypatch.setattr(xras_accounts, 'load_pending_worklist_rows',
+                            lambda: SimpleNamespace(checked=True, rows=[]))
+        monkeypatch.setattr(xras_accounts, 'assemble_worklist',
+                            lambda *a, **k: SimpleNamespace(rows=[]))
+        monkeypatch.setattr(xras_identity_report, 'identity_merge_report', lambda rows: {'targets': [
+            self._target(), {'username': 'x-user-ccccc', 'target_username': None,
+                             'target_active': False}]})
+        assert [t['username'] for t in service.ready_to_merge(session)] == ['kmerk-user-92wap']
+
+
+class TestTheStaleClose:
+    """A fulfilled placeholder request no pending push names, closed once XRAS drops it."""
+
+    @pytest.fixture
+    def rows(self, engine, monkeypatch):
+        from sqlalchemy.orm import Session
+
+        from factories import next_seq
+        from sam.core.account_requests import AccountRequest
+        from sam.core.users import User
+        monkeypatch.setattr(service, 'ready_to_merge', lambda session: [])
+        n = next_seq('8')
+        made = {}
+        with Session(engine) as s:
+            user = s.query(User).filter(User.is_active).order_by(User.user_id).first()
+            for tag in ('gone', 'kept'):
+                row = AccountRequest.create(
+                    s, email=f'zz.stale.{tag}.{n}@example.invalid', first_name='S',
+                    last_name='Tale', purpose='submission', created_by='task:xras_sweep',
+                    verified_by='task:xras_sweep', xras_username=f'st{tag}{n}-user-abcde')
+                row.fulfill(user)
+                made[tag] = (row.account_request_id, row.xras_username)
+            s.commit()
+        yield made
+        with Session(engine) as s:
+            s.query(AccountRequest).filter(AccountRequest.account_request_id.in_(
+                [v[0] for v in made.values()])).delete(synchronize_session=False)
+            s.commit()
+
+    def test_gone_is_dismissed_and_kept_is_left(self, factory, engine, rows):
+        from sqlalchemy.orm import Session
+
+        from sam.core.account_requests import AccountRequest
+        client = MagicMock()
+        client.get_person.side_effect = lambda name: None if name == rows['gone'][1] else {'u': name}
+        out = service.close_stale_placeholders(factory, operator='task:t', cap=500, client=client)
+        assert out["closed"] >= 1 and out["kept"] >= 1
+        with Session(engine) as s:
+            gone, kept = s.get(AccountRequest, rows['gone'][0]), s.get(AccountRequest, rows['kept'][0])
+            assert gone.state == 'dismissed' and 'no longer holds' in gone.closed_reason
+            assert kept.state == 'submitted'
+
+    def test_an_outage_closes_nothing(self, factory, engine, rows):
+        from sqlalchemy.orm import Session
+
+        from sam.core.account_requests import AccountRequest
+        client = MagicMock()
+        client.get_person.side_effect = XrasSourceUnavailable('down')
+        out = service.close_stale_placeholders(factory, operator='task:t', cap=500, client=client)
+        assert out == {'checked': 0, 'closed': 0, 'kept': 0}
+        with Session(engine) as s:
+            assert s.get(AccountRequest, rows['gone'][0]).state == 'submitted'

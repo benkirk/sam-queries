@@ -8,7 +8,7 @@ AOI Groups, Contract Sources, Contracts, NSF Programs.
 import re as _re
 import marshmallow.fields as f
 import marshmallow.validate as v
-from marshmallow import validates, ValidationError, post_load
+from marshmallow import validates, validates_schema, ValidationError, post_load
 
 from . import HtmxFormSchema
 
@@ -125,6 +125,10 @@ class EditContractForm(HtmxFormSchema):
     # falls back to None, which Contract.update() reads as "clear it".
     contract_monitor_user_id = f.Int(load_default=None)
     nsf_program_id = f.Int(load_default=None)
+    # A monitor who is not a SAM user; ignored when a user is picked.
+    monitor_contact_name = f.Str(load_default=None, validate=v.Length(max=255))
+    monitor_contact_email = f.Email(load_default=None, validate=v.Length(max=255))
+    monitor_contact_organization = f.Str(load_default=None, validate=v.Length(max=255))
 
     _date_range = ('start_date', 'end_date')
 
@@ -136,8 +140,15 @@ class CreateContractForm(HtmxFormSchema):
     start_date = f.Date('%Y-%m-%d', required=True)
     end_date = f.Str(load_default=None)   # 23:59:59 convention applied in post_load
     contract_source_id = f.Int(required=True)
-    principal_investigator_user_id = f.Int(required=True)
+    # The PI is a SAM user or, when not one, an external contact: one is required.
+    principal_investigator_user_id = f.Int(load_default=None)
+    pi_contact_name = f.Str(load_default=None, validate=v.Length(max=255))
+    pi_contact_email = f.Email(load_default=None, validate=v.Length(max=255))
+    pi_contact_organization = f.Str(load_default=None, validate=v.Length(max=255))
     contract_monitor_user_id = f.Int(load_default=None)
+    monitor_contact_name = f.Str(load_default=None, validate=v.Length(max=255))
+    monitor_contact_email = f.Email(load_default=None, validate=v.Length(max=255))
+    monitor_contact_organization = f.Str(load_default=None, validate=v.Length(max=255))
     nsf_program_id = f.Int(load_default=None)
     # Which tab the operator submitted from. Purely presentational — the
     # award lookup is a prefill step that runs before submit, so both modes
@@ -147,6 +158,12 @@ class CreateContractForm(HtmxFormSchema):
                           validate=v.OneOf(['manual', 'lookup']))
 
     _date_range = ('start_date', 'end_date')
+
+    @validates_schema
+    def _a_pi(self, data, **kwargs):
+        if not data.get('principal_investigator_user_id') and not data.get('pi_contact_name'):
+            raise ValidationError('Pick a SAM user as principal investigator, or enter the '
+                                  'external contact\'s name.')
 
 
 class EditNsfProgramForm(HtmxFormSchema):
