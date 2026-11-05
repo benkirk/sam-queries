@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 from marshmallow import ValidationError, fields, validate, validates_schema
 
 from sam.dates import SERVER_TZ
+from sam.integration.xras import XRAS_NOTE_DECISIONS, XRAS_NOTE_SEVERITIES
 from sam.schemas.wire import WireInput, opt_int, opt_str
 
 __all__ = ['RecommenderNoteBatchSchema', 'RecommenderNoteSchema',
@@ -57,7 +58,7 @@ class NoteSourceSchema(WireInput):
 
 class NoteFindingSchema(WireInput):
     id = opt_str(validate=validate.Length(max=64))
-    severity = fields.Str(required=True, validate=validate.OneOf(('block', 'warn', 'info', 'ok')))
+    severity = fields.Str(required=True, validate=validate.OneOf(XRAS_NOTE_SEVERITIES))
     message = fields.Str(required=True, validate=validate.Length(min=1, max=_MESSAGE_MAX))
     sources = fields.List(fields.Nested(NoteSourceSchema), load_default=list,
                           validate=validate.Length(max=_SOURCES_PER_FINDING_MAX))
@@ -67,8 +68,7 @@ class RecommenderNoteSchema(WireInput):
     request_number = fields.Str(required=True, validate=validate.Length(min=1, max=128))
     request_id = opt_int()
     action_id = opt_int()
-    decision = fields.Str(required=True,
-                          validate=validate.OneOf(('approve', 'reject', 'route_to_human')))
+    decision = fields.Str(required=True, validate=validate.OneOf(tuple(XRAS_NOTE_DECISIONS)))
     button = opt_str(validate=validate.Length(max=32))
     end_date = fields.Date(load_default=None, allow_none=True)
     hours_by_resource = _hours_field()
