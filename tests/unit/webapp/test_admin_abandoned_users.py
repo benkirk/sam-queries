@@ -64,6 +64,8 @@ class TestRoutes:
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
         assert 'Last Seen' in html or 'No abandoned users found' in html
+        if 'Last Seen' in html:
+            assert 'sortable-header" data-sort="date"' in html
 
     def test_filter_is_named_in_the_summary(self, auth_client, status_session):
         html = auth_client.get(FRAGMENT + '&not_seen_since=1y').get_data(as_text=True)
