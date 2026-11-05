@@ -15,20 +15,20 @@ def _render(app, person, compact=False):
 
 def test_contact_renders_name_and_email_without_a_link(app):
     contact = ExternalContact(name='Pat Doe', email='pat@uni.example')
-    html = _render(app, ContractPerson('Pat Doe', 'pat@uni.example', None, contact))
+    html = _render(app, ContractPerson(contact=contact))
     assert 'Pat Doe' in html and '(pat@uni.example)' in html
     assert 'hx-get' not in html and 'External contact' in html
 
 
 def test_compact_contact_drops_the_email(app):
-    html = _render(app, ContractPerson('Pat Doe', 'pat@uni.example', None, None), compact=True)
+    html = _render(app, ContractPerson(contact=ExternalContact(name='Pat Doe', email='pat@uni.example')), compact=True)
     assert 'Pat Doe' in html and '(pat@uni.example)' not in html
 
 
 def test_user_renders_the_user_link(app, session):
     from tests.factories.core import make_user
     user = make_user(session)
-    html = _render(app, ContractPerson(user.display_name, None, user, None))
+    html = _render(app, ContractPerson(user=user))
     assert 'hx-get' in html and user.username in html
 
 

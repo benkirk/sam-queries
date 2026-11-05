@@ -1,7 +1,7 @@
 #-------------------------------------------------------------------------bh-
 # Common Imports:
 import re
-from typing import NamedTuple
+from dataclasses import dataclass
 
 from sqlalchemy import literal
 
@@ -229,20 +229,29 @@ class ExternalContact(Base, SessionMixin):
         return f"<ExternalContact(id={self.external_contact_id}, name='{self.name}')>"
 
 
-class ContractPerson(NamedTuple):
-    """A contract's PI or monitor, whichever column holds them; the user wins."""
-    name: Optional[str]
-    email: Optional[str]
-    user: Optional[object]
-    contact: Optional[ExternalContact]
+@dataclass(frozen=True)
+class ContractPerson:
+    """A contract's PI or monitor, whichever column holds them; the user wins.
+
+    ``email`` is read on demand: a user's primary address walks ``email_addresses``, which
+    the contracts table leaves lazy on purpose (one query per row otherwise).
+    """
+    user: Optional[object] = None
+    contact: Optional[ExternalContact] = None
+
+    @property
+    def name(self) -> Optional[str]:
+        return self.user.display_name if self.user is not None else self.contact.name
+
+    @property
+    def email(self) -> Optional[str]:
+        return self.user.primary_email if self.user is not None else self.contact.email
 
 
 def _contract_person(user, contact) -> Optional[ContractPerson]:
-    if user is not None:
-        return ContractPerson(user.display_name, user.primary_email, user, contact)
-    if contact is not None:
-        return ContractPerson(contact.name, contact.email, None, contact)
-    return None
+    if user is None and contact is None:
+        return None
+    return ContractPerson(user=user, contact=contact)
 
 
 #-------------------------------------------------------------------------bm-
