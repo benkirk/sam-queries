@@ -2381,7 +2381,7 @@
     ]
   ],
   [
-    "allocations_dashboard.xras_contract_create_form",
+    "allocations_dashboard.xras_contract_create_fragment",
     "/allocations/xras_contract_create_form",
     [
       "GET"

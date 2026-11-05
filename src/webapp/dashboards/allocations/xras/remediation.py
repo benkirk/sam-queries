@@ -478,7 +478,7 @@ def _stamp_one_click(summary, rows) -> None:
             target['waits_on'] = others
             continue
         target['one_click_url'] = url_for(
-            'allocations_dashboard.xras_contract_create_form', number=target['number'],
+            'allocations_dashboard.xras_contract_create_fragment', number=target['number'],
             requests=target.get('sample') or [], pi_name=target.get('pi_name') or '')
 
 
@@ -535,10 +535,11 @@ def _contract_dialog(data, *, error=None):
         post_url=url_for('allocations_dashboard.xras_contract_create'))
 
 
+# Endpoint named *_fragment: the e2e console sweep would otherwise visit the modal body as a page.
 @bp.route('/xras_contract_create_form')
 @login_required
 @require_permission(Permission.CREATE_CONTRACTS)
-def xras_contract_create_form():
+def xras_contract_create_fragment():
     """Modal body: the contract a blocker names, as NSF describes it, before it is created."""
     try:
         data = XrasContractCreateForm().load(
