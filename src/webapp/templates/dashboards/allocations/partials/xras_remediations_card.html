@@ -6,7 +6,7 @@
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {% from 'dashboards/fragments/table_bits.html' import pane_toolbar %}
 {% from 'dashboards/fragments/project_bits.html' import project_link with context %}
-{% from 'dashboards/fragments/xras_bits.html' import clear_filters, empty_state, icon_count, projcode_series, queue_badges, queue_switch, request_link, show_in_table, status_note, swept_stamp, tag, type_label, unblock_strip, verdict %}
+{% from 'dashboards/fragments/xras_bits.html' import clear_filters, empty_state, gist_html, icon_count, projcode_series, queue_badges, queue_switch, request_link, show_in_table, status_note, swept_stamp, tag, type_label, unblock_strip, verdict %}
 {#
   XRAS Remediations: the operator WRITE surface. Every button here changes
   production XRAS (a merge deletes an account; a withdraw de-approves an award).
@@ -295,8 +295,9 @@
                         {% if row.document_count %}{{ icon_count('fa-paperclip', row.document_count, (row.document_count | fmt_plural('document')) ~ ': ' ~ (row.document_types | map('xras_document_type') | join(', '))) }}{% endif %}
                     </td>
                     {# `latest_action_type` is absent on a snapshot swept before it existed. #}
-                    {# `gist` is absent on a snapshot swept before it existed: the plain label. #}
-                    <td class="text-nowrap">{% if row.gist and row.latest_action_type %}{{ term(type_label(row.latest_action_type), row.gist.ask, rich=True, title=row.gist.title, placement='right', trigger='hover focus') }}
+                    {# `gist` is absent on a snapshot swept before it existed: the plain label;
+                       one swept before `lines` existed carries the one-sentence `ask`. #}
+                    <td class="text-nowrap">{% if row.gist and row.latest_action_type %}{{ term(type_label(row.latest_action_type), gist_html(row.gist) if row.gist.lines is defined else row.gist.ask, rich=True, title=row.gist.title, placement='right', trigger='hover focus', custom_class='xras-gist-popover') }}
                         {%- else %}{{ type_label(row.latest_action_type) if row.latest_action_type else '—' }}{% endif %}</td>
                     {# The type's own status; the request's stays at its New's (`latest_action_status` absent: an old snapshot). #}
                     {% set action_status = row.latest_action_status or row.status %}

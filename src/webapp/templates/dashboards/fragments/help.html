@@ -61,8 +61,9 @@
    while keeping the help-term cue and tooltip wiring.
    stop_propagation=True inside a data-action row, or the click runs the row's action.
    trigger: the rich popover's Bootstrap trigger ('hover focus' also opens on hover).
+   custom_class: a class on the popover itself (rich only), e.g. to widen it.
 #}
-{% macro term(label, text, rich=False, title=None, placement='top', extra_class='', stop_propagation=False, trigger='focus') -%}
+{% macro term(label, text, rich=False, title=None, placement='top', extra_class='', stop_propagation=False, trigger='focus', custom_class='') -%}
 <span class="help-term{% if extra_class %} {{ extra_class }}{% endif %}"
       tabindex="0"
       {%- if stop_propagation %} data-stop-propagation{% endif %}
@@ -70,6 +71,7 @@
       data-bs-toggle="popover"
       data-bs-trigger="{{ trigger }}"
       data-bs-html="true"
+      {%- if custom_class %} data-bs-custom-class="{{ custom_class }}"{% endif %}
       {%- if title %} data-bs-title="{{ title | forceescape }}"{% endif %}
       data-bs-content="{{ text | forceescape }}"
       {%- else %}

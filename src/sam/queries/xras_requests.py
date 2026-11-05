@@ -298,25 +298,35 @@ def latest_action_type(actions) -> Optional[str]:
 
 
 _GIST_TITLE_MAX = 80
+NO_DATE = '\u2014'
 
 
-def _join(items: Sequence[str]) -> str:
-    return items[0] if len(items) == 1 else ', '.join(items[:-1]) + ' and ' + items[-1]
+def _add_months(day: date, months: int) -> date:
+    """``day`` moved ``months`` ahead, the day clamped to the target month (Dec 31 + 6 is Jun 30)."""
+    import calendar
+    month = day.month - 1 + months
+    year, month = day.year + month // 12, month % 12 + 1
+    return day.replace(year=year, month=month, day=min(day.day, calendar.monthrange(year, month)[1]))
 
 
-def request_gist(payload: Mapping[str, Any]) -> Optional[Dict[str, Optional[str]]]:
-    """``{'title', 'ask'}``: the request's title and, in a sentence, what its in-flight action asks for.
+def _month_end(day: date) -> bool:
+    import calendar
+    return day.day == calendar.monthrange(day.year, day.month)[1]
 
-    The card's Type popover. Same action rule as :func:`latest_action_type`; the
-    requested lines and dates are that action's ``Requested`` stage.
-    """
-    from sam.fmt import date_str, number
 
-    action = in_flight_live_action(payload)
-    if not action:
-        return None
-    kind = strip_or_none(action.get('actionType'))
+def _span(start: date, end: date) -> str:
+    """``+6 months`` when the gap is whole months (or month end to month end), else ``+45 days``."""
+    from sam.fmt import plural
+    months = (end.year - start.year) * 12 + end.month - start.month
+    if months and (_add_months(start, months) == end or (_month_end(start) and _month_end(end))):
+        return ('+' if months > 0 else '-') + plural(abs(months), 'month')
+    days = (end - start).days
+    return ('+' if days >= 0 else '-') + plural(abs(days), 'day')
 
+
+def _requested_lines(action: Mapping[str, Any]) -> List[str]:
+    """One ``<resource> <amount> <units>`` per line of the action's Requested stage."""
+    from sam.fmt import number
     asked = []
     for r in action.get('resources') or ():
         if not isinstance(r, dict) or r.get('type') != 'Requested':
@@ -329,23 +339,74 @@ def request_gist(payload: Mapping[str, Any]) -> Optional[Dict[str, Optional[str]
             continue
         units = strip_or_none(r.get('resourceUnits'))
         asked.append(f'{name} {amount}' + (f' {units}' if units else ''))
-    requested = [d for d in action.get('allocationDates') or ()
-                 if isinstance(d, dict) and d.get('allocationDateType') == 'Requested']
-    end = parse_wire_date(requested[0].get('endDate')) if requested else None
+    return asked
+
+
+def _balance_line(balance: Mapping[str, Any], *, with_end: bool) -> str:
+    from sam.fmt import date_str, number
+    units = f" {balance['units']}" if balance.get('units') else ''
+    line = f"{balance['resource']}: {number(balance['remaining'])} of {number(balance['allocated'])}{units} remaining"
+    if with_end and balance.get('end_date'):
+        line += f" \u00b7 ends {date_str(balance['end_date'])}"
+    return line
+
+
+def request_gist(payload: Mapping[str, Any], *, balances: Optional[Sequence[Mapping[str, Any]]] = None
+                 ) -> Optional[Dict[str, Any]]:
+    """The card's Type popover: ``title``, ``kind``, ``lead``, ``lines`` and, past a New, ``balances``.
+
+    Same action rule as :func:`latest_action_type`. A New carries no period in XRAS
+    until approval, so its lines are the requested resources alone; an Extension's
+    lines are the current and the asked end; ``balances`` is :func:`project_balances`'
+    list for the request's project, as one formatted line each.
+    """
+    from sam.fmt import date_str
+
+    action = in_flight_live_action(payload)
+    if not action:
+        return None
+    kind = strip_or_none(action.get('actionType'))
 
     if kind == 'Extension':
+        requested = [d for d in action.get('allocationDates') or ()
+                     if isinstance(d, dict) and d.get('allocationDateType') == 'Requested']
+        asked = parse_wire_date(requested[0].get('endDate')) if requested else None
         now = parse_wire_date(payload.get('endDate'))
-        ask = (f'Extension to {date_str(end)}' if end else 'Extension')
-        ask += f' (now ends {date_str(now)}).' if now and end else '.'
+        verb = 'extended to' if action.get('actionStatus') == 'Approved' else 'asks for'
+        lead = 'Extension of the end date'
+        lines = [f'ends now: {date_str(now) if now else NO_DATE}',
+                 f'{verb}: {date_str(asked) if asked else NO_DATE}'
+                 + (f' ({_span(now, asked)})' if now and asked and asked != now else '')]
     else:
-        lead = 'New project' if kind == 'New' else kind
-        ask = f'{lead} requesting {_join(asked)}' if asked else f'{lead} request'
-        ask += f', through {date_str(end)}.' if end and kind != 'Supplement' else '.'
+        lines = _requested_lines(action)
+        lead = ('New project' if kind == 'New' else kind) + (' requesting' if lines else ' request')
 
     title = strip_or_none(payload.get('title') or payload.get('shortTitle'))
     if title and len(title) > _GIST_TITLE_MAX:
-        title = title[:_GIST_TITLE_MAX - 1].rstrip() + '…'
-    return {'title': title, 'ask': ask}
+        title = title[:_GIST_TITLE_MAX - 1].rstrip() + '\u2026'
+    shown = [] if kind == 'New' else list(balances or ())
+    return {'title': title, 'kind': kind, 'lead': lead, 'lines': lines,
+            'balances': [_balance_line(b, with_end=kind != 'Extension') for b in shown]}
+
+
+def project_balances(session, projcodes: Iterable[str]) -> Dict[str, List[Dict[str, Any]]]:
+    """``{projcode: [{resource, allocated, remaining, units, end_date}, ...]}`` from the one usage build."""
+    from sam.enums import ResourceTypeName
+    from sam.projects.projects import Project
+    from sam.queries.dashboard import usage_by_resource
+
+    codes = {str(c).strip() for c in projcodes if c}
+    if not codes:
+        return {}
+    projects = session.query(Project).filter(Project.projcode.in_(codes)).all()
+    rows = usage_by_resource(session, projects)
+    return {
+        project.projcode: [
+            {'resource': name, 'allocated': row['allocated'], 'remaining': row['remaining'],
+             'units': ResourceTypeName.allocation_unit(row['resource_type'], row['allocated']),
+             'end_date': row['end_date']}
+            for name, row in sorted(rows.get(project.project_id, {}).items())]
+        for project in projects}
 
 
 #: Blocker categories a swept request can be stuck on, in display order. The slug
@@ -442,7 +503,8 @@ def projcode_series(row: Mapping[str, Any]) -> Optional[str]:
 def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
                         refreshed_at: Any = None,
                         preflights: Optional[Mapping[Any, dict]] = None,
-                        family: Optional[Sequence[Mapping[str, Any]]] = None
+                        family: Optional[Sequence[Mapping[str, Any]]] = None,
+                        balances: Optional[Sequence[Mapping[str, Any]]] = None
                         ) -> Optional[Dict[str, Any]]:
     """Build one Remediations-card entry. ``None`` for an unusable payload.
 
@@ -514,8 +576,8 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
         # request with a Submitted Extension reads Approved), so the card shows this.
         'latest_action_status': (in_flight_action(actions) or {}).get('action_status'),
         'newer_action': newer_than_in_flight(actions),
-        # The Type popover: title + what the in-flight action asks for.
-        'gist': request_gist(payload),
+        # The Type popover: title, what the in-flight action asks for, the project's balances.
+        'gist': request_gist(payload, balances=balances),
         # Worst pending verdict, precomputed for the card's roll-up badge:
         # would fail > would park (manual) > incomplete > would land.
         'preflight_rollup': _preflight_rollup(preflights),

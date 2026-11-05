@@ -240,6 +240,11 @@
     border-left: 3px solid var(--text-link);
 }
 
+/* The Type popover lists resources one per line; Bootstrap's 276px wraps every balance. */
+.xras-gist-popover {
+    --bs-popover-max-width: 28rem;
+}
+
 /* The collapse button fills the row; the XRAS links sit outside it (no <a> in a <button>). */
 .xras-action-headrow {
     display: flex;
