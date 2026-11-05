@@ -1,6 +1,7 @@
 #-------------------------------------------------------------------------bh-
 # Common Imports:
 from ..base import *
+from sqlalchemy.dialects import mysql
 #-------------------------------------------------------------------------eh-
 
 
@@ -284,6 +285,177 @@ def lookup_request_override(session, request_number, kind):
         .filter(XrasRequestOverride.kind == kind)
         .filter(XrasRequestOverride.is_active)
         .first()))
+
+
+#: ``xras_request_note.decision``; the phrase is what the dialog and the card title say.
+XRAS_NOTE_DECISIONS = {
+    'approve': 'Ready to approve',
+    'reject': 'Recommend rejecting',
+    'route_to_human': 'Needs a person to review',
+}
+
+#: ``findings_json[].severity``; the first two need the operator, the last two are checked.
+XRAS_NOTE_SEVERITIES = ('block', 'warn', 'info', 'ok')
+_JUDGE_SEVERITIES = frozenset({'block', 'warn'})
+
+
+#----------------------------------------------------------------------------
+class XrasRequestNote(Base, SessionMixin, ActiveFlagMixin):
+    """The latest recommendation a tool posted on one XRAS request, shown to operators.
+
+    Keyed like :class:`XrasRequestOverride`: ``(request_number, source)``, the stable
+    ``NCAR####`` / projcode token, never the volatile ``request_id``; :meth:`rekey`
+    follows the rename. Each run overwrites the row; the run history stays in the
+    poster's own store. No foreign keys: every id is XRAS-owned.
+    Design: ``docs/plans/ARC_RECOMMENDER_NOTES.md``.
+    """
+    __tablename__ = 'xras_request_note'
+
+    __table_args__ = (
+        PrimaryKeyConstraint('request_number', 'source', name='pk_xras_request_note'),
+        Index('xras_request_note_reqid', 'request_id'),
+    )
+
+    request_number = Column(String(128), nullable=False)
+    source = Column(String(32), nullable=False)
+    request_id = Column(Integer)
+    #: The Process-page link's target.
+    action_id = Column(Integer)
+
+    run_id = Column(String(64), nullable=False)
+    generated_at = Column(DateTime, nullable=False)
+    ruleset_version = Column(String(32))
+
+    decision = Column(String(16), nullable=False)
+    button = Column(String(32))
+    end_date = Column(Date)
+    #: ``{hours_by_resource, requested_hours, links}`` as JSON text.
+    values_json = Column(Text)
+
+    admin_comment = Column(Text)
+    rationale = Column(Text)
+    pi_history = Column(String(500))
+    #: ``[{id, severity, message, sources: [{label, url, kind}]}]`` as JSON text.
+    findings_json = Column(Text().with_variant(mysql.MEDIUMTEXT(), 'mysql'))
+
+    #: The API key's username.
+    created_by = Column(String(35), nullable=False)
+    creation_time = Column(DateTime, nullable=False)
+    modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'),
+                           onupdate=text('CURRENT_TIMESTAMP'))
+
+    @classmethod
+    def set(cls, session, *, request_number, source, created_by, run_id, generated_at,
+            decision, ruleset_version=None, request_id=None, action_id=None, button=None,
+            end_date=None, values=None, admin_comment=None, rationale=None,
+            pi_history=None, findings=None):
+        """Upsert the one row for ``(request_number, source)``, active again; returns it.
+
+        Raises:
+            ValueError: an unknown *decision*.
+        """
+        if decision not in XRAS_NOTE_DECISIONS:
+            raise ValueError(f'unknown xras_request_note.decision {decision!r}; '
+                             f"expected one of {', '.join(XRAS_NOTE_DECISIONS)}")
+        row = session.get(cls, {'request_number': request_number, 'source': source})
+        if row is None:
+            row = cls(request_number=request_number, source=source,
+                      creation_time=datetime.now())
+            session.add(row)
+        row.created_by = str(created_by)[:35]
+        row.request_id, row.action_id = request_id, action_id
+        row.run_id, row.generated_at, row.ruleset_version = run_id, generated_at, ruleset_version
+        row.decision, row.button, row.end_date = decision, button, end_date
+        row.values_json = _note_json(values or {})
+        row.admin_comment, row.rationale, row.pi_history = admin_comment, rationale, pi_history
+        row.findings_json = _note_json(findings or [])
+        row.active = True
+        session.flush()
+        return row
+
+    @classmethod
+    def rekey(cls, session, *, old_number, new_number):
+        """Move every row of *old_number* to *new_number*; returns ``(moved, collided)`` sources."""
+        moved, collided = [], []
+        for row in session.query(cls).filter(cls.request_number == old_number).all():
+            if session.get(cls, {'request_number': new_number, 'source': row.source}) is not None:
+                collided.append(row.source)
+                continue
+            row.request_number = new_number
+            moved.append(row.source)
+        session.flush()
+        return moved, collided
+
+    def clear(self):
+        """Deactivate this note, keeping the row."""
+        self.active = False
+        self.session.flush()
+        return self
+
+    @property
+    def decision_phrase(self):
+        return XRAS_NOTE_DECISIONS.get(self.decision, self.decision)
+
+    @property
+    def values(self):
+        return _note_loads(self.values_json, {})
+
+    @property
+    def findings(self):
+        return _note_loads(self.findings_json, [])
+
+    @property
+    def findings_to_judge(self):
+        return [f for f in self.findings if f.get('severity') in _JUDGE_SEVERITIES]
+
+    @property
+    def findings_checked(self):
+        return [f for f in self.findings if f.get('severity') not in _JUDGE_SEVERITIES]
+
+    def __str__(self):
+        return f"XRAS request {self.request_number} note from {self.source}: {self.decision}"
+
+    def __repr__(self):
+        return (f"<XrasRequestNote(request_number={self.request_number!r}, "
+                f"source={self.source!r}, decision={self.decision!r}, active={self.active})>")
+
+
+def _note_json(value):
+    import json
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def _note_loads(value, empty):
+    import json
+    if not value:
+        return empty
+    try:
+        return json.loads(value)
+    except ValueError:
+        return empty
+
+
+def lookup_request_notes(session, request_number):
+    """The active notes on *request_number*, newest run first."""
+    if not request_number:
+        return []
+    return (session.query(XrasRequestNote)
+            .filter(XrasRequestNote.request_number == request_number, XrasRequestNote.is_active)
+            .order_by(XrasRequestNote.generated_at.desc())
+            .all())
+
+
+def request_notes_by_number(session, numbers):
+    """``{request_number: [active notes, newest first]}`` for *numbers*, in one query."""
+    wanted = sorted({n for n in numbers if n})
+    out: Dict[str, List[XrasRequestNote]] = {}
+    if not wanted:
+        return out
+    for row in (session.query(XrasRequestNote)
+                .filter(XrasRequestNote.request_number.in_(wanted), XrasRequestNote.is_active)
+                .order_by(XrasRequestNote.generated_at.desc())):
+        out.setdefault(row.request_number, []).append(row)
+    return out
 
 
 #----------------------------------------------------------------------------

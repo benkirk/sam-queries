@@ -31,6 +31,7 @@ from .notify import make_notification_log, make_template_override
 from .operational import make_wallclock_exemption
 from .tickets import make_external_ticket
 from .xras import (
+    make_request_note,
     make_xras_action,
     make_xras_activation_event,
     make_xras_key_mapping,
@@ -98,6 +99,7 @@ __all__ = [
     "make_account_request_event",
     "make_event_enrollment",
     "make_xras_action",
+    "make_request_note",
     "make_xras_activation_event",
     "make_xras_key_mapping",
     "make_xras_opportunity_mapping",
