@@ -113,6 +113,14 @@ def legacy_dedup_key(projcode: str, latest_expiration_date: Optional[str],
     return f'expiration:{projcode}:{latest_expiration_date}:{recipient}'
 
 
+def _usage(projects):
+    """Every project's usage by resource in one batched build (one read-model lookup)."""
+    if not projects:
+        return {}
+    from sam.queries.dashboard import usage_by_resource
+    return usage_by_resource(projects[0].session, projects)
+
+
 def build_expiration_messages(
         expiring_data: Sequence[Tuple], *,
         requested_by: str,
@@ -150,12 +158,13 @@ def build_expiration_messages(
             'days_remaining': days_remaining
         })
 
+    projects = [rows[0]['project'] for rows in projects_map.values()]
+    usage_by_project = _usage(projects)
+
     messages = []
     for projcode, resources_data in projects_map.items():
         project = resources_data[0]['project']
-
-        # Get usage data for all resources
-        usage = project.get_detailed_allocation_usage()
+        usage = usage_by_project.get(project.project_id, {})
 
         # Calculate grace expiration (90 days after latest resource expiration)
         latest_expiration = None
