@@ -52,6 +52,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-31 | `283fe47c` + sweep 33 (the sprint-2 window) | 51 / 63 / 26 | 1 (2) | 26 / 83 | 20 (20), 2 kept | 5,425 / 53 / 7 | 109 (54) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 5 |
 | 2026-11-01 | `af62e41d` + sweep 34 (navigation) | 51 / 63 / 26 | 1 (2) | 26 / 83 | 20 (20), 2 kept | 5,498 / 54 / 8 | 109 (54) | 0 / 0 | 0 | 5 / 6 | 17 (13) | 5 |
 | 2026-11-01 | `32972b63` + sweep 35 (badges) | 51 / 63 / 26 | 1 (2) | 26 / 83 | 20 (20), 2 kept | 5,485 / 54 / 8 | 107 (53) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 5 |
+| 2026-11-04 | `03fdc1af` + sweep 36 (tables without chips) | 51 / 63 / 26 | 1 (2) | 28 / 91 | 20 (20), 2 kept | 5,610 / 54 / 9 | 107 (53) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 5 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -2425,6 +2426,33 @@ are 18 pages x 6 states, from `ui_snapshots.py`.
 - [ ] Badges carry redundant ink utilities (`text-dark`, `text-light`) that the muted palette's
   `!important` overrides; 7 FK-picker callers.
 
+## 36. 2026-11-04: area sweep, `templates`, tables without sort or chips
+
+**Mode:** area, `templates`, every `<table>` with no facet chips. **End commit:** `03fdc1af`.
+Ben: the Roles & access Grants table (the Configuration tile's "Details »") had no sort and no
+chips. A census of the ~80 table templates found one other browse table that needed both.
+
+**Done** (one commit each, on `table-chips-sweep`):
+
+- [x] T1, propagate: Grants gets `FacetSet` chips (Subject, Holds, Facility), `filter_search` and
+  server sort; the state lives in a hidden form outside `#grantsCard`. Facet names avoid the add
+  form's fields, which the card renders from `request.args`.
+- [x] T2, legibility: client sort on Abandoned users (Expirations).
+- [x] T3, legibility: client sort on the Roles card (ten-odd rows, no chips).
+- [x] T4, propagate: All Contracts (2,262 rows) gets NSF-program and Ends chips and sort within each
+  source. A chip drops sources with no match and opens the rest, since filtering inside closed
+  groups looked like nothing happened. `_reloadAdminCard` carries a section's `data-facet-form`.
+
+**Left alone, on purpose:** Transactions and Adjustments (page filter panel via `audit_filters`,
+which the inventory grep missed), the resource and organization trees (grouped already), the
+status tables, events, rate limits, and the per-person lists (My Requests, My Events, members,
+invitations).
+
+**Tried and dropped:** a State chip (active / revoked) for Grants. An absent chip would mean
+"include revoked", changing the default; Show revoked stays a View switch, as on Account requests.
+
+**Open:** none.
+
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
 Surfaced by the first run of `scripts/sweep_inventory.py`. Each item belongs to an area sweep;
@@ -2491,9 +2519,18 @@ sunburst, which started on the allocations page and then moved to job history.
   deletion signal the task can read (an XRAS read per open ticket, or a mark the sweep leaves),
   a `TicketProvider.close(key, resolution)` beside `comment`, and its own Jira smoke. Deferred
   on purpose; post-then-delete is rare. Build it when one shows up.
-- [ ] One batched usage build over many projects (#900, `_exchange_candidates`): two callers
-  still loop `Project.get_detailed_allocation_usage` per project, so each project pays its own
+- [x] One batched usage build over many projects (#900, `_exchange_candidates`): two callers
+  still looped `Project.get_detailed_allocation_usage` per project, so each project paid its own
   read-model lookup (a stale tree re-projects once per project) plus job-statistics queries.
-  `api/v1/users.py:49` (`_serialize_dashboard_format`, the signed-in user's projects; few per
-  user, user-facing) and `sam/queries/expiration_notices.py:158` (one per expiring project;
-  background task). Found 2026-11-03.
+  Found 2026-11-03; done 2026-11-04 on `usage-loops-batched`.
+  - `usage_by_resource` (`sam/queries/dashboard.py`) is the one keyed batch;
+    `get_detailed_allocation_usage` and `_exchange_candidates` use it too.
+  - `build_expiration_messages`: one usage build and one roster load
+    (`Project.member_ids_by_project`, Users without their project cascades). Local MySQL, a
+    229-project end-date cluster: 5,068 statements to 43 (8.3 s to 0.35 s). The roster was the
+    larger half, 2,972.
+  - `_serialize_dashboard_format`: 216 to 75 for a 14-project user.
+  - Parity: exact on MySQL; on Postgres within 1e-9, since its float sums move between two runs
+    of the same code. Perf pins `build_expiration_messages{,_read_model}` (one gate lookup) and
+    `users_me_projects_dashboard_route`.
+  - Left alone: `sam/queries/xras_notices.py:240`, one project per call, a handful per run.

@@ -471,6 +471,29 @@ class TestPreflightRollup:
         assert _preflight_rollup({1: None}) is None
 
 
+class TestLatestActionStatus:
+    """requestStatus stays at the New's; the card shows the in-flight action's."""
+
+    def test_an_approved_request_with_a_submitted_extension_reads_submitted(self):
+        payload = _payload()
+        payload['actions'] = [{'actionId': 1, 'actionType': 'New', 'actionStatus': 'Approved'},
+                              {'actionId': 2, 'actionType': 'Extension',
+                               'actionStatus': 'Submitted'}]
+        entry = request_index_entry(payload)
+        assert entry['status'] == 'Approved'
+        assert (entry['latest_action_type'], entry['latest_action_status']) == (
+            'Extension', 'Submitted')
+        assert entry['newer_action'] is None, 'the in-flight action is the newest'
+
+    def test_a_newer_applied_action_is_named(self):
+        payload = _payload()
+        payload['actions'] = [{'actionId': 2, 'actionType': 'Supplement', 'actionStatus': 'Submitted'},
+                              {'actionId': 3, 'actionType': 'Supplement', 'actionStatus': 'Approved'}]
+        entry = request_index_entry(payload)
+        assert entry['latest_action_status'] == 'Submitted'
+        assert entry['newer_action']['action_id'] == 3
+
+
 class TestLatestActionType:
     """The Type column's in-flight pick — what admin.xras.org names it."""
 
@@ -709,6 +732,13 @@ class TestTheGist:
             _action('Supplement', resources=[_line_item('Casper', '10')], action_id=7),
             _action('Extension', status='Approved', action_id=9)]))
         assert gist['ask'].startswith('Supplement')
+
+    def test_a_soft_deleted_action_is_skipped(self):
+        """A deleted action can hold the highest actionId and still be Submitted; XRAS 404s it."""
+        gist = request_gist(_payload(actions=[
+            _action('New', status='Approved', action_id=1),
+            dict(_action('Extension', action_id=9), isDeleted=True)]))
+        assert gist['ask'].startswith('New')
 
     def test_a_long_title_is_cut_and_an_empty_ask_still_reads(self):
         gist = request_gist(_payload(title='x' * 120, actions=[_action('Renewal')]))

@@ -1,52 +1,70 @@
 {% from 'dashboards/fragments/action_buttons.html' import delete_row_button %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_grid_row, facet_row %}
+{% from 'dashboards/fragments/search_box.html' import filter_search %}
+{% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
+{% from 'dashboards/fragments/table_bits.html' import state_tag %}
 {#
   The Grants pane: every active grant (revoked ones on request) and the inline
   add form. A revoke is a stamp; the row stays as history.
 
-  Context: grants, role_names, show_revoked, plus the add-form context
-           (see _grant_form_context in roles_routes.py)
+  Context: views (_grant_views), scoped_total, show_revoked, search, facet_values,
+           selected, sort, sortable_columns, form_id, target_id, fragment_url,
+           plus the add-form context (_grant_form_context in roles_routes.py)
 #}
 <div class="card mb-3">
-    <div class="card-header py-2 d-flex flex-wrap align-items-center gap-3">
-        <strong>Grants</strong>
-        <form class="ms-auto form-check form-switch mb-0 small"
-              hx-get="{{ url_for('admin_dashboard.roles_grants_card') }}"
-              hx-target="#grantsCard" hx-swap="innerHTML" hx-trigger="change" hx-include="this">
-            <input class="form-check-input" type="checkbox" role="switch" id="grantsShowRevoked"
-                   name="show_revoked" value="1"{{ ' checked' if show_revoked }}>
-            <label class="form-check-label" for="grantsShowRevoked">Show revoked</label>
-        </form>
-    </div>
+    <div class="card-header py-2"><strong>Grants</strong></div>
     <div class="card-body">
+        <div class="facet-grid mb-3">
+            {% call facet_grid_row('View') %}
+                <div class="form-check form-switch small mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="grantsShowRevoked"
+                           name="show_revoked" value="1" form="{{ form_id }}"{{ ' checked' if show_revoked }}
+                           hx-get="{{ fragment_url }}" hx-target="#{{ target_id }}" hx-swap="innerHTML"
+                           hx-trigger="change" hx-include="#{{ form_id }}">
+                    <label class="form-check-label" for="grantsShowRevoked">Show revoked</label>
+                </div>
+            {% endcall %}
+            {% call facet_grid_row('Search') %}
+                {{ filter_search('grantsSearch', 'search', fragment_url, target_id, 'Search grants',
+                                 value=search, form_id=form_id,
+                                 placeholder='Subject, role, permission or note') }}
+            {% endcall %}
+            {{ facet_row('Subject', facet_values.kind, form_id, 'kind', active=selected.kind) }}
+            {{ facet_row('Holds', facet_values.holds, form_id, 'holds', active=selected.holds) }}
+            {{ facet_row('Facility', facet_values.facility, form_id, 'facility', active=selected.facility) }}
+            {{ facet_clear_all(form_id, search or (selected.values() | select | list)) }}
+        </div>
         <div class="table-responsive">
         <table class="table table-sm align-middle mb-3">
-            <thead>
+            <thead class="table-subtle">
                 <tr>
-                    <th>Subject</th>
-                    <th>Holds</th>
-                    <th>Facility</th>
+                    <th class="col-shrink">{{ sort_header('subject', 'Subject') }}</th>
+                    <th class="col-shrink">{{ sort_header('holds', 'Holds') }}</th>
+                    <th class="col-shrink">{{ sort_header('facility', 'Facility') }}</th>
                     <th>Note</th>
-                    <th>Added</th>
-                    {% if show_revoked %}<th>Revoked</th>{% endif %}
-                    <th></th>
+                    <th class="col-shrink">{{ sort_header('added', 'Added') }}</th>
+                    {% if show_revoked %}<th class="col-shrink">Revoked</th>{% endif %}
+                    <th class="col-shrink"></th>
                 </tr>
             </thead>
             <tbody>
-                {% for g in grants %}
-                <tr{{ ' class="text-muted"' | safe if not g.is_active }}>
-                    <td>
+                {% for v in views %}
+                {% set g = v.grant %}
+                <tr{{ ' class="row-inactive"' | safe if not g.is_active }}>
+                    <td class="text-nowrap">
                         <span class="badge {{ {'user': 'bg-info', 'group': 'bg-primary', 'apikey': 'bg-secondary'}[g.subject_type] }}">{{ g.subject_type }}</span>
                         <span class="font-monospace">{{ g.subject_name }}</span>
+                        {%- if not g.is_active %}{{ state_tag('revoked') }}{% endif %}
                     </td>
-                    <td>
-                        {% if g.samuel_role_id %}role <strong>{{ role_names.get(g.samuel_role_id, '?') }}</strong>
+                    <td class="text-nowrap">
+                        {% if v.role %}role <strong>{{ v.role }}</strong>
                         {% else %}<code>{{ g.permission }}</code>{% endif %}
                     </td>
-                    <td>{{ g.facility_name or 'all' }}</td>
-                    <td class="small">{{ g.note or '' }}</td>
-                    <td class="text-muted small">{{ g.created_by }} · {{ g.creation_time | fmt_date }}</td>
+                    <td class="text-nowrap">{{ g.facility_name or 'all' }}</td>
+                    <td class="small cell-truncate" title="{{ g.note or '' }}">{{ g.note or '' }}</td>
+                    <td class="text-muted small text-nowrap">{{ g.created_by }} · {{ g.creation_time | fmt_date }}</td>
                     {% if show_revoked %}
-                    <td class="text-muted small">{% if g.revoked_at %}{{ g.revoked_by }} · {{ g.revoked_at | fmt_date }}{% endif %}</td>
+                    <td class="text-muted small text-nowrap">{% if g.revoked_at %}{{ g.revoked_by }} · {{ g.revoked_at | fmt_date }}{% endif %}</td>
                     {% endif %}
                     <td class="text-end text-nowrap">
                         {% if g.is_active %}
@@ -59,8 +77,12 @@
                 </tr>
                 {% else %}
                 <tr><td colspan="{{ 7 if show_revoked else 6 }}" class="text-muted">
+                    {% if scoped_total %}
+                    {{ scoped_total | fmt_plural('grant', 'grants') }} hidden by the search or chips.
+                    {% else %}
                     No grants. In <code>db</code> mode nobody holds anything until the catalog is
                     seeded (<code>sam-admin rbac --seed</code>).
+                    {% endif %}
                 </td></tr>
                 {% endfor %}
             </tbody>

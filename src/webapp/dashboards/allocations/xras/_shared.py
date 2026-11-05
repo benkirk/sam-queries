@@ -424,7 +424,8 @@ _BLOCKER_ICONS = {'person': 'fa-user-xmark text-danger-emphasis',
 #: strip sums past the row total by design. ``request_number`` draws only its
 #: selected values (``limit=0``): one chip per swept request would be a wall.
 REMEDIATION_FACETS = FacetSet(
-    Facet('status'),
+    # The in-flight action's status; a snapshot swept before it existed falls back to the request's.
+    Facet('status', key=lambda r: r.get('latest_action_status') or r.get('status')),
     Facet('action_type', key='latest_action_type'),
     Facet('opportunity', key='opportunity_name'),
     Facet('push', key=lambda r: 'pending' if r.get('pending_push') else 'pushed',

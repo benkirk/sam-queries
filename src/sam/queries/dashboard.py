@@ -464,6 +464,14 @@ def build_user_projects_resources_batched(
     return out
 
 
+def usage_by_resource(session: Session, projects: List[Project], **kwargs
+                      ) -> Dict[int, Dict[str, DashboardResource]]:
+    """``{project_id: {resource_name: row}}`` from one batched build; a later row for a name wins."""
+    rows = build_user_projects_resources_batched(session, projects, with_project_metadata=False,
+                                                 **kwargs)
+    return {pid: {row['resource_name']: row for row in res_rows} for pid, res_rows in rows.items()}
+
+
 def get_project_dashboard_data(session: Session, projcode: str) -> Optional[Dict]:
     """
     Get dashboard data for a single project.

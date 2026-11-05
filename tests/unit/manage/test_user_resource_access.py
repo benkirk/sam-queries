@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from sam.accounting.accounts import AccountUser
+from sam.projects.projects import Project
 from sam.manage import (
     add_user_to_project,
     grant_user_resource_access,
@@ -351,3 +352,21 @@ class TestProjectUsers:
         session.expire_all()
         assert [u.user_id for u in project.users] == [project.project_lead_user_id]
         assert project.has_user(project.lead)
+
+    def test_member_ids_by_project_matches_each_project_alone(self, session):
+        from factories.projects import make_account_user
+        first, second = make_project(session), make_project(session)
+        account = make_account(session, project=first)
+        make_account(session, project=second)
+        member, ended = make_user(session), make_user(session)
+        make_account_user(session, account, member)
+        make_account_user(session, account, ended, end_date=datetime.now() - timedelta(days=1))
+        first.project_admin_user_id = make_user(session).user_id
+        session.flush()
+        session.expire_all()
+
+        for rows_only in (False, True):
+            batched = Project.member_ids_by_project(session, [first, second], rows_only=rows_only)
+            assert batched == {p.project_id: p._member_ids(rows_only=rows_only) for p in (first, second)}
+        assert member.user_id in batched[first.project_id]
+        assert ended.user_id not in batched[first.project_id]

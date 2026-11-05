@@ -393,7 +393,42 @@ class TestContractsTableToggle:
         body = auth_client.get(PAGE_URL).get_data(as_text=True)
         toggle = body.split('id="contractsTableActiveOnly"')[1][:200]
         assert 'checked' in toggle
-        assert 'contracts-table' in body and 'active_only=1' in body
+        # The section's requests carry the switch itself, so it is the one source of active_only.
+        assert 'hx-include="#contracts-filters, #contractsTableActiveOnly"' in body
+
+
+class TestContractsTableChips:
+    """NSF-program and end-date chips, and sort within each source."""
+
+    def test_chips_and_sort_headers_render(self, auth_client):
+        body = auth_client.get(CONTRACTS_TABLE_URL, query_string={'active_only': '1'}).get_data(as_text=True)
+        assert 'data-field="ends"' in body and 'data-field="program"' in body
+        assert 'data-sort-by="end"' in body
+
+    def test_a_chip_drops_unmatched_sources_and_opens_the_rest(self, auth_client):
+        whole = auth_client.get(CONTRACTS_TABLE_URL).get_data(as_text=True)
+        ended = auth_client.get(CONTRACTS_TABLE_URL, query_string={'ends': 'ended'}).get_data(as_text=True)
+        assert ended.count('class="collapse show"') >= 1
+        assert 'class="collapse show"' not in whole
+        assert ended.count('<tbody') < whole.count('<tbody')
+
+    def test_end_sort_orders_within_a_source(self, auth_client):
+        import re
+        body = auth_client.get(CONTRACTS_TABLE_URL, query_string={
+            'ends': 'ended', 'sort_by': 'end', 'sort_dir': 'desc'}).get_data(as_text=True)
+        group = body.split('class="collapse show"')[1].split('</tbody>')[0]
+        dates = re.findall(r'<td class="col-shrink small">\s*(\d{4}-\d{2}-\d{2})', group)
+        ends = dates[1::2]
+        assert len(ends) >= 2 and ends == sorted(ends, reverse=True)
+
+    def test_ends_bucket(self):
+        from datetime import datetime
+        from webapp.dashboards.admin.contracts_routes import _ends_bucket
+        now = datetime(2026, 11, 4)
+        assert _ends_bucket(None, now) == 'open'
+        assert _ends_bucket(datetime(2026, 1, 1), now) == 'ended'
+        assert _ends_bucket(datetime(2027, 6, 1), now) == 'year'
+        assert _ends_bucket(datetime(2028, 6, 1), now) == 'later'
 
 
 class TestContractsTableLayout:

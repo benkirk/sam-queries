@@ -42,6 +42,7 @@ from sam.queries.dashboard import (
     get_project_dashboard_data,
     get_resource_detail_data,
     get_user_dashboard_data,
+    usage_by_resource,
 )
 from sam.queries.allocations import (
     ALLOCATION_TRANSACTION_SORT_COLUMNS,
@@ -226,6 +227,23 @@ class TestDashboardQueries:
         assert result['project'] == active_project
         assert isinstance(result['resources'], list)
         assert isinstance(result['has_children'], bool)
+
+    def test_usage_by_resource_batches_what_one_project_builds(self, session, multi_project_user):
+        """One build over many projects gives each project the rows it builds alone, keyed by name."""
+        projects = multi_project_user.active_projects()
+        batched = usage_by_resource(session, projects)
+        for project in projects:
+            alone = build_user_projects_resources_batched(session, [project],
+                                                          with_project_metadata=False)
+            expected = {r['resource_name']: r for r in alone.get(project.project_id, [])}
+            got = batched.get(project.project_id, {})
+            assert got.keys() == expected.keys()
+            for name, row in expected.items():
+                for field in ('allocated', 'used', 'remaining', 'charges_by_type', 'adjustments'):
+                    assert got[name][field] == pytest.approx(row[field]), (project.projcode, name, field)
+
+    def test_usage_by_resource_of_nothing(self, session):
+        assert usage_by_resource(session, []) == {}
 
     def test_get_project_dashboard_data_not_found(self, session):
         assert get_project_dashboard_data(session, 'INVALID999') is None

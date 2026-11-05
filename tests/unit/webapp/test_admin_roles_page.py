@@ -87,7 +87,8 @@ class TestThePage:
         assert 'grantSubjectUser_search' not in html
 
     def test_the_roles_card_and_the_new_role_editor_render(self, auth_client):
-        assert auth_client.get(ROLES).status_code == 200
+        roles = auth_client.get(ROLES)
+        assert roles.status_code == 200 and b'sortable-header' in roles.data
         html = auth_client.get(NEW_ROLE).get_data(as_text=True)
         assert 'name="permissions"' in html and 'value="view_projects"' in html
         assert 'name="active"' not in html
@@ -100,6 +101,65 @@ class TestThePage:
         assert auth_client.get(CHECK).status_code == 200
         html = auth_client.get(CHECK + '?subject=zz-nobody-here').get_data(as_text=True)
         assert 'holds no grant' in html
+
+
+class TestTheGrantsChips:
+    """The Grants card filters by chip and search and sorts by column, all in memory."""
+
+    @pytest.fixture
+    def views(self):
+        from datetime import datetime
+        from types import SimpleNamespace
+        from webapp.dashboards.admin.roles_routes import _grant_views
+
+        def grant(gid, kind, name, *, role_id=None, permission=None, facility=None, note=None):
+            return SimpleNamespace(samuel_role_grant_id=gid, subject_type=kind, subject_name=name,
+                                   samuel_role_id=role_id, permission=permission,
+                                   facility_name=facility, note=note,
+                                   creation_time=datetime(2026, 1, gid))
+        return _grant_views([
+            grant(1, 'user', 'alice', role_id=7, note='on call'),
+            grant(2, 'group', 'csg', permission='view_projects', facility='WNA'),
+            grant(3, 'apikey', 'collector', role_id=7),
+        ], {7: 'operator'})
+
+    def _filter(self, views, **args):
+        from webapp.dashboards.admin.roles_routes import GRANT_FACETS
+        from werkzeug.datastructures import MultiDict
+        return [v['grant'].subject_name
+                for v in GRANT_FACETS.apply(views, GRANT_FACETS.read(MultiDict(args)))]
+
+    def test_each_dimension_filters(self, views):
+        assert self._filter(views, kind='group') == ['csg']
+        assert self._filter(views, holds='operator') == ['alice', 'collector']
+        assert self._filter(views, holds='_permission') == ['csg']
+        assert self._filter(views, facility='all') == ['alice', 'collector']
+
+    def test_the_holds_strip_labels_a_single_permission(self, views):
+        from webapp.dashboards.admin.roles_routes import GRANT_FACETS
+        chips = {c['value']: c for c in GRANT_FACETS.strip(views, {}, 'holds')}
+        assert chips['operator']['count'] == 2
+        assert chips['_permission']['label'] == 'one permission'
+
+    def test_search_reads_subject_holds_and_note(self, views):
+        from webapp.dashboards.admin.roles_routes import _search_grants
+        names = lambda term: [v['grant'].subject_name for v in _search_grants(views, term)]
+        assert names('on call') == ['alice']
+        assert names('VIEW_PROJ') == ['csg']
+        assert names('operator') == ['alice', 'collector']
+
+    def test_sort_by_subject_and_added(self, views):
+        from webapp.dashboards.admin.roles_routes import _GRANT_SORT
+        from webapp.utils.htmx import sort_rows
+        names = lambda by, d: [v['grant'].subject_name
+                               for v in sort_rows(views, {'sort_by': by, 'sort_dir': d}, _GRANT_SORT)]
+        assert names('subject', 'asc') == ['collector', 'csg', 'alice']
+        assert names('added', 'desc') == ['collector', 'csg', 'alice']
+
+    def test_the_card_renders_its_controls(self, auth_client):
+        html = auth_client.get(GRANTS + '?kind=user&sort_by=added').get_data(as_text=True)
+        assert 'id="grantsSearch"' in html and 'data-sort-by="subject"' in html
+        assert 'form="grants-filters"' in html
 
 
 class TestValidationRerenders:

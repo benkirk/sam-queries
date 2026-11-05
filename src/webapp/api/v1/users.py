@@ -41,12 +41,13 @@ def _serialize_dashboard_format(user):
     Returns:
         dict with username, projects list (with usage details), and total_projects
     """
+    from sam.queries.dashboard import usage_by_resource
     projects = user.active_projects()
+    usage = usage_by_resource(user.session, projects, include_adjustments=True)
     projects_data = []
 
     for project in projects:
-        # Get allocation usage for this project
-        usage_data = project.get_detailed_allocation_usage(include_adjustments=True)
+        usage_data = usage.get(project.project_id, {})
 
         resources_list = []
         for resource_name, details in usage_data.items():

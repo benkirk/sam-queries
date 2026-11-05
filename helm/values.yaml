@@ -392,6 +392,7 @@ webapp:
     # by secretKeyRef into BOTH deployment.yaml and cronjob-tasks.yaml.
     XRAS_OUTGOING_ENABLED: "1"
     XRAS_API_BASE: "https://api.xras.org"
+    XRAS_ADMIN_URL: "https://admin-ncar.xras.org"   # links only; the webapp never calls it
     XRAS_ALLOCATIONS_PROCESS: "NCAR"
     # Required header on every call; scopes nothing outside /v1/requests, which
     # this client never reads. The value XRAS provisioned for the ARC scripts.

@@ -28,6 +28,8 @@ from sam.integration.xras import lookup_request_override
 from sam.queries.xras_requests import (
     actions_from_payload,
     documents_from_action,
+    in_flight_action,
+    newer_than_in_flight,
     person_roles_from_payload,
     request_family,
     request_index_entry,
@@ -269,6 +271,9 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
         # danger-zone delete confirm and any family-level display.
         'family': family,
         'detail_actions': detail_actions,
+        # The header's action, by the card's rule: a still-Submitted action outranks a newer applied one.
+        'headline_action': in_flight_action(detail_actions),
+        'newer_action': newer_than_in_flight(detail_actions),
         'documents': documents,
         'grants': _detail_grants(payload),
         'xa_user': xa_user,

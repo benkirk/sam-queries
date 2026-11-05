@@ -17,6 +17,7 @@ Two properties here are specific to this card and worth stating:
 from __future__ import annotations
 
 import pathlib
+import re
 from _paths import REPO_ROOT
 from datetime import datetime
 from unittest.mock import MagicMock
@@ -991,10 +992,30 @@ class TestRendering:
         assert 'newer than the sweep' in body
 
     def test_status_chips_filter(self, auth_client, armed):
-        _publish(_payload('EXAM0001'), _payload('EXAM0002', status='Submitted'))
+        _publish(_payload('EXAM0001'),
+                 _payload('EXAM0002', status='Submitted', action_status='Submitted'))
         body = auth_client.get(
             FRAGMENT + '?show_all=1&status=Submitted').get_data(as_text=True)
         assert 'EXAM0002' in body and 'EXAM0001' not in body
+
+    def test_status_is_the_in_flight_actions_not_the_requests(self, auth_client, armed):
+        """NRAL0035, 2026-11-04: requestStatus stays Approved while its Extension waits."""
+        payload = _payload('EXAM0003')
+        payload['actions'].append({'actionId': 8, 'actionType': 'Extension',
+                                   'actionStatus': 'Submitted'})
+        _publish(payload, _payload('EXAM0001'))
+        body = auth_client.get(
+            FRAGMENT + '?show_all=1&status=Submitted').get_data(as_text=True)
+        assert 'EXAM0003' in body and 'EXAM0001' not in body
+        assert 'title="Request: Approved"' in body
+
+    def test_an_old_snapshot_filters_on_the_request_status(self, auth_client, armed):
+        row = request_index_entry(_payload('EXAM0002', status='Submitted'))
+        del row['latest_action_status']
+        xras_cache.store_requests_index({'generated_at': datetime.now(), 'rows': [row]})
+        body = auth_client.get(
+            FRAGMENT + '?show_all=1&status=Submitted').get_data(as_text=True)
+        assert 'EXAM0002' in body
 
     def test_the_type_column_shows_the_in_flight_action_not_a_count(
             self, auth_client, armed):
@@ -1761,6 +1782,78 @@ def _with_deleted_action():
     payload['actions'].append({'actionId': 8, 'actionType': 'New',
                                'actionStatus': 'Approved'})
     return payload
+
+
+class TestTheHeadlineActionAndXrasLinks:
+    """The headline action (status, hover note) and the quick links out to the XRAS admin app."""
+
+    def _body(self, auth_client, monkeypatch, payload):
+        _reader(monkeypatch, payload=payload)
+        return auth_client.get('/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+
+    def test_the_header_opens_the_latest_action(self, auth_client, armed, monkeypatch):
+        payload = _detail_payload()
+        payload['actions'].append({'actionId': 9, 'actionType': 'Extension',
+                                   'actionStatus': 'Submitted'})
+        body = self._body(auth_client, monkeypatch, payload)
+        header = body[body.index('xras-request-meta'):body.index('xras-request-title')]
+        assert '/actions/9"' in header and 'Open in XRAS' in header
+        assert 'xras.example.invalid' not in body, 'publicURL is not a link into XRAS'
+
+    def test_each_action_links_its_page_and_process_tab(self, auth_client, armed, monkeypatch):
+        body = self._body(auth_client, monkeypatch, _with_deleted_action())
+        assert '/actions/8/show_process"' in body
+        assert '/actions/7"' not in body, 'a soft-deleted action is a 404 in XRAS'
+
+    def test_no_link_sits_inside_the_collapse_button(self, auth_client, armed, monkeypatch):
+        body = self._body(auth_client, monkeypatch, _detail_payload())
+        for head in re.findall(r'<button[^>]*xras-action-head.*?</button>', body, re.S):
+            assert '<a ' not in head
+
+    def test_the_header_names_the_latest_actions_status_and_type(
+            self, auth_client, armed, monkeypatch):
+        payload = _detail_payload()
+        payload['actions'].append({'actionId': 9, 'actionType': 'Extension',
+                                   'actionStatus': 'Submitted'})
+        body = self._body(auth_client, monkeypatch, payload)
+        header = body[body.index('xras-request-meta'):body.index('xras-request-title')]
+        assert '>Submitted<' in header and '>Extension<' in header
+        assert 'request approved' in header and '>New<' not in header
+
+    def test_a_pending_action_outranks_a_newer_applied_one(self, auth_client, armed, monkeypatch):
+        """UWKU0002, 2026-11-04: Supplement 399592 Submitted, 403457 Approved; the card says Submitted."""
+        payload = _detail_payload()
+        payload['actions'] += [{'actionId': 9, 'actionType': 'Supplement', 'actionStatus': 'Submitted'},
+                               {'actionId': 10, 'actionType': 'Supplement', 'actionStatus': 'Approved'}]
+        body = self._body(auth_client, monkeypatch, payload)
+        header = body[body.index('xras-request-meta'):body.index('xras-request-title')]
+        assert '>Submitted<' in header and '/actions/9"' in header
+        assert 'Newer Supplement 10: Approved' in header
+
+    def test_the_headline_actions_section_opens_beside_the_latest(
+            self, auth_client, armed, monkeypatch):
+        payload = _detail_payload()
+        payload['actions'] += [{'actionId': 9, 'actionType': 'Supplement', 'actionStatus': 'Submitted'},
+                               {'actionId': 10, 'actionType': 'Supplement', 'actionStatus': 'Approved'}]
+        body = self._body(auth_client, monkeypatch, payload)
+        assert 'class="collapse show" id="xras-action-9"' in body, 'the headline action'
+        assert 'class="collapse show" id="xras-action-10"' in body, 'the latest keeps its badge and stays open'
+        assert 'class="collapse" id="xras-action-7"' in body or 'class="collapse" id="xras-action-8"' in body
+        assert body.count('>latest<') == 1
+
+    def test_the_card_names_the_newer_action_on_hover(self, auth_client, armed):
+        payload = _payload('EXAM0004')
+        payload['actions'] += [{'actionId': 8, 'actionType': 'Supplement', 'actionStatus': 'Submitted'},
+                               {'actionId': 9, 'actionType': 'Supplement', 'actionStatus': 'Approved',
+                                'entryDate': datetime.now().strftime('%Y-%m-%dT01:34:47Z')}]
+        _publish(payload)
+        body = auth_client.get(FRAGMENT + '?show_all=1&status=Submitted').get_data(as_text=True)
+        assert (f"Request: Approved · Newer Supplement 9 (entered {datetime.now():%Y-%m-%d}): Approved"
+                in body), 'the date is when XRAS received it, not an approval date (XRAS keeps none)'
+
+    def test_a_roster_username_searches_xras(self, auth_client, armed, monkeypatch):
+        body = self._body(auth_client, monkeypatch, _detail_payload())
+        assert '/search_all?q=ghost-user-abcde"' in body
 
 
 class TestASoftDeletedActionIsNotWritable:

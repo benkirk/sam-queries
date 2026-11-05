@@ -429,14 +429,24 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
 
     def _member_ids(self, *, rows_only: bool = False) -> set:
         """User ids with an unended ``account_user`` row here, plus the lead and admin unless ``rows_only``."""
-        ids = set(self.session.scalars(
-            select(AccountUser.user_id).join(Account).where(
-                Account.project_id == self.project_id,
-                or_(AccountUser.end_date.is_(None), AccountUser.end_date >= datetime.now()))
-        ))
+        return Project.member_ids_by_project(self.session, [self], rows_only=rows_only)[self.project_id]
+
+    @staticmethod
+    def member_ids_by_project(session, projects, *, rows_only: bool = False) -> Dict[int, set]:
+        """``{project_id: user ids}`` for many projects in one query; the rule of ``_member_ids``."""
+        out = {p.project_id: set() for p in projects}
+        if not out:
+            return out
+        for project_id, user_id in session.execute(
+                select(Account.project_id, AccountUser.user_id).join(Account).where(
+                    Account.project_id.in_(list(out)),
+                    or_(AccountUser.end_date.is_(None), AccountUser.end_date >= datetime.now()))):
+            out[project_id].add(user_id)
         if not rows_only:
-            ids.update(i for i in (self.project_lead_user_id, self.project_admin_user_id) if i is not None)
-        return ids
+            for p in projects:
+                out[p.project_id].update(
+                    i for i in (p.project_lead_user_id, p.project_admin_user_id) if i is not None)
+        return out
 
     def _users_with_ids(self, ids: set) -> List['User']:
         # One IN query: walking account.users -> au.user loaded each member alone, ~5 statements apiece.
@@ -744,11 +754,11 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
                                       include_adjustments: bool = True,
                                       active_at: Optional[datetime] = None) -> Dict[str, Dict[str, Any]]:
         """Usage by resource name: the dashboard builder's rows for this project, plus job statistics."""
-        from sam.queries.dashboard import build_user_projects_resources_batched
-        rows = build_user_projects_resources_batched(
+        from sam.queries.dashboard import usage_by_resource
+        rows = usage_by_resource(
             self.session, [self], active_at=active_at, include_adjustments=include_adjustments,
-            resource_name=resource_name, with_project_metadata=False,
-        ).get(self.project_id, [])
+            resource_name=resource_name,
+        ).get(self.project_id, {}).values()
         now = active_at or datetime.now()
         accounts = {a.account_id: a for a in self.accounts}
 

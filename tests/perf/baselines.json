@@ -284,5 +284,17 @@
     "exchange_form_route_read_model_stale": {
         "queries": 55,
         "notes": "measured 43 (2026-11-03): one re-projection, pinned by the lookup observer; was 414 (one per candidate)"
+    },
+    "build_expiration_messages": {
+        "queries": 30,
+        "notes": "measured 20 (2026-11-04) over the 14 projects of the snapshot's busiest 40-day end-date window, live; was 381 when each project loaded its own usage and roster. Flat in projects"
+    },
+    "build_expiration_messages_read_model": {
+        "queries": 21,
+        "notes": "measured 14 (2026-11-04), same window, served; one gate lookup for every project (was one per project, 14)"
+    },
+    "users_me_projects_dashboard_route": {
+        "queries": 65,
+        "notes": "measured 43 (2026-11-04) as benkirk; was 115 when each project ran get_detailed_allocation_usage"
     }
 }
