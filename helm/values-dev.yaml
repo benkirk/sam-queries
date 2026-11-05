@@ -55,6 +55,7 @@ webapp:
     # Dispatch is live: sam_dev.xras_action_log was empty at the flip (2026-10-08)
     # and refresh-dev empties it again. Record: docs/plans/XRAS_SUBMISSION.md section 5.
     XRAS_API_BASE: "https://xras-submit-api-demo.xsede.org"
+    XRAS_ADMIN_URL: "https://xras-admin-demo.xsede.org"   # operator links land on the demo, never admin-ncar
     XRAS_OUTGOING_ENABLED: "1"
     XRAS_WRITE_ENABLED: "1"
     XRAS_RENAME_ENABLED: "1"              # the after-reply rename (prod: "1" too; both gated)

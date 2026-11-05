@@ -1,4 +1,4 @@
-{% from 'dashboards/fragments/xras_bits.html' import alarm, amount_editor, dialog_footer, figure, dialog_title, footer_verb, section_label, tag, type_label, write_button %}
+{% from 'dashboards/fragments/xras_bits.html' import alarm, amount_editor, dialog_footer, figure, dialog_title, footer_verb, section_label, tag, type_label, write_button, xras_admin_links %}
 {#
   One XRAS request (and its family), rendered into #xrasModalBody.
   Context: request_number, payload (GET /v1/reports/request_numbers/<n>, self-
@@ -33,8 +33,11 @@
     {# The current handoff's date, as the card shows it; the request's own when it differs. #}
     {% if row and (row.activity_date or row.submit_date) %}<span>submitted {{ (row.activity_date or row.submit_date) | fmt_date }}</span>{% endif %}
     {% if row and row.activity_date and row.submit_date and row.activity_date != row.submit_date %}<span>created {{ row.submit_date | fmt_date }}</span>{% endif %}
-    {% if payload.publicURL %}
-    <a class="ms-auto" href="{{ payload.publicURL }}" target="_blank" rel="noopener">Open in XRAS <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>
+    {# The latest action: /requests/<id> in XRAS opens the original New instead. #}
+    {% set latest_action = detail_actions | selectattr('is_latest') | first %}
+    {% set xras_href = xras_admin_url(action=latest_action.action_id) if latest_action else none %}
+    {% if xras_href %}
+    <a class="ms-auto" href="{{ xras_href }}" target="_blank" rel="noopener" title="Open action {{ latest_action.action_id }} in the XRAS admin app">Open in XRAS <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>
     {% endif %}
 </p>
 
@@ -91,6 +94,7 @@
 {% for action in detail_actions %}
 {% set latest = action.is_latest %}
 <section class="xras-action{{ ' is-latest' if latest }}">
+    <div class="xras-action-headrow">
     <button type="button" class="xras-action-head" data-bs-toggle="collapse"
             data-bs-target="#xras-action-{{ action.action_id }}" aria-controls="xras-action-{{ action.action_id }}"
             aria-expanded="{{ 'true' if latest else 'false' }}">
@@ -103,6 +107,8 @@
         {% if action.request_id and action.request_id != row.request_id %}<span class="text-muted small">{{ action.request_type or 'request' }} {{ action.request_id }}</span>{% endif %}
         {% if latest %}<span class="badge bg-primary">latest</span>{% endif %}
     </button>
+    {{ xras_admin_links(action.action_id) }}
+    </div>
     <div class="collapse{{ ' show' if latest }}" id="xras-action-{{ action.action_id }}">
     <div class="xras-action-body">
 

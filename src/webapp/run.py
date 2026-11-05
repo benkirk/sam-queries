@@ -352,6 +352,11 @@ def create_app(*, config_overrides: dict | None = None):
     from webapp.jobs.service import JOBS_WINDOW_PILLS
     app.jinja_env.globals['jobs_window_pills'] = JOBS_WINDOW_PILLS
 
+    # Links into the XRAS admin app. Operator surfaces only: a PI has no login there.
+    from sam.integration.xras_api import XrasApiConfig
+    app.jinja_env.globals['xras_admin_url'] = (
+        lambda **kw: XrasApiConfig.from_environment().admin_link(**kw))
+
     # Central CDN-asset registry (pinned versions + SRI) for templates
     from webapp.vendor_assets import vendor_assets_context_processor
     app.context_processor(vendor_assets_context_processor)

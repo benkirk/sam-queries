@@ -17,6 +17,7 @@ Two properties here are specific to this card and worth stating:
 from __future__ import annotations
 
 import pathlib
+import re
 from _paths import REPO_ROOT
 from datetime import datetime
 from unittest.mock import MagicMock
@@ -1761,6 +1762,37 @@ def _with_deleted_action():
     payload['actions'].append({'actionId': 8, 'actionType': 'New',
                                'actionStatus': 'Approved'})
     return payload
+
+
+class TestTheModalLinksIntoXras:
+    """Quick links out to the XRAS admin app: the latest action, each action, each roster username."""
+
+    def _body(self, auth_client, monkeypatch, payload):
+        _reader(monkeypatch, payload=payload)
+        return auth_client.get('/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+
+    def test_the_header_opens_the_latest_action(self, auth_client, armed, monkeypatch):
+        payload = _detail_payload()
+        payload['actions'].append({'actionId': 9, 'actionType': 'Extension',
+                                   'actionStatus': 'Submitted'})
+        body = self._body(auth_client, monkeypatch, payload)
+        header = body[body.index('xras-request-meta'):body.index('xras-request-title')]
+        assert '/actions/9"' in header and 'Open in XRAS' in header
+        assert 'xras.example.invalid' not in body, 'publicURL is not a link into XRAS'
+
+    def test_each_action_links_its_page_and_process_tab(self, auth_client, armed, monkeypatch):
+        body = self._body(auth_client, monkeypatch, _with_deleted_action())
+        assert '/actions/8/show_process"' in body
+        assert '/actions/7"' not in body, 'a soft-deleted action is a 404 in XRAS'
+
+    def test_no_link_sits_inside_the_collapse_button(self, auth_client, armed, monkeypatch):
+        body = self._body(auth_client, monkeypatch, _detail_payload())
+        for head in re.findall(r'<button[^>]*xras-action-head.*?</button>', body, re.S):
+            assert '<a ' not in head
+
+    def test_a_roster_username_searches_xras(self, auth_client, armed, monkeypatch):
+        body = self._body(auth_client, monkeypatch, _detail_payload())
+        assert '/search_all?q=ghost-user-abcde"' in body
 
 
 class TestASoftDeletedActionIsNotWritable:

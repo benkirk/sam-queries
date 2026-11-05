@@ -30,6 +30,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, FrozenSet, Optional
+from urllib.parse import urlencode
 
 from sam.integration._config import (parse_action_types,
                                      config_bool as _config_bool,
@@ -41,6 +42,8 @@ from sam.integration.xras_api.vocabulary import SUBMIT_ACTION_TYPES
 logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = 'https://api.xras.org'
+#: The operator web app, for links only; never called. Dev points at xras-admin-demo.
+DEFAULT_ADMIN_URL = 'https://admin-ncar.xras.org'
 DEFAULT_ALLOCATIONS_PROCESS = 'NCAR'
 
 #: The header value the existing operator scripts use. Outside ``/v1/requests``
@@ -100,6 +103,7 @@ class XrasApiConfig:
     submit_anonymous_enabled: bool = False
     api_key: str = ''
     base_url: str = DEFAULT_BASE_URL
+    admin_url: str = DEFAULT_ADMIN_URL
     allocations_process: str = DEFAULT_ALLOCATIONS_PROCESS
     api_user: str = DEFAULT_API_USER
     timeout: int = DEFAULT_TIMEOUT
@@ -121,6 +125,8 @@ class XrasApiConfig:
             api_key=_config_str('XRAS_API_KEY', ''),
             base_url=(_config_str('XRAS_API_BASE', DEFAULT_BASE_URL)
                       or DEFAULT_BASE_URL).rstrip('/'),
+            admin_url=(_config_str('XRAS_ADMIN_URL', DEFAULT_ADMIN_URL)
+                       or DEFAULT_ADMIN_URL).rstrip('/'),
             allocations_process=(_config_str('XRAS_ALLOCATIONS_PROCESS',
                                              DEFAULT_ALLOCATIONS_PROCESS)
                                  or DEFAULT_ALLOCATIONS_PROCESS),
@@ -131,6 +137,14 @@ class XrasApiConfig:
                                           DEFAULT_CONNECT_TIMEOUT),
             max_retries=_config_int('XRAS_API_MAX_RETRIES', DEFAULT_MAX_RETRIES),
         )
+
+    def admin_link(self, *, action=None, process: bool = False, q=None) -> Optional[str]:
+        """A link into the admin app: an action (or its Process tab), else a search; None without either."""
+        if action:
+            return f"{self.admin_url}/actions/{int(action)}{'/show_process' if process else ''}"
+        if q:
+            return f'{self.admin_url}/search_all?{urlencode({"q": q})}'
+        return None
 
     def interactive(self) -> 'XrasApiConfig':
         """The htmx budget: one attempt, so a slow XRAS holds a worker for one timeout, not ~33 s."""
@@ -208,6 +222,7 @@ class XrasApiConfig:
             'submit_anonymous_enabled': self.submit_anonymous_enabled,
             'api_key_set': bool(self.api_key),
             'base_url': self.base_url,
+            'admin_url': self.admin_url,
             'allocations_process': self.allocations_process,
             'api_user': self.api_user,
             'timeout': self.timeout,

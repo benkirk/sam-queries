@@ -34,6 +34,15 @@
 <span class="badge bg-danger"{% if title %} title="{{ title }}"{% endif %}>{{ label }}</span>
 {%- endmacro %}
 
+{#- An action's page in the XRAS admin app, and its Process tab (approve, post). -#}
+{% macro xras_admin_links(action_id) -%}
+{%- set href = xras_admin_url(action=action_id) -%}
+{%- if href %}<span class="row-actions">
+<a class="btn btn-row" href="{{ href }}" target="_blank" rel="noopener" title="Open action {{ action_id }} in XRAS" aria-label="Open action {{ action_id }} in XRAS"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>
+<a class="btn btn-row" href="{{ xras_admin_url(action=action_id, process=True) }}" target="_blank" rel="noopener" title="Process action {{ action_id }} in XRAS" aria-label="Process action {{ action_id }} in XRAS"><i class="fa-solid fa-gavel" aria-hidden="true"></i></a>
+</span>{% endif -%}
+{%- endmacro %}
+
 {% macro type_label(action_type) -%}
 {%- if action_type %}<span class="xras-type">{{ action_type }}</span>
 {%- else %}<span class="text-muted" title="Body could not be parsed">—</span>{% endif -%}
