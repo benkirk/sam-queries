@@ -198,17 +198,66 @@ def _grant_contract_ignored(number: str) -> str:
     return f'Contract "{number}" not found; blocker ignored by operator, grant unlinked'
 
 
+def _contract_created(grant_number: str, contract_number: str, pi_label: str) -> str:
+    """The warning for a contract the post creates from its cached NSF award."""
+    return (f'Contract "{contract_number}" for grant number "{grant_number}" is created '
+            f'from the NSF award (PI {pi_label})')
+
+
 _GRANT_DETAIL_KEYS = {'fundingAgency': 'agency', 'title': 'title', 'piName': 'pi_name',
                       'beginDate': 'begin_date', 'endDate': 'end_date',
                       'isPending': 'is_pending'}
 
 
-def plan_contracts(session, action, errs: ActionErrors) -> Tuple[List, Tuple[str, ...], List[dict]]:
-    """Resolve ``grants[]`` to ``(contracts, warnings, unresolved)``, deduped by contract id.
+_NSF_AGENCIES = {'NSF', 'NATIONAL SCIENCE FOUNDATION'}
+
+
+def create_planned_contracts(session, planned) -> List:
+    """Write each planned contract; called from ``execute``, inside the post's transaction."""
+    from sam.manage.contracts import apply_contract_plan
+    return [apply_contract_plan(session, plan) for plan in planned or ()]
+
+
+def auto_contracts_armed() -> bool:
+    """``XRAS_AUTO_CONTRACTS``: a missing contract is created from its cached award."""
+    from sam.integration._config import config_bool
+    return config_bool('XRAS_AUTO_CONTRACTS', False)
+
+
+def _nsf_source(session):
+    from sam.projects.contracts import ContractSource
+    return cached(session, ('contract_source', 'NSF'), lambda: (
+        session.query(ContractSource).filter(ContractSource.contract_source == 'NSF',
+                                             ContractSource.is_active).first()))
+
+
+def _auto_contract(session, grant, number: str, roster_users):
+    """``(plan, None)`` from the cached NSF award for *number*, or ``(None, why)``.
+
+    Cache only: the post never waits on NSF; the sweep warms the cache.
+    """
+    from sam.integration.awards import cached_award
+    from sam.manage.contracts import plan_contract_from_award
+    if str(get_field(grant, 'fundingAgency') or '').strip().upper() not in _NSF_AGENCIES:
+        return None, 'not_nsf'
+    source = _nsf_source(session)
+    record = cached_award('NSF', number, exact=True)
+    if source is None or record is None:
+        return None, 'not_cached'
+    return plan_contract_from_award(session, record, source=source,
+                                    wire_pi_name=get_field(grant, 'piName'),
+                                    roster_users=roster_users)
+
+
+def plan_contracts(session, action, errs: ActionErrors, *,
+                   roster_users=()) -> Tuple[List, Tuple[str, ...], List[dict], List]:
+    """Resolve ``grants[]`` to ``(contracts, warnings, unresolved, planned)``, deduped by contract id.
 
     ``unresolved`` is the structured channel for the contract-blockers report:
     one entry per grant that reported a 422, carrying the wire's own title,
     agency, PI and dates so the create form can be seeded without a lookup.
+    ``planned`` holds a ``ContractPlan`` per missing contract that ``XRAS_AUTO_CONTRACTS``
+    creates from its cached NSF award; ``execute`` writes it, after every check passed.
 
     WARNING: ``grants: []`` is **not** an error — ``new_ncar4232_failed.json`` is an
     Educational allocation with no grant at all, and its failure was the mnemonic, not
@@ -227,16 +276,30 @@ def plan_contracts(session, action, errs: ActionErrors) -> Tuple[List, Tuple[str
     # project is created with the erroneous grant simply unlinked.
     ignore_missing = lookup_request_override(
         session, get_field(action, 'requestNumber'), 'ignore_contract') is not None
-    report_to = ActionErrors() if ignore_missing else errs
+    auto = not ignore_missing and auto_contracts_armed()
 
-    contracts, warnings, unresolved, seen = [], [], [], set()
+    contracts, warnings, unresolved, planned, seen = [], [], [], [], set()
+    planned_numbers = set()
     for grant in get_field(action, 'grants') or ():
         number = str(get_field(grant, 'grantNumber') or '').strip()
         if not any(ch.isdigit() for ch in number):
             warnings.append(_grant_without_number(number, grant))
             continue
         failed: List[dict] = []
-        contract = resolve_contract(session, number, report_to, unresolved=failed)
+        # A scratch bag first, so a planned contract's miss never reaches the 422.
+        scratch = ActionErrors()
+        contract = resolve_contract(session, number, scratch, unresolved=failed)
+        plan = None
+        if auto and failed and all(f.get('reason') == 'missing' for f in failed):
+            plan, _why = _auto_contract(session, grant, number, roster_users)
+        if plan is not None:
+            if plan.contract_number not in planned_numbers:
+                planned_numbers.add(plan.contract_number)
+                planned.append(plan)
+                warnings.append(_contract_created(number, plan.contract_number, plan.pi.label))
+            continue
+        if not ignore_missing:
+            errs.extend(scratch)
         # Wire detail for the create form. A literal tuple of names: the
         # vocabulary gate (test_xras_wire_vocabulary) resolves them from the loop.
         for entry in failed:
@@ -250,4 +313,4 @@ def plan_contracts(session, action, errs: ActionErrors) -> Tuple[List, Tuple[str
         if contract is not None and contract.contract_id not in seen:
             seen.add(contract.contract_id)
             contracts.append(contract)
-    return contracts, tuple(warnings), unresolved
+    return contracts, tuple(warnings), unresolved, planned

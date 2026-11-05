@@ -63,6 +63,7 @@ webapp:
     XRAS_SUBMIT_ACTION_TYPES: "all"       # prod narrows to Extension,Supplement; unset is none
     XRAS_SUBMIT_ANONYMOUS_ENABLED: "1"    # a visitor's New at /request/ (prod: "0"); tasks.env too
     XRAS_AUTO_ACTIVATE: "1"               # a New that applies activates its project (prod: "1" too)
+    XRAS_AUTO_CONTRACTS: "1"              # a post creates its contract from the cached award (prod: "0")
     XRAS_AUTO_NOTIFY: "1"                 # then mails it; NOTIFY_ENABLED=0 keeps that a no-send
     SAM_TASKS_XRAS_NOTICES_SINCE: ""      # no cutover floor on dev
     XRAS_ACTIONS_CAPTURE_ONLY: "0"
@@ -131,3 +132,5 @@ tasks:
     TICKET_PROVIDER: "dry-run"
     JIRA_WRITE_ENABLED: "0"
     SAM_TASKS_XRAS_TICKETS_SINCE: ""
+    # Equals webapp.env's: the sweep warms NSF awards and predicts the contract create.
+    XRAS_AUTO_CONTRACTS: "1"

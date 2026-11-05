@@ -563,6 +563,7 @@ class TestingConfig(SAMWebappConfig):
     XRAS_SUBMIT_ENABLED = False
     XRAS_SUBMIT_ANONYMOUS_ENABLED = False
     XRAS_AUTO_ACTIVATE = False
+    XRAS_AUTO_CONTRACTS = False
     XRAS_REQUEST_TICKETS_ENABLED = False
     # Pinned for the same reason: tests opt into a destructive lever explicitly.
     LDAPSYNC_PURGE_ENABLED = False

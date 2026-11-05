@@ -106,6 +106,14 @@ class Roster:
     admin: Optional[User] = None
     members: Tuple[Optional[User], ...] = ()
 
+    def users(self) -> Tuple[User, ...]:
+        """Every resolved person on the roster, PI first, without repeats."""
+        out = []
+        for user in (self.pi, self.admin, *self.members):
+            if user is not None and user not in out:
+                out.append(user)
+        return tuple(out)
+
 
 def _wire_str(value) -> str:
     """A wire string as Jackson would have produced it.

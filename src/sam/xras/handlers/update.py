@@ -64,6 +64,7 @@ from ._fields import (
     abstract,
     parse_action_begin_date,
     parse_action_end_date,
+    create_planned_contracts,
     plan_contracts,
     resolve_resource,
     resource_comment,
@@ -151,8 +152,9 @@ class UpdateHandler(ActionHandler):
         # the project had when it arrived. Nothing in the suite would catch that.
         self.panel_authorised = auth_at_panel_meeting(self.session, self.action)
 
-        self.contracts, contract_warnings, self.unresolved_grants = plan_contracts(
-            self.session, self.action, self.errors)
+        self.contracts, contract_warnings, self.unresolved_grants, self.planned_contracts = (
+            plan_contracts(self.session, self.action, self.errors,
+                           roster_users=self.roster.users()))
 
         self.planned: List[tuple] = []
         if self.project is not None:
@@ -271,7 +273,8 @@ class UpdateHandler(ActionHandler):
 
         # 2. Contracts — additive; an existing link is left alone.
         existing = {pc.contract_id for pc in project.contracts}
-        for contract in self.contracts:
+        for contract in self.contracts + create_planned_contracts(self.session,
+                                                                  self.planned_contracts):
             if contract.contract_id not in existing:
                 existing.add(contract.contract_id)
                 ProjectContract.create(self.session, project_id=project.project_id,

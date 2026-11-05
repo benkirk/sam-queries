@@ -111,6 +111,22 @@ SUBMIT_ACTION_TYPES = ('Extension', 'Supplement', 'Renewal', 'New')
 #: ``GET /v1/funding_agencies``: NSF, the one agency SAM looks a grant up for (XRAS_DEV_PROBES § 2).
 NSF_FUNDING_AGENCY_ID = 1
 
+
+def with_named_agencies(payload: dict) -> dict:
+    """*payload* with each NSF grant's ``fundingAgency`` named, as the push names it.
+
+    ``reports`` carries only ``fundingAgencyId``; the preflight reads the name, so a
+    contract it may create from an NSF award needs it. Other agencies stay unnamed.
+    """
+    grants = payload.get('grants') if isinstance(payload, dict) else None
+    if not grants:
+        return payload
+    named = [dict(g, fundingAgency='NSF')
+             if isinstance(g, dict) and not g.get('fundingAgency')
+             and g.get('fundingAgencyId') == NSF_FUNDING_AGENCY_ID else g
+             for g in grants]
+    return {**payload, 'grants': named}
+
 _ACTION_BY_NAME = {name.casefold(): name for name in ACTION_TYPES}
 
 

@@ -170,6 +170,11 @@ class ActionHandler(ABC):
         unresolved = getattr(self, 'unresolved_grants', None)
         if unresolved:
             out['unresolved_grants'] = [dict(g) for g in unresolved]
+        planned = getattr(self, 'planned_contracts', None)
+        if planned:
+            out['planned_contracts'] = [
+                {'number': p.contract_number, 'pi': p.pi.label, 'pi_is_user': p.pi.is_user,
+                 'monitor': p.monitor.label if p.monitor else None} for p in planned]
         out['panel_authorised'] = bool(getattr(self, 'panel_authorised', False))
         return out or None
 

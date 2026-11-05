@@ -349,6 +349,52 @@ def _opportunity_map(ctx, client, opportunity_ids, detail) -> Optional[dict]:
             if isinstance(o, dict) and o.get('opportunityId') is not None}
 
 
+#: NSF award fetches per sweep run; a number already cached costs none.
+_AWARD_WARM_CAP = 25
+
+
+def _warm_awards(ctx, session, payloads, detail) -> None:
+    """Fetch the NSF award of each missing contract into the award cache, so a post finds it.
+
+    Behind ``XRAS_AUTO_CONTRACTS``. The post reads the cache only and never waits on
+    NSF; an outage here logs and costs the next run nothing.
+    """
+    from sam.integration.awards import AwardSourceUnavailable, cached_award, resolve_award
+    from sam.projects.contracts import Contract
+    from sam.xras.extractors import contract_candidates, extract_core_number, has_core_number
+    from sam.xras.handlers._fields import _NSF_AGENCIES, auto_contracts_armed
+    from sam.integration.xras_api.vocabulary import with_named_agencies
+    if not auto_contracts_armed():
+        return
+    tally = detail.setdefault('awards', {'warmed': 0, 'cached': 0, 'unavailable': 0})
+    seen = set()
+    for payload in payloads:
+        named = with_named_agencies(payload) if isinstance(payload, dict) else {}
+        for grant in named.get('grants') or ():
+            if not isinstance(grant, dict):
+                continue
+            number = str(grant.get('grantNumber') or '').strip()
+            if (not has_core_number(number) or number in seen
+                    or str(grant.get('fundingAgency') or '').upper() not in _NSF_AGENCIES):
+                continue
+            seen.add(number)
+            if (Contract.get_by_number(session, number) is not None
+                    or contract_candidates(session, extract_core_number(number))):
+                continue
+            if cached_award('NSF', number, exact=True) is not None:
+                tally['cached'] += 1
+                continue
+            if tally['warmed'] >= _AWARD_WARM_CAP:
+                return
+            try:
+                resolve_award('NSF', number, exact=True)
+                tally['warmed'] += 1
+            except AwardSourceUnavailable as exc:
+                tally['unavailable'] += 1
+                ctx.logger.warning('xras_sweep: NSF award %s unavailable: %s', number, exc)
+                return
+
+
 def _run_preflights(ctx, client, session, all_payloads, *, since, detail):
     """Preflight every recent candidate action; return ``(by_number, numbers)``.
 
@@ -356,11 +402,13 @@ def _run_preflights(ctx, client, session, all_payloads, *, since, detail):
     ``numbers`` is the set of requests carrying at least one candidate action.
     Injects the resource/opportunity maps; a raising preflight costs that action.
     """
+    from sam.integration.xras_api.vocabulary import with_named_agencies
     from sam.xras.preflight import (iter_candidate_actions, log_seen_for,
                                     preflight_action, verdict_to_dict)
 
     candidates = [(p, a) for p in all_payloads if isinstance(p, dict)
                   for a in iter_candidate_actions(p, since=since)]
+    _warm_awards(ctx, session, [p for p, _ in candidates], detail)
     summary = {'window_days': preflight_days(), 'candidates': len(candidates),
                'rechecked': 0, 'failed': 0, 'manual': 0, 'incomplete': 0,
                'by_push_state': {}, 'by_stage': {}}
@@ -389,7 +437,7 @@ def _run_preflights(ctx, client, session, all_payloads, *, since, detail):
         if number:
             numbers.add(number)
         try:
-            verdict = preflight_action(session, payload, action,
+            verdict = preflight_action(session, with_named_agencies(payload), action,
                                        resource_keys=resource_keys,
                                        opportunities=opportunities,
                                        enabled=None, log_seen=log_seen)
@@ -1017,6 +1065,11 @@ def xras_sweep(ctx) -> TaskResult:
             # work. It is reported because it says the account can be created
             # from real detail, not because anything closed.
             detail['reconciled'] += 1
+
+    # 4a. awards for missing contracts, then link any external contact who is now a user.
+    _warm_awards(ctx, session, payloads, detail)
+    from sam.projects.contracts import ExternalContact
+    detail['contacts_linked'] = ExternalContact.link_matching_users(session)
 
     # 4b. the Remediations index — full slot only; light hours ride its 24h TTL.
     # The extra-status passes exist only on the full path.

@@ -180,7 +180,7 @@ class TestContractConsult:
     def test_a_missing_contract_reports_without_an_override(self, session):
         """Baseline: the blocker fires."""
         errs = ActionErrors()
-        contracts, warnings, unresolved = plan_contracts(
+        contracts, warnings, unresolved, _planned = plan_contracts(
             session, action(requestNumber='NCAR7200',
                             grants=[{'grantNumber': 'NSF-7770001'}]), errs)
         assert contracts == []
@@ -191,7 +191,7 @@ class TestContractConsult:
         XrasRequestOverride.set(session, request_number='NCAR7201',
                                 kind='ignore_contract', created_by='op')
         errs = ActionErrors()
-        contracts, warnings, unresolved = plan_contracts(
+        contracts, warnings, unresolved, _planned = plan_contracts(
             session, action(requestNumber='NCAR7201',
                             grants=[{'grantNumber': 'NSF-7770002'}]), errs)
         assert contracts == []
@@ -205,7 +205,7 @@ class TestContractConsult:
         XrasRequestOverride.set(session, request_number='NCAR7202',
                                 kind='ignore_contract', created_by='op')
         errs = ActionErrors()
-        contracts, warnings, unresolved = plan_contracts(
+        contracts, warnings, unresolved, _planned = plan_contracts(
             session, action(requestNumber='NCAR7202',
                             grants=[{'grantNumber': 'NSF-7770003'}]), errs)
         assert [x.contract_id for x in contracts] == [c.contract_id]
@@ -225,7 +225,7 @@ class TestContractConsult:
         XrasRequestOverride.set(session, request_number='NCAR7203',
                                 kind='ignore_contract', created_by='op')
         errs = ActionErrors()
-        contracts, warnings, unresolved = plan_contracts(
+        contracts, warnings, unresolved, _planned = plan_contracts(
             session, action(requestNumber='NCAR7299',   # a different request
                             grants=[{'grantNumber': 'NSF-7770004'}]), errs)
         assert list(errs)                               # override did NOT apply

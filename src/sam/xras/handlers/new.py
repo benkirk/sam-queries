@@ -48,6 +48,7 @@ from ._fields import (
     abstract,
     parse_action_begin_date,
     parse_action_end_date,
+    create_planned_contracts,
     plan_contracts,
     resolve_resource,
     resource_comment,
@@ -109,8 +110,9 @@ class NewHandler(ActionHandler):
             self.session, self.action, self.errors,
             pi_username=self.roster.pi_username, pi=self.roster.pi,
             preset=self.submission.mnemonic_code_id if self.submission else None)
-        self.contracts, contract_warnings, self.unresolved_grants = plan_contracts(
-            self.session, self.action, self.errors)
+        self.contracts, contract_warnings, self.unresolved_grants, self.planned_contracts = (
+            plan_contracts(self.session, self.action, self.errors,
+                           roster_users=self.roster.users()))
 
         # WARNING: Before `_plan_allocations()`, and that ordering is now load-bearing: the
         # plan records capture the flag at construction, where the old execute-time
@@ -212,8 +214,9 @@ class NewHandler(ActionHandler):
                 self.session, project_id=project.project_id,
                 organization_id=organization.organization_id)
 
-        # 2. Contracts.
-        for contract in self.contracts:
+        # 2. Contracts, a planned one created first: every check has passed by now.
+        for contract in self.contracts + create_planned_contracts(self.session,
+                                                                  self.planned_contracts):
             ProjectContract.create(self.session, project_id=project.project_id,
                                    contract_id=contract.contract_id)
 

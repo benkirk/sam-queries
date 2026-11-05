@@ -272,6 +272,7 @@ def _preflight_verdicts(reader, session, payload):
     No lookback: the caller asked about this one request, so every candidate
     action it carries is checked. A raising preflight counts as ``incomplete``.
     """
+    from sam.integration.xras_api.vocabulary import with_named_agencies
     from sam.xras.preflight import (iter_candidate_actions, log_seen_for,
                                     preflight_action, verdict_to_dict)
 
@@ -288,7 +289,7 @@ def _preflight_verdicts(reader, session, payload):
     verdicts = {}
     for action in candidates:
         try:
-            verdict = preflight_action(session, payload, action,
+            verdict = preflight_action(session, with_named_agencies(payload), action,
                                        resource_keys=resource_keys,
                                        opportunities=opportunities, enabled=None,
                                        log_seen=log_seen)
