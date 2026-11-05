@@ -133,7 +133,7 @@ The request dialog (`xras_request_detail.html`, `MANAGE_XRAS`, so operators only
   `copy_button(note.admin_comment, label='Copy admin comment', done='Admin comment copied.')`
   (`fragments/clipboard.html`; never inside a `data-bs-toggle` element) beside
   `xras_admin_links(note.action_id)`, so the paste target is the next click.
-- Findings in two lists, "Needs your judgement" (warn, block) then "Already checked" (ok, info),
+- Findings in two lists, "Needs your judgment" (warn, block) then "Already checked" (ok, info),
   each message with its sources as `<a href target="_blank" rel="noopener noreferrer">` plus the
   external-link icon; `pi_history` as one muted line; the rationale under
   `<details class="xras-disclosure">`.

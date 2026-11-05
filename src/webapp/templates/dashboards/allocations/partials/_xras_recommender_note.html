@@ -46,7 +46,7 @@
 
 {% set judge = note.findings_to_judge %}
 {% set checked = note.findings_checked %}
-{% if judge %}<p class="xras-note-heading">Needs your judgement</p>{{ finding_list(judge) }}{% endif %}
+{% if judge %}<p class="xras-note-heading">Needs your judgment</p>{{ finding_list(judge) }}{% endif %}
 {% if checked %}<p class="xras-note-heading">Already checked</p>{{ finding_list(checked) }}{% endif %}
 {% if note.pi_history %}<p class="small text-muted mb-1">{{ note.pi_history }}</p>{% endif %}
 {% if note.rationale %}
