@@ -37,6 +37,7 @@ from sam.queries.xras_accounts import (
     ActionRef,
     PendingFeed,
     RosterRecord,
+    _needs_whole_roster,
     classify_accounts,
     enrich_worklist,
     sam_merge_targets,
@@ -553,6 +554,20 @@ class TestFeedB:
         # With no actions, it falls back rather than inventing one.
         assert records_from_report_requests(
             [REPORT_REQUEST])[0].ref.action_type == 'New'
+
+    def test_the_in_flight_action_names_the_row(self, session):
+        """NRAL0035, 2026-11-04: requestStatus stays Approved while its Extension waits,
+        and an Extension leaves membership alone, so only its lapsed leads count."""
+        payload = dict(REPORT_REQUEST, actions=[
+            {'actionId': 1, 'actionType': 'New', 'actionStatus': 'Approved'},
+            {'actionId': 2, 'actionType': 'Extension', 'actionStatus': 'Submitted'}])
+        record, = records_from_report_requests([payload])
+        assert (record.ref.action_type, record.ref.status) == ('Extension', 'Submitted')
+        assert not _needs_whole_roster(record)
+        # No actions: the request's own type and status, and the whole roster.
+        record, = records_from_report_requests([REPORT_REQUEST])
+        assert (record.ref.action_type, record.ref.status) == ('New', 'Approved')
+        assert _needs_whole_roster(record)
 
     def test_an_ended_role_window_excludes_the_person(self, session):
         """A person whose every role is dated out of range needs no account —

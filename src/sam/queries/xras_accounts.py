@@ -532,18 +532,16 @@ def in_flight_live_action(line: Mapping[str, Any]) -> Optional[dict]:
     return max(in_flight or typed, key=lambda a: a.get('actionId') or 0)
 
 
-def _report_action_type(payload: dict) -> Optional[str]:
-    """The request's representative ``actionType`` — never ``requestType``.
+def _report_action(payload: dict) -> Tuple[Optional[str], Optional[str]]:
+    """The row's ``(actionType, actionStatus)``: the in-flight action's, else the request's own.
 
-    ``requestType`` is ``New``/``Renewal`` on every row and does not select a
-    handler (``schemas/forms/xras.py``); the dispatching type lives on each
-    action. A request usually carries one action; take the first that names a
-    type, falling back to ``requestType`` only when none do.
+    ``requestType`` selects no handler (``schemas/forms/xras.py``) and
+    ``requestStatus`` stays at the New's, so an approved request with a
+    Submitted Extension is an Extension row, and only its lapsed leads count.
     """
-    for action in live_actions(payload):
-        if action.get('actionType'):
-            return action.get('actionType')
-    return payload.get('requestType')
+    action = in_flight_live_action(payload) or {}
+    return (action.get('actionType') or payload.get('requestType'),
+            action.get('actionStatus') or payload.get('requestStatus'))
 
 
 def report_entry_date(action: dict) -> Optional[date]:
@@ -624,11 +622,12 @@ def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]
         if not usernames:
             continue
 
+        action_type, status = _report_action(payload)
         records.append(RosterRecord(
             ref=ActionRef(action_log_id=None,
                           request_number=payload.get('requestNumber'),
-                          action_type=_report_action_type(payload),
-                          status=payload.get('requestStatus'),
+                          action_type=action_type,
+                          status=status,
                           received_time=None,
                           submit_date=(str(payload.get('submitDate'))[:10]
                                        if payload.get('submitDate') else None),
