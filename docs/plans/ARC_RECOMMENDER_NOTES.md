@@ -1,8 +1,9 @@
 # ARC Allocation Recommender notes on XRAS requests
 
-**Status: planned, not built.** Branch `xras-recommender-notes` (this document is its first
-commit). Two PRs: this repo (the table, the endpoint, the dialog and the card), then
-`NCAR/arc-allocation-recommender` (the poster). The decisions in § 8 are Ben's (2026-11-05).
+**Status: PR 1 built (2026-11-05), awaiting review; PR 2 not started.** Branch
+`xras-recommender-notes` (this document is its first commit). Two PRs: this repo (the table,
+the endpoint, the dialog and the card), then `NCAR/arc-allocation-recommender` (the poster).
+The decisions in § 8 are Ben's (2026-11-05).
 
 ## Progress
 
@@ -12,7 +13,8 @@ commit). Two PRs: this repo (the table, the endpoint, the dialog and the card), 
 - [x] Dialog section `_xras_recommender_note.html` with the copy button and source links
 - [x] Card marker on the remediation card, one query per render
 - [x] Rename follows the note (`_rekey_overrides`)
-- [ ] DDL applied: local, test container, LFS blob, `sam_dev`, prod; RBAC grant on dev and prod
+- [ ] DDL applied: local, test container, LFS blob (done 2026-11-05); `sam_dev`, prod and the
+      RBAC grant on dev and prod are Ben's (§ 7)
 - [ ] Dev smoke: one hand-posted batch, the dialog and the card in a browser
 - [ ] PR 2 in the recommender: `SamNotesClient`, `sam_notes_enabled`, the hook after `save_run`
 
@@ -137,7 +139,7 @@ The request dialog (`xras_request_detail.html`, `MANAGE_XRAS`, so operators only
   `<details class="xras-disclosure">`.
 - Every control swaps `#xrasModalBody`; nothing toggles a modal (#464); no inline script or style.
 
-The remediation card (`xras_remediations_card.html`, `card_routes.py`) reads
+The remediation card (`xras_remediations_card.html`, `remediation.py`) reads
 `request_notes_by_number` for the page's rows at render time: the index is built by the sweep at
 04:00 MST and the note lands at 06:00, so the card must not depend on the index. The request cell
 gains one muted `fa-wand-magic-sparkles` icon in the `icon_count` style whose `title` reads
