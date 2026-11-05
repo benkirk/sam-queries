@@ -32,7 +32,7 @@ from ..errors import ActionErrors
 from ..extractors import resolve_contract
 from ..lookups import cached
 from ..roster import normalize_username
-from ..wire import get_field
+from ..wire import NSF_AGENCY_NAMES, get_field
 
 logger = logging.getLogger(__name__)
 
@@ -235,7 +235,6 @@ def _auto_contract(session, grant, number: str, roster_users):
     Cache only: the post never waits on NSF; the sweep warms the cache.
     """
     from sam.integration.awards import cached_award
-    from sam.integration.xras_api.vocabulary import NSF_AGENCY_NAMES
     from sam.manage.contracts import plan_contract_from_award
     if str(get_field(grant, 'fundingAgency') or '').strip().upper() not in NSF_AGENCY_NAMES:
         return None, 'not_nsf'

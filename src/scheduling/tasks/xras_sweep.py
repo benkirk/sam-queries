@@ -362,7 +362,8 @@ def _warm_awards(ctx, session, payloads, detail) -> None:
     from sam.projects.contracts import Contract
     from sam.xras.extractors import contract_candidates, extract_core_number, has_core_number
     from sam.xras.handlers._fields import auto_contracts_armed
-    from sam.integration.xras_api.vocabulary import NSF_AGENCY_NAMES, with_named_agencies
+    from sam.xras.wire import NSF_AGENCY_NAMES
+    from sam.integration.xras_api.vocabulary import with_named_agencies
     if not auto_contracts_armed():
         return
     tally = detail.setdefault('awards', {'warmed': 0, 'cached': 0, 'unavailable': 0})

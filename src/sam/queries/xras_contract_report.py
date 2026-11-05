@@ -20,7 +20,7 @@ _SAMPLE_CAP = 10
 
 def suggested_source(agency: Optional[str], award_like: bool) -> Optional[str]:
     """``'NSF'`` when the wire names NSF and the number is award-shaped; else None."""
-    from sam.integration.xras_api.vocabulary import NSF_AGENCY_NAMES
+    from sam.xras.wire import NSF_AGENCY_NAMES
     if award_like and (agency or '').strip().upper() in NSF_AGENCY_NAMES:
         return 'NSF'
     return None

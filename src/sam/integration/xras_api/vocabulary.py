@@ -111,9 +111,6 @@ SUBMIT_ACTION_TYPES = ('Extension', 'Supplement', 'Renewal', 'New')
 #: ``GET /v1/funding_agencies``: NSF, the one agency SAM looks a grant up for (XRAS_DEV_PROBES § 2).
 NSF_FUNDING_AGENCY_ID = 1
 
-#: ``fundingAgency`` spellings that mean NSF, upper-cased: the push's name and the sweep's.
-NSF_AGENCY_NAMES = frozenset({'NSF', 'NATIONAL SCIENCE FOUNDATION'})
-
 
 def with_named_agencies(payload: dict) -> dict:
     """*payload* with each NSF grant's ``fundingAgency`` named, as the push names it.
