@@ -2374,6 +2374,20 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_contract_create",
+    "/allocations/xras_contract_create",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_contract_create_form",
+    "/allocations/xras_contract_create_form",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_dates_edit",
     "/allocations/xras_dates_edit/<path:request_number>/<int:action_id>",
     [

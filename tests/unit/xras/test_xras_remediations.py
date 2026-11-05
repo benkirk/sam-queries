@@ -793,6 +793,80 @@ class TestContractUnblockStrip:
         assert 'xras-contract-strip' in auth_client.get(
             FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
 
+    def _publish_with_messages(self, grants, messages):
+        payload = _payload('EXAM0001', placeholder=False)
+        verdict = {'status': 'failed', 'would_succeed': False, 'messages': list(messages),
+                   'gaps': [], 'service': 'add', 'stage': 'Approved',
+                   'action_status': 'Approved', 'request_status': 'Approved',
+                   'push_state': 'pending', 'push_detail': None,
+                   'resolved': {'unresolved_grants': list(grants)},
+                   'checked_at': '2026-08-23T09:00:00'}
+        xras_cache.store_requests_index({
+            'generated_at': datetime.now(), 'statuses': ['Approved'], 'extra_statuses': {},
+            'rows': [request_index_entry(payload, pending_push=True, preflights={7: verdict})]})
+
+    def test_an_nsf_award_that_is_the_only_blocker_offers_create(self, auth_client,
+                                                                 configured):
+        self._publish_with_messages([self._grant('9980403', agency='NSF')],
+                                    ['Cannot find contract for grant number "9980403" ("9980403")'])
+        strip = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(
+            as_text=True).split('id="xras-contract-strip"')[1][:4000]
+        assert '/xras_contract_create_form?number=9980403' in strip
+        assert 'requests=EXAM0001' in strip and 'waits on' not in strip
+
+    def test_another_blocker_waits_instead(self, auth_client, configured):
+        self._publish_with_messages([self._grant('9980404', agency='NSF')],
+                                    ['PI ghost-pi is not in database'])
+        strip = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(
+            as_text=True).split('id="xras-contract-strip"')[1][:4000]
+        assert 'waits on person' in strip and 'xras_contract_create_form' not in strip
+
+    def test_a_reference_never_offers_create(self, auth_client, configured):
+        self._publish_with_messages([self._grant('ISS 25-643')], [])
+        strip = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(
+            as_text=True).split('id="xras-contract-strip"')[1][:4000]
+        assert 'xras_contract_create_form' not in strip
+
+    def test_the_dialog_shows_the_award_and_its_people(self, auth_client, configured,
+                                                       monkeypatch):
+        from datetime import date
+        from sam.integration.awards.base import AwardRecord, PersonRef
+        record = AwardRecord(provenance='NSF Awards API', contract_number='AGS-9980405',
+                             title='Clouds', start_date=date(2026, 9, 1),
+                             end_date=date(2029, 8, 31),
+                             pi=PersonRef(name='Nobody Atall', email='nobody@uni.example'),
+                             monitor=PersonRef(name='Olive Officer', email='oo@nsf.example'))
+        monkeypatch.setattr('sam.integration.awards.resolve_award',
+                            lambda source, number, exact=False: record)
+        self._publish_with_messages([self._grant('9980405', agency='NSF')], [])
+        body = auth_client.get('/allocations/xras_contract_create_form', query_string={
+            'number': '9980405', 'requests': 'EXAM0001', 'pi_name': 'Nobody Atall'}
+        ).get_data(as_text=True)
+        assert 'AGS-9980405' in body and 'Clouds' in body
+        assert 'Nobody Atall' in body and 'new contact' in body
+        assert 'Create contract' in body and 'disabled' not in body.split('Create contract')[0][-200:]
+
+    def test_the_dialog_refuses_a_different_pi(self, auth_client, configured, monkeypatch):
+        from datetime import date
+        from sam.integration.awards.base import AwardRecord, PersonRef
+        record = AwardRecord(provenance='NSF Awards API', contract_number='AGS-9980406',
+                             title='Clouds', start_date=date(2026, 9, 1),
+                             pi=PersonRef(name='Sam Roe', email='sr@uni.example'))
+        monkeypatch.setattr('sam.integration.awards.resolve_award',
+                            lambda source, number, exact=False: record)
+        self._publish_with_messages([self._grant('9980406', agency='NSF')], [])
+        body = auth_client.get('/allocations/xras_contract_create_form', query_string={
+            'number': '9980406', 'requests': 'EXAM0001', 'pi_name': 'Pat Doe'}
+        ).get_data(as_text=True)
+        assert 'may be a different award' in body
+
+    def test_the_post_refuses_while_another_blocker_remains(self, auth_client, configured):
+        self._publish_with_messages([self._grant('9980407', agency='NSF')],
+                                    ['PI ghost-pi is not in database'])
+        body = auth_client.post('/allocations/xras_contract_create', data={
+            'number': '9980407', 'requests': 'EXAM0001'}).get_data(as_text=True)
+        assert 'also blocked on: person' in body
+
     def test_no_grants_means_no_strip(self, auth_client, configured):
         self._publish_contract_failure([])
         body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
