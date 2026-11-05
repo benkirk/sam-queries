@@ -1,5 +1,5 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
-{% from 'dashboards/fragments/contract_bits.html' import contract_user_link, contract_status_badge with context %}
+{% from 'dashboards/fragments/contract_bits.html' import contract_person_link, contract_status_badge with context %}
 {#
   htmx: the contracts under one NSF program, rendered into
   #nsfProgramContractsModalBody.
@@ -51,7 +51,7 @@
                 </td>
                 <td class="small">{{ c.title }}</td>
                 <td class="small text-nowrap">
-                    {{ contract_user_link(c.principal_investigator, can_view_users, compact=True) }}
+                    {{ contract_person_link(c.pi_person, can_view_users, compact=True) }}
                 </td>
                 <td class="small text-nowrap">
                     {{ c.start_date | fmt_date }} – {{ c.end_date | fmt_date }}

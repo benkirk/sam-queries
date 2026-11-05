@@ -275,3 +275,31 @@ class TestSuspectMatch:
         result = _compare(session, contract, record)
         assert result['status'] == 'ok'
         assert {d['field'] for d in result['divergences']} == {'start_date', 'end_date'}
+
+
+class TestExternalContactPeople:
+    """A contact PI agrees with the agency by email (or name), and is never a 'no SAM user' hint."""
+
+    def _contact_contract(self, session, contract, contact):
+        contract.principal_investigator_user_id = None
+        contract.pi_contact_id = contact.external_contact_id
+        session.flush()
+        session.expire(contract)
+        return contract
+
+    def test_same_contact_is_silent(self, session, contract):
+        from tests.factories.projects import make_external_contact
+        contact = make_external_contact(session, name='Pat Doe', email='pat.doe@uni.example')
+        self._contact_contract(session, contract, contact)
+        record = _matching(contract, pi=PersonRef(name='Pat Doe', email='PAT.DOE@uni.example'))
+        result = _compare(session, contract, record)
+        assert not [d for d in result['divergences'] if d['field'] == 'pi']
+        assert not [h for h in result['hints'] if h['field'] == 'pi']
+
+    def test_different_contact_diverges(self, session, contract):
+        from tests.factories.projects import make_external_contact
+        contact = make_external_contact(session, name='Pat Doe', email='pat.doe@uni.example')
+        self._contact_contract(session, contract, contact)
+        record = _matching(contract, pi=PersonRef(name='Sam Roe', email='sam.roe@uni.example'))
+        pi = [d for d in _compare(session, contract, record)['divergences'] if d['field'] == 'pi']
+        assert pi == [{'field': 'pi', 'sam': contact.label, 'source': 'Sam Roe <sam.roe@uni.example>'}]

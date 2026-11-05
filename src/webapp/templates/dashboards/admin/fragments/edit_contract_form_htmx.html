@@ -25,7 +25,7 @@
 ) %}
 
         {{ readonly_display('Principal Investigator',
-                            contract.principal_investigator.display_name if contract.principal_investigator else '—') }}
+                            contract.pi_person.name if contract.pi_person else '—') }}
 
         {{ text_field('title', 'Title',
                       required=True, maxlength=255,

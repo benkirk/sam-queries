@@ -35,8 +35,8 @@ def display_contract(ctx: Context, data: dict, list_projects: bool = False):
         ("Status",   "active" if data.get('is_active') else "expired"),
         ("Period",   f"{date_cell(data.get('start_date'))} → "
                      f"{date_cell(data.get('end_date'))}"),
-        ("PI",       text(data.get('pi_username'))),
-        ("Monitor",  text(data.get('monitor_username'))),
+        ("PI",       text(data.get('pi_username') or data.get('pi_name'))),
+        ("Monitor",  text(data.get('monitor_username') or data.get('monitor_name'))),
         ("Program",  text(data.get('nsf_program'))),
         ("URL",      text(data.get('url'))),
     ]
@@ -89,7 +89,7 @@ def display_contract_search(ctx: Context, data: dict):
             contract['contract_number'],
             text(contract.get('contract_source')),
             truncate(contract.get('title'), 46),
-            text(contract.get('pi_username')),
+            text(contract.get('pi_username') or contract.get('pi_name')),
             date_cell(contract.get('start_date')),
             date_cell(contract.get('end_date')),
         )

@@ -1,5 +1,5 @@
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button, delete_row_button with context %}
-{% from 'dashboards/fragments/contract_bits.html' import contract_user_link, nsf_program_link, contract_status_badge with context %}
+{% from 'dashboards/fragments/contract_bits.html' import contract_person_link, nsf_program_link, contract_status_badge with context %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/table_bits.html' import pane_toolbar, state_tag %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_row %}
@@ -122,11 +122,11 @@
                             {{- c.title }}
                         </td>
                         <td class="col-shrink small">
-                            {{ contract_user_link(c.principal_investigator, can_view_users, compact=True) }}
+                            {{ contract_person_link(c.pi_person, can_view_users, compact=True) }}
                         </td>
                         <td class="col-shrink small"
-                            title="{{ c.contract_monitor.display_name if c.contract_monitor else '' }}">
-                            {{ contract_user_link(c.contract_monitor, can_view_users, compact=True) }}
+                            title="{{ c.monitor_person.name if c.monitor_person else '' }}">
+                            {{ contract_person_link(c.monitor_person, can_view_users, compact=True) }}
                         </td>
                         <td class="col-shrink small"
                             title="{{ c.nsf_program.nsf_program_name if c.nsf_program else '' }}">
