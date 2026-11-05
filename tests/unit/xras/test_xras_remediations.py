@@ -3088,13 +3088,14 @@ class TestTheTypePopover:
 
 
 class TestTheRecommenderNote:
-    """A tool's note in the request dialog (ARC_RECOMMENDER_NOTES.md § 4).
+    """A tool's note in the request dialog and as a marker on the card (ARC_RECOMMENDER_NOTES.md § 4).
 
     Route reads go through ``db.session``, which cannot see the test session's rows, so the
     lookups are patched to hand back a note built in the test session.
     """
 
     MODALS = 'webapp.dashboards.allocations.xras.modals.lookup_request_notes'
+    CARD = 'webapp.dashboards.allocations.xras.remediation.request_notes_by_number'
 
     def _note(self, session, **kw):
         from factories import make_request_note
@@ -3139,3 +3140,27 @@ class TestTheRecommenderNote:
     def test_approve_reads_as_a_tag_not_attention(self, auth_client, armed, monkeypatch, session):
         body = self._dialog(auth_client, monkeypatch, [self._note(session, decision='approve')])
         assert '<span class="badge state-tag">Ready to approve</span>' in body
+
+    def test_the_card_marks_a_request_with_a_note(self, auth_client, configured,
+                                                  monkeypatch, session):
+        note = self._note(session)
+        calls = []
+
+        def notes_by_number(s, numbers):
+            numbers = list(numbers)
+            calls.append(numbers)
+            return {'EXAM0001': [note]} if 'EXAM0001' in numbers else {}
+
+        monkeypatch.setattr(self.CARD, notes_by_number)
+        _publish(_payload('EXAM0001'), _payload('EXAM0002'))
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert len(calls) == 1, 'one lookup per render, not one per row'
+        assert set(calls[0]) == {'EXAM0001', 'EXAM0002'}
+        assert body.count('fa-wand-magic-sparkles') == 1
+        assert 'title="Recommender: Needs a person to review · 2026-11-05"' in body
+
+    def test_the_card_has_no_marker_without_a_note(self, auth_client, configured, monkeypatch):
+        monkeypatch.setattr(self.CARD, lambda s, numbers: {})
+        _publish(_payload('EXAM0001'))
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'fa-wand-magic-sparkles' not in body

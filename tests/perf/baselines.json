@@ -296,5 +296,9 @@
     "users_me_projects_dashboard_route": {
         "queries": 65,
         "notes": "measured 43 (2026-11-04) as benkirk; was 115 when each project ran get_detailed_allocation_usage"
+    },
+    "xras_remediations_card_route": {
+        "queries": 20,
+        "notes": "measured 15 (2026-11-05, benkirk, MySQL and Postgres) at both 5 and 25 swept rows: the signed-in user, the mnemonic and contract strips, the action log, the remediation trail, the tickets, and one xras_request_note IN query for the recommender markers. Flat in rows"
     }
 }
