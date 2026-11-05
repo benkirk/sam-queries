@@ -94,14 +94,16 @@
 {% endif %}
 
 {{ section_label('Actions' ~ ((' · ' ~ family.requests | length ~ ' requests in this project') if family and family.requests | length > 1 else '')) }}
-{# One chronological list across every request line; only the latest is open and editable. #}
+{# One chronological list across every request line; only the latest is editable. Open: the
+   latest, and the headline action when a pending one outranks it (UWKU0002). #}
 {% for action in detail_actions %}
 {% set latest = action.is_latest %}
+{% set opened = latest or (headline_action and action.action_id == headline_action.action_id) %}
 <section class="xras-action{{ ' is-latest' if latest }}">
     <div class="xras-action-headrow">
     <button type="button" class="xras-action-head" data-bs-toggle="collapse"
             data-bs-target="#xras-action-{{ action.action_id }}" aria-controls="xras-action-{{ action.action_id }}"
-            aria-expanded="{{ 'true' if latest else 'false' }}">
+            aria-expanded="{{ 'true' if opened else 'false' }}">
         <i class="fa-solid fa-chevron-right collapse-icon small text-muted" aria-hidden="true"></i>
         <span class="font-monospace">{{ action.action_id }}</span>
         {{ type_label(action.action_type) }}
@@ -113,7 +115,7 @@
     </button>
     {{ xras_admin_links(action.action_id) }}
     </div>
-    <div class="collapse{{ ' show' if latest }}" id="xras-action-{{ action.action_id }}">
+    <div class="collapse{{ ' show' if opened }}" id="xras-action-{{ action.action_id }}">
     <div class="xras-action-body">
 
     {# One row per resource, one column per stage present. The amount is its own
