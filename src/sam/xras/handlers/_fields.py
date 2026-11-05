@@ -209,8 +209,6 @@ _GRANT_DETAIL_KEYS = {'fundingAgency': 'agency', 'title': 'title', 'piName': 'pi
                       'isPending': 'is_pending'}
 
 
-_NSF_AGENCIES = {'NSF', 'NATIONAL SCIENCE FOUNDATION'}
-
 
 def create_planned_contracts(session, planned) -> List:
     """Write each planned contract; called from ``execute``, inside the post's transaction."""
@@ -237,8 +235,9 @@ def _auto_contract(session, grant, number: str, roster_users):
     Cache only: the post never waits on NSF; the sweep warms the cache.
     """
     from sam.integration.awards import cached_award
+    from sam.integration.xras_api.vocabulary import NSF_AGENCY_NAMES
     from sam.manage.contracts import plan_contract_from_award
-    if str(get_field(grant, 'fundingAgency') or '').strip().upper() not in _NSF_AGENCIES:
+    if str(get_field(grant, 'fundingAgency') or '').strip().upper() not in NSF_AGENCY_NAMES:
         return None, 'not_nsf'
     source = _nsf_source(session)
     record = cached_award('NSF', number, exact=True)

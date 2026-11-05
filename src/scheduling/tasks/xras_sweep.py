@@ -361,8 +361,8 @@ def _warm_awards(ctx, session, payloads, detail) -> None:
     from sam.integration.awards import AwardSourceUnavailable, cached_award, resolve_award
     from sam.projects.contracts import Contract
     from sam.xras.extractors import contract_candidates, extract_core_number, has_core_number
-    from sam.xras.handlers._fields import _NSF_AGENCIES, auto_contracts_armed
-    from sam.integration.xras_api.vocabulary import with_named_agencies
+    from sam.xras.handlers._fields import auto_contracts_armed
+    from sam.integration.xras_api.vocabulary import NSF_AGENCY_NAMES, with_named_agencies
     if not auto_contracts_armed():
         return
     tally = detail.setdefault('awards', {'warmed': 0, 'cached': 0, 'unavailable': 0})
@@ -374,7 +374,7 @@ def _warm_awards(ctx, session, payloads, detail) -> None:
                 continue
             number = str(grant.get('grantNumber') or '').strip()
             if (not has_core_number(number) or number in seen
-                    or str(grant.get('fundingAgency') or '').upper() not in _NSF_AGENCIES):
+                    or str(grant.get('fundingAgency') or '').upper() not in NSF_AGENCY_NAMES):
                 continue
             seen.add(number)
             if (Contract.get_by_number(session, number) is not None

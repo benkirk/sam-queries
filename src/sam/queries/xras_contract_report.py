@@ -17,13 +17,11 @@ logger = logging.getLogger(__name__)
 #: Cap on request numbers echoed per target.
 _SAMPLE_CAP = 10
 
-#: ``fundingAgency`` spellings that mean NSF — the only source with a lookup provider.
-_NSF_AGENCIES = {'NSF', 'NATIONAL SCIENCE FOUNDATION'}
-
 
 def suggested_source(agency: Optional[str], award_like: bool) -> Optional[str]:
     """``'NSF'`` when the wire names NSF and the number is award-shaped; else None."""
-    if award_like and (agency or '').strip().upper() in _NSF_AGENCIES:
+    from sam.integration.xras_api.vocabulary import NSF_AGENCY_NAMES
+    if award_like and (agency or '').strip().upper() in NSF_AGENCY_NAMES:
         return 'NSF'
     return None
 
