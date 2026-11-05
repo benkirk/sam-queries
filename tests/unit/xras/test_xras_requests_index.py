@@ -706,49 +706,92 @@ def _action(kind, *, resources=(), end=None, status='Submitted', action_id=7):
 
 
 class TestTheGist:
-    """The Type popover: what the in-flight action asks for, in a sentence."""
+    """The Type popover: what the in-flight action asks for, one line each, and the balances."""
 
-    def test_a_new_project_lists_what_it_requests_and_through_when(self):
+    def test_a_new_project_lists_what_it_requests_and_no_period(self):
+        """XRAS gives a New no period until approval (NCAR4478, 2026-11-05: no dates anywhere)."""
         gist = request_gist(_payload(title='Turbulence at scale', actions=[_action(
             'New', end='2027-11-30', resources=[
                 _line_item('Derecho', '500000.0'), _line_item('Campaign Store', '20', 'TB'),
                 _line_item('Derecho', '400000.0', stage='Approved')])]))
-        assert gist == {'title': 'Turbulence at scale',
-                        'ask': 'New project requesting Derecho 500K Core-hours and '
-                               'Campaign Store 20 TB, through 2027-11-30.'}
+        assert (gist['title'], gist['kind'], gist['lead']) == (
+            'Turbulence at scale', 'New', 'New project requesting')
+        assert gist['lines'] == ['Derecho 500K Core-hours', 'Campaign Store 20 TB']
+        assert gist['balances'] == []
 
-    def test_a_supplement_names_its_lines_without_a_date(self):
+    def test_a_supplement_lists_its_lines(self):
         gist = request_gist(_payload(actions=[_action(
             'Supplement', end='2027-11-30', resources=[_line_item('Casper', '1000.0')])]))
-        assert gist['ask'] == 'Supplement requesting Casper 1,000 Core-hours.'
+        assert (gist['lead'], gist['lines']) == ('Supplement requesting', ['Casper 1,000 Core-hours'])
 
-    def test_an_extension_says_from_when_to_when(self):
+    def test_an_extension_names_both_ends_and_the_span(self):
         gist = request_gist(_payload(endDate='2026-12-31',
                                      actions=[_action('Extension', end='2027-06-30')]))
-        assert gist['ask'] == 'Extension to 2027-06-30 (now ends 2026-12-31).'
+        assert gist['lead'] == 'Extension of the end date'
+        assert gist['lines'] == ['ends now: 2026-12-31', 'asks for: 2027-06-30 (+6 months)']
+
+    def test_the_span_is_days_when_not_whole_months(self):
+        gist = request_gist(_payload(endDate='2026-12-31',
+                                     actions=[_action('Extension', end='2027-02-14')]))
+        assert gist['lines'][1] == 'asks for: 2027-02-14 (+45 days)'
+
+    def test_month_end_to_month_end_is_whole_months(self):
+        gist = request_gist(_payload(endDate='2026-11-30',
+                                     actions=[_action('Extension', end='2027-05-31')]))
+        assert gist['lines'][1] == 'asks for: 2027-05-31 (+6 months)'
+
+    def test_an_applied_extension_says_extended_to(self):
+        """UERF0008, 2026-11-05: an approved Extension whose asked end is already the current end."""
+        gist = request_gist(_payload(endDate='2027-10-31', actions=[
+            _action('Extension', end='2027-10-31', status='Approved')]))
+        assert gist['lines'] == ['ends now: 2027-10-31', 'extended to: 2027-10-31']
+
+    def test_an_extension_without_dates_still_reads(self):
+        gist = request_gist(_payload(actions=[_action('Extension')]))
+        assert gist['lines'] == ['ends now: \u2014', 'asks for: \u2014']
+
+    def test_balances_are_one_line_each_past_a_new(self):
+        balances = [{'resource': 'Derecho', 'allocated': 1200000.0, 'remaining': 250000.0,
+                     'units': 'hours', 'end_date': date(2026, 12, 31)},
+                    {'resource': 'Campaign Store', 'allocated': 20.0, 'remaining': 8.0,
+                     'units': 'TiB', 'end_date': None}]
+        gist = request_gist(_payload(actions=[_action('Supplement',
+                                                      resources=[_line_item('Casper', '10')])]),
+                            balances=balances)
+        assert gist['balances'] == ['Derecho: 250K of 1.20M hours remaining \u00b7 ends 2026-12-31',
+                                    'Campaign Store: 8 of 20 TiB remaining']
+        # An Extension's own lines carry the end; its balances do not repeat it.
+        gist = request_gist(_payload(endDate='2026-12-31',
+                                     actions=[_action('Extension', end='2027-06-30')]),
+                            balances=balances[:1])
+        assert gist['balances'] == ['Derecho: 250K of 1.20M hours remaining']
+        # A New has no project yet: balances handed in anyway are not shown.
+        assert request_gist(_payload(actions=[_action('New')]), balances=balances)['balances'] == []
 
     def test_it_reads_the_in_flight_action_not_the_newest(self):
         gist = request_gist(_payload(actions=[
             _action('Supplement', resources=[_line_item('Casper', '10')], action_id=7),
             _action('Extension', status='Approved', action_id=9)]))
-        assert gist['ask'].startswith('Supplement')
+        assert gist['lead'] == 'Supplement requesting'
 
     def test_a_soft_deleted_action_is_skipped(self):
         """A deleted action can hold the highest actionId and still be Submitted; XRAS 404s it."""
         gist = request_gist(_payload(actions=[
             _action('New', status='Approved', action_id=1),
             dict(_action('Extension', action_id=9), isDeleted=True)]))
-        assert gist['ask'].startswith('New')
+        assert gist['kind'] == 'New'
 
     def test_a_long_title_is_cut_and_an_empty_ask_still_reads(self):
         gist = request_gist(_payload(title='x' * 120, actions=[_action('Renewal')]))
-        assert len(gist['title']) == 80 and gist['title'].endswith('…')
-        assert gist['ask'] == 'Renewal request.'
+        assert len(gist['title']) == 80 and gist['title'].endswith('\u2026')
+        assert (gist['lead'], gist['lines']) == ('Renewal request', [])
 
     def test_no_typed_action_means_no_gist(self):
         assert request_gist(_payload(actions=[{'actionId': 1}])) is None
 
     def test_the_entry_carries_it(self):
-        entry = request_index_entry(_payload(actions=[_action('Renewal')]))
-        assert entry['gist']['ask'] == 'Renewal request.'
-
+        balances = [{'resource': 'Derecho', 'allocated': 10.0, 'remaining': 4.0,
+                     'units': 'hours', 'end_date': None}]
+        entry = request_index_entry(_payload(actions=[_action('Renewal')]), balances=balances)
+        assert entry['gist']['lead'] == 'Renewal request'
+        assert entry['gist']['balances'] == ['Derecho: 4 of 10 hours remaining']

@@ -55,6 +55,14 @@
 </span>{% endif -%}
 {%- endmacro %}
 
+{#- The Type popover's body: the lead, its lines (requested resources, or an Extension's
+    dates), then the project's current balances. `gist` is request_gist()'s dict. -#}
+{% macro gist_html(gist) -%}
+<p class="mb-1">{{ gist.lead }}</p>
+{%- if gist.lines %}<ul class="mb-0 ps-3">{% for line in gist.lines %}<li>{{ line }}</li>{% endfor %}</ul>{% endif -%}
+{%- if gist.balances %}<p class="mb-1 mt-2">Current balances</p><ul class="mb-0 ps-3">{% for line in gist.balances %}<li>{{ line }}</li>{% endfor %}</ul>{% endif -%}
+{%- endmacro %}
+
 {% macro type_label(action_type) -%}
 {%- if action_type %}<span class="xras-type">{{ action_type }}</span>
 {%- else %}<span class="text-muted" title="Body could not be parsed">—</span>{% endif -%}

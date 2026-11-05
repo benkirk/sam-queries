@@ -3062,6 +3062,17 @@ class TestTheTypePopover:
         body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'data-bs-trigger="hover focus"' in body
         assert 'data-bs-title="Turbulence at scale"' in body
+        # The popover body is HTML in an attribute: escaped here, parsed by Bootstrap.
+        assert 'Supplement requesting&lt;/p&gt;' in body
+        assert '&lt;li&gt;Derecho 1,000 Core-hours&lt;/li&gt;' in body
+
+    def test_a_row_swept_before_the_lines_shows_its_sentence(self, auth_client, configured):
+        _publish(_payload())
+        entry = xras_cache.load_requests_index()
+        for row in entry['rows']:
+            row['gist'] = {'title': 'T', 'ask': 'Supplement requesting Derecho 1,000 Core-hours.'}
+        xras_cache.store_requests_index(entry)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'Supplement requesting Derecho 1,000 Core-hours.' in body
 
     def test_a_row_swept_before_the_gist_shows_the_plain_label(self, auth_client, configured):

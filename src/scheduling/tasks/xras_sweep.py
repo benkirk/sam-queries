@@ -524,7 +524,8 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
     the account worklist, and a remediation feed that fails must not cost the
     feed that was already working.
     """
-    from sam.queries.xras_requests import live_pending_numbers, request_index_entry
+    from sam.queries.xras_requests import (live_pending_numbers, project_balances,
+                                           request_index_entry)
 
     payloads = list(approved_payloads or ())
     extra_payloads = []
@@ -597,6 +598,15 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
         if number:
             by_number.setdefault(number, []).append(payload)
 
+    # The Type popover's balances, one usage build for the cohort's SAM projects.
+    # Decoration on the gist: a failed build costs the balances, never the index.
+    try:
+        balances = project_balances(session, set(by_number) - pending)
+    except Exception as exc:                            # noqa: BLE001
+        ctx.logger.warning('xras_sweep: project balances skipped: %s', exc)
+        balances = {}
+    detail['index_balances'] = len(balances)
+
     entries, deleted = [], 0
     for number, lines in by_number.items():
         live = live_lines(lines)
@@ -606,7 +616,7 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
         entry = request_index_entry(primary_line(live),
                                     pending_push=number in pending,
                                     preflights=preflights_by_number.get(number),
-                                    family=live)
+                                    family=live, balances=balances.get(number))
         if entry is not None:
             entries.append(entry)
 
