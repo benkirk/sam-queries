@@ -61,6 +61,7 @@ Key endpoints (all JSON):
 - Project-member mutations: `POST/DELETE /api/v1/projects/<projcode>/members[...]`,
   `PUT .../admin`
 - Charge-summary ingest: `POST /api/v1/charge-summaries/{comp,disk,archive}`
+- Recommender notes on XRAS requests: `POST /api/v1/xras/notes` (key only, `POST_XRAS_NOTES`)
 
 **Legacy-compat blueprints — DO NOT REFACTOR**: `directory_access.py`,
 `project_access.py`, `fstree_access.py`, `queue.py`, `wallclock_exemption.py`
