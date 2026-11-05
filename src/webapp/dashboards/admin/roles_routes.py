@@ -23,8 +23,9 @@ from sam.security.samuel_roles import (RbacInvariantError, SamuelRole, SamuelRol
                                        load_catalog)
 from webapp.auth.impersonation import acting_username
 from webapp.extensions import db
+from webapp.utils.facets import Facet, FacetSet
 from webapp.utils.form_handler import FlattenedFieldErrors, FormError, HtmxFormHandler
-from webapp.utils.htmx import read_flag, read_tab
+from webapp.utils.htmx import read_flag, read_sort, read_tab, sort_rows
 from webapp.utils.rbac import invalidate_catalog, require_permission, require_permission_any_facility
 
 from .blueprint import bp
@@ -32,6 +33,7 @@ from .blueprint import bp
 logger = logging.getLogger(__name__)
 
 _TABS = ('grants', 'roles', 'check')
+_SUBJECT_LABELS = {'user': 'User', 'group': 'POSIX group', 'apikey': 'API key'}
 _MISSING = 'dashboards/admin/fragments/roles_tables_missing.html'
 
 
@@ -58,8 +60,7 @@ def _grant_form_context(form=None):
     return {
         'form': form,
         'subject_type': form.get('subject_type') or 'user',
-        'subject_types': [(t, {'user': 'User', 'group': 'POSIX group',
-                               'apikey': 'API key'}[t]) for t in SUBJECT_TYPES],
+        'subject_types': [(t, _SUBJECT_LABELS[t]) for t in SUBJECT_TYPES],
         'groups': (db.session.query(AdhocGroup).filter(AdhocGroup.is_active)
                    .order_by(AdhocGroup.group_name).all()),
         'key_options': [(k['name'], k['name']) for k in keys['keys']],
@@ -81,7 +82,8 @@ def roles():
     """The page shell: grants, roles and a check tab."""
     return render_template('dashboards/admin/roles.html',
                            active_tab=read_tab('tab', _TABS, 'grants'), source=_source(),
-                           tables_present=_tables_present())
+                           tables_present=_tables_present(),
+                           grant_facets=GRANT_FACETS, grants_form_id=GRANTS_FORM_ID)
 
 
 def _source() -> str:
@@ -91,6 +93,40 @@ def _source() -> str:
 def _config_keys():
     """The webapp's own view of the ``API_KEYS_<NAME>`` keys, not the CLI's environment scan."""
     return sorted(current_app.config.get('API_KEYS') or {})
+
+
+GRANTS_FORM_ID = 'grants-filters'
+_ONE_PERMISSION = '_permission'
+# Names stay clear of the add form's fields: the card renders that form from request.args.
+GRANT_FACETS = FacetSet(
+    Facet('kind', order=SUBJECT_TYPES, labels=_SUBJECT_LABELS, hide_zero=True),
+    Facet('holds', labels={_ONE_PERMISSION: 'one permission'}, by_count=True),
+    Facet('facility', order=('all',), labels={'all': 'All facilities'}),
+)
+_GRANT_SORT = {
+    'subject': lambda v: (v['kind'], v['grant'].subject_name.casefold()),
+    'holds': lambda v: v['holds_label'].casefold(),
+    'facility': lambda v: v['facility'],
+    'added': lambda v: v['grant'].creation_time,
+}
+
+
+def _grant_views(grants, role_names):
+    views = []
+    for g in grants:
+        role = role_names.get(g.samuel_role_id, '?') if g.samuel_role_id else None
+        views.append({'grant': g, 'kind': g.subject_type, 'role': role,
+                      'holds': role or _ONE_PERMISSION, 'holds_label': role or g.permission or '',
+                      'facility': g.facility_name or 'all'})
+    return views
+
+
+def _search_grants(views, term):
+    if not term:
+        return views
+    needle = term.casefold()
+    return [v for v in views if needle in ' '.join((
+        v['grant'].subject_name, v['holds_label'], v['grant'].note or '')).casefold()]
 
 
 @bp.route('/htmx/roles/grants', methods=['GET'])
@@ -106,8 +142,21 @@ def roles_grants_card():
     grants = q.order_by(SamuelRoleGrant.subject_type, SamuelRoleGrant.subject_name,
                         SamuelRoleGrant.samuel_role_grant_id).all()
     names = {r.samuel_role_id: r.name for r in db.session.query(SamuelRole).all()}
+    views = _grant_views(grants, names)
+    scoped_total = len(views)
+    search = (request.args.get('search') or '').strip()
+    views = _search_grants(views, search)
+    selected = GRANT_FACETS.read(request.args)
+    facet_values = GRANT_FACETS.strips(views, selected)
+    views = GRANT_FACETS.apply(views, selected)
+    sort = read_sort(request.args, _GRANT_SORT, default_dir='asc')
     return render_template('dashboards/admin/fragments/roles_grants_card.html',
-                           grants=grants, role_names=names, show_revoked=show_revoked,
+                           views=sort_rows(views, sort, _GRANT_SORT), scoped_total=scoped_total,
+                           show_revoked=show_revoked, search=search,
+                           facet_values=facet_values, selected=selected,
+                           sort=sort, sortable_columns=set(_GRANT_SORT),
+                           form_id=GRANTS_FORM_ID, target_id='grantsCard',
+                           fragment_url=url_for('admin_dashboard.roles_grants_card'),
                            **_grant_form_context(form=request.args))
 
 
