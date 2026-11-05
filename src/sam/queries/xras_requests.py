@@ -286,6 +286,16 @@ def in_flight_action(actions) -> Optional[Mapping[str, Any]]:
     return max(in_flight or typed, key=lambda a: a.get('action_id') or 0)
 
 
+def newer_than_in_flight(actions) -> Optional[Mapping[str, Any]]:
+    """The newest typed action when it is not the in-flight one (UWKU0002: a stopgap approved past a pending ask)."""
+    current = in_flight_action(actions)
+    typed = [a for a in (actions or []) if a.get('action_type')]
+    newest = max(typed, key=lambda a: a.get('action_id') or 0) if typed else None
+    if not current or newest is current:
+        return None
+    return {k: newest.get(k) for k in ('action_id', 'action_type', 'action_status', 'entry_date')}
+
+
 def latest_action_type(actions) -> Optional[str]:
     """The in-flight action's type — what admin.xras.org names the request."""
     return (in_flight_action(actions) or {}).get('action_type')
@@ -511,6 +521,7 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
         # Its status beside it: requestStatus stays at the New's (an approved
         # request with a Submitted Extension reads Approved), so the card shows this.
         'latest_action_status': (in_flight_action(actions) or {}).get('action_status'),
+        'newer_action': newer_than_in_flight(actions),
         # The Type popover: title + what the in-flight action asks for.
         'gist': request_gist(payload),
         # Worst pending verdict, precomputed for the card's roll-up badge:

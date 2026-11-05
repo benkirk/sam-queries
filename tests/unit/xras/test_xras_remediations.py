@@ -1784,8 +1784,8 @@ def _with_deleted_action():
     return payload
 
 
-class TestTheModalLinksIntoXras:
-    """Quick links out to the XRAS admin app: the latest action, each action, each roster username."""
+class TestTheHeadlineActionAndXrasLinks:
+    """The headline action (status, hover note) and the quick links out to the XRAS admin app."""
 
     def _body(self, auth_client, monkeypatch, payload):
         _reader(monkeypatch, payload=payload)
@@ -1828,6 +1828,16 @@ class TestTheModalLinksIntoXras:
         body = self._body(auth_client, monkeypatch, payload)
         header = body[body.index('xras-request-meta'):body.index('xras-request-title')]
         assert '>Submitted<' in header and '/actions/9"' in header
+        assert 'Newer Supplement 10: Approved' in header
+
+    def test_the_card_names_the_newer_action_on_hover(self, auth_client, armed):
+        payload = _payload('EXAM0004')
+        payload['actions'] += [{'actionId': 8, 'actionType': 'Supplement', 'actionStatus': 'Submitted'},
+                               {'actionId': 9, 'actionType': 'Supplement', 'actionStatus': 'Approved',
+                                'entryDate': datetime.now().strftime('%Y-%m-%dT01:34:47Z')}]
+        _publish(payload)
+        body = auth_client.get(FRAGMENT + '?show_all=1&status=Submitted').get_data(as_text=True)
+        assert f"Request: Approved · Newer Supplement 9: Approved {datetime.now():%Y-%m-%d}" in body
 
     def test_a_roster_username_searches_xras(self, auth_client, armed, monkeypatch):
         body = self._body(auth_client, monkeypatch, _detail_payload())

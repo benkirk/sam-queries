@@ -483,6 +483,15 @@ class TestLatestActionStatus:
         assert entry['status'] == 'Approved'
         assert (entry['latest_action_type'], entry['latest_action_status']) == (
             'Extension', 'Submitted')
+        assert entry['newer_action'] is None, 'the in-flight action is the newest'
+
+    def test_a_newer_applied_action_is_named(self):
+        payload = _payload()
+        payload['actions'] = [{'actionId': 2, 'actionType': 'Supplement', 'actionStatus': 'Submitted'},
+                              {'actionId': 3, 'actionType': 'Supplement', 'actionStatus': 'Approved'}]
+        entry = request_index_entry(payload)
+        assert entry['latest_action_status'] == 'Submitted'
+        assert entry['newer_action']['action_id'] == 3
 
 
 class TestLatestActionType:

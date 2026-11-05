@@ -34,6 +34,16 @@
 <span class="badge bg-danger"{% if title %} title="{{ title }}"{% endif %}>{{ label }}</span>
 {%- endmacro %}
 
+{#- A status tag's hover: the request's own status when it differs, and a newer action
+    the in-flight one outranks. `newer` is newer_than_in_flight()'s dict or none. -#}
+{% macro status_note(action_status, request_status, newer) -%}
+{%- set notes = [] -%}
+{%- if request_status and request_status != action_status %}{% set _ = notes.append('Request: ' ~ request_status) %}{% endif -%}
+{%- if newer %}{% set _ = notes.append('Newer ' ~ (newer.action_type or 'action') ~ ' ' ~ newer.action_id ~ ': '
+                                    ~ (newer.action_status or '?') ~ ((' ' ~ (newer.entry_date | fmt_date)) if newer.entry_date else '')) %}{% endif -%}
+{{- notes | join(' · ') -}}
+{%- endmacro %}
+
 {#- An action's page in the XRAS admin app, and its Process tab (approve, post). -#}
 {% macro xras_admin_links(action_id) -%}
 {%- set href = xras_admin_url(action=action_id) -%}

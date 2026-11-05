@@ -1,4 +1,4 @@
-{% from 'dashboards/fragments/xras_bits.html' import alarm, amount_editor, dialog_footer, figure, dialog_title, footer_verb, section_label, tag, type_label, write_button, xras_admin_links %}
+{% from 'dashboards/fragments/xras_bits.html' import alarm, amount_editor, dialog_footer, figure, dialog_title, footer_verb, section_label, tag, type_label, write_button, status_note, xras_admin_links %}
 {#
   One XRAS request (and its family), rendered into #xrasModalBody.
   Context: request_number, payload (GET /v1/reports/request_numbers/<n>, self-
@@ -19,7 +19,7 @@
 {% set latest_action = headline_action %}
 {% set action_status = latest_action.action_status if latest_action else none %}
 <p class="xras-request-meta">
-    {{ tag(action_status or payload.requestStatus or '—') }}
+    {{ tag(action_status or payload.requestStatus or '—', title=status_note(action_status, none, newer_action)) }}
     {% if payload.isDeleted %}{{ alarm('deleted in XRAS') }}{% endif %}
     {% if latest_action and latest_action.action_type %}<span>{{ latest_action.action_type }}</span>
     {%- elif payload.requestType %}<span>{{ payload.requestType }}</span>{% endif %}
