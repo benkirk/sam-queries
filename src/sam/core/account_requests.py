@@ -32,7 +32,7 @@ OPEN_STATES = ('submitted', 'claimed')
 
 #: ``account_request.purpose``. What happens on fulfillment:
 #: ``standalone`` nothing further; ``enrollment`` joins ``project_id``;
-#: ``submission`` merges ``xras_username`` (XRAS phase 3, not built);
+#: ``submission`` merges ``xras_username`` (``account_requests_reconcile``);
 #: ``reactivation`` nothing further: the XRAS-named account is active again.
 PURPOSE_STANDALONE = 'standalone'
 PURPOSE_ENROLLMENT = 'enrollment'

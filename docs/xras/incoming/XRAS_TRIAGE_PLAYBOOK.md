@@ -190,7 +190,10 @@ highest-value surface on this page:
   **Reactivate**, and **Merge** when an active SAM account already holds a placeholder's
   email (every active SAM account resolves in XRAS, so it is a merge target already) —
   the card's "Ready to merge" rows, the Remediations identity strip, and
-  `sam-admin xras --identity-report`. Account creation is manual; the worklist tells you
+  `sam-admin xras --identity-report`. `account_requests_reconcile` merges each "Ready to
+  merge" row on its own every 15 minutes (`XRAS_AUTO_MERGE`, 5 a run), including an
+  approved request not yet posted. It never retries a merge a task already tried: a refused
+  one stays on the card for you. Account creation is manual; the worklist tells you
   *who*, *why*, and — behind `MANAGE_XRAS` — with what person detail to create them from.
 - ⚠️ **`placeholder` is a flag on the row, not a third classification.** A placeholder
   identity is still either absent or inactive. Do not filter on it expecting a bucket.

@@ -122,6 +122,8 @@ tasks:
     # Arms xras_rename against XRAS-dev, and the placeholder merge below (values.yaml's
     # XRAS_WRITE_ENABLED warning).
     XRAS_WRITE_ENABLED: "1"
+    # account_requests_reconcile merges "Ready to merge" placeholders into XRAS-dev (prod: "1").
+    XRAS_AUTO_MERGE: "1"
     # Arms account_requests_reconcile's merge of a fulfilled /request placeholder (the
     # task is in SAM_TASKS_DISABLED above; Reconcile now runs the same pass). Prod: absent.
     XRAS_SUBMIT_ANONYMOUS_ENABLED: "1"

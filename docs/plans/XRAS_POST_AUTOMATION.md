@@ -28,7 +28,7 @@ new projcode into XRAS's "Edit Request Number", and sending the notification fro
 | Notify, New | manual Notify button; sent from XRAS today | must follow activation; XRAS's own notify mail | C |
 | Notify, extend/supplement/adjust/update | built: the `xras_notices` task (1-day delay), disabled in production | soak; XRAS's own notify mail | C |
 | Contracts | the post creates one from its NSF award the sweep cached (`XRAS_AUTO_CONTRACTS`); otherwise a 422 with one-click Create on the strip, the seeded form, or `ignore_contract` | non-NSF awards; an award whose PI differs from the request's | E |
-| Users absent or inactive, ARC placeholders | the sweep files `account_request` rows (live); the request ticket (`xras_request_tickets`): dev on dry-run, prod armed with a floor (#845) | users come only from IGA and the LDAP sync | D |
+| Users absent or inactive, ARC placeholders | the sweep files `account_request` rows (live); the request ticket (`xras_request_tickets`): dev on dry-run, prod armed with a floor (#845); a "Ready to merge" placeholder merges on its own once its account exists (`XRAS_AUTO_MERGE`, 2026-11-05) | users come only from IGA and the LDAP sync | D |
 | XRAS's own notify mail | on | the Action Approved rules on the NCAR process's notification templates, which we own (§ 3, C) | C (cutover step) |
 
 ## 3. Phases
