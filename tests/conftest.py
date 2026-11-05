@@ -494,6 +494,8 @@ _BOOTSTRAP_TABLES = (
      'sam.accounting.allocation_type_guide:AllocationTypeGuide'),
     ('unix_group_mask', 'create_unix_group_mask.sql',
      'sam.core.groups:UnixGroupMask'),
+    ('xras_request_note', 'create_xras_request_note.sql',
+     'sam.integration.xras:XrasRequestNote'),
 )
 
 

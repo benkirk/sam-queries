@@ -86,6 +86,8 @@ is `docs/plans/implemented/HEUV_API_PORT.md` Appendix C.
 
 About 125 calls a day from two apps run by one team: the ARC portal (Ruby, AWS) and the ARC
 Allocation Recommender (python-httpx, AWS, `report/usage` only, a weekday ~06:00 MT batch).
+The recommender's same key also posts its run's notes to `POST /api/v1/xras/notes`, outside
+this blueprint (`Permission.POST_XRAS_NOTES`; `docs/plans/ARC_RECOMMENDER_NOTES.md` § 3).
 Compare a deployment with legacy:
 
 ```bash

@@ -36,7 +36,8 @@ from marshmallow import ValidationError
 
 from sam.core.organizations import MnemonicCode
 from sam.core.users import User
-from sam.integration.xras import XrasRequestOverride, lookup_request_override
+from sam.integration.xras import (XrasRequestOverride, lookup_request_override,
+                                  request_notes_by_number)
 from sam.integration.xras_api import (
     XrasSourceUnavailable,
     XrasWriteNotConfigured,
@@ -184,9 +185,12 @@ def xras_remediations_fragment():
     # No forced default: with no header clicked the sweep's order stands within
     # each group, and sort_rows is a no-op.
     sort = read_sort(request.args, set(_REMEDIATION_SORT), default_dir='desc')
+    # Read live, not from the sweep: the note lands at 06:00, two hours after the index.
+    request_notes = request_notes_by_number(db.session, (r.get('request_number') for r in rows))
 
     return render_template(
         _CARD,
+        request_notes=request_notes,
         not_checked_count=not_checked_count,
         groups=_group_by_opportunity(rows, sort=sort),
         sort=sort,

@@ -302,6 +302,7 @@ from .xras_submission import (
     XrasRenewalRequestForm,
     XrasSupplementRequestForm,
 )
+from .xras_notes import RecommenderNoteBatchSchema, RecommenderNoteSchema
 # XRAS action ingest — plain marshmallow, deliberately NOT HtmxFormSchema
 # (JSON body with five nested arrays; see the module docstring).
 from .xras import (
@@ -427,6 +428,7 @@ __all__ = [
     'XrasRequestOverrideForm',
     'XrasExtensionRequestForm', 'XrasSupplementRequestForm', 'XrasRenewalRequestForm',
     'XrasNewRequestForm', 'XrasAddActionAgreementForm',
+    'RecommenderNoteBatchSchema', 'RecommenderNoteSchema',
     'XrasActionSchema',
     'XrasActionResourceSchema',
     'XrasActionRoleSchema',

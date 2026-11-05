@@ -206,6 +206,10 @@ from .integration.xras import (
     XrasRequestOverride,
     XRAS_REQUEST_OVERRIDE_KINDS,
     lookup_request_override,
+    XrasRequestNote,
+    XRAS_NOTE_DECISIONS,
+    lookup_request_notes,
+    request_notes_by_number,
 )
 
 # XRAS view models (read-only database views)
@@ -306,6 +310,7 @@ __all__ = [
     'XrasRemediationEvent', 'XRAS_REMEDIATION_OPERATIONS',
     'XRAS_REMEDIATION_STATUSES',
     'XrasRequestOverride', 'XRAS_REQUEST_OVERRIDE_KINDS', 'lookup_request_override',
+    'XrasRequestNote', 'XRAS_NOTE_DECISIONS', 'lookup_request_notes', 'request_notes_by_number',
     'XrasUserView', 'XrasRoleView', 'XrasActionView',
     'XrasAllocationView', 'XrasHpcAllocationAmountView', 'XrasRequestView',
     # Notifications

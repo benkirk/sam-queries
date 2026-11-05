@@ -960,19 +960,25 @@ def rename_plan(line, *, request_id, old_number, new_number):
 
 
 def _rekey_overrides(session_factory, old_number, new_number) -> None:
-    """Move the request's ingest overrides to its new number; never raises."""
-    from sam.integration.xras import XrasRequestOverride
+    """Move the request's ingest overrides and recommender notes to its new number; never raises."""
+    from sam.integration.xras import XrasRequestNote, XrasRequestOverride
     try:
         with session_factory() as session:
             moved, collided = XrasRequestOverride.rekey(
+                session, old_number=old_number, new_number=new_number)
+            _, notes_collided = XrasRequestNote.rekey(
                 session, old_number=old_number, new_number=new_number)
             session.commit()
         if collided:
             logger.warning('xras rename %s -> %s: %s overrides left on %s; the new '
                            'number already holds that kind', old_number, new_number,
                            ', '.join(collided), old_number)
+        if notes_collided:
+            logger.warning('xras rename %s -> %s: notes from %s left on %s; the new '
+                           'number already holds one', old_number, new_number,
+                           ', '.join(notes_collided), old_number)
     except Exception:                                   # noqa: BLE001
-        logger.exception('xras rename %s -> %s: could not move its overrides',
+        logger.exception('xras rename %s -> %s: could not move its overrides and notes',
                          old_number, new_number)
 
 
