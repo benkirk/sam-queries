@@ -123,7 +123,15 @@
             <a href="{{ url_for('admin_dashboard.contracts') }}">Admin&nbsp;→&nbsp;Contracts</a>:
             {% for t in _ctargets[:6] %}
             <a href="{{ t.create_url }}"
-               title="{{ t.title or 'no title on the wire' }} · would unblock {{ t.unblock_count }}: {{ t.sample | join(', ') }}">{{ t.number }}</a>&nbsp;({{ t.unblock_count }}){% if not loop.last %} ·{% endif %}
+               title="{{ t.title or 'no title on the wire' }} · would unblock {{ t.unblock_count }}: {{ t.sample | join(', ') }}">{{ t.number }}</a>&nbsp;({{ t.unblock_count }})
+            {%- if t.one_click_url %}
+            <button type="button" class="btn btn-link btn-sm p-0 align-baseline"
+                    title="Create {{ t.number }} from its NSF award"
+                    hx-get="{{ t.one_click_url }}" hx-target="#xrasModalBody" hx-swap="innerHTML"
+                    data-bs-toggle="modal" data-bs-target="#xrasModal">create</button>
+            {%- elif t.waits_on %}
+            <span class="text-muted" title="The post creates this contract once these clear">waits on {{ t.waits_on | join(', ') }}</span>
+            {%- endif %}{% if not loop.last %} ·{% endif %}
             {% endfor %}
             {% if _ctargets | length > 6 %}
             … (+{{ (_ctargets | length) - 6 }} more: <code>sam-admin xras --contract-report</code>)

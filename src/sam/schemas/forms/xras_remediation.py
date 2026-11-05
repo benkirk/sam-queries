@@ -274,6 +274,18 @@ class XrasAddActionForm(HtmxFormSchema):
 _OVERRIDE_COMMENT_MAX = 250
 
 
+class XrasContractCreateForm(HtmxFormSchema):
+    """Create the contract a Remediations blocker names, from its NSF award.
+
+    ``requests`` are the request numbers it unblocks; ``pi_name`` is the wire's PI for the
+    grant, checked against the award's.
+    """
+
+    number = f.Str(required=True, validate=v.Length(min=1, max=50))
+    requests = f.List(f.Str(), load_default=list)
+    pi_name = f.Str(load_default=None)
+
+
 class XrasRequestOverrideForm(HtmxFormSchema):
     """Set one per-request operator override from the readiness modal.
 

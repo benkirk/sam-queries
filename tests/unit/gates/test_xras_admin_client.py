@@ -1571,3 +1571,45 @@ class TestTheRuleBook:
         from sam.integration.xras_api.rule_book import rule_book
         book = rule_book(self._reader(fail=True), 1, 'Renewal', allocation_type_name='Nope')
         assert (book.source, book.required, book.documents) == ('none', (), ())
+
+
+class TestAutoContractsLever:
+    """XRAS_AUTO_CONTRACTS: off in prod, on in dev, and one value per environment."""
+
+    @staticmethod
+    def _load(name):
+        import yaml
+        from _paths import REPO_ROOT
+        return yaml.safe_load((REPO_ROOT / 'helm' / name).read_text())
+
+    def test_prod_is_off_and_agrees(self):
+        values = self._load('values.yaml')
+        assert values['webapp']['env']['XRAS_AUTO_CONTRACTS'] == '0'
+        assert values['tasks']['env']['XRAS_AUTO_CONTRACTS'] == '0'
+
+    def test_dev_is_on_and_agrees(self):
+        dev = self._load('values-dev.yaml')
+        assert dev['webapp']['env']['XRAS_AUTO_CONTRACTS'] == '1'
+        assert dev['tasks']['env']['XRAS_AUTO_CONTRACTS'] == '1'
+
+
+class TestAutoMergeLever:
+    """XRAS_AUTO_MERGE: the reconcile task merges "Ready to merge" placeholders (Ben 2026-11-05)."""
+
+    @staticmethod
+    def _tasks(name):
+        import yaml
+        from _paths import REPO_ROOT
+        return yaml.safe_load((REPO_ROOT / 'helm' / name).read_text())['tasks']['env']
+
+    @pytest.mark.parametrize('name', ['values.yaml', 'values-dev.yaml'])
+    def test_armed_in_the_tasks_env_with_writes(self, name):
+        env = self._tasks(name)
+        assert env['XRAS_AUTO_MERGE'] == '1' and str(env['XRAS_WRITE_ENABLED']) == '1'
+
+    def test_never_in_the_webapp_env(self):
+        import yaml
+        from _paths import REPO_ROOT
+        for name in ('values.yaml', 'values-dev.yaml'):
+            webapp = yaml.safe_load((REPO_ROOT / 'helm' / name).read_text())['webapp']['env']
+            assert 'XRAS_AUTO_MERGE' not in webapp

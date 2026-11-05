@@ -221,3 +221,53 @@ class TestThePlaceholderMerge:
         assert kw == {'operator': 'task:account_requests_reconcile'} and callable(factory)
         assert result.detail['merges']['merged'] == [['samr1-user-a1b2c3', 'real']]
         assert '1 placeholder(s) merged' in result.message
+
+
+class TestTheReadyMerge:
+    """XRAS_AUTO_MERGE: the card's "Ready to merge" placeholders, then the stale requests."""
+
+    @pytest.fixture
+    def passes(self, monkeypatch):
+        from sam.manage import xras_remediation
+        calls = []
+        monkeypatch.setattr(xras_remediation, 'merge_ready_placeholders', lambda f, **kw: (
+            calls.append(('ready', kw)) or {'due': 1, 'merged': [('kmerk-user-92wap', 'katarinam')],
+                                            'waiting': 0, 'refused': 0, 'gone': 0, 'failed': 0}))
+        monkeypatch.setattr(xras_remediation, 'close_stale_placeholders', lambda f, **kw: (
+            calls.append(('stale', kw)) or {'checked': 3, 'closed': 2, 'kept': 1}))
+        return calls
+
+    def test_the_lever_off_does_nothing(self, ctx, passes):
+        result = mod.account_requests_reconcile(ctx())
+        assert passes == [] and result.detail['ready_merges'] == {'skipped': 'lever off'}
+        assert result.detail['stale'] == {'skipped': 'lever off'}
+
+    def test_a_dry_run_does_nothing(self, ctx, passes, monkeypatch):
+        from sam.integration.xras_api.config import XrasApiConfig
+        monkeypatch.setattr(XrasApiConfig, 'auto_merge_configured', True)
+        assert mod.account_requests_reconcile(ctx(dry_run=True)).detail['ready_merges'] == {
+            'skipped': 'dry run'}
+        assert passes == []
+
+    def test_armed_it_merges_then_closes_as_the_task(self, ctx, passes, monkeypatch):
+        from sam.integration.xras_api.config import XrasApiConfig
+        monkeypatch.setattr(XrasApiConfig, 'auto_merge_configured', True)
+        result = mod.account_requests_reconcile(ctx())
+        assert [c[0] for c in passes] == ['ready', 'stale']
+        assert passes[0][1] == {'operator': 'task:account_requests_reconcile', 'cap': mod.MERGE_CAP}
+        assert result.detail['ready_merges']['merged'] == [['kmerk-user-92wap', 'katarinam']]
+        assert '1 ready placeholder(s) merged' in result.message
+        assert '2 stale request(s) closed' in result.message
+
+    def test_a_failing_pass_is_not_a_red_job(self, ctx, monkeypatch):
+        from sam.integration.xras_api.config import XrasApiConfig
+        from sam.manage import xras_remediation
+        monkeypatch.setattr(XrasApiConfig, 'auto_merge_configured', True)
+
+        def boom(*a, **k):
+            raise RuntimeError('worklist unreadable')
+        monkeypatch.setattr(xras_remediation, 'merge_ready_placeholders', boom)
+        monkeypatch.setattr(xras_remediation, 'close_stale_placeholders', boom)
+        result = mod.account_requests_reconcile(ctx())
+        assert result.state == 'succeeded'
+        assert result.detail['ready_merges'] == {'skipped': 'RuntimeError: worklist unreadable'}

@@ -11,6 +11,10 @@ are not handlers, and it deliberately imports nothing — every other module in 
 package can depend on it without creating a cycle.
 """
 
+#: ``fundingAgency`` spellings that mean NSF, upper-cased: the push's name and the sweep's.
+NSF_AGENCY_NAMES = frozenset({'NSF', 'NATIONAL SCIENCE FOUNDATION'})
+
+
 __all__ = ['get_field', 'resource_label']
 
 

@@ -1,5 +1,5 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
-{% from 'dashboards/fragments/contract_bits.html' import contract_user_link, nsf_program_link, contract_status_badge with context %}
+{% from 'dashboards/fragments/contract_bits.html' import contract_user_link, contract_person_link, nsf_program_link, contract_status_badge with context %}
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
 {% from 'dashboards/fragments/project_bits.html' import project_link with context %}
 {#
@@ -87,14 +87,14 @@
                     <div class="stat-item">
                         <span class="stat-label">PI:</span>
                         <span class="stat-value">
-                            {{ contract_user_link(contract.principal_investigator, can_view_users) }}
+                            {{ contract_person_link(contract.pi_person, can_view_users) }}
                         </span>
                     </div>
 
                     <div class="stat-item">
                         <span class="stat-label">Monitor:</span>
                         <span class="stat-value">
-                            {{ contract_user_link(contract.contract_monitor, can_view_users) }}
+                            {{ contract_person_link(contract.monitor_person, can_view_users) }}
                         </span>
                     </div>
 

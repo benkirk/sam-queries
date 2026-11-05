@@ -102,6 +102,12 @@ class TestReader:
         assert probe[1] == '1' and int(probe[0]) == NOW - 23 * 60
         assert ['other', '200', '1'] in rec(records, 'web') and ['app', '302', '1'] in rec(records, 'web')
 
+    def test_the_contract_editor_is_its_own_web_family(self, logs):
+        (logs / 'access.log-20261010').write_text((logs / 'access.log-20261010').read_text() + line(
+            '10/Oct/2026:11:40:00', '/app/contract/edit?execution=e1s1', status=200,
+            client='128.117.229.7', ua='Mozilla/5.0'))
+        assert ['contract', '200', '1'] in rec(window(logs), 'web')
+
     def test_slow_calls_carry_their_utc_time(self, logs):
         slow = rec(window(logs), 'slow')
         assert slow == [[str(NOW - 24 * 60), 'ssg/fairShareTree', '128.117.211.150', 'python-requests/2.31.0',
@@ -202,6 +208,13 @@ class TestReport:
         text, _, fail = report([host, api, ['probe', str(NOW - 60), '30']], tmp_path, cmap,
                                state=f'LASTJVM={JVM}\n')
         assert 'legacy cutover hit: ldapsync/user 128.117.177.140' in text and fail == 1
+
+    def test_a_legacy_contract_editor_hit_warns(self, tmp_path):
+        host = ['host', f'now={NOW}', 'up_s=1', f'jvm_start={JVM}', 'jvm_pid=1', 'tomcat_pct=5', 'rotated=-']
+        text, warn, _ = report([host, ['web', 'contract', '200', '3'], ['probe', str(NOW - 60), '30']],
+                               tmp_path, CMAP, state=f'LASTJVM={JVM}\n')
+        assert 'legacy contract editor used: /app/contract x3' in text and warn == 1
+        assert 'app 3' in text
 
     def test_restart_and_baseline(self, logs, tmp_path):
         text, _, _ = report(window(logs), tmp_path, CMAP)

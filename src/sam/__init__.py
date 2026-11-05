@@ -103,6 +103,7 @@ from .projects.areas import (
 from .projects.contracts import (
     Contract,
     ContractSource,
+    ExternalContact,
     ProjectContract,
     NSFProgram
 )
@@ -278,7 +279,7 @@ __all__ = [
     # Projects
     'Project', 'ProjectNumber', 'ProjectDirectory', 'DefaultProject',
     'AreaOfInterest', 'AreaOfInterestGroup', 'FosAoi',
-    'Contract', 'ContractSource', 'ProjectContract', 'NSFProgram',
+    'Contract', 'ContractSource', 'ExternalContact', 'ProjectContract', 'NSFProgram',
     # Accounting
     'Account', 'AccountUser', 'ResponsibleParty',
     'Allocation', 'AllocationTransaction', 'AllocationTransactionType', 'AllocationType',

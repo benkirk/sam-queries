@@ -1101,3 +1101,19 @@ def as_json_text(value):
 
 
 #-------------------------------------------------------------------------em-
+
+
+def task_merge_attempts(session, usernames) -> set:
+    """The placeholders a task has already tried to merge (any outcome), casefolded.
+
+    A task never retries one: a refused or unconfirmed merge is the operator's to look at.
+    """
+    names = [str(u) for u in usernames if u]
+    if not names:
+        return set()
+    rows = (session.query(XrasRemediationEvent.username)
+            .filter(XrasRemediationEvent.operation == 'merge_person',
+                    XrasRemediationEvent.created_by.like('task:%'),
+                    XrasRemediationEvent.username.in_(names))
+            .all())
+    return {str(r[0]).casefold() for r in rows if r[0]}

@@ -293,6 +293,7 @@ from .xras_remediation import (
     XrasRequestAttributesForm,
     XrasActionFieldsForm,
     XrasAddActionForm,
+    XrasContractCreateForm,
     XrasRequestOverrideForm,
 )
 from .xras_submission import (
@@ -425,6 +426,7 @@ __all__ = [
     'XrasRequestAttributesForm',
     'XrasActionFieldsForm',
     'XrasAddActionForm',
+    'XrasContractCreateForm',
     'XrasRequestOverrideForm',
     'XrasExtensionRequestForm', 'XrasSupplementRequestForm', 'XrasRenewalRequestForm',
     'XrasNewRequestForm', 'XrasAddActionAgreementForm',

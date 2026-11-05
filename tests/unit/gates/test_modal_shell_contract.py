@@ -370,6 +370,8 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'xrasModalBody'],
     'dashboards/allocations/partials/xras_add_action_form.html': [
         'xrasModalBody'],
+    # Opened from the Remediations card's contract strip, whose page ships #xrasModal.
+    'dashboards/allocations/partials/xras_contract_create.html': ['xrasModalBody'],
     'dashboards/allocations/partials/xras_merge_form.html': [
         'xrasModalBody'],
     'dashboards/allocations/partials/xras_action_form.html': [

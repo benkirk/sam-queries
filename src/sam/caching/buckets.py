@@ -183,6 +183,14 @@ class BucketedTTLCache:
                 pass
         return result
 
+    def peek(self, bucket: str, key: Hashable, default: Any = None) -> Any:
+        """The cached value for *key*, or *default*; never computes."""
+        adapter = self.adapter(bucket)
+        if adapter is None:
+            return default
+        with adapter.lock:
+            return adapter[key] if key in adapter else default
+
     # Admin / facade hooks
 
     def purge(self) -> int:

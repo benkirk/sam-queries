@@ -1,0 +1,48 @@
+{#
+  Create the contract a Remediations blocker names, from its NSF award, rendered into
+  #xrasModalBody. Offered only when the contract is each request's only blocker.
+
+  Context: number, requests[], pi_name, record (AwardRecord or None), plan (ContractPlan
+  or None), refusal (text or None), error (text or None), post_url
+#}
+{% from 'dashboards/fragments/xras_bits.html' import attention, dialog_title, form_footer, outcome, section_label, tag %}
+{{ dialog_title('Create contract', 'file-contract', meta=number) }}
+
+<p class="modal-lead">
+    SAM holds no contract for this grant, and it is the only thing blocking
+    {{ requests | join(', ') }}. This creates it from the NSF award: a person who is a SAM
+    user goes on as that user; one who is not becomes an external contact.
+</p>
+
+{% macro person_line(icon, role, planned) -%}
+<li><i class="fa-solid fa-{{ icon }}" aria-hidden="true"></i>{{ role }}:
+    {% if planned %}{{ planned.label }}
+    {% if planned.is_user %}{{ tag('SAM user') }}{% else %}{{ attention('new contact', title='Not a SAM user: saved as an external contact') }}{% endif %}
+    {% else %}<span class="text-muted">none</span>{% endif %}</li>
+{%- endmacro %}
+
+{% if record %}
+{{ section_label('The NSF award') }}
+<ul class="modal-facts">
+    <li><i class="fa-solid fa-hashtag" aria-hidden="true"></i><span class="font-monospace">{{ record.contract_number }}</span></li>
+    <li><i class="fa-solid fa-heading" aria-hidden="true"></i>{{ record.title }}</li>
+    <li><i class="fa-solid fa-calendar" aria-hidden="true"></i>{{ record.start_date | fmt_date }} → {{ record.end_date | fmt_date }}</li>
+    {% if plan %}
+    {{ person_line('user-tie', 'PI', plan.pi) }}
+    {{ person_line('user-shield', 'Monitor', plan.monitor) }}
+    {% elif record.pi %}
+    <li><i class="fa-solid fa-user-tie" aria-hidden="true"></i>PI (NSF): {{ record.pi.label }}</li>
+    {% endif %}
+    {% if pi_name %}<li><i class="fa-solid fa-file-lines" aria-hidden="true"></i>PI on the request's grant: {{ pi_name }}</li>{% endif %}
+</ul>
+{% endif %}
+
+{% if refusal or error %}{% call outcome('warning', error or refusal) %}{% endcall %}{% endif %}
+
+<form id="xras-dialog-form" hx-post="{{ post_url }}" hx-target="#xrasModalBody" hx-swap="innerHTML">
+    <input type="hidden" name="number" value="{{ number }}">
+    <input type="hidden" name="pi_name" value="{{ pi_name or '' }}">
+    {% for r in requests %}<input type="hidden" name="requests" value="{{ r }}">{% endfor %}
+</form>
+{{ form_footer('xras-dialog-form', None, True, verb='Create contract', back_label='Cancel',
+               blocked=(refusal or error) if not plan else None, icon='file-circle-plus') }}
