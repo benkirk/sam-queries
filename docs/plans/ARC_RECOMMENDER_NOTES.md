@@ -7,7 +7,7 @@ commit). Two PRs: this repo (the table, the endpoint, the dialog and the card), 
 ## Progress
 
 - [x] `XrasRequestNote` model, `scripts/sql/create_xras_request_note{,_pg}.sql`, schema pins, factory
-- [ ] `Permission.POST_XRAS_NOTES`, the default grant to `apikey:heuv`
+- [x] `Permission.POST_XRAS_NOTES`, the default grant to `apikey:heuv`
 - [ ] `POST /api/v1/xras/notes`: blueprint, form schema, `record_run_notes`, output schema, tests
 - [ ] Dialog section `_xras_recommender_note.html` with the copy button and source links
 - [ ] Card marker on the remediation card, one query per render

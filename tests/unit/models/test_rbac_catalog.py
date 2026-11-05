@@ -87,10 +87,17 @@ class TestDefaults:
         assert rbac.USER_FACILITY_PERMISSIONS == facility_users
 
     def test_every_permission_is_granted_or_withheld(self):
-        granted = set().union(*(r.permissions for r in DEFAULT_ROLES))
+        granted = set().union(*(r.permissions for r in DEFAULT_ROLES),
+                              {g.permission for g in DEFAULT_GRANTS if g.permission})
         unaccounted = ALL_PERMISSIONS - granted - WITHHELD
         assert not unaccounted, sorted(p.name for p in unaccounted)
         assert not (granted & WITHHELD), sorted(p.name for p in granted & WITHHELD)
+
+    def test_only_the_heuv_key_posts_xras_notes(self):
+        cat = build_catalog(DEFAULT_ROLES, DEFAULT_GRANTS)
+        holders = {k for k, perms in cat.unscoped.items() if P.POST_XRAS_NOTES in perms}
+        assert holders == {('apikey', 'heuv')} | {
+            k for k, perms in cat.unscoped.items() if P.SYSTEM_ADMIN in perms}
 
     def test_manage_roles_is_held_unscoped(self):
         cat = build_catalog(DEFAULT_ROLES, DEFAULT_GRANTS)
