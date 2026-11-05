@@ -500,3 +500,56 @@ def test_xras_worklist_preflight_is_flat_in_projects(session, count_queries):
         f"xras_worklist_preflight grows with actions: {small.count} for 10, "
         f"{stats.count} for 50. Breakdown: {stats.summary()}")
     _assert_within("xras_worklist_preflight", stats)
+
+
+# ---------------------------------------------------------------------------
+# Expiration notices: one usage build and one roster load for every expiring
+# project, so the count is flat in projects (5,068 statements on a 229-project
+# end-date cluster when each project loaded its own).
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def _expiring_window_start(engine):
+    """The start of the 40-day notice window ending on the snapshot's busiest end date."""
+    from datetime import datetime, timedelta
+    from sqlalchemy import text as _text
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, autoflush=False, future=True)
+    with Session() as s:
+        row = s.execute(_text("""
+            SELECT al.end_date FROM allocation al
+            JOIN account a ON a.account_id = al.account_id
+            WHERE al.deleted = FALSE AND al.end_date IS NOT NULL
+            GROUP BY al.end_date
+            ORDER BY COUNT(DISTINCT a.project_id) DESC, al.end_date DESC LIMIT 1
+        """)).first()
+    assert row is not None, "snapshot has no allocation with an end date"
+    return datetime.combine(row[0].date(), datetime.min.time()) - timedelta(days=39)
+
+
+def _notices(session, count_queries, start):
+    from datetime import timedelta
+    from sam.queries.expiration_notices import MILESTONES, build_expiration_messages
+    from sam.queries.expirations import get_all_expiring_allocations
+    rows = get_all_expiring_allocations(session, start_date=start, end_date=start + timedelta(days=40),
+                                        facility_names=['UNIV', 'WNA'], now=start)
+    assert len({p.project_id for p, *_ in rows}) >= 10, 'the window holds too few projects to pin'
+    with count_queries() as stats:
+        messages = build_expiration_messages(rows, requested_by='perf', milestone=MILESTONES[0])
+    assert messages
+    return stats
+
+
+def test_build_expiration_messages(session, count_queries, _expiring_window_start):
+    _assert_within("build_expiration_messages",
+                   _notices(session, count_queries, _expiring_window_start))
+
+
+def test_build_expiration_messages_read_model(session, count_queries, _expiring_window_start,
+                                              read_model_on):
+    from .test_route_query_counts import _lookups
+    with _lookups() as seen:
+        stats = _notices(session, count_queries, _expiring_window_start)
+    assert len(seen) == 1, f'one gate lookup for every project, saw {len(seen)}'
+    _assert_within("build_expiration_messages_read_model", stats)
