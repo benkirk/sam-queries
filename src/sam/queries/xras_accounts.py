@@ -518,6 +518,20 @@ def live_actions(line: Mapping[str, Any]) -> List[dict]:
             if isinstance(a, dict) and not a.get('isDeleted')]
 
 
+#: An action awaiting review. ``requestStatus`` stays at the New's value, so a
+#: request's current state is its in-flight action's, never that field.
+IN_FLIGHT_ACTION_STATUSES = ('Submitted', 'Under Review')
+
+
+def in_flight_live_action(line: Mapping[str, Any]) -> Optional[dict]:
+    """The typed live action in flight, else the newest typed one, on wire keys (``actionType``)."""
+    typed = [a for a in live_actions(line) if a.get('actionType')]
+    if not typed:
+        return None
+    in_flight = [a for a in typed if a.get('actionStatus') in IN_FLIGHT_ACTION_STATUSES]
+    return max(in_flight or typed, key=lambda a: a.get('actionId') or 0)
+
+
 def _report_action_type(payload: dict) -> Optional[str]:
     """The request's representative ``actionType`` — never ``requestType``.
 

@@ -37,9 +37,9 @@ from sam.integration.xras_api.vocabulary import (
     ADMIN_ROLE_TYPE_ID,
     PI_ROLE_TYPE_ID,
 )
-from sam.queries.xras_accounts import (is_placeholder, iter_roster_entries, live_actions,
-                                       report_activity_date,
-                                       role_in_window)
+from sam.queries.xras_accounts import (IN_FLIGHT_ACTION_STATUSES, in_flight_live_action,
+                                       is_placeholder, iter_roster_entries, live_actions,
+                                       report_activity_date, role_in_window)
 
 #: Action fields carried into the entry. The states are what the card's
 #: withdraw/re-submit offers key on. The authoritative legal-moves read
@@ -210,9 +210,6 @@ _ROLLUP_ORDER = ('failed', 'manual', 'incomplete', 'rechecked')
 #: received the post and this log cannot see it.
 XRAS_REPOINTED_ON = date(2026, 8, 24)
 
-#: An action still in XRAS's review pipeline.
-IN_FLIGHT_ACTION_STATUSES = ('Submitted', 'Under Review')
-
 
 #: A log row in one of these states is a push that has NOT landed, so the action
 #: is still XRAS admin's pending work even though ``push_state`` says seen_in_log.
@@ -281,8 +278,7 @@ def in_flight_action(actions) -> Optional[Mapping[str, Any]]:
     typed = [a for a in (actions or []) if a.get('action_type')]
     if not typed:
         return None
-    in_flight = [a for a in typed
-                 if a.get('action_status') in ('Submitted', 'Under Review')]
+    in_flight = [a for a in typed if a.get('action_status') in IN_FLIGHT_ACTION_STATUSES]
     return max(in_flight or typed, key=lambda a: a.get('action_id') or 0)
 
 
@@ -316,13 +312,9 @@ def request_gist(payload: Mapping[str, Any]) -> Optional[Dict[str, Optional[str]
     """
     from sam.fmt import date_str, number
 
-    actions = [a for a in (payload.get('actions') or [])
-               if isinstance(a, dict) and a.get('actionType')]
-    if not actions:
+    action = in_flight_live_action(payload)
+    if not action:
         return None
-    in_flight = [a for a in actions
-                 if a.get('actionStatus') in ('Submitted', 'Under Review')]
-    action = max(in_flight or actions, key=lambda a: a.get('actionId') or 0)
     kind = strip_or_none(action.get('actionType'))
 
     asked = []
