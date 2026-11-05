@@ -5,6 +5,7 @@
   describing: displayResourceName + resourceUnits + type per resource), row (its
   request_index_entry), family, detail_actions, documents, grants, fos_names, flash /
   flash_error, write_enabled, configured, admin_context_available, is_xras_admin, headline_action,
+  recommender_notes,
   plus the roster and override includes' keys.
   The editors render whether or not writes are on: a disabled control teaches
   that a switch exists. Every control swaps this body; none toggles a modal (#464).
@@ -61,6 +62,10 @@
                     url_for('allocations_dashboard.xras_attributes_form', request_number=request_number),
                     write_enabled) }}
 </div>
+
+{% for note in recommender_notes or () %}
+{% include 'dashboards/allocations/partials/_xras_recommender_note.html' %}
+{% endfor %}
 
 {% if documents %}
 {{ section_label('Documents') }}

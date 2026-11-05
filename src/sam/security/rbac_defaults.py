@@ -107,6 +107,8 @@ DEFAULT_GRANTS = (
     GrantDef('apikey', 'collector', role='api_collector'),
     GrantDef('apikey', 'ssg', role='api_systems_integration'),
     GrantDef('apikey', 'heuv', role='api_systems_integration'),
+    # The ARC Allocation Recommender posts with the heuv key until it has its own.
+    GrantDef('apikey', 'heuv', permission=P.POST_XRAS_NOTES),
 )
 
 #: Permissions no default role grants. A new Permission goes into a role above

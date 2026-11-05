@@ -24,7 +24,7 @@ from sam.integration.xras_api import (
     xras_write_configured,
 )
 from sam.queries.xras_accounts import is_placeholder, iter_roster_entries, live_actions
-from sam.integration.xras import lookup_request_override
+from sam.integration.xras import lookup_request_notes, lookup_request_override
 from sam.queries.xras_requests import (
     actions_from_payload,
     documents_from_action,
@@ -267,6 +267,7 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
         'overrides': {kind: lookup_request_override(db.session, request_number, kind)
                       for kind in ('mnemonic', 'ignore_contract')},
         'can_edit_overrides': has_permission(current_user, Permission.ADMIN_XRAS),
+        'recommender_notes': lookup_request_notes(db.session, request_number),
         # The whole project lifecycle (all request lines + counts), for the
         # danger-zone delete confirm and any family-level display.
         'family': family,

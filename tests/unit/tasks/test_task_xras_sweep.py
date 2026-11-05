@@ -1405,6 +1405,34 @@ class TestTheRequestsIndex:
         index = load_requests_index()
         assert [r['request_number'] for r in index['rows']] == ['NCAR0001']
 
+    def test_the_gist_carries_the_projects_balances(self, ctx, wire, session):
+        """A Supplement on a project SAM holds: one usage build, one line per resource."""
+        from factories import make_account, make_allocation, make_project, make_resource
+        from sam.integration.xras_api.cache import load_requests_index
+        from sam.resources.resources import ResourceType
+
+        project = make_project(session)
+        hpc = session.query(ResourceType).filter_by(resource_type='HPC').one()
+        account = make_account(session, project=project,
+                               resource=make_resource(session, resource_type=hpc))
+        make_allocation(session, account=account, amount=10_000.0,
+                        end_date=datetime(2027, 6, 30))
+        session.flush()
+        supplement = _pending_request(2, project.projcode)
+        supplement['actions'] = [{
+            'actionId': 9, 'actionType': 'Supplement', 'actionStatus': 'Submitted',
+            'resources': [{'displayResourceName': 'Casper', 'amount': '500',
+                           'resourceUnits': 'Core-hours', 'type': 'Requested'}]}]
+        wire([[_pending_request(1, 'NCAR0001', actions=[(1, 'Submitted')])]],
+             extra_pages={'Submitted': [[supplement]]})
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['index_balances'] == 1
+        rows = {r['request_number']: r for r in load_requests_index()['rows']}
+        assert rows[project.projcode]['gist']['balances'] == [
+            f'{account.resource.resource_name}: 10,000 of 10,000 hours remaining '
+            '\u00b7 ends 2027-06-30']
+        assert rows['NCAR0001']['gist']['balances'] == [], 'no SAM project, no balances'
+
     def test_the_extra_statuses_are_swept_too(self, ctx, wire):
         from sam.integration.xras_api.cache import load_requests_index
         wire([[_pending_request(1, 'NCAR0001')]],

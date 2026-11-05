@@ -3062,6 +3062,17 @@ class TestTheTypePopover:
         body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'data-bs-trigger="hover focus"' in body
         assert 'data-bs-title="Turbulence at scale"' in body
+        # The popover body is HTML in an attribute: escaped here, parsed by Bootstrap.
+        assert 'Supplement requesting&lt;/p&gt;' in body
+        assert '&lt;li&gt;Derecho 1,000 Core-hours&lt;/li&gt;' in body
+
+    def test_a_row_swept_before_the_lines_shows_its_sentence(self, auth_client, configured):
+        _publish(_payload())
+        entry = xras_cache.load_requests_index()
+        for row in entry['rows']:
+            row['gist'] = {'title': 'T', 'ask': 'Supplement requesting Derecho 1,000 Core-hours.'}
+        xras_cache.store_requests_index(entry)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'Supplement requesting Derecho 1,000 Core-hours.' in body
 
     def test_a_row_swept_before_the_gist_shows_the_plain_label(self, auth_client, configured):
@@ -3074,3 +3085,85 @@ class TestTheTypePopover:
         assert 'data-bs-trigger="hover focus"' not in body
         assert '>Supplement</span>' in body
 
+
+
+class TestTheRecommenderNote:
+    """A tool's note in the request dialog and as a marker on the card (ARC_RECOMMENDER_NOTES.md § 4).
+
+    Route reads go through ``db.session``, which cannot see the test session's rows, so the
+    lookups are patched to hand back a note built in the test session.
+    """
+
+    MODALS = 'webapp.dashboards.allocations.xras.modals.lookup_request_notes'
+    CARD = 'webapp.dashboards.allocations.xras.remediation.request_notes_by_number'
+
+    def _note(self, session, **kw):
+        from factories import make_request_note, next_seq
+        kw.setdefault('admin_comment', 'Approved as requested for one year.')
+        kw.setdefault('action_id', 7)
+        # The lookups are patched, so the row's own number is free: a fixed one deadlocks
+        # two xdist workers inserting the same uncommitted PK (InnoDB 1213).
+        return make_request_note(session, request_number=next_seq('NOTEUI'), rationale='Inside every rule.',
+                                 values={'hours_by_resource': {'Derecho': 1000000},
+                                         'requested_hours': {'Derecho': 1200000}}, **kw)
+
+    def _dialog(self, auth_client, monkeypatch, notes):
+        monkeypatch.setattr(self.MODALS, lambda session, number: notes)
+        _reader(monkeypatch, payload=_detail_payload())
+        return auth_client.get('/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+
+    def test_the_dialog_shows_the_note_with_copy_and_sources(self, auth_client, armed,
+                                                             monkeypatch, session):
+        body = self._dialog(auth_client, monkeypatch, [self._note(session)])
+        assert 'Needs a person to review' in body
+        assert 'run 2026-11-05T06:00' in body
+        assert 'data-copy="Approved as requested for one year."' in body
+        assert 'Copy admin comment' in body
+        assert 'Process action 7 in XRAS' in body
+        assert 'Needs your judgment' in body and 'Already checked' in body
+        assert 'NSF award 2320667' in body and 'Inside every rule.' in body
+        # raw: the operator types these into the XRAS Process page
+        assert 'Hours: Derecho 1,000,000' in body and 'Requested: Derecho 1,200,000' in body
+
+    def test_every_note_link_opens_without_a_referrer(self, auth_client, armed,
+                                                      monkeypatch, session):
+        body = self._dialog(auth_client, monkeypatch, [self._note(session)])
+        start = body.index('Recommender</h6>')
+        section = body[start:body.index('</section>', start)]
+        links = re.findall(r'<a [^>]*href="https?://[^"]*"[^>]*>', section)
+        note_links = [a for a in links if 'nsf.gov' in a]
+        assert note_links and all('rel="noopener noreferrer"' in a for a in note_links)
+        assert 'data-bs-toggle="modal"' not in section
+
+    def test_no_note_no_section(self, auth_client, armed, monkeypatch):
+        body = self._dialog(auth_client, monkeypatch, [])
+        assert 'Recommender</h6>' not in body
+        assert 'Copy admin comment' not in body
+
+    def test_approve_reads_as_a_tag_not_attention(self, auth_client, armed, monkeypatch, session):
+        body = self._dialog(auth_client, monkeypatch, [self._note(session, decision='approve')])
+        assert '<span class="badge state-tag">Ready to approve</span>' in body
+
+    def test_the_card_marks_a_request_with_a_note(self, auth_client, configured,
+                                                  monkeypatch, session):
+        note = self._note(session)
+        calls = []
+
+        def notes_by_number(s, numbers):
+            numbers = list(numbers)
+            calls.append(numbers)
+            return {'EXAM0001': [note]} if 'EXAM0001' in numbers else {}
+
+        monkeypatch.setattr(self.CARD, notes_by_number)
+        _publish(_payload('EXAM0001'), _payload('EXAM0002'))
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert len(calls) == 1, 'one lookup per render, not one per row'
+        assert set(calls[0]) == {'EXAM0001', 'EXAM0002'}
+        assert body.count('fa-wand-magic-sparkles') == 1
+        assert 'title="Recommender: Needs a person to review · 2026-11-05"' in body
+
+    def test_the_card_has_no_marker_without_a_note(self, auth_client, configured, monkeypatch):
+        monkeypatch.setattr(self.CARD, lambda s, numbers: {})
+        _publish(_payload('EXAM0001'))
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'fa-wand-magic-sparkles' not in body

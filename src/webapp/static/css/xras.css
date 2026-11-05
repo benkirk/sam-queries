@@ -240,6 +240,11 @@
     border-left: 3px solid var(--text-link);
 }
 
+/* The Type popover lists resources one per line; Bootstrap's 276px wraps every balance. */
+.xras-gist-popover {
+    --bs-popover-max-width: 28rem;
+}
+
 /* The collapse button fills the row; the XRAS links sit outside it (no <a> in a <button>). */
 .xras-action-headrow {
     display: flex;
@@ -387,6 +392,45 @@
 #xrasModalFooter .btn {
     font-size: 0.8125rem;
     padding: 0.3rem 0.7rem;
+}
+
+/* A recommender's note: the draft comment beside its paste target, then the findings. */
+.xras-note-comment {
+    margin: 0 0 0.75rem;
+    padding: 0.625rem 0.875rem;
+    background-color: var(--surface-accent);
+    border-left: 3px solid var(--border-default);
+}
+
+.xras-note-paste {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.xras-note-heading {
+    margin: 0 0 0.25rem;
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    font-weight: var(--font-weight-semi-bold);
+}
+
+.xras-note-findings {
+    margin: 0 0 0.75rem;
+    padding-left: 1.1rem;
+    font-size: 0.875rem;
+}
+
+.xras-note-findings a {
+    margin-left: 0.25rem;
+}
+
+.xras-note-severity {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    text-transform: uppercase;
 }
 
 /* A rarely used form behind its summary. */

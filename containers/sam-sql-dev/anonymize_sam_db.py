@@ -1286,6 +1286,7 @@ class SAMAnonymizer:
                         ('external_ticket', 'help-desk ticket links (orphaned with account_request)'),
                         ('unix_group_mask', 'operator group masks (usernames and notes)'),
                         ('xras_submission', 'request drafts (titles, abstracts, usernames)'),
+                        ('xras_request_note', 'recommender notes (PI history and prose)'),
                         ('samuel_role', 'role catalog (seeded per environment)'),
                         ('samuel_role_permission', 'role catalog permission rows'),
                         ('samuel_role_grant', 'role grants (real usernames and key names)'),

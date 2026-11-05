@@ -924,6 +924,45 @@ class TestDeletedLinesAreNotTheRequest:
         assert xras_cache.load_requests_index()['rows'][0]['request_id'] == 900001
 
 
+class TestTheRenameMovesTheNote:
+    """``_rekey_overrides`` moves a recommender note too, on its own committed session."""
+
+    @pytest.fixture
+    def numbers(self, engine):
+        from sqlalchemy import delete
+        from factories import next_seq
+        from sam.integration.xras import XrasRequestNote
+        pair = (next_seq('NCARN'), next_seq('UXYZN'))
+        yield pair
+        with engine.begin() as conn:
+            conn.execute(delete(XrasRequestNote).where(XrasRequestNote.request_number.in_(pair)))
+
+    def _note(self, factory, number, run_id):
+        from factories import make_request_note
+        with factory() as s:
+            make_request_note(s, request_number=number, run_id=run_id)
+            s.commit()
+
+    def _run_ids(self, factory, number):
+        from sam.integration.xras import lookup_request_notes
+        with factory() as s:
+            return [n.run_id for n in lookup_request_notes(s, number)]
+
+    def test_the_note_follows_the_rename(self, factory, numbers):
+        old, new = numbers
+        self._note(factory, old, 'r1')
+        service._rekey_overrides(factory, old, new)
+        assert self._run_ids(factory, old) == [] and self._run_ids(factory, new) == ['r1']
+
+    def test_a_note_on_the_new_number_wins_and_is_logged(self, factory, numbers, caplog):
+        old, new = numbers
+        self._note(factory, old, 'old')
+        self._note(factory, new, 'new')
+        service._rekey_overrides(factory, old, new)
+        assert self._run_ids(factory, new) == ['new'] and self._run_ids(factory, old) == ['old']
+        assert 'notes from arc-allocation-recommender left on' in caplog.text
+
+
 class TestTheRename:
     """SAM's rename: pre-read by id, act as the PI, move the card row and the overrides."""
 

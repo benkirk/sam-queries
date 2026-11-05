@@ -30,9 +30,11 @@ from sam.integration.xras import (
     XrasActivationEvent,
     XrasOpportunityAllocationType,
     XrasRemediationEvent,
+    XrasRequestNote,
     XrasResourceRepositoryKeyResource,
 )
 
+from ._seq import next_seq
 from .projects import make_allocation_type
 from .resources import make_resource
 
@@ -51,6 +53,7 @@ __all__ = [
     'make_xras_opportunity_mapping',
     'make_xras_action',
     'make_xras_activation_event',
+    'make_request_note',
 ]
 
 
@@ -187,3 +190,20 @@ def make_xras_opportunity_mapping(session, *, allocation_type=None,
     session.add(row)
     session.flush()
     return row
+
+
+def make_request_note(session, *, request_number=None, source='arc-allocation-recommender',
+                      decision='route_to_human', findings=None, generated_at=None, **fields):
+    """One ``xras_request_note`` row through ``XrasRequestNote.set``; *fields* pass through."""
+    fields.setdefault('run_id', '2026-11-05T06:00')
+    fields.setdefault('created_by', 'heuv')
+    return XrasRequestNote.set(
+        session, request_number=request_number or next_seq('NOTE'), source=source,
+        decision=decision, generated_at=generated_at or datetime(2026, 11, 5, 6, 1),
+        findings=findings if findings is not None else [
+            {'id': 'new.us_university', 'severity': 'warn', 'message': 'A US university.',
+             'sources': [{'label': 'NSF award 2320667', 'kind': 'nsf',
+                          'url': 'https://www.nsf.gov/awardsearch/showAward?AWD_ID=2320667'}]},
+            {'id': 'pi.history', 'severity': 'ok', 'message': 'One past request.',
+             'sources': []}],
+        **fields)

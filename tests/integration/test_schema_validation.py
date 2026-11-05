@@ -486,6 +486,11 @@ UTF8MB4_COLUMNS = {
     ('account_request_event', 'name'),
     ('account_request_event', 'instructions'),
     ('unix_group_mask', 'note'),
+    ('xras_request_note', 'values_json'),
+    ('xras_request_note', 'admin_comment'),
+    ('xras_request_note', 'rationale'),
+    ('xras_request_note', 'pi_history'),
+    ('xras_request_note', 'findings_json'),
 }
 
 #: Every table the charset-split tests read. Add a table here when it joins
@@ -494,7 +499,7 @@ _CHARSET_SPLIT_TABLES = (
     'xras_action_log', 'xras_activation_event', 'xras_remediation_event',
     'xras_request_override', 'notification_log',
     'notification_template_override', 'account_request',
-    'account_request_event', 'unix_group_mask',
+    'account_request_event', 'unix_group_mask', 'xras_request_note',
 )
 
 
@@ -548,6 +553,9 @@ class TestCharsetSplit:
                   ('xras_request_override', 'request_number'),
                   ('xras_request_override', 'kind'),
                   ('xras_request_override', 'created_by'),
+                  ('xras_request_note', 'request_number'),
+                  ('xras_request_note', 'source'),
+                  ('xras_request_note', 'created_by'),
                   # The reconcile pass matches email against email_address
                   # (lower-cased on both sides) and the sweep keys on the XRAS
                   # placeholder username; the event code is a lookup key.
@@ -690,6 +698,26 @@ class TestCriticalSchemas:
                AND REFERENCED_TABLE_NAME = 'mnemonic_code'
         """)).scalar()
         assert fk == 1, "expected the mnemonic_code FK"
+
+    def test_xras_request_note_schema(self, session):
+        """The recommender's note: keyed like the override, no foreign keys, MEDIUMTEXT findings."""
+        table_name = 'xras_request_note'
+        db_cols = get_db_columns(session, table_name)
+        expected = {'request_number', 'source', 'request_id', 'action_id', 'run_id',
+                    'generated_at', 'ruleset_version', 'decision', 'button', 'end_date',
+                    'values_json', 'admin_comment', 'rationale', 'pi_history',
+                    'findings_json', 'created_by', 'active', 'creation_time',
+                    'modified_time'}
+        assert set(db_cols) == expected, set(db_cols) ^ expected
+        db_pks = sorted(col for col, info in db_cols.items() if 'PRI' in info['key'])
+        assert db_pks == ['request_number', 'source'], f"PK mismatch: {db_pks}"
+        assert db_cols['findings_json']['type'] == 'mediumtext'
+        fks = session.execute(text("""
+            SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'xras_request_note'
+               AND REFERENCED_TABLE_NAME IS NOT NULL
+        """)).scalar()
+        assert fks == 0, 'every id on the note is XRAS-owned'
 
     def test_account_allocation_state_schema(self, session):
         """The allocation/usage read-model, created from its DDL script.

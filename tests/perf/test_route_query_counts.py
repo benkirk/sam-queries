@@ -668,3 +668,49 @@ def test_user_my_requests_new_route(auth_client, route_count_queries, visitor_ov
         f'New type stage: {stats.count} queries > {baseline} baseline '
         f'({visitor_overview} guide rows). {stats.summary()}')
 
+
+
+def _remediation_rows(n):
+    from datetime import datetime as _dt
+    from sam.queries.xras_requests import request_index_entry
+    today = _dt.now().strftime('%Y-%m-%dT00:00:00Z')
+    return [request_index_entry({
+        'requestId': 950000 + i, 'requestNumber': f'PERF{i:04d}', 'requestStatus': 'Approved',
+        'requestType': 'New', 'opportunityId': 5, 'opportunity_name': 'Small Allocation',
+        'submitDate': today,
+        'roles': [{'person': {'username': 'pi-user', 'firstName': 'P', 'lastName': 'Eye',
+                              'isReconciled': True},
+                   'roles': [{'roleId': 1, 'role': 'PI', 'roleTypeId': 13}]}],
+        'actions': [{'actionId': 960000 + i, 'actionType': 'Supplement',
+                     'actionStatus': 'Approved'}]}, pending_push=True) for i in range(n)]
+
+
+def test_xras_remediations_card_route(auth_client, route_count_queries, monkeypatch):
+    """The card's recommender markers: one note query for every row in view, flat in rows."""
+    from datetime import datetime as _dt
+    from sam.integration.xras_api import cache as xras_cache
+    monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
+    monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+    monkeypatch.setenv('XRAS_API_KEY', 'k')
+    baseline = get_baseline('xras_remediations_card_route')
+    counts = {}
+    try:
+        for n in (5, 25):
+            xras_cache._CACHE.reset_for_tests(disabled=False)
+            xras_cache.store_requests_index({
+                'generated_at': _dt.now(), 'statuses': ['Approved'], 'extra_statuses': {},
+                'rows': _remediation_rows(n)})
+            with route_count_queries() as stats:
+                response = auth_client.get('/allocations/xras_remediations',
+                                           query_string={'show_all': '1'})
+            assert response.status_code == 200
+            assert response.get_data(as_text=True).count('PERF0') >= n
+            assert len(stats.by_table.get('xras_request_note', [])) == 1, stats.by_table.keys()
+            counts[n] = stats
+    finally:
+        xras_cache._CACHE.reset_for_tests(disabled=False)
+    assert counts[25].count <= baseline, (
+        f'XRAS Remediations card: {counts[25].count} queries > {baseline} baseline. '
+        f'{counts[25].summary()}')
+    assert counts[25].count == counts[5].count, (
+        f'not flat in rows: {counts[5].count} at 5, {counts[25].count} at 25')
