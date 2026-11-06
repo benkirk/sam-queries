@@ -248,9 +248,10 @@
         data-confirm-label="{{ confirm_label }}" data-confirm-variant="{{ confirm_variant }}"{% endif %}><i class="fa-solid fa-{{ icon }}" aria-hidden="true"></i></button>
 {%- endmacro %}
 
-{#- A consequential verb, worded, in the dialog's footer (Withdraw, Renew, Delete, Merge). -#}
-{% macro footer_verb(label, url, write_enabled, post=False, tone='secondary', confirm=None, confirm_title='', confirm_label='', confirm_variant='danger', icon=None) -%}
-<button type="button" class="btn btn-{{ 'outline-' if tone != 'secondary' }}{{ tone }}"
+{#- A consequential verb, worded, in the dialog's footer (Withdraw, Renew, Delete, Merge);
+    `menu` renders it as an item of the footer's More menu. -#}
+{% macro footer_verb(label, url, write_enabled, post=False, tone='secondary', confirm=None, confirm_title='', confirm_label='', confirm_variant='danger', icon=None, menu=False) -%}
+<button type="button" class="{{ ('dropdown-item' ~ (' text-' ~ tone ~ '-emphasis' if tone != 'secondary' else '')) if menu else ('btn btn-' ~ ('outline-' if tone != 'secondary' else '') ~ tone) }}"
         {% if not write_enabled %}disabled title="{{ WHY_OFF }}"{% endif %}
         {{ 'hx-post' if post else 'hx-get' }}="{{ url }}" hx-target="#xrasModalBody" hx-swap="innerHTML"
         {%- if confirm %} hx-confirm="{{ confirm }}" data-confirm-title="{{ confirm_title }}"

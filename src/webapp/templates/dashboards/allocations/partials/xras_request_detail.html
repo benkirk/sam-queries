@@ -39,27 +39,22 @@
     {# The current handoff's date, as the card shows it; the request's own when it differs. #}
     {% if row and (row.activity_date or row.submit_date) %}<span>submitted {{ (row.activity_date or row.submit_date) | fmt_date }}</span>{% endif %}
     {% if row and row.activity_date and row.submit_date and row.activity_date != row.submit_date %}<span>created {{ row.submit_date | fmt_date }}</span>{% endif %}
-    {# That action: /requests/<id> in XRAS opens the original New instead. #}
-    {% set xras_href = xras_admin_url(action=latest_action.action_id) if latest_action else none %}
-    {% if xras_href %}
-    <a class="ms-auto" href="{{ xras_href }}" target="_blank" rel="noopener" title="Open action {{ latest_action.action_id }} in the XRAS admin app">Open in XRAS <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>
-    {% endif %}
 </p>
 
 {# What blocks the next push, said first: the verdict and its first reason; the full list is
    under the action. A missing date range is the one gap fixed from here. #}
-{% set band_action = headline_action or ((detail_actions | selectattr('is_latest') | first) if detail_actions else none) %}
-{% set bpf = band_action.preflight if band_action else none %}
+{% set focus_action = headline_action or ((detail_actions | selectattr('is_latest') | first) if detail_actions else none) %}
+{% set bpf = focus_action.preflight if focus_action else none %}
 {% if bpf %}
 {% set reasons = (bpf.messages or []) + ((bpf.gaps or []) | map('xras_gap') | list) %}
 <div class="xras-readiness-band">
     {{ verdict(bpf.status) }}
     {% if reasons %}<span>{{ reasons[0] }}{% if reasons | length > 1 %} <span class="text-muted">(+{{ reasons | length - 1 }} more below)</span>{% endif %}</span>
     {% elif bpf.status == 'rechecked' %}<span class="text-muted">SAM's ingest would accept it.</span>{% endif %}
-    {% if band_action.is_latest and 'no_allocation_dates' in (bpf.gaps or []) %}
+    {% if focus_action.is_latest and 'no_allocation_dates' in (bpf.gaps or []) %}
     <button type="button" class="btn btn-sm btn-outline-primary ms-auto"
             {% if not write_enabled %}disabled title="XRAS writes are switched off for this deployment (XRAS_WRITE_ENABLED)."{% endif %}
-            hx-get="{{ url_for('allocations_dashboard.xras_dates_form', request_number=request_number, action_id=band_action.action_id) }}"
+            hx-get="{{ url_for('allocations_dashboard.xras_dates_form', request_number=request_number, action_id=focus_action.action_id) }}"
             hx-target="#xrasModalBody" hx-swap="innerHTML"><i class="fa-solid fa-calendar-plus me-1" aria-hidden="true"></i>Add dates</button>
     {% endif %}
 </div>
@@ -299,8 +294,10 @@
 {% include 'dashboards/allocations/partials/_xras_remediation_actions.html' %}
 {% endif %}
 
-{# The dialog's verbs at the start, Delete last; Done alone at the end, apart from
-   the irreversible verb. A merge is a person-level act, offered once per placeholder. #}
+{# The focus action in XRAS admin, where approval happens: /requests/<id> opens the New instead. #}
+{% set xras_href = xras_admin_url(action=focus_action.action_id) if focus_action else none %}
+{# Routine verbs at the start; the XRAS-admin verbs in More, Delete last; Done alone
+   at the end. A merge is a person-level act, offered once per placeholder. #}
 {% set latest_action = (detail_actions | selectattr('is_latest') | first) if detail_actions else none %}
 {% set merges = [] %}
 {% for m in (row.roster if row else []) %}
@@ -326,18 +323,31 @@
                    url_for('allocations_dashboard.xras_merge_form', username=username),
                    write_enabled, icon='code-merge') }}
     {% endfor %}
+    {% if xras_href %}
+    <a class="btn btn-outline-primary" href="{{ xras_href }}" target="_blank" rel="noopener"
+       title="Open action {{ focus_action.action_id }} in the XRAS admin app"><i class="fa-solid fa-arrow-up-right-from-square me-1" aria-hidden="true"></i>Open in XRAS</a>
+    {% endif %}
     {% if is_xras_admin %}
-    {{ footer_verb('Add action…', url_for('allocations_dashboard.xras_add_action_form', request_number=request_number), write_enabled, icon='plus') }}
-    {{ footer_verb('Renew…', url_for('allocations_dashboard.xras_request_renew', request_number=request_number),
-                   write_enabled, post=True,
-                   confirm='Spawn a renewal of ' ~ request_number ~ ' in XRAS?', confirm_title='Renew request in XRAS',
-                   confirm_label='Renew', confirm_variant='warning', icon='repeat') }}
-    {# Deletes the whole project tree, so the confirm names the full scope. #}
-    {{ footer_verb('Delete project…', url_for('allocations_dashboard.xras_request_delete', request_number=request_number),
-                   write_enabled, post=True, tone='danger',
-                   confirm='DELETE the ENTIRE project ' ~ request_number ~ ' from XRAS: ' ~ (family.requests | length) ~ ' request(s) and ' ~ (family.timeline | length) ~ ' action(s). This is IRREVERSIBLE: the whole allocation history is removed.',
-                   confirm_title='Delete the whole project in XRAS', confirm_label='Delete permanently', icon='trash-can') }}
+    <div class="dropup">
+        <button type="button" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown"
+                aria-expanded="false" title="Add an action, renew, or delete in XRAS">More</button>
+        <ul class="dropdown-menu">
+            <li>{{ footer_verb('Add action…', url_for('allocations_dashboard.xras_add_action_form', request_number=request_number), write_enabled, icon='plus', menu=True) }}</li>
+            <li>{{ footer_verb('Renew…', url_for('allocations_dashboard.xras_request_renew', request_number=request_number),
+                               write_enabled, post=True,
+                               confirm='Spawn a renewal of ' ~ request_number ~ ' in XRAS?', confirm_title='Renew request in XRAS',
+                               confirm_label='Renew', confirm_variant='warning', icon='repeat', menu=True) }}</li>
+            <li><hr class="dropdown-divider"></li>
+            {# Deletes the whole project tree, so the confirm names the full scope. #}
+            <li>{{ footer_verb('Delete project…', url_for('allocations_dashboard.xras_request_delete', request_number=request_number),
+                               write_enabled, post=True, tone='danger',
+                               confirm='DELETE the ENTIRE project ' ~ request_number ~ ' from XRAS: ' ~ (family.requests | length) ~ ' request(s) and ' ~ (family.timeline | length) ~ ' action(s). This is IRREVERSIBLE: the whole allocation history is removed.',
+                               confirm_title='Delete the whole project in XRAS', confirm_label='Delete permanently', icon='trash-can', menu=True) }}</li>
+        </ul>
+    </div>
     {% endif %}
 </div>
-<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Done</button>
+<div class="xras-footer-end">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Done</button>
+</div>
 {% endcall %}

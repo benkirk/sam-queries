@@ -457,10 +457,15 @@
 }
 
 /* The dialog footer: its verbs at the start, Done at the end. */
-.xras-footer-start {
+.xras-footer-start,
+.xras-footer-end {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 0.5rem;
+}
+
+.xras-footer-start {
     margin-right: auto;
 }
 

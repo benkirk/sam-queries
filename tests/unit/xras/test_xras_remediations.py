@@ -1956,13 +1956,14 @@ class TestTheHeadlineActionAndXrasLinks:
         _reader(monkeypatch, payload=payload)
         return auth_client.get('/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
 
-    def test_the_header_opens_the_latest_action(self, auth_client, armed, monkeypatch):
+    def test_the_footer_opens_the_latest_action(self, auth_client, armed, monkeypatch):
         payload = _detail_payload()
         payload['actions'].append({'actionId': 9, 'actionType': 'Extension',
                                    'actionStatus': 'Submitted'})
         body = self._body(auth_client, monkeypatch, payload)
-        header = body[body.index('xras-request-meta'):body.index('xras-request-title')]
-        assert '/actions/9"' in header and 'Open in XRAS' in header
+        footer = body[body.index('id="xrasModalFooter"'):]
+        assert '/actions/9"' in footer and 'Open in XRAS' in footer
+        assert 'Open in XRAS' not in body[:body.index('id="xrasModalFooter"')]
         assert 'xras.example.invalid' not in body, 'publicURL is not a link into XRAS'
 
     def test_each_action_links_its_page_and_process_tab(self, auth_client, armed, monkeypatch):
@@ -1992,8 +1993,8 @@ class TestTheHeadlineActionAndXrasLinks:
                                {'actionId': 10, 'actionType': 'Supplement', 'actionStatus': 'Approved'}]
         body = self._body(auth_client, monkeypatch, payload)
         header = body[body.index('xras-request-meta'):body.index('xras-request-title')]
-        assert '>Submitted<' in header and '/actions/9"' in header
-        assert 'Newer Supplement 10: Approved' in header
+        assert '>Submitted<' in header and 'Newer Supplement 10: Approved' in header
+        assert '/actions/9" target="_blank"' in body[body.index('id="xrasModalFooter"'):]
 
     def test_the_headline_actions_section_opens_beside_the_latest(
             self, auth_client, armed, monkeypatch):
@@ -2290,7 +2291,8 @@ class TestPartCIsAdminOnly:
         body = auth_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'xras_request_delete/EXAM0001' in body
-        assert 'Delete project…' in body
+        menu = body.split('class="dropdown-menu"', 1)[1].split('</ul>', 1)[0]
+        assert 'Delete project…' in menu and 'Add action…' in menu and 'Renew…' in menu
 
     def test_the_danger_zone_is_hidden_from_a_manage_only_operator(
             self, manage_not_admin_client, armed, monkeypatch):
@@ -2299,6 +2301,7 @@ class TestPartCIsAdminOnly:
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'xras_request_delete' not in body
         assert 'Delete project…' not in body
+        assert 'dropdown-menu' not in body.split('id="xrasModalFooter"', 1)[1]
 
     def test_the_add_action_form_renders_the_type_picker(self, auth_client,
                                                         armed, monkeypatch):
