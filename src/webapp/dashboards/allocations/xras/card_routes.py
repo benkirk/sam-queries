@@ -41,7 +41,7 @@ from sam.queries.xras_accounts import (
 )
 
 from .. import bp
-from ..blueprint import _window_control_context
+from ..blueprint import window_control_context
 from ._shared import (
     _activity_in_window,
     scope_rows,
@@ -116,7 +116,7 @@ def xras():
         window=_parse_activity_window(request.args),
         window_pill_choices=_ACTIVITY_WINDOW_PILLS,
         form_id='xras-window-filters',
-        **_window_control_context(end_date, start_str, end_str),
+        **window_control_context(end_date, start_str, end_str),
         activity_facets=ACTIVITY_FACETS,
         account_facets=ACCOUNT_FACETS,
         remediation_facets=REMEDIATION_FACETS,

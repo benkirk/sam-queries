@@ -17,7 +17,7 @@ docstring for the three operator-visible bugs that key caused.
 **The one thing shared across the seam** is the ``projcode_result`` OR
 ``request_number`` join, imported from :mod:`~sam.queries.xras_actions` as
 :func:`~sam.queries.xras_actions.action_names_project` together with the
-``_LATEST_ACTION_ORDER`` tie-break. WARNING: Both must stay imported rather than re-spelled
+``LATEST_ACTION_ORDER`` tie-break. WARNING: Both must stay imported rather than re-spelled
 here — that duplication is precisely what let the pending card and the provenance
 stamp name different actions for one project.
 
@@ -35,7 +35,7 @@ from sam.integration.xras import XrasActionLog, XrasActivationEvent
 from sam.projects.projects import Project
 
 from .notifications import get_recent_notifications
-from .xras_actions import _LATEST_ACTION_ORDER, action_names_project
+from .xras_actions import LATEST_ACTION_ORDER, action_names_project
 
 __all__ = [
     'ACTIVITY_TAGS',
@@ -242,7 +242,7 @@ def get_xras_activity(
     if until is not None:
         query = query.filter(XrasActionLog.received_time <= until)
 
-    window = query.order_by(*_LATEST_ACTION_ORDER).all()
+    window = query.order_by(*LATEST_ACTION_ORDER).all()
     if not window:
         return []
 
@@ -257,7 +257,7 @@ def get_xras_activity(
         session.query(XrasActionLog, Project)
         .join(Project, action_names_project(Project.projcode))
         .filter(Project.projcode.in_(projcodes))
-        .order_by(*_LATEST_ACTION_ORDER)
+        .order_by(*LATEST_ACTION_ORDER)
         .all()
     ):
         latest_action_id.setdefault(project.projcode, action.xras_action_log_id)
@@ -435,7 +435,7 @@ def get_latest_xras_action_id(
 
     Provenance for ``xras_activation_event.xras_action_log_id``. Lives here rather
     than in a route because it shares :func:`action_names_project` and
-    :data:`_LATEST_ACTION_ORDER` with :func:`get_xras_activity` — the table
+    :data:`LATEST_ACTION_ORDER` with :func:`get_xras_activity` — the table
     that says *why* a project is pending and the stamp recording what the operator
     did about it must never name different actions.
     """
@@ -446,7 +446,7 @@ def get_latest_xras_action_id(
     row = (
         session.query(XrasActionLog)
         .filter(action_names_project(project.projcode))
-        .order_by(*_LATEST_ACTION_ORDER)
+        .order_by(*LATEST_ACTION_ORDER)
         .first()
     )
     return row.xras_action_log_id if row else None

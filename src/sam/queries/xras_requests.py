@@ -280,7 +280,7 @@ def waiting_note(band: Optional[str]) -> str:
     return f': waiting over {past} days' if past else ''
 
 
-def _preflight_rollup(preflights: Optional[Mapping[Any, dict]]) -> Optional[str]:
+def preflight_rollup(preflights: Optional[Mapping[Any, dict]]) -> Optional[str]:
     """The worst verdict across a request's actions, preferring the PENDING ones.
 
     The badge answers "what would the NEXT push do", so an old applied action
@@ -609,7 +609,7 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
         'gist': request_gist(payload, balances=balances),
         # Worst pending verdict, precomputed for the card's roll-up badge:
         # would fail > would park (manual) > incomplete > would land.
-        'preflight_rollup': _preflight_rollup(preflights),
+        'preflight_rollup': preflight_rollup(preflights),
         # The conjunction the merge fixup keys on, precomputed so the template
         # does not have to express it — see the roster comment.
         'has_stuck_placeholder': any(r['placeholder'] and r['is_reconciled']
