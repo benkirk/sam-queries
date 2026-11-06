@@ -426,6 +426,52 @@ class TestActionsColumnAndFacet:
         assert 'Supplement' not in body       # neither the cell nor the facet
 
 
+class TestWaitingFacet:
+    """The Waiting chips band the handoff's age; the Age cell tints past 30 and 90 days."""
+
+    def test_the_bands_cut_at_7_30_and_90_days(self):
+        from datetime import date, timedelta
+        from sam.queries.xras_requests import waiting_band
+        today = date(2026, 11, 5)
+        ago = lambda n: today - timedelta(days=n)
+        assert [waiting_band(ago(n), today) for n in (6, 7, 29, 30, 89, 90)] == [
+            'week', 'month', 'month', 'quarter', 'quarter', 'older']
+        assert waiting_band(datetime(2026, 11, 1, 9), today) == 'week'
+        assert waiting_band(None, today) is None
+
+    def _publish_ages(self):
+        from datetime import timedelta
+        stamp = lambda n: (datetime.now() - timedelta(days=n)).strftime('%Y-%m-%dT00:00:00Z')
+        _publish(_payload('EXAM0001', submit_date=stamp(2)),
+                 _payload('EXAM0002', submit_date=stamp(100)))
+
+    def test_the_strip_counts_each_band(self, auth_client, configured):
+        self._publish_ages()
+        body = auth_client.get(FRAGMENT, query_string={
+            'show_all': '1', 'start_date': '2000-01-01'}).get_data(as_text=True)
+        assert 'Filter by Waiting Under a week' in body
+        assert 'Filter by Waiting Over 3 months' in body
+        assert 'Filter by Waiting 1–4 weeks' not in body      # hide_zero
+
+    def test_a_chip_narrows_the_rows_and_the_batch_recheck(self, auth_client, configured,
+                                                           monkeypatch):
+        self._publish_ages()
+        body = auth_client.get(FRAGMENT, query_string={
+            'show_all': '1', 'start_date': '2000-01-01', 'waiting': 'older'}).get_data(as_text=True)
+        assert 'EXAM0002' in body and 'EXAM0001' not in body
+        _reader(monkeypatch, payload=_detail_payload('EXAM0002'))
+        resp = auth_client.post('/allocations/xras_recheck_visible', data={
+            'show_all': '1', 'start_date': '2000-01-01', 'waiting': 'older'})
+        assert 'Checked 1 request' in resp.get_data(as_text=True)
+
+    def test_a_stale_age_is_tinted(self, auth_client, configured):
+        self._publish_ages()
+        body = auth_client.get(FRAGMENT, query_string={
+            'show_all': '1', 'start_date': '2000-01-01'}).get_data(as_text=True)
+        assert 'waiting over 90 days' in body
+        assert 'text-danger-emphasis fw-semibold' in body
+
+
 class TestTheDocumentProxy:
     """A document, fetched as the line's PI and served from our origin; nothing stored."""
 

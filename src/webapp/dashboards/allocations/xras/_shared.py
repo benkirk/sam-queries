@@ -427,6 +427,10 @@ REMEDIATION_FACETS = FacetSet(
     # The in-flight action's status; a snapshot swept before it existed falls back to the request's.
     Facet('status', key=lambda r: r.get('latest_action_status') or r.get('status')),
     Facet('action_type', key='latest_action_type'),
+    # The handoff's age, banded by sam.queries.xras_requests.waiting_band.
+    Facet('waiting', order=('week', 'month', 'quarter', 'older'), hide_zero=True,
+          labels={'week': 'Under a week', 'month': '1–4 weeks',
+                  'quarter': '1–3 months', 'older': 'Over 3 months'}),
     Facet('opportunity', key='opportunity_name'),
     Facet('push', key=lambda r: 'pending' if r.get('pending_push') else 'pushed',
           order=('pending', 'pushed'),
