@@ -223,11 +223,12 @@ class XrasCommand(BaseCommand):
                     'XRAS_OUTGOING_ENABLED=1 and XRAS_API_KEY.[/red]')
                 return EXIT_ERROR
 
-        pending, checked = self._pending_worklist()
+        feed = self._pending_worklist()
         payload = builders.build_account_worklist(
             self.session, since=filters.get('start_date'),
             until=filters.get('end_date'), enrich=enrich,
-            pending_rows=pending, pending_checked=checked, index=self._index())
+            pending_rows=feed.rows if feed.checked else None, pending_checked=feed.checked,
+            index=self._index())
         return self.emit(payload, display.display_account_worklist)
 
     def _readiness(self) -> int:
@@ -267,10 +268,10 @@ class XrasCommand(BaseCommand):
         """
         from sam.integration.xras_api import xras_api_configured
 
-        pending, _checked = self._pending_worklist()
+        feed = self._pending_worklist()
         payload = builders.build_identity_report(
-            self.session, pending_rows=pending, enrich=xras_api_configured(),
-            index=self._index())
+            self.session, pending_rows=feed.rows if feed.checked else None,
+            enrich=xras_api_configured(), index=self._index(), since=feed.window_start)
         return self.emit(payload, display.display_identity_report)
 
     def _index(self):
@@ -291,10 +292,10 @@ class XrasCommand(BaseCommand):
         real queue and the CLI reported zero. Both now read one helper,
         :func:`~sam.queries.xras_accounts.load_pending_worklist_rows`.
 
-        Returns ``(rows_or_None, checked)`` for the builder — an empty Feed B
-        and an unreadable one are different facts, and only the second means the
-        printed count is a subset — and prints the CLI's own stderr note when
-        that count is partial. ``unconfigured`` is silent, as before.
+        Returns the ``PendingFeed`` — an empty Feed B and an unreadable one are
+        different facts, and only the second means the printed count is a subset —
+        and prints the CLI's own stderr note when that count is partial.
+        ``unconfigured`` is silent, as before.
         """
         from sam.queries.xras_accounts import load_pending_worklist_rows
 
@@ -307,7 +308,7 @@ class XrasCommand(BaseCommand):
             self.ctx.stderr_console.print(
                 '[yellow]No sweep has published a pending worklist yet; '
                 'reporting posted actions only.[/yellow]')
-        return (feed.rows if feed.checked else None), feed.checked
+        return feed
 
     def _person(self, username) -> int:
         """Probe one username through ``GET /v1/people``.

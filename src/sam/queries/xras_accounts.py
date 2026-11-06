@@ -30,7 +30,7 @@ import secrets
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from functools import cached_property
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import (Any, Callable, Dict, Iterable, Iterator, List, Mapping,
                     Optional, Sequence, Tuple)
 
@@ -920,6 +920,15 @@ class PendingFeed:
     #: ``unconfigured`` / ``no_snapshot`` / ``unreadable`` / ``None`` (read OK).
     reason: Optional[str] = None
     snapshot: Optional[Dict[str, Any]] = None
+
+    @property
+    def window_start(self) -> Optional[datetime]:
+        """Where the sweep's lookback began (its build stamp less its window), or None."""
+        snapshot = self.snapshot or {}
+        built, days = snapshot.get('generated_at'), snapshot.get('window_days')
+        if not isinstance(built, datetime) or not days:
+            return None
+        return built - timedelta(days=int(days))
 
 
 def load_pending_worklist_rows() -> PendingFeed:

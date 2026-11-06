@@ -225,12 +225,14 @@ def _stamped_worklist(session, *, since=None, until=None, enrich=False,
 
 
 def build_identity_report(session, *, pending_rows=None, enrich=False,
-                          max_lookups=100, generated_at=None, index=None) -> dict:
-    """The ``xras_identity_report`` envelope — placeholders to merge, ranked by unblock impact."""
+                          max_lookups=100, generated_at=None, index=None,
+                          since=None) -> dict:
+    """The ``xras_identity_report`` envelope — placeholders to merge, ranked by unblock
+    impact; *since* is the sweep's window start, so no older push puts a placeholder here."""
     from sam.queries.xras_identity_report import identity_merge_report
 
     rows = _stamped_worklist(session, enrich=enrich, max_lookups=max_lookups,
-                             pending_rows=pending_rows, index=index).rows
+                             pending_rows=pending_rows, index=index, since=since).rows
     return identity_merge_report(rows, generated_at=generated_at)
 
 

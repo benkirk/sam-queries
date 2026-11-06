@@ -345,6 +345,22 @@ def _drop(rows, index, generated_at=INDEX_BUILT):
     return drop_stale_pushes(rows, RequestIndex(rows=index, generated_at=generated_at, checked=True))
 
 
+class TestTheSweepWindowOnTheFeed:
+    """The strip and the CLI identity report bound Feed A where the sweep did."""
+
+    def test_window_start_is_the_build_stamp_less_the_window(self):
+        built = datetime(2026, 11, 5, 4)
+        feed = PendingFeed(checked=True, snapshot={'generated_at': built, 'window_days': 90})
+        assert feed.window_start == datetime(2026, 8, 7, 4)
+
+    def test_no_snapshot_or_no_window_decides_nothing(self):
+        assert PendingFeed(reason='no_snapshot').window_start is None
+        assert PendingFeed(checked=True, snapshot={'generated_at': datetime(2026, 11, 5),
+                                                   'window_days': 0}).window_start is None
+        assert PendingFeed(checked=True, snapshot={'generated_at': '2026-11-05',
+                                                   'window_days': 90}).window_start is None
+
+
 class TestStalePushes:
     """A placeholder only an old push names, and no current roster does, is history
     (NCAR4434, 2026-11-05: edited off the roster inside XRAS, never re-posted)."""

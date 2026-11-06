@@ -585,8 +585,9 @@ def _identity_summary(rows_in_view) -> dict:
     """Placeholders SAM can merge now, ranked over the requests in view.
 
     Zero network: Feed B and the inline persons Feed A carries (`max_lookups=0`),
-    no dispatch preflight (`validate=False`). The CLI's `--identity-report`
-    enriches; the strip points at it for the full list.
+    no dispatch preflight (`validate=False`), pushes from the sweep's window only
+    (the task's rule). The CLI's `--identity-report` enriches; the strip points at
+    it for the full list.
     """
     from sam.queries.xras_accounts import (assemble_worklist, load_pending_worklist_rows,
                                            load_request_index)
@@ -595,7 +596,7 @@ def _identity_summary(rows_in_view) -> dict:
     feed = load_pending_worklist_rows()
     worklist = assemble_worklist(db.session, validate=False, max_lookups=0,
                                  pending_rows=feed.rows if feed.checked else None,
-                                 index=load_request_index()).rows
+                                 since=feed.window_start, index=load_request_index()).rows
     return identity_merge_report(
         worklist, in_view={r.get('request_number') for r in rows_in_view},
         generated_at=(feed.snapshot or {}).get('generated_at'))

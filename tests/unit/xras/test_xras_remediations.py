@@ -19,7 +19,7 @@ from __future__ import annotations
 import pathlib
 import re
 from _paths import REPO_ROOT
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -2819,6 +2819,18 @@ class TestIdentityUnblockStrip:
                                    'source': 'reports', 'would_succeed': None,
                                    'preflight_status': None,
                                    'reject_messages': []}]}]})
+
+    def test_the_strip_reads_pushes_from_the_sweeps_window(self, auth_client, armed,
+                                                           monkeypatch):
+        """Like the task and the sweep: Feed A is bounded where the sweep's lookback began."""
+        from types import SimpleNamespace
+        self._publish()
+        seen = {}
+        monkeypatch.setattr('sam.queries.xras_accounts.assemble_worklist',
+                            lambda *a, **k: seen.update(k) or SimpleNamespace(rows=[]))
+        assert auth_client.get(FRAGMENT).status_code == 200
+        built = xras_cache.load_pending_worklist()['generated_at']
+        assert seen['since'] == built - timedelta(days=120)
 
     def test_a_ready_placeholder_opens_the_merge_modal(self, auth_client, armed,
                                                        monkeypatch):
