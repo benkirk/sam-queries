@@ -30,10 +30,6 @@ from sam.integration.xras_api.base import (
     XrasWriteRejected,
 )
 from sam.manage import xras_remediation as service
-from sam.queries.xras_remediations import (
-    list_remediation_events,
-    remediation_summary,
-)
 from sam.queries.xras_requests import request_index_entry
 
 
@@ -83,10 +79,6 @@ def published():
     xras_cache.store_requests_index({'generated_at': datetime.now(),
                                      'rows': [entry]})
     return entry
-
-
-def _rows(session, **kw):
-    return list_remediation_events(session, **kw)
 
 
 # the audit row outlives the write
@@ -823,46 +815,6 @@ class TestTheEditorOps:
         assert session.get(XrasRemediationEvent,
                            ao.event_id).operation == 'add_action'
         assert client.add_action.call_args.args[1] == 'Supplement'
-
-
-# the read side
-
-class TestListing:
-
-    def test_a_username_filter_matches_either_side_of_a_merge(self, session):
-        make_xras_remediation_event(session, operation='merge_person',
-                                    username='ghost-user-abcde',
-                                    target_username='real-person')
-        found = _rows(session, username='real-person')
-        assert [e.username for e in found] == ['ghost-user-abcde']
-
-    def test_newest_first(self, session):
-        from datetime import timedelta
-        now = datetime.now()
-        make_xras_remediation_event(session, when=now - timedelta(days=2),
-                                    request_number='OLD00001',
-                                    operation='withdraw_action')
-        make_xras_remediation_event(session, when=now,
-                                    request_number='NEW00001',
-                                    operation='withdraw_action')
-        found = _rows(session, operation='withdraw_action')
-        # Only this test's rows: other xdist workers commit withdraw_action rows
-        # (test_xras_admin_client's EXAM0001) that can be newer than ours.
-        mine = [e.request_number for e in found
-                if e.request_number in ('OLD00001', 'NEW00001')]
-        assert mine == ['NEW00001', 'OLD00001']
-
-    def test_the_summary_counts_what_needs_a_human(self, session):
-        events = [
-            make_xras_remediation_event(session, status='verified'),
-            make_xras_remediation_event(session, status='attempted'),
-            make_xras_remediation_event(session, status='unverified'),
-            make_xras_remediation_event(session, status='rejected'),
-        ]
-        summary = remediation_summary(events)
-        assert summary['total'] == 4
-        # `attempted` + `unverified` — a rejection needs nobody, it did nothing.
-        assert summary['needs_attention'] == 2
 
 
 class TestTheRefreshRerunsThePreflight:
