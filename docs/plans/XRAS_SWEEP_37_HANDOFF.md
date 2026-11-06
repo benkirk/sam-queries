@@ -1,7 +1,8 @@
 # Handoff: sweep 37, the XRAS surfaces read as one design
 
-**Status:** handoff note, 2026-11-05, untracked. Not started. Starts after PR #920 merges
-to `staging`. One session, **two PRs**, both against `staging`.
+**Status:** 2026-11-05: PR 1 (#922) merged to `staging` as `8ea42a3f`; PR 2 is `xras-sweep-37`
+(ledger entry 37 holds the picks, the dropped items and the metrics row). One session, **two
+PRs**, both against `staging`.
 
 ## The lens
 
