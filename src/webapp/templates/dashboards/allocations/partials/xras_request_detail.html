@@ -1,4 +1,4 @@
-{% from 'dashboards/fragments/xras_bits.html' import alarm, amount_editor, dialog_footer, figure, dialog_title, footer_verb, section_label, tag, type_label, verdict, write_button, status_note, xras_admin_links %}
+{% from 'dashboards/fragments/xras_bits.html' import alarm, amount_editor, dialog_footer, figure, dialog_title, footer_verb, section_label, tag, type_label, verdict, waiting, write_button, status_note, xras_admin_links %}
 {#
   One XRAS request (and its family), rendered into #xrasModalBody.
   Context: request_number, payload (GET /v1/reports/request_numbers/<n>, self-
@@ -37,7 +37,8 @@
     </span>
     {% endif %}
     {# The current handoff's date, as the card shows it; the request's own when it differs. #}
-    {% if row and (row.activity_date or row.submit_date) %}<span>submitted {{ (row.activity_date or row.submit_date) | fmt_date }}</span>{% endif %}
+    {% if row and (row.activity_date or row.submit_date) %}<span>submitted {{ (row.activity_date or row.submit_date) | fmt_date }}</span>
+    <span>waiting {{ waiting(row.activity_date or row.submit_date) }}</span>{% endif %}
     {% if row and row.activity_date and row.submit_date and row.activity_date != row.submit_date %}<span>created {{ row.submit_date | fmt_date }}</span>{% endif %}
 </p>
 

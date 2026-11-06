@@ -509,6 +509,16 @@ class TestWaitingFacet:
             'show_all': '1', 'start_date': '2000-01-01', 'waiting': 'older'})
         assert 'Checked 1 request' in resp.get_data(as_text=True)
 
+    def test_the_dialog_says_how_long_it_has_waited(self, auth_client, configured,
+                                                     monkeypatch):
+        payload = _detail_payload('EXAM0001')
+        payload['submitDate'] = '2015-01-01T00:00:00Z'
+        _publish(payload)
+        _reader(monkeypatch, payload=payload)
+        body = auth_client.get('/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        meta = body[body.index('xras-request-meta'):body.index('xras-request-title')]
+        assert 'waiting <span class="text-danger-emphasis' in meta
+
     def test_a_stale_age_is_tinted(self, auth_client, configured):
         self._publish_ages()
         body = auth_client.get(FRAGMENT, query_string={
