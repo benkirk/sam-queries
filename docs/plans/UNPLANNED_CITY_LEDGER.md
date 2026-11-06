@@ -2468,8 +2468,10 @@ request index already contradicted.
 **Done** (one commit each, on `xras-sweep-37`):
 
 - [x] 1, **behavior**: `close_stale_placeholders` also dismisses a fulfilled placeholder row whose
-  placeholder XRAS still holds but no indexed roster names (`off_roster`); six prod rows were
-  "kept" forever at one XRAS read and one cap slot each per run. The read stays the guard.
+  placeholder XRAS still holds but no roster names (`off_roster`); six prod rows were "kept"
+  forever at one XRAS read and one cap slot each per run. The index names the pending cohort
+  only, so the person's own roles report decides, read only for a row the index would dismiss
+  (review F1); an empty index decides nothing (F2).
 - [x] 2, consolidate: `RequestIndex` beside `PendingFeed`, one `load_request_index()` for the four
   readers that unpacked `rows` + `generated_at` with four guard styles; `assemble_worklist(index=)`.
 - [x] 3, lift: `rosters_by_number` is the one roster walk (`drop_stale_pushes` and

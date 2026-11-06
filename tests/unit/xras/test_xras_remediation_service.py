@@ -1320,12 +1320,51 @@ class TestTheStaleClose:
             {'request_number': 'NCAR4434', 'roster': [{'username': rows['kept'][1].upper()}]}]})
         client = MagicMock()
         client.get_person.side_effect = lambda name: {'u': name}
+        client.reader.get_person_roles.return_value = {'panels': [], 'requestRoles': [
+            {'roleName': 'User', 'requests': []}]}
         out = service.close_stale_placeholders(factory, operator='task:t', cap=500, client=client)
         assert out['off_roster'] == 1 and out['closed'] == 1 and out['kept'] == 1
+        # The roles report is read only for the row the index would dismiss.
+        client.reader.get_person_roles.assert_called_once_with(rows['gone'][1])
         with Session(engine) as s:
             gone, kept = s.get(AccountRequest, rows['gone'][0]), s.get(AccountRequest, rows['kept'][0])
-            assert gone.state == 'dismissed' and 'no current roster' in gone.closed_reason
+            assert gone.state == 'dismissed' and 'no request roster' in gone.closed_reason
             assert kept.state == 'submitted'
+
+    def test_a_placeholder_on_a_posted_requests_roster_is_kept(self, factory, engine, rows,
+                                                              monkeypatch):
+        """The index holds the pending cohort only: a posted request leaves it, and its roster
+        can still carry a never-merged placeholder. The person's own roles report decides."""
+        from sqlalchemy.orm import Session
+
+        from sam.core.account_requests import AccountRequest
+        from sam.queries import account_requests as queries
+        mine, real = {rows['gone'][0], rows['kept'][0]}, queries.stale_placeholder_requests
+        monkeypatch.setattr(queries, 'stale_placeholder_requests', lambda session, exclude=(): [
+            r for r in real(session, exclude=exclude) if r.account_request_id in mine])
+        xras_cache.store_requests_index({'generated_at': datetime.now(), 'rows': [
+            {'request_number': 'NCAR4434', 'roster': [{'username': 'somebody-else'}]}]})
+        client = MagicMock()
+        client.get_person.side_effect = lambda name: {'u': name}
+        client.reader.get_person_roles.return_value = {'panels': [], 'requestRoles': [
+            {'roleName': 'User', 'requests': [{'requestNumber': 'UCIR0072'}]}]}
+        out = service.close_stale_placeholders(factory, operator='task:t', cap=500, client=client)
+        assert out['off_roster'] == 0 and out['closed'] == 0 and out['kept'] == 2
+        with Session(engine) as s:
+            assert s.get(AccountRequest, rows['gone'][0]).state == 'submitted'
+
+    def test_an_empty_index_reads_no_roles_and_keeps(self, factory, rows, monkeypatch):
+        """A genuinely empty index (the sweep publishes one) names nobody: nothing to decide."""
+        from sam.queries import account_requests as queries
+        mine, real = {rows['gone'][0], rows['kept'][0]}, queries.stale_placeholder_requests
+        monkeypatch.setattr(queries, 'stale_placeholder_requests', lambda session, exclude=(): [
+            r for r in real(session, exclude=exclude) if r.account_request_id in mine])
+        xras_cache.store_requests_index({'generated_at': datetime.now(), 'rows': []})
+        client = MagicMock()
+        client.get_person.side_effect = lambda name: {'u': name}
+        out = service.close_stale_placeholders(factory, operator='task:t', cap=500, client=client)
+        assert out['off_roster'] == 0 and out['kept'] == 2
+        client.reader.get_person_roles.assert_not_called()
 
     def test_without_an_index_a_held_placeholder_is_kept(self, factory, engine, rows):
         """No snapshot decides nothing: the pre-index rule, XRAS holds it, it stays."""

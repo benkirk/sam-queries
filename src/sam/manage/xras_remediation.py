@@ -576,8 +576,8 @@ def merge_ready_placeholders(session_factory, *, operator: str, cap: int,
 def close_stale_placeholders(session_factory, *, operator: str, cap: int,
                              client=None, since=None) -> Dict[str, Any]:
     """Dismiss each fulfilled placeholder request no pending push names whose placeholder
-    XRAS no longer holds (merged or removed there by hand) or holds on no current roster
-    (edited off by hand, never merged: ``off_roster``); *cap* XRAS reads a run."""
+    XRAS no longer holds (merged or removed there by hand) or holds on no request roster
+    (edited off by hand, never merged: ``off_roster``); *cap* XRAS person reads a run."""
     from sam.integration.xras_api.base import XrasSourceUnavailable
     from sam.queries.account_requests import stale_placeholder_requests
     from sam.queries.xras_accounts import load_request_index
@@ -589,24 +589,27 @@ def close_stale_placeholders(session_factory, *, operator: str, cap: int,
                for r in stale_placeholder_requests(session, exclude=ready)][:cap]
     if not ids:
         return out
-    # A placeholder XRAS keeps but no indexed roster names was edited off by hand: left
-    # "kept", it costs one read and one cap slot every run (six rows, 2026-11-05). The
-    # XRAS read stays the guard; the row records no request number to check instead.
-    named = set().union(*index.rosters.values()) if index.checked else None
+    # A placeholder XRAS keeps but no roster names was edited off by hand: left "kept", it
+    # costs one read and one cap slot every run (six rows, 2026-11-05). The index names the
+    # pending cohort only (a posted request leaves it), so the person's own roles report
+    # decides, read only for a row the index would dismiss.
+    named = set().union(*index.rosters.values()) if index.checked and index.rosters else None
     admin = admin_client(client)
     gone = []
     for request_id, username in ids:
         try:
             person = admin.get_person(username)
+            rostered = (person is None or named is None or username.casefold() in named
+                        or _holds_a_request_role(admin.reader.get_person_roles(username)))
         except XrasSourceUnavailable:
             break
         out['checked'] += 1
         if person is None:
             gone.append((request_id, f'XRAS no longer holds placeholder {username}: '
                                      'merged or removed in XRAS'))
-        elif named is not None and username.casefold() not in named:
+        elif not rostered:
             out['off_roster'] += 1
-            gone.append((request_id, f'XRAS holds placeholder {username} on no current '
+            gone.append((request_id, f'XRAS holds placeholder {username} on no request '
                                      'roster: edited off by hand; the account exists in SAM'))
         else:
             out['kept'] += 1
@@ -620,6 +623,14 @@ def close_stale_placeholders(session_factory, *, operator: str, cap: int,
                     out['closed'] += 1
             session.commit()
     return out
+
+
+def _holds_a_request_role(roles: Optional[Dict[str, Any]]) -> bool:
+    """Does a ``reports/username`` payload list any request? An unreadable one (None) counts as yes."""
+    if roles is None:
+        return True
+    return any(isinstance(g, dict) and g.get('requests')
+               for g in roles.get('requestRoles') or ())
 
 
 def _patch_requests_naming(username: str, *, session_factory=None) -> bool:
