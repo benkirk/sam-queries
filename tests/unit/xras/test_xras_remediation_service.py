@@ -1243,7 +1243,7 @@ class TestTheReadyMerge:
                                          since=since)
         service.close_stale_placeholders(factory, operator='task:t', cap=5, client=client,
                                          since=since)
-        assert seen == [{'since': since}, {'since': since}]
+        assert [k['since'] for k in seen] == [since, since]
 
     def test_a_placeholder_a_task_already_tried_is_never_retried(self, factory, ready, merged,
                                                                monkeypatch):
@@ -1348,6 +1348,36 @@ class TestTheStaleClose:
         client = MagicMock()
         client.get_person.side_effect = XrasSourceUnavailable('down')
         out = service.close_stale_placeholders(factory, operator='task:t', cap=500, client=client)
-        assert out == {'checked': 0, 'closed': 0, 'kept': 0}
+        assert out == {'checked': 0, 'closed': 0, 'off_roster': 0, 'kept': 0}
         with Session(engine) as s:
             assert s.get(AccountRequest, rows['gone'][0]).state == 'submitted'
+
+    def test_a_placeholder_on_no_current_roster_is_dismissed_too(self, factory, engine, rows,
+                                                                 monkeypatch):
+        """XRAS still holds both; the index names only `kept`. The other was edited off by
+        hand and never merged, so it would be "kept" (one read, one cap slot) every run."""
+        from sqlalchemy.orm import Session
+
+        from sam.core.account_requests import AccountRequest
+        from sam.queries import account_requests as queries
+        # Only this test's rows: another worker's placeholders are on no roster here either.
+        mine, real = {rows['gone'][0], rows['kept'][0]}, queries.stale_placeholder_requests
+        monkeypatch.setattr(queries, 'stale_placeholder_requests', lambda session, exclude=(): [
+            r for r in real(session, exclude=exclude) if r.account_request_id in mine])
+        xras_cache.store_requests_index({'generated_at': datetime.now(), 'rows': [
+            {'request_number': 'NCAR4434', 'roster': [{'username': rows['kept'][1].upper()}]}]})
+        client = MagicMock()
+        client.get_person.side_effect = lambda name: {'u': name}
+        out = service.close_stale_placeholders(factory, operator='task:t', cap=500, client=client)
+        assert out['off_roster'] == 1 and out['closed'] == 1 and out['kept'] == 1
+        with Session(engine) as s:
+            gone, kept = s.get(AccountRequest, rows['gone'][0]), s.get(AccountRequest, rows['kept'][0])
+            assert gone.state == 'dismissed' and 'no current roster' in gone.closed_reason
+            assert kept.state == 'submitted'
+
+    def test_without_an_index_a_held_placeholder_is_kept(self, factory, engine, rows):
+        """No snapshot decides nothing: the pre-index rule, XRAS holds it, it stays."""
+        client = MagicMock()
+        client.get_person.side_effect = lambda name: {'u': name}
+        out = service.close_stale_placeholders(factory, operator='task:t', cap=500, client=client)
+        assert out['off_roster'] == 0 and out['closed'] == 0 and out['kept'] >= 2

@@ -494,12 +494,13 @@ def merge_fulfilled_visitors(session_factory, *, operator: str,
     return out
 
 
-def ready_to_merge(session, *, since=None) -> List[Dict[str, Any]]:
+def ready_to_merge(session, *, since=None, index=None) -> List[Dict[str, Any]]:
     """The Accounts card's "Ready to merge" set, from the swept worklist; no XRAS read.
 
     A placeholder on an approved request (posted or not) whose email one active SAM user holds,
-    checked against the request index's current rosters; *since* bounds the pushes read
-    (the task passes the sweep's window), so no refused push of any age can put one here.
+    checked against the request *index*'s current rosters (loaded here when not given); *since*
+    bounds the pushes read (the task passes the sweep's window), so no refused push of any age
+    can put one here.
     """
     from sam.queries.xras_accounts import (assemble_worklist, load_pending_worklist_rows,
                                            load_request_index)
@@ -508,7 +509,8 @@ def ready_to_merge(session, *, since=None) -> List[Dict[str, Any]]:
     if not feed.checked:
         return []
     worklist = assemble_worklist(session, validate=False, max_lookups=0, since=since,
-                                 pending_rows=feed.rows, index=load_request_index()).rows
+                                 pending_rows=feed.rows,
+                                 index=index if index is not None else load_request_index()).rows
     return [t for t in identity_merge_report(worklist)['targets']
             if t.get('username') and t.get('target_username') and t.get('target_active')]
 
@@ -574,16 +576,23 @@ def merge_ready_placeholders(session_factory, *, operator: str, cap: int,
 def close_stale_placeholders(session_factory, *, operator: str, cap: int,
                              client=None, since=None) -> Dict[str, Any]:
     """Dismiss each fulfilled placeholder request no pending push names whose placeholder
-    XRAS no longer holds (merged or removed there by hand); *cap* XRAS reads a run."""
+    XRAS no longer holds (merged or removed there by hand) or holds on no current roster
+    (edited off by hand, never merged: ``off_roster``); *cap* XRAS reads a run."""
     from sam.integration.xras_api.base import XrasSourceUnavailable
     from sam.queries.account_requests import stale_placeholder_requests
-    out = {'checked': 0, 'closed': 0, 'kept': 0}
+    from sam.queries.xras_accounts import load_request_index
+    out = {'checked': 0, 'closed': 0, 'off_roster': 0, 'kept': 0}
+    index = load_request_index()
     with session_factory() as session:
-        ready = [t['username'] for t in ready_to_merge(session, since=since)]
+        ready = [t['username'] for t in ready_to_merge(session, since=since, index=index)]
         ids = [(r.account_request_id, r.xras_username)
                for r in stale_placeholder_requests(session, exclude=ready)][:cap]
     if not ids:
         return out
+    # A placeholder XRAS keeps but no indexed roster names was edited off by hand: left
+    # "kept", it costs one read and one cap slot every run (six rows, 2026-11-05). The
+    # XRAS read stays the guard; the row records no request number to check instead.
+    named = set().union(*index.rosters.values()) if index.checked else None
     admin = admin_client(client)
     gone = []
     for request_id, username in ids:
@@ -593,17 +602,21 @@ def close_stale_placeholders(session_factory, *, operator: str, cap: int,
             break
         out['checked'] += 1
         if person is None:
-            gone.append((request_id, username))
+            gone.append((request_id, f'XRAS no longer holds placeholder {username}: '
+                                     'merged or removed in XRAS'))
+        elif named is not None and username.casefold() not in named:
+            out['off_roster'] += 1
+            gone.append((request_id, f'XRAS holds placeholder {username} on no current '
+                                     'roster: edited off by hand; the account exists in SAM'))
         else:
             out['kept'] += 1
     if gone:
         from sam.core.account_requests import OPEN_STATES, AccountRequest
         with session_factory() as session:
-            for request_id, username in gone:
+            for request_id, reason in gone:
                 row = session.get(AccountRequest, request_id)
                 if row is not None and row.state in OPEN_STATES:
-                    row.dismiss(operator, f'XRAS no longer holds placeholder {username}: '
-                                          'merged or removed in XRAS')
+                    row.dismiss(operator, reason)
                     out['closed'] += 1
             session.commit()
     return out
