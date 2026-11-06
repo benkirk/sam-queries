@@ -1212,14 +1212,18 @@ class TestTheReadyMerge:
     def test_gone_is_recorded_once_and_never_asked_about_again(self, factory, merged,
                                                                monkeypatch):
         """NCAR4434, 2026-11-05: XRAS had no such person, and the task asked every 15 minutes."""
-        monkeypatch.setattr(service, 'ready_to_merge', lambda session, **kw: [self._target()])
+        from factories import next_seq
+        # Its own name: another worker's `_target()` event for kmerk-user-92wap made `row,` two.
+        gone = f'zgone-user-{next_seq("5")}'
+        monkeypatch.setattr(service, 'ready_to_merge',
+                            lambda session, **kw: [self._target(source=gone)])
         client = MagicMock()
         client.get_person.return_value = None
         out = service.merge_ready_placeholders(factory, operator='task:t', cap=5, client=client)
         assert out['gone'] == 1 and merged == []
         with factory() as s:
             row, = s.query(XrasRemediationEvent).filter(
-                XrasRemediationEvent.username == 'kmerk-user-92wap',
+                XrasRemediationEvent.username == gone,
                 XrasRemediationEvent.created_by == 'task:t').all()
             assert row.operation == 'merge_person' and row.status == 'rejected'
             assert row.target_username == 'katarinam'
