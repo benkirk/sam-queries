@@ -224,10 +224,12 @@ class XrasCommand(BaseCommand):
                 return EXIT_ERROR
 
         pending, checked = self._pending_worklist()
+        index = self._index() or {}
         payload = builders.build_account_worklist(
             self.session, since=filters.get('start_date'),
             until=filters.get('end_date'), enrich=enrich,
-            pending_rows=pending, pending_checked=checked)
+            pending_rows=pending, pending_checked=checked,
+            index_rows=index.get('rows'), index_generated_at=index.get('generated_at'))
         return self.emit(payload, display.display_account_worklist)
 
     def _readiness(self) -> int:
@@ -268,9 +270,25 @@ class XrasCommand(BaseCommand):
         from sam.integration.xras_api import xras_api_configured
 
         pending, _checked = self._pending_worklist()
+        index = self._index() or {}
         payload = builders.build_identity_report(
-            self.session, pending_rows=pending, enrich=xras_api_configured())
+            self.session, pending_rows=pending, enrich=xras_api_configured(),
+            index_rows=index.get('rows'), index_generated_at=index.get('generated_at'))
         return self.emit(payload, display.display_identity_report)
+
+    def _index(self):
+        """The published request index, or ``None``: its current rosters retire a stale push."""
+        from sam.integration.xras_api import xras_api_configured
+        if not xras_api_configured():
+            return None
+        try:
+            from sam.integration.xras_api.cache import load_requests_index
+            return load_requests_index()
+        except Exception as exc:                     # noqa: BLE001
+            self.ctx.stderr_console.print(
+                f'[yellow]Could not read the request index ({exc}); '
+                'stale pushes are not retired.[/yellow]')
+            return None
 
     def _pending_worklist(self):
         """Feed B, as ``xras_sweep`` last published it — via the query layer.

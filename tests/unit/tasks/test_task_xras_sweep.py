@@ -819,8 +819,12 @@ class TestWhatItWrites:
         """Feed A: a person named on an action already pushed, in the window."""
         from factories import make_xras_action
 
+        # Its own email too: test_xras_accounts_card.py COMMITS an active user holding the
+        # fixture's `user38@example.invalid`, and while that row exists the sweep files
+        # nothing for this person (`already_in_sam`); the two files run on different workers.
         body = (TESTS / 'fixtures' / 'xras' / 'actions' / 'new_ncar4227_failed.json'
-                ).read_text().replace('placeholder38-user-00038', 'feeda-user-00001')
+                ).read_text().replace('placeholder38-user-00038', 'feeda-user-00001'
+                                      ).replace('user38@example.invalid', 'feeda1@example.invalid')
         make_xras_action(session, status='failed', action_type='New',
                          request_number='NCAR4227', payload=body,
                          received_time=to_local_naive(OCC, ZoneInfo(DEFAULT_TZ))

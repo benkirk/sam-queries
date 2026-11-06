@@ -25,7 +25,7 @@ those payloads may enter a commit.
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from _paths import REPO_ROOT, TESTS
 
@@ -38,7 +38,9 @@ from sam.queries.xras_accounts import (
     PendingFeed,
     RosterRecord,
     _needs_whole_roster,
+    assemble_worklist,
     classify_accounts,
+    drop_stale_pushes,
     enrich_worklist,
     sam_merge_targets,
     stamp_merge_targets,
@@ -319,6 +321,75 @@ class TestMergeTargets:
             ['z', 'c', 'b', 'a']
 
 
+#: The index build; the pushes below arrived the day before unless a test says otherwise.
+INDEX_BUILT = datetime(2026, 8, 2, 4)
+
+
+def _pushed_row(username, *numbers, sources=('action_log',), placeholder=True,
+                received=datetime(2026, 8, 1, 12)):
+    """A classified Feed-A row, as `classify_accounts` shapes it."""
+    return {'username': username, 'placeholder': placeholder, 'sources': list(sources),
+            'classification': 'absent', 'remedy': 'create',
+            'actions': [{'request_number': n, 'source': sources[0], 'received_time': received}
+                        for n in numbers]}
+
+
+def _index(**rosters):
+    """Request-index rows: ``number=[usernames]``."""
+    return [{'request_number': n, 'roster': [{'username': u} for u in users]}
+            for n, users in rosters.items()]
+
+
+def _drop(rows, index, generated_at=INDEX_BUILT):
+    return drop_stale_pushes(rows, index, generated_at=generated_at)
+
+
+class TestStalePushes:
+    """A placeholder only an old push names, and no current roster does, is history
+    (NCAR4434, 2026-11-05: edited off the roster inside XRAS, never re-posted)."""
+
+    def test_a_push_no_current_roster_names_is_dropped(self):
+        rows = [_pushed_row('kmerk-user-92wap', 'NCAR4434')]
+        assert _drop(rows, _index(NCAR4434=['katarinam', 'maraf'])) == 1
+        assert rows == []
+
+    def test_a_roster_still_naming_it_keeps_it_whatever_the_case(self):
+        rows = [_pushed_row('kmerk-user-92wap', 'NCAR4434')]
+        assert _drop(rows, _index(NCAR4434=['KMERK-USER-92WAP'])) == 0
+        assert len(rows) == 1
+
+    def test_a_request_outside_the_index_is_undecidable(self):
+        rows = [_pushed_row('p-user-1', 'NCAR0001', 'NCAR0002')]
+        assert _drop(rows, _index(NCAR0001=['real'])) == 0
+
+    def test_every_citing_request_must_have_moved_on(self):
+        rows = [_pushed_row('p-user-1', 'NCAR0001', 'NCAR0002')]
+        assert _drop(rows, _index(NCAR0001=['real'], NCAR0002=['p-user-1'])) == 0
+        assert _drop(rows, _index(NCAR0001=['real'], NCAR0002=['real'])) == 1
+
+    def test_a_push_newer_than_the_index_is_newer_evidence(self):
+        """A person added to an indexed request and pushed the same day: the day-old roster
+        cannot retire that push, and Feed B never covers a request with a project."""
+        rows = [_pushed_row('late-user-1', 'NCAR0001', received=INDEX_BUILT + timedelta(hours=3))]
+        assert _drop(rows, _index(NCAR0001=['real'])) == 0
+        at_build = [_pushed_row('late-user-1', 'NCAR0001', received=INDEX_BUILT)]
+        assert _drop(at_build, _index(NCAR0001=['real'])) == 1
+        undated = [_pushed_row('late-user-1', 'NCAR0001', received=None)]
+        assert _drop(undated, _index(NCAR0001=['real'])) == 0
+        assert _drop([_pushed_row('p-user-1', 'NCAR0001')], _index(NCAR0001=['real']),
+                     generated_at=None) == 0, 'an unstamped index decides nothing'
+
+    def test_a_pending_request_row_and_a_real_username_are_never_stale(self):
+        rows = [_pushed_row('p-user-1', 'NCAR0001', sources=('action_log', 'reports')),
+                _pushed_row('jsmith', 'NCAR0001', placeholder=False)]
+        assert _drop(rows, _index(NCAR0001=['other'])) == 0
+        assert len(rows) == 2
+
+    def test_no_index_drops_nothing(self):
+        rows = [_pushed_row('p-user-1', 'NCAR0001')]
+        assert _drop(rows, []) == 0 and len(rows) == 1
+
+
 # Feed A
 
 class TestFeedA:
@@ -421,6 +492,27 @@ class TestFeedA:
         names = {u for r in records_from_action_log(session, validate=False)
                  for u in r.usernames}
         assert PLACEHOLDER_USERNAME not in names
+
+    def test_a_push_whose_request_no_longer_names_the_placeholder_is_stale(
+            self, session, no_committed_placeholder):
+        """The assembled worklist checks a Feed-A-only placeholder against the request
+        index's current roster; the row stands when the roster names it, or with no index."""
+        self._log_row(session, PLACEHOLDER_FIXTURE, status='failed', action_type='New',
+                      request_number='NCAR4227')
+        index = [{'request_number': 'NCAR4227', 'roster': [{'username': 'realname38'}]}]
+        built = datetime(2026, 8, 2)      # the push above arrived 2026-08-01
+
+        def names(**kw):
+            return {r['username'] for r in assemble_worklist(session, validate=False, **kw).rows}
+
+        assembled = assemble_worklist(session, validate=False, index_rows=index,
+                                      index_generated_at=built)
+        assert PLACEHOLDER_USERNAME not in {r['username'] for r in assembled.rows}
+        assert assembled.stale_dropped == 1
+        index[0]['roster'].append({'username': PLACEHOLDER_USERNAME})
+        assert PLACEHOLDER_USERNAME in names(index_rows=index, index_generated_at=built)
+        assert PLACEHOLDER_USERNAME in names()
+        assert assemble_worklist(session, validate=False).stale_dropped == 0
 
     def test_statuses_bound_which_rows_are_read(self, session):
         row = self._log_row(session, PLACEHOLDER_FIXTURE, status='processed')

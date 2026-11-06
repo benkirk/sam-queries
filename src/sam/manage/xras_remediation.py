@@ -494,34 +494,50 @@ def merge_fulfilled_visitors(session_factory, *, operator: str,
     return out
 
 
-def ready_to_merge(session) -> List[Dict[str, Any]]:
+def ready_to_merge(session, *, since=None) -> List[Dict[str, Any]]:
     """The Accounts card's "Ready to merge" set, from the swept worklist; no XRAS read.
 
-    A placeholder on an approved request (posted or not) whose email one active SAM user holds.
+    A placeholder on an approved request (posted or not) whose email one active SAM user holds,
+    checked against the request index's current rosters; *since* bounds the pushes read
+    (the task passes the sweep's window), so no refused push of any age can put one here.
     """
+    from sam.integration.xras_api.cache import load_requests_index
     from sam.queries.xras_accounts import assemble_worklist, load_pending_worklist_rows
     from sam.queries.xras_identity_report import identity_merge_report
     feed = load_pending_worklist_rows()
     if not feed.checked:
         return []
-    worklist = assemble_worklist(session, validate=False, max_lookups=0,
-                                 pending_rows=feed.rows).rows
+    index = load_requests_index() or {}
+    worklist = assemble_worklist(session, validate=False, max_lookups=0, since=since,
+                                 pending_rows=feed.rows, index_rows=index.get('rows'),
+                                 index_generated_at=index.get('generated_at')).rows
     return [t for t in identity_merge_report(worklist)['targets']
             if t.get('username') and t.get('target_username') and t.get('target_active')]
 
 
+def _record_gone(session_factory, operator: str, target: Dict[str, Any]) -> None:
+    """A ``rejected`` merge_person row: who found the placeholder gone, and the no-retry mark."""
+    event_id = _open_event(session_factory, operation='merge_person', created_by=operator,
+                           username=target['username'],
+                           target_username=target.get('target_username'),
+                           comment='Ready to merge: XRAS holds no such person')
+    _close_event(session_factory, event_id, status='rejected',
+                 outcome_reason='XRAS holds no such person')
+
+
 def merge_ready_placeholders(session_factory, *, operator: str, cap: int,
-                             client=None) -> Dict[str, Any]:
+                             client=None, since=None) -> Dict[str, Any]:
     """Merge each "Ready to merge" placeholder into its SAM user's XRAS identity, *cap* a run.
 
     A placeholder a task already tried (``task_merge_attempts``) is ``refused``, never retried;
     a target XRAS does not hold yet is ``waiting`` (merging would create it); a placeholder
-    XRAS no longer holds is ``gone``. ``merged`` lists ``(placeholder, target)``.
+    XRAS no longer holds is ``gone``, recorded as a ``rejected`` event so the next run refuses
+    it. ``merged`` lists ``(placeholder, target)``.
     """
     from sam.integration.xras import task_merge_attempts
     from sam.integration.xras_api.base import XrasSourceUnavailable
     with session_factory() as session:
-        due = ready_to_merge(session)
+        due = ready_to_merge(session, since=since)
         tried = task_merge_attempts(session, [t['username'] for t in due])
     out: Dict[str, Any] = {'due': len(due), 'merged': [], 'waiting': 0, 'refused': 0,
                            'gone': 0, 'failed': 0}
@@ -538,6 +554,7 @@ def merge_ready_placeholders(session_factory, *, operator: str, cap: int,
         try:
             if admin.get_person(source) is None:
                 out['gone'] += 1
+                _record_gone(session_factory, operator, target)
                 continue
             if admin.get_person(into) is None:
                 out['waiting'] += 1
@@ -557,14 +574,14 @@ def merge_ready_placeholders(session_factory, *, operator: str, cap: int,
 
 
 def close_stale_placeholders(session_factory, *, operator: str, cap: int,
-                             client=None) -> Dict[str, Any]:
+                             client=None, since=None) -> Dict[str, Any]:
     """Dismiss each fulfilled placeholder request no pending push names whose placeholder
     XRAS no longer holds (merged or removed there by hand); *cap* XRAS reads a run."""
     from sam.integration.xras_api.base import XrasSourceUnavailable
     from sam.queries.account_requests import stale_placeholder_requests
     out = {'checked': 0, 'closed': 0, 'kept': 0}
     with session_factory() as session:
-        ready = [t['username'] for t in ready_to_merge(session)]
+        ready = [t['username'] for t in ready_to_merge(session, since=since)]
         ids = [(r.account_request_id, r.xras_username)
                for r in stale_placeholder_requests(session, exclude=ready)][:cap]
     if not ids:
