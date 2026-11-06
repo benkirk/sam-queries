@@ -501,16 +501,14 @@ def ready_to_merge(session, *, since=None) -> List[Dict[str, Any]]:
     checked against the request index's current rosters; *since* bounds the pushes read
     (the task passes the sweep's window), so no refused push of any age can put one here.
     """
-    from sam.integration.xras_api.cache import load_requests_index
-    from sam.queries.xras_accounts import assemble_worklist, load_pending_worklist_rows
+    from sam.queries.xras_accounts import (assemble_worklist, load_pending_worklist_rows,
+                                           load_request_index)
     from sam.queries.xras_identity_report import identity_merge_report
     feed = load_pending_worklist_rows()
     if not feed.checked:
         return []
-    index = load_requests_index() or {}
     worklist = assemble_worklist(session, validate=False, max_lookups=0, since=since,
-                                 pending_rows=feed.rows, index_rows=index.get('rows'),
-                                 index_generated_at=index.get('generated_at')).rows
+                                 pending_rows=feed.rows, index=load_request_index()).rows
     return [t for t in identity_merge_report(worklist)['targets']
             if t.get('username') and t.get('target_username') and t.get('target_active')]
 

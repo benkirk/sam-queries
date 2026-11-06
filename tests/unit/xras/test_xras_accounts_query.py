@@ -36,6 +36,7 @@ from sam.queries.xras_accounts import (
     PERSON_FIELDS,
     ActionRef,
     PendingFeed,
+    RequestIndex,
     RosterRecord,
     _needs_whole_roster,
     assemble_worklist,
@@ -341,7 +342,7 @@ def _index(**rosters):
 
 
 def _drop(rows, index, generated_at=INDEX_BUILT):
-    return drop_stale_pushes(rows, index, generated_at=generated_at)
+    return drop_stale_pushes(rows, RequestIndex(rows=index, generated_at=generated_at, checked=True))
 
 
 class TestStalePushes:
@@ -505,12 +506,14 @@ class TestFeedA:
         def names(**kw):
             return {r['username'] for r in assemble_worklist(session, validate=False, **kw).rows}
 
-        assembled = assemble_worklist(session, validate=False, index_rows=index,
-                                      index_generated_at=built)
+        def feed():
+            return RequestIndex(rows=index, generated_at=built, checked=True)
+
+        assembled = assemble_worklist(session, validate=False, index=feed())
         assert PLACEHOLDER_USERNAME not in {r['username'] for r in assembled.rows}
         assert assembled.stale_dropped == 1
         index[0]['roster'].append({'username': PLACEHOLDER_USERNAME})
-        assert PLACEHOLDER_USERNAME in names(index_rows=index, index_generated_at=built)
+        assert PLACEHOLDER_USERNAME in names(index=feed())
         assert PLACEHOLDER_USERNAME in names()
         assert assemble_worklist(session, validate=False).stale_dropped == 0
 

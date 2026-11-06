@@ -36,6 +36,7 @@ from sam.queries.xras_activation import (
 from sam.queries.xras_accounts import (
     assemble_worklist,
     load_pending_worklist_rows,
+    load_request_index,
     worklist_counts,
 )
 
@@ -43,7 +44,6 @@ from .. import bp
 from ..blueprint import _window_control_context
 from ._shared import (
     _activity_in_window,
-    _index,
     scope_rows,
     ACCOUNT_FACETS, ACTIVITY_FACETS, REMEDIATION_FACETS,
     _ACCOUNTS_ENRICH_BUDGET, _ACCOUNTS_FORM_ID, _ACCOUNTS_TARGET,
@@ -318,10 +318,7 @@ def xras_accounts_fragment():
     # denominator is the snapshot's rows, not its counts total. Enrichment is
     # best-effort and never fatal: an outage leaves the rest `person=None`.
     feed = load_pending_worklist_rows()
-    index = _index() or {}
-    assembled = assemble_worklist(db.session, pending_rows=feed.rows,
-                                  index_rows=index.get('rows'),
-                                  index_generated_at=index.get('generated_at'),
+    assembled = assemble_worklist(db.session, pending_rows=feed.rows, index=load_request_index(),
                                   since=window['since'], until=window['until'],
                                   max_lookups=_ACCOUNTS_ENRICH_BUDGET)
     rows, enrichment = assembled.rows, assembled.enrichment

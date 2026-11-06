@@ -1291,8 +1291,8 @@ class TestTheReadyMerge:
         xras_cache.store_requests_index({'generated_at': built, 'rows': rows})
         since = datetime(2026, 8, 7)
         assert service.ready_to_merge(session, since=since) == []
-        assert seen['since'] == since and seen['index_rows'] == rows
-        assert seen['index_generated_at'] == built
+        assert seen['since'] == since and seen['index'].rows == rows
+        assert seen['index'].generated_at == built
 
 
 class TestTheStaleClose:
