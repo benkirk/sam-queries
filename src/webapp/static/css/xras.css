@@ -364,6 +364,18 @@
     border-left: 3px solid var(--border-default);
 }
 
+.xras-readiness-band {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.75rem;
+    margin-bottom: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--surface-tertiary);
+    border-left: 3px solid var(--border-default);
+    font-size: 0.875rem;
+}
+
 .xras-preflight-head {
     display: flex;
     flex-wrap: wrap;

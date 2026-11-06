@@ -360,6 +360,51 @@ class TestReadinessModal:
         assert 'SAM pre-flight' not in resp.get_data(as_text=True)
 
 
+class TestReadinessBand:
+    """The dialog says what blocks the next push before anything else."""
+
+    def _verdict(self, status, *, messages=(), gaps=()):
+        payload = _detail_payload('EXAM0001')
+        verdict = {'status': status, 'would_succeed': status == 'rechecked',
+                   'messages': list(messages), 'gaps': list(gaps), 'service': 'new',
+                   'stage': 'Requested', 'action_status': 'Submitted',
+                   'request_status': 'Submitted', 'push_state': 'pending',
+                   'push_detail': None, 'resolved': None,
+                   'checked_at': '2026-08-23T09:00:00'}
+        payload['actions'][0]['actionStatus'] = 'Submitted'
+        xras_cache.store_requests_index({
+            'generated_at': datetime.now(), 'statuses': ['Submitted'],
+            'extra_statuses': {},
+            'rows': [request_index_entry(payload, pending_push=True,
+                                         preflights={7: verdict})]})
+        return payload
+
+    def _band(self, auth_client, monkeypatch, payload):
+        _reader(monkeypatch, payload=payload)
+        body = auth_client.get('/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'xras-readiness-band' in body
+        return body.split('xras-readiness-band', 1)[1].split('</div>', 1)[0]
+
+    def test_it_leads_with_the_first_reason(self, auth_client, configured, monkeypatch):
+        band = self._band(auth_client, monkeypatch,
+                          self._verdict('failed', messages=['PI ghost is not in database',
+                                                            'Contract 123 not found']))
+        assert 'PI ghost is not in database' in band
+        assert '+1 more below' in band
+        assert 'Contract 123' not in band
+
+    def test_a_missing_date_range_offers_add_dates(self, auth_client, armed, monkeypatch):
+        band = self._band(auth_client, monkeypatch,
+                          self._verdict('incomplete', gaps=['no_allocation_dates']))
+        assert 'no allocation dates on this action' in band
+        assert 'Add dates' in band and '/xras_dates_form/' in band
+
+    def test_gap_labels_read_as_words(self):
+        from sam.xras.preflight import gap_label
+        assert gap_label('resource_id_unmapped:530201') == 'XRAS resource 530201 has no SAM mapping'
+        assert gap_label('something_new') == 'something_new'
+
+
 class TestReadinessBadgeWiring:
     """Card badges: a verdict opens the modal, incomplete is passive, a not-checked
     row posts a recheck."""

@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = ['Synthesis', 'Verdict', 'iter_candidate_actions',
            'synthesize_action', 'preflight_action', 'infer_applied',
-           'verdict_to_dict']
+           'verdict_to_dict', 'gap_label']
 
 #: Award trail, best first — the stage whose amounts/dates the push would carry.
 _STAGE_ORDER: Tuple[str, ...] = ('Approved', 'Recommended', 'Requested')
@@ -43,6 +43,20 @@ _REQUIRED_DATES: Dict[str, frozenset] = {
     'Renewal': frozenset({'begin', 'end'}),
     'Extension': frozenset({'end'}),
 }
+
+#: A gap in words, for the dialog; `resource_id_unmapped:<id>` carries its id.
+_GAP_LABELS: Dict[str, str] = {
+    'no_allocation_dates': 'no allocation dates on this action',
+    'resource_id_unmapped': 'XRAS resource {} has no SAM mapping',
+    'schema_invalid': 'the action does not load as a push would',
+}
+
+
+def gap_label(gap: str) -> str:
+    """A gap slug in words; an unknown slug is returned as it is."""
+    kind, _, detail = gap.partition(':')
+    label = _GAP_LABELS.get(kind)
+    return label.format(detail) if label else gap
 
 
 @dataclass(frozen=True)
