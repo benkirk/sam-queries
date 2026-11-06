@@ -797,7 +797,8 @@ class TestReadyToMerge:
 
     @pytest.fixture
     def index_without_the_placeholder(self, monkeypatch):
-        """A published request index whose NCAR4227 roster no longer names the placeholder."""
+        """A published request index, built after the committed push, whose NCAR4227 roster
+        no longer names the placeholder."""
         from sam.integration.xras_api import cache as xras_cache
         monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
         xras_cache._CACHE.reset_for_tests(disabled=False)

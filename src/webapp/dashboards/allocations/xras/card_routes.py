@@ -318,8 +318,10 @@ def xras_accounts_fragment():
     # denominator is the snapshot's rows, not its counts total. Enrichment is
     # best-effort and never fatal: an outage leaves the rest `person=None`.
     feed = load_pending_worklist_rows()
+    index = _index() or {}
     assembled = assemble_worklist(db.session, pending_rows=feed.rows,
-                                  index_rows=(_index() or {}).get('rows'),
+                                  index_rows=index.get('rows'),
+                                  index_generated_at=index.get('generated_at'),
                                   since=window['since'], until=window['until'],
                                   max_lookups=_ACCOUNTS_ENRICH_BUDGET)
     rows, enrichment = assembled.rows, assembled.enrichment

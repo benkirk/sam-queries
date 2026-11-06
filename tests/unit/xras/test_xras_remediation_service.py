@@ -1287,10 +1287,12 @@ class TestTheReadyMerge:
         monkeypatch.setattr(xras_accounts, 'assemble_worklist',
                             lambda *a, **k: seen.update(k) or SimpleNamespace(rows=[]))
         rows = [{'request_number': 'NCAR4434', 'roster': [{'username': 'katarinam'}]}]
-        xras_cache.store_requests_index({'generated_at': datetime.now(), 'rows': rows})
+        built = datetime(2026, 11, 5, 4)
+        xras_cache.store_requests_index({'generated_at': built, 'rows': rows})
         since = datetime(2026, 8, 7)
         assert service.ready_to_merge(session, since=since) == []
         assert seen['since'] == since and seen['index_rows'] == rows
+        assert seen['index_generated_at'] == built
 
 
 class TestTheStaleClose:
