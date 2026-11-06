@@ -251,6 +251,23 @@ def is_pending_work(entry: Mapping[str, Any]) -> bool:
     return False
 
 
+#: Waiting bands: (band, fewer than this many days). Over 30 tints amber, over 90 red.
+WAITING_BANDS = (('week', 7), ('month', 30), ('quarter', 90))
+
+
+def waiting_band(when, today: Optional[date] = None) -> Optional[str]:
+    """``week`` / ``month`` / ``quarter`` / ``older`` for a handoff date; None when there is none."""
+    if when is None:
+        return None
+    if hasattr(when, 'date'):
+        when = when.date()
+    days = ((today or date.today()) - when).days
+    for band, below in WAITING_BANDS:
+        if days < below:
+            return band
+    return 'older'
+
+
 def _preflight_rollup(preflights: Optional[Mapping[Any, dict]]) -> Optional[str]:
     """The worst verdict across a request's actions, preferring the PENDING ones.
 

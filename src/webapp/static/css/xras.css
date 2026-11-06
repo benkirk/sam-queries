@@ -364,6 +364,18 @@
     border-left: 3px solid var(--border-default);
 }
 
+.xras-readiness-band {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.75rem;
+    margin-bottom: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--surface-tertiary);
+    border-left: 3px solid var(--border-default);
+    font-size: 0.875rem;
+}
+
 .xras-preflight-head {
     display: flex;
     flex-wrap: wrap;
@@ -445,11 +457,36 @@
 }
 
 /* The dialog footer: its verbs at the start, Done at the end. */
-.xras-footer-start {
+.xras-footer-start,
+.xras-footer-end {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 0.5rem;
+}
+
+.xras-footer-start {
     margin-right: auto;
+}
+
+/* Not a text-* utility: its !important would paint a disabled item as live. */
+.dropdown-item.xras-menu-danger:not(:disabled) {
+    color: var(--bs-danger-text-emphasis);
+}
+
+.xras-queue-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.xras-queue-nav[hidden] {
+    display: none;
+}
+
+/* The row the request dialog is on, so closing it lands there. */
+.xras-table tr.is-queue-current > * {
+    --bs-table-bg-state: var(--surface-accent);
 }
 
 /* ===================================================================

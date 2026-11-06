@@ -360,6 +360,51 @@ class TestReadinessModal:
         assert 'SAM pre-flight' not in resp.get_data(as_text=True)
 
 
+class TestReadinessBand:
+    """The dialog says what blocks the next push before anything else."""
+
+    def _verdict(self, status, *, messages=(), gaps=()):
+        payload = _detail_payload('EXAM0001')
+        verdict = {'status': status, 'would_succeed': status == 'rechecked',
+                   'messages': list(messages), 'gaps': list(gaps), 'service': 'new',
+                   'stage': 'Requested', 'action_status': 'Submitted',
+                   'request_status': 'Submitted', 'push_state': 'pending',
+                   'push_detail': None, 'resolved': None,
+                   'checked_at': '2026-08-23T09:00:00'}
+        payload['actions'][0]['actionStatus'] = 'Submitted'
+        xras_cache.store_requests_index({
+            'generated_at': datetime.now(), 'statuses': ['Submitted'],
+            'extra_statuses': {},
+            'rows': [request_index_entry(payload, pending_push=True,
+                                         preflights={7: verdict})]})
+        return payload
+
+    def _band(self, auth_client, monkeypatch, payload):
+        _reader(monkeypatch, payload=payload)
+        body = auth_client.get('/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'xras-readiness-band' in body
+        return body.split('xras-readiness-band', 1)[1].split('</div>', 1)[0]
+
+    def test_it_leads_with_the_first_reason(self, auth_client, configured, monkeypatch):
+        band = self._band(auth_client, monkeypatch,
+                          self._verdict('failed', messages=['PI ghost is not in database',
+                                                            'Contract 123 not found']))
+        assert 'PI ghost is not in database' in band
+        assert '+1 more below' in band
+        assert 'Contract 123' not in band
+
+    def test_a_missing_date_range_offers_add_dates(self, auth_client, armed, monkeypatch):
+        band = self._band(auth_client, monkeypatch,
+                          self._verdict('incomplete', gaps=['no_allocation_dates']))
+        assert 'no allocation dates on this action' in band
+        assert 'Add dates' in band and '/xras_dates_form/' in band
+
+    def test_gap_labels_read_as_words(self):
+        from sam.xras.preflight import gap_label
+        assert gap_label('resource_id_unmapped:530201') == 'XRAS resource 530201 has no SAM mapping'
+        assert gap_label('something_new') == 'something_new'
+
+
 class TestReadinessBadgeWiring:
     """Card badges: a verdict opens the modal, incomplete is passive, a not-checked
     row posts a recheck."""
@@ -424,6 +469,86 @@ class TestActionsColumnAndFacet:
         body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'Extension' in body
         assert 'Supplement' not in body       # neither the cell nor the facet
+
+
+class TestWaitingFacet:
+    """The Waiting chips band the handoff's age; the Age cell tints past 30 and 90 days."""
+
+    def test_the_bands_cut_at_7_30_and_90_days(self):
+        from datetime import date, timedelta
+        from sam.queries.xras_requests import waiting_band
+        today = date(2026, 11, 5)
+        ago = lambda n: today - timedelta(days=n)
+        assert [waiting_band(ago(n), today) for n in (6, 7, 29, 30, 89, 90)] == [
+            'week', 'month', 'month', 'quarter', 'quarter', 'older']
+        assert waiting_band(datetime(2026, 11, 1, 9), today) == 'week'
+        assert waiting_band(None, today) is None
+
+    def _publish_ages(self):
+        from datetime import timedelta
+        stamp = lambda n: (datetime.now() - timedelta(days=n)).strftime('%Y-%m-%dT00:00:00Z')
+        _publish(_payload('EXAM0001', submit_date=stamp(2)),
+                 _payload('EXAM0002', submit_date=stamp(100)))
+
+    def test_the_strip_counts_each_band(self, auth_client, configured):
+        self._publish_ages()
+        body = auth_client.get(FRAGMENT, query_string={
+            'show_all': '1', 'start_date': '2000-01-01'}).get_data(as_text=True)
+        assert 'Filter by Waiting Under a week' in body
+        assert 'Filter by Waiting Over 3 months' in body
+        assert 'Filter by Waiting 1–4 weeks' not in body      # hide_zero
+
+    def test_a_chip_narrows_the_rows_and_the_batch_recheck(self, auth_client, configured,
+                                                           monkeypatch):
+        self._publish_ages()
+        body = auth_client.get(FRAGMENT, query_string={
+            'show_all': '1', 'start_date': '2000-01-01', 'waiting': 'older'}).get_data(as_text=True)
+        assert 'EXAM0002' in body and 'EXAM0001' not in body
+        _reader(monkeypatch, payload=_detail_payload('EXAM0002'))
+        resp = auth_client.post('/allocations/xras_recheck_visible', data={
+            'show_all': '1', 'start_date': '2000-01-01', 'waiting': 'older'})
+        assert 'Checked 1 request' in resp.get_data(as_text=True)
+
+    def test_the_dialog_says_how_long_it_has_waited(self, auth_client, configured,
+                                                     monkeypatch):
+        payload = _detail_payload('EXAM0001')
+        payload['submitDate'] = '2015-01-01T00:00:00Z'
+        _publish(payload)
+        _reader(monkeypatch, payload=payload)
+        body = auth_client.get('/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        meta = body[body.index('xras-request-meta'):body.index('xras-request-title')]
+        assert 'waiting <span class="text-danger-emphasis' in meta
+
+    def test_a_stale_age_is_tinted(self, auth_client, configured):
+        self._publish_ages()
+        body = auth_client.get(FRAGMENT, query_string={
+            'show_all': '1', 'start_date': '2000-01-01'}).get_data(as_text=True)
+        assert 'waiting over 90 days' in body
+        assert 'text-danger-emphasis fw-semibold' in body
+
+
+class TestQueueNav:
+    """The dialog's prev/next walks the card's rows; the wiring is markup, the walk is xras.js."""
+
+    def test_the_card_marks_its_rows_as_the_queue(self, auth_client, configured):
+        _publish(_payload('EXAM0001'))
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'data-xras-queue>' in body
+        assert 'data-request-number="EXAM0001"' in body
+
+    def test_the_request_dialog_carries_the_hidden_nav(self, auth_client, armed, monkeypatch):
+        _publish(_payload())
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get('/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        footer = body[body.index('id="xrasModalFooter"'):]
+        assert 'data-xras-queue-nav data-request-number="EXAM0001" hidden' in footer
+        assert 'data-action="xras-queue-step"' in footer
+
+    def test_a_sub_dialog_does_not(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch)
+        _publish(_payload())
+        body = auth_client.get('/allocations/xras_withdraw_form/EXAM0001/7').get_data(as_text=True)
+        assert 'data-xras-queue-nav' not in body
 
 
 class TestTheDocumentProxy:
@@ -1865,13 +1990,14 @@ class TestTheHeadlineActionAndXrasLinks:
         _reader(monkeypatch, payload=payload)
         return auth_client.get('/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
 
-    def test_the_header_opens_the_latest_action(self, auth_client, armed, monkeypatch):
+    def test_the_footer_opens_the_latest_action(self, auth_client, armed, monkeypatch):
         payload = _detail_payload()
         payload['actions'].append({'actionId': 9, 'actionType': 'Extension',
                                    'actionStatus': 'Submitted'})
         body = self._body(auth_client, monkeypatch, payload)
-        header = body[body.index('xras-request-meta'):body.index('xras-request-title')]
-        assert '/actions/9"' in header and 'Open in XRAS' in header
+        footer = body[body.index('id="xrasModalFooter"'):]
+        assert '/actions/9"' in footer and 'Open in XRAS' in footer
+        assert 'Open in XRAS' not in body[:body.index('id="xrasModalFooter"')]
         assert 'xras.example.invalid' not in body, 'publicURL is not a link into XRAS'
 
     def test_each_action_links_its_page_and_process_tab(self, auth_client, armed, monkeypatch):
@@ -1901,8 +2027,8 @@ class TestTheHeadlineActionAndXrasLinks:
                                {'actionId': 10, 'actionType': 'Supplement', 'actionStatus': 'Approved'}]
         body = self._body(auth_client, monkeypatch, payload)
         header = body[body.index('xras-request-meta'):body.index('xras-request-title')]
-        assert '>Submitted<' in header and '/actions/9"' in header
-        assert 'Newer Supplement 10: Approved' in header
+        assert '>Submitted<' in header and 'Newer Supplement 10: Approved' in header
+        assert '/actions/9" target="_blank"' in body[body.index('id="xrasModalFooter"'):]
 
     def test_the_headline_actions_section_opens_beside_the_latest(
             self, auth_client, armed, monkeypatch):
@@ -2199,7 +2325,8 @@ class TestPartCIsAdminOnly:
         body = auth_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'xras_request_delete/EXAM0001' in body
-        assert 'Delete project…' in body
+        menu = body.split('class="dropdown-menu"', 1)[1].split('</ul>', 1)[0]
+        assert 'Delete project…' in menu and 'Add action…' in menu and 'Renew…' in menu
 
     def test_the_danger_zone_is_hidden_from_a_manage_only_operator(
             self, manage_not_admin_client, armed, monkeypatch):
@@ -2208,6 +2335,7 @@ class TestPartCIsAdminOnly:
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'xras_request_delete' not in body
         assert 'Delete project…' not in body
+        assert 'dropdown-menu' not in body.split('id="xrasModalFooter"', 1)[1]
 
     def test_the_add_action_form_renders_the_type_picker(self, auth_client,
                                                         armed, monkeypatch):

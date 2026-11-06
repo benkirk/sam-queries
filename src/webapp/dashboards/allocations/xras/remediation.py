@@ -28,7 +28,7 @@ is an empty modal with no explanation. The degraded body says what happened.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 
 from flask import current_app, render_template, request, url_for
 from flask_login import current_user, login_required
@@ -53,7 +53,8 @@ from sam.projects.projects import Project
 from sam.queries.mnemonic_console import search_mnemonic_codes
 from sam.dates import parse_wire_date
 from sam.queries.xras_accounts import live_actions
-from sam.queries.xras_requests import is_pending_work, projcode_series, row_blockers
+from sam.queries.xras_requests import (is_pending_work, projcode_series, row_blockers,
+                                      waiting_band)
 from sam.schemas.forms import (
     XrasActionDatesForm,
     XrasActionFieldsForm,
@@ -671,12 +672,14 @@ def _search(rows, needle):
 
 
 def _stamp_blockers(rows):
-    """Shallow-copy each row with its derived ``blockers`` (a sorted list) and ``series``.
+    """Shallow-copy each row with its derived ``blockers`` (a sorted list), ``series`` and ``waiting``.
 
     A copy, never in place: the rows come from the sweep's shared cache dict, and
     mutating them would leak this request's derivation into the next one.
     """
-    return [{**r, 'blockers': sorted(row_blockers(r)), 'series': projcode_series(r)}
+    today = date.today()
+    return [{**r, 'blockers': sorted(row_blockers(r)), 'series': projcode_series(r),
+             'waiting': waiting_band(r.get('activity_date') or r.get('submit_date'), today)}
             for r in rows]
 
 

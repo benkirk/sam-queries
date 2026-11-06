@@ -14,6 +14,14 @@
 <span class="text-muted small ms-1 text-nowrap" title="{{ title }}"><i class="fa-solid {{ icon }}" aria-hidden="true"></i> {{ n | fmt_number }}</span>
 {%- endmacro %}
 
+{#- How long a handoff has waited, tinted past 30 days (amber) and 90 (red): the card's Age and the dialog. -#}
+{% macro waiting(when) -%}
+{%- set band = when | xras_waiting -%}
+{%- set past = {'quarter': ': waiting over 30 days', 'older': ': waiting over 90 days'}.get(band, '') -%}
+<span class="{{ {'quarter': 'text-warning-emphasis', 'older': 'text-danger-emphasis fw-semibold'}.get(band, 'text-muted') }}"
+      title="{{ when | fmt_date }}{{ past }}">{{ when | fmt_age }}</span>
+{%- endmacro %}
+
 {#- A request carries a recommender's note (an XrasRequestNote); the dialog shows it. -#}
 {% macro note_marker(note) -%}
 <span class="text-muted small ms-1 text-nowrap" title="Recommender: {{ note.decision_phrase }} · {{ note.generated_at | fmt_date }}"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span class="visually-hidden">Recommender note</span></span>
@@ -103,7 +111,7 @@
 {%- if not number -%}<span class="text-muted">—</span>
 {%- elif configured -%}
 <button type="button" class="btn btn-link btn-entity p-0{{ ' text-warning-emphasis' if suspect }}"
-        title="{{ warn if suspect else 'Full request detail (read-only)' }}"
+        title="{{ warn if suspect else 'Full request detail (read-only)' }}" data-request-number="{{ number }}"
         data-bs-toggle="modal" data-bs-target="#xrasModal"
         hx-get="{{ url_for('allocations_dashboard.xras_request_detail', request_number=number) }}"
         hx-target="#xrasModalBody" hx-swap="innerHTML">
@@ -240,9 +248,10 @@
         data-confirm-label="{{ confirm_label }}" data-confirm-variant="{{ confirm_variant }}"{% endif %}><i class="fa-solid fa-{{ icon }}" aria-hidden="true"></i></button>
 {%- endmacro %}
 
-{#- A consequential verb, worded, in the dialog's footer (Withdraw, Renew, Delete, Merge). -#}
-{% macro footer_verb(label, url, write_enabled, post=False, tone='secondary', confirm=None, confirm_title='', confirm_label='', confirm_variant='danger', icon=None) -%}
-<button type="button" class="btn btn-{{ 'outline-' if tone != 'secondary' }}{{ tone }}"
+{#- A consequential verb, worded, in the dialog's footer (Withdraw, Renew, Delete, Merge);
+    `menu` renders it as an item of the footer's More menu. -#}
+{% macro footer_verb(label, url, write_enabled, post=False, tone='secondary', confirm=None, confirm_title='', confirm_label='', confirm_variant='danger', icon=None, menu=False) -%}
+<button type="button" class="{{ ('dropdown-item' ~ (' xras-menu-danger' if tone == 'danger' else '')) if menu else ('btn btn-' ~ ('outline-' if tone != 'secondary' else '') ~ tone) }}"
         {% if not write_enabled %}disabled title="{{ WHY_OFF }}"{% endif %}
         {{ 'hx-post' if post else 'hx-get' }}="{{ url }}" hx-target="#xrasModalBody" hx-swap="innerHTML"
         {%- if confirm %} hx-confirm="{{ confirm }}" data-confirm-title="{{ confirm_title }}"
