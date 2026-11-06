@@ -89,7 +89,11 @@
         if (i >= 0) {
             m.dataset.queueIndex = String(i);
             var tr = links[i].closest('tr');
-            if (tr) { tr.classList.add(CURRENT); tr.scrollIntoView({block: 'nearest'}); }
+            if (tr) {
+                tr.classList.add(CURRENT);
+                /* Scroll only behind an open dialog: a card re-render after Done must not jump the page. */
+                if (m.classList.contains('show')) { tr.scrollIntoView({block: 'nearest'}); }
+            }
         }
         /* Gone from the table (a write moved it on): step from where it was. */
         var at = i >= 0 ? i : Number(m.dataset.queueIndex || 0);
