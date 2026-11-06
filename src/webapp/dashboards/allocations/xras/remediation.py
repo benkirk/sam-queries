@@ -1149,19 +1149,38 @@ def xras_withdraw(request_number: str, action_id: int):
                                 action_id=action_id).handle()
 
 
-def _safe_action_context(request_number, action_id, *, mode):
-    """`_action_context` that degrades to a renderable shell on an outage."""
+def _live_or(build, shell):
+    """*build*'s live XRAS context, or *shell* (a renderable fallback) on an outage or a gone request."""
     try:
-        context = _action_context(request_number, action_id, mode=mode)
+        context = build()
     except XrasSourceUnavailable:
         context = None
-    return context or {
+    return context or shell
+
+
+def _editor_form(build, template, *, what, log, missing=None):
+    """A modal body from a live read: degraded while XRAS is down, not-found once the request is gone."""
+    try:
+        context = build()
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('xras %s form: %s', log, exc)
+        return _degraded(f'Editing {what} needs a live read from XRAS, and XRAS is not answering.')
+    if context is None:
+        return _not_found('Request')
+    if missing and context.get('_missing'):
+        return _degraded(missing, title='Action not found')
+    return render_template(template, **context)
+
+
+def _safe_action_context(request_number, action_id, *, mode):
+    """`_action_context` that degrades to a renderable shell on an outage."""
+    return _live_or(lambda: _action_context(request_number, action_id, mode=mode), {
         'request_number': request_number, 'request_id': None, 'action': None,
         'action_id': action_id, 'action_count': 0, 'request_status': None,
         'xa_user': None, 'xa_user_is_pi': False,
         'xa_user_is_placeholder': False, 'mode': mode, 'validation': None,
         'write_enabled': xras_write_configured(),
-    }
+    })
 
 
 @bp.route('/xras_resubmit_form/<path:request_number>/<int:action_id>')
@@ -1383,11 +1402,7 @@ class _XrasRoleAddHandler(_XrasRemediationHandler):
 
 
 def _safe_roles_context(request_number):
-    try:
-        context = _roles_context(request_number)
-    except XrasSourceUnavailable:
-        context = None
-    return context or {
+    return _live_or(lambda: _roles_context(request_number), {
         'request_number': request_number, 'request_id': None, 'roster': [],
         'request_status': None, 'xa_user': None, 'xa_user_is_pi': False,
         'xa_user_is_placeholder': False,
@@ -1396,7 +1411,7 @@ def _safe_roles_context(request_number):
         'write_enabled': xras_write_configured(),
         'post_url': url_for('allocations_dashboard.xras_role_add',
                             request_number=request_number),
-    }
+    })
 
 
 @bp.route('/xras_role_add/<path:request_number>', methods=['POST'])
@@ -1614,12 +1629,8 @@ def _resource_form_context(request_number, action_id, resource_id, stage):
 
 
 def _safe_resource_form_context(request_number, action_id, resource_id, stage):
-    try:
-        context = _resource_form_context(request_number, action_id,
-                                         resource_id, stage)
-    except XrasSourceUnavailable:
-        context = None
-    return context or {
+    return _live_or(lambda: _resource_form_context(request_number, action_id,
+                                                   resource_id, stage), {
         'request_number': request_number, 'action_id': action_id,
         'resource_id': resource_id, 'stage': stage,
         'is_award': stage != 'Requested', 'resource_name': f'resource {resource_id}',
@@ -1630,7 +1641,7 @@ def _safe_resource_form_context(request_number, action_id, resource_id, stage):
                             request_number=request_number, action_id=action_id,
                             resource_id=resource_id),
         'back_url': _back_to_detail(request_number),
-    }
+    })
 
 
 @bp.route('/xras_resource_form/<path:request_number>/<int:action_id>'
@@ -1640,16 +1651,9 @@ def _safe_resource_form_context(request_number, action_id, resource_id, stage):
 def xras_resource_form(request_number: str, action_id: int, resource_id: int):
     """Modal body: edit one resource's amount for a stage."""
     stage = request.args.get('stage') or 'Requested'
-    try:
-        context = _resource_form_context(request_number, action_id,
-                                         resource_id, stage)
-    except XrasSourceUnavailable as exc:
-        current_app.logger.warning('xras resource form: %s', exc)
-        return _degraded('Editing an amount needs a live read from XRAS, and '
-                         'XRAS is not answering.')
-    if context is None:
-        return _not_found('Request')
-    return render_template(_RESOURCE_FORM, **context)
+    return _editor_form(lambda: _resource_form_context(request_number, action_id,
+                                                       resource_id, stage),
+                        _RESOURCE_FORM, what='an amount', log='resource')
 
 
 class _XrasResourceAmountHandler(_XrasRemediationHandler):
@@ -1760,19 +1764,15 @@ def _dates_form_context(request_number, action_id, allocation_date_id=None):
 
 
 def _safe_dates_form_context(request_number, action_id, allocation_date_id=None):
-    try:
-        context = _dates_form_context(request_number, action_id,
-                                      allocation_date_id)
-    except XrasSourceUnavailable:
-        context = None
-    return context or {
+    return _live_or(lambda: _dates_form_context(request_number, action_id,
+                                                allocation_date_id), {
         'request_number': request_number, 'action_id': action_id,
         'allocation_date_id': allocation_date_id, 'begin_date': None,
         'end_date': None, 'write_enabled': xras_write_configured(),
         'post_url': url_for('allocations_dashboard.xras_dates_edit',
                             request_number=request_number, action_id=action_id),
         'back_url': _back_to_detail(request_number),
-    }
+    })
 
 
 @bp.route('/xras_dates_form/<path:request_number>/<int:action_id>')
@@ -1781,15 +1781,8 @@ def _safe_dates_form_context(request_number, action_id, allocation_date_id=None)
 def xras_dates_form(request_number: str, action_id: int):
     """Modal body: set or edit an allocation-date range."""
     date_id = request.args.get('allocation_date_id', type=int)
-    try:
-        context = _dates_form_context(request_number, action_id, date_id)
-    except XrasSourceUnavailable as exc:
-        current_app.logger.warning('xras dates form: %s', exc)
-        return _degraded('Editing allocation dates needs a live read from '
-                         'XRAS, and XRAS is not answering.')
-    if context is None:
-        return _not_found('Request')
-    return render_template(_DATES_FORM, **context)
+    return _editor_form(lambda: _dates_form_context(request_number, action_id, date_id),
+                        _DATES_FORM, what='allocation dates', log='dates')
 
 
 class _XrasActionDatesHandler(_XrasRemediationHandler):
@@ -1891,17 +1884,13 @@ def _attributes_form_context(request_number):
 
 
 def _safe_attributes_form_context(request_number):
-    try:
-        context = _attributes_form_context(request_number)
-    except XrasSourceUnavailable:
-        context = None
-    return context or {
+    return _live_or(lambda: _attributes_form_context(request_number), {
         'request_number': request_number, 'title': None, 'short_title': None,
         'abstract': None, 'write_enabled': xras_write_configured(),
         'post_url': url_for('allocations_dashboard.xras_attributes_edit',
                             request_number=request_number),
         'back_url': _back_to_detail(request_number),
-    }
+    })
 
 
 @bp.route('/xras_attributes_form/<path:request_number>')
@@ -1909,15 +1898,8 @@ def _safe_attributes_form_context(request_number):
 @require_permission(Permission.MANAGE_XRAS)
 def xras_attributes_form(request_number: str):
     """Modal body: edit the request's title / short title / abstract."""
-    try:
-        context = _attributes_form_context(request_number)
-    except XrasSourceUnavailable as exc:
-        current_app.logger.warning('xras attributes form: %s', exc)
-        return _degraded('Editing the request attributes needs a live read '
-                         'from XRAS, and XRAS is not answering.')
-    if context is None:
-        return _not_found('Request')
-    return render_template(_ATTRIBUTES_FORM, **context)
+    return _editor_form(lambda: _attributes_form_context(request_number),
+                        _ATTRIBUTES_FORM, what='the request attributes', log='attributes')
 
 
 class _XrasAttributesHandler(_XrasRemediationHandler):
@@ -1980,10 +1962,7 @@ def _action_fields_form_context(request_number, action_id):
 
 
 def _safe_action_fields_form_context(request_number, action_id):
-    try:
-        context = _action_fields_form_context(request_number, action_id)
-    except XrasSourceUnavailable:
-        context = None
+    context = _live_or(lambda: _action_fields_form_context(request_number, action_id), None)
     if context and not context.get('_missing'):
         return context
     return {
@@ -2000,19 +1979,10 @@ def _safe_action_fields_form_context(request_number, action_id):
 @require_permission(Permission.MANAGE_XRAS)
 def xras_action_fields_form(request_number: str, action_id: int):
     """Modal body: edit an action's user comments."""
-    try:
-        context = _action_fields_form_context(request_number, action_id)
-    except XrasSourceUnavailable as exc:
-        current_app.logger.warning('xras action fields form: %s', exc)
-        return _degraded('Editing the action fields needs a live read from '
-                         'XRAS, and XRAS is not answering.')
-    if context is None:
-        return _not_found('Request')
-    if context.get('_missing'):
-        return _degraded(
-            f'Action {action_id} on {request_number} is deleted in XRAS or no longer listed.',
-            title='Action not found')
-    return render_template(_ACTION_FIELDS_FORM, **context)
+    return _editor_form(
+        lambda: _action_fields_form_context(request_number, action_id),
+        _ACTION_FIELDS_FORM, what='the action fields', log='action fields',
+        missing=f'Action {action_id} on {request_number} is deleted in XRAS or no longer listed.')
 
 
 class _XrasActionFieldsHandler(_XrasRemediationHandler):
