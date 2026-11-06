@@ -25,7 +25,7 @@
     <p class="mb-0 text-muted">Would be created as
         <span title="The 4-digit number is assigned when the project is created.">{{ projcode_series(pf.resolved.series) }}</span>{% if pf.resolved.allocation_type %} · {{ pf.resolved.allocation_type }}{% endif %}{% if pf.resolved.panel_authorised %} · panel authorized{% endif %}</p>
     {% endif %}
-    {% if pf.gaps %}<p class="mb-0 text-muted">Not synthesized: {{ pf.gaps | join(', ') }}</p>{% endif %}
+    {% if pf.gaps %}<p class="mb-0 text-muted">Can't pre-flight yet: {{ pf.gaps | map('xras_gap') | join('; ') }}</p>{% endif %}
     {# Calibration: the prediction beside what happened once XRAS pushed it. #}
     {% if action.actual %}
     <div class="xras-preflight-actual">

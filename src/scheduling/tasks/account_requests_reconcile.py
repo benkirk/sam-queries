@@ -10,8 +10,10 @@ Then, behind ``XRAS_SUBMIT_ANONYMOUS_ENABLED`` and ``XRAS_WRITE_ENABLED`` in tas
 it merges each fulfilled ``/request`` placeholder into its account in XRAS
 (``merge_fulfilled_visitors``), skipped by ``--dry-run``. The merge
 reads committed rows, so a row this pass fulfilled merges on the next. Behind
-``XRAS_AUTO_MERGE`` it merges each "Ready to merge" placeholder too, and dismisses a
-fulfilled placeholder request XRAS no longer holds (``merge_ready_placeholders``).
+``XRAS_AUTO_MERGE`` it merges each "Ready to merge" placeholder too (one XRAS no longer
+holds is recorded ``rejected`` once, never asked about again), and dismisses a fulfilled
+placeholder request XRAS no longer holds, or holds on no current roster
+(``close_stale_placeholders``); both read pushes from the sweep's window only.
 Otherwise the database alone, which the runner's rollback covers. Never a tracker
 write: it reaches the tracker through ``read_providers`` alone. Design:
 docs/plans/implemented/ACCOUNT_REGISTRATION.md, docs/plans/implemented/TICKET_PROVIDER.md,
@@ -87,7 +89,7 @@ def account_requests_reconcile(ctx) -> TaskResult:
         tickets = {'skipped': True, 'reason': f'{type(exc).__name__}: {exc}'}
     ctx.logger.info('account requests: %s', describe(tickets))
     merges = _merge_visitors(ctx)
-    ready, stale = _merge_ready(ctx)
+    ready, stale = _merge_ready(ctx, clock)
     return TaskResult(
         detail={**counts, 'purge_days': days, 'clock': clock.isoformat(),
                 'tickets': tickets, 'merges': merges, 'ready_merges': ready, 'stale': stale},
@@ -125,23 +127,29 @@ def _merge_visitors(ctx) -> dict:
     return {**out, 'merged': [list(m[:2]) for m in out['merged']]}
 
 
-def _merge_ready(ctx):
-    """The "Ready to merge" pass, then the stale-request close; fail-open, like the visitor merge."""
+def _merge_ready(ctx, clock):
+    """The "Ready to merge" pass, then the stale-request close; fail-open, like the visitor merge.
+
+    Both read pushes from the sweep's window only (``window_days``), so a refused push of any
+    age cannot put a placeholder on the auto-merge list.
+    """
     from sam.integration.xras_api.config import XrasApiConfig
     from sam.manage.xras_remediation import close_stale_placeholders, merge_ready_placeholders
     from scheduling.tasks._notice_common import new_sam_session
+    from scheduling.tasks.xras_sweep import window_days
     if not XrasApiConfig.from_environment().auto_merge_configured:
         return {'skipped': 'lever off'}, {'skipped': 'lever off'}
     if ctx.dry_run:
         return {'skipped': 'dry run'}, {'skipped': 'dry run'}
     factory = lambda: new_sam_session(ctx.sam_session)    # noqa: E731
+    since = clock - timedelta(days=window_days())
     try:
-        ready = merge_ready_placeholders(factory, operator=OPERATOR, cap=MERGE_CAP)
+        ready = merge_ready_placeholders(factory, operator=OPERATOR, cap=MERGE_CAP, since=since)
     except Exception as exc:                          # noqa: BLE001
         ctx.logger.exception('account requests: the ready-to-merge pass failed')
         ready = {'skipped': f'{type(exc).__name__}: {exc}'}
     try:
-        stale = close_stale_placeholders(factory, operator=OPERATOR, cap=STALE_CAP)
+        stale = close_stale_placeholders(factory, operator=OPERATOR, cap=STALE_CAP, since=since)
     except Exception as exc:                          # noqa: BLE001
         ctx.logger.exception('account requests: the stale-request pass failed')
         stale = {'skipped': f'{type(exc).__name__}: {exc}'}

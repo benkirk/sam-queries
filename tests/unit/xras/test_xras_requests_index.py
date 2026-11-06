@@ -12,7 +12,7 @@ import pytest
 
 from sam.queries.xras_requests import (
     DRAFT_ACTION_STATUS,
-    _preflight_rollup,
+    preflight_rollup,
     actions_from_payload,
     latest_action_type,
     person_roles_from_payload,
@@ -447,28 +447,28 @@ class TestPreflightRollup:
     """The worst PENDING verdict — applied actions must not poison the badge."""
 
     def test_it_is_none_when_nothing_is_checked(self):
-        assert _preflight_rollup(None) is None
-        assert _preflight_rollup({}) is None
+        assert preflight_rollup(None) is None
+        assert preflight_rollup({}) is None
 
     def test_worst_wins_among_pending(self):
-        assert _preflight_rollup({1: _verdict('rechecked'),
+        assert preflight_rollup({1: _verdict('rechecked'),
                                   2: _verdict('failed')}) == 'failed'
 
     def test_it_ignores_already_applied_actions(self):
         # An old applied action that no longer validates must not poison a
         # request whose next push is fine.
-        rollup = _preflight_rollup({1: _verdict('failed', push_state='applied_inferred'),
+        rollup = preflight_rollup({1: _verdict('failed', push_state='applied_inferred'),
                                     2: _verdict('rechecked', push_state='unknown')})
         assert rollup == 'rechecked'
 
     def test_all_applied_falls_back_to_their_verdict_not_none(self):
         # Nothing pending, but the request has a known state — show it, not a
         # false "not checked" that invites a no-op re-check.
-        assert _preflight_rollup({1: _verdict('rechecked',
+        assert preflight_rollup({1: _verdict('rechecked',
                                               push_state='seen_in_log')}) == 'rechecked'
 
     def test_it_is_none_when_nothing_was_checked_at_all(self):
-        assert _preflight_rollup({1: None}) is None
+        assert preflight_rollup({1: None}) is None
 
 
 class TestLatestActionStatus:

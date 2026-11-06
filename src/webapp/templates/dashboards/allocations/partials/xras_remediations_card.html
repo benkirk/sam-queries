@@ -6,7 +6,7 @@
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {% from 'dashboards/fragments/table_bits.html' import pane_toolbar %}
 {% from 'dashboards/fragments/project_bits.html' import project_link with context %}
-{% from 'dashboards/fragments/xras_bits.html' import clear_filters, empty_state, gist_html, icon_count, note_marker, projcode_series, queue_badges, queue_switch, request_link, show_in_table, status_note, swept_stamp, tag, type_label, unblock_strip, verdict %}
+{% from 'dashboards/fragments/xras_bits.html' import clear_filters, empty_state, gist_html, icon_count, note_marker, projcode_series, queue_badges, queue_switch, request_link, show_in_table, status_note, swept_stamp, tag, type_label, unblock_strip, verdict, waiting %}
 {#
   XRAS Remediations: the operator WRITE surface. Every button here changes
   production XRAS (a merge deletes an account; a withdraw de-approves an award).
@@ -205,6 +205,8 @@
                                  placeholder='Request number, project code, or a name',
                                  title='The request number IS the projcode. Also matches the project lead and every roster member, by name or username, including the ones only visible once a row is expanded.') }}
             {% endcall %}
+            {{ facet_row('Waiting', facet_values.waiting, form_id, 'waiting',
+                         active=selected.waiting) }}
             {{ facet_row('Status', facet_values.status, form_id, 'status',
                          active=selected.status) }}
             {{ facet_row('Type', facet_values.action_type, form_id, 'action_type',
@@ -253,7 +255,8 @@
     {% endif %}
     {% else %}
     <div class="table-responsive">
-        <table class="table table-sm table-hover align-middle mb-0 xras-table">
+        {# data-xras-queue: the request dialog's prev/next walks these rows (static/js/xras.js). #}
+        <table class="table table-sm table-hover align-middle mb-0 xras-table" data-xras-queue>
             <thead class="table-subtle">
                 <tr>
                     {# Sortable within each group; Type / Status / SAM are the chips' job. #}
@@ -318,8 +321,7 @@
                     {% set admin = (row.admin.name or row.admin.username) if (row.admin is defined and row.admin) else '' %}
                     <td class="text-nowrap">{% if admin %}<span class="text-clip" title="{{ admin }}">{{ admin }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
                     {# The current handoff's date, so the column agrees with the window. #}
-                    <td class="col-num text-muted"
-                        title="{{ (row.activity_date or row.submit_date) | fmt_date }}">{{ (row.activity_date or row.submit_date) | fmt_age }}</td>
+                    <td class="col-num">{{ waiting(row.activity_date or row.submit_date) }}</td>
                     <td class="text-nowrap small text-muted">
                         {{ row.begin_date | fmt_date }} – {{ row.end_date | fmt_date }}
                     </td>

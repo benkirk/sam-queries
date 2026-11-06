@@ -36,11 +36,12 @@ from sam.queries.xras_activation import (
 from sam.queries.xras_accounts import (
     assemble_worklist,
     load_pending_worklist_rows,
+    load_request_index,
     worklist_counts,
 )
 
 from .. import bp
-from ..blueprint import _window_control_context
+from ..blueprint import window_control_context
 from ._shared import (
     _activity_in_window,
     scope_rows,
@@ -115,7 +116,7 @@ def xras():
         window=_parse_activity_window(request.args),
         window_pill_choices=_ACTIVITY_WINDOW_PILLS,
         form_id='xras-window-filters',
-        **_window_control_context(end_date, start_str, end_str),
+        **window_control_context(end_date, start_str, end_str),
         activity_facets=ACTIVITY_FACETS,
         account_facets=ACCOUNT_FACETS,
         remediation_facets=REMEDIATION_FACETS,
@@ -317,7 +318,7 @@ def xras_accounts_fragment():
     # denominator is the snapshot's rows, not its counts total. Enrichment is
     # best-effort and never fatal: an outage leaves the rest `person=None`.
     feed = load_pending_worklist_rows()
-    assembled = assemble_worklist(db.session, pending_rows=feed.rows,
+    assembled = assemble_worklist(db.session, pending_rows=feed.rows, index=load_request_index(),
                                   since=window['since'], until=window['until'],
                                   max_lookups=_ACCOUNTS_ENRICH_BUDGET)
     rows, enrichment = assembled.rows, assembled.enrichment
@@ -362,6 +363,7 @@ def xras_accounts_fragment():
         feed_generated_at=snapshot.get('generated_at'),
         feed_window_days=snapshot.get('window_days'),
         pending_hidden=pending_hidden,
+        stale_dropped=assembled.stale_dropped,
         form_id=_ACCOUNTS_FORM_ID,
         fragment_url=url_for('allocations_dashboard.xras_accounts_fragment'),
         target_id=_ACCOUNTS_TARGET,

@@ -426,7 +426,7 @@ AUDIT_AGE_BANDS = (
 )
 
 
-def _window_control_context(anchor, start_str, end_str):
+def window_control_context(anchor, start_str, end_str):
     """Ladder + current span for an audit-style panel's window control.
 
     The direct analogue of ``_age_band_ctx`` (``webapp/jobs/routes.py``), and it
@@ -479,7 +479,7 @@ def _audit_page_context():
         'audit_end_date': end_str,
         'all_resources': all_resources,
         'allowed_facility_names': allowed_facility_names,
-        **_window_control_context(audit_end_date, start_str, end_str),
+        **window_control_context(audit_end_date, start_str, end_str),
     }
 
 

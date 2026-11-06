@@ -499,6 +499,15 @@ def display_opportunity_report(ctx, payload) -> None:
             'edit to the constant — a code review, never a silent DB write.[/dim]')
 
 
+def _stale_note(ctx, payload) -> None:
+    """The rows the card header calls hidden: the terminal says so too, or a row just vanishes."""
+    stale = payload.get('stale_dropped')
+    if stale:
+        ctx.console.print(
+            f"[dim]{stale} stale push(es) hidden: only an old refused push names them, and "
+            "XRAS's current rosters no longer do.[/dim]")
+
+
 def display_account_worklist(ctx, payload) -> None:
     """Render the account-creation worklist, absent before inactive."""
     counts = payload['counts']
@@ -507,6 +516,7 @@ def display_account_worklist(ctx, payload) -> None:
     if not payload['accounts']:
         ctx.console.print(
             '[green]No accounts are waiting on creation or reactivation.[/green]')
+        _stale_note(ctx, payload)
         return
 
     oldest = counts.get('oldest_days')
@@ -577,6 +587,7 @@ def display_account_worklist(ctx, payload) -> None:
             'not be read, so accounts XRAS has approved but not yet sent are '
             'NOT counted here. Set XRAS_OUTGOING_ENABLED=1 with a reachable '
             'cache for the full queue.[/yellow]')
+    _stale_note(ctx, payload)
 
     enrichment = payload.get('enrichment')
     if enrichment and enrichment['unavailable']:

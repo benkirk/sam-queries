@@ -29,7 +29,8 @@ import re
 import secrets
 from contextlib import nullcontext
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from functools import cached_property
+from datetime import date, datetime, timedelta
 from typing import (Any, Callable, Dict, Iterable, Iterator, List, Mapping,
                     Optional, Sequence, Tuple)
 
@@ -920,6 +921,15 @@ class PendingFeed:
     reason: Optional[str] = None
     snapshot: Optional[Dict[str, Any]] = None
 
+    @property
+    def window_start(self) -> Optional[datetime]:
+        """Where the sweep's lookback began (its build stamp less its window), or None."""
+        snapshot = self.snapshot or {}
+        built, days = snapshot.get('generated_at'), snapshot.get('window_days')
+        if not isinstance(built, datetime) or not days:
+            return None
+        return built - timedelta(days=int(days))
+
 
 def load_pending_worklist_rows() -> PendingFeed:
     """Read Feed B from the cache, degrading rather than raising.
@@ -947,6 +957,56 @@ def load_pending_worklist_rows() -> PendingFeed:
         return PendingFeed(reason='no_snapshot')
     return PendingFeed(rows=list(snapshot.get('rows') or []), checked=True,
                        snapshot=snapshot)
+
+
+def rosters_by_number(index_rows: Optional[Iterable[Mapping[str, Any]]]) -> Dict[str, set]:
+    """``{request number: {casefolded usernames on its current roster}}`` from the request index."""
+    rosters: Dict[str, set] = {}
+    for entry in index_rows or ():
+        number = str(entry.get('request_number') or '').strip()
+        if number:
+            rosters[number] = {str(p.get('username') or '').casefold()
+                               for p in entry.get('roster') or ()}
+    return rosters
+
+
+@dataclass(frozen=True)
+class RequestIndex:
+    """The sweep's request index as last published, in :class:`PendingFeed`'s shape.
+
+    ``checked`` is whether a snapshot was read; ``reason`` is ``no_snapshot`` / ``unreadable``
+    / ``None``. ``rows`` is always a list, so a caller can inject it unguarded.
+    """
+
+    rows: List[Dict[str, Any]] = field(default_factory=list)
+    generated_at: Optional[datetime] = None
+    checked: bool = False
+    reason: Optional[str] = None
+    snapshot: Optional[Dict[str, Any]] = None
+
+    @cached_property
+    def rosters(self) -> Dict[str, set]:
+        """The current rosters by request number (:func:`rosters_by_number`), once."""
+        return rosters_by_number(self.rows)
+
+
+def load_request_index() -> RequestIndex:
+    """Read the request index from the cache, degrading rather than raising.
+
+    No configuration gate, unlike Feed B: the admin queue names a pending row's request from
+    the index whether or not this deployment can open XRAS.
+    """
+    try:
+        from sam.integration.xras_api.cache import load_requests_index
+        snapshot = load_requests_index()
+    except Exception as exc:                     # noqa: BLE001
+        logger.warning('xras worklist: request index unreadable (%s)', exc)
+        return RequestIndex(reason='unreadable')
+    if snapshot is None:
+        return RequestIndex(reason='no_snapshot')
+    return RequestIndex(rows=list(snapshot.get('rows') or []),
+                        generated_at=snapshot.get('generated_at'), checked=True,
+                        snapshot=snapshot)
 
 
 # enrichment
@@ -1207,23 +1267,58 @@ def stamp_waiting_days(rows: Sequence[Dict[str, Any]], *,
         row['waiting_days'] = waiting_days(row, today=when)
 
 
+def drop_stale_pushes(rows: List[Dict[str, Any]], index: RequestIndex) -> int:
+    """Drop, in place, each placeholder row only a push names whose citing requests' current
+    rosters (the request *index*, built at its ``generated_at``) no longer carry it; the count.
+
+    A hand edit inside XRAS with no re-post retires nothing in Feed A (no later post, no
+    ``verified`` merge), so the row would read "Ready to merge" forever (NCAR4434, 2026-11-05).
+    A request absent from the index is undecidable, and a push received after the index was
+    built is newer evidence than its roster (a person added and pushed the same day): both stay.
+    """
+    generated_at, rosters = index.generated_at, index.rosters
+    if generated_at is None or not rosters:
+        return 0
+    kept, dropped = [], 0
+    for row in rows:
+        if row.get('placeholder') and set(row.get('sources') or ()) == {SOURCE_ACTION_LOG}:
+            key = str(row.get('username') or '').casefold()
+            actions = row.get('actions') or ()
+            numbers = {str(a.get('request_number') or '').strip() for a in actions} - {''}
+            received = [a.get('received_time') for a in actions]
+            if (numbers and numbers <= rosters.keys()
+                    and all(t is not None and t <= generated_at for t in received)
+                    and not any(key in rosters[n] for n in numbers)):
+                dropped += 1
+                continue
+        kept.append(row)
+    rows[:] = kept
+    return dropped
+
+
 @dataclass
 class AssembledWorklist:
-    """The worklist every surface renders, plus what its Feed-B window hid."""
+    """The worklist every surface renders, plus what its Feed-B window hid and what was stale."""
 
     rows: List[Dict[str, Any]]
     enrichment: Optional[Dict[str, Any]] = None
     pending_hidden: int = 0
+    stale_dropped: int = 0
 
 
 def assemble_worklist(session: Session, *,
                       pending_rows: Optional[Sequence[Dict[str, Any]]] = None,
+                      index: Optional[RequestIndex] = None,
                       since=None, until=None, validate: bool = True,
                       max_lookups: Optional[int] = None) -> AssembledWorklist:
     """Feed A, windowed Feed B, the merge and every stamp, in the one safe order.
 
     Feed B is windowed here, before injection: after the merge every Feed-A row
     would pass the window, so it would never narrow the pending half.
+    *index* is the sweep's request index (:func:`load_request_index`), injected like Feed B:
+    a Feed-A-only placeholder its requests' current rosters no longer name is dropped before
+    enrichment (:func:`drop_stale_pushes`). The index is rebuilt daily, so a hand edit in
+    XRAS reaches here by the next full sweep.
     *max_lookups* ``None`` skips enrichment; ``0`` uses inline persons only.
     Merge targets come after enrichment because a row may get its email there.
     """
@@ -1238,12 +1333,14 @@ def assemble_worklist(session: Session, *,
     stamp_waiting_days(rows)
     # After the merge copies each action dict: this writes `is_project` in place.
     stamp_project_existence(session, rows)
+    stale = drop_stale_pushes(rows, index) if index and index.rows else 0
     enrichment = (None if max_lookups is None
                   else enrich_worklist(rows, max_lookups=max_lookups))
     stamp_merge_targets(session, rows)
     return AssembledWorklist(
         rows=rows, enrichment=enrichment,
-        pending_hidden=(len(pending_rows) - len(pending)) if pending is not None else 0)
+        pending_hidden=(len(pending_rows) - len(pending)) if pending is not None else 0,
+        stale_dropped=stale)
 
 
 def _first_seen_approved(session: Session, rows: Sequence[Dict[str, Any]]) -> Dict[str, datetime]:

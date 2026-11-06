@@ -795,6 +795,31 @@ class TestReadyToMerge:
         assert 'user38@example.invalid' not in body
         assert 'xras_merge_form' not in body, 'view-only never sees the write'
 
+    @pytest.fixture
+    def index_without_the_placeholder(self, monkeypatch):
+        """A published request index, built after the committed push, whose NCAR4227 roster
+        no longer names the placeholder."""
+        from sam.integration.xras_api import cache as xras_cache
+        from datetime import timedelta
+        monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
+        xras_cache._CACHE.reset_for_tests(disabled=False)
+        # MySQL ROUNDS a DATETIME to the second, so the committed push can land up to a
+        # second after a stamp taken now; the build must read as later than that push.
+        xras_cache.store_requests_index({'generated_at': datetime.now() + timedelta(seconds=2),
+                                         'rows': [{'request_number': 'NCAR4227',
+                                                   'roster': [{'username': 'realname38'}]}]})
+        yield
+        xras_cache._CACHE.reset_for_tests(disabled=False)
+
+    def test_a_placeholder_the_roster_no_longer_names_is_hidden(
+            self, auth_client, committed_worklist_action, merge_ready_email_user,
+            index_without_the_placeholder):
+        """Only SAM's refused push names it: the row is history, and the header count agrees."""
+        body = auth_client.get(URL).get_data(as_text=True)
+        assert 'placeholder38-user-00038' not in body
+        assert 'ready to merge' not in body
+        assert '1 stale push hidden' in body
+
 
 # ---------------------------------------------------------------------------
 # The link to the Accounts queue

@@ -13,7 +13,7 @@
 
   Context: rows, counts (worklist_counts), may_manage, enrichment, facet_values,
   selected, feed_checked / feed_reason / feed_generated_at / feed_window_days,
-  pending_hidden, configured, form_id, fragment_url, target_id.
+  pending_hidden, stale_dropped, configured, form_id, fragment_url, target_id.
   `row.person` is None for VIEW_XRAS because the ROUTE dropped it; the
   `may_manage` checks here are a second gate.
   WARNING: the toggles sit on cells with no link in them, never on the <tr>:
@@ -34,7 +34,8 @@
             {%- if counts.pending_request %}<span title="XRAS has approved requests naming these people; they will block the push when it comes.">{{ counts.pending_request | fmt_number }} from pending requests</span>{% endif %}
             {%- if counts.oldest_days %}<span title="How long the longest-waiting account has been blocking a handoff">oldest {{ counts.oldest_days | fmt_number }}d</span>{% endif %}
             {%- if counts.merge_ready %}<span title="Placeholders whose email SAM already holds on an active account: one merge in XRAS each">{{ counts.merge_ready | fmt_number }} ready to merge</span>{% endif %}
-            {%- if counts.placeholder %}<span title="ARC placeholder usernames (&lt;name&gt;-user-&lt;token&gt;): XRAS mints one for a researcher with no site account">{{ counts.placeholder | fmt_number }} placeholder</span>{% endif -%}
+            {%- if counts.placeholder %}<span title="ARC placeholder usernames (&lt;name&gt;-user-&lt;token&gt;): XRAS mints one for a researcher with no site account">{{ counts.placeholder | fmt_number }} placeholder</span>{% endif %}
+            {%- if stale_dropped %}<span title="Placeholders only an old refused push names: XRAS's current rosters no longer carry them (edited there by hand, never re-posted), so the push is history and the row is hidden. The request's own Remediations row still shows its real blockers.">{{ stale_dropped | fmt_plural('stale push', 'stale pushes') }} hidden</span>{% endif -%}
         </span>
         {% if feed_checked %}
         {{ swept_stamp(feed_generated_at, feed_window_days ~ 'd lookback',

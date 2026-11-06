@@ -134,7 +134,7 @@ class TestAuditAgeBands:
     def test_an_empty_string_bound_is_not_a_missing_one(self):
         """`bands_for` tests `after is None`, not falsiness. Handing it a raw
         '' off the query string renders the custom state for what is actually
-        the open-ended band — which is why _window_control_context normalizes
+        the open-ended band — which is why window_control_context normalizes
         with `or None`."""
         end = ANCHOR.strftime('%Y-%m-%d')
         assert age_bands.bands_for(AUDIT_AGE_BANDS, ANCHOR, None, end) \

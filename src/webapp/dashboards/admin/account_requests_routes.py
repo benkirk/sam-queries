@@ -114,16 +114,9 @@ def _stamp_request_numbers(groups):
     pending = next((g['rows'] for g in groups if g['kind'] == GROUP_XRAS_PENDING), None)
     if not pending:
         return
+    from sam.queries.xras_accounts import load_request_index
     from sam.queries.xras_requests import request_numbers_by_username
-    try:
-        from sam.integration.xras_api.cache import load_requests_index
-        index = load_requests_index() or {}
-    except Exception as exc:                     # noqa: BLE001
-        # No backend reads as None; a Redis that went away after the adapter was
-        # built raises from the read (redis_ttl.py), and the queue must still render.
-        logger.warning('account requests: request index unreadable (%s)', exc)
-        index = {}
-    numbers = request_numbers_by_username(index.get('rows') or (),
+    numbers = request_numbers_by_username(load_request_index().rows,
                                           (v['row'].xras_username for v in pending))
     for v in pending:
         v['request_numbers'] = numbers.get((v['row'].xras_username or '').casefold(), [])

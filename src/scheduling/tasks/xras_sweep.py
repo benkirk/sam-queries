@@ -488,14 +488,14 @@ def _apply_worklist_preflights(enumerated, index_entries) -> None:
     request-keyed, so it takes the worst verdict across that request's actions.
     A Feed-A row (posted, already had ``_validate``) is left alone.
     """
-    from sam.queries.xras_requests import _preflight_rollup
+    from sam.queries.xras_requests import preflight_rollup
 
     rollup: dict = {}
     for entry in index_entries or ():
         number = entry.get('request_number')
         verdicts = {a['action_id']: a['preflight'] for a in entry.get('actions', ())
                     if a.get('preflight')}
-        status = _preflight_rollup(verdicts)
+        status = preflight_rollup(verdicts)
         if not status:
             continue
         worst = next(v for v in verdicts.values() if v['status'] == status)
