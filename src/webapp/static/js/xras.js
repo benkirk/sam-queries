@@ -81,10 +81,11 @@
         var n = nav();
         if (!m || !n) { return; }
         var links = m.dataset.queue ? rows() : [];
+        /* Before the early return: an outside opener or a one-row table drops the old mark. */
+        document.querySelectorAll('.' + CURRENT).forEach(function (tr) { tr.classList.remove(CURRENT); });
         n.hidden = links.length < 2;
         if (n.hidden) { return; }
         var i = indexOf(links, n.dataset.requestNumber);
-        document.querySelectorAll('.' + CURRENT).forEach(function (tr) { tr.classList.remove(CURRENT); });
         if (i >= 0) {
             m.dataset.queueIndex = String(i);
             var tr = links[i].closest('tr');
