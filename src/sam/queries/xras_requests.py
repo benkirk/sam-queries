@@ -38,6 +38,7 @@ from sam.integration.xras_api.vocabulary import (
     PI_ROLE_TYPE_ID,
 )
 from sam.queries.xras_accounts import (IN_FLIGHT_ACTION_STATUSES, in_flight_live_action,
+                                       rosters_by_number,
                                        is_placeholder, iter_roster_entries, live_actions,
                                        report_activity_date, role_in_window)
 
@@ -793,10 +794,7 @@ def request_numbers_by_username(index_rows: Sequence[Mapping[str, Any]],
                                 usernames: Iterable[Optional[str]]) -> Dict[str, List[str]]:
     """``{casefolded username: [request numbers]}`` from the request index's rosters."""
     out: Dict[str, List[str]] = {u.casefold(): [] for u in usernames if u}
-    for row in index_rows if out else ():
-        number = row.get('request_number')
-        for person in row.get('roster') or ():
-            numbers = out.get((person.get('username') or '').casefold())
-            if numbers is not None and number and number not in numbers:
-                numbers.append(number)
+    for number, roster in (rosters_by_number(index_rows) if out else {}).items():
+        for key in roster & out.keys():
+            out[key].append(number)
     return out
