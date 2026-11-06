@@ -527,6 +527,30 @@ class TestWaitingFacet:
         assert 'text-danger-emphasis fw-semibold' in body
 
 
+class TestQueueNav:
+    """The dialog's prev/next walks the card's rows; the wiring is markup, the walk is xras.js."""
+
+    def test_the_card_marks_its_rows_as_the_queue(self, auth_client, configured):
+        _publish(_payload('EXAM0001'))
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'data-xras-queue>' in body
+        assert 'data-request-number="EXAM0001"' in body
+
+    def test_the_request_dialog_carries_the_hidden_nav(self, auth_client, armed, monkeypatch):
+        _publish(_payload())
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get('/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        footer = body[body.index('id="xrasModalFooter"'):]
+        assert 'data-xras-queue-nav data-request-number="EXAM0001" hidden' in footer
+        assert 'data-action="xras-queue-step"' in footer
+
+    def test_a_sub_dialog_does_not(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch)
+        _publish(_payload())
+        body = auth_client.get('/allocations/xras_withdraw_form/EXAM0001/7').get_data(as_text=True)
+        assert 'data-xras-queue-nav' not in body
+
+
 class TestTheDocumentProxy:
     """A document, fetched as the line's PI and served from our origin; nothing stored."""
 

@@ -349,6 +349,14 @@
     {% endif %}
 </div>
 <div class="xras-footer-end">
+    {# Prev/next through the Remediations rows in view; xras.js unhides it when opened from there. #}
+    <span class="xras-queue-nav" data-xras-queue-nav data-request-number="{{ request_number }}" hidden>
+        <button type="button" class="btn btn-row" data-action="xras-queue-step" data-step="-1"
+                title="Previous request on the card (←)" aria-label="Previous request"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
+        <span class="small text-muted text-nowrap" data-xras-queue-pos aria-live="polite"></span>
+        <button type="button" class="btn btn-row" data-action="xras-queue-step" data-step="1"
+                title="Next request on the card (→)" aria-label="Next request"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+    </span>
     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Done</button>
 </div>
 {% endcall %}

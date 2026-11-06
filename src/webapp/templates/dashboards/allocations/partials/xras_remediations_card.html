@@ -255,7 +255,8 @@
     {% endif %}
     {% else %}
     <div class="table-responsive">
-        <table class="table table-sm table-hover align-middle mb-0 xras-table">
+        {# data-xras-queue: the request dialog's prev/next walks these rows (static/js/xras.js). #}
+        <table class="table table-sm table-hover align-middle mb-0 xras-table" data-xras-queue>
             <thead class="table-subtle">
                 <tr>
                     {# Sortable within each group; Type / Status / SAM are the chips' job. #}

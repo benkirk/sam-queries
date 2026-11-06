@@ -111,7 +111,7 @@
 {%- if not number -%}<span class="text-muted">—</span>
 {%- elif configured -%}
 <button type="button" class="btn btn-link btn-entity p-0{{ ' text-warning-emphasis' if suspect }}"
-        title="{{ warn if suspect else 'Full request detail (read-only)' }}"
+        title="{{ warn if suspect else 'Full request detail (read-only)' }}" data-request-number="{{ number }}"
         data-bs-toggle="modal" data-bs-target="#xrasModal"
         hx-get="{{ url_for('allocations_dashboard.xras_request_detail', request_number=number) }}"
         hx-target="#xrasModalBody" hx-swap="innerHTML">
@@ -251,7 +251,7 @@
 {#- A consequential verb, worded, in the dialog's footer (Withdraw, Renew, Delete, Merge);
     `menu` renders it as an item of the footer's More menu. -#}
 {% macro footer_verb(label, url, write_enabled, post=False, tone='secondary', confirm=None, confirm_title='', confirm_label='', confirm_variant='danger', icon=None, menu=False) -%}
-<button type="button" class="{{ ('dropdown-item' ~ (' text-' ~ tone ~ '-emphasis' if tone != 'secondary' else '')) if menu else ('btn btn-' ~ ('outline-' if tone != 'secondary' else '') ~ tone) }}"
+<button type="button" class="{{ ('dropdown-item' ~ (' xras-menu-danger' if tone == 'danger' else '')) if menu else ('btn btn-' ~ ('outline-' if tone != 'secondary' else '') ~ tone) }}"
         {% if not write_enabled %}disabled title="{{ WHY_OFF }}"{% endif %}
         {{ 'hx-post' if post else 'hx-get' }}="{{ url }}" hx-target="#xrasModalBody" hx-swap="innerHTML"
         {%- if confirm %} hx-confirm="{{ confirm }}" data-confirm-title="{{ confirm_title }}"
