@@ -1,6 +1,6 @@
 # Handoff: a placeholder XRAS no longer holds still reads "Ready to merge"
 
-**Status:** in progress, 2026-11-05: sweep 37's PR 1 (branch `stale-placeholder-rows`), after the
+**Status:** built, PR #922 merged to staging 8ea42a3f 2026-11-05 (sweep 37, PR 1), after the
 XRAS approval sprint (#920) landed. The census that preceded it: `XRAS_SWEEP_37_HANDOFF.md`.
 **Kickoff:** "Read docs/plans/STALE_PLACEHOLDER_ROWS.md. Make the Accounts card retire a placeholder
 that only an old push names and XRAS's current roster does not, record a `gone` in the ledger, and
