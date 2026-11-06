@@ -594,7 +594,8 @@ def _identity_summary(rows_in_view) -> dict:
 
     feed = load_pending_worklist_rows()
     worklist = assemble_worklist(db.session, validate=False, max_lookups=0,
-                                 pending_rows=feed.rows if feed.checked else None).rows
+                                 pending_rows=feed.rows if feed.checked else None,
+                                 index_rows=(_index() or {}).get('rows')).rows
     return identity_merge_report(
         worklist, in_view={r.get('request_number') for r in rows_in_view},
         generated_at=(feed.snapshot or {}).get('generated_at'))

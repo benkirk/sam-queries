@@ -1207,23 +1207,61 @@ def stamp_waiting_days(rows: Sequence[Dict[str, Any]], *,
         row['waiting_days'] = waiting_days(row, today=when)
 
 
+def drop_stale_pushes(rows: List[Dict[str, Any]],
+                      index_rows: Sequence[Mapping[str, Any]]) -> int:
+    """Drop, in place, each placeholder row only a push names whose citing requests' current
+    rosters (the request index) no longer carry it; returns the count.
+
+    A hand edit inside XRAS with no re-post retires nothing in Feed A (no later post, no
+    ``verified`` merge), so the row would read "Ready to merge" forever (NCAR4434, 2026-11-05).
+    A request absent from the index is undecidable: that row stays.
+    """
+    rosters: Dict[str, set] = {}
+    for entry in index_rows or ():
+        number = str(entry.get('request_number') or '').strip()
+        if number:
+            rosters[number] = {str(p.get('username') or '').casefold()
+                               for p in entry.get('roster') or ()}
+    if not rosters:
+        return 0
+    kept, dropped = [], 0
+    for row in rows:
+        if row.get('placeholder') and set(row.get('sources') or ()) == {SOURCE_ACTION_LOG}:
+            key = str(row.get('username') or '').casefold()
+            numbers = {str(a.get('request_number') or '').strip()
+                       for a in row.get('actions') or ()} - {''}
+            if numbers and numbers <= rosters.keys() \
+                    and not any(key in rosters[n] for n in numbers):
+                dropped += 1
+                continue
+        kept.append(row)
+    rows[:] = kept
+    return dropped
+
+
 @dataclass
 class AssembledWorklist:
-    """The worklist every surface renders, plus what its Feed-B window hid."""
+    """The worklist every surface renders, plus what its Feed-B window hid and what was stale."""
 
     rows: List[Dict[str, Any]]
     enrichment: Optional[Dict[str, Any]] = None
     pending_hidden: int = 0
+    stale_dropped: int = 0
 
 
 def assemble_worklist(session: Session, *,
                       pending_rows: Optional[Sequence[Dict[str, Any]]] = None,
+                      index_rows: Optional[Sequence[Mapping[str, Any]]] = None,
                       since=None, until=None, validate: bool = True,
                       max_lookups: Optional[int] = None) -> AssembledWorklist:
     """Feed A, windowed Feed B, the merge and every stamp, in the one safe order.
 
     Feed B is windowed here, before injection: after the merge every Feed-A row
     would pass the window, so it would never narrow the pending half.
+    *index_rows* is the sweep's request index (its ``rows``), injected like Feed B:
+    a Feed-A-only placeholder its requests' current rosters no longer name is dropped
+    before enrichment (:func:`drop_stale_pushes`). The index is rebuilt daily, so a
+    hand edit in XRAS reaches here by the next full sweep.
     *max_lookups* ``None`` skips enrichment; ``0`` uses inline persons only.
     Merge targets come after enrichment because a row may get its email there.
     """
@@ -1238,12 +1276,14 @@ def assemble_worklist(session: Session, *,
     stamp_waiting_days(rows)
     # After the merge copies each action dict: this writes `is_project` in place.
     stamp_project_existence(session, rows)
+    stale = drop_stale_pushes(rows, index_rows) if index_rows else 0
     enrichment = (None if max_lookups is None
                   else enrich_worklist(rows, max_lookups=max_lookups))
     stamp_merge_targets(session, rows)
     return AssembledWorklist(
         rows=rows, enrichment=enrichment,
-        pending_hidden=(len(pending_rows) - len(pending)) if pending is not None else 0)
+        pending_hidden=(len(pending_rows) - len(pending)) if pending is not None else 0,
+        stale_dropped=stale)
 
 
 def _first_seen_approved(session: Session, rows: Sequence[Dict[str, Any]]) -> Dict[str, datetime]:

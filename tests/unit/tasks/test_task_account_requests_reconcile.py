@@ -254,7 +254,12 @@ class TestTheReadyMerge:
         monkeypatch.setattr(XrasApiConfig, 'auto_merge_configured', True)
         result = mod.account_requests_reconcile(ctx())
         assert [c[0] for c in passes] == ['ready', 'stale']
-        assert passes[0][1] == {'operator': 'task:account_requests_reconcile', 'cap': mod.MERGE_CAP}
+        # Both passes read pushes from the sweep's window only, off the Mountain clock.
+        from scheduling.tasks.xras_sweep import window_days
+        since = datetime.fromisoformat(result.detail['clock']) - timedelta(days=window_days())
+        assert passes[0][1] == {'operator': 'task:account_requests_reconcile',
+                                'cap': mod.MERGE_CAP, 'since': since}
+        assert passes[1][1]['since'] == since
         assert result.detail['ready_merges']['merged'] == [['kmerk-user-92wap', 'katarinam']]
         assert '1 ready placeholder(s) merged' in result.message
         assert '2 stale request(s) closed' in result.message

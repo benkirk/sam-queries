@@ -1166,7 +1166,7 @@ class TestTheReadyMerge:
     @pytest.fixture
     def ready(self, monkeypatch):
         targets = []
-        monkeypatch.setattr(service, 'ready_to_merge', lambda session: list(targets))
+        monkeypatch.setattr(service, 'ready_to_merge', lambda session, **kw: list(targets))
         monkeypatch.setattr('sam.integration.xras.task_merge_attempts',
                             lambda session, names: set())
         return targets
@@ -1209,6 +1209,38 @@ class TestTheReadyMerge:
         out = service.merge_ready_placeholders(factory, operator='task:t', cap=5, client=client)
         assert out['gone'] == 1 and merged == []
 
+    def test_gone_is_recorded_once_and_never_asked_about_again(self, factory, merged,
+                                                               monkeypatch):
+        """NCAR4434, 2026-11-05: XRAS had no such person, and the task asked every 15 minutes."""
+        monkeypatch.setattr(service, 'ready_to_merge', lambda session, **kw: [self._target()])
+        client = MagicMock()
+        client.get_person.return_value = None
+        out = service.merge_ready_placeholders(factory, operator='task:t', cap=5, client=client)
+        assert out['gone'] == 1 and merged == []
+        with factory() as s:
+            row, = s.query(XrasRemediationEvent).filter(
+                XrasRemediationEvent.username == 'kmerk-user-92wap',
+                XrasRemediationEvent.created_by == 'task:t').all()
+            assert row.operation == 'merge_person' and row.status == 'rejected'
+            assert row.target_username == 'katarinam'
+            assert 'no such person' in row.outcome_reason
+        again = service.merge_ready_placeholders(factory, operator='task:t', cap=5, client=client)
+        assert again['refused'] == 1 and again['gone'] == 0
+        assert client.get_person.call_count == 1
+
+    def test_the_window_reaches_both_passes(self, factory, monkeypatch):
+        seen = []
+        monkeypatch.setattr(service, 'ready_to_merge',
+                            lambda session, **kw: seen.append(kw) or [])
+        since = datetime(2026, 8, 7)
+        client = MagicMock()
+        client.get_person.return_value = {'u': 1}
+        service.merge_ready_placeholders(factory, operator='task:t', cap=5, client=client,
+                                         since=since)
+        service.close_stale_placeholders(factory, operator='task:t', cap=5, client=client,
+                                         since=since)
+        assert seen == [{'since': since}, {'since': since}]
+
     def test_a_placeholder_a_task_already_tried_is_never_retried(self, factory, ready, merged,
                                                                monkeypatch):
         ready.append(self._target())
@@ -1245,6 +1277,21 @@ class TestTheReadyMerge:
                              'target_active': False}]})
         assert [t['username'] for t in service.ready_to_merge(session)] == ['kmerk-user-92wap']
 
+    def test_the_ready_set_reads_the_index_and_the_window(self, session, monkeypatch):
+        """The index's current rosters retire a stale push; the window bounds the pushes read."""
+        from types import SimpleNamespace
+        from sam.queries import xras_accounts
+        seen = {}
+        monkeypatch.setattr(xras_accounts, 'load_pending_worklist_rows',
+                            lambda: SimpleNamespace(checked=True, rows=[]))
+        monkeypatch.setattr(xras_accounts, 'assemble_worklist',
+                            lambda *a, **k: seen.update(k) or SimpleNamespace(rows=[]))
+        rows = [{'request_number': 'NCAR4434', 'roster': [{'username': 'katarinam'}]}]
+        xras_cache.store_requests_index({'generated_at': datetime.now(), 'rows': rows})
+        since = datetime(2026, 8, 7)
+        assert service.ready_to_merge(session, since=since) == []
+        assert seen['since'] == since and seen['index_rows'] == rows
+
 
 class TestTheStaleClose:
     """A fulfilled placeholder request no pending push names, closed once XRAS drops it."""
@@ -1256,7 +1303,7 @@ class TestTheStaleClose:
         from factories import next_seq
         from sam.core.account_requests import AccountRequest
         from sam.core.users import User
-        monkeypatch.setattr(service, 'ready_to_merge', lambda session: [])
+        monkeypatch.setattr(service, 'ready_to_merge', lambda session, **kw: [])
         n = next_seq('8')
         made = {}
         with Session(engine) as s:
