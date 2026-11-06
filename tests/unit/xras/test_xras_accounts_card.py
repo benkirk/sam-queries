@@ -800,10 +800,14 @@ class TestReadyToMerge:
         """A published request index, built after the committed push, whose NCAR4227 roster
         no longer names the placeholder."""
         from sam.integration.xras_api import cache as xras_cache
+        from datetime import timedelta
         monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
         xras_cache._CACHE.reset_for_tests(disabled=False)
-        xras_cache.store_requests_index({'generated_at': datetime.now(), 'rows': [
-            {'request_number': 'NCAR4227', 'roster': [{'username': 'realname38'}]}]})
+        # MySQL ROUNDS a DATETIME to the second, so the committed push can land up to a
+        # second after a stamp taken now; the build must read as later than that push.
+        xras_cache.store_requests_index({'generated_at': datetime.now() + timedelta(seconds=2),
+                                         'rows': [{'request_number': 'NCAR4227',
+                                                   'roster': [{'username': 'realname38'}]}]})
         yield
         xras_cache._CACHE.reset_for_tests(disabled=False)
 
