@@ -14,12 +14,11 @@
 <span class="text-muted small ms-1 text-nowrap" title="{{ title }}"><i class="fa-solid {{ icon }}" aria-hidden="true"></i> {{ n | fmt_number }}</span>
 {%- endmacro %}
 
-{#- How long a handoff has waited, tinted past 30 days (amber) and 90 (red): the card's Age and the dialog. -#}
+{#- How long a handoff has waited, tinted amber then red past the bounds in sam.queries.xras_requests.WAITING_BANDS: the card's Age and the dialog. -#}
 {% macro waiting(when) -%}
 {%- set band = when | xras_waiting -%}
-{%- set past = {'quarter': ': waiting over 30 days', 'older': ': waiting over 90 days'}.get(band, '') -%}
 <span class="{{ {'quarter': 'text-warning-emphasis', 'older': 'text-danger-emphasis fw-semibold'}.get(band, 'text-muted') }}"
-      title="{{ when | fmt_date }}{{ past }}">{{ when | fmt_age }}</span>
+      title="{{ when | fmt_date }}{{ band | xras_waiting_note }}">{{ when | fmt_age }}</span>
 {%- endmacro %}
 
 {#- A request carries a recommender's note (an XrasRequestNote); the dialog shows it. -#}

@@ -30,10 +30,6 @@ from sam.integration.xras_api.base import (
     XrasWriteRejected,
 )
 from sam.manage import xras_remediation as service
-from sam.queries.xras_remediations import (
-    list_remediation_events,
-    remediation_summary,
-)
 from sam.queries.xras_requests import request_index_entry
 
 
@@ -83,10 +79,6 @@ def published():
     xras_cache.store_requests_index({'generated_at': datetime.now(),
                                      'rows': [entry]})
     return entry
-
-
-def _rows(session, **kw):
-    return list_remediation_events(session, **kw)
 
 
 # the audit row outlives the write
@@ -825,46 +817,6 @@ class TestTheEditorOps:
         assert client.add_action.call_args.args[1] == 'Supplement'
 
 
-# the read side
-
-class TestListing:
-
-    def test_a_username_filter_matches_either_side_of_a_merge(self, session):
-        make_xras_remediation_event(session, operation='merge_person',
-                                    username='ghost-user-abcde',
-                                    target_username='real-person')
-        found = _rows(session, username='real-person')
-        assert [e.username for e in found] == ['ghost-user-abcde']
-
-    def test_newest_first(self, session):
-        from datetime import timedelta
-        now = datetime.now()
-        make_xras_remediation_event(session, when=now - timedelta(days=2),
-                                    request_number='OLD00001',
-                                    operation='withdraw_action')
-        make_xras_remediation_event(session, when=now,
-                                    request_number='NEW00001',
-                                    operation='withdraw_action')
-        found = _rows(session, operation='withdraw_action')
-        # Only this test's rows: other xdist workers commit withdraw_action rows
-        # (test_xras_admin_client's EXAM0001) that can be newer than ours.
-        mine = [e.request_number for e in found
-                if e.request_number in ('OLD00001', 'NEW00001')]
-        assert mine == ['NEW00001', 'OLD00001']
-
-    def test_the_summary_counts_what_needs_a_human(self, session):
-        events = [
-            make_xras_remediation_event(session, status='verified'),
-            make_xras_remediation_event(session, status='attempted'),
-            make_xras_remediation_event(session, status='unverified'),
-            make_xras_remediation_event(session, status='rejected'),
-        ]
-        summary = remediation_summary(events)
-        assert summary['total'] == 4
-        # `attempted` + `unverified` — a rejection needs nobody, it did nothing.
-        assert summary['needs_attention'] == 2
-
-
 class TestTheRefreshRerunsThePreflight:
     """A patched entry must carry a verdict, or the request it just fixed
     leaves the pending-work queue until the next sweep."""
@@ -1212,14 +1164,18 @@ class TestTheReadyMerge:
     def test_gone_is_recorded_once_and_never_asked_about_again(self, factory, merged,
                                                                monkeypatch):
         """NCAR4434, 2026-11-05: XRAS had no such person, and the task asked every 15 minutes."""
-        monkeypatch.setattr(service, 'ready_to_merge', lambda session, **kw: [self._target()])
+        from factories import next_seq
+        # Its own name: another worker's `_target()` event for kmerk-user-92wap made `row,` two.
+        gone = f'zgone-user-{next_seq("5")}'
+        monkeypatch.setattr(service, 'ready_to_merge',
+                            lambda session, **kw: [self._target(source=gone)])
         client = MagicMock()
         client.get_person.return_value = None
         out = service.merge_ready_placeholders(factory, operator='task:t', cap=5, client=client)
         assert out['gone'] == 1 and merged == []
         with factory() as s:
             row, = s.query(XrasRemediationEvent).filter(
-                XrasRemediationEvent.username == 'kmerk-user-92wap',
+                XrasRemediationEvent.username == gone,
                 XrasRemediationEvent.created_by == 'task:t').all()
             assert row.operation == 'merge_person' and row.status == 'rejected'
             assert row.target_username == 'katarinam'
@@ -1239,7 +1195,7 @@ class TestTheReadyMerge:
                                          since=since)
         service.close_stale_placeholders(factory, operator='task:t', cap=5, client=client,
                                          since=since)
-        assert seen == [{'since': since}, {'since': since}]
+        assert [k['since'] for k in seen] == [since, since]
 
     def test_a_placeholder_a_task_already_tried_is_never_retried(self, factory, ready, merged,
                                                                monkeypatch):
@@ -1291,8 +1247,8 @@ class TestTheReadyMerge:
         xras_cache.store_requests_index({'generated_at': built, 'rows': rows})
         since = datetime(2026, 8, 7)
         assert service.ready_to_merge(session, since=since) == []
-        assert seen['since'] == since and seen['index_rows'] == rows
-        assert seen['index_generated_at'] == built
+        assert seen['since'] == since and seen['index'].rows == rows
+        assert seen['index'].generated_at == built
 
 
 class TestTheStaleClose:
@@ -1344,6 +1300,75 @@ class TestTheStaleClose:
         client = MagicMock()
         client.get_person.side_effect = XrasSourceUnavailable('down')
         out = service.close_stale_placeholders(factory, operator='task:t', cap=500, client=client)
-        assert out == {'checked': 0, 'closed': 0, 'kept': 0}
+        assert out == {'checked': 0, 'closed': 0, 'off_roster': 0, 'kept': 0}
         with Session(engine) as s:
             assert s.get(AccountRequest, rows['gone'][0]).state == 'submitted'
+
+    def test_a_placeholder_on_no_current_roster_is_dismissed_too(self, factory, engine, rows,
+                                                                 monkeypatch):
+        """XRAS still holds both; the index names only `kept`. The other was edited off by
+        hand and never merged, so it would be "kept" (one read, one cap slot) every run."""
+        from sqlalchemy.orm import Session
+
+        from sam.core.account_requests import AccountRequest
+        from sam.queries import account_requests as queries
+        # Only this test's rows: another worker's placeholders are on no roster here either.
+        mine, real = {rows['gone'][0], rows['kept'][0]}, queries.stale_placeholder_requests
+        monkeypatch.setattr(queries, 'stale_placeholder_requests', lambda session, exclude=(): [
+            r for r in real(session, exclude=exclude) if r.account_request_id in mine])
+        xras_cache.store_requests_index({'generated_at': datetime.now(), 'rows': [
+            {'request_number': 'NCAR4434', 'roster': [{'username': rows['kept'][1].upper()}]}]})
+        client = MagicMock()
+        client.get_person.side_effect = lambda name: {'u': name}
+        client.reader.get_person_roles.return_value = {'panels': [], 'requestRoles': [
+            {'roleName': 'User', 'requests': []}]}
+        out = service.close_stale_placeholders(factory, operator='task:t', cap=500, client=client)
+        assert out['off_roster'] == 1 and out['closed'] == 1 and out['kept'] == 1
+        # The roles report is read only for the row the index would dismiss.
+        client.reader.get_person_roles.assert_called_once_with(rows['gone'][1])
+        with Session(engine) as s:
+            gone, kept = s.get(AccountRequest, rows['gone'][0]), s.get(AccountRequest, rows['kept'][0])
+            assert gone.state == 'dismissed' and 'no request roster' in gone.closed_reason
+            assert kept.state == 'submitted'
+
+    def test_a_placeholder_on_a_posted_requests_roster_is_kept(self, factory, engine, rows,
+                                                              monkeypatch):
+        """The index holds the pending cohort only: a posted request leaves it, and its roster
+        can still carry a never-merged placeholder. The person's own roles report decides."""
+        from sqlalchemy.orm import Session
+
+        from sam.core.account_requests import AccountRequest
+        from sam.queries import account_requests as queries
+        mine, real = {rows['gone'][0], rows['kept'][0]}, queries.stale_placeholder_requests
+        monkeypatch.setattr(queries, 'stale_placeholder_requests', lambda session, exclude=(): [
+            r for r in real(session, exclude=exclude) if r.account_request_id in mine])
+        xras_cache.store_requests_index({'generated_at': datetime.now(), 'rows': [
+            {'request_number': 'NCAR4434', 'roster': [{'username': 'somebody-else'}]}]})
+        client = MagicMock()
+        client.get_person.side_effect = lambda name: {'u': name}
+        client.reader.get_person_roles.return_value = {'panels': [], 'requestRoles': [
+            {'roleName': 'User', 'requests': [{'requestNumber': 'UCIR0072'}]}]}
+        out = service.close_stale_placeholders(factory, operator='task:t', cap=500, client=client)
+        assert out['off_roster'] == 0 and out['closed'] == 0 and out['kept'] == 2
+        with Session(engine) as s:
+            assert s.get(AccountRequest, rows['gone'][0]).state == 'submitted'
+
+    def test_an_empty_index_reads_no_roles_and_keeps(self, factory, rows, monkeypatch):
+        """A genuinely empty index (the sweep publishes one) names nobody: nothing to decide."""
+        from sam.queries import account_requests as queries
+        mine, real = {rows['gone'][0], rows['kept'][0]}, queries.stale_placeholder_requests
+        monkeypatch.setattr(queries, 'stale_placeholder_requests', lambda session, exclude=(): [
+            r for r in real(session, exclude=exclude) if r.account_request_id in mine])
+        xras_cache.store_requests_index({'generated_at': datetime.now(), 'rows': []})
+        client = MagicMock()
+        client.get_person.side_effect = lambda name: {'u': name}
+        out = service.close_stale_placeholders(factory, operator='task:t', cap=500, client=client)
+        assert out['off_roster'] == 0 and out['kept'] == 2
+        client.reader.get_person_roles.assert_not_called()
+
+    def test_without_an_index_a_held_placeholder_is_kept(self, factory, engine, rows):
+        """No snapshot decides nothing: the pre-index rule, XRAS holds it, it stays."""
+        client = MagicMock()
+        client.get_person.side_effect = lambda name: {'u': name}
+        out = service.close_stale_placeholders(factory, operator='task:t', cap=500, client=client)
+        assert out['off_roster'] == 0 and out['closed'] == 0 and out['kept'] >= 2

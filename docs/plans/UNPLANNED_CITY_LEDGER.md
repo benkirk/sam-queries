@@ -53,6 +53,8 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-11-01 | `af62e41d` + sweep 34 (navigation) | 51 / 63 / 26 | 1 (2) | 26 / 83 | 20 (20), 2 kept | 5,498 / 54 / 8 | 109 (54) | 0 / 0 | 0 | 5 / 6 | 17 (13) | 5 |
 | 2026-11-01 | `32972b63` + sweep 35 (badges) | 51 / 63 / 26 | 1 (2) | 26 / 83 | 20 (20), 2 kept | 5,485 / 54 / 8 | 107 (53) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 5 |
 | 2026-11-04 | `03fdc1af` + sweep 36 (tables without chips) | 51 / 63 / 26 | 1 (2) | 28 / 91 | 20 (20), 2 kept | 5,610 / 54 / 9 | 107 (53) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 5 |
+| 2026-11-05 | `8ea42a3f` (#920, #922 as merged), before sweep 37 | 52 / 65 / 26 | 1 (2) | 28 / 91 | 20 (20), 2 kept | 5,698 / 55 / 10 | 107 (53) | 0 / 0 | 0 | 6 / 5 | 17 (13) | 5 |
+| 2026-11-05 | `8ea42a3f` + sweep 37 (the XRAS tree) | 44 / 56 / 26 | 1 (2) | 28 / 91 | 20 (20), 2 kept | 5,698 / 55 / 10 | 107 (53) | 0 / 0 | 0 | 6 / 5 | 17 (13) | 5 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -320,8 +322,9 @@ visual on purpose, and each commit declares its change. `src/` across the branch
     project-card CSS rides along.
 - [ ] Resource Details (user `resource_details*` and the day/user subtrees): nested tables, 13 raw
   collapse toggles, and `td.text-end` instead of `col-num`.
-- [ ] `xras_request_detail.html`: 9 small outline buttons remain beside its 6 `btn-row`s. The XRAS
-  cards are only half adopted (nested tables, `width:99%`). Done in entry 22.
+- [x] `xras_request_detail.html`: 9 small outline buttons remain beside its 6 `btn-row`s. The XRAS
+  cards are only half adopted (nested tables, `width:99%`). Done in entry 22; after #920's footer
+  two outline buttons remain, both footer verbs ("Add dates", "Open in XRAS"), re-read in sweep 37.
 - [x] The saturated `modal_scaffold` headers (entry 9: quiet accent headers) and the `text-bg-*` toasts (the alert recipe, sweep follow-ups). This is an app-wide
   design call.
   - Create: `bg-success`.
@@ -902,7 +905,8 @@ differ from each other only at the eighth significant digit.
   serves those routes when fresh.
 - Deleting `sam/queries/xras_remediations.py` (tests-only): XRAS, so it waits with the rest.
 
-**Deferred until `XRAS_SUBMISSION.md` lands (Ben, 2026-10-05).** The XRAS census (22.7k Python
+**Deferred until `XRAS_SUBMISSION.md` lands (Ben, 2026-10-05); re-measured and worked in sweep 37.**
+The XRAS census (22.7k Python
 lines, 4.9k template lines; two HTTP clients on purpose; the query modules do three different
 jobs): `webapp/dashboards/allocations/xras/remediation.py`'s seven editors each repeat a
 `_safe_*` fallback / GET modal / one-click-write triplet (984–1929; about -250);
@@ -2453,6 +2457,72 @@ invitations).
 
 **Open:** none.
 
+## 37. 2026-11-05: area sweep, the XRAS tree (after #920 and #922)
+
+**Mode:** area, the XRAS tree named in `docs/plans/XRAS_SWEEP_37_HANDOFF.md`. **End commit:**
+`8ea42a3f` (#922 as merged). PR 1 of the handoff (#922, the stale placeholder) preceded this; the
+census that opened it is in the handoff. Lens: every XRAS surface answers "what is this request's
+state and who is on it" from two feeds, and the sweep read each surface for what it showed that the
+request index already contradicted.
+
+**Done** (one commit each, on `xras-sweep-37`):
+
+- [x] 1, **behavior**: `close_stale_placeholders` also dismisses a fulfilled placeholder row whose
+  placeholder XRAS still holds but no roster names (`off_roster`); six prod rows were "kept"
+  forever at one XRAS read and one cap slot each per run. The index names the pending cohort
+  only, so the person's own roles report decides, read only for a row the index would dismiss
+  (review F1); an empty index decides nothing (F2).
+- [x] 2, consolidate: `RequestIndex` beside `PendingFeed`, one `load_request_index()` for the four
+  readers that unpacked `rows` + `generated_at` with four guard styles; `assemble_worklist(index=)`.
+- [x] 3, lift: `rosters_by_number` is the one roster walk (`drop_stale_pushes` and
+  `request_numbers_by_username`; #922 review F4).
+- [x] 4, **behavior**: the identity strip and `--identity-report` read pushes from the sweep's
+  window, derived from the pending snapshot (`PendingFeed.window_start`). No prod row moves today.
+- [x] 5, drift: the Waiting band words and the 30 / 90 bounds live once (`WAITING_BAND_LABELS`,
+  `waiting_note`; #920 review F3).
+- [x] 7, lift: five cross-module private names made public (`preflight_rollup`, the readiness
+  modal trio, `window_control_context`, `XrasTransport` / `unwrap`, `LATEST_ACTION_ORDER`): 52 / 65
+  -> 44 / 56.
+- [x] 8, delete: `sam/queries/xras_remediations.py`, tests-only since entry 12.
+- [x] 9, consolidate: the editors' six outage fallbacks and four identical GET routes on
+  `_live_or` and `_editor_form` (-30 lines; entry 12 guessed -250, the handlers differ for real).
+- [x] 14, legibility: `test_xras_remediations.py` (3,371 lines) split by surface into four files
+  with `_remediations_support.py`; 293 collected before and after.
+- [x] A pre-existing flake: the #922 gone-placeholder test shared `kmerk-user-92wap` across xdist
+  workers (1 run in 5 at `origin/staging`); it names a sequenced placeholder now.
+
+**Tried and dropped:**
+- 6, the preflight batch "derived twice" (`manage/xras_remediation._preflight_verdicts` and
+  `tasks/xras_sweep._run_preflights`): the verdict is already one function
+  (`sam.xras.preflight.preflight_action`); the shared remainder is ~20 lines of loop plumbing
+  (candidates, `log_seen_for`, the maps, the try/except) against a pinned `detail['preflight']`
+  shape. Not worth the callback.
+- 11, the parser layering (both HTTP clients import `line_by_id`, `primary_line`,
+  `roster_from_payload`, `resolve_pi` from `queries/xras_requests.py`): the four need
+  `is_placeholder`, `iter_roster_entries`, `role_in_window` (`queries/xras_accounts`) and
+  `PI_ROLE_TYPE_ID` (`xras_api.vocabulary`, which `sam/xras` may not import), so no home both
+  sides can reach exists today. A neutral wire package would be its own plan.
+
+**Open from this sweep:**
+
+- [ ] 10, `admin_client.py`'s write tails: 18 `verify read failed` tails, 23 `XrasWriteResult(`
+  constructions, `_act` covers two. ~-120 lines, but every XRAS write verb moves and Part C was
+  never live-probed. If ever, the five stage verbs `test_xras_api_client.py` pins first.
+- [ ] 12, `xras.css`: `.xras-footer-start/-end` (= `.type-config-preview`) and `.xras-deliveries li`
+  (= `.type-card-pick-head`) are Bootstrap utilities (`d-flex flex-wrap align-items-center gap-2`
+  + `me-auto`; `align-items-baseline row-gap-1 column-gap-2`); 7 template sites, -12 CSS lines,
+  needs the `--styles` / `--compare` proof.
+- [ ] 15, over-budget prose, for the doc-slimming plan: `integration/xras.py` 44%,
+  `xras/extractors.py` 47%, `queries/xras_actions.py` 41%, `queries/xras_accounts.py` 35%,
+  `api/xras/actions.py` 42%, `tasks/xras_sweep.py` 39%, `xras_api/client.py` 47%,
+  `xras/errors.py` 51%, `xras/roster.py` 52%, `xras_api/cache.py` 51% (`src/cli` 21.5%).
+- [ ] `xras_views.py`: six ORM view classes with no `src/` caller beyond `sam/__init__`; they mirror
+  DB views and the integration test reads them. Keep unless the views go.
+- [ ] Census item 6 (handoff): the request dialog's index preflights can name a person the live
+  roster dropped for up to a day. No row seen; recorded only.
+- [ ] `window_control_context` is public in the allocations blueprint now; the three-copies item
+  under entry 12 (jobs, disk scans) stands.
+
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
 Surfaced by the first run of `scripts/sweep_inventory.py`. Each item belongs to an area sweep;
@@ -2471,6 +2541,16 @@ nothing here has been read for intent yet.
 
 Shared pieces a window introduced that an older surface could adopt. The canonical example is the
 sunburst, which started on the allocations page and then moved to job history.
+
+- [ ] `data-xras-queue` prev/next (#920, sweep 37): the only other opener carrying
+  `data-request-number` is `request_link` (the Accounts card's request chips, the admin
+  account-requests card). One attribute on the Accounts table would adopt it, but its rows are
+  people and a person chips several requests, so stepping would walk chips, not rows. The Activity
+  card's dialogs (action details, notify, dismiss, history) key on `action_log_id` and would need
+  their own footer nav. Neither built.
+- [ ] `RequestIndex` / `load_request_index()` (sweep 37): the raw-payload readers that need only
+  rows (`_shared._entry`, `_filtered_rows`, My Requests' `requests_index()`) still read
+  `webapp.utils.xras.requests_index`; the feed object is for the readers that need the build stamp.
 
 - [x] `collapse.drill_toggle` and `clipboard.copy_button` on a `.cell-path` cell (sweep 13):
   the jobs and disk-scans drilldowns (sweep 15).
@@ -2495,7 +2575,7 @@ sunburst, which started on the allocations page and then moved to job history.
   inline `fromisoformat` try block (sweep 4).
 - [ ] `sam.text.strip_or_none`: `samuel_roles._clean_note` is `strip_or_none(note, _NOTE_MAX)`
   (sweep 4).
-- [ ] A guarded read of the request index (#806, `admin/account_requests_routes.py`
+- [x] A guarded read of the request index (#806, `admin/account_requests_routes.py`
   `_stamp_request_numbers`): `load_requests_index()` returns `None` with no backend, but a Redis
   that went away after the adapter was built raises from the read (`sam/caching/redis_ttl.py`
   has no `RedisError` handling on `__contains__` / `__getitem__`). The five other readers are

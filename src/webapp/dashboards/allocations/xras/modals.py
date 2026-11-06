@@ -2,7 +2,7 @@
 
 The three ``@bp.route`` detail-modal bodies plus their context builders. The
 request-detail modal is the hub the write editors (``remediation``) hang off —
-its ``_render_detail`` re-renders the modal in place after a write — so those
+its ``render_detail`` re-renders the modal in place after a write — so those
 editors import it from here. This module imports only from ``_shared`` (never
 from ``remediation``), which is what keeps the modals<->remediation graph
 acyclic. Moved verbatim out of ``xras_remediation_routes.py``.
@@ -411,7 +411,7 @@ def xras_document_preview(request_number: str, action_id: int, document_id: int)
         log_label='xras document preview')
 
 
-def _render_detail(request_number, *, flash=None, flash_error=None, changed=True):
+def render_detail(request_number, *, flash=None, flash_error=None, changed=True):
     """Re-render the detail modal in place after a write, with a flash.
 
     The write is already done, verified and recorded by the time this runs, so
@@ -437,10 +437,10 @@ def _render_detail(request_number, *, flash=None, flash_error=None, changed=True
 # focused push-readiness modal — the verdict badge's own evidence view
 # ---------------------------------------------------------------------------
 
-_READINESS_FORM = 'dashboards/allocations/partials/xras_readiness_modal.html'
+READINESS_FORM = 'dashboards/allocations/partials/xras_readiness_modal.html'
 
 
-def _readiness_context(request_number):
+def readiness_context(request_number):
     """The focused readiness modal's context, or ``None`` if the sweep holds no
     such entry. Snapshot-only — the verdicts are already swept, so no live XRAS
     read; a committed-rows lookup adds the calibration outcome where one exists."""
@@ -471,10 +471,10 @@ def xras_readiness_detail(request_number: str):
     Snapshot-only, so unlike the sibling detail modals it never needs a live XRAS
     read — it degrades to not-found only when the sweep has no such entry.
     """
-    context = _readiness_context(request_number)
+    context = readiness_context(request_number)
     if context is None:
         return _not_found('Request')
-    return render_template(_READINESS_FORM, **context)
+    return render_template(READINESS_FORM, **context)
 
 
 # ---------------------------------------------------------------------------

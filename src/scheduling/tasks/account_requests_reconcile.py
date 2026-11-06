@@ -12,8 +12,8 @@ it merges each fulfilled ``/request`` placeholder into its account in XRAS
 reads committed rows, so a row this pass fulfilled merges on the next. Behind
 ``XRAS_AUTO_MERGE`` it merges each "Ready to merge" placeholder too (one XRAS no longer
 holds is recorded ``rejected`` once, never asked about again), and dismisses a fulfilled
-placeholder request XRAS no longer holds (``merge_ready_placeholders``); both read pushes
-from the sweep's window only.
+placeholder request XRAS no longer holds, or holds on no current roster
+(``close_stale_placeholders``); both read pushes from the sweep's window only.
 Otherwise the database alone, which the runner's rollback covers. Never a tracker
 write: it reaches the tracker through ``read_providers`` alone. Design:
 docs/plans/implemented/ACCOUNT_REGISTRATION.md, docs/plans/implemented/TICKET_PROVIDER.md,

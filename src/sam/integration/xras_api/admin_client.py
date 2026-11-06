@@ -54,7 +54,7 @@ from sam.integration.xras_api.base import (
     XrasWriteNotConfigured,
     XrasWriteRejected,
 )
-from sam.integration.xras_api.client import XrasApiClient, _XrasTransport, _unwrap
+from sam.integration.xras_api.client import XrasApiClient, XrasTransport, unwrap
 from sam.integration.xras_api.config import XrasApiConfig
 
 logger = logging.getLogger(__name__)
@@ -196,10 +196,10 @@ class XrasWriteResult:
         return 'unverified'
 
 
-class XrasAdminClient(_XrasTransport):
+class XrasAdminClient(XrasTransport):
     """Single-attempt, self-verifying writes against the XRAS admin surface.
 
-    Inherits the shared transport (:class:`~sam.integration.xras_api.client._XrasTransport`):
+    Inherits the shared transport (:class:`~sam.integration.xras_api.client.XrasTransport`):
     the session, the URL builder, the per-call :meth:`_headers`, and the
     idempotent retrying :meth:`_get` used for the ``submit``-context
     verification reads. It adds the single-attempt :meth:`_write` and the write
@@ -243,7 +243,7 @@ class XrasAdminClient(_XrasTransport):
     # internals
     #
     # The session, ``_url``, ``_headers`` and the idempotent retrying ``_get``
-    # are inherited unchanged from ``_XrasTransport``. ``_get`` here is the
+    # are inherited unchanged from ``XrasTransport``. ``_get`` here is the
     # submit-context verification read (the Reports family answers under
     # ``report``, so those go via ``self.reader`` instead); the single-attempt
     # rule below in ``_write`` is what distinguishes this client's *writes*.
@@ -299,7 +299,7 @@ class XrasAdminClient(_XrasTransport):
         except ValueError:
             body = None
         message = body.get('message') if isinstance(body, dict) else None
-        result = _unwrap(body) if body is not None else None
+        result = unwrap(body) if body is not None else None
 
         if 400 <= status < 500:
             errors = result.get('errors') if isinstance(result, dict) else None

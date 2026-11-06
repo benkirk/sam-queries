@@ -36,6 +36,7 @@ from sam.queries.xras_accounts import (
     PERSON_FIELDS,
     ActionRef,
     PendingFeed,
+    RequestIndex,
     RosterRecord,
     _needs_whole_roster,
     assemble_worklist,
@@ -341,7 +342,23 @@ def _index(**rosters):
 
 
 def _drop(rows, index, generated_at=INDEX_BUILT):
-    return drop_stale_pushes(rows, index, generated_at=generated_at)
+    return drop_stale_pushes(rows, RequestIndex(rows=index, generated_at=generated_at, checked=True))
+
+
+class TestTheSweepWindowOnTheFeed:
+    """The strip and the CLI identity report bound Feed A where the sweep did."""
+
+    def test_window_start_is_the_build_stamp_less_the_window(self):
+        built = datetime(2026, 11, 5, 4)
+        feed = PendingFeed(checked=True, snapshot={'generated_at': built, 'window_days': 90})
+        assert feed.window_start == datetime(2026, 8, 7, 4)
+
+    def test_no_snapshot_or_no_window_decides_nothing(self):
+        assert PendingFeed(reason='no_snapshot').window_start is None
+        assert PendingFeed(checked=True, snapshot={'generated_at': datetime(2026, 11, 5),
+                                                   'window_days': 0}).window_start is None
+        assert PendingFeed(checked=True, snapshot={'generated_at': '2026-11-05',
+                                                   'window_days': 90}).window_start is None
 
 
 class TestStalePushes:
@@ -505,12 +522,14 @@ class TestFeedA:
         def names(**kw):
             return {r['username'] for r in assemble_worklist(session, validate=False, **kw).rows}
 
-        assembled = assemble_worklist(session, validate=False, index_rows=index,
-                                      index_generated_at=built)
+        def feed():
+            return RequestIndex(rows=index, generated_at=built, checked=True)
+
+        assembled = assemble_worklist(session, validate=False, index=feed())
         assert PLACEHOLDER_USERNAME not in {r['username'] for r in assembled.rows}
         assert assembled.stale_dropped == 1
         index[0]['roster'].append({'username': PLACEHOLDER_USERNAME})
-        assert PLACEHOLDER_USERNAME in names(index_rows=index, index_generated_at=built)
+        assert PLACEHOLDER_USERNAME in names(index=feed())
         assert PLACEHOLDER_USERNAME in names()
         assert assemble_worklist(session, validate=False).stale_dropped == 0
 

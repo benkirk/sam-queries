@@ -181,8 +181,7 @@ def build_opportunity_report(session, *, opportunities=None) -> dict:
 
 def build_account_worklist(session, *, since=None, until=None,
                            enrich=False, max_lookups=100,
-                           pending_rows=None, pending_checked=False,
-                           index_rows=None, index_generated_at=None) -> dict:
+                           pending_rows=None, pending_checked=False, index=None) -> dict:
     """The ``xras_accounts`` envelope — who needs an account before a handoff.
 
     *enrich* is opt-in because it costs a round trip to XRAS per username. The
@@ -201,8 +200,7 @@ def build_account_worklist(session, *, since=None, until=None,
 
     assembled = _stamped_worklist(session, since=since, until=until,
                                   enrich=enrich, max_lookups=max_lookups,
-                                  pending_rows=pending_rows, index_rows=index_rows,
-                                  index_generated_at=index_generated_at)
+                                  pending_rows=pending_rows, index=index)
 
     return {
         'kind': 'xras_accounts',
@@ -217,26 +215,24 @@ def build_account_worklist(session, *, since=None, until=None,
 
 
 def _stamped_worklist(session, *, since=None, until=None, enrich=False,
-                      max_lookups=100, pending_rows=None, index_rows=None,
-                      index_generated_at=None):
+                      max_lookups=100, pending_rows=None, index=None):
     """The worklist with every caller-applied stamp, as an ``AssembledWorklist``."""
     from sam.queries.xras_accounts import assemble_worklist
 
-    return assemble_worklist(session, pending_rows=pending_rows, index_rows=index_rows,
-                             index_generated_at=index_generated_at,
+    return assemble_worklist(session, pending_rows=pending_rows, index=index,
                              since=since, until=until,
                              max_lookups=max_lookups if enrich else None)
 
 
 def build_identity_report(session, *, pending_rows=None, enrich=False,
-                          max_lookups=100, generated_at=None, index_rows=None,
-                          index_generated_at=None) -> dict:
-    """The ``xras_identity_report`` envelope — placeholders to merge, ranked by unblock impact."""
+                          max_lookups=100, generated_at=None, index=None,
+                          since=None) -> dict:
+    """The ``xras_identity_report`` envelope — placeholders to merge, ranked by unblock
+    impact; *since* is the sweep's window start, so no older push puts a placeholder here."""
     from sam.queries.xras_identity_report import identity_merge_report
 
     rows = _stamped_worklist(session, enrich=enrich, max_lookups=max_lookups,
-                             pending_rows=pending_rows, index_rows=index_rows,
-                             index_generated_at=index_generated_at).rows
+                             pending_rows=pending_rows, index=index, since=since).rows
     return identity_merge_report(rows, generated_at=generated_at)
 
 

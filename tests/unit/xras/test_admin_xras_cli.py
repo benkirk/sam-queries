@@ -225,6 +225,22 @@ class TestIdentityReportMode:
         result = runner.invoke(cli, ['xras', '--identity-report'])
         assert result.exit_code == 0, result.output
 
+    def test_it_reads_pushes_from_the_sweeps_window(self, runner, cli_session, monkeypatch):
+        """Like the task: a refused push older than the sweep's window names nobody here."""
+        from datetime import datetime
+        from types import SimpleNamespace
+        from sam.queries.xras_accounts import PendingFeed
+        built = datetime(2026, 11, 5, 4)
+        monkeypatch.setattr('sam.queries.xras_accounts.load_pending_worklist_rows',
+                            lambda: PendingFeed(checked=True, snapshot={
+                                'generated_at': built, 'window_days': 90}))
+        seen = {}
+        monkeypatch.setattr('sam.queries.xras_accounts.assemble_worklist',
+                            lambda *a, **k: seen.update(k) or SimpleNamespace(rows=[]))
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--identity-report'])
+        assert result.exit_code == 0, result.output
+        assert seen['since'] == datetime(2026, 8, 7, 4)
+
 
 class TestContractReportMode:
 

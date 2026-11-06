@@ -15,7 +15,7 @@ Functions:
 
 The pending-activation worklist is a different table and lives in
 ``sam.queries.xras_activation``; it imports :func:`action_names_project` and
-``_LATEST_ACTION_ORDER`` from here, which is the one thing the two halves share.
+``LATEST_ACTION_ORDER`` from here, which is the one thing the two halves share.
 
 Every function returns plain dicts rather than ORM instances. Display code —
 Jinja templates and the CLI's ``rich`` renderers alike — takes dicts only, and
@@ -181,7 +181,7 @@ _PROJCODE_COLUMNS = (XrasActionLog.projcode_result, XrasActionLog.request_number
 #: ``DATETIME`` — one-second resolution — and XRAS posts arrive in bursts, so ties
 #: are ordinary. Every consumer of the projcode join orders by this so they cannot
 #: name different rows for the same project.
-_LATEST_ACTION_ORDER = (XrasActionLog.received_time.desc(),
+LATEST_ACTION_ORDER = (XrasActionLog.received_time.desc(),
                         XrasActionLog.xras_action_log_id.desc())
 
 
@@ -248,7 +248,7 @@ def logged_projcode(session: Session, *, request_id: Optional[int],
         if value in (None, ''):
             continue
         row = _mapping_rows(session).filter(column == value).order_by(
-            *_LATEST_ACTION_ORDER).first()
+            *LATEST_ACTION_ORDER).first()
         if row is not None:
             return row[0], rule
     return None
@@ -278,7 +278,7 @@ def rename_candidates(session: Session, *, since: datetime) -> List[Dict[str, An
                     XrasActionLog.request_number.isnot(None),
                     XrasActionLog.request_number != XrasActionLog.projcode_result,
                     XrasActionLog.received_time >= since)
-            .order_by(*_LATEST_ACTION_ORDER).all())
+            .order_by(*LATEST_ACTION_ORDER).all())
     seen, out = set(), []
     for row in rows:
         if row.request_id in seen:

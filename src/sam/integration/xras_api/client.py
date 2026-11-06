@@ -53,7 +53,7 @@ DEFAULT_PAGE_SIZE = 50
 _OPPORTUNITY_CHUNK = 50
 
 
-class _XrasTransport:
+class XrasTransport:
     """Shared transport for the two XRAS API clients — everything that does
     not depend on the read-vs-write context.
 
@@ -215,7 +215,7 @@ class _XrasTransport:
         except ValueError as exc:
             raise XrasSourceUnavailable(
                 f'{self._url(path)} returned non-JSON body: {exc}') from exc
-        result = _unwrap(body)
+        result = unwrap(body)
         read_memo.remember(key, result)
         return result
 
@@ -243,10 +243,10 @@ class _XrasTransport:
             return b''.join(chunks), dict(response.headers)
 
 
-class XrasApiClient(_XrasTransport):
+class XrasApiClient(XrasTransport):
     """Retrying JSON client over a persistent session. Reads only.
 
-    Inherits the shared transport (:class:`_XrasTransport`) unchanged and adds
+    Inherits the shared transport (:class:`XrasTransport`) unchanged and adds
     only read verbs — there is deliberately no write primitive here (see the
     module docstring and ``tests/unit/xras/test_xras_api_client.py``). The base's
     default :meth:`_client_error` — raising :class:`XrasSourceUnavailable` — is
@@ -572,7 +572,7 @@ class XrasApiClient(_XrasTransport):
 
 # envelope helpers
 
-def _unwrap(body: Any) -> Any:
+def unwrap(body: Any) -> Any:
     """Strip the ``{"message": ..., "result": ...}`` envelope.
 
     A body that is not an envelope is returned untouched — the envelope is a
