@@ -484,6 +484,14 @@ class TestWaitingFacet:
         assert waiting_band(datetime(2026, 11, 1, 9), today) == 'week'
         assert waiting_band(None, today) is None
 
+    def test_the_chip_words_and_the_tint_note_come_from_the_one_table(self):
+        """#920 F3: the band words lived in three places; the bounds now live in one."""
+        from sam.queries.xras_requests import WAITING_BANDS, WAITING_BAND_LABELS, waiting_note
+        assert list(WAITING_BAND_LABELS) == [b for b, _ in WAITING_BANDS] + ['older']
+        assert waiting_note('quarter') == ': waiting over 30 days'
+        assert waiting_note('older') == ': waiting over 90 days'
+        assert waiting_note('week') == waiting_note('month') == waiting_note(None) == ''
+
     def _publish_ages(self):
         from datetime import timedelta
         stamp = lambda n: (datetime.now() - timedelta(days=n)).strftime('%Y-%m-%dT00:00:00Z')

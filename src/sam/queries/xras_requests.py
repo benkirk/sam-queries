@@ -252,8 +252,12 @@ def is_pending_work(entry: Mapping[str, Any]) -> bool:
     return False
 
 
-#: Waiting bands: (band, fewer than this many days). Over 30 tints amber, over 90 red.
+#: Waiting bands: (band, fewer than this many days); ``older`` is past the last. The age
+#: tints amber past the second bound and red past the third (:func:`waiting_note`).
 WAITING_BANDS = (('week', 7), ('month', 30), ('quarter', 90))
+#: The card's chip for each band.
+WAITING_BAND_LABELS = {'week': 'Under a week', 'month': '1–4 weeks',
+                       'quarter': '1–3 months', 'older': 'Over 3 months'}
 
 
 def waiting_band(when, today: Optional[date] = None) -> Optional[str]:
@@ -267,6 +271,13 @@ def waiting_band(when, today: Optional[date] = None) -> Optional[str]:
         if days < below:
             return band
     return 'older'
+
+
+def waiting_note(band: Optional[str]) -> str:
+    """The age title's tail for a tinted band, ``: waiting over N days``; '' below the tint."""
+    bounds = [below for _, below in WAITING_BANDS]
+    past = {'quarter': bounds[-2], 'older': bounds[-1]}.get(band or '')
+    return f': waiting over {past} days' if past else ''
 
 
 def _preflight_rollup(preflights: Optional[Mapping[Any, dict]]) -> Optional[str]:

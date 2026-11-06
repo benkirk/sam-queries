@@ -26,7 +26,7 @@ from webapp.utils.htmx import (
 from sam.integration.xras_api import XrasSourceUnavailable
 from sam.manage import xras_remediation as remediation
 from sam.queries.xras_actions import XRAS_ACTION_SORT_COLUMNS
-from sam.queries.xras_requests import BLOCKER_LABELS
+from sam.queries.xras_requests import BLOCKER_LABELS, WAITING_BAND_LABELS
 from sam.queries.xras_activation import ACTIVITY_TAGS
 from sam.queries.xras_accounts import (REMEDIES,
                                        REMEDY_MERGE,
@@ -428,9 +428,8 @@ REMEDIATION_FACETS = FacetSet(
     Facet('status', key=lambda r: r.get('latest_action_status') or r.get('status')),
     Facet('action_type', key='latest_action_type'),
     # The handoff's age, banded by sam.queries.xras_requests.waiting_band.
-    Facet('waiting', order=('week', 'month', 'quarter', 'older'), hide_zero=True,
-          labels={'week': 'Under a week', 'month': '1–4 weeks',
-                  'quarter': '1–3 months', 'older': 'Over 3 months'}),
+    Facet('waiting', order=tuple(WAITING_BAND_LABELS), hide_zero=True,
+          labels=WAITING_BAND_LABELS),
     Facet('opportunity', key='opportunity_name'),
     Facet('push', key=lambda r: 'pending' if r.get('pending_push') else 'pushed',
           order=('pending', 'pushed'),
