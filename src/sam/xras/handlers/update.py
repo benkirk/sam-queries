@@ -62,9 +62,11 @@ from ._allocations import (
 )
 from ._fields import (
     abstract,
+    apply_contact_links,
     parse_action_begin_date,
     parse_action_end_date,
     create_planned_contracts,
+    plan_contact_links,
     plan_contracts,
     resolve_resource,
     resource_comment,
@@ -155,6 +157,8 @@ class UpdateHandler(ActionHandler):
         self.contracts, contract_warnings, self.unresolved_grants, self.planned_contracts = (
             plan_contracts(self.session, self.action, self.errors,
                            roster_users=self.roster.users()))
+        self.contact_links = plan_contact_links(self.contracts, self.roster.users())
+        contract_warnings += tuple(link.warning for link in self.contact_links)
 
         self.planned: List[tuple] = []
         if self.project is not None:
@@ -279,6 +283,7 @@ class UpdateHandler(ActionHandler):
                 existing.add(contract.contract_id)
                 ProjectContract.create(self.session, project_id=project.project_id,
                                        contract_id=contract.contract_id)
+        apply_contact_links(self.contact_links)
 
         # 3. Allocations, in the order the factory emitted them. One resource can
         # emit three steps and that order is legacy's, so this iterates a flat list

@@ -238,15 +238,19 @@ A **missing Allocation Manager is not an error**; a missing PI is.
 
 ### 4. `Cannot find contract for grant number "{grant}" ("{core}")`
 
-⚠️ **The handler LINKS a contract; it creates one only from a cached NSF award.** A grant
-number SAM has never seen is a 422 naming the *contract*, not the grant, unless
-`XRAS_AUTO_CONTRACTS` is on and the sweep has cached that number's NSF award: then the post
-creates the contract as its last step, its PI and monitor a SAM user or an external contact
-(`docs/plans/implemented/EXTERNAL_CONTACTS.md`).
+⚠️ **The handler LINKS a contract; it creates one only from an NSF award.** A grant number
+SAM has never seen is a 422 naming the *contract*, not the grant, unless `XRAS_AUTO_CONTRACTS`
+is on (both envs) and SAM can read that number's NSF award. Then the hourly `xras_sweep`
+creates the contract for any approved request that cites it, whatever else blocks the request,
+and the post creates it if the sweep has not yet. Its PI and monitor are a SAM user or an
+external contact (`docs/plans/implemented/EXTERNAL_CONTACTS.md`); when a post applies, a contact
+the request's roster names by name or email is linked to that user. An allocation whose PI is
+not the grant's PI is valid and links nobody.
 
-**Fix:** create or link the contract in SAM first, then ask XRAS to re-post. When the
-contract is a request's only blocker, the strip's **create** does it from the NSF award in
-one confirm; with another blocker it reads "waits on", and the re-post creates it.
+**Fix:** what is left is a refusal (NSF's PI differs from the grant's `piName`, no PI, no
+usable award) or a non-NSF grant. The strip's **create** opens the NSF award in one confirm;
+otherwise create or link the contract in SAM, then ask XRAS to re-post. A request's NUSD
+ticket gets a "may now post" comment once its contract exists.
 `sam-admin xras --contract-report` ranks the numbers to create by the pushes
 each unblocks, and the Remediations card's contract strip opens Admin →
 Contracts with the New Contract form seeded from the wire

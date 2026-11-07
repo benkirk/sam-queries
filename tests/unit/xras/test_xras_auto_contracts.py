@@ -1,8 +1,8 @@
 """XRAS_AUTO_CONTRACTS: a post creates its missing contract from the cached NSF award.
 
-Only as the last step of a post that otherwise applies (the identity race, Ben
-2026-11-05): a post blocked on anything else writes no contract, and its PI resolves
-against the roster first. The award comes from the cache only; nothing here is network.
+A post blocked on anything else writes no contract (the sweep may make it early instead),
+and its PI resolves against the roster first. A post that applies links a contract contact
+its roster names (Ben 2026-11-07). The award comes from the cache only; nothing is network.
 """
 
 from datetime import date
@@ -154,3 +154,51 @@ class TestThePost:
         contract = Contract.get_by_number(session, number)
         assert contract.principal_investigator_user_id == pi.user_id
         assert contract.pi_contact_id is None
+
+
+class TestTheEarlyContract:
+    """The sweep made the contract with a contact PI; the post that applies links the user."""
+
+    def _payload(self, creatable, mapped_resource, contract, pi_name):
+        payload = action_for(creatable, wire_resource(mapped_resource.xras_key))
+        payload['grants'] = [_grant(contract.contract_number, pi_name=pi_name)]
+        return payload
+
+    def test_the_roster_pi_is_linked(self, committing, session, creatable, mapped_resource):
+        from factories import make_contract, make_external_contact
+        pi = creatable['pi']
+        pi.first_name, pi.last_name = 'Ian', f"Grooms{next_seq('gr')}"
+        session.flush()
+        contact = make_external_contact(session, name=f'Ian {pi.last_name}')
+        contract = make_contract(session, contract_number=_award_number(), pi_contact=contact)
+        result = handle_new(committing, self._payload(creatable, mapped_resource, contract,
+                                                      f'Ian {pi.last_name}'))
+        session.expire_all()
+        assert contact.user_id == pi.user_id
+        assert contract.principal_investigator_user_id == pi.user_id
+        assert any(f'is SAM user {pi.username}' in w for w in result.warnings)
+
+    def test_another_grant_pi_stays_a_contact(self, committing, session, creatable,
+                                              mapped_resource):
+        from factories import make_contract, make_external_contact
+        contact = make_external_contact(session, name=f"Grant Holder{next_seq('gh')}")
+        contract = make_contract(session, contract_number=_award_number(), pi_contact=contact)
+        handle_new(committing, self._payload(creatable, mapped_resource, contract,
+                                             contact.name))
+        session.expire_all()
+        assert contact.user_id is None and contract.principal_investigator_user_id is None
+
+    def test_a_refused_post_links_nobody(self, committing, session, creatable, mapped_resource):
+        from factories import make_contract, make_external_contact
+        pi = creatable['pi']
+        pi.first_name, pi.last_name = 'Ian', f"Grooms{next_seq('gr')}"
+        session.flush()
+        contact = make_external_contact(session, name=f'Ian {pi.last_name}')
+        contract = make_contract(session, contract_number=_award_number(), pi_contact=contact)
+        payload = self._payload(creatable, mapped_resource, contract, contact.name)
+        payload['roles'].append({'roleType': 'User', 'username': f"absent{next_seq('u')}",
+                                 'beginDate': '2025-01-01', 'endDate': None})
+        with pytest.raises(XrasActionRejected):
+            handle_new(committing, payload)
+        session.expire_all()
+        assert contact.user_id is None

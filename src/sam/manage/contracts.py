@@ -3,8 +3,9 @@
 A person who is a SAM user goes on the contract's user FK; one who is not becomes an
 ``ExternalContact`` (docs/plans/implemented/EXTERNAL_CONTACTS.md). ``plan_contract_from_award`` turns a
 fetched award into a contract plan, refusing when the award does not fit the request;
-``apply_contract_plan`` writes it. The XRAS post, the Remediations Create button and the
-create form share this. Nothing here commits.
+``apply_contract_plan`` writes it. The XRAS post, the xras_sweep, the Remediations Create
+button and the create form share this. ``plan_contact_links`` finds the contacts a post's
+roster names as SAM users, so a contract made early gains its real PI. Nothing here commits.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from __future__ import annotations
 import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Iterable, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 from sqlalchemy import func
 
@@ -176,3 +177,44 @@ def apply_contract_plan(session, plan: ContractPlan) -> Contract:
         start_date=datetime.combine(record.start_date, datetime.min.time()), end_date=end,
         url=record.url, contract_source_id=plan.contract_source_id,
         nsf_program_id=plan.nsf_program_id, **kwargs)
+
+
+@dataclass(frozen=True)
+class ContactLink:
+    """A contract person still held as a contact whom one of the post's roster users is."""
+    contract_number: str
+    role: str
+    contact: ExternalContact
+    user: User
+
+    @property
+    def warning(self) -> str:
+        return (f'Contract "{self.contract_number}" {self.role} {self.contact.name} '
+                f'is SAM user {self.user.username}; linked')
+
+
+def plan_contact_links(contracts: Iterable[Contract], roster_users: Iterable[User]
+                       ) -> List[ContactLink]:
+    """Each unlinked PI/monitor contact a roster user is, by the contact's own name or email.
+
+    The allocation's PI is never assumed to be the contract's: no roster match, no link.
+    """
+    roster = [u for u in roster_users if u is not None]
+    links, contacts, users = [], set(), set()
+    for contract in contracts:
+        for role, contact in (('PI', contract.pi_contact), ('monitor', contract.monitor_contact)):
+            if (contact is None or contact.user_id is not None
+                    or contact.external_contact_id in contacts):
+                continue
+            user = _roster_match(PersonRef(name=contact.name, email=contact.email), roster)
+            if user is None or user.user_id in users or user.external_contact is not None:
+                continue
+            contacts.add(contact.external_contact_id)
+            users.add(user.user_id)
+            links.append(ContactLink(contract.contract_number, role, contact, user))
+    return links
+
+
+def apply_contact_links(links: Iterable[ContactLink]) -> int:
+    """Link each planned contact; returns the contract user columns filled."""
+    return sum(link.contact.link_user(link.user) for link in links)

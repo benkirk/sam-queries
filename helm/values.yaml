@@ -440,10 +440,10 @@ webapp:
     # XRAS_POST_AUTOMATION.md § 3 B); "0" leaves it to the card's Activate. Armed after the
     # samuel-dev smoke (#828), NUSD told; pinned in tests/unit/gates/test_xras_admin_client.py.
     XRAS_AUTO_ACTIVATE: "1"
-    # A post creates its missing contract from the NSF award the sweep cached, as the last
-    # step of a post that otherwise applies (docs/plans/implemented/EXTERNAL_CONTACTS.md).
+    # SAM creates a missing NSF contract from its award: the post from the cached award, the
+    # sweep for approved requests (docs/plans/implemented/EXTERNAL_CONTACTS.md).
     # MUST equal tasks.env's, so the preflight predicts the post. "0" | "1".
-    XRAS_AUTO_CONTRACTS: "0"
+    XRAS_AUTO_CONTRACTS: "1"
     # The New's award mail right after that activation (phase C); xras_notices backstops it.
     # Neither sends before the cutover floor, which MUST equal tasks.env's (pinned by
     # helm/tests/test-dev-render.sh): SAMuel mails from 08:00 MT 2026-10-20 (Ben).
@@ -651,8 +651,8 @@ tasks:
     # cutoff also means the first production run is not a multi-year DELETE.
     # The default lives in src/system_status/retention.py; this overrides it.
     STATUS_RETENTION_DAYS: "365"
-    # Equals webapp.env's: the sweep's preflight and its award warm-up follow it. "0" | "1".
-    XRAS_AUTO_CONTRACTS: "0"
+    # Equals webapp.env's: the sweep's preflight, award warm-up and contract creation follow it. "0" | "1".
+    XRAS_AUTO_CONTRACTS: "1"
     # expiration_notices
     # Runaway guard: the task fails BEFORE sending anything if its audience
     # exceeds this. ~4.7x the measured peak of 535 (2026-11-23, catching the

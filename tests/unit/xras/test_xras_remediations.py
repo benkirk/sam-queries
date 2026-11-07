@@ -726,7 +726,7 @@ class TestContractUnblockStrip:
         # The route's db.session cannot see rows made in the test SAVEPOINT, so
         # the live re-check is stubbed; the tie itself is covered in
         # test_xras_contract_report.py.
-        monkeypatch.setattr('sam.queries.xras_contract_report._recheck',
+        monkeypatch.setattr('sam.queries.xras_contract_report.contract_resolution',
                             lambda session, number, core: 'ambiguous')
         self._publish_contract_failure([self._grant(
             'NSF-9980402', core='9980402', reason='ambiguous',
@@ -770,12 +770,13 @@ class TestContractUnblockStrip:
         assert '/xras_contract_create_form?number=9980403' in strip
         assert 'requests=EXAM0001' in strip and 'waits on' not in strip
 
-    def test_another_blocker_waits_instead(self, auth_client, configured):
+    def test_another_blocker_still_offers_create(self, auth_client, configured):
+        """Ben 2026-11-07: the post links a contact PI later, so another blocker need not wait."""
         self._publish_with_messages([self._grant('9980404', agency='NSF')],
                                     ['PI ghost-pi is not in database'])
         strip = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(
             as_text=True).split('id="xras-contract-strip"')[1][:4000]
-        assert 'waits on person' in strip and 'xras_contract_create_form' not in strip
+        assert 'xras_contract_create_form?number=9980404' in strip and 'waits on' not in strip
 
     def test_a_reference_never_offers_create(self, auth_client, configured):
         self._publish_with_messages([self._grant('ISS 25-643')], [])
@@ -816,12 +817,22 @@ class TestContractUnblockStrip:
         ).get_data(as_text=True)
         assert 'may be a different award' in body
 
-    def test_the_post_refuses_while_another_blocker_remains(self, auth_client, configured):
+    def test_the_post_reads_the_award_while_another_blocker_remains(self, auth_client,
+                                                                    configured, monkeypatch):
+        # A refused plan, so the route (which commits) writes nothing.
+        from datetime import date
+        from sam.integration.awards.base import AwardRecord, PersonRef
+        record = AwardRecord(provenance='NSF Awards API', contract_number='AGS-9980407',
+                             title='Clouds', start_date=date(2026, 9, 1),
+                             pi=PersonRef(name='Sam Roe', email='sr@uni.example'))
+        monkeypatch.setattr('sam.integration.awards.resolve_award',
+                            lambda source, number, exact=False: record)
         self._publish_with_messages([self._grant('9980407', agency='NSF')],
                                     ['PI ghost-pi is not in database'])
         body = auth_client.post('/allocations/xras_contract_create', data={
-            'number': '9980407', 'requests': 'EXAM0001'}).get_data(as_text=True)
-        assert 'also blocked on: person' in body
+            'number': '9980407', 'requests': 'EXAM0001', 'pi_name': 'Pat Doe'}
+        ).get_data(as_text=True)
+        assert 'may be a different award' in body and 'also blocked on' not in body
 
     def test_no_grants_means_no_strip(self, auth_client, configured):
         self._publish_contract_failure([])

@@ -8,7 +8,8 @@ from sam.core.users import EmailAddress
 from sam.integration.awards.base import AwardRecord, PersonRef
 from sam.manage.contracts import (
     NO_PI, NUMBER_TAKEN, PI_MISMATCH, INCOMPLETE_AWARD,
-    apply_contract_plan, person_columns, plan_contract_from_award, same_surname,
+    apply_contact_links, apply_contract_plan, person_columns, plan_contact_links,
+    plan_contract_from_award, same_surname,
 )
 from sam.projects.contracts import ExternalContact
 from tests.factories._seq import next_seq
@@ -152,3 +153,43 @@ class TestPlan:
         plan, _ = plan_contract_from_award(session, record, source=self._source(session),
                                            roster_users=users)
         assert not plan.pi.is_user
+
+
+class TestContactLinks:
+    """A contract made early names a contact; the post's roster supplies the user."""
+
+    def _contract(self, session, contact):
+        return make_contract(session, pi_contact=contact)
+
+    def test_a_roster_user_by_name_is_linked_and_fills_the_pi(self, session):
+        user = make_user(session, first_name='Ian', last_name=f"Grooms{next_seq('gr')}")
+        contact = make_external_contact(session, name=f'Ian {user.last_name}')
+        contract = self._contract(session, contact)
+        links = plan_contact_links([contract], [user])
+        assert [(l.role, l.user) for l in links] == [('PI', user)]
+        assert contact.user_id is None, 'planning writes nothing'
+        assert apply_contact_links(links) == 1
+        assert contact.user_id == user.user_id
+        assert contract.principal_investigator_user_id == user.user_id
+
+    def test_a_roster_user_by_email_is_linked(self, session):
+        address = _address()
+        user = _with_email(session, make_user(session), address)
+        contact = make_external_contact(session, name='Someone Unlike', email=address)
+        assert [l.user for l in plan_contact_links([self._contract(session, contact)],
+                                                   [user])] == [user]
+
+    def test_an_allocation_pi_who_is_not_the_contract_pi_links_nobody(self, session):
+        pi = make_user(session, first_name='Ann', last_name=f"Lead{next_seq('ld')}")
+        contact = make_external_contact(session, name=f"Grant Holder{next_seq('gh')}")
+        assert plan_contact_links([self._contract(session, contact)], [pi]) == []
+
+    def test_a_linked_contact_and_a_user_with_a_contact_are_left_alone(self, session):
+        user = make_user(session, first_name='Ian', last_name=f"Grooms{next_seq('gr')}")
+        make_external_contact(session, name='Elsewhere', user=user)
+        contact = make_external_contact(session, name=f'Ian {user.last_name}')
+        session.expire(user)
+        assert plan_contact_links([self._contract(session, contact)], [user]) == []
+        linked = make_external_contact(session, name='Linked',
+                                       user=make_user(session))
+        assert plan_contact_links([self._contract(session, linked)], [user]) == []
