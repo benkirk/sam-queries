@@ -163,7 +163,7 @@ def xras_remediations_fragment():
     from sam.queries.xras_mnemonic_report import mnemonic_unblock_report
     mnemonic_summary = mnemonic_unblock_report(db.session, scoped)
     from sam.queries.xras_contract_report import contract_unblock_report
-    contract_summary = _with_create_links(contract_unblock_report(db.session, scoped), rows)
+    contract_summary = _with_create_links(contract_unblock_report(db.session, scoped))
     identity_summary = _with_merge_links(_identity_summary(rows))
     # Counted BEFORE the chips and the search box, because the header badge it
     # feeds names the date filter specifically. Measured against `swept_total`
@@ -412,7 +412,7 @@ register_typeahead(
     ctx_key='codes', min_len=1)
 
 
-def _with_create_links(summary: dict, rows=()) -> dict:
+def _with_create_links(summary: dict) -> dict:
     """Stamp each target with the Admin -> Contracts URL that opens the seeded form.
 
     `lookup` mode (auto-fires the NSF fetch) only when the report suggests NSF;
