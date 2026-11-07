@@ -133,7 +133,7 @@ table and flags any non-2xx. Classify each non-200 by its `err`/`status`:
 |---|---|
 | a mnemonic-code error | tie-break / data — an org→mnemonic ambiguity |
 | "no current institution/organization" | upstream affiliation gap (George's area) |
-| "Cannot find contract" | missing contract |
+| "Cannot find contract" | the sweep makes NSF contracts (#924), so: non-NSF, a sweep refusal, or a post ahead of the sweep (§4) |
 | "Username … is missing" (`-user-<hex>` placeholder) | accounts-needed / unreconciled identity |
 | a `rechecked` row | would-succeed now — **"ready for XRAS re-push"** |
 
@@ -149,11 +149,11 @@ The `ldapsync:` line is the LDAP sync daemon's calls since its 2026-11-02 repoin
 ## 4. The daily full sweep is expected
 
 `xras_sweep` runs a cheap `active` pass hourly (and every quarter hour 08:15–17:45
-MT on weekdays) and one heavy `full` rebuild a
-day at the **10:07 UTC (04:00 MDT)** slot. A `[full]` pass there taking ~35–100s
+MT on weekdays) and one heavy `full` rebuild a day at the **10:07 UTC (04:00 MDT)** slot. A `[full]` pass there taking ~35–100s
 is EXPECTED — flag it only if it *fails* or doesn't switch back to `active`
-afterward. This is a Python task the `samuel-tasks` CronJob dispatches, not a
-separate CronJob.
+afterward. This is a Python task the `samuel-tasks` CronJob dispatches, not a separate CronJob.
+Its `detail.contracts` (`sam-admin --format json tasks --history --task xras_sweep` in a pod) lists
+`created`, `planned[].pi_is_user` (false = new contact) and `refused` by reason; `error` FAILs.
 
 ## 5. The samuel-tasks CronJob — report, never touch
 
