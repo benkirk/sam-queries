@@ -472,7 +472,7 @@ def _create_contracts(ctx, session, targets, detail) -> set:
     unblocked: set = set()
     if not auto_contracts_armed():
         return unblocked
-    tally = detail.setdefault('contracts', {'created': [], 'refused': {}})
+    tally = detail.setdefault('contracts', {'created': [], 'planned': [], 'refused': {}})
     awards = detail.setdefault('awards', {'warmed': 0, 'cached': 0, 'unavailable': 0})
     source = (session.query(ContractSource)
               .filter(ContractSource.contract_source == 'NSF', ContractSource.is_active).first())
@@ -522,9 +522,13 @@ def _create_contracts(ctx, session, targets, detail) -> set:
             ctx.logger.warning('xras_sweep: contract %s not created: %s', number, exc)
             continue
         tally['created'].append(contract.contract_number)
+        tally['planned'].append({'number': contract.contract_number,
+                                 'request': target.get('request_number'),
+                                 'pi': plan.pi.label, 'pi_is_user': plan.pi.is_user})
         unblocked |= {n for n in requests[key] if n}
-        ctx.logger.info('xras_sweep: created contract %s for %s (PI %s)',
-                        contract.contract_number, target.get('request_number'), plan.pi.label)
+        ctx.logger.info('xras_sweep: created contract %s for %s (PI %s %s)',
+                        contract.contract_number, target.get('request_number'),
+                        'user' if plan.pi.is_user else 'contact', plan.pi.label)
     return unblocked
 
 

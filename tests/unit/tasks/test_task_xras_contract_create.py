@@ -63,6 +63,9 @@ class TestCreate:
         contract = Contract.get_by_number(session, number)
         assert contract is not None and contract.pi_contact.name == 'Pat Doe'
         assert detail['contracts']['created'] == [number] and unblocked == {request_number}
+        [planned] = detail['contracts']['planned']
+        assert planned['number'] == number and planned['request'] == request_number
+        assert planned['pi'].startswith('Pat Doe') and planned['pi_is_user'] is False
 
     def test_a_roster_user_is_the_pi(self, session, armed):
         user = make_user(session, first_name='Ian', last_name=f"Grooms{next_seq('gr')}")
@@ -88,7 +91,7 @@ class TestCreate:
         detail = {}
         unblocked = xras_sweep._create_contracts(
             _ctx(), session, [_target(mismatch), _target(absent)], detail)
-        assert detail['contracts'] == {'created': [],
+        assert detail['contracts'] == {'created': [], 'planned': [],
                                        'refused': {'pi_mismatch': 1, 'no_award': 1}}
         assert unblocked == set() and Contract.get_by_number(session, mismatch) is None
 
