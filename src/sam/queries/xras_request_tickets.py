@@ -397,9 +397,18 @@ def merged_comment(placeholder: str, target: str) -> str:
             'Repost it; XRAS never retries a post on its own.')
 
 
-def contract_comment(grant_number: str) -> str:
-    return (f'SAM now holds the contract for grant number {grant_number}, so the request may '
-            'now post. Repost it; XRAS never retries a post on its own.')
+def only_contracts_left(messages: Sequence[str], grants: Iterable[str]) -> bool:
+    """Whether every line of *messages* is a missing contract among *grants*."""
+    found = [_MISSING_CONTRACT.match(m) for m in messages]
+    return all(f is not None and f.group(1) in set(grants) for f in found)
+
+
+def contract_comment(grant_number: str, *, postable: bool) -> str:
+    if postable:
+        return (f'SAM now holds the contract for grant number {grant_number}, so the request '
+                'may now post. Repost it; XRAS never retries a post on its own.')
+    return (f'SAM now holds the contract for grant number {grant_number}. The rest of the '
+            'list still blocks the post.')
 
 
 def applied_comment(episode: Episode) -> str:

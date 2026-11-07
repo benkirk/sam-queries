@@ -226,8 +226,9 @@ def xras_request_tickets(ctx) -> TaskResult:
                 note('failed', episode, ticket)
         elif state == 'contract':
             fresh = [g for g in contracts[rid] if not ledger.already_sent(q.contract_key(rid, g))]
-            if all(comment(episode, ticket, q.contract_key(rid, g), q.contract_comment(g))
-                   for g in fresh):
+            postable = q.only_contracts_left(episode.messages, contracts[rid])
+            if all(comment(episode, ticket, q.contract_key(rid, g),
+                           q.contract_comment(g, postable=postable)) for g in fresh):
                 note('contract', episode, ticket)
             else:
                 note('failed', episode, ticket)
