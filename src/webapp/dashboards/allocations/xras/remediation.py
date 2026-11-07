@@ -163,7 +163,7 @@ def xras_remediations_fragment():
     from sam.queries.xras_mnemonic_report import mnemonic_unblock_report
     mnemonic_summary = mnemonic_unblock_report(db.session, scoped)
     from sam.queries.xras_contract_report import contract_unblock_report
-    contract_summary = _with_create_links(contract_unblock_report(db.session, scoped), rows)
+    contract_summary = _with_create_links(contract_unblock_report(db.session, scoped))
     identity_summary = _with_merge_links(_identity_summary(rows))
     # Counted BEFORE the chips and the search box, because the header badge it
     # feeds names the date filter specifically. Measured against `swept_total`
@@ -412,7 +412,7 @@ register_typeahead(
     ctx_key='codes', min_len=1)
 
 
-def _with_create_links(summary: dict, rows=()) -> dict:
+def _with_create_links(summary: dict) -> dict:
     """Stamp each target with the Admin -> Contracts URL that opens the seeded form.
 
     `lookup` mode (auto-fires the NSF fetch) only when the report suggests NSF;
@@ -436,7 +436,7 @@ def _with_create_links(summary: dict, rows=()) -> dict:
             if nsf_id:
                 args['contract_source_id'] = nsf_id
         target['create_url'] = url_for('admin_dashboard.contracts', **args)
-    _stamp_one_click(summary, rows)
+    _stamp_one_click(summary)
     return summary
 
 
@@ -453,34 +453,15 @@ _CONTRACT_REFUSALS = {
 }
 
 
-def _other_blockers(request_numbers, rows) -> list:
-    """Blockers other than the contract on any of these requests, from the rows in view."""
-    by_number = {r.get('request_number'): r for r in rows or ()}
-    found = set()
-    for number in request_numbers:
-        row = by_number.get(number)
-        if row is not None:
-            found |= set(row.get('blockers') or row_blockers(row)) - {'contract'}
-    return sorted(found)
-
-
-def _stamp_one_click(summary, rows) -> None:
-    """Mark the NSF targets a click can create: the contract is each request's only blocker.
-
-    Otherwise the post creates it: made now, it could name a contact for a pending PI.
-    """
+def _stamp_one_click(summary) -> None:
+    """Mark the NSF targets a click can create; a contact PI gains its user when the post applies."""
     if not has_permission(current_user, Permission.CREATE_CONTRACTS):
         return
     for target in summary.get('targets') or ():
-        if target.get('suggested_source') != 'NSF':
-            continue
-        others = _other_blockers(target.get('sample') or (), rows)
-        if others:
-            target['waits_on'] = others
-            continue
-        target['one_click_url'] = url_for(
-            'allocations_dashboard.xras_contract_create_fragment', number=target['number'],
-            requests=target.get('sample') or [], pi_name=target.get('pi_name') or '')
+        if target.get('suggested_source') == 'NSF':
+            target['one_click_url'] = url_for(
+                'allocations_dashboard.xras_contract_create_fragment', number=target['number'],
+                requests=target.get('sample') or [], pi_name=target.get('pi_name') or '')
 
 
 def _roster_users(request_numbers) -> list:
@@ -517,12 +498,6 @@ def _contract_plan(number, request_numbers, pi_name):
 
 def _contract_dialog(data, *, error=None):
     from sam.integration.awards import AwardSourceUnavailable
-    others = _other_blockers(data['requests'], _stamp_blockers((_index() or {}).get('rows') or []))
-    if others:
-        return _dialog_message(
-            f'These requests are also blocked on: {", ".join(others)}. The post creates the '
-            'contract once those clear, so its PI is the right SAM user.',
-            title='Not yet')
     try:
         record, plan, reason = _contract_plan(data['number'], data['requests'], data['pi_name'])
     except AwardSourceUnavailable:
@@ -562,8 +537,6 @@ def xras_contract_create():
         data = XrasContractCreateForm().load(request.form)
     except ValidationError:
         return _dialog_message('No contract number given.')
-    if _other_blockers(data['requests'], _stamp_blockers((_index() or {}).get('rows') or [])):
-        return _contract_dialog(data)
     try:
         _record, plan, reason = _contract_plan(data['number'], data['requests'], data['pi_name'])
     except AwardSourceUnavailable:

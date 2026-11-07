@@ -403,6 +403,48 @@ class TestTwoCadences:
         assert (session.query(AccountRequest)
                 .filter(AccountRequest.xras_username == 'ghost-user-53').count()) == 1
 
+    @pytest.fixture
+    def contracts(self, monkeypatch, session):
+        """The lever on, NSF present, an award cached for each number, rechecks recorded."""
+        from datetime import date
+
+        import sam.integration.awards as awards
+        from factories import make_contract_source
+        from sam.integration.awards.base import AwardRecord, PersonRef
+        monkeypatch.setenv('XRAS_AUTO_CONTRACTS', '1')
+        make_contract_source(session, name='NSF')
+        monkeypatch.setattr(awards, 'award_is_cached', lambda *a, **k: True)
+        monkeypatch.setattr(awards, 'cached_award', lambda source, n, exact=True: AwardRecord(
+            provenance='NSF Awards API', contract_number=n, title='Clouds',
+            start_date=date(2033, 9, 1), pi=PersonRef(name='Pat Doe', email='pd@uni.example')))
+        rechecked = []
+        monkeypatch.setattr('sam.manage.xras_remediation.recheck_readiness',
+                            lambda number, **kw: rechecked.append(number))
+        return rechecked
+
+    def _with_grant(self, request_id, number):
+        from factories._seq import next_seq
+        grant = f"AGS-82{next_seq('SWP')[3:]}"
+        payload = self._recent(request_id, number)
+        payload['grants'] = [{'grantNumber': grant, 'fundingAgencyId': 1, 'piName': 'Pat Doe'}]
+        return payload, grant
+
+    def test_a_light_hour_creates_the_contract_and_rechecks_its_request(
+            self, ctx, wire, monkeypatch, contracts):
+        self._light(monkeypatch)
+        payload, grant = self._with_grant(1, 'ZZZZ9998')
+        wire([], approved_pages=[[payload]])
+        result = mod.xras_sweep(ctx())
+        assert result.detail['contracts']['created'] == [grant]
+        assert contracts == ['ZZZZ9998'] and '1 contract(s) created' in result.message
+
+    def test_a_full_slot_creates_it_before_the_index_and_rechecks_nothing(
+            self, ctx, wire, contracts):
+        payload, grant = self._with_grant(1, 'ZZZZ9997')
+        wire([[payload]])
+        assert mod.xras_sweep(ctx()).detail['contracts']['created'] == [grant]
+        assert contracts == []
+
     def test_the_read_stops_at_the_first_page_with_nothing_recent(
             self, ctx, wire, monkeypatch):
         self._light(monkeypatch)
