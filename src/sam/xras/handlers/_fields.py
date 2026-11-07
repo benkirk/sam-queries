@@ -216,6 +216,18 @@ def create_planned_contracts(session, planned) -> List:
     return [apply_contract_plan(session, plan) for plan in planned or ()]
 
 
+def plan_contact_links(contracts, roster_users) -> List:
+    """The contract contacts this post's roster names as SAM users; ``execute`` links them."""
+    from sam.manage.contracts import plan_contact_links as _plan
+    return _plan(contracts, roster_users)
+
+
+def apply_contact_links(links) -> None:
+    """Link each planned contact; called from ``execute``, inside the post's transaction."""
+    from sam.manage.contracts import apply_contact_links as _apply
+    _apply(links)
+
+
 def auto_contracts_armed() -> bool:
     """``XRAS_AUTO_CONTRACTS``: a missing contract is created from its cached award."""
     from sam.integration._config import config_bool

@@ -1574,7 +1574,7 @@ class TestTheRuleBook:
 
 
 class TestAutoContractsLever:
-    """XRAS_AUTO_CONTRACTS: off in prod, on in dev, and one value per environment."""
+    """XRAS_AUTO_CONTRACTS: on in prod and dev (Ben 2026-11-07), one value per environment."""
 
     @staticmethod
     def _load(name):
@@ -1582,10 +1582,10 @@ class TestAutoContractsLever:
         from _paths import REPO_ROOT
         return yaml.safe_load((REPO_ROOT / 'helm' / name).read_text())
 
-    def test_prod_is_off_and_agrees(self):
+    def test_prod_is_on_and_agrees(self):
         values = self._load('values.yaml')
-        assert values['webapp']['env']['XRAS_AUTO_CONTRACTS'] == '0'
-        assert values['tasks']['env']['XRAS_AUTO_CONTRACTS'] == '0'
+        assert values['webapp']['env']['XRAS_AUTO_CONTRACTS'] == '1'
+        assert values['tasks']['env']['XRAS_AUTO_CONTRACTS'] == '1'
 
     def test_dev_is_on_and_agrees(self):
         dev = self._load('values-dev.yaml')

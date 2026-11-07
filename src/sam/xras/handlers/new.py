@@ -46,9 +46,11 @@ from ._allocations import auth_at_panel_meeting, create_window_from_action_dates
 from ._plans import PlannedCreate
 from ._fields import (
     abstract,
+    apply_contact_links,
     parse_action_begin_date,
     parse_action_end_date,
     create_planned_contracts,
+    plan_contact_links,
     plan_contracts,
     resolve_resource,
     resource_comment,
@@ -113,6 +115,8 @@ class NewHandler(ActionHandler):
         self.contracts, contract_warnings, self.unresolved_grants, self.planned_contracts = (
             plan_contracts(self.session, self.action, self.errors,
                            roster_users=self.roster.users()))
+        self.contact_links = plan_contact_links(self.contracts, self.roster.users())
+        contract_warnings += tuple(link.warning for link in self.contact_links)
 
         # WARNING: Before `_plan_allocations()`, and that ordering is now load-bearing: the
         # plan records capture the flag at construction, where the old execute-time
@@ -219,6 +223,7 @@ class NewHandler(ActionHandler):
                                                                   self.planned_contracts):
             ProjectContract.create(self.session, project_id=project.project_id,
                                    contract_id=contract.contract_id)
+        apply_contact_links(self.contact_links)
 
         # 3. Allocations — these create the accounts step 4 needs.
         #

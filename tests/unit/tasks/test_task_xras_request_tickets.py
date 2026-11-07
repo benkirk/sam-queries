@@ -297,3 +297,21 @@ class TestTheMergedComment:
         key, text, internal = provider.comments[-1]
         assert internal and f'merged {self.PLACEHOLDER} into real' in text and 'Repost' in text
         assert mod.xras_request_tickets(ctx()).detail['unchanged'] == 1, 'once'
+
+
+class TestTheContractComment:
+    """A contract the refusal could not find exists now (the sweep made it): repost, once."""
+
+    def test_a_contract_made_after_the_refusal_comments_once(self, ctx, session, provider):
+        from factories import make_contract
+        from factories._seq import next_seq
+        number = f"AGS-83{next_seq('TKT')[3:]}"
+        _refused(session, when=SLOT - timedelta(hours=2),
+                 errors=(f'Cannot find contract for grant number "{number}" ("{number[4:]}")',))
+        mod.xras_request_tickets(ctx())
+        assert mod.xras_request_tickets(ctx()).detail['unchanged'] == 1, 'still missing'
+        make_contract(session, contract_number=number)
+        assert mod.xras_request_tickets(ctx()).detail['contract'] == 1
+        key, text, internal = provider.comments[-1]
+        assert internal and f'grant number {number}' in text and 'Repost' in text
+        assert mod.xras_request_tickets(ctx()).detail['unchanged'] == 1, 'once'

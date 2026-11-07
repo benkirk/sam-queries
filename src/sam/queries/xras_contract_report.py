@@ -26,7 +26,7 @@ def suggested_source(agency: Optional[str], award_like: bool) -> Optional[str]:
     return None
 
 
-def _recheck(session, number: str, core: str) -> str:
+def contract_resolution(session, number: str, core: str) -> str:
     """``resolved`` | ``missing`` | ``ambiguous`` against the table as it is now."""
     from sam.projects.contracts import Contract
     from sam.xras.extractors import contract_candidates
@@ -69,7 +69,7 @@ def contract_unblock_report(session, snapshot) -> dict:
                     continue
                 key = normalize_contract_number(number) or number
                 if key not in rechecked:
-                    rechecked[key] = _recheck(session, number, grant.get('core') or number)
+                    rechecked[key] = contract_resolution(session, number, grant.get('core') or number)
                 state = rechecked[key]
                 if state == 'resolved':
                     continue

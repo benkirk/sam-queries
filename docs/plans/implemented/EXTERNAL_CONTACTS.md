@@ -82,17 +82,24 @@ contract
 ### XRAS: a post that creates its contract
 
 - **The sweep** (`xras_sweep`) fetches the NSF award of each pending grant SAM has no
-  contract for into the Redis award cache, 25 a run. It also runs
-  `ExternalContact.link_matching_users`.
+  contract for into the Redis award cache, 25 fetches a run. It also creates the contract
+  (`contract_targets`, `_create_contracts`) for every NSF grant an approved, unapplied
+  request cites: the wire grants of each request still owed its push, and the contract
+  blockers the Remediations index recorded. A light hour re-checks each unblocked request
+  into the index. Then it runs `ExternalContact.link_matching_users`.
 - **The post** (`plan_contracts`, New and Update) reads that cache only (`cached_award`), so
   XRAS's POST never waits on NSF. A cached award becomes a planned contract instead of a
   422, written in `execute` inside the post's transaction.
-- **The identity race (Ben).** A post blocked on the contract and on an incoming user who is
-  also the grant PI must not get a contract whose PI is a contact. So the contract is
-  created only as the last step of a post that otherwise applies, and its PI is matched
-  against the roster first.
-- **The Remediations strip** offers one-click Create only when the contract is every citing
-  request's only blocker. Otherwise it reads "waits on".
+- **The identity race.** On 2026-11-05 a contract was made only as the last step of a post
+  that otherwise applied, so an incoming user who is also the grant PI could not become a
+  contact. Ben, 2026-11-07: make it early, and close the race at the post. A post that
+  applies links each unlinked PI or monitor contact that one roster user is, by the
+  contact's own name or email (`plan_contact_links`, planned in assembly so the preflight
+  shows it). The allocation PI is never assumed to be the grant's: they can differ, and
+  then nothing links.
+- **The Remediations strip** offers one-click Create for every NSF target. The ticket task
+  comments "may now post" on a request whose missing contract now exists.
+- **The lever** `XRAS_AUTO_CONTRACTS` covers the post and the sweep, on in both envs.
 - `reports` gives only `fundingAgencyId`, so the sweep and Re-check name NSF
   (`with_named_agencies`, `xras_api/vocabulary.py`) outside `sam/xras`, which never imports
   the outbound client.

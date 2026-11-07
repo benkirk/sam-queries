@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
@@ -265,6 +266,35 @@ def merges_since_refusal(session: Session, episodes: Sequence[Episode]
     return out
 
 
+def contract_key(request_id: int, grant_number: str) -> str:
+    return f'xras_ticket:{request_id}:contract:{grant_number}'
+
+
+_MISSING_CONTRACT = re.compile(r'^Cannot find contract for grant number "(.*)" \("(.*)"\)$')
+
+
+def contracts_since_refusal(session: Session, episodes: Sequence[Episode]
+                            ) -> Dict[int, List[str]]:
+    """``request_id -> [grant number]``: contracts the latest refusal could not find that
+    resolve now (the sweep or an operator made them), so the request may now post."""
+    from sam.queries.xras_contract_report import contract_resolution
+    out: Dict[int, List[str]] = {}
+    state: Dict[str, str] = {}
+    for episode in episodes:
+        if episode.applied_at is not None:
+            continue
+        for message in episode.messages:
+            found = _MISSING_CONTRACT.match(message)
+            if found is None:
+                continue
+            grant, core = found.groups()
+            if grant not in state:
+                state[grant] = contract_resolution(session, grant, core or grant)
+            if state[grant] == 'resolved':
+                out.setdefault(episode.request_id, []).append(grant)
+    return out
+
+
 # -- What the ticket says -------------------------------------------------------
 
 
@@ -365,6 +395,11 @@ def changed_comment(episode: Episode) -> str:
 def merged_comment(placeholder: str, target: str) -> str:
     return (f'SAM merged {placeholder} into {target} in XRAS, so the request may now post. '
             'Repost it; XRAS never retries a post on its own.')
+
+
+def contract_comment(grant_number: str) -> str:
+    return (f'SAM now holds the contract for grant number {grant_number}, so the request may '
+            'now post. Repost it; XRAS never retries a post on its own.')
 
 
 def applied_comment(episode: Episode) -> str:

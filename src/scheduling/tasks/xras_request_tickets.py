@@ -4,7 +4,8 @@ Every quarter hour. It reads the refused posts in ``xras_action_log``
 (``sam.queries.xras_request_tickets.ticket_episodes``) and, per request:
 - opens the ticket once the first refusal is older than the grace period;
 - comments when the latest refusal's blocker list is new;
-- comments when a placeholder it blocked on is merged since (repost it);
+- comments when a placeholder it blocked on is merged since, or a missing contract now
+  exists (repost it);
 - comments once a post applies.
 Comments are internal and NUSD closes the ticket. The webapp answers posts and files the
 account ticket a refused visitor New releases; every request-ticket comment is this task's.
@@ -65,10 +66,10 @@ def armed() -> bool:
 
 
 def plan(episode, ticket_key: Optional[str], ledger, *, until: datetime,
-         grace: timedelta, merges=()) -> str:
+         grace: timedelta, merges=(), contracts=()) -> str:
     """What this wake owes one request: ``open``, ``comment``, ``merged`` (a blocked
-    placeholder merged since: repost), ``applied``, or a no-op state (``waiting``,
-    ``unchanged``, ``done``, ``fixed``)."""
+    placeholder merged since: repost), ``contract`` (a missing contract exists now: repost),
+    ``applied``, or a no-op state (``waiting``, ``unchanged``, ``done``, ``fixed``)."""
     from sam.queries import xras_request_tickets as q
     if ticket_key is None:
         if episode.applied_at is not None:
@@ -78,6 +79,8 @@ def plan(episode, ticket_key: Optional[str], ledger, *, until: datetime,
         return 'done' if ledger.already_sent(q.applied_key(episode.request_id)) else 'applied'
     if any(not ledger.already_sent(q.merged_key(episode.request_id, p)) for p, _ in merges):
         return 'merged'
+    if any(not ledger.already_sent(q.contract_key(episode.request_id, g)) for g in contracts):
+        return 'contract'
     if ledger.already_sent(q.content_key(episode.request_id, episode.messages)):
         return 'unchanged'
     return 'comment'
@@ -114,16 +117,18 @@ def xras_request_tickets(ctx) -> TaskResult:
                                  [e.request_id for e, key in plans if key is None], floor)
                 if floor else set())
     merges = q.merges_since_refusal(ctx.sam_session, [e for e, key in plans if key])
+    contracts = q.contracts_since_refusal(ctx.sam_session, [e for e, key in plans if key])
     plans = [(e, key, 'predates_floor' if key is None and e.request_id in predates
               else plan(e, key, ledger, until=until, grace=grace,
-                        merges=merges.get(e.request_id, ()))) for e, key in plans]
+                        merges=merges.get(e.request_id, ()),
+                        contracts=contracts.get(e.request_id, ()))) for e, key in plans]
 
     detail: Dict[str, Any] = {
         'since': since.isoformat(), 'until': until.isoformat(),
         'floor': floor.isoformat() if floor else None,
         'grace_minutes': int(grace.total_seconds() // 60), 'armed': armed(),
         'writing': writing, 'provider': None, 'episodes': len(episodes),
-        'open': 0, 'comment': 0, 'merged': 0, 'applied': 0, 'waiting': 0, 'unchanged': 0,
+        'open': 0, 'comment': 0, 'merged': 0, 'contract': 0, 'applied': 0, 'waiting': 0, 'unchanged': 0,
         'done': 0, 'fixed': 0, 'predates_floor': 0, 'failed': 0, 'sample': [],
     }
 
@@ -217,6 +222,13 @@ def xras_request_tickets(ctx) -> TaskResult:
             if all(comment(episode, ticket, q.merged_key(rid, p), q.merged_comment(p, t))
                    for p, t in fresh):
                 note('merged', episode, ticket)
+            else:
+                note('failed', episode, ticket)
+        elif state == 'contract':
+            fresh = [g for g in contracts[rid] if not ledger.already_sent(q.contract_key(rid, g))]
+            if all(comment(episode, ticket, q.contract_key(rid, g), q.contract_comment(g))
+                   for g in fresh):
+                note('contract', episode, ticket)
             else:
                 note('failed', episode, ticket)
         elif state == 'applied':

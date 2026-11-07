@@ -396,6 +396,138 @@ def _warm_awards(ctx, session, payloads, detail) -> None:
                 return
 
 
+def _usernames(roster) -> list:
+    return [r['username'] for r in roster or ()
+            if isinstance(r, dict) and r.get('username') and not r.get('placeholder')]
+
+
+def _applied(preflight: dict) -> bool:
+    if preflight.get('push_state') == 'applied_inferred':
+        return True
+    return (preflight.get('push_state') == 'seen_in_log'
+            and (preflight.get('push_detail') or {}).get('status') == 'processed')
+
+
+def contract_targets(session, payloads, pending, index_rows) -> list:
+    """The NSF grants without a contract that approved, unapplied XRAS work cites.
+
+    Two sources: the wire grants of each approved request still owed its push (*pending*),
+    and the contract blockers the Remediations index recorded (*index_rows*), which also
+    reach Supplements and Updates on existing projects. A request under an ``ignore_contract``
+    override is skipped: its post never asks for the contract.
+    """
+    from sam.integration.xras import lookup_request_override
+    from sam.integration.xras_api.vocabulary import with_named_agencies
+    from sam.queries.xras_requests import roster_from_payload
+    from sam.xras.extractors import has_core_number
+    from sam.xras.wire import NSF_AGENCY_NAMES
+
+    def _nsf(number, agency):
+        return has_core_number(number) and str(agency or '').strip().upper() in NSF_AGENCY_NAMES
+
+    targets = []
+    for payload in payloads or ():
+        if not isinstance(payload, dict) or payload.get('requestStatus') != 'Approved':
+            continue
+        request_number = str(payload.get('requestNumber') or '').strip()
+        if request_number not in pending or lookup_request_override(
+                session, request_number, 'ignore_contract') is not None:
+            continue
+        usernames = _usernames(roster_from_payload(payload))
+        for grant in with_named_agencies(payload).get('grants') or ():
+            number = str((grant or {}).get('grantNumber') or '').strip()
+            if isinstance(grant, dict) and _nsf(number, grant.get('fundingAgency')):
+                targets.append({'number': number, 'pi_name': grant.get('piName'),
+                                'request_number': request_number, 'usernames': usernames})
+    for row in index_rows or ():
+        if not isinstance(row, dict):
+            continue
+        for action in row.get('actions') or ():
+            preflight = (action or {}).get('preflight') or {}
+            if preflight.get('action_status') != 'Approved' or _applied(preflight):
+                continue
+            for grant in (preflight.get('resolved') or {}).get('unresolved_grants') or ():
+                number = str(grant.get('number') or '').strip()
+                if grant.get('reason') == 'missing' and _nsf(number, grant.get('agency')):
+                    targets.append({'number': number, 'pi_name': grant.get('pi_name'),
+                                    'request_number': row.get('request_number'),
+                                    'usernames': _usernames(row.get('roster'))})
+    return targets
+
+
+def _create_contracts(ctx, session, targets, detail) -> set:
+    """Under ``XRAS_AUTO_CONTRACTS``, create each target's contract from its NSF award.
+
+    People resolve as the post's do (roster first, else a contact the post links later).
+    A refusal stays the operator's blocker; one bad award costs its savepoint, not the pass.
+    Returns the request numbers a created contract unblocks.
+    """
+    from sam.core.users import User
+    from sam.integration.awards import (AwardSourceUnavailable, award_is_cached,
+                                        cached_award, resolve_award)
+    from sam.manage.contracts import apply_contract_plan, plan_contract_from_award
+    from sam.projects.contracts import Contract, ContractSource, normalize_contract_number
+    from sam.xras.extractors import contract_candidates, extract_core_number
+    from sam.xras.handlers._fields import auto_contracts_armed
+    unblocked: set = set()
+    if not auto_contracts_armed():
+        return unblocked
+    tally = detail.setdefault('contracts', {'created': [], 'refused': {}})
+    awards = detail.setdefault('awards', {'warmed': 0, 'cached': 0, 'unavailable': 0})
+    source = (session.query(ContractSource)
+              .filter(ContractSource.contract_source == 'NSF', ContractSource.is_active).first())
+    if source is None:
+        return unblocked
+    requests: dict = {}
+    for target in targets:
+        key = normalize_contract_number(target['number']) or target['number']
+        requests.setdefault(key, set()).add(target.get('request_number'))
+    seen = set()
+    for target in targets:
+        number = target['number']
+        key = normalize_contract_number(number) or number
+        if key in seen:
+            continue
+        seen.add(key)
+        if (Contract.get_by_number(session, number) is not None
+                or contract_candidates(session, extract_core_number(number))):
+            continue
+        if award_is_cached('NSF', number, exact=True):
+            record = cached_award('NSF', number, exact=True)
+        elif awards['warmed'] >= _AWARD_WARM_CAP:
+            continue
+        else:
+            try:
+                record = resolve_award('NSF', number, exact=True)
+                awards['warmed'] += 1
+            except AwardSourceUnavailable as exc:
+                awards['unavailable'] += 1
+                ctx.logger.warning('xras_sweep: NSF award %s unavailable: %s', number, exc)
+                return unblocked
+        usernames = target.get('usernames') or ()
+        roster = (session.query(User).filter(User.username.in_(usernames)).all()
+                  if usernames else [])
+        plan, reason = (plan_contract_from_award(session, record, source=source,
+                                                 wire_pi_name=target.get('pi_name'),
+                                                 roster_users=roster)
+                        if record is not None else (None, 'no_award'))
+        if plan is None:
+            tally['refused'][reason] = tally['refused'].get(reason, 0) + 1
+            continue
+        try:
+            with session.begin_nested():
+                contract = apply_contract_plan(session, plan)
+        except Exception as exc:                        # noqa: BLE001
+            tally['refused']['error'] = tally['refused'].get('error', 0) + 1
+            ctx.logger.warning('xras_sweep: contract %s not created: %s', number, exc)
+            continue
+        tally['created'].append(contract.contract_number)
+        unblocked |= {n for n in requests[key] if n}
+        ctx.logger.info('xras_sweep: created contract %s for %s (PI %s)',
+                        contract.contract_number, target.get('request_number'), plan.pi.label)
+    return unblocked
+
+
 def _run_preflights(ctx, client, session, all_payloads, *, since, detail):
     """Preflight every recent candidate action; return ``(by_number, numbers)``.
 
@@ -1067,8 +1199,18 @@ def xras_sweep(ctx) -> TaskResult:
             # from real detail, not because anything closed.
             detail['reconciled'] += 1
 
-    # 4a. awards for missing contracts, then link any external contact who is now a user.
+    # 4a. awards for missing contracts, the contracts approved work cites (before the index
+    # build, so a full slot's preflight sees them), then any contact who is now a user.
     _warm_awards(ctx, session, payloads, detail)
+    snapshot = load_requests_index()
+    unblocked = _create_contracts(ctx, session, contract_targets(
+        session, payloads, pending_set, (snapshot or {}).get('rows')), detail)
+    if unblocked and not is_full and not ctx.dry_run:
+        # A light hour keeps the published index, so re-check each unblocked row into it
+        # (not on a dry run, whose contracts the runner rolls back).
+        from sam.manage.xras_remediation import recheck_readiness
+        for number in sorted(unblocked):
+            recheck_readiness(number, session=session, reader=client)
     from sam.projects.contracts import ExternalContact
     detail['contacts_linked'] = ExternalContact.link_matching_users(session)
 
@@ -1167,7 +1309,9 @@ def xras_sweep(ctx) -> TaskResult:
                f"{detail['opportunities_unmapped']}/{detail['opportunities_seen']} "
                f"opportunity id(s) unmapped, "
                f"{detail['opportunities_written']} mapped automatically, "
-               f"{len(detail['opportunities_needing_review'])} needing review")
+               f"{len(detail['opportunities_needing_review'])} needing review"
+               + (f", {len(created)} contract(s) created"
+                  if (created := (detail.get('contracts') or {}).get('created')) else ''))
     ctx.logger.info('xras_sweep: %s', message)
 
     # "0 findings, succeeded" must be distinguishable from "did not look" —
