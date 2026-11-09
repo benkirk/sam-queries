@@ -1523,6 +1523,15 @@ class TestTheLightMerge:
         merge = mod.xras_sweep(ctx()).detail['index_merge']
         assert merge['unsettled'] == 1 and merge['rebuilt'] == 1
 
+    def test_a_recheck_that_changes_nothing_writes_nothing(self, ctx, wire):
+        payload = _pending_request(24, 'ZZZZ0024', status='Submitted', actions=[(240, 'Declined')])
+        self._publish(self._entry(payload, pending_push=True))
+        wire([], approved_pages=[], extra_pages={'Submitted': [[payload]]})
+        result = mod.xras_sweep(ctx())
+        merge = result.detail['index_merge']
+        assert merge['unsettled'] == 1 and merge['rebuilt'] == 1 and merge['written'] == 0
+        assert 'card row(s) updated' not in result.message
+
     def test_a_quarter_slot_leaves_unsettled_rows_for_the_hour(self, ctx, wire):
         payload = self._submitted(22, 'ZZZZ0022')
         self._publish(self._entry(payload, pending_push=True))
