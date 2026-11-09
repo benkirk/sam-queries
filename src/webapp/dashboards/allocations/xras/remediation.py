@@ -28,7 +28,8 @@ is an empty modal with no explanation. The degraded body says what happened.
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from flask import current_app, render_template, request, url_for
 from flask_login import current_user, login_required
@@ -230,20 +231,26 @@ def xras_recheck_request(request_number: str):
 
     Read-only against XRAS and never-writes against SAM. Degrades with a **200**
     when the read client is unavailable — htmx will not swap a 4xx into an open
-    modal, and this fires from one.
+    modal, and this fires from one. ``in_dialog`` re-renders the open request dialog.
     """
+    in_dialog = bool(request.args.get('in_dialog'))
     result = remediation.recheck_readiness(request_number, session=db.session)
     if not result['available']:
-        return htmx_success_message(
+        response = htmx_success_message(
             {}, 'XRAS could not be reached — the pre-flight was not re-run.',
             detail='The card keeps its last swept verdicts. Try again shortly.')
+        if in_dialog:
+            response.headers['HX-Reswap'] = 'none'      # keep the dialog; the toast says it
+        return response
     counts = result['counts']
     checked = sum(counts.values())
+    summary = (f'Re-checked {request_number}: {checked} action(s) — '
+               f'{counts.get("rechecked", 0)} would succeed, {counts.get("failed", 0)} would fail, '
+               f'{counts.get("manual", 0)} would park, {counts.get("incomplete", 0)} incomplete.')
+    if in_dialog:
+        return render_detail(request_number, flash=summary + ' Nothing was applied.')
     return htmx_success_message(
-        {'refreshXrasTab': {}},
-        f'Re-checked {request_number}: {checked} action(s) — '
-        f'{counts.get("rechecked", 0)} would succeed, {counts.get("failed", 0)} would fail, '
-        f'{counts.get("manual", 0)} would park, {counts.get("incomplete", 0)} incomplete.',
+        {'refreshXrasTab': {}}, summary,
         detail='Nothing was applied. The card shows the fresh verdicts.')
 
 
@@ -299,6 +306,82 @@ def xras_recheck_visible():
         f'{totals["failed"]} would fail, {totals["manual"]} would park, '
         f'{totals["incomplete"]} incomplete.',
         detail=detail)
+
+
+#: Sweep now waits this long after any sweep finishes: one light pass is ~11 XRAS reads.
+_SWEEP_NOW_COOLDOWN = timedelta(minutes=2)
+
+
+def _sweep_now_refusal(ledger, now):
+    """Why Sweep now must not run at *now* (naive UTC), or ``None``."""
+    import scheduling.tasks                             # noqa: F401  (registers TASKS)
+    from sam.integration.xras_api.cache import load_requests_index
+    from scheduling.ledger import lease_for
+    from scheduling.registry import TASKS
+    from scheduling.schedules import DEFAULT_TZ, to_local_naive
+    from scheduling.tasks.xras_sweep import full_hour
+
+    def local(dt):
+        return to_local_naive(dt, ZoneInfo(DEFAULT_TZ)).strftime('%H:%M:%S')
+
+    if not xras_api_configured():
+        return 'The XRAS API is not configured, so no sweep can run.'
+    # Either would turn the run into the full pass, which is minutes, not seconds.
+    if load_requests_index() is None:
+        return 'No sweep has published this list yet; the next scheduled sweep builds it.'
+    slot = to_local_naive(now, ZoneInfo(DEFAULT_TZ))
+    if slot.hour == full_hour() and slot.minute == 0:
+        return 'The daily full sweep runs this minute; try again shortly.'
+    latest = ledger.latest('xras_sweep')
+    if latest and latest['state'] == 'running' and (
+            now - latest['claimed_at'] < lease_for(TASKS['xras_sweep'].expected_runtime)):
+        return f'A sweep started at {local(latest["claimed_at"])} is still running.'
+    if latest and latest['finished_at'] and now - latest['finished_at'] < _SWEEP_NOW_COOLDOWN:
+        return (f'A sweep finished at {local(latest["finished_at"])}; '
+                'wait a couple of minutes between sweeps.')
+    return None
+
+
+@bp.route('/xras_sweep_now', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_sweep_now():
+    """Run the quarter-hour ``xras_sweep`` pass now, a manual run in the task ledger.
+
+    Synchronous: a light pass is seconds. Every refusal and failure is a 200 toast.
+    """
+    from sqlalchemy.orm import Session
+
+    from scheduling.ledger import TaskLedger
+    from scheduling.runner import run_due
+    from system_status.timeutil import utcnow_naive
+
+    ledger = TaskLedger(lambda: Session(db.engines['system_status']))
+    now = utcnow_naive()
+    refusal = _sweep_now_refusal(ledger, now)
+    if refusal:
+        return htmx_success_message({}, 'Not swept.', detail=refusal)
+    result = run_due(now=now, ledger=ledger, only='xras_sweep', force=True, occurrence=now,
+                     runner_id=f'webapp:{current_user.username}',
+                     sam_session_factory=lambda: Session(db.engine),
+                     status_session_factory=lambda: Session(db.engines['system_status']))
+    outcome = (result.get('results') or [{}])[0]
+    if outcome.get('outcome') not in ('succeeded', 'partial'):
+        return htmx_success_message(
+            {}, f'The sweep did not finish ({outcome.get("outcome") or "no result"}).',
+            detail=outcome.get('error') or 'The card keeps its last snapshot; see task history.')
+    detail = outcome.get('detail') or {}
+    rows = (detail.get('index_merge') or {}).get('written', 0)
+    contracts = len((detail.get('contracts') or {}).get('created') or ())
+    note = 'Recorded in task history as a manual run.'
+    if detail.get('partial_failures'):
+        note = (f'XRAS failed {detail["partial_failures"]} read(s), so some rows may lag. '
+                + note)
+    return htmx_success_message(
+        {'refreshXrasTab': {}},
+        f'Swept in {outcome.get("duration_ms", 0) / 1000:.1f} s: '
+        f'{rows} card row(s) updated, {contracts} contract(s) created.',
+        detail=note)
 
 
 # ---------------------------------------------------------------------------
@@ -659,12 +742,26 @@ def _stamp_blockers(rows):
 
 
 def _stamp_tickets(rows):
-    """Copy each row with ``ticket_key``, its NUSD ticket (``xras_request_tickets``), one query."""
+    """Copy each row with ``ticket_key`` and ``ticket_url``, its NUSD ticket, one query.
+
+    The URL is ``''`` for a provider that is retired or never read (dry-run).
+    """
     from sam.integration.tickets.queries import tickets_for
     from sam.queries.xras_request_tickets import ENTITY_TYPE
     linked = tickets_for(db.session, ENTITY_TYPE, [r.get('request_id') for r in rows])
-    return [{**r, 'ticket_key': linked[r['request_id']][-1].ticket_key}
-            if r.get('request_id') in linked else r for r in rows]
+    if not linked:
+        return rows
+    # By path and lazily: the registry imports requests (tickets/__init__.py).
+    from sam.integration.tickets.registry import provider_for_stored
+    newest = {rid: ts[-1] for rid, ts in linked.items()}
+    providers = {name: provider_for_stored(name) for name in {t.provider for t in newest.values()}}
+
+    def url(ticket):
+        provider = providers[ticket.provider]
+        return provider.browse_url(ticket.ticket_key) if provider else ''
+    return [{**r, 'ticket_key': newest[r['request_id']].ticket_key,
+             'ticket_url': url(newest[r['request_id']])}
+            if r.get('request_id') in newest else r for r in rows]
 
 
 def _scope_rows(rows, args):

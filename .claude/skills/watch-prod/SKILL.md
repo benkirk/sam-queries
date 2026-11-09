@@ -148,12 +148,12 @@ The `ldapsync:` line is the LDAP sync daemon's calls since its 2026-11-02 repoin
 
 ## 4. The daily full sweep is expected
 
-`xras_sweep` runs a cheap `active` pass hourly (and every quarter hour 08:15–17:45
-MT on weekdays) and one heavy `full` rebuild a day at the **10:07 UTC (04:00 MDT)** slot. A `[full]` pass there taking ~35–100s
-is EXPECTED — flag it only if it *fails* or doesn't switch back to `active`
-afterward. This is a Python task the `samuel-tasks` CronJob dispatches, not a separate CronJob.
-Its `detail.contracts` (`sam-admin --format json tasks --history --task xras_sweep` in a pod) lists
-`created`, `planned[].pi_is_user` (false = new contact) and `refused` by reason; `error` FAILs.
+`xras_sweep` (a task, not a CronJob) runs `active` hourly plus quarter-hourly 08:15–17:45 MT
+weekdays, and one `full` pass at **10:07 UTC (04:00 MDT)**: ~35–100s EXPECTED, flag only a fail
+or no return to `active`. History: `sam-admin --format json tasks --history --task xras_sweep`.
+`detail.contracts`: `created`, `planned[].pi_is_user` (false = new contact), `refused`; `error`
+FAILs. `detail.index_merge`: every request `changed` each pass = `line_digest` churn (flag);
+steady `deferred` = `LIGHT_MERGE_MAX` binds. `manual` + `runner_id webapp:<user>` = Sweep now.
 
 ## 5. The samuel-tasks CronJob — report, never touch
 

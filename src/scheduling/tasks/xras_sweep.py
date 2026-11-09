@@ -15,9 +15,11 @@ the Remediations index (which needs the un-windowed corpus — stale approvals a
 the point). Every other run is light: the ``active=true`` pass plus the newest
 page or two of ``status=Approved`` (``_recent_approved``), because ``active=true``
 omits every request with no ``endDate`` — every approved, not-yet-pushed one
-(measured 2026-10-13: 4 pending requests against the full pass's 20). The index
-rides its 24h TTL; a light run that finds none self-heals to a full pass.
-``detail['mode']`` says which ran.
+(measured 2026-10-13: 4 pending requests against the full pass's 20). A light run
+also reads Submitted and Under Review (``EXTRA_STATUS_MAX_PAGES`` each) and merges into the index
+the rows those reads add, change or leave unsettled (``_merge_light_index``), so
+the card trails XRAS by a slot, not a day. A light run that finds no index
+self-heals to a full pass. ``detail['mode']`` says which ran.
 
 What it is for
 --------------
@@ -169,6 +171,19 @@ EXTRA_STATUS_MAX_PAGES = 5
 #: blast-radius bound, not a target: the read stops at the first page with
 #: nothing newer than ``OPEN_ENDED_MAX_AGE_DAYS``. 3 pages = the newest ~600.
 RECENT_APPROVED_MAX_PAGES = 3
+
+#: Index entries a light run rebuilds (new, then changed, then unsettled); the rest
+#: wait a slot and ``detail['index_merge']['deferred']`` counts them.
+LIGHT_MERGE_MAX = 100
+
+#: Index rows a light run re-reads one by one because they left Submitted or Under
+#: Review (decided in XRAS): one family read each.
+LEFT_PIPELINE_MAX = 10
+
+#: A stored roll-up a light run re-checks even when XRAS did not change the request:
+#: a fix in SAM (contract, mnemonic) or a post that landed changes the verdict only.
+#: Hourly (the :00 slot) and on a manual run; the quarter slots skip them.
+_UNSETTLED_ROLLUPS = ('failed', 'manual', 'incomplete')
 
 #: Cap on rows echoed into the ledger row. `detail` is TEXT and the runner
 #: truncates the JSON at 60 kB.
@@ -679,6 +694,33 @@ def _refresh_own_filings(ctx, client, session, payloads, *, since: date) -> int:
                for number, new in sorted(wanted.items()))
 
 
+def _read_extra_statuses(ctx, client, detail):
+    """Read each of ``EXTRA_STATUSES``: ``(payloads, complete)``, *complete* per status."""
+    payloads, complete = [], {}
+    for status in EXTRA_STATUSES:
+        seen, pages, failed = [], 0, False
+        try:
+            for page in client.iter_request_pages(
+                    status=status, page_size=PAGE_SIZE,
+                    max_pages=EXTRA_STATUS_MAX_PAGES):
+                pages += 1
+                seen.extend(page)
+        except Exception as exc:                        # noqa: BLE001
+            # A status that cannot be read costs that status, not the index —
+            # and says so, rather than looking like an empty cohort.
+            failed = True
+            detail['unavailable_errors'] += 1
+            ctx.logger.warning('xras_sweep: %s pass failed after %d page(s): %s',
+                               status, pages, exc)
+        # Per status: one cohort outgrowing its budget is not the whole index truncated.
+        detail['extra_statuses'][status] = {
+            'seen': len(seen), 'pages': pages,
+            'budget_exhausted': pages >= EXTRA_STATUS_MAX_PAGES}
+        complete[status] = not failed and pages < EXTRA_STATUS_MAX_PAGES
+        payloads.extend(seen)
+    return payloads, complete
+
+
 def _build_requests_index(ctx, client, session, approved_payloads, detail):
     """Build the Remediations card's request index. Never raises.
 
@@ -713,31 +755,7 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
                                            request_index_entry)
 
     payloads = list(approved_payloads or ())
-    extra_payloads = []
-
-    for status in EXTRA_STATUSES:
-        seen, pages = [], 0
-        try:
-            for page in client.iter_request_pages(
-                    status=status, page_size=PAGE_SIZE,
-                    max_pages=EXTRA_STATUS_MAX_PAGES):
-                pages += 1
-                seen.extend(page)
-        except Exception as exc:                        # noqa: BLE001
-            # A status that cannot be read costs that status, not the index —
-            # and says so, rather than looking like an empty cohort.
-            detail['unavailable_errors'] += 1
-            ctx.logger.warning('xras_sweep: %s pass failed after %d page(s): %s',
-                               status, pages, exc)
-        detail['extra_statuses'][status] = {
-            'seen': len(seen),
-            'pages': pages,
-            # Per status, because one cohort outgrowing its budget must not be
-            # reported as the whole index being truncated — or hidden by
-            # another cohort that fitted.
-            'budget_exhausted': pages >= EXTRA_STATUS_MAX_PAGES,
-        }
-        extra_payloads.extend(seen)
+    extra_payloads, _ = _read_extra_statuses(ctx, client, detail)
 
     numbers = {n for p in payloads + extra_payloads
                if isinstance(p, dict)
@@ -810,6 +828,130 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
     detail['index_requests'] = len(entries)
     detail['index_deleted_excluded'] = deleted
     return entries
+
+
+def _merge_light_index(ctx, client, session, payloads, recent, snapshot, *, since, detail,
+                       recheck_unsettled=True):
+    """Keep the published index current between full slots; the merged rows, or ``None``.
+
+    Rebuilds, from payloads already in hand plus the two extra-status reads, each
+    entry that is new, changed in XRAS (``line_digest``) or, under *recheck_unsettled*,
+    unsettled (``_UNSETTLED_ROLLUPS``, or still owed a push), up to ``LIGHT_MERGE_MAX``. A row
+    that left Submitted / Under Review is re-read alone. Never raises; a dry run
+    counts and writes nothing.
+
+    WARNING: a new row comes only from a status-filtered read (*recent*, the extras), as
+    the full build's do. XRAS's ``status`` filter and ``requestStatus`` disagree: on
+    2026-11-09 ``active=true`` carried 33 "Under Review" requests ``status=Under Review``
+    never returns, and admitting them would flap the card against every full slot.
+    """
+    from sam.integration.xras_api.cache import merge_requests_index
+    from sam.queries.xras_requests import (line_digest, live_lines, live_pending_numbers,
+                                           primary_line, project_balances,
+                                           request_index_entry)
+    from sam.xras.preflight import iter_candidate_actions
+
+    stats = {'new': 0, 'changed': 0, 'unsettled': 0, 'rebuilt': 0, 'deferred': 0,
+             'written': 0, 'left': 0, 'left_refreshed': 0,
+             'recheck_unsettled': recheck_unsettled}
+    detail['index_merge'] = stats
+    rows = (snapshot or {}).get('rows') if isinstance(snapshot, dict) else None
+    if not isinstance(rows, list):
+        return None
+    try:
+        extras, complete = _read_extra_statuses(ctx, client, detail)
+        lines_by_number: dict = {}
+        for p in _unique_requests(list(payloads) + extras):
+            number = str(p.get('requestNumber') or '').strip() if isinstance(p, dict) else ''
+            if number:
+                lines_by_number.setdefault(number, []).append(p)
+        pending = live_pending_numbers(session, [p for ls in lines_by_number.values() for p in ls])
+        indexed = {str(r.get('request_number') or '').strip(): r
+                   for r in rows if isinstance(r, dict)}
+
+        def numbers_of(found):                           # live lines only: a deleted one is no handoff
+            return {str(p.get('requestNumber') or '').strip() for p in live_lines(found)}
+        in_review, approved = numbers_of(extras), numbers_of(recent)
+
+        def in_cohort(number, live):
+            # The full build's rule: every in-review request; an approved one owed a push
+            # or carrying a recent candidate action.
+            if number in in_review:
+                return True
+            return number in approved and (number in pending or any(
+                next(iter_candidate_actions(p, since=since), None) is not None for p in live))
+
+        def newest_action(ids):
+            return max((i for i in ids if isinstance(i, int)), default=-1)
+
+        picks = {'new': [], 'changed': [], 'unsettled': []}
+        for number, lines in sorted(lines_by_number.items()):
+            live = live_lines(lines)
+            if not live:
+                continue
+            stored = indexed.get(number)
+            if stored is None:
+                if in_cohort(number, live):
+                    picks['new'].append((number, live, None))
+                continue
+            head = primary_line(live)
+            # A light read can miss a family's newest line; never rebuild from an older one.
+            if newest_action(a.get('actionId') for a in head.get('actions') or ()) < \
+                    newest_action(a.get('action_id') for a in stored.get('actions') or ()):
+                continue
+            if stored.get('line_digest') != line_digest(head):
+                picks['changed'].append((number, live, stored))
+            elif recheck_unsettled and (stored.get('pending_push')
+                                        or stored.get('preflight_rollup') in _UNSETTLED_ROLLUPS):
+                picks['unsettled'].append((number, live, stored))
+        for kind, found in picks.items():
+            stats[kind] = len(found)
+        ordered = picks['new'] + picks['changed'] + picks['unsettled']
+        chosen = ordered[:LIGHT_MERGE_MAX]
+        stats['deferred'] = len(ordered) - len(chosen)
+
+        entries = []
+        if chosen:
+            verdicts, _ = _run_preflights(ctx, client, session,
+                                          [p for _, live, _ in chosen for p in live],
+                                          since=since, detail=detail)
+            try:
+                balances = project_balances(session, {n for n, _, _ in chosen} - pending)
+            except Exception as exc:                    # noqa: BLE001
+                ctx.logger.warning('xras_sweep: light balances skipped: %s', exc)
+                balances = {}
+            for number, live, stored in chosen:
+                entry = request_index_entry(primary_line(live), pending_push=number in pending,
+                                            preflights=verdicts.get(number), family=live,
+                                            balances=balances.get(number))
+                if entry is None:
+                    continue
+                # The light reads miss a family's older lines: keep the full count.
+                if stored and (stored.get('document_count') or 0) > entry['document_count']:
+                    entry['document_count'] = stored['document_count']
+                    entry['document_types'] = list(stored.get('document_types') or ())
+                entries.append(entry)
+        stats['rebuilt'] = len(entries)
+
+        left = (sorted(n for n, r in indexed.items()
+                       if r.get('status') in EXTRA_STATUSES and n not in in_review
+                       and n not in lines_by_number)
+                if all(complete.values()) else [])
+        stats['left'] = len(left)
+        if ctx.dry_run:
+            return None
+        stats['written'] = merge_requests_index(
+            entries, merged_at=to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ)))
+        if left:
+            # The re-check, not the post-write refresh: a sweep's patch is no operator's change.
+            from sam.manage.xras_remediation import recheck_readiness
+            for number in left[:LEFT_PIPELINE_MAX]:
+                stats['left_refreshed'] += bool(recheck_readiness(
+                    number, session=session, reader=client).get('patched'))
+        return list({**indexed, **{e['request_number']: e for e in entries}}.values())
+    except Exception as exc:                            # noqa: BLE001
+        ctx.logger.warning('xras_sweep: light index merge failed: %s', exc)
+        return None
 
 
 def _map_new_opportunities(ctx, session, client, unmapped_ids, detail,
@@ -989,12 +1131,14 @@ def xras_sweep(ctx) -> TaskResult:
         'extra_statuses': {},
         # Light runs only: the newest-Approved read; `{}` on a full slot.
         'recent_approved': {},
+        # Light runs only: what `_merge_light_index` rebuilt; `{}` on a full slot.
+        'index_merge': {},
         'index_requests': 0,
         'index_published': False,
         'index_publish_backend': '',
-        # Push-readiness: filled by `_run_preflights`. `{}` means the index build
-        # did not reach the preflight (no requests, or an early build failure) —
-        # distinct from a run that checked and found nothing.
+        # Push-readiness: filled by `_run_preflights` (the full build, or a light merge
+        # with rows to rebuild). `{}` means no preflight ran, distinct from a run that
+        # checked and found nothing.
         'preflight': {},
         # Predicted-vs-actual, for the actions that have since been pushed.
         'preflight_calibration': {},
@@ -1057,11 +1201,12 @@ def xras_sweep(ctx) -> TaskResult:
                            detail['pages'], exc)
 
     detail['budget_exhausted'] = detail['pages'] >= page_budget
+    recent: list = []
     if not is_full:
         # 1b. `active=true` omits every request with no endDate, which is every
         # approved, not-yet-pushed one: read the newest of those directly.
-        payloads = _unique_requests(payloads + _recent_approved(
-            ctx, client, since=open_ended_since, detail=detail))
+        recent = _recent_approved(ctx, client, since=open_ended_since, detail=detail)
+        payloads = _unique_requests(payloads + recent)
     detail['requests_seen'] = len(payloads)
 
     # WARNING: `unwindowed` is the Remediations index's corpus (full slot only).
@@ -1218,16 +1363,20 @@ def xras_sweep(ctx) -> TaskResult:
     from sam.projects.contracts import ExternalContact
     detail['contacts_linked'] = ExternalContact.link_matching_users(session)
 
-    # 4b. the Remediations index — full slot only; light hours ride its 24h TTL.
-    # The extra-status passes exist only on the full path.
+    # 4b. the Remediations index: the full slot rebuilds it; a light hour merges the
+    # rows its reads add or change into the published one.
     if is_full:
         index_entries = _build_requests_index(ctx, client, session, unwindowed, detail)
         # 4c. fill the Pending Users tab's Pre-flight column for Feed-B rows from
-        # the per-request roll-up the index just computed. Light hours publish the
-        # worklist without this enrichment; the daily full run restores it.
+        # the per-request roll-up the index just computed.
         _apply_worklist_preflights(enumerated, index_entries)
     else:
         index_entries = None
+        merged = _merge_light_index(
+            ctx, client, session, unwindowed, recent, load_requests_index(),
+            since=slot_date - timedelta(days=preflight_days()), detail=detail,
+            recheck_unsettled=slot.minute == 0 or ctx.occurrence_key.startswith('M'))
+        _apply_worklist_preflights(enumerated, merged)
 
     # 5. publish for the dashboard
     #
@@ -1270,9 +1419,9 @@ def xras_sweep(ctx) -> TaskResult:
     # carried the good one across the blind hour. A *genuinely* empty index
     # still publishes: that IS the healthy answer.
     if not is_full:
-        # Light hour: the last full slot's index rides its 24h TTL. Not a
-        # failure — the card keeps the previous snapshot by design.
-        detail['index_publish_backend'] = 'not_this_slot'
+        # Light hour: rows merged into the last full slot's index, or none changed.
+        detail['index_publish_backend'] = ('merged' if detail['index_merge'].get('written')
+                                           else 'not_this_slot')
     else:
         extras_seen = sum(s.get('seen', 0)
                           for s in detail['extra_statuses'].values())
@@ -1315,7 +1464,9 @@ def xras_sweep(ctx) -> TaskResult:
                f"{detail['opportunities_written']} mapped automatically, "
                f"{len(detail['opportunities_needing_review'])} needing review"
                + (f", {len(created)} contract(s) created"
-                  if (created := (detail.get('contracts') or {}).get('created')) else ''))
+                  if (created := (detail.get('contracts') or {}).get('created')) else '')
+               + (f", {written} card row(s) updated"
+                  if (written := detail['index_merge'].get('written')) else ''))
     ctx.logger.info('xras_sweep: %s', message)
 
     # "0 findings, succeeded" must be distinguishable from "did not look" —

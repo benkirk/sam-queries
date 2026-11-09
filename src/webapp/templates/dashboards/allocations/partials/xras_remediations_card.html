@@ -33,7 +33,16 @@
         {%- for status, info in (snapshot.extra_statuses or {}).items() if info.budget_exhausted %} · {{ status }} page cap reached{% endfor -%}
         {% endset %}
         {{ swept_stamp(snapshot.generated_at, (snapshot.statuses | join(', ')) ~ _caps,
-                       title='This card renders what the xras_sweep task last published; it is not fetched live. Rows you have just acted on are refreshed individually and marked.') }}
+                       updated=snapshot.merged_at,
+                       title='This card renders what the xras_sweep task last published; it is not fetched live. The daily full sweep rebuilds it; each quarter-hour sweep updates the rows XRAS or SAM changed since. Rows you have just acted on are refreshed individually and marked.') }}
+        {% if configured %}
+        <button type="button" class="btn btn-sm btn-outline-secondary"
+                title="Run the quarter-hour sweep now: new and changed requests reach this card, missing NSF contracts are created and Pending Users refreshes. Takes a few seconds; recorded in task history."
+                hx-post="{{ url_for('allocations_dashboard.xras_sweep_now') }}"
+                hx-swap="none" hx-disabled-elt="this">
+            <span class="htmx-indicator spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+            <i class="fa-solid fa-arrows-rotate me-1" aria-hidden="true"></i>Sweep now</button>
+        {% endif %}
         {% endif %}
     </div>
 
@@ -348,7 +357,9 @@
                         </span>
                         {% endif %}
                         {% if row.ticket_key %}
-                        {{ tag(row.ticket_key, title='NUSD ticket for this refused post, opened by SAM') }}
+                        {{ tag(row.ticket_key, href=row.ticket_url,
+                               title=('Open ' ~ row.ticket_key ~ ', the NUSD ticket SAM opened for this refused post') if row.ticket_url
+                                     else 'NUSD ticket for this refused post, opened by SAM') }}
                         {% endif %}
                         {# A checked verdict opens the reasons; `incomplete` cannot be
                            re-checked, so it is passive; none posts a re-check. #}

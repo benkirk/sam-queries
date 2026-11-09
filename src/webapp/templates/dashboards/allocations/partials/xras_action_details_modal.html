@@ -3,6 +3,7 @@
    Context:
      r               a single row dict from get_recent_xras_actions
      may_see_payload whether the viewer holds MANAGE_XRAS
+     can_open_request MANAGE_XRAS and XRAS configured: the request number opens its dialog
 
    The .project-stats-box language of the transaction details; empty fields are omitted.
 
@@ -38,7 +39,10 @@
     <div class="stat-item">
         {# The two columns diverge exactly on the New path, which is why both exist. #}
         <span class="stat-label">Request #:</span>
-        <span class="stat-value">{{ r.request_number }}</span>
+        {# In place: this fragment already sits in #xrasModal, so no modal toggle (#464). #}
+        <span class="stat-value">{% if can_open_request %}<a href="#" class="font-monospace" title="Open this request"
+           hx-get="{{ url_for('allocations_dashboard.xras_request_detail', request_number=r.request_number) }}"
+           hx-target="#xrasModalBody" hx-swap="innerHTML">{{ r.request_number }}</a>{% else %}{{ r.request_number }}{% endif %}</span>
     </div>
     {% endif %}
 

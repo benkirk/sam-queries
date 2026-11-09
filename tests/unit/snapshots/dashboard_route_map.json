@@ -2633,6 +2633,13 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_sweep_now",
+    "/allocations/xras_sweep_now",
+    [
+      "POST"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_user_detail",
     "/allocations/xras_user_detail/<path:username>",
     [

@@ -37,7 +37,7 @@ from sam.queries.xras_activation import (
 # Full dotted path, never through `sam.queries` — that package imports its
 # submodules eagerly, and this one imports `sam.notify`. See the module
 # docstring; `tests/unit/gates/test_notify_import_graph.py` is the gate.
-from sam.integration.xras_api import approver_comment_for_action
+from sam.integration.xras_api import approver_comment_for_action, xras_api_configured
 from sam.queries.xras_notices import build_xras_messages, load_xras_action
 from sam.queries.xras_notices import notified_to as xras_notified_to
 from sam.schemas.forms import XrasActivationEventForm, XrasDismissForm
@@ -497,6 +497,8 @@ def xras_action_details(action_id: int):
     return render_template(
         'dashboards/allocations/partials/xras_action_details_modal.html',
         r=rows[0], may_see_payload=may_see_payload,
+        # The request dialog needs MANAGE_XRAS and a live read.
+        can_open_request=may_see_payload and xras_api_configured(),
     )
 
 
