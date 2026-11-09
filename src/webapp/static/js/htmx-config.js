@@ -56,6 +56,47 @@ document.body.addEventListener('htmx:afterSettle', function(evt) {
     firstInvalid.scrollIntoView({block: 'center', behavior: 'smooth'});
 });
 
+// Hold a reloading container's height (data-hold-height)
+// A filter chip re-renders the whole card; when the result is shorter, the page
+// ends above where the reader was and the browser pulls it up under the pointer
+// (73 px measured on the XRAS card). Keep the old height through the swap, then
+// give the spare room back only from below the viewport, as the page scrolls.
+(function () {
+    function contentHeight(el) {
+        var top = el.getBoundingClientRect().top, bottom = top;
+        for (var i = 0; i < el.children.length; i++) {
+            var child = el.children[i];
+            var margin = parseFloat(getComputedStyle(child).marginBottom) || 0;
+            bottom = Math.max(bottom, child.getBoundingClientRect().bottom + margin);
+        }
+        return bottom - top;
+    }
+    function trim(el) {
+        if (!el.style.minHeight) return;
+        if (!el.offsetParent) { el.style.minHeight = ''; return; }   // a hidden tab pane
+        var rect = el.getBoundingClientRect();
+        var below = document.documentElement.scrollHeight - (window.scrollY + rect.bottom);
+        var keep = window.innerHeight - rect.top - below;   // what keeps this scroll position
+        var floor = Math.max(contentHeight(el), keep);
+        el.style.minHeight = floor > contentHeight(el) + 1 ? floor + 'px' : '';
+    }
+    function trimAll() {
+        document.querySelectorAll('[data-hold-height]').forEach(trim);
+    }
+    document.body.addEventListener('htmx:beforeSwap', function (evt) {
+        var el = evt.detail && evt.detail.target;
+        if (el && el.hasAttribute && el.hasAttribute('data-hold-height') && el.offsetHeight) {
+            el.style.minHeight = el.offsetHeight + 'px';
+        }
+    });
+    document.body.addEventListener('htmx:afterSettle', function (evt) {
+        var el = evt.detail && evt.detail.target;
+        if (el && el.hasAttribute && el.hasAttribute('data-hold-height')) trim(el);
+    });
+    window.addEventListener('scroll', trimAll, { passive: true });
+    window.addEventListener('resize', trimAll);
+})();
+
 // Stacked modal z-index
 // Bootstrap 5 doesn't stack z-indexes across separate Modal instances: a second
 // modal opens at the same z-index as the first, and its backdrop (appended last

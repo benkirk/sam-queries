@@ -830,6 +830,22 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
     return entries
 
 
+def _comparable(entry):
+    """An index entry minus what moves without a real change: verdict stamps and balances.
+
+    Balances move with every hour's usage; a row written for another reason carries
+    fresh ones, and the full slot refreshes the rest daily.
+    """
+    actions = [{**a, 'preflight': {k: v for k, v in a['preflight'].items() if k != 'checked_at'}}
+               if isinstance(a.get('preflight'), dict) else a
+               for a in entry.get('actions') or ()]
+    gist = entry.get('gist')
+    if isinstance(gist, dict):
+        gist = {k: v for k, v in gist.items() if k != 'balances'}
+    return {**{k: v for k, v in entry.items() if k != 'refreshed_at'},
+            'actions': actions, 'gist': gist}
+
+
 def _merge_light_index(ctx, client, session, payloads, recent, snapshot, *, since, detail,
                        recheck_unsettled=True):
     """Keep the published index current between full slots; the merged rows, or ``None``.
@@ -930,8 +946,9 @@ def _merge_light_index(ctx, client, session, payloads, recent, snapshot, *, sinc
                 if stored and (stored.get('document_count') or 0) > entry['document_count']:
                     entry['document_count'] = stored['document_count']
                     entry['document_types'] = list(stored.get('document_types') or ())
-                entries.append(entry)
-        stats['rebuilt'] = len(entries)
+                stats['rebuilt'] += 1
+                if stored is None or _comparable(stored) != _comparable(entry):
+                    entries.append(entry)
 
         left = (sorted(n for n, r in indexed.items()
                        if r.get('status') in EXTRA_STATUSES and n not in in_review
