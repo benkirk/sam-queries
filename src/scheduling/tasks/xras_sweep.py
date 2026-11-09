@@ -831,11 +831,19 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
 
 
 def _comparable(entry):
-    """An index entry minus what every re-check restamps, to tell a real change."""
+    """An index entry minus what moves without a real change: verdict stamps and balances.
+
+    Balances move with every hour's usage; a row written for another reason carries
+    fresh ones, and the full slot refreshes the rest daily.
+    """
     actions = [{**a, 'preflight': {k: v for k, v in a['preflight'].items() if k != 'checked_at'}}
                if isinstance(a.get('preflight'), dict) else a
                for a in entry.get('actions') or ()]
-    return {**{k: v for k, v in entry.items() if k != 'refreshed_at'}, 'actions': actions}
+    gist = entry.get('gist')
+    if isinstance(gist, dict):
+        gist = {k: v for k, v in gist.items() if k != 'balances'}
+    return {**{k: v for k, v in entry.items() if k != 'refreshed_at'},
+            'actions': actions, 'gist': gist}
 
 
 def _merge_light_index(ctx, client, session, payloads, recent, snapshot, *, since, detail,
