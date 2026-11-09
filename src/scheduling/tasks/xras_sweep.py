@@ -16,7 +16,7 @@ the point). Every other run is light: the ``active=true`` pass plus the newest
 page or two of ``status=Approved`` (``_recent_approved``), because ``active=true``
 omits every request with no ``endDate`` — every approved, not-yet-pushed one
 (measured 2026-10-13: 4 pending requests against the full pass's 20). A light run
-also reads Submitted and Under Review (one page each) and merges into the index
+also reads Submitted and Under Review (``EXTRA_STATUS_MAX_PAGES`` each) and merges into the index
 the rows those reads add, change or leave unsettled (``_merge_light_index``), so
 the card trails XRAS by a slot, not a day. A light run that finds no index
 self-heals to a full pass. ``detail['mode']`` says which ran.

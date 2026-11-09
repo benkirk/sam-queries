@@ -694,7 +694,7 @@ A fragment beside the existing XRAS surfaces in
 > (default 04:00 Mountain) and rebuilds the Remediations index — which needs the
 > un-windowed corpus, stale approvals being the point. Every **other** hour runs
 > only the cheap `active=true` pass (Approved with endDate null-or-future) for
-> the account worklist, plus one page each of Submitted and Under Review, and
+> the account worklist, plus Submitted and Under Review (`EXTRA_STATUS_MAX_PAGES` pages each), and
 > merges into the index the rows those reads add or change (and, hourly, the unsettled)
 > (`_merge_light_index`; `detail['index_merge']`). A light hour that
 > finds no published index self-heals to a full pass. The account worklist is
