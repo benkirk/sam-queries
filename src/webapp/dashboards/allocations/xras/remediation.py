@@ -659,12 +659,26 @@ def _stamp_blockers(rows):
 
 
 def _stamp_tickets(rows):
-    """Copy each row with ``ticket_key``, its NUSD ticket (``xras_request_tickets``), one query."""
+    """Copy each row with ``ticket_key`` and ``ticket_url``, its NUSD ticket, one query.
+
+    The URL is ``''`` for a provider that is retired or never read (dry-run).
+    """
     from sam.integration.tickets.queries import tickets_for
     from sam.queries.xras_request_tickets import ENTITY_TYPE
     linked = tickets_for(db.session, ENTITY_TYPE, [r.get('request_id') for r in rows])
-    return [{**r, 'ticket_key': linked[r['request_id']][-1].ticket_key}
-            if r.get('request_id') in linked else r for r in rows]
+    if not linked:
+        return rows
+    # By path and lazily: the registry imports requests (tickets/__init__.py).
+    from sam.integration.tickets.registry import provider_for_stored
+    newest = {rid: ts[-1] for rid, ts in linked.items()}
+    providers = {name: provider_for_stored(name) for name in {t.provider for t in newest.values()}}
+
+    def url(ticket):
+        provider = providers[ticket.provider]
+        return provider.browse_url(ticket.ticket_key) if provider else ''
+    return [{**r, 'ticket_key': newest[r['request_id']].ticket_key,
+             'ticket_url': url(newest[r['request_id']])}
+            if r.get('request_id') in newest else r for r in rows]
 
 
 def _scope_rows(rows, args):

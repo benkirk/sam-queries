@@ -348,7 +348,9 @@
                         </span>
                         {% endif %}
                         {% if row.ticket_key %}
-                        {{ tag(row.ticket_key, title='NUSD ticket for this refused post, opened by SAM') }}
+                        {{ tag(row.ticket_key, href=row.ticket_url,
+                               title=('Open ' ~ row.ticket_key ~ ', the NUSD ticket SAM opened for this refused post') if row.ticket_url
+                                     else 'NUSD ticket for this refused post, opened by SAM') }}
                         {% endif %}
                         {# A checked verdict opens the reasons; `incomplete` cannot be
                            re-checked, so it is passive; none posts a re-check. #}

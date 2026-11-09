@@ -413,7 +413,7 @@ class TestTheTicketKey:
         _publish(payload)
         return payload['requestId']
 
-    def test_the_row_names_its_ticket(self, app, auth_client, configured):
+    def _body_with_ticket(self, app, auth_client, provider, key):
         from sqlalchemy.orm import Session
 
         from sam import ExternalTicket
@@ -422,19 +422,33 @@ class TestTheTicketKey:
         with app.app_context():
             engine = db.engine
         with Session(engine) as s:
-            ExternalTicket.create(s, provider='dry-run', ticket_key=f'DRY-SAM-XR-{rid}',
+            ExternalTicket.create(s, provider=provider, ticket_key=key.format(rid=rid),
                                   entity_type='xras_request', entity_id=rid,
                                   origin='created', requested_by='task:xras_request_tickets')
             s.commit()
         try:
-            body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(
+            return rid, auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(
                 as_text=True)
         finally:
             with Session(engine) as s:
                 s.query(ExternalTicket).filter_by(entity_type='xras_request',
                                                   entity_id=rid).delete()
                 s.commit()
+
+    def test_the_row_names_its_ticket(self, app, auth_client, configured):
+        rid, body = self._body_with_ticket(app, auth_client, 'dry-run', 'DRY-SAM-XR-{rid}')
         assert f'DRY-SAM-XR-{rid}' in body
+        # A provider SAM never reads has no page to open: the badge stays plain.
+        assert '/browse/DRY-SAM-XR-' not in body
+
+    def test_a_jira_ticket_opens_in_a_new_tab(self, app, auth_client, configured,
+                                              monkeypatch):
+        monkeypatch.setenv('JIRA_BASE_URL', 'https://tickets.example.org')
+        rid, body = self._body_with_ticket(app, auth_client, 'jira-servicedesk',
+                                           'RC-{rid}')
+        link = re.search(rf'<a class="badge state-tag[^"]*" href="([^"]+)" '
+                         rf'target="_blank" rel="noopener"[^>]*>RC-{rid}<', body)
+        assert link and link.group(1) == f'https://tickets.example.org/browse/RC-{rid}'
 
     def test_a_row_without_one_shows_none(self, auth_client, configured):
         self._own_request()
