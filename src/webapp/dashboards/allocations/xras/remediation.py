@@ -231,20 +231,26 @@ def xras_recheck_request(request_number: str):
 
     Read-only against XRAS and never-writes against SAM. Degrades with a **200**
     when the read client is unavailable — htmx will not swap a 4xx into an open
-    modal, and this fires from one.
+    modal, and this fires from one. ``in_dialog`` re-renders the open request dialog.
     """
+    in_dialog = bool(request.args.get('in_dialog'))
     result = remediation.recheck_readiness(request_number, session=db.session)
     if not result['available']:
-        return htmx_success_message(
+        response = htmx_success_message(
             {}, 'XRAS could not be reached — the pre-flight was not re-run.',
             detail='The card keeps its last swept verdicts. Try again shortly.')
+        if in_dialog:
+            response.headers['HX-Reswap'] = 'none'      # keep the dialog; the toast says it
+        return response
     counts = result['counts']
     checked = sum(counts.values())
+    summary = (f'Re-checked {request_number}: {checked} action(s) — '
+               f'{counts.get("rechecked", 0)} would succeed, {counts.get("failed", 0)} would fail, '
+               f'{counts.get("manual", 0)} would park, {counts.get("incomplete", 0)} incomplete.')
+    if in_dialog:
+        return render_detail(request_number, flash=summary + ' Nothing was applied.')
     return htmx_success_message(
-        {'refreshXrasTab': {}},
-        f'Re-checked {request_number}: {checked} action(s) — '
-        f'{counts.get("rechecked", 0)} would succeed, {counts.get("failed", 0)} would fail, '
-        f'{counts.get("manual", 0)} would park, {counts.get("incomplete", 0)} incomplete.',
+        {'refreshXrasTab': {}}, summary,
         detail='Nothing was applied. The card shows the fresh verdicts.')
 
 

@@ -137,6 +137,27 @@ class TestRecheckNow:
         assert resp.status_code == 200
         assert 'could not be reached' in resp.get_data(as_text=True)
 
+    def test_from_the_dialog_it_rerenders_the_dialog(self, auth_client, configured,
+                                                      monkeypatch):
+        _publish(_payload('EXAM0001'))
+        _reader(monkeypatch, payload=_detail_payload('EXAM0001'))
+        resp = auth_client.post('/allocations/xras_recheck_request/EXAM0001?in_dialog=1')
+        body = resp.get_data(as_text=True)
+        assert 'xras-flash' in body and 'Re-checked EXAM0001' in body
+        assert 'SAM pre-flight' in body                 # the dialog, not a bare toast
+        assert 'refreshXrasTab' in resp.headers.get('HX-Trigger', '')
+        # The fragment swaps into the open modal: it must not toggle that modal (#464).
+        assert 'data-bs-target="#xrasModal"' not in body
+
+    def test_from_the_dialog_an_outage_keeps_the_dialog(self, auth_client, configured,
+                                                        monkeypatch):
+        client = _reader(monkeypatch)
+        client.get_request_family_by_number.side_effect = XrasSourceUnavailable('down')
+        client.get_request_line.side_effect = XrasSourceUnavailable('down')
+        resp = auth_client.post('/allocations/xras_recheck_request/EXAM0001?in_dialog=1')
+        assert resp.headers.get('HX-Reswap') == 'none'
+        assert 'could not be reached' in resp.get_data(as_text=True)
+
     def test_the_modal_renders_the_preflight_section_from_the_snapshot(
             self, auth_client, configured, monkeypatch):
         payload = _detail_payload('EXAM0001')
