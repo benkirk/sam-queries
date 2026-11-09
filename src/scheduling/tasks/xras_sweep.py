@@ -174,7 +174,7 @@ RECENT_APPROVED_MAX_PAGES = 3
 
 #: Index entries a light run rebuilds (new, then changed, then unsettled); the rest
 #: wait a slot and ``detail['index_merge']['deferred']`` counts them.
-LIGHT_MERGE_MAX = 60
+LIGHT_MERGE_MAX = 100
 
 #: Index rows a light run re-reads one by one because they left Submitted or Under
 #: Review (decided in XRAS): one family read each.
@@ -829,17 +829,20 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
     return entries
 
 
-def _merge_light_index(ctx, client, session, payloads, snapshot, *, since, detail):
+def _merge_light_index(ctx, client, session, payloads, recent, snapshot, *, since, detail):
     """Keep the published index current between full slots; the merged rows, or ``None``.
 
     Rebuilds, from payloads already in hand plus the two extra-status reads, each
-    entry the full build would hold that is new, changed in XRAS (``line_digest``)
-    or unsettled (``_UNSETTLED_ROLLUPS``, or still owed a push), up to
-    ``LIGHT_MERGE_MAX``. A row that left Submitted / Under Review is re-read alone.
-    Never raises; a dry run counts and writes nothing.
-    """
-    import contextlib
+    entry that is new, changed in XRAS (``line_digest``) or unsettled
+    (``_UNSETTLED_ROLLUPS``, or still owed a push), up to ``LIGHT_MERGE_MAX``. A row
+    that left Submitted / Under Review is re-read alone. Never raises; a dry run
+    counts and writes nothing.
 
+    WARNING: a new row comes only from a status-filtered read (*recent*, the extras), as
+    the full build's do. XRAS's ``status`` filter and ``requestStatus`` disagree: on
+    2026-11-09 ``active=true`` carried 33 "Under Review" requests ``status=Under Review``
+    never returns, and admitting them would flap the card against every full slot.
+    """
     from sam.integration.xras_api.cache import merge_requests_index
     from sam.queries.xras_requests import (line_digest, live_lines, live_pending_numbers,
                                            primary_line, project_balances,
@@ -854,7 +857,6 @@ def _merge_light_index(ctx, client, session, payloads, snapshot, *, since, detai
         return None
     try:
         extras, complete = _read_extra_statuses(ctx, client, detail)
-        primary = sweep_status()
         lines_by_number: dict = {}
         for p in _unique_requests(list(payloads) + extras):
             number = str(p.get('requestNumber') or '').strip() if isinstance(p, dict) else ''
@@ -864,15 +866,17 @@ def _merge_light_index(ctx, client, session, payloads, snapshot, *, since, detai
         indexed = {str(r.get('request_number') or '').strip(): r
                    for r in rows if isinstance(r, dict)}
 
+        def numbers_of(found):                           # live lines only: a deleted one is no handoff
+            return {str(p.get('requestNumber') or '').strip() for p in live_lines(found)}
+        in_review, approved = numbers_of(extras), numbers_of(recent)
+
         def in_cohort(number, live):
             # The full build's rule: every in-review request; an approved one owed a push
             # or carrying a recent candidate action.
-            if any(p.get('requestStatus') in EXTRA_STATUSES for p in live):
+            if number in in_review:
                 return True
-            if primary and not any(p.get('requestStatus') == primary for p in live):
-                return False
-            return number in pending or any(
-                next(iter_candidate_actions(p, since=since), None) is not None for p in live)
+            return number in approved and (number in pending or any(
+                next(iter_candidate_actions(p, since=since), None) is not None for p in live))
 
         def newest_action(ids):
             return max((i for i in ids if isinstance(i, int)), default=-1)
@@ -925,10 +929,8 @@ def _merge_light_index(ctx, client, session, payloads, snapshot, *, since, detai
                 entries.append(entry)
         stats['rebuilt'] = len(entries)
 
-        seen_in_review = {str(p.get('requestNumber') or '').strip() for p in extras
-                          if isinstance(p, dict)}
         left = (sorted(n for n, r in indexed.items()
-                       if r.get('status') in EXTRA_STATUSES and n not in seen_in_review
+                       if r.get('status') in EXTRA_STATUSES and n not in in_review
                        and n not in lines_by_number)
                 if all(complete.values()) else [])
         stats['left'] = len(left)
@@ -937,11 +939,11 @@ def _merge_light_index(ctx, client, session, payloads, snapshot, *, since, detai
         stats['written'] = merge_requests_index(
             entries, merged_at=to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ)))
         if left:
-            from sam.manage.xras_remediation import refresh_index_entry
+            # The re-check, not the post-write refresh: a sweep's patch is no operator's change.
+            from sam.manage.xras_remediation import recheck_readiness
             for number in left[:LEFT_PIPELINE_MAX]:
-                stats['left_refreshed'] += bool(refresh_index_entry(
-                    number, reader=client,
-                    session_factory=lambda: contextlib.nullcontext(session)))
+                stats['left_refreshed'] += bool(recheck_readiness(
+                    number, session=session, reader=client).get('patched'))
         return list({**indexed, **{e['request_number']: e for e in entries}}.values())
     except Exception as exc:                            # noqa: BLE001
         ctx.logger.warning('xras_sweep: light index merge failed: %s', exc)
@@ -1195,11 +1197,12 @@ def xras_sweep(ctx) -> TaskResult:
                            detail['pages'], exc)
 
     detail['budget_exhausted'] = detail['pages'] >= page_budget
+    recent: list = []
     if not is_full:
         # 1b. `active=true` omits every request with no endDate, which is every
         # approved, not-yet-pushed one: read the newest of those directly.
-        payloads = _unique_requests(payloads + _recent_approved(
-            ctx, client, since=open_ended_since, detail=detail))
+        recent = _recent_approved(ctx, client, since=open_ended_since, detail=detail)
+        payloads = _unique_requests(payloads + recent)
     detail['requests_seen'] = len(payloads)
 
     # WARNING: `unwindowed` is the Remediations index's corpus (full slot only).
@@ -1366,7 +1369,7 @@ def xras_sweep(ctx) -> TaskResult:
     else:
         index_entries = None
         merged = _merge_light_index(
-            ctx, client, session, unwindowed, load_requests_index(),
+            ctx, client, session, unwindowed, recent, load_requests_index(),
             since=slot_date - timedelta(days=preflight_days()), detail=detail)
         _apply_worklist_preflights(enumerated, merged)
 

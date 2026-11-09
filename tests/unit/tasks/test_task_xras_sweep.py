@@ -1464,6 +1464,22 @@ class TestTheLightMerge:
         index = load_requests_index()
         assert index['merged_at'] > index['generated_at']
 
+    def test_only_a_status_filtered_read_adds_a_row(self, ctx, wire):
+        """`active=true` carries requests whose `requestStatus` the status filter
+        disagrees with; the full build never holds them, so a light pass must not add them."""
+        self._publish()
+        wire([[self._submitted(19, 'ZZZZ0019', action_status='Under Review')]],
+             approved_pages=[], extra_pages={})
+        assert mod.xras_sweep(ctx()).detail['index_merge']['new'] == 0
+
+    def test_a_deleted_in_review_line_admits_nothing(self, ctx, wire):
+        self._publish()
+        deleted = self._submitted(20, 'ZZZZ0020')
+        deleted['isDeleted'] = True
+        live = _pending_request(21, 'ZZZZ0020', status='Approved', actions=[(210, 'Declined')])
+        wire([[live]], approved_pages=[], extra_pages={'Submitted': [[deleted]]})
+        assert mod.xras_sweep(ctx()).detail['index_merge']['new'] == 0
+
     def test_an_unchanged_settled_row_is_left_alone(self, ctx, wire):
         payload = self._submitted(6, 'ZZZZ0006')
         self._publish(self._entry(payload, pending_push=False))
@@ -1509,8 +1525,8 @@ class TestTheLightMerge:
     @pytest.fixture
     def refreshed(self, monkeypatch):
         seen = []
-        monkeypatch.setattr('sam.manage.xras_remediation.refresh_index_entry',
-                            lambda number, **kw: seen.append(number) or True)
+        monkeypatch.setattr('sam.manage.xras_remediation.recheck_readiness',
+                            lambda number, **kw: seen.append(number) or {'patched': True})
         return seen
 
     def test_a_row_that_left_review_is_read_alone(self, ctx, wire, refreshed):
