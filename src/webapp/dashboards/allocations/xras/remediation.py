@@ -371,7 +371,7 @@ def xras_sweep_now():
             {}, f'The sweep did not finish ({outcome.get("outcome") or "no result"}).',
             detail=outcome.get('error') or 'The card keeps its last snapshot; see task history.')
     detail = outcome.get('detail') or {}
-    rows = (detail.get('index_merge') or {}).get('written', 0)
+    merge = detail.get('index_merge') or {}
     contracts = len((detail.get('contracts') or {}).get('created') or ())
     note = 'Recorded in task history as a manual run.'
     if detail.get('partial_failures'):
@@ -380,7 +380,8 @@ def xras_sweep_now():
     return htmx_success_message(
         {'refreshXrasTab': {}},
         f'Swept in {outcome.get("duration_ms", 0) / 1000:.1f} s: '
-        f'{rows} card row(s) updated, {contracts} contract(s) created.',
+        f'{merge.get("rebuilt", 0)} card row(s) re-checked, {merge.get("written", 0)} changed, '
+        f'{contracts} contract(s) created.',
         detail=note)
 
 

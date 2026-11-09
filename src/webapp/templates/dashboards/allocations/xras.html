@@ -77,7 +77,7 @@
 
 <div class="tab-content mb-3">
     <div class="tab-pane fade {{ 'show active' if xras_view != 'accounts' }}" id="xras-pane-activity" role="tabpanel">
-        <div id="alloc-xras-pending"
+        <div id="alloc-xras-pending" data-hold-height
              hx-get="{{ url_for('allocations_dashboard.xras_pending_fragment') }}"
              hx-trigger="load, refreshXrasTab from:body, submit from:#xras-window-filters, submit from:#xras-activity-filters"
              hx-include="#xras-window-filters, #xras-activity-filters"
@@ -85,7 +85,7 @@
     </div>
 
     <div class="tab-pane fade {{ 'show active' if xras_view == 'accounts' }}" id="xras-pane-accounts" role="tabpanel">
-        <div id="alloc-xras-accounts"
+        <div id="alloc-xras-accounts" data-hold-height
              hx-get="{{ url_for('allocations_dashboard.xras_accounts_fragment') }}"
              hx-trigger="load, refreshXrasTab from:body, submit from:#xras-window-filters, submit from:#xras-accounts-filters"
              hx-include="#xras-window-filters, #xras-accounts-filters"
@@ -96,7 +96,7 @@
 {% if has_permission(Permission.MANAGE_XRAS) %}
 {# The write surface is a card, not a third tab (TestItIsACardNotATab): every
    control on it changes production XRAS. MANAGE_XRAS here and on every route. #}
-<div id="alloc-xras-remediations"
+<div id="alloc-xras-remediations" data-hold-height
      data-deeplink="remediations"
      hx-get="{{ url_for('allocations_dashboard.xras_remediations_fragment') }}"
      hx-trigger="load, refreshXrasTab from:body, submit from:#xras-window-filters, submit from:#xras-remediation-filters"

@@ -801,7 +801,7 @@ class TestSweepNow:
 
         def fake(ctx):
             ran.append(ctx)
-            return TaskResult(detail={'index_merge': {'written': 3},
+            return TaskResult(detail={'index_merge': {'rebuilt': 5, 'written': 3},
                                       'contracts': {'created': ['AGS-1']}})
         monkeypatch.setitem(TASKS, 'xras_sweep', dataclasses.replace(TASKS['xras_sweep'], fn=fake))
         return ran
@@ -810,7 +810,7 @@ class TestSweepNow:
         _publish(_payload())
         response = auth_client.post(SWEEP_NOW)
         text = response.get_data(as_text=True)
-        assert '3 card row(s) updated, 1 contract(s) created' in text
+        assert '5 card row(s) re-checked, 3 changed, 1 contract(s) created' in text
         assert 'refreshXrasTab' in response.headers.get('HX-Trigger', '')
         row = ledger.latest('xras_sweep')
         assert row['trigger'] == 'manual' and row['state'] == 'succeeded'

@@ -1523,6 +1523,24 @@ class TestTheLightMerge:
         merge = mod.xras_sweep(ctx()).detail['index_merge']
         assert merge['unsettled'] == 1 and merge['rebuilt'] == 1
 
+    def test_a_recheck_that_changes_nothing_writes_nothing(self, ctx, wire):
+        payload = _pending_request(24, 'ZZZZ0024', status='Submitted', actions=[(240, 'Declined')])
+        self._publish(self._entry(payload, pending_push=True))
+        wire([], approved_pages=[], extra_pages={'Submitted': [[payload]]})
+        result = mod.xras_sweep(ctx())
+        merge = result.detail['index_merge']
+        assert merge['unsettled'] == 1 and merge['rebuilt'] == 1 and merge['written'] == 0
+        assert 'card row(s) updated' not in result.message
+
+    def test_moving_balances_alone_write_nothing(self, ctx, wire, monkeypatch):
+        payload = _pending_request(25, 'ZZZZ0025', status='Submitted', actions=[(250, 'Declined')])
+        stored = self._entry(payload, pending_push=True)
+        stored['gist'] = {**stored['gist'], 'balances': [{'resource': 'Derecho', 'remaining': 1.0}]}
+        self._publish(stored)
+        wire([], approved_pages=[], extra_pages={'Submitted': [[payload]]})
+        merge = mod.xras_sweep(ctx()).detail['index_merge']
+        assert merge['rebuilt'] == 1 and merge['written'] == 0
+
     def test_a_quarter_slot_leaves_unsettled_rows_for_the_hour(self, ctx, wire):
         payload = self._submitted(22, 'ZZZZ0022')
         self._publish(self._entry(payload, pending_push=True))
