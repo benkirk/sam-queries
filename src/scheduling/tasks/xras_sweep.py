@@ -182,6 +182,7 @@ LEFT_PIPELINE_MAX = 10
 
 #: A stored roll-up a light run re-checks even when XRAS did not change the request:
 #: a fix in SAM (contract, mnemonic) or a post that landed changes the verdict only.
+#: Hourly (the :00 slot) and on a manual run; the quarter slots skip them.
 _UNSETTLED_ROLLUPS = ('failed', 'manual', 'incomplete')
 
 #: Cap on rows echoed into the ledger row. `detail` is TEXT and the runner
@@ -829,12 +830,13 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
     return entries
 
 
-def _merge_light_index(ctx, client, session, payloads, recent, snapshot, *, since, detail):
+def _merge_light_index(ctx, client, session, payloads, recent, snapshot, *, since, detail,
+                       recheck_unsettled=True):
     """Keep the published index current between full slots; the merged rows, or ``None``.
 
     Rebuilds, from payloads already in hand plus the two extra-status reads, each
-    entry that is new, changed in XRAS (``line_digest``) or unsettled
-    (``_UNSETTLED_ROLLUPS``, or still owed a push), up to ``LIGHT_MERGE_MAX``. A row
+    entry that is new, changed in XRAS (``line_digest``) or, under *recheck_unsettled*,
+    unsettled (``_UNSETTLED_ROLLUPS``, or still owed a push), up to ``LIGHT_MERGE_MAX``. A row
     that left Submitted / Under Review is re-read alone. Never raises; a dry run
     counts and writes nothing.
 
@@ -850,7 +852,8 @@ def _merge_light_index(ctx, client, session, payloads, recent, snapshot, *, sinc
     from sam.xras.preflight import iter_candidate_actions
 
     stats = {'new': 0, 'changed': 0, 'unsettled': 0, 'rebuilt': 0, 'deferred': 0,
-             'written': 0, 'left': 0, 'left_refreshed': 0}
+             'written': 0, 'left': 0, 'left_refreshed': 0,
+             'recheck_unsettled': recheck_unsettled}
     detail['index_merge'] = stats
     rows = (snapshot or {}).get('rows') if isinstance(snapshot, dict) else None
     if not isinstance(rows, list):
@@ -898,7 +901,8 @@ def _merge_light_index(ctx, client, session, payloads, recent, snapshot, *, sinc
                 continue
             if stored.get('line_digest') != line_digest(head):
                 picks['changed'].append((number, live, stored))
-            elif stored.get('pending_push') or stored.get('preflight_rollup') in _UNSETTLED_ROLLUPS:
+            elif recheck_unsettled and (stored.get('pending_push')
+                                        or stored.get('preflight_rollup') in _UNSETTLED_ROLLUPS):
                 picks['unsettled'].append((number, live, stored))
         for kind, found in picks.items():
             stats[kind] = len(found)
@@ -1370,7 +1374,8 @@ def xras_sweep(ctx) -> TaskResult:
         index_entries = None
         merged = _merge_light_index(
             ctx, client, session, unwindowed, recent, load_requests_index(),
-            since=slot_date - timedelta(days=preflight_days()), detail=detail)
+            since=slot_date - timedelta(days=preflight_days()), detail=detail,
+            recheck_unsettled=slot.minute == 0 or ctx.occurrence_key.startswith('M'))
         _apply_worklist_preflights(enumerated, merged)
 
     # 5. publish for the dashboard

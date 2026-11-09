@@ -1505,6 +1505,23 @@ class TestTheLightMerge:
         merge = mod.xras_sweep(ctx()).detail['index_merge']
         assert merge['unsettled'] == 1 and merge['rebuilt'] == 1
 
+    def test_a_quarter_slot_leaves_unsettled_rows_for_the_hour(self, ctx, wire):
+        payload = self._submitted(22, 'ZZZZ0022')
+        self._publish(self._entry(payload, pending_push=True))
+        wire([], approved_pages=[], extra_pages={'Submitted': [[payload]]})
+        merge = mod.xras_sweep(ctx(OCC + timedelta(minutes=15))).detail['index_merge']
+        assert merge['recheck_unsettled'] is False
+        assert merge['unsettled'] == 0 and merge['rebuilt'] == 0
+
+    def test_a_manual_run_rechecks_them_on_any_minute(self, ctx, wire):
+        payload = self._submitted(23, 'ZZZZ0023')
+        self._publish(self._entry(payload, pending_push=True))
+        wire([], approved_pages=[], extra_pages={'Submitted': [[payload]]})
+        manual = ctx(OCC + timedelta(minutes=17))
+        manual.occurrence_key = 'M' + manual.occurrence_key
+        merge = mod.xras_sweep(manual).detail['index_merge']
+        assert merge['recheck_unsettled'] is True and merge['unsettled'] == 1
+
     def test_an_older_line_never_replaces_the_stored_one(self, ctx, wire):
         newer = self._submitted(9, 'ZZZZ0009', action_id=99)
         self._publish(self._entry(newer, pending_push=False))
