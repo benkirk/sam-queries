@@ -354,16 +354,16 @@ class TestTwoCadences:
         assert None in client.active_asked          # a status pass, not active
         assert 'Approved' in client.statuses_asked
 
-    def test_a_light_hour_asks_for_active_and_skips_the_index(self, ctx, wire,
-                                                              monkeypatch):
+    def test_a_light_hour_asks_for_active_then_the_small_statuses(self, ctx, wire,
+                                                                  monkeypatch):
         self._light(monkeypatch)
         client = wire([[_request(1, 'NCAR0001')]])
         detail = mod.xras_sweep(ctx()).detail
         assert detail['mode'] == 'active' and detail['full_slot'] is False
-        # active=true, then the newest Approved; no extra-status passes this hour
-        assert client.active_asked == [True, None]
-        assert client.statuses_asked == [None, 'Approved']
-        assert detail['index_publish_backend'] == 'not_this_slot'
+        # active=true, the newest Approved, then one read per in-review status
+        assert client.active_asked == [True, None, None, None]
+        assert client.statuses_asked == [None, 'Approved', 'Submitted', 'Under Review']
+        assert set(detail['extra_statuses']) == set(mod.EXTRA_STATUSES)
 
     def test_a_light_hour_still_publishes_the_worklist(self, ctx, wire,
                                                        monkeypatch):
@@ -1418,6 +1418,132 @@ def _pending_request(request_id, number, *, status='Approved',
         'actions': [{'actionId': a, 'actionType': 'New', 'actionStatus': s}
                     for (a, s) in actions],
     }
+
+
+class TestTheLightMerge:
+    """A light hour merges new, changed and unsettled rows into the published index."""
+
+    @pytest.fixture(autouse=True)
+    def _light_hour(self, monkeypatch):
+        monkeypatch.setenv('SAM_TASKS_XRAS_SWEEP_FULL_HOUR',
+                           str((_OCC_LOCAL_HOUR + 12) % 24))
+
+    @staticmethod
+    def _publish(*entries):
+        from sam.integration.xras_api.cache import store_requests_index
+        store_requests_index({'generated_at': datetime(2033, 11, 15, 4, 0),
+                              'statuses': ['Approved'], 'extra_statuses': {},
+                              'rows': [e for e in entries]})
+
+    @staticmethod
+    def _rows():
+        from sam.integration.xras_api.cache import load_requests_index
+        return {r['request_number']: r for r in load_requests_index()['rows']}
+
+    @staticmethod
+    def _entry(payload, **kw):
+        from sam.queries.xras_requests import request_index_entry
+        return request_index_entry(payload, **kw)
+
+    @staticmethod
+    def _submitted(request_id, number, action_status='Submitted', action_id=None):
+        return _pending_request(request_id, number, status='Submitted',
+                                actions=[(action_id or request_id * 10, action_status)])
+
+    def test_a_new_submission_reaches_the_card_this_slot(self, ctx, wire):
+        self._publish()
+        wire([], approved_pages=[], extra_pages={
+            'Submitted': [[self._submitted(5, 'ZZZZ0005')]]})
+        result = mod.xras_sweep(ctx())
+        merge = result.detail['index_merge']
+        assert merge['new'] == 1 and merge['written'] == 1
+        assert 'ZZZZ0005' in self._rows()
+        assert result.detail['index_publish_backend'] == 'merged'
+        assert '1 card row(s) updated' in result.message
+        from sam.integration.xras_api.cache import load_requests_index
+        index = load_requests_index()
+        assert index['merged_at'] > index['generated_at']
+
+    def test_an_unchanged_settled_row_is_left_alone(self, ctx, wire):
+        payload = self._submitted(6, 'ZZZZ0006')
+        self._publish(self._entry(payload, pending_push=False))
+        wire([], approved_pages=[], extra_pages={'Submitted': [[payload]]})
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['index_merge']['changed'] == 0
+        assert detail['index_merge']['unsettled'] == 0
+        assert detail['index_merge']['written'] == 0
+        assert detail['index_publish_backend'] == 'not_this_slot'
+
+    def test_a_request_xras_changed_is_rebuilt(self, ctx, wire):
+        self._publish(self._entry(self._submitted(7, 'ZZZZ0007'), pending_push=False))
+        wire([], approved_pages=[], extra_pages={
+            'Submitted': [[self._submitted(7, 'ZZZZ0007', action_status='Under Review')]]})
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['index_merge']['changed'] == 1
+        assert self._rows()['ZZZZ0007']['actions'][0]['action_status'] == 'Under Review'
+
+    def test_a_row_still_owed_a_push_is_rechecked(self, ctx, wire):
+        payload = self._submitted(8, 'ZZZZ0008')
+        self._publish(self._entry(payload, pending_push=True))
+        wire([], approved_pages=[], extra_pages={'Submitted': [[payload]]})
+        merge = mod.xras_sweep(ctx()).detail['index_merge']
+        assert merge['unsettled'] == 1 and merge['rebuilt'] == 1
+
+    def test_an_older_line_never_replaces_the_stored_one(self, ctx, wire):
+        newer = self._submitted(9, 'ZZZZ0009', action_id=99)
+        self._publish(self._entry(newer, pending_push=False))
+        wire([], approved_pages=[], extra_pages={
+            'Submitted': [[self._submitted(9, 'ZZZZ0009', action_status='Approved',
+                                           action_id=50)]]})
+        mod.xras_sweep(ctx())
+        assert self._rows()['ZZZZ0009']['actions'][0]['action_id'] == 99
+
+    def test_the_cap_defers_the_rest(self, ctx, wire, monkeypatch):
+        monkeypatch.setattr(mod, 'LIGHT_MERGE_MAX', 1)
+        self._publish()
+        wire([], approved_pages=[], extra_pages={'Submitted': [[
+            self._submitted(11, 'ZZZZ0011'), self._submitted(12, 'ZZZZ0012')]]})
+        merge = mod.xras_sweep(ctx()).detail['index_merge']
+        assert merge['new'] == 2 and merge['written'] == 1 and merge['deferred'] == 1
+
+    @pytest.fixture
+    def refreshed(self, monkeypatch):
+        seen = []
+        monkeypatch.setattr('sam.manage.xras_remediation.refresh_index_entry',
+                            lambda number, **kw: seen.append(number) or True)
+        return seen
+
+    def test_a_row_that_left_review_is_read_alone(self, ctx, wire, refreshed):
+        self._publish(self._entry(self._submitted(13, 'ZZZZ0013'), pending_push=False))
+        wire([], approved_pages=[], extra_pages={})
+        merge = mod.xras_sweep(ctx()).detail['index_merge']
+        assert refreshed == ['ZZZZ0013'] and merge['left_refreshed'] == 1
+
+    def test_a_truncated_read_decides_nothing_left(self, ctx, wire, refreshed, monkeypatch):
+        monkeypatch.setattr(mod, 'EXTRA_STATUS_MAX_PAGES', 1)
+        self._publish(self._entry(self._submitted(14, 'ZZZZ0014'), pending_push=False))
+        wire([], approved_pages=[], extra_pages={
+            'Submitted': [[self._submitted(15, 'ZZZZ0015')]]})
+        assert mod.xras_sweep(ctx()).detail['index_merge']['left'] == 0
+        assert refreshed == []
+
+    def test_a_dry_run_counts_and_writes_nothing(self, ctx, wire, refreshed):
+        self._publish(self._entry(self._submitted(16, 'ZZZZ0016'), pending_push=False))
+        wire([], approved_pages=[], extra_pages={
+            'Submitted': [[self._submitted(17, 'ZZZZ0017')]]})
+        merge = mod.xras_sweep(ctx(dry_run=True)).detail['index_merge']
+        assert merge['new'] == 1 and merge['left'] == 1 and merge['written'] == 0
+        assert 'ZZZZ0017' not in self._rows() and refreshed == []
+
+    def test_the_pending_users_preflight_column_fills_on_a_light_hour(self, ctx, wire):
+        self._publish()
+        wire([], approved_pages=[[_pending_request(18, 'ZZZZ0018',
+                                                   actions=[(180, 'Approved')])]])
+        from sam.integration.xras_api.cache import load_pending_worklist
+        mod.xras_sweep(ctx())
+        actions = [a for r in load_pending_worklist()['rows'] for a in r['actions']
+                   if a.get('request_number') == 'ZZZZ0018']
+        assert actions and all(a.get('preflight_status') for a in actions)
 
 
 class TestTheRequestsIndex:

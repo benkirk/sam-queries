@@ -33,7 +33,8 @@
         {%- for status, info in (snapshot.extra_statuses or {}).items() if info.budget_exhausted %} · {{ status }} page cap reached{% endfor -%}
         {% endset %}
         {{ swept_stamp(snapshot.generated_at, (snapshot.statuses | join(', ')) ~ _caps,
-                       title='This card renders what the xras_sweep task last published; it is not fetched live. Rows you have just acted on are refreshed individually and marked.') }}
+                       updated=snapshot.merged_at,
+                       title='This card renders what the xras_sweep task last published; it is not fetched live. The daily full sweep rebuilds it; each quarter-hour sweep updates the rows XRAS or SAM changed since. Rows you have just acted on are refreshed individually and marked.') }}
         {% endif %}
     </div>
 

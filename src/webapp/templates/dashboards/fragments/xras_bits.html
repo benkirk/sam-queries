@@ -151,8 +151,11 @@
 {%- endmacro %}
 
 {#- When a cached card was built: the sweep is periodic, never live. -#}
-{% macro swept_stamp(when, detail='', title='Rendered from what the xras_sweep task last published; not fetched live.') -%}
-<span class="small text-muted ms-auto" title="{{ title }}">swept {{ when | fmt_date }}{% if detail %} · {{ detail }}{% endif %}</span>
+{#- *updated*: when a light sweep last merged rows into this snapshot (shown when newer). -#}
+{% macro swept_stamp(when, detail='', title='Rendered from what the xras_sweep task last published; not fetched live.', updated=none) -%}
+<span class="small text-muted ms-auto" title="{{ title }}">swept {{ when | fmt_date }}
+{%- if updated and when and updated > when %} · updated {{ updated | fmt_date(fmt='%H:%M' if updated.date() == when.date() else '%Y-%m-%d %H:%M') }}{% endif %}
+{%- if detail %} · {{ detail }}{% endif %}</span>
 {%- endmacro %}
 
 {#- An empty card: what is (or is not) here, then what to do. caller() is the body. -#}

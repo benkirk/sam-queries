@@ -738,3 +738,26 @@ class TestTheRecommenderNote:
         _publish(_payload('EXAM0001'))
         body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'fa-wand-magic-sparkles' not in body
+
+
+class TestTheSweptStamp:
+    """The header names the full sweep, then the light sweep that last merged rows."""
+
+    @staticmethod
+    def _publish(**extra):
+        swept = datetime.now().replace(hour=4, minute=0, second=0, microsecond=0)
+        xras_cache.store_requests_index({
+            'generated_at': swept, 'statuses': ['Approved'], 'extra_statuses': {},
+            'rows': [request_index_entry(_payload(), pending_push=True)], **extra})
+        return swept
+
+    def test_a_merge_after_the_full_sweep_shows_its_time(self, auth_client, configured):
+        swept = self._publish()
+        xras_cache.store_requests_index({**xras_cache.load_requests_index(),
+                                         'merged_at': swept.replace(hour=10, minute=15)})
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert ' · updated 10:15' in body
+
+    def test_no_merge_says_only_swept(self, auth_client, configured):
+        self._publish()
+        assert ' · updated ' not in auth_client.get(FRAGMENT).get_data(as_text=True)
