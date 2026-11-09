@@ -8,6 +8,8 @@ import re
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
+import pytest
+
 from sam.integration.xras_api import cache as xras_cache
 from sam.queries.xras_requests import request_index_entry
 
@@ -761,3 +763,98 @@ class TestTheSweptStamp:
     def test_no_merge_says_only_swept(self, auth_client, configured):
         self._publish()
         assert ' · updated ' not in auth_client.get(FRAGMENT).get_data(as_text=True)
+
+
+SWEEP_NOW = '/allocations/xras_sweep_now'
+
+
+class TestSweepNow:
+    """The card's Sweep now: the light pass through the real runner, or a reason why not."""
+
+    @pytest.fixture
+    def ledger(self, app):
+        from sqlalchemy import delete
+        from sqlalchemy.orm import Session
+
+        from scheduling.ledger import TaskLedger
+        from system_status.models import TaskRun
+        from webapp.extensions import db
+        with app.app_context():
+            engine = db.engines['system_status']
+
+        def clear():
+            with Session(engine) as s:
+                s.execute(delete(TaskRun).where(TaskRun.task_name == 'xras_sweep'))
+                s.commit()
+        clear()
+        yield TaskLedger(lambda: Session(engine))
+        clear()
+
+    @pytest.fixture
+    def body(self, monkeypatch):
+        """Swap the registered task body for one that reports three merged rows."""
+        import dataclasses
+
+        import scheduling.tasks  # noqa: F401
+        from scheduling.registry import TASKS, TaskResult
+        ran = []
+
+        def fake(ctx):
+            ran.append(ctx)
+            return TaskResult(detail={'index_merge': {'written': 3},
+                                      'contracts': {'created': ['AGS-1']}})
+        monkeypatch.setitem(TASKS, 'xras_sweep', dataclasses.replace(TASKS['xras_sweep'], fn=fake))
+        return ran
+
+    def test_it_runs_the_task_as_a_manual_run(self, auth_client, configured, ledger, body):
+        _publish(_payload())
+        response = auth_client.post(SWEEP_NOW)
+        text = response.get_data(as_text=True)
+        assert '3 card row(s) updated, 1 contract(s) created' in text
+        assert 'refreshXrasTab' in response.headers.get('HX-Trigger', '')
+        row = ledger.latest('xras_sweep')
+        assert row['trigger'] == 'manual' and row['state'] == 'succeeded'
+        assert row['runner_id'].startswith('webapp:') and row['occurrence_key'].startswith('M')
+
+    def test_unconfigured_refuses(self, auth_client, ledger, body):
+        text = auth_client.post(SWEEP_NOW).get_data(as_text=True)
+        assert 'not configured' in text and body == []
+
+    def test_no_published_index_refuses(self, auth_client, configured, ledger, body,
+                                        monkeypatch):
+        monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                            lambda: None)
+        text = auth_client.post(SWEEP_NOW).get_data(as_text=True)
+        assert 'No sweep has published this list yet' in text and body == []
+
+    def test_a_running_sweep_refuses(self, auth_client, configured, ledger, body):
+        from system_status.timeutil import utcnow_naive
+        _publish(_payload())
+        ledger.claim('xras_sweep', 'TEST-RUNNING', now=utcnow_naive(), trigger='schedule')
+        text = auth_client.post(SWEEP_NOW).get_data(as_text=True)
+        assert 'is still running' in text and body == []
+
+    def test_a_sweep_that_just_finished_refuses(self, auth_client, configured, ledger, body):
+        from system_status.timeutil import utcnow_naive
+        _publish(_payload())
+        now = utcnow_naive()
+        run_id = ledger.claim('xras_sweep', 'TEST-DONE', now=now, trigger='schedule')
+        ledger.finish(run_id, state='succeeded', now=now, duration_ms=1, detail=None)
+        text = auth_client.post(SWEEP_NOW).get_data(as_text=True)
+        assert 'wait a couple of minutes' in text and body == []
+
+    def test_the_full_slot_minute_refuses(self, auth_client, configured, ledger, body,
+                                          monkeypatch):
+        from datetime import timezone
+        from zoneinfo import ZoneInfo
+        _publish(_payload())
+        full = datetime(2033, 11, 16, 4, 0, 30, tzinfo=ZoneInfo('America/Denver'))
+        monkeypatch.setattr('system_status.timeutil.utcnow_naive',
+                            lambda: full.astimezone(timezone.utc).replace(tzinfo=None))
+        monkeypatch.setenv('SAM_TASKS_XRAS_SWEEP_FULL_HOUR', '4')
+        text = auth_client.post(SWEEP_NOW).get_data(as_text=True)
+        assert 'daily full sweep runs this minute' in text and body == []
+
+    def test_the_card_offers_it(self, auth_client, configured):
+        _publish(_payload())
+        assert 'xras_sweep_now' in auth_client.get(FRAGMENT).get_data(as_text=True)
