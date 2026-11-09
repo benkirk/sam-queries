@@ -272,6 +272,24 @@ class TestRegistration:
         assert '"1"' in lever, (
             f'{NAME} is enabled but the outgoing lever is off: {lever}')
 
+    @pytest.mark.parametrize('overlay', [None, 'values-dev.yaml'])
+    def test_sweep_now_runs_the_scheduled_pass(self, overlay):
+        """WARNING: the card's Sweep now runs this task inside the webapp pod, under
+        `webapp.env`. The CronJob renders `tasks.env`, and nothing couples the two but
+        this test: every knob the task reads must answer the same in both.
+        """
+        import yaml
+        values = yaml.safe_load((REPO_ROOT / 'helm' / 'values.yaml').read_text())
+        dev = (yaml.safe_load((REPO_ROOT / 'helm' / overlay).read_text())
+               if overlay else {})
+        tasks_env = {**values['tasks']['env'], **(dev.get('tasks') or {}).get('env', {})}
+        webapp_env = {**values['webapp']['env'], **(dev.get('webapp') or {}).get('env', {})}
+        for knob in (mod.max_pages, mod.max_people, mod.map_max, mod.window_days,
+                     mod.preflight_days, mod.sweep_status, mod.full_hour):
+            assert knob(tasks_env) == knob(webapp_env), knob.__name__
+        for lever in ('XRAS_AUTO_CONTRACTS',):
+            assert tasks_env.get(lever) == webapp_env.get(lever), lever
+
 
 # env readers
 
