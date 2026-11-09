@@ -260,17 +260,30 @@ class TestVerdictMapping:
         assert v.status == 'failed' and v.messages
         assert 'dates_at_approval' in v.gaps
 
-    def test_passing_on_provisional_dates_promises_nothing(self, session):
+    def test_passing_on_provisional_dates_promises_nothing(self, session, monkeypatch):
+        from types import SimpleNamespace
+        monkeypatch.setattr('sam.xras.dispatch.dispatch_action', lambda *a, **k: SimpleNamespace(
+            status='processed', service='add', warnings=(), resolved=None, reason=None))
+        action = _new_action(actionStatus='Submitted', allocationDates=[])
+        v = preflight_action(session, _report(number='NCAR9096', status='Submitted',
+                                              actions=[action]),
+                             action, resource_keys=KEYS, opportunities=OPPS)
+        assert v.status == 'incomplete' and v.would_succeed is False
+        assert v.gaps == ('dates_at_approval',)
+
+    def test_stand_in_dates_never_judge_an_existing_allocation(self, session):
+        """An Extension in review on a project ending past the stand-in end would be
+        refused for a date XRAS will set; it waits for the real dates instead."""
         from factories import make_account, make_allocation, make_project
         project = make_project(session)
         make_allocation(session, account=make_account(session, project=project),
-                        end_date=datetime(2027, 8, 31))
+                        end_date=datetime(2029, 1, 1))
         action = _new_action(actionType='Extension', actionStatus='Submitted', resources=[],
                              allocationDates=[])
         v = preflight_action(session, _report(number=project.projcode, actions=[action]),
                              action, resource_keys=KEYS, opportunities=OPPS)
-        assert v.status == 'incomplete' and v.would_succeed is False
-        assert v.gaps == ('dates_at_approval',)
+        assert v.status == 'incomplete' and not v.messages
+        assert v.service == 'extend'
 
     def test_an_unsynthesizable_action_is_incomplete_not_green(self, session):
         action = _new_action(allocationDates=[])

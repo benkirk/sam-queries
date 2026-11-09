@@ -349,6 +349,10 @@ def preflight_action(session, report_payload: dict, action: dict, *,
     except Exception as exc:                     # noqa: BLE001
         logger.warning('preflight: select_service failed for %s (%s)', action_id, exc)
         return _verdict('incomplete')
+    if 'dates_at_approval' in synthesis.gaps and service != 'add':
+        # Stand-in dates are safe only with no allocation to compare: an update or
+        # extend would reject them against the existing end, a red nobody can fix.
+        return _verdict('incomplete', service=service)
 
     # A SAVEPOINT, NOT session.rollback(): the sweep runs this on its own
     # session while an uncommitted opportunity-mapping write is pending, and a
