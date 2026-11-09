@@ -308,8 +308,8 @@
 <div class="xras-footer-start">
     <button type="button" class="btn btn-secondary"
             title="Re-run SAM's push-readiness pre-flight for this request. Nothing is applied."
-            hx-post="{{ url_for('allocations_dashboard.xras_recheck_request', request_number=request_number) }}"
-            hx-swap="none"><i class="fa-solid fa-rotate me-1" aria-hidden="true"></i>Re-check</button>
+            hx-post="{{ url_for('allocations_dashboard.xras_recheck_request', request_number=request_number, in_dialog=1) }}"
+            hx-target="#xrasModalBody" hx-swap="innerHTML" hx-disabled-elt="this"><i class="fa-solid fa-rotate me-1" aria-hidden="true"></i>Re-check</button>
     {% if latest_action and latest_action.can_withdraw %}
     {{ footer_verb('Withdraw…',
                    url_for('allocations_dashboard.xras_withdraw_form', request_number=request_number, action_id=latest_action.action_id),

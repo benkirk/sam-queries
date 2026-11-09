@@ -306,6 +306,39 @@ def patch_requests_index(request_number: str, entry: Optional[Any], *,
     return True
 
 
+def merge_requests_index(entries: Any, *, merged_at: Any) -> int:
+    """Replace or append each entry by request number in one write; the count written.
+
+    The light sweep's write: the full slot's ``generated_at`` stands and ``merged_at``
+    says when rows last changed. ``0`` when no index is published. Last-write-wins,
+    as :func:`patch_requests_index`.
+    """
+    adapter = _CACHE.adapter('pending')
+    wanted = {str(e.get('request_number') or '').strip(): e for e in entries or ()
+              if isinstance(e, dict) and e.get('request_number')}
+    if adapter is None or not wanted:
+        return 0
+    with adapter.lock:
+        if _REQUESTS_KEY not in adapter:
+            return 0
+        payload = adapter[_REQUESTS_KEY]
+        if not isinstance(payload, dict) or not isinstance(payload.get('rows'), list):
+            return 0
+        count, rows = len(wanted), payload['rows']
+        for i, row in enumerate(rows):
+            number = str(row.get('request_number') or '').strip() if isinstance(row, dict) else ''
+            if number in wanted:
+                rows[i] = wanted.pop(number)
+        rows.extend(wanted.values())
+        payload['merged_at'] = merged_at
+        adapter.pop(_REQUESTS_KEY, None)
+        try:
+            adapter[_REQUESTS_KEY] = payload
+        except ValueError:
+            return 0
+    return count
+
+
 def _store(bucket: str, key: str, payload: Any) -> str:
     adapter = _CACHE.adapter(bucket)
     if adapter is None:

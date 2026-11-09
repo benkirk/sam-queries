@@ -26,6 +26,8 @@ is fetched live inside a permission-gated route.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from datetime import date
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
@@ -529,6 +531,12 @@ def projcode_series(row: Mapping[str, Any]) -> Optional[str]:
     return None
 
 
+def line_digest(payload: Any) -> str:
+    """A short digest of one request line: the light sweep's "did XRAS change it" test."""
+    blob = json.dumps(payload, sort_keys=True, default=str, separators=(',', ':'))
+    return hashlib.sha256(blob.encode()).hexdigest()[:16]
+
+
 def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
                         refreshed_at: Any = None,
                         preflights: Optional[Mapping[Any, dict]] = None,
@@ -617,6 +625,7 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
         'refreshed_at': refreshed_at,
         'document_count': len(documents),
         'document_types': sorted({d['document_type'] for d in documents if d['document_type']}),
+        'line_digest': line_digest(payload),
     }
 
 

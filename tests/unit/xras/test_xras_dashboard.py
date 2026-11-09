@@ -250,6 +250,32 @@ class TestPayloadGating:
         assert b'UCUB0166' in resp.data, 'non-PII metadata still renders'
 
 
+class TestTheRequestNumberOpensTheRequest:
+    """The action's request number opens its dialog in place (inside #xrasModal)."""
+
+    @pytest.fixture
+    def configured(self, monkeypatch):
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+
+    def test_a_manager_gets_the_in_place_link(self, auth_client, committed_action, configured):
+        body = auth_client.get(
+            f'/allocations/xras_action_details/{committed_action}').get_data(as_text=True)
+        link = body.split('xras_request_detail/UCUB0166', 1)
+        assert len(link) == 2 and 'hx-target="#xrasModalBody"' in link[1].split('>', 1)[0]
+        assert 'data-bs-toggle="modal"' not in body
+
+    def test_unconfigured_it_stays_text(self, auth_client, committed_action):
+        body = auth_client.get(
+            f'/allocations/xras_action_details/{committed_action}').get_data(as_text=True)
+        assert 'UCUB0166' in body and 'xras_request_detail/' not in body
+
+    def test_a_view_only_user_gets_text(self, view_only_client, committed_action, configured):
+        body = view_only_client.get(
+            f'/allocations/xras_action_details/{committed_action}').get_data(as_text=True)
+        assert 'xras_request_detail/' not in body
+
+
 class TestNavigation:
     def test_tab_appears_on_the_sibling_allocations_pages(self, auth_client):
         resp = auth_client.get('/allocations/transactions')
