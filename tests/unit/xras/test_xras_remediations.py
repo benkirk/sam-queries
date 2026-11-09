@@ -257,6 +257,13 @@ class TestReadinessBand:
         assert 'no allocation dates on this action' in band
         assert 'Add dates' in band and '/xras_dates_form/' in band
 
+    def test_a_request_in_review_waits_for_its_dates_without_offering_them(
+            self, auth_client, armed, monkeypatch):
+        band = self._band(auth_client, monkeypatch,
+                          self._verdict('incomplete', gaps=['dates_at_approval']))
+        assert 'dates arrive when XRAS approves it' in band
+        assert 'Add dates' not in band
+
     def test_gap_labels_read_as_words(self):
         from sam.xras.preflight import gap_label
         assert gap_label('resource_id_unmapped:530201') == 'XRAS resource 530201 has no SAM mapping'
