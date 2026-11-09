@@ -115,6 +115,16 @@ class TestSynthesis:
         assert 'no_allocation_dates' in syn.gaps
         assert syn.action is None
 
+    def test_an_action_in_review_is_checked_on_provisional_dates(self):
+        from datetime import date, timedelta
+        action = _new_action(actionStatus='Submitted', allocationDates=[])
+        syn = synthesize_action(_report(status='Submitted', actions=[action]), action,
+                                resource_keys=KEYS, opportunities=OPPS)
+        assert syn.action is not None
+        assert 'dates_at_approval' in syn.gaps and 'no_allocation_dates' not in syn.gaps
+        assert syn.action['actionBeginDate'] == date.today().strftime('%Y-%m-%d')
+        assert syn.action['actionEndDate'] == (date.today() + timedelta(days=365)).strftime('%Y-%m-%d')
+
     def test_extension_needs_only_end(self):
         # An Extension carries only the new end (begin inherited by the handler);
         # the New-only both-dates gate wrongly stranded these as incomplete.
@@ -239,6 +249,28 @@ class TestVerdictMapping:
                              action, resource_keys=KEYS, opportunities=OPPS)
         assert v.status == 'manual'
         assert v.status != 'incomplete'
+
+    def test_a_blocker_shows_before_xras_sets_the_dates(self, session):
+        """A request in review has no dates; its contract blocker must not wait for them."""
+        action = _new_action(actionStatus='Under Review', allocationDates=[])
+        report = _report(number='NCAR9097', status='Submitted', actions=[action])
+        report['grants'] = [{'grantNumber': 'NSF-9990302', 'title': 'Ice',
+                             'fundingAgency': 'National Science Foundation'}]
+        v = preflight_action(session, report, action, resource_keys=KEYS, opportunities=OPPS)
+        assert v.status == 'failed' and v.messages
+        assert 'dates_at_approval' in v.gaps
+
+    def test_passing_on_provisional_dates_promises_nothing(self, session):
+        from factories import make_account, make_allocation, make_project
+        project = make_project(session)
+        make_allocation(session, account=make_account(session, project=project),
+                        end_date=datetime(2027, 8, 31))
+        action = _new_action(actionType='Extension', actionStatus='Submitted', resources=[],
+                             allocationDates=[])
+        v = preflight_action(session, _report(number=project.projcode, actions=[action]),
+                             action, resource_keys=KEYS, opportunities=OPPS)
+        assert v.status == 'incomplete' and v.would_succeed is False
+        assert v.gaps == ('dates_at_approval',)
 
     def test_an_unsynthesizable_action_is_incomplete_not_green(self, session):
         action = _new_action(allocationDates=[])

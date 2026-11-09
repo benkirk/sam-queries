@@ -364,7 +364,7 @@
                         {# A checked verdict opens the reasons; `incomplete` cannot be
                            re-checked, so it is passive; none posts a re-check. #}
                         {% if row.preflight_rollup == 'incomplete' %}
-                        {{ verdict('incomplete', icon_only=True, title="Incomplete: SAM can't preflight this action type yet, so its readiness is unknown. Open the request for the gap.") }}
+                        {{ verdict('incomplete', icon_only=True, title="Incomplete: SAM can't fully pre-flight this request yet, so it can't promise success (a request in review gets its dates at approval). Open the request for why.") }}
                         {% elif row.preflight_rollup %}
                         <a href="#" class="text-decoration-none"
                            data-bs-toggle="modal" data-bs-target="#xrasModal"

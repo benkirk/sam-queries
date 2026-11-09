@@ -16,11 +16,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import (Any, Dict, Iterator, Mapping, Optional, Tuple)
 
 from sam.dates import parse_wire_date
-from sam.queries.xras_accounts import live_actions, report_entry_date
+from sam.queries.xras_accounts import (IN_FLIGHT_ACTION_STATUSES, live_actions,
+                                       report_entry_date)
 from sam.queries.xras_actions import canonical_action_type
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ _REQUIRED_DATES: Dict[str, frozenset] = {
 #: A gap in words, for the dialog; `resource_id_unmapped:<id>` carries its id.
 _GAP_LABELS: Dict[str, str] = {
     'no_allocation_dates': 'no allocation dates on this action',
+    'dates_at_approval': 'dates arrive when XRAS approves it; checked in full then',
     'resource_id_unmapped': 'XRAS resource {} has no SAM mapping',
     'schema_invalid': 'the action does not load as a push would',
 }
@@ -171,7 +173,15 @@ def synthesize_action(report_payload: dict, action: dict, *,
     # them (the New-only assumption) is what wrongly stranded every non-New action.
     required = _REQUIRED_DATES.get(canonical_action_type(action_type), frozenset())
     if ('begin' in required and begin is None) or ('end' in required and end is None):
-        gaps.append('no_allocation_dates')
+        if (action.get('actionStatus') or '') in IN_FLIGHT_ACTION_STATUSES:
+            # In review: XRAS sets the dates at approval. Check everything else now
+            # against provisional ones, so a missing PI or contract shows before then.
+            gaps.append('dates_at_approval')
+            today = date.today()
+            begin = begin or today.strftime('%Y-%m-%d')
+            end = end or (today + timedelta(days=365)).strftime('%Y-%m-%d')
+        else:
+            gaps.append('no_allocation_dates')
 
     resource_lines, amount_stage = _best_resource_lines(action)
     resources = []
@@ -361,6 +371,10 @@ def preflight_action(session, report_payload: dict, action: dict, *,
     if result.status == 'manual':
         return _verdict('manual', service=result.service or service,
                         messages=(result.reason,) if result.reason else ())
+    if 'dates_at_approval' in synthesis.gaps:
+        # Passed on provisional dates: nothing blocks it yet, but no promise until real ones.
+        return _verdict('incomplete', service=result.service or service,
+                        warnings=result.warnings, resolved=result.resolved)
     return _verdict('rechecked', would_succeed=True, service=result.service or service,
                     warnings=result.warnings, resolved=result.resolved)
 
