@@ -409,9 +409,9 @@ ACCOUNT_FACETS = FacetSet(
 _READINESS = (
     ('failed', 'Would fail', 'fa-triangle-exclamation text-danger-emphasis'),
     ('manual', 'Would park', 'fa-circle-pause text-warning-emphasis'),
-    ('incomplete', 'Incomplete', 'fa-circle-question text-secondary-emphasis'),
+    ('incomplete', 'Incomplete', 'fa-circle-question text-info-emphasis'),
     ('rechecked', 'Would succeed', 'fa-circle-check text-success-emphasis'),
-    ('none', 'Not checked', 'fa-rotate text-secondary-emphasis'),
+    ('none', 'Not checked', 'fa-rotate text-muted'),
 )
 
 #: Blocker chip icons, matching the row indicators (the chip strip is their legend).
