@@ -36,6 +36,7 @@ from _remediations_support import (  # noqa: F401
     configured,
     armed,
     _payload,
+    _posted,
     _publish,
     _detail_payload,
     _reader,
@@ -694,7 +695,8 @@ class TestPendingWorkToggle:
                                                          'push_state': 'unknown'}}),
                      request_index_entry(_payload('EXAM0002'), pending_push=False,
                                          preflights={7: {'status': 'rechecked',
-                                                         'push_state': 'seen_in_log'}})]})
+                                                         'push_state': 'seen_in_log',
+                                                         'push_detail': _posted('seen_in_log')}})]})
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
         assert '1 pending' in body
         assert '1 more with Everything in the window' in body
@@ -767,7 +769,7 @@ class TestContractUnblockStrip:
                    'messages': ['x'], 'gaps': [],
                    'service': 'add', 'stage': 'Approved', 'action_status': 'Approved',
                    'request_status': 'Approved', 'push_state': push_state,
-                   'push_detail': None,
+                   'push_detail': _posted(push_state),
                    'resolved': {'unresolved_grants': list(grants)},
                    'checked_at': '2026-08-23T09:00:00'}
         xras_cache.store_requests_index({

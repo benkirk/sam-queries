@@ -417,10 +417,12 @@ def _usernames(roster) -> list:
 
 
 def _applied(preflight: dict) -> bool:
+    """The queue's ``_owed_push`` inverted: one landed rule (``LANDED_LOG_STATUSES``)."""
+    from sam.queries.xras_actions import LANDED_LOG_STATUSES
     if preflight.get('push_state') == 'applied_inferred':
         return True
     return (preflight.get('push_state') == 'seen_in_log'
-            and (preflight.get('push_detail') or {}).get('status') == 'processed')
+            and (preflight.get('push_detail') or {}).get('status') in LANDED_LOG_STATUSES)
 
 
 def contract_targets(session, payloads, pending, index_rows) -> list:

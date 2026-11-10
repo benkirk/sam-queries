@@ -50,6 +50,12 @@ from sam.projects.projects import Project
 XRAS_ACTION_STATUSES = ('received', 'processed', 'manual', 'failed', 'rechecked',
                         'unmapped', 'duplicate')
 
+#: The outcomes under which a push has landed in SAM. Positive on purpose: the sweep's
+#: "applied" and the queue's "still owed" are the one rule, read from here, so a status
+#: neither names (``latest_action_logs`` hands back none, but a stored snapshot may)
+#: reads as owed rather than as done.
+LANDED_LOG_STATUSES = ('processed',)
+
 #: Action types on the wire, for the filter dropdown: legacy's own declared
 #: vocabulary (``action/domain/model/Action.java``), corrected against real
 #: payloads.

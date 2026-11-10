@@ -39,6 +39,7 @@ from sam.integration.xras_api.vocabulary import (
     ADMIN_ROLE_TYPE_ID,
     PI_ROLE_TYPE_ID,
 )
+from sam.queries.xras_actions import LANDED_LOG_STATUSES
 from sam.queries.xras_accounts import (IN_FLIGHT_ACTION_STATUSES, in_flight_live_action,
                                        rosters_by_number,
                                        is_placeholder, iter_roster_entries, live_actions,
@@ -214,11 +215,6 @@ _ROLLUP_ORDER = ('failed', 'manual', 'incomplete', 'rechecked')
 XRAS_REPOINTED_ON = date(2026, 8, 24)
 
 
-#: A log row in one of these states is a push that has NOT landed, so the action
-#: is still XRAS admin's pending work even though ``push_state`` says seen_in_log.
-UNLANDED_LOG_STATUSES = ('received', 'failed', 'manual')
-
-
 def is_pending_work(entry: Mapping[str, Any]) -> bool:
     """Would XRAS admin's "Recent submissions" list show this request?
 
@@ -243,8 +239,8 @@ def _owed_push(action: Mapping[str, Any]) -> bool:
     state = preflight.get('push_state')
     if state == 'pending':
         return True
-    if state == 'seen_in_log':
-        return (preflight.get('push_detail') or {}).get('status') in UNLANDED_LOG_STATUSES
+    if state == 'seen_in_log':      # a log row that is not a landed push is still owed
+        return (preflight.get('push_detail') or {}).get('status') not in LANDED_LOG_STATUSES
     if state == 'unknown':
         when = action.get('entry_date') or action.get('submit_date')
         return when is not None and parse_wire_date(when) >= XRAS_REPOINTED_ON

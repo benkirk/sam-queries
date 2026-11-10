@@ -1081,17 +1081,22 @@ class XrasRemediationEvent(Base, SessionMixin):
 
 
 def latest_action_logs(session, action_ids) -> Dict[int, 'XrasActionLog']:
-    """The newest ``xras_action_log`` row XRAS posted, per action id, in one query.
+    """The newest outcome XRAS's posts gave each action id, in one query.
 
     Ordered by id so the highest row wins: a failed post followed by a re-post
-    reports the re-post. An operator's Re-check is not a post (``is_post``).
+    reports the re-post. Two row kinds are never an outcome: an operator's Re-check
+    (``is_post``), and a repeat refused as ``duplicate``, whose outcome is the row it
+    repeated. Read as the outcome, a duplicate put a refusal on the card as the
+    landed push (prod, 2026-10-20) and turned an applied action back into
+    "awaiting post" on My Requests.
     """
     wanted = sorted({int(a) for a in action_ids if a is not None})
     if not wanted:
         return {}
     out: Dict[int, XrasActionLog] = {}
     for row in (session.query(XrasActionLog)
-                .filter(XrasActionLog.action_id.in_(wanted), XrasActionLog.is_post)
+                .filter(XrasActionLog.action_id.in_(wanted), XrasActionLog.is_post,
+                        XrasActionLog.status != 'duplicate')
                 .order_by(XrasActionLog.xras_action_log_id)):
         out[row.action_id] = row
     return out
