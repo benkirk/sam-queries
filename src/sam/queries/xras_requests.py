@@ -254,6 +254,47 @@ def is_pending_work(entry: Mapping[str, Any]) -> bool:
     return False
 
 
+def _owed_push(action: Mapping[str, Any]) -> bool:
+    """An Approved, checked action the snapshot still counts as unposted."""
+    preflight = action.get('preflight') or {}
+    if not preflight or action.get('action_status') != 'Approved':
+        return False
+    state = preflight.get('push_state')
+    return state in ('pending', 'unknown') or (
+        state == 'seen_in_log'
+        and (preflight.get('push_detail') or {}).get('status') in UNLANDED_LOG_STATUSES)
+
+
+def with_landed_pushes(session, entries: Sequence[Mapping[str, Any]]) -> list:
+    """*entries* with each owed push's latest ``xras_action_log`` row stamped on, in one query.
+
+    The snapshot's push state is only as fresh as the row's last pre-flight (up to an hour);
+    the log has the push the moment it lands. Copies only: the stored index is untouched.
+    """
+    from sam.xras.preflight import log_seen_for
+
+    entries = list(entries or ())
+    ids = {a.get('action_id') for e in entries if isinstance(e, Mapping)
+           for a in e.get('actions') or () if isinstance(a, Mapping) and _owed_push(a)}
+    seen = log_seen_for(session, ids) if ids else {}
+    if not seen:
+        return entries
+    out = []
+    for entry in entries:
+        actions = entry.get('actions') if isinstance(entry, Mapping) else None
+        if not any(_owed_push(a) and a.get('action_id') in seen for a in actions or ()):
+            out.append(entry)
+            continue
+        stamped = []
+        for a in actions:
+            if _owed_push(a) and a.get('action_id') in seen:
+                a = dict(a, preflight=dict(a['preflight'], push_state='seen_in_log',
+                                           push_detail=dict(seen[a['action_id']])))
+            stamped.append(a)
+        out.append(dict(entry, actions=stamped))
+    return out
+
+
 #: Waiting bands: (band, fewer than this many days); ``older`` is past the last. The age
 #: tints amber past the second bound and red past the third (:func:`waiting_note`).
 WAITING_BANDS = (('week', 7), ('month', 30), ('quarter', 90))

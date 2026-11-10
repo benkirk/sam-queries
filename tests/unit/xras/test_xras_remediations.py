@@ -622,6 +622,25 @@ class TestPendingWorkToggle:
         assert 'No pending work' in body
         assert 'EXAM0001' not in body.split('id="xras-remediation-show-all"')[1]
 
+    @staticmethod
+    def _log(monkeypatch, status):
+        monkeypatch.setattr('sam.xras.preflight.log_seen_for', lambda session, ids: {
+            7: {'status': status, 'received_time': '2026-11-10T11:28:24', 'log_id': 481}})
+
+    def test_a_push_the_log_has_processed_leaves_the_queue(self, auth_client, configured,
+                                                           monkeypatch):
+        # UTAM0017: the snapshot still says pending; the log already has the processed push.
+        _publish_with_verdict(_payload('EXAM0001'), push_state='unknown')
+        self._log(monkeypatch, 'processed')
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'No pending work' in body
+
+    def test_a_failed_post_stays_in_the_queue(self, auth_client, configured, monkeypatch):
+        _publish_with_verdict(_payload('EXAM0001'), push_state='unknown')
+        self._log(monkeypatch, 'failed')
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'EXAM0001' in body and 'No pending work' not in body
+
     def test_show_everything_reveals_it(self, auth_client, configured):
         _publish_with_verdict(_payload('EXAM0001'), push_state='seen_in_log')
         body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)

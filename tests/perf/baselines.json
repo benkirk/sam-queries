@@ -299,6 +299,6 @@
     },
     "xras_remediations_card_route": {
         "queries": 20,
-        "notes": "measured 15 (2026-11-05, benkirk, MySQL and Postgres) at both 5 and 25 swept rows: the signed-in user, the mnemonic and contract strips, the action log, the remediation trail, the tickets, and one xras_request_note IN query for the recommender markers. Flat in rows"
+        "notes": "measured 16 (2026-11-10, benkirk, MySQL) at both 5 and 25 swept rows, every row owing a push: the signed-in user, the mnemonic and contract strips, the action log, the remediation trail, the tickets, one xras_request_note IN query for the recommender markers, and one xras_action_log IN query for the pushes the log has landed (with_landed_pushes). Flat in rows"
     }
 }
