@@ -316,12 +316,10 @@ def _apply_action_filters(
     action_type,
     status,
     request_number,
-    projcode,
     remote_actor,
     processed_by,
     http_status,
     has_errors,
-    replays_only,
     source_action,
     start_date,
     end_date,
@@ -341,14 +339,19 @@ def _apply_action_filters(
             return column.in_(values) if values else None
         return column == value
 
+    def _names(value):
+        # Either column: a New's row carries the token in one and the minted projcode
+        # in the other, so a projcode finds the post that minted it (_PROJCODE_COLUMNS).
+        clauses = [_in(column, value) for column in _PROJCODE_COLUMNS]
+        return or_(*clauses) if all(c is not None for c in clauses) else None
+
     for clause in (
         _in(XrasActionLog.xras_action_log_id, action_log_id),
         # Widened here, once, so the list query, the count and the summary rollup
         # cannot disagree about what "Adjustment" selects.
         _in(XrasActionLog.action_type, expand_action_types(action_type)),
         _in(XrasActionLog.status, status),
-        _in(XrasActionLog.request_number, request_number),
-        _in(XrasActionLog.projcode_result, projcode),
+        _names(request_number),
         _in(XrasActionLog.remote_actor, remote_actor),
         _in(XrasActionLog.processed_by, processed_by),
         _in(XrasActionLog.http_status, http_status),
@@ -369,11 +372,6 @@ def _apply_action_filters(
         query = query.filter((XrasActionLog.error_messages.is_(None))
                              | (XrasActionLog.error_messages == ''))
 
-    if replays_only is True:
-        query = query.filter(XrasActionLog.source_action_id.isnot(None))
-    elif replays_only is False:
-        query = query.filter(XrasActionLog.source_action_id.is_(None))
-
     return query
 
 
@@ -384,12 +382,10 @@ def get_recent_xras_actions(
     action_type: Optional[Union[str, List[str]]] = None,
     status: Optional[Union[str, List[str]]] = None,
     request_number: Optional[Union[str, List[str]]] = None,
-    projcode: Optional[Union[str, List[str]]] = None,
     remote_actor: Optional[Union[str, List[str]]] = None,
     processed_by: Optional[Union[str, List[str]]] = None,
     http_status: Optional[Union[int, List[int]]] = None,
     has_errors: Optional[bool] = None,
-    replays_only: Optional[bool] = None,
     source_action: Optional[Union[int, List[int]]] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
@@ -407,20 +403,18 @@ def get_recent_xras_actions(
             Alias spellings are folded in, so ``'Adjustment'`` also selects rows
             recorded as ``'Adjust'`` (``XRAS_ACTION_TYPE_ALIASES``).
         status: one or more of ``XRAS_ACTION_STATUSES``.
-        request_number: XRAS request number, which *is* the projcode for actions
-            against an existing project and a request token for a New action that
-            mints one. Note ``New`` does **not** imply a token: a New action against
+        request_number: the rows naming this request or project, by
+            ``request_number`` or ``projcode_result``: the projcode is the request
+            number for actions against an existing project, and a New that minted
+            one carries its token in the first column and the projcode in the
+            second. Note ``New`` does **not** imply a token: a New action against
             an existing project carries that project's projcode (measured — see
             ``new_uwis0071_existing_ok.json``), which is exactly the case legacy
             routes to ``UpdateProjectActionService``.
-        projcode: filter on ``projcode_result`` — the minted projcode, which
-            diverges from ``request_number`` exactly on the New path.
         http_status: 200 / 400 / 422. ``status='failed'`` covers both 400 and 422,
             so this is how triage separates a malformed body from a rejected one.
         has_errors: ``True`` for rows carrying an error list, ``False`` for clean
             rows, ``None`` for no filter.
-        replays_only: ``True`` for replay rows only, ``False`` for original posts
-            only, ``None`` for both.
         start_date, end_date: inclusive bounds on ``received_time``.
         include_payload: when True, add ``raw_payload`` to each dict. **Off by
             default and it matters**: the payload is the request body verbatim and
@@ -484,12 +478,10 @@ def get_recent_xras_actions(
         action_type=action_type,
         status=status,
         request_number=request_number,
-        projcode=projcode,
         remote_actor=remote_actor,
         processed_by=processed_by,
         http_status=http_status,
         has_errors=has_errors,
-        replays_only=replays_only,
         source_action=source_action,
         start_date=start_date,
         end_date=end_date,
@@ -584,12 +576,10 @@ def count_recent_xras_actions(
     action_type: Optional[Union[str, List[str]]] = None,
     status: Optional[Union[str, List[str]]] = None,
     request_number: Optional[Union[str, List[str]]] = None,
-    projcode: Optional[Union[str, List[str]]] = None,
     remote_actor: Optional[Union[str, List[str]]] = None,
     processed_by: Optional[Union[str, List[str]]] = None,
     http_status: Optional[Union[int, List[int]]] = None,
     has_errors: Optional[bool] = None,
-    replays_only: Optional[bool] = None,
     source_action: Optional[Union[int, List[int]]] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
@@ -605,12 +595,10 @@ def count_recent_xras_actions(
         action_type=action_type,
         status=status,
         request_number=request_number,
-        projcode=projcode,
         remote_actor=remote_actor,
         processed_by=processed_by,
         http_status=http_status,
         has_errors=has_errors,
-        replays_only=replays_only,
         source_action=source_action,
         start_date=start_date,
         end_date=end_date,
@@ -668,12 +656,10 @@ def summarize_xras_actions(
         action_type=action_type,
         status=status,
         request_number=request_number,
-        projcode=None,
         remote_actor=None,
         processed_by=None,
         http_status=None,
         has_errors=None,
-        replays_only=None,
         source_action=None,
         start_date=start_date,
         end_date=end_date,

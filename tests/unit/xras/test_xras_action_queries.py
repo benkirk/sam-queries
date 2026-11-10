@@ -191,16 +191,18 @@ class TestFilters:
         assert (with_errors, without) == (1, 1)
         assert count_recent_xras_actions(session, request_number=rn) == 2
 
-    def test_replays_only_is_tri_state(self, session):
-        rn = _unique_request_number()
-        original = _action(session, request_number=rn)
-        _action(session, source_action_id=original.xras_action_log_id,
-                status='rechecked', request_number=rn)
-        only = count_recent_xras_actions(session, replays_only=True, request_number=rn)
-        originals = count_recent_xras_actions(session, replays_only=False,
-                                              request_number=rn)
-        assert (only, originals) == (1, 1)
-        assert only + originals == count_recent_xras_actions(session, request_number=rn)
+    def test_a_request_number_finds_the_post_that_minted_it(self, session):
+        """A New's row carries the token in request_number and the projcode in
+        projcode_result; a deep link by either must find it."""
+        token, projcode = _unique_request_number(), _unique_request_number()
+        new = _action(session, status='processed', action_type='New',
+                      request_number=token, projcode_result=projcode)
+        later = _action(session, request_number=projcode)
+        by_projcode = {r['action_log_id']
+                       for r in get_recent_xras_actions(session, request_number=projcode)}
+        assert by_projcode == {new.xras_action_log_id, later.xras_action_log_id}
+        assert count_recent_xras_actions(session, request_number=token) == 1
+        assert count_recent_xras_actions(session, request_number=[token, projcode]) == 2
 
     def test_replay_of_finds_the_children_of_one_row(self, session):
         parent = _action(session)

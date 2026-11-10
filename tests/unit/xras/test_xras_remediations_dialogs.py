@@ -239,6 +239,9 @@ class TestRequestDetailModal:
         assert 'Atmospheric Science' in body                  # FoS
         assert 'AGS-123' in body                              # grant
         assert 'award.pdf' in body                            # document
+        # Its log rows, as a page URL: '/allocations/xras?view=logs&request_number=EXAM0001'.
+        logs = body.split('/allocations/xras?', 1)[1].split('"', 1)[0]
+        assert set(logs.split('&amp;')) == {'view=logs', 'request_number=EXAM0001'}
 
     def test_documents_on_an_older_action_show_above_the_actions(
             self, auth_client, armed, monkeypatch):
