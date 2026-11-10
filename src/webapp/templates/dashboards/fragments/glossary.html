@@ -315,6 +315,21 @@ window, with the date filter above applied. This is the only view with
 {%- endmacro %}
 
 
+{# XRAS Remediations: the Sweep now button (popover) #}
+{% macro g_xras_sweep_now() -%}
+<strong>Runs the quarter-hour pass now.</strong> New and changed requests reach
+this card, blocked rows are re-checked, missing NSF contracts are created and
+Pending Users refreshes. It takes a few seconds and is recorded in task history
+as a manual run.
+<br><br><strong>The schedule it skips.</strong> The sweep runs every quarter hour
+08:00&ndash;17:45 on weekdays (Mountain) and hourly otherwise; blocked rows are
+re-checked on the hourly pass. Only the daily full rebuild (04:00) finds old,
+forgotten approvals and clears rows that went away; Sweep now does not run it.
+<br><br>Refused within 2 minutes of the last sweep, while one is running, and
+during the 04:00 rebuild.
+{%- endmacro %}
+
+
 {# XRAS Remediations: the mnemonic-unblock strip (popover) #}
 {% macro g_xras_mnemonic_strip() -%}
 Ranks the organizations and institutions whose <strong>missing mnemonic

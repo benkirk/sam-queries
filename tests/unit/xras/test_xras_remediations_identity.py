@@ -858,3 +858,9 @@ class TestSweepNow:
     def test_the_card_offers_it(self, auth_client, configured):
         _publish(_payload())
         assert 'xras_sweep_now' in auth_client.get(FRAGMENT).get_data(as_text=True)
+
+    def test_the_card_explains_it_in_a_popover(self, auth_client, configured):
+        _publish(_payload())
+        text = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'aria-label="About Sweep now"' in text
+        assert 'Refused within 2 minutes of the last sweep' in text

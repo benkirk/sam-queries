@@ -1,5 +1,5 @@
 {% from 'dashboards/fragments/help.html' import help_icon, term with context %}
-{% from 'dashboards/fragments/glossary.html' import g_xras_pending_work, g_xras_mnemonic_strip, g_xras_contract_strip, g_xras_identity_strip with context %}
+{% from 'dashboards/fragments/glossary.html' import g_xras_pending_work, g_xras_sweep_now, g_xras_mnemonic_strip, g_xras_contract_strip, g_xras_identity_strip with context %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle, drill_toggle %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_clear_all, facet_grid_row, facet_row %}
 {% from 'dashboards/fragments/search_box.html' import filter_search %}
@@ -37,11 +37,12 @@
                        title='This card renders what the xras_sweep task last published; it is not fetched live. The daily full sweep rebuilds it; each quarter-hour sweep updates the rows XRAS or SAM changed since. Rows you have just acted on are refreshed individually and marked.') }}
         {% if configured %}
         <button type="button" class="btn btn-sm btn-outline-secondary"
-                title="Run the quarter-hour sweep now: new and changed requests reach this card, missing NSF contracts are created and Pending Users refreshes. Takes a few seconds; recorded in task history."
+                title="Run the quarter-hour sweep now"
                 hx-post="{{ url_for('allocations_dashboard.xras_sweep_now') }}"
                 hx-swap="none" hx-disabled-elt="this">
             <span class="htmx-indicator spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
             <i class="fa-solid fa-arrows-rotate me-1" aria-hidden="true"></i>Sweep now</button>
+        {{ help_icon(g_xras_sweep_now(), rich=True, title='Sweep now', placement='bottom', label='About Sweep now') }}
         {% endif %}
         {% endif %}
     </div>
