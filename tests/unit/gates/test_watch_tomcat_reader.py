@@ -328,6 +328,18 @@ class TestSamApp:
         for word in ('.env', 'secrets', 'podman', 'systemctl', 'sudo'):
             assert word not in text
 
+    def test_a_file_retried_three_times_and_never_processed_fails(self, samapp, tmp_path):
+        log = Path(samapp['SAMAPP_DATA']) / 'sam-ldap-syncd' / 'log-2026-10-10-syncd.e'
+        log.write_text(''.join(
+            f'2026-10-10T00:{m:02d}:00-06  Applying file {name}...\n'
+            for m in (1, 6, 11) for name in ('20261010T060000Z-mod.jsl', '20261010T060500Z-mod.jsl')
+        ) + '2026-10-10T00:11:01-06  File 20261010T060500Z-mod.jsl processed\n')
+        records = read_app(samapp)
+        assert rec(records, 'astuck') == [['3', str(MIDNIGHT + 60), str(MIDNIGHT + 660), '20261010T060000Z-mod.jsl']]
+        text, _, fail = report(records, tmp_path, CMAP)
+        assert 'syncd is stuck on 20261010T060000Z-mod.jsl: tried x3' in text and fail == 1
+        assert '20261010T060500Z' not in text
+
     def test_report_baseline_then_restart_head_change_and_bad_put(self, samapp, tmp_path):
         records = read_app(samapp)
         text, warn, fail = report(records, tmp_path, CMAP)
