@@ -250,13 +250,13 @@ def get_xras_activity(
 
     # Which action is newest for each project — over ALL time, not just the
     # window, or a narrow window would promote an old action to "latest" and
-    # put an Activate button on the wrong row. Same ordering as
-    # `get_latest_xras_action_id`, so the two cannot disagree on a tie.
+    # put an Activate button on the wrong row. Same ordering and the same
+    # posts-only rule as `get_latest_xras_action_id`, so the two cannot disagree.
     latest_action_id: Dict[str, int] = {}
     for action, project in (
         session.query(XrasActionLog, Project)
         .join(Project, action_names_project(Project.projcode))
-        .filter(Project.projcode.in_(projcodes))
+        .filter(Project.projcode.in_(projcodes), XrasActionLog.is_post)
         .order_by(*LATEST_ACTION_ORDER)
         .all()
     ):
@@ -431,7 +431,7 @@ def get_latest_xras_action_id(
     session: Session,
     project_id: int,
 ) -> Optional[int]:
-    """The most recent ``xras_action_log`` row naming *project_id*, or None.
+    """The most recent post naming *project_id*, or None; never an operator's Re-check.
 
     Provenance for ``xras_activation_event.xras_action_log_id``. Lives here rather
     than in a route because it shares :func:`action_names_project` and
@@ -445,7 +445,7 @@ def get_latest_xras_action_id(
 
     row = (
         session.query(XrasActionLog)
-        .filter(action_names_project(project.projcode))
+        .filter(action_names_project(project.projcode), XrasActionLog.is_post)
         .order_by(*LATEST_ACTION_ORDER)
         .first()
     )

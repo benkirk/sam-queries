@@ -380,6 +380,15 @@ class TestLogSeenFor:
         self._row(session, 990392008, 'failed')
         assert log_seen_for(session, [990392008])[990392008]['status'] == 'failed'
 
+    def test_a_refused_repeat_is_not_an_outcome(self, session):
+        """XRAS re-posting an applied action is refused as ``duplicate``; the outcome
+        stays the post it repeated, so the push still reads as landed."""
+        from sam.xras.preflight import log_seen_for
+        post = self._row(session, 990392010, 'processed')
+        self._row(session, 990392010, 'duplicate')
+        seen = log_seen_for(session, [990392010])[990392010]
+        assert seen['status'] == 'processed' and seen['log_id'] == post.xras_action_log_id
+
     def test_an_operator_recheck_is_not_a_post(self, session):
         """A re-check of a failed post that would now succeed must not read as landed."""
         from sam.xras.preflight import log_seen_for

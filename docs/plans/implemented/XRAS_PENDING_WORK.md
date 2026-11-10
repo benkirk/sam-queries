@@ -107,7 +107,7 @@ action the sweep had not pulled — a sweep-coverage gap, not a rule gap.
   `merge_person` source is never work (`merged_away_usernames`).
 - ✅ **`seen_in_log` is not "posted"** (2026-08-25, NCAR4262 #8/#9): a log row
   in `received`/`failed`/`manual` is a push that did not land, so the action
-  stays pending (`UNLANDED_LOG_STATUSES`). `log_seen_for` now picks the
+  stays pending (any status outside `LANDED_LOG_STATUSES`). `log_seen_for` now picks the
   highest log id per action, so a failed re-post after a success — or the
   reverse — reports the latest attempt.
 

@@ -417,10 +417,12 @@ def _usernames(roster) -> list:
 
 
 def _applied(preflight: dict) -> bool:
+    """The queue's ``_owed_push`` inverted: one landed rule (``LANDED_LOG_STATUSES``)."""
+    from sam.queries.xras_actions import LANDED_LOG_STATUSES
     if preflight.get('push_state') == 'applied_inferred':
         return True
     return (preflight.get('push_state') == 'seen_in_log'
-            and (preflight.get('push_detail') or {}).get('status') == 'processed')
+            and (preflight.get('push_detail') or {}).get('status') in LANDED_LOG_STATUSES)
 
 
 def contract_targets(session, payloads, pending, index_rows) -> list:
@@ -977,8 +979,8 @@ def _map_new_opportunities(ctx, session, client, unmapped_ids, detail,
                            *, known=()) -> None:
     """Map the opportunities XRAS and the ladder agree about; report the rest.
 
-    WARNING: **The only write this task performs**, and the only one it may perform.
-    Everything else here is a read published to a cache bucket.
+    One of the task's four SAM writes, with the Accounts-queue rows, the NSF contracts
+    and the contact links; everything else is a read published to a cache bucket.
 
     Why writing at all does not break the design's central promise: ingestion
     still reads one local table and never calls out, so handling an inbound
@@ -1088,9 +1090,9 @@ def _map_new_opportunities(ctx, session, client, unmapped_ids, detail,
       # instead. The drift test asserts the inequality against values.yaml.
       expected_runtime=timedelta(minutes=20),
       # The 6h default. A missed slot costs little: the enumeration window is
-      # rolling, so the next run (at most an hour away) subsumes it. The one
-      # piece of state this writes, opportunity mapping rows, is insert-if-absent,
-      # so a skipped slot delays a row rather than losing it.
+      # rolling, so the next run (at most an hour away) subsumes it, and every
+      # SAM write here is insert-if-absent, so a skipped slot delays a row rather
+      # than losing it.
       misfire_grace=timedelta(hours=6),
       description='Enumerate XRAS, diff it against SAM, map new opportunities')
 def xras_sweep(ctx) -> TaskResult:

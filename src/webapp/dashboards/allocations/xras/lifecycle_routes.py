@@ -532,7 +532,7 @@ def xras_recheck(action_id: int):
 
     return htmx_success_message(
         {'refreshXrasTab': {}},
-        f'{headline} (action #{action_id})',
-        detail=f'Nothing was applied. Recorded as #{new_id}; open it for details.',
+        f'{headline} (log #{action_id})',
+        detail=f'Nothing was applied. Recorded as log #{new_id}, now at the top of XRAS Logs.',
     )
 

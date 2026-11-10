@@ -66,9 +66,16 @@
     {% endif %}
 
     <div class="stat-item">
-        <span class="stat-label">Action ID:</span>
+        <span class="stat-label">Log #:</span>
         <span class="stat-value"><code>{{ r.action_log_id }}</code></span>
     </div>
+
+    {% if r.action_id or r.request_id %}
+    <div class="stat-item">
+        <span class="stat-label">In XRAS:</span>
+        <span class="stat-value">{% if r.action_id %}action <code>{{ r.action_id }}</code>{% endif %}{% if r.action_id and r.request_id %} · {% endif %}{% if r.request_id %}request <code>{{ r.request_id }}</code>{% endif %}</span>
+    </div>
+    {% endif %}
 
     {% if r.source_action_id %}
     <div class="stat-item">
@@ -89,7 +96,7 @@
     {% if r.errors %}
     <div class="stat-item stat-item-block">
         <span class="stat-label d-block mb-1">
-            Errors ({{ r.errors | length }}) — verbatim, in the order XRAS was told:
+            Errors ({{ r.errors | length }}) — the blockers, verbatim and in order:
         </span>
         <ol class="stat-value stat-value-plain mb-0 ps-3 small">
             {% for e in r.errors %}
