@@ -1066,17 +1066,19 @@ class XrasRemediationEvent(Base, SessionMixin):
 
 
 def latest_action_logs(session, action_ids) -> Dict[int, 'XrasActionLog']:
-    """The newest ``xras_action_log`` row per action id, in one query.
+    """The newest ``xras_action_log`` row XRAS posted, per action id, in one query.
 
     Ordered by id so the highest row wins: a failed post followed by a re-post
-    reports the re-post.
+    reports the re-post. An operator's Re-check (``source_action_id`` set) is not a post:
+    counting it read a re-check of a failed post as a landed push.
     """
     wanted = sorted({int(a) for a in action_ids if a is not None})
     if not wanted:
         return {}
     out: Dict[int, XrasActionLog] = {}
     for row in (session.query(XrasActionLog)
-                .filter(XrasActionLog.action_id.in_(wanted))
+                .filter(XrasActionLog.action_id.in_(wanted),
+                        XrasActionLog.source_action_id.is_(None))
                 .order_by(XrasActionLog.xras_action_log_id)):
         out[row.action_id] = row
     return out
