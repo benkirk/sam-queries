@@ -536,9 +536,9 @@ class XrasActionLog(Base):
     #: ``received_time`` six hours ahead of ``processed_time``.
     received_time = Column(DateTime, nullable=False)
 
-    #: ``api_credentials.username`` of the caller — 'XRAS' in production. A replay
+    #: ``api_credentials.username`` of the caller — 'XRAS' in production. A Re-check
     #: row inherits the *original's* actor, because the bytes still originated at
-    #: XRAS; the human who clicked Replay is recorded in ``processed_by``.
+    #: XRAS; the human who clicked Re-check is recorded in ``processed_by``.
     remote_actor = Column(String(11), nullable=False)
 
     #: NULL when the body could not be parsed, in which case we do not know it.
@@ -572,8 +572,8 @@ class XrasActionLog(Base):
 
     raw_payload = Column(Text, nullable=False)
 
-    #: received | processed | manual | failed | replayed | unmapped
-    #: (``unmapped`` is not an action state — see ``XRAS_ACTION_STATUSES``.)
+    #: One of ``XRAS_ACTION_STATUSES`` (``sam.queries.xras_actions``): received |
+    #: processed | manual | failed | rechecked | unmapped | duplicate.
     status = Column(String(16), nullable=False)
 
     #: The HTTP code we answered: 200, 400 or 422. ``status='failed'`` covers a

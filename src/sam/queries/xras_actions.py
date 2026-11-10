@@ -36,9 +36,6 @@ from sam.projects.projects import Project
 #: is a plain ``varchar(16)``, so this tuple is the whole vocabulary and adding a
 #: member costs no DDL.
 #:
-#: ``processed`` is **unvalidated**: no handler writes it yet. It is listed
-#: because the UI must render it, not because it has been observed.
-#:
 #: ``unmapped`` is not a lifecycle state at all but a request for a path this
 #: blueprint does not implement (:mod:`webapp.api.xras.unmapped`). Deliberately
 #: NOT folded into ``manual`` -- the four-cause parking cohort operators filter
@@ -433,7 +430,7 @@ def get_recent_xras_actions(
         - ``action_type``, ``request_number``, ``status``, ``http_status``
         - ``errors`` (ordered ``list[str]``, ``[]`` when clean)
         - ``projcode_result``, ``processed_time``, ``processed_by``
-        - ``source_action_id``, ``recheck_count`` (how many replays this row has spawned)
+        - ``source_action_id``, ``recheck_count`` (how many re-checks this row has spawned)
         - ``request_is_project`` / ``result_is_project`` — whether that code
           actually resolves to a row in ``project`` (see below)
         - ``request_is_token`` — whether ``request_number`` looks like one of the

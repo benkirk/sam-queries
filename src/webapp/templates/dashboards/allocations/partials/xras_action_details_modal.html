@@ -96,7 +96,7 @@
     {% if r.errors %}
     <div class="stat-item stat-item-block">
         <span class="stat-label d-block mb-1">
-            Errors ({{ r.errors | length }}) — verbatim, in the order XRAS was told:
+            Errors ({{ r.errors | length }}) — the blockers, verbatim and in order:
         </span>
         <ol class="stat-value stat-value-plain mb-0 ps-3 small">
             {% for e in r.errors %}

@@ -341,15 +341,15 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # so it references the body id alone, not the modal shell.
     'dashboards/allocations/partials/_xras_remediation_actions.html': [
         'xrasModalBody'],
-    # The read-only + editor detail modal and its two editor forms, all reached
-    # only from xras.html (same host page as the card) and all rendering into
+    # The read-only + editor detail modal and its two editor forms, reached from
+    # xras.html and the Accounts page (both host #xrasModal) and all rendering into
     # #xrasModalBody. The detail modal's Requested-stage editors and the
     # forms' Back/Save all target that body.
     'dashboards/allocations/partials/xras_request_detail.html': [
         'xrasModalBody'],
     # The shared operator-overrides controls, included by BOTH the readiness
-    # modal and the read-only detail modal above — both reached only from
-    # xras.html and both swapped into #xrasModalBody. Its set/clear forms
+    # modal and the read-only detail modal above — both swapped into #xrasModalBody
+    # on either host page. Its set/clear forms
     # target that body in place (a `return_to` field routes the re-render back to
     # whichever modal invoked them), no data-bs-toggle.
     'dashboards/allocations/partials/_xras_override_controls.html': [

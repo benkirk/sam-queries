@@ -128,7 +128,8 @@
             {% if r.errors %}
             <tr class="collapse" id="{{ errors_id }}">
                 <td colspan="7" class="bg-body-tertiary">
-                    {# Verbatim and in order: what XRAS was told in the 422 body. #}
+                    {# The blockers, verbatim and in order; the 422 body also carried the
+                       ticket line and the pointers (`_refusal_reply`). #}
                     <ol class="mb-0 small">
                         {% for e in r.errors %}
                         <li><code>{{ e }}</code></li>

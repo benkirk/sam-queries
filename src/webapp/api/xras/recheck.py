@@ -6,7 +6,7 @@ whether their resend will land. This answers that before we ask.
 
 Each re-check writes a NEW row pointing at the original via
 ``source_action_id``; the original is never stamped, because its status IS the
-audit record. "Has this been re-checked" derives from the ``replays``
+audit record. "Has this been re-checked" derives from the ``rechecks``
 relationship being non-empty.
 
 The stored bytes are re-submitted verbatim -- ``raw_payload`` is ``Text`` and
@@ -77,7 +77,7 @@ def _enabled():
 
 
 def _load_original(log_id):
-    """Fetch the row being replayed, on its own connection.
+    """Fetch the row being re-checked, on its own connection.
 
     Read on a private session for the same reason :func:`_record` writes on one: the
     caller may be inside a request-scoped transaction, and this must not enrol in it.
@@ -123,12 +123,12 @@ def recheck_action(log_id, *, actor) -> 'Recheck':
     provenance = dict(remote_actor=original['remote_actor'],
                       source_action_id=log_id, processed_by=actor)
 
-    # Parse and validate through the ingest route's own function — a replay must be
-    # able to *fail*, and fail the same way. A payload harvested months ago against
-    # an older schema is precisely the case worth catching.
+    # Parse and validate through the ingest route's own function — a re-check must
+    # be able to *fail*, and fail the same way. A payload harvested months ago
+    # against an older schema is precisely the case worth catching.
     #
     # WARNING: call the shared ladder; do NOT re-inline it. A hand-copied duplicate
-    # here drifts — one silently stopped passing `action_id`, so every replayed row
+    # here drifts — one silently stopped passing `action_id`, so every re-check row
     # stored NULL in the duplicate-detection column.
     action, audit = actions._parse_action(raw_payload)
     if action is None:
