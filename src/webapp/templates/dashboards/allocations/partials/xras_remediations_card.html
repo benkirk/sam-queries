@@ -362,6 +362,16 @@
                                title=('Open ' ~ row.ticket_key ~ ', the NUSD ticket SAM opened for this refused post') if row.ticket_url
                                      else 'NUSD ticket for this refused post, opened by SAM') }}
                         {% endif %}
+                        {% if row.landed %}
+                        {# The push the action log holds: the same row as on XRAS Logs. #}
+                        {% set lp = row.landed %}
+                        <a href="#" class="text-decoration-none {{ 'text-muted' if lp.status == 'processed' else 'text-danger-emphasis' }}"
+                           title="Posted to SAM {{ lp.received_time | fmt_date(fmt='%Y-%m-%d %H:%M') }} ({{ lp.status }}): log #{{ lp.log_id }}"
+                           aria-label="Posted to SAM: open log #{{ lp.log_id }}"
+                           data-bs-toggle="modal" data-bs-target="#xrasModal"
+                           hx-get="{{ url_for('allocations_dashboard.xras_action_details', action_id=lp.log_id) }}"
+                           hx-target="#xrasModalBody" hx-swap="innerHTML"><i class="fa-solid fa-receipt" aria-hidden="true"></i></a>
+                        {% endif %}
                         {# A checked verdict opens the reasons; `incomplete` cannot be
                            re-checked, so it is passive; none posts a re-check. #}
                         {% if row.preflight_rollup == 'incomplete' %}

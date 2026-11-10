@@ -682,7 +682,10 @@ def _remediation_rows(n):
                               'isReconciled': True},
                    'roles': [{'roleId': 1, 'role': 'PI', 'roleTypeId': 13}]}],
         'actions': [{'actionId': 960000 + i, 'actionType': 'Supplement',
-                     'actionStatus': 'Approved'}]}, pending_push=True) for i in range(n)]
+                     'actionStatus': 'Approved'}]}, pending_push=True,
+        # Every row owes a push, so the card's one action-log read is in the count.
+        preflights={960000 + i: {'status': 'rechecked', 'push_state': 'unknown'}})
+        for i in range(n)]
 
 
 def test_xras_remediations_card_route(auth_client, route_count_queries, monkeypatch):

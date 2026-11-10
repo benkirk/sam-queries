@@ -595,6 +595,73 @@ class TestIsPendingWork:
         assert not is_pending_work(self._entry())
 
 
+class TestWithLandedPushes:
+    """The queue asks the action log, not only the snapshot, whether a push landed."""
+
+    _entry = staticmethod(TestIsPendingWork._entry)
+    _action = staticmethod(TestIsPendingWork._action)
+
+    @staticmethod
+    def _log(monkeypatch, seen):
+        calls = []
+
+        def fake(session, ids):
+            calls.append(set(ids))
+            return seen
+        monkeypatch.setattr('sam.xras.preflight.log_seen_for', fake)
+        return calls
+
+    def test_a_processed_push_leaves_the_queue(self, monkeypatch):
+        from sam.queries.xras_requests import is_pending_work, with_landed_pushes
+        self._log(monkeypatch, {1: {'status': 'processed', 'received_time': None, 'log_id': 481}})
+        entry = self._entry(self._action('Approved', 'unknown'))
+        [out] = with_landed_pushes(None, [entry])
+        assert not is_pending_work(out)
+        assert out['actions'][0]['preflight']['push_detail']['log_id'] == 481
+        assert entry['actions'][0]['preflight']['push_state'] == 'unknown'   # a copy
+
+    def test_a_push_that_did_not_land_stays(self, monkeypatch):
+        from sam.queries.xras_requests import is_pending_work, with_landed_pushes
+        for status in ('failed', 'manual', 'received'):
+            self._log(monkeypatch, {1: {'status': status, 'received_time': None, 'log_id': 9}})
+            [out] = with_landed_pushes(None, [self._entry(self._action('Approved', 'pending'))])
+            assert is_pending_work(out)
+
+    def test_no_log_row_keeps_the_snapshot(self, monkeypatch):
+        from sam.queries.xras_requests import with_landed_pushes
+        self._log(monkeypatch, {})
+        entry = self._entry(self._action('Approved', 'pending'))
+        assert with_landed_pushes(None, [entry]) == [entry]
+
+    def test_only_owed_pushes_are_looked_up(self, monkeypatch):
+        from sam.queries.xras_requests import with_landed_pushes
+        calls = self._log(monkeypatch, {})
+        landed = self._entry(self._action('Approved', 'seen_in_log',
+                                          push_detail={'status': 'processed'}))
+        in_review = self._entry(self._action('Submitted', 'unknown'))
+        assert with_landed_pushes(None, [landed, in_review]) == [landed, in_review]
+        assert calls == []
+
+
+class TestLandedPush:
+    """The log link: the newest action whose push the log holds."""
+
+    def test_the_newest_logged_action_wins(self):
+        from datetime import datetime as dt
+        from sam.queries.xras_requests import landed_push
+        older = dict(TestIsPendingWork._action('Approved', 'seen_in_log', push_detail={
+            'status': 'failed', 'log_id': 7, 'received_time': '2026-11-09T10:00:00'}), action_id=1)
+        newer = dict(TestIsPendingWork._action('Approved', 'seen_in_log', push_detail={
+            'status': 'processed', 'log_id': 9, 'received_time': '2026-11-10T11:28:24'}), action_id=2)
+        assert landed_push({'actions': [older, newer]}) == {
+            'log_id': 9, 'status': 'processed', 'received_time': dt(2026, 11, 10, 11, 28, 24)}
+
+    def test_no_log_row_is_none(self):
+        from sam.queries.xras_requests import landed_push
+        assert landed_push({'actions': [TestIsPendingWork._action('Approved', 'pending')]}) is None
+        assert landed_push({}) is None
+
+
 class TestRequestNumbersByUsername:
     """The requests a person is on, from the index's rosters, whatever SAM knows of them."""
 

@@ -355,12 +355,13 @@ class TestLogSeenFor:
     """The latest log row per action wins, whatever order the rows come back."""
 
     @staticmethod
-    def _row(session, action_id, status):
+    def _row(session, action_id, status, source_action_id=None):
         from datetime import datetime
 
         from sam.integration.xras import XrasActionLog
         row = XrasActionLog(received_time=datetime(2026, 8, 25), remote_actor='XRAS',
-                            raw_payload='{}', status=status, action_id=action_id)
+                            raw_payload='{}', status=status, action_id=action_id,
+                            source_action_id=source_action_id)
         session.add(row)
         session.flush()
         return row
@@ -378,6 +379,14 @@ class TestLogSeenFor:
         self._row(session, 990392008, 'processed')
         self._row(session, 990392008, 'failed')
         assert log_seen_for(session, [990392008])[990392008]['status'] == 'failed'
+
+    def test_an_operator_recheck_is_not_a_post(self, session):
+        """A re-check of a failed post that would now succeed must not read as landed."""
+        from sam.xras.preflight import log_seen_for
+        post = self._row(session, 990392009, 'failed')
+        self._row(session, 990392009, 'rechecked', source_action_id=post.xras_action_log_id)
+        seen = log_seen_for(session, [990392009])[990392009]
+        assert seen['status'] == 'failed' and seen['log_id'] == post.xras_action_log_id
 
     def test_nothing_asked_nothing_queried(self, session):
         from sam.xras.preflight import log_seen_for
