@@ -354,6 +354,10 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # whichever modal invoked them), no data-bs-toggle.
     'dashboards/allocations/partials/_xras_override_controls.html': [
         'xrasModalBody'],
+    # The pre-flight block, included by the same two modals: its log link opens the
+    # action's log row in that body, no data-bs-toggle.
+    'dashboards/allocations/partials/_xras_readiness_why.html': [
+        'xrasModalBody'],
     # The XRAS User detail modal — the person-side analogue of the request
     # detail. Swapped into the same body from a roster username (plain hx-get)
     # or the Accounts-Needed card (data-bs-toggle from the closed modal); its

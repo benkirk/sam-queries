@@ -11,7 +11,12 @@
         {{ verdict(pf.status, count=(pf.messages | length if pf.status == 'failed' else none)) }}
         {% if pf.service %}<span class="text-muted">checked as <span class="font-monospace">{{ pf.service }}</span></span>{% endif %}
         {% if pf.stage and pf.stage != 'Approved' %}<span class="text-muted">provisional: {{ pf.stage }} stage</span>{% endif %}
-        {% if pf.push_state == 'seen_in_log' %}
+        {% if pf.push_state == 'seen_in_log' and pf.push_detail and pf.push_detail.log_id %}
+        {# In an open dialog: hx-target only, never a modal toggle (PR #464). #}
+        <a href="#" class="text-muted" title="Open log #{{ pf.push_detail.log_id }}, as on XRAS Logs"
+           hx-get="{{ url_for('allocations_dashboard.xras_action_details', action_id=pf.push_detail.log_id) }}"
+           hx-target="#xrasModalBody" hx-swap="innerHTML">pushed{% if pf.push_detail.status %} ({{ pf.push_detail.status }}){% endif %} · log #{{ pf.push_detail.log_id }}</a>
+        {% elif pf.push_state == 'seen_in_log' %}
         <span class="text-muted">pushed{% if pf.push_detail and pf.push_detail.status %} ({{ pf.push_detail.status }}){% endif %}</span>
         {% elif pf.push_state == 'applied_inferred' %}<span class="text-muted">SAM state already reflects it</span>
         {% elif pf.push_state == 'pending' %}<span class="text-muted">not yet pushed</span>{% endif %}

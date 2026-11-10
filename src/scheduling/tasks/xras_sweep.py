@@ -863,7 +863,7 @@ def _merge_light_index(ctx, client, session, payloads, recent, snapshot, *, sinc
     """
     from sam.integration.xras_api.cache import merge_requests_index
     from sam.queries.xras_requests import (line_digest, live_lines, live_pending_numbers,
-                                           primary_line, project_balances,
+                                           owes_push, primary_line, project_balances,
                                            request_index_entry)
     from sam.xras.preflight import iter_candidate_actions
 
@@ -917,7 +917,9 @@ def _merge_light_index(ctx, client, session, payloads, recent, snapshot, *, sinc
                 continue
             if stored.get('line_digest') != line_digest(head):
                 picks['changed'].append((number, live, stored))
-            elif recheck_unsettled and (stored.get('pending_push')
+            # owes_push, not only pending_push: a Supplement on an existing project has a
+            # project, so pending_push never says its push is still owed.
+            elif recheck_unsettled and (stored.get('pending_push') or owes_push(stored)
                                         or stored.get('preflight_rollup') in _UNSETTLED_ROLLUPS):
                 picks['unsettled'].append((number, live, stored))
         for kind, found in picks.items():

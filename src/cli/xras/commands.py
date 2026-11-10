@@ -238,8 +238,12 @@ class XrasCommand(BaseCommand):
         may simply have found no candidate action in its lookback).
         """
         from sam.integration.xras_api.cache import load_requests_index
+        from sam.queries.xras_requests import with_landed_pushes
 
-        payload = builders.build_readiness(load_requests_index())
+        snapshot = load_requests_index()
+        if snapshot:
+            snapshot = dict(snapshot, rows=with_landed_pushes(self.session, snapshot.get('rows')))
+        payload = builders.build_readiness(snapshot)
         return self.emit(payload, display.display_readiness)
 
     def _mnemonic_report(self) -> int:

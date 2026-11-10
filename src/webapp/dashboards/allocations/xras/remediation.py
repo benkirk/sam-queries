@@ -54,8 +54,8 @@ from sam.projects.projects import Project
 from sam.queries.mnemonic_console import search_mnemonic_codes
 from sam.dates import parse_wire_date
 from sam.queries.xras_accounts import live_actions
-from sam.queries.xras_requests import (is_pending_work, projcode_series, row_blockers,
-                                      waiting_band)
+from sam.queries.xras_requests import (is_pending_work, landed_push, projcode_series,
+                                      row_blockers, waiting_band, with_landed_pushes)
 from sam.schemas.forms import (
     XrasActionDatesForm,
     XrasActionFieldsForm,
@@ -136,7 +136,7 @@ def xras_remediations_fragment():
     disappear at the moment they empty the card, which is the one moment an
     operator needs to clear them.
     """
-    payload = _index()
+    payload = _landed_index()
     configured = xras_api_configured()
     write_enabled = xras_write_configured()
 
@@ -180,7 +180,7 @@ def xras_remediations_fragment():
     facet_values = REMEDIATION_FACETS.strips(rows, selected)
 
     # The final in-view set — identical to what the batch re-check acts on.
-    rows = _stamp_tickets(_filtered_rows(payload, request.args))
+    rows = _stamp_landed(_stamp_tickets(_filtered_rows(payload, request.args)))
     # The "Check all" target: rows with no pending verdict yet (a re-check resolves
     # these; `incomplete` rows it cannot, so they are not counted).
     not_checked_count = sum(1 for r in rows if not r.get('preflight_rollup'))
@@ -275,7 +275,7 @@ def xras_recheck_visible():
     the query string would silently fall back to the default window and report
     "nothing to check" over a wide-filter view full of not-checked rows.
     """
-    eligible = [r for r in _filtered_rows(_index(), request.values)
+    eligible = [r for r in _filtered_rows(_landed_index(), request.values)
                 if not r.get('preflight_rollup')]
     if not eligible:
         return htmx_success_message(
@@ -742,6 +742,11 @@ def _stamp_blockers(rows):
             for r in rows]
 
 
+def _stamp_landed(rows):
+    """Copy each row with ``landed``, its newest push the action log holds (the log link)."""
+    return [dict(r, landed=landed) if (landed := landed_push(r)) else r for r in rows]
+
+
 def _stamp_tickets(rows):
     """Copy each row with ``ticket_key`` and ``ticket_url``, its NUSD ticket, one query.
 
@@ -769,6 +774,14 @@ def _scope_rows(rows, args):
     """Pending work by default; the date window only under ``show_all``."""
     return scope_rows(rows, args, queue=is_pending_work,
                       in_window=lambda r, w: _in_window(r, w['since']))
+
+
+def _landed_index():
+    """The swept index with each owed push's latest log row stamped on (one query)."""
+    payload = _index()
+    if not payload:
+        return payload
+    return dict(payload, rows=with_landed_pushes(db.session, payload.get('rows')))
 
 
 def _filtered_rows(payload, args):

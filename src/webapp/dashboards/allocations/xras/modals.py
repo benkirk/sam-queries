@@ -34,6 +34,7 @@ from sam.queries.xras_requests import (
     request_family,
     request_index_entry,
     row_blockers,
+    with_landed_pushes,
 )
 from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from sam.dates import parse_wire_date
@@ -199,7 +200,7 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
     payload = _primary_line(lines)
     family = request_family(lines)
 
-    entry = _entry(request_number)
+    entry = _landed_entry(request_number)
     # The preflight verdicts live in the sweep snapshot (keyed by actionId); the
     # modal reads a live payload, so carry them across rather than re-running the
     # never-writes preflight per modal open.
@@ -440,11 +441,17 @@ def render_detail(request_number, *, flash=None, flash_error=None, changed=True)
 READINESS_FORM = 'dashboards/allocations/partials/xras_readiness_modal.html'
 
 
+def _landed_entry(request_number):
+    """The swept entry with its owed pushes' log rows stamped on, as the card shows it."""
+    entry = _entry(request_number)
+    return with_landed_pushes(db.session, [entry])[0] if entry else None
+
+
 def readiness_context(request_number):
     """The focused readiness modal's context, or ``None`` if the sweep holds no
     such entry. Snapshot-only — the verdicts are already swept, so no live XRAS
     read; a committed-rows lookup adds the calibration outcome where one exists."""
-    entry = _entry(request_number)
+    entry = _landed_entry(request_number)
     if entry is None:
         return None
     actions = [a for a in (entry.get('actions') or []) if a.get('preflight')]

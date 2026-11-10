@@ -127,6 +127,22 @@ class TestReadinessMode:
         assert [r['request_number'] for r in rows] == ['RED0001', 'GREEN0001']
         assert rows[0]['messages'] == ['PI x is not in database']
 
+    def test_a_push_the_log_has_processed_is_not_pending(self, runner, cli_session,
+                                                          monkeypatch):
+        snapshot = {'generated_at': '2026-11-10', 'rows': [
+            {'request_number': 'UTAM0017', 'preflight_rollup': 'rechecked',
+             'status': 'Approved', 'pending_push': False,
+             'actions': [{'action_id': 400364, 'action_status': 'Approved',
+                          'entry_date': '2026-11-01',
+                          'preflight': {'status': 'rechecked', 'push_state': 'unknown'}}]}]}
+        monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                            lambda: snapshot)
+        monkeypatch.setattr('sam.xras.preflight.log_seen_for', lambda session, ids: {
+            400364: {'status': 'processed', 'received_time': None, 'log_id': 481}})
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--readiness'])
+        assert result.exit_code == 0
+        assert json.loads(result.stdout)['requests'][0]['pending_work'] is False
+
 
 class TestMnemonicReportMode:
     def test_empty_board_exits_zero(self, runner, cli_session, monkeypatch):
