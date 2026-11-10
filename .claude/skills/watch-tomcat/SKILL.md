@@ -57,7 +57,7 @@ they line up with `cirrus_watch.sh` and the ingress probe reports.
 | `probe:` | the per-minute `GET /` health check (user agent `libwww-perl`; someone else's) | WARN silent > 5 min |
 | `app:` | sam-app: uptime, the zoo's slapd / syncd / ldif processor and their start, `/data` use | WARN one missing; WARN `zoo restarted` (a start moved > 5 min); `/data` ≥ 85 % |
 | `zoo:` | printed only when a zoo repo's deployed HEAD moved: repo, old → new, commit time, subject | WARN (a deploy by George, now on our timeline) |
-| `syncd:` | the daemon's own log in the window: files applied, calls by status, deferrals, error lines, last activity; `legacy saw N`, 0 since the repoint (SAMuel's side is the prod tick's `ldapsync:` line) | FAIL any non-200 PUT; WARN another non-2xx call or an error line |
+| `syncd:` | the daemon's own log in the window: files applied, calls by status, deferrals, error lines, last activity; `legacy saw N`, 0 since the repoint (SAMuel's side is the prod tick's `ldapsync:` line) | FAIL any non-200 PUT; FAIL a file tried 3+ times and never processed (syncd retries it first, so the queue stalls; 2026-11-09); WARN another non-2xx call or an error line |
 | `cutover` | on the first tick of a Mountain day: yesterday per status group and the top families, against the same weekday a week earlier | info: the trend is the point |
 
 `callers:` flags: **NEW** for an unmapped client that got past authentication

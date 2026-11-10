@@ -68,7 +68,9 @@ syncd() {
           if (e < from) next
           msg = $0; sub(/^[^ \t]+[ \t]+/, "", msg) }
         msg ~ /update files found/ { files++ }
-        msg ~ /^File .* processed/ { applied++ }
+        msg ~ /^Applying file / { f = msg; sub(/^Applying file /, "", f); sub(/\.\.\.$/, "", f)
+            tries[f]++; if (!(f in tfirst)) tfirst[f] = e; tlast[f] = e }
+        msg ~ /^File .* processed/ { applied++; split(msg, w, " "); done[w[2]] = 1 }
         msg ~ /^Deferring propagation/ { defer++ }
         match(msg, /^[A-Z]+ status: [0-9][0-9][0-9]/) { split(substr(msg, 1, RLENGTH), p, " "); put[p[1] "\t" p[3]]++ }
         msg !~ /^[A-Z]+ status: / && tolower(msg) ~ /error|exception|fatal|died|failed/ {
@@ -80,6 +82,8 @@ syncd() {
         END {
             printf "async\tfiles=%d\tapplied=%d\tdefer=%d\terrors=%d\tlast=%d\n", files, applied, defer, errs, last
             for (k in put) printf "aput\t%s\t%d\n", k, put[k]
+            for (f in tries) if (tries[f] > 1 && !(f in done))
+                printf "astuck\t%d\t%d\t%d\t%s\n", tries[f], tfirst[f], tlast[f], f
             for (r = 0; r < 3; r++) { best = ""; for (k in mc) if (best == "" || mc[k] > mc[best]) best = k
                 if (best == "") break
                 printf "aerr\t%d\t%d\t%d\t%s\n", mc[best], first[best], lastm[best], best; delete mc[best] }

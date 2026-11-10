@@ -300,6 +300,16 @@
     --bs-code-color:         var(--text-heading);
 }
 
+/* Light only: Bootstrap's light `-text-emphasis` shades are near-black. Each value clears
+   4.5:1 on white, --surface-tertiary, --surface-page and its own `-bg-subtle`. NOT a bare
+   :root: that would also beat Bootstrap's dark values, which dark mode keeps. */
+:root[data-bs-theme="light"] {
+    --bs-danger-text-emphasis:  #b02a37;
+    --bs-success-text-emphasis: #146c43;
+    --bs-warning-text-emphasis: #8b6904;
+    --bs-info-text-emphasis:    #08748a;
+}
+
 
 /* =========================================================================
    DARK THEME — tier-2 overrides.

@@ -267,6 +267,7 @@ def report_probe(r, recs, tick, to):
 
 
 ZOO = ('slapd', 'syncd', 'ldif')
+STUCK_TRIES = 3  # syncd retries a failed update file first on every wake, so the files behind it wait
 
 
 def report_app(r, recs, state, tick, app_label):
@@ -309,6 +310,10 @@ def report_app(r, recs, state, tick, app_label):
             r.flag('FAIL', f'syncd PUT answered {st} x{n}')
         elif not st.startswith('2'):
             r.flag('WARN', f'syncd {m} answered {st} x{n}')
+    for n, f, l, name in recs['astuck']:
+        if int(n) >= STUCK_TRIES:
+            r.flag('FAIL', f'syncd is stuck on {name}: tried x{n} {utc(f)}-{utc(l)}, never processed;'
+                           ' the files behind it wait')
     for n, f, l, text in recs['aerr']:
         r.flag('WARN', f'syncd logged x{n} {utc(f)}-{utc(l)}: {text}')
     return calls

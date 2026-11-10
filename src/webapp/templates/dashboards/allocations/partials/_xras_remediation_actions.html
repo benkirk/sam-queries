@@ -25,20 +25,21 @@
     {% set merge_offered = [] %}
     {% for member in row.roster %}
         <tr>
-            {# Opens the XRAS user in place, carrying this number for a Back link. #}
-            <td class="col-shrink font-monospace">
-                <a href="#" title="View this XRAS user"
+            {# Opens the XRAS user in place, carrying this number for a Back link. The name
+               sits under the username, not in its own column, so the row fits a phone. #}
+            <td>
+                <a href="#" class="font-monospace" title="View this XRAS user"
                    hx-get="{{ url_for('allocations_dashboard.xras_user_detail',
                                       username=member.username) }}?request_number={{ row.request_number }}"
                    hx-target="#xrasModalBody" hx-swap="innerHTML">{{ member.username }}</a>
                 {%- set xras_person = xras_admin_url(q=member.username) %}
                 {%- if xras_person %} <a class="text-muted small" href="{{ xras_person }}" target="_blank" rel="noopener"
                    title="Find {{ member.username }} in the XRAS admin app" aria-label="Find {{ member.username }} in XRAS"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>{% endif %}
+                {%- if member.name %}<div class="small text-muted">{{ member.name }}</div>{% endif %}
             </td>
-            <td>{{ member.name or '—' }}</td>
             <td class="col-shrink">{% if member.role_type_id == pi_role_type_id %}<i class="fa-solid fa-crown text-muted me-1" aria-hidden="true"></i>{% endif %}{{ member.role_type or '—' }}
                 {%- if member.active == false %} {{ tag('ended', title="This role's date window is over in XRAS.") }}{% endif %}</td>
-            <td class="col-shrink text-end text-nowrap">
+            <td class="text-end">
                 {% if member.placeholder and member.username not in merge_offered %}
                 {% set _ = merge_offered.append(member.username) %}
                 {% if member.is_reconciled or (member.merge_target and member.merge_target.active) %}
@@ -49,7 +50,7 @@
                 {% endif %}
                 {% endif %}
                 {% if member.role_id is not none %}
-                <span class="row-actions">
+                <span class="row-actions flex-nowrap">
                 {% if member.role_type_id != pi_role_type_id and not member.placeholder
                       and member.username != row.pi.username %}
                 {# One click for the swap a student's advisor-as-PI request needs; the order
