@@ -54,8 +54,8 @@ from sam.projects.projects import Project
 from sam.queries.mnemonic_console import search_mnemonic_codes
 from sam.dates import parse_wire_date
 from sam.queries.xras_accounts import live_actions
-from sam.queries.xras_requests import (is_pending_work, projcode_series, row_blockers,
-                                      waiting_band, with_landed_pushes)
+from sam.queries.xras_requests import (is_pending_work, landed_push, projcode_series,
+                                      row_blockers, waiting_band, with_landed_pushes)
 from sam.schemas.forms import (
     XrasActionDatesForm,
     XrasActionFieldsForm,
@@ -180,7 +180,7 @@ def xras_remediations_fragment():
     facet_values = REMEDIATION_FACETS.strips(rows, selected)
 
     # The final in-view set — identical to what the batch re-check acts on.
-    rows = _stamp_tickets(_filtered_rows(payload, request.args))
+    rows = _stamp_landed(_stamp_tickets(_filtered_rows(payload, request.args)))
     # The "Check all" target: rows with no pending verdict yet (a re-check resolves
     # these; `incomplete` rows it cannot, so they are not counted).
     not_checked_count = sum(1 for r in rows if not r.get('preflight_rollup'))
@@ -740,6 +740,11 @@ def _stamp_blockers(rows):
     return [{**r, 'blockers': sorted(row_blockers(r)), 'series': projcode_series(r),
              'waiting': waiting_band(r.get('activity_date') or r.get('submit_date'), today)}
             for r in rows]
+
+
+def _stamp_landed(rows):
+    """Copy each row with ``landed``, its newest push the action log holds (the log link)."""
+    return [dict(r, landed=landed) if (landed := landed_push(r)) else r for r in rows]
 
 
 def _stamp_tickets(rows):

@@ -643,6 +643,25 @@ class TestWithLandedPushes:
         assert calls == []
 
 
+class TestLandedPush:
+    """The log link: the newest action whose push the log holds."""
+
+    def test_the_newest_logged_action_wins(self):
+        from datetime import datetime as dt
+        from sam.queries.xras_requests import landed_push
+        older = dict(TestIsPendingWork._action('Approved', 'seen_in_log', push_detail={
+            'status': 'failed', 'log_id': 7, 'received_time': '2026-11-09T10:00:00'}), action_id=1)
+        newer = dict(TestIsPendingWork._action('Approved', 'seen_in_log', push_detail={
+            'status': 'processed', 'log_id': 9, 'received_time': '2026-11-10T11:28:24'}), action_id=2)
+        assert landed_push({'actions': [older, newer]}) == {
+            'log_id': 9, 'status': 'processed', 'received_time': dt(2026, 11, 10, 11, 28, 24)}
+
+    def test_no_log_row_is_none(self):
+        from sam.queries.xras_requests import landed_push
+        assert landed_push({'actions': [TestIsPendingWork._action('Approved', 'pending')]}) is None
+        assert landed_push({}) is None
+
+
 class TestRequestNumbersByUsername:
     """The requests a person is on, from the index's rosters, whatever SAM knows of them."""
 

@@ -16,6 +16,8 @@ Two properties here are specific to this card and worth stating:
 
 from __future__ import annotations
 
+import re
+
 from _paths import REPO_ROOT
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
@@ -647,6 +649,21 @@ class TestPendingWorkToggle:
         self._log(monkeypatch, 'failed')
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
         assert 'EXAM0001' in body and 'No pending work' not in body
+
+    def test_a_landed_push_links_to_its_log_row(self, auth_client, configured, monkeypatch):
+        _publish_with_verdict(self._owed(), push_state='unknown')
+        self._log(monkeypatch, 'processed')
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'xras_action_details/481' in body and 'log #481' in body
+
+    def test_the_readiness_dialog_links_the_log_without_a_toggle(self, auth_client,
+                                                                 configured, monkeypatch):
+        _publish_with_verdict(self._owed(), push_state='unknown')
+        self._log(monkeypatch, 'processed')
+        body = auth_client.get('/allocations/xras_readiness_detail/EXAM0001').get_data(as_text=True)
+        link = re.search(r'<a [^>]*xras_action_details/481[^>]*>', body)
+        assert link and 'data-bs-toggle' not in link.group(0)   # PR #464: inside an open modal
+        assert 'not yet pushed' not in body
 
     def test_show_everything_reveals_it(self, auth_client, configured):
         _publish_with_verdict(_payload('EXAM0001'), push_state='seen_in_log')

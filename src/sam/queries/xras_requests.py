@@ -29,7 +29,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
 from sam.dates import parse_wire_date
@@ -254,6 +254,25 @@ def _owed_push(action: Mapping[str, Any]) -> bool:
 def owes_push(entry: Mapping[str, Any]) -> bool:
     """Does any of *entry*'s checked, Approved actions still owe SAM its push?"""
     return any(_owed_push(a) for a in entry.get('actions') or () if isinstance(a, Mapping))
+
+
+def landed_push(entry: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+    """The newest action's log row, ``{log_id, status, received_time}``, or ``None``."""
+    found = None
+    for action in entry.get('actions') or ():                 # sorted by action_id
+        preflight = (action.get('preflight') if isinstance(action, Mapping) else None) or {}
+        detail = preflight.get('push_detail') or {}
+        if preflight.get('push_state') == 'seen_in_log' and detail.get('log_id'):
+            found = detail
+    if found is None:
+        return None
+    when = found.get('received_time')
+    if isinstance(when, str):
+        try:
+            when = datetime.fromisoformat(when)
+        except ValueError:
+            when = None
+    return {'log_id': found['log_id'], 'status': found.get('status'), 'received_time': when}
 
 
 def with_landed_pushes(session, entries: Sequence[Mapping[str, Any]]) -> list:
