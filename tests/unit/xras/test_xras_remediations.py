@@ -623,6 +623,13 @@ class TestPendingWorkToggle:
         assert 'EXAM0001' not in body.split('id="xras-remediation-show-all"')[1]
 
     @staticmethod
+    def _owed():
+        # Entered after the repoint, so an `unknown` push state is owed (is_pending_work).
+        payload = _payload('EXAM0001')
+        payload['actions'][0]['entryDate'] = '2026-11-01T00:00:00Z'
+        return payload
+
+    @staticmethod
     def _log(monkeypatch, status):
         monkeypatch.setattr('sam.xras.preflight.log_seen_for', lambda session, ids: {
             7: {'status': status, 'received_time': '2026-11-10T11:28:24', 'log_id': 481}})
@@ -630,13 +637,13 @@ class TestPendingWorkToggle:
     def test_a_push_the_log_has_processed_leaves_the_queue(self, auth_client, configured,
                                                            monkeypatch):
         # UTAM0017: the snapshot still says pending; the log already has the processed push.
-        _publish_with_verdict(_payload('EXAM0001'), push_state='unknown')
+        _publish_with_verdict(self._owed(), push_state='unknown')
         self._log(monkeypatch, 'processed')
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
         assert 'No pending work' in body
 
     def test_a_failed_post_stays_in_the_queue(self, auth_client, configured, monkeypatch):
-        _publish_with_verdict(_payload('EXAM0001'), push_state='unknown')
+        _publish_with_verdict(self._owed(), push_state='unknown')
         self._log(monkeypatch, 'failed')
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
         assert 'EXAM0001' in body and 'No pending work' not in body

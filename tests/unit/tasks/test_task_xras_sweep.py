@@ -1523,6 +1523,16 @@ class TestTheLightMerge:
         merge = mod.xras_sweep(ctx()).detail['index_merge']
         assert merge['unsettled'] == 1 and merge['rebuilt'] == 1
 
+    def test_an_owed_push_on_an_existing_project_is_rechecked(self, ctx, wire):
+        """UTAM0017: SAM has the project, so pending_push is False, yet the push is owed."""
+        payload = _pending_request(26, 'ZZZZ0026', actions=[(260, 'Approved')])
+        payload['actions'][0]['entryDate'] = '2026-11-01T00:00:00Z'
+        self._publish(self._entry(payload, pending_push=False, preflights={
+            260: {'status': 'rechecked', 'push_state': 'unknown'}}))
+        wire([[payload]], approved_pages=[], extra_pages={})
+        merge = mod.xras_sweep(ctx()).detail['index_merge']
+        assert merge['unsettled'] == 1 and merge['rebuilt'] == 1
+
     def test_a_recheck_that_changes_nothing_writes_nothing(self, ctx, wire):
         payload = _pending_request(24, 'ZZZZ0024', status='Submitted', actions=[(240, 'Declined')])
         self._publish(self._entry(payload, pending_push=True))

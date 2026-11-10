@@ -230,39 +230,30 @@ def is_pending_work(entry: Mapping[str, Any]) -> bool:
     ``seen_in_log`` alone does not mean posted: the first failed re-post after
     the cutover (NCAR4262, #8/#9) showed the log row's own status decides.
     """
-    for action in entry.get('actions') or ():
-        preflight = action.get('preflight')
-        if not preflight:
-            continue
-        status = action.get('action_status')
-        if status in IN_FLIGHT_ACTION_STATUSES:
-            return True
-        if status != 'Approved':
-            continue
-        push_state = preflight.get('push_state')
-        if push_state == 'pending':
-            return True
-        if push_state == 'seen_in_log':
-            detail = preflight.get('push_detail') or {}
-            if detail.get('status') in UNLANDED_LOG_STATUSES:
-                return True
-            continue
-        if push_state == 'unknown':
-            when = action.get('entry_date') or action.get('submit_date')
-            if when is not None and parse_wire_date(when) >= XRAS_REPOINTED_ON:
-                return True
-    return False
+    return any(action.get('preflight') and (
+        action.get('action_status') in IN_FLIGHT_ACTION_STATUSES or _owed_push(action))
+        for action in entry.get('actions') or ())
 
 
 def _owed_push(action: Mapping[str, Any]) -> bool:
-    """An Approved, checked action the snapshot still counts as unposted."""
+    """An Approved, checked action the snapshot counts as not yet posted to SAM."""
     preflight = action.get('preflight') or {}
     if not preflight or action.get('action_status') != 'Approved':
         return False
     state = preflight.get('push_state')
-    return state in ('pending', 'unknown') or (
-        state == 'seen_in_log'
-        and (preflight.get('push_detail') or {}).get('status') in UNLANDED_LOG_STATUSES)
+    if state == 'pending':
+        return True
+    if state == 'seen_in_log':
+        return (preflight.get('push_detail') or {}).get('status') in UNLANDED_LOG_STATUSES
+    if state == 'unknown':
+        when = action.get('entry_date') or action.get('submit_date')
+        return when is not None and parse_wire_date(when) >= XRAS_REPOINTED_ON
+    return False
+
+
+def owes_push(entry: Mapping[str, Any]) -> bool:
+    """Does any of *entry*'s checked, Approved actions still owe SAM its push?"""
+    return any(_owed_push(a) for a in entry.get('actions') or () if isinstance(a, Mapping))
 
 
 def with_landed_pushes(session, entries: Sequence[Mapping[str, Any]]) -> list:
