@@ -87,7 +87,7 @@
     </div>
 
     {% if rows %}
-    <div class="table-responsive">
+    <div class="table-responsive xras-accounts-scroller">
         <table class="table table-sm table-hover mb-0 align-middle xras-table">
             <thead class="table-subtle">
                 <tr>
@@ -231,6 +231,7 @@
 
                 <tr class="collapse" id="{{ body_id }}">
                     <td colspan="{{ 9 if may_manage else 8 }}" class="bg-body-tertiary">
+                        <div class="xras-drawer">
                         {% if may_manage and row.placeholder and (row.is_reconciled or (row.merge_target and row.merge_target.active)) %}
                         {# In the drawer, not on the row: a button on the <tr> cannot
                            stop the row's own capture-phase toggle. #}
@@ -248,7 +249,7 @@
                                 real username.
                                 {% endif %}
                             </div>
-                            <button type="button" class="btn btn-sm btn-outline-danger text-nowrap"
+                            <button type="button" class="btn btn-sm btn-outline-danger"
                                     hx-get="{{ url_for('allocations_dashboard.xras_merge_form',
                                                        username=row.username) }}"
                                     hx-target="#xrasModalBody" hx-swap="innerHTML"
@@ -278,6 +279,7 @@
 
                         {# The actions naming this person: a different entity from the
                            rows above, so its own small table in the drawer. #}
+                        <div class="table-responsive">
                         <table class="table table-sm mb-0 small">
                             <thead>
                                 <tr class="text-muted">
@@ -315,6 +317,8 @@
                                 {% endfor %}
                             </tbody>
                         </table>
+                        </div>
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}

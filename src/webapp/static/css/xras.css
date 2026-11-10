@@ -386,7 +386,6 @@
 .xras-preflight-messages {
     margin: 0.35rem 0 0;
     padding-left: 1.25rem;
-    color: var(--bs-danger-text-emphasis);
 }
 
 .xras-preflight-actual {
@@ -575,4 +574,24 @@
 
 .request-notes .request-note:last-child {
     margin-bottom: 0;
+}
+
+/* The accounts table scrolls sideways on a phone; a drawer holds to the visible width
+   (100cqi of the scroller, less the cell padding) so its alert and verb stay on screen. */
+.xras-accounts-scroller {
+    container-type: inline-size;
+}
+
+.xras-drawer {
+    position: sticky;
+    left: 0;
+    max-width: calc(100cqi - 1rem);
+}
+
+.xras-drawer .alert {
+    flex-wrap: wrap;
+}
+
+.xras-drawer .alert > .small {
+    flex: 1 1 12rem;
 }

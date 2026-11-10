@@ -36,7 +36,7 @@
                        updated=snapshot.merged_at,
                        title='This card renders what the xras_sweep task last published; it is not fetched live. The daily full sweep rebuilds it; each quarter-hour sweep updates the rows XRAS or SAM changed since. Rows you have just acted on are refreshed individually and marked.') }}
         {% if configured %}
-        <button type="button" class="btn btn-sm btn-outline-secondary"
+        <button type="button" class="btn btn-row btn-row-primary"
                 title="Run the quarter-hour sweep now"
                 hx-post="{{ url_for('allocations_dashboard.xras_sweep_now') }}"
                 hx-swap="none" hx-disabled-elt="this">
@@ -69,7 +69,7 @@
     {% call empty_state('Nothing to remediate.') %}Every swept request is where it should be.{% endcall %}
     {% else %}
 
-    <div class="card-body pb-2">
+    <div class="card-body py-2">
         {# The one warning on the page that is a warning, said once at the top. #}
         <div class="alert alert-warning d-flex gap-2 py-2 mb-2">
             <i class="fa-solid fa-triangle-exclamation mt-1" aria-hidden="true"></i>

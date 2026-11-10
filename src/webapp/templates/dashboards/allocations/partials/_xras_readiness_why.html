@@ -17,7 +17,8 @@
         {% elif pf.push_state == 'pending' %}<span class="text-muted">not yet pushed</span>{% endif %}
     </div>
     {% if pf.messages %}
-    <ol class="xras-preflight-messages">{% for m in pf.messages %}<li>{{ m }}</li>{% endfor %}</ol>
+    {# Hue by verdict: a park is not a failure. #}
+    <ol class="xras-preflight-messages {{ {'failed': 'text-danger-emphasis', 'manual': 'text-warning-emphasis'}.get(pf.status, 'text-muted') }}">{% for m in pf.messages %}<li>{{ m }}</li>{% endfor %}</ol>
     {% elif pf.status == 'rechecked' %}
     <p class="mb-0 text-muted">No blocking checks: SAM's ingest would accept it.</p>
     {% endif %}
