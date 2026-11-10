@@ -152,6 +152,17 @@ class TestTheSelection:
         episodes = q.ticket_episodes(session, since=SLOT - timedelta(days=1), until=SLOT)
         assert [e.request_id for e in episodes] == [RID]
 
+    def test_a_failed_recheck_is_not_a_refusal(self, session):
+        """A Re-check of an old refusal answers 422 with the request id copied and is
+        dated at the click; counted, it opened a fresh episode inside the window."""
+        old = _refused(session, when=SLOT - timedelta(days=40))
+        recheck = _refused(session, when=SLOT - timedelta(hours=1))
+        recheck.source_action_id = old.xras_action_log_id
+        recheck.processed_by = 'benkirk'
+        session.flush()
+        assert q.ticket_episodes(session, since=SLOT - timedelta(days=1), until=SLOT) == []
+        assert q.refused_before(session, [RID], floor=SLOT) == {RID}
+
     def test_the_episode_ends_at_the_post_that_applied(self, session):
         _refused(session, when=SLOT - timedelta(hours=3), errors=('first',))
         _refused(session, when=SLOT - timedelta(hours=2), errors=(MISSING,))

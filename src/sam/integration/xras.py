@@ -604,6 +604,21 @@ class XrasActionLog(Base):
 
     source_action_id = Column(Integer, ForeignKey('xras_action_log.xras_action_log_id'))
 
+    @hybrid_property
+    def is_post(self):
+        """A row XRAS posted, as opposed to an operator's Re-check of one.
+
+        Every reader that derives an action's outcome, its project's newest action, a
+        refusal, a roster or a repeat post filters on this: a Re-check shares the
+        ``action_id`` and copies the request columns, and reading one as an outcome
+        put a re-check of a failed post on the card as landed (#935 F1).
+        """
+        return self.source_action_id is None
+
+    @is_post.expression
+    def is_post(cls):
+        return cls.source_action_id.is_(None)
+
     #: The row this one re-checks, and the re-checks of this row. A tree, not a
     #: flat list: re-checking a re-check points at what was clicked, so the lineage
     #: is preserved rather than collapsed to the root.
@@ -1069,16 +1084,14 @@ def latest_action_logs(session, action_ids) -> Dict[int, 'XrasActionLog']:
     """The newest ``xras_action_log`` row XRAS posted, per action id, in one query.
 
     Ordered by id so the highest row wins: a failed post followed by a re-post
-    reports the re-post. An operator's Re-check (``source_action_id`` set) is not a post:
-    counting it read a re-check of a failed post as a landed push.
+    reports the re-post. An operator's Re-check is not a post (``is_post``).
     """
     wanted = sorted({int(a) for a in action_ids if a is not None})
     if not wanted:
         return {}
     out: Dict[int, XrasActionLog] = {}
     for row in (session.query(XrasActionLog)
-                .filter(XrasActionLog.action_id.in_(wanted),
-                        XrasActionLog.source_action_id.is_(None))
+                .filter(XrasActionLog.action_id.in_(wanted), XrasActionLog.is_post)
                 .order_by(XrasActionLog.xras_action_log_id)):
         out[row.action_id] = row
     return out

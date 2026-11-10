@@ -165,6 +165,18 @@ def recheck_action(log_id, *, actor) -> 'Recheck':
             'XRAS re-check says this would STILL FAIL: id=%s source=%s by=%s — %s',
             new_id, log_id, actor, '; '.join(exc.messages))
         return Recheck(new_id, 'failed')
+    except Exception as exc:
+        # The live route's 500 arm: a row left at `received` with no `processed_time`
+        # is an in-flight post to the repeat guard, and would refuse XRAS's next real
+        # post of this action as a duplicate. Best-effort, then re-raise the original.
+        try:
+            db.session.rollback()
+            actions._finish(new_id, status='failed', http_status=500,
+                            outcome_reason=f'handler raised: {type(exc).__name__}')
+        except Exception:                    # pragma: no cover - defensive
+            current_app.logger.exception(
+                'XRAS re-check close-out failed, row stays received: id=%s', new_id)
+        raise
     finally:
         # `assemble()` is contractually write-free, but that is a docstring promise
         # rather than an enforced one, and this session is the request's. Roll back

@@ -146,7 +146,9 @@ class Episode:
 
 
 def _refused():
-    return (XrasActionLog.status == 'failed',
+    # A failed Re-check copies the request columns and answers 422 too; it refused nothing.
+    return (XrasActionLog.is_post,
+            XrasActionLog.status == 'failed',
             XrasActionLog.http_status == 422,
             XrasActionLog.action_type.in_(TICKET_ACTION_TYPES),
             XrasActionLog.request_id.is_not(None))

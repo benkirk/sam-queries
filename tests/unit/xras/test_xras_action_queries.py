@@ -447,6 +447,25 @@ class TestXrasActivity:
         _action(session, status='failed', request_number=project.projcode)
         assert _activity_row(session, project) is None
 
+    def test_a_recheck_is_never_the_latest_action(self, session):
+        """A Re-check copies the request number and is dated at the click, so without
+        the posts-only rule it demoted the New's Activate button and became the
+        activation's provenance."""
+        project = make_project(session, active=False)
+        failed = _action(session, status='failed', http_status=422,
+                         request_number=project.projcode, action_type='Supplement',
+                         received_time=datetime.now() - timedelta(days=10))
+        new = _action(session, status='processed', action_type='New',
+                      request_number='NCAR9998', projcode_result=project.projcode,
+                      received_time=datetime.now() - timedelta(days=5))
+        _action(session, status='rechecked', request_number=project.projcode,
+                action_type='Supplement', source_action_id=failed.xras_action_log_id,
+                processed_by='benkirk', received_time=datetime.now())
+        row = _activity_row(session, project)
+        assert row['action_log_id'] == new.xras_action_log_id
+        assert row['is_latest_action'] is True
+        assert get_latest_xras_action_id(session, project.project_id) == new.xras_action_log_id
+
     def test_matches_on_projcode_result_too(self, session):
         """The New path: request_number is an NCAR token, the minted projcode
         lands in projcode_result."""

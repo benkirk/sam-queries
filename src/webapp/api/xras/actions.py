@@ -433,6 +433,7 @@ def _other_live_post(log_id, action_id):
         return (session.query(XrasActionLog.xras_action_log_id, XrasActionLog.status)
                 .filter(XrasActionLog.action_id == action_id,
                         XrasActionLog.xras_action_log_id != log_id,
+                        XrasActionLog.is_post,
                         or_(XrasActionLog.status == 'processed', in_flight))
                 .order_by(XrasActionLog.xras_action_log_id)
                 .first())

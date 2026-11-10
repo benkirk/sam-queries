@@ -182,12 +182,14 @@ elif [[ "$MAXID" -gt "$LASTID" ]]; then
         SELECT xras_action_log_id AS id, DATE_FORMAT(received_time,'%m-%d %H:%i') AS recv,
                action_type AS action, service, request_number AS reqno,
                projcode_result AS projcode, status, http_status AS http,
+               source_action_id AS recheck_of,
                LEFT(COALESCE(error_messages,''),80) AS err
         FROM xras_action_log WHERE xras_action_log_id > $LASTID
         ORDER BY xras_action_log_id;" 2>/dev/null
-    # A new row is normal processing; only a non-2xx result is worth a flag.
-    NONOK=$(q "SELECT COUNT(*) FROM xras_action_log WHERE xras_action_log_id > $LASTID AND (http_status IS NULL OR http_status NOT IN (200,201));" || true)
-    [[ "${NONOK:-0}" -gt 0 ]] && warn "xras: $NONOK of $((MAXID-LASTID)) new row(s) non-2xx — classify (rechecked=ready for re-push)"
+    # A new row is normal processing; only a non-2xx answer to XRAS is worth a flag.
+    # An operator's Re-check (recheck_of set) answered nobody.
+    NONOK=$(q "SELECT COUNT(*) FROM xras_action_log WHERE xras_action_log_id > $LASTID AND source_action_id IS NULL AND (http_status IS NULL OR http_status NOT IN (200,201));" || true)
+    [[ "${NONOK:-0}" -gt 0 ]] && warn "xras: $NONOK of $((MAXID-LASTID)) new row(s) non-2xx — classify per the watch-prod skill"
 else
     echo "xras: quiet (still #$MAXID)"
 fi
