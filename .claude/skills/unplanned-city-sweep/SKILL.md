@@ -164,6 +164,13 @@ Run each pass and collect findings. The examples are real.
   and run per item in a loop re-reads the same rows, and `selectinload` cannot reach it.
   Scope a memo to the batch and seed it with one query per key kind (sweep 30,
   `sam/xras/lookups.py`).
+- **Second row kind on a shared key.** When a table gains a second kind of row under a key
+  another reader groups by (the action log's operator Re-check rows and `duplicate` refusals
+  share the post's `action_id`), list every reader of that key and ask which kinds each one
+  meant to count; a fix in one reader (#935 F1) is the lead, not the end. Sweep 38 found four
+  more readers taking a Re-check as the outcome and every reader taking a `duplicate` as one.
+  The fix is one predicate on the model (`XrasActionLog.is_post`) and one positive list
+  (`LANDED_LOG_STATUSES`), never a per-reader literal.
 - **Ratchet.** Where a fix is cheap to pin, add an equality ratchet so the city does not regrow.
   Models: `tests/unit/gates/test_css_tokens.py` (raw colors) and
   `tests/unit/gates/test_no_fstring_sql.py`. Only ratchet a count that is going down.

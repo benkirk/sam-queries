@@ -55,6 +55,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-11-04 | `03fdc1af` + sweep 36 (tables without chips) | 51 / 63 / 26 | 1 (2) | 28 / 91 | 20 (20), 2 kept | 5,610 / 54 / 9 | 107 (53) | 0 / 0 | 0 | 5 / 5 | 17 (13) | 5 |
 | 2026-11-05 | `8ea42a3f` (#920, #922 as merged), before sweep 37 | 52 / 65 / 26 | 1 (2) | 28 / 91 | 20 (20), 2 kept | 5,698 / 55 / 10 | 107 (53) | 0 / 0 | 0 | 6 / 5 | 17 (13) | 5 |
 | 2026-11-05 | `8ea42a3f` + sweep 37 (the XRAS tree) | 44 / 56 / 26 | 1 (2) | 28 / 91 | 20 (20), 2 kept | 5,698 / 55 / 10 | 107 (53) | 0 / 0 | 0 | 6 / 5 | 17 (13) | 5 |
+| 2026-11-10 | `148676cb` + sweep 38 (the XRAS loop end to end), py only | 44 / 56 / 26 | 1 (2) | 28 / 91 | — | — | — | — | — | — | — | 5 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -2522,6 +2523,105 @@ request index already contradicted.
   roster dropped for up to a day. No row seen; recorded only.
 - [ ] `window_control_context` is public in the allocations blueprint now; the three-copies item
   under entry 12 (jobs, disk scans) stands.
+
+## 38. 2026-11-10: area sweep, the XRAS loop end to end (action log, sweeps, Remediations)
+
+**Mode:** area, read from the air after #924, #929/#930, #934 and #935. **End commit:** `148676cb`
+(#935 as merged). PR #937. Lens: #935 found the Remediations queue and the action log did not
+reference each other, and its review found a Re-check row read as a landed push; this sweep asked
+where else one surface's record is read by another under a rule the writer never promised. Three
+maps (the log's writers and readers, the sweep tasks' shared state, the surfaces' cross-links) were
+read against each other; every finding was traced in code before ranking.
+
+**Measured on prod (2026-11-10):** 493 log rows (processed 389, failed 97, rechecked 3, manual 2,
+duplicate 1, unmapped 1); 7 Re-check rows (3 `rechecked`, 4 `failed`), all inside the roster
+feed's 90-day window, none naming a live project; 1 `duplicate` row newer than the processed post
+it repeated; 0 activation events with Re-check provenance; 0 Re-checks left at `received`.
+
+**Done** (one commit each, on `xras-sweep-38`):
+
+- [x] 1, **behavior**: a Re-check is not a post, for every reader. #935 F1's rule lived in
+  `latest_action_logs` alone; `XrasActionLog.is_post` (hybrid, `source_action_id IS NULL`) now
+  also gates the activation worklist's newest action and `get_latest_xras_action_id` (a re-check
+  of a failed Supplement on a live project demoted the New's Activate button and stood in as
+  Notify's and the activation event's provenance), the tickets' `_refused()` (a failed re-check of
+  a New was a refusal dated at the click: a fresh episode inside the 30-day window), Feed A
+  `records_from_action_log` (a re-check row was its own roster record, which put a refused push
+  of any age back inside the window `ready_to_merge` reads) and `_other_live_post` (a re-check
+  row at `received` refused XRAS's real re-post as a duplicate; `recheck_action` now closes its
+  row as `failed` on any exception). `cirrus_watch.sh` shows `recheck_of` and leaves re-checks
+  out of its non-2xx count.
+- [x] 2, **behavior**: a refused repeat is not an outcome. A `duplicate` row (source NULL) won
+  `latest_action_logs` over the processed post it repeated: a red receipt opening the refusal,
+  "awaiting post" on My Requests for an applied action, and in the race (A in flight, B refused,
+  A then fails) a push that read as landed. `latest_action_logs` skips `duplicate`; one positive
+  `LANDED_LOG_STATUSES = ('processed',)` beside the catalog replaces the sweep's `_applied`
+  (`== 'processed'`) and the queue's negative `UNLANDED_LOG_STATUSES`, which disagreed on it
+  (`TestOneLandedRule`). A snapshot stamped `duplicate` before the deploy reads as owed until its
+  next pre-flight.
+- [x] 5, findability: XRAS Logs can be pointed at. `?view=logs&request_number=<n>` opens the card
+  filtered (the page read only `?view=`; the Request # box took no URL value); the request dialog
+  links there; the Request # filter matches `request_number` or `projcode_result`, so a projcode
+  finds the New that minted it; the details modal says "Log #" (the card's and the toast's word)
+  and shows the XRAS action and request ids; the re-check toast names its row the same way. Deleted
+  the `projcode` and `replays_only` query options (no caller).
+- [x] 9, delete: prose describing an earlier step. The status catalog comment (`replayed`, no
+  `rechecked`/`duplicate`); "processed is unvalidated"; a `replays` relationship (it is `rechecks`)
+  and "Replay" through the CLI's `--show`; the `received` tooltip ("legacy still applies them");
+  the sweep's "the only write this task performs"; the card's Request facet comment (the "Show in"
+  round trip removed in #462); "what XRAS was told in the 422 body" (the reply adds the ticket line
+  and the pointers); the host pins' "reached only from xras.html".
+
+**Tried and dropped:**
+- The `ignore_contract` lead (the index-row branch of `contract_targets` skips the override the
+  payload branch checks): a waived miss is a warning, never an unresolved grant
+  (`handlers/_fields.py:316-321`), so the index never carries one. The docstring's claim holds.
+
+**Open from this sweep** (unpicked, with file lines as of `148676cb`):
+
+- [ ] 3, drift: a pushed New still named by its token gets a project link to a project that does
+  not exist. `live_pending_numbers` subtracts `pushed_request_numbers` (sweep 26), so
+  `pending_push=False` before the rename lands; the card's else branch is
+  `project_link(row.request_number)` (`xras_remediations_card.html:395-407`) and its WARNING says
+  this cannot happen. Seconds normally; up to 14 days when the rename task is refused. Record
+  `projcode` on the entry and link that, or a "renaming" tag.
+- [ ] 4, legibility (#935 F2): beside the receipt the row is still the snapshot; `with_landed_pushes`
+  stamps action pre-flights only, so `pending_push`, `preflight_rollup` and `blockers` keep the
+  pre-push verdict ("no project", a red "Would fail") until the next rebuild. `_stamp_landed`
+  could clear them on the render copy when the landed status is processed.
+- [ ] 6, findability: a Logs row for a New opens the request by its dead token (`request_link`
+  by `request_number`, which on a New is `NCAR####`); the row carries `request_id` and
+  `get_request_by_id` exists. Inferred, not seen live.
+- [ ] 7, gate: `request_link` in the Logs table (`xras_table.html:66`) and Pending Users
+  (`xras_accounts_card.html:180,204-208,294`) renders the dialog button on `configured` alone
+  while the routes need `MANAGE_XRAS` (`modals.py:313`, `:580`): a view-only operator gets a 403
+  inside the modal. The details modal gates correctly. Pending Users' "On the Accounts queue"
+  link also drops the `?request=<id>` deep link (`:266`).
+- [ ] 8, drift (entry 25's `is_pending_work` item, grown): the full and light builds pre-flight
+  actions entered in the last 120 days (`xras_sweep.py:778,933`); `recheck_readiness` and
+  `refresh_index_entry` pre-flight every action (`xras_remediation.py:280`); the next light rebuild
+  of an unsettled row strips the operator's older verdicts and writes it as a change. One constant.
+- [ ] 10, drift: the status vocabulary spelled as literals in ~20 places (`xras_accounts.py:72`,
+  `xras_sweep.py:423,615-623`, `xras_my_requests.py:35-40`, `xras_request_tickets.py:149,183`,
+  `xras_actions.py:233,263,275`, `xras_activation.py:187`, `actions.py:429,436,449`,
+  `lifecycle_routes.py:519-523`, the templates, the watch-prod skill); the pre-flight verdict
+  reuses `rechecked` / `failed` / `manual` with another meaning. `RECHECK_STATUSES` beside the
+  catalog, Python sites import.
+- [ ] `XrasSubmission` has no exit but `applied`: a SAM filing XRAS rejects or withdraws stays
+  `submitted`, refreshed for 90 days (`xras_sweep.py:680`), then abandoned; My Requests reads the
+  live status, so only the row lies.
+- [ ] Sweep-filed `account_request` rows carry no request key (`xras_username` + `project_id`),
+  so a request that drops out never closes them (entry 25, still open; needs a column).
+- [ ] `_stamp_tickets` joins by the primary line's `request_id` (`remediation.py:757-770`); tickets
+  key on the posted row's. Multi-line families only; inferred.
+- [ ] Contracts the sweep creates leave no provenance on the row (task `detail` only).
+- [ ] Twelve recency helpers (entry 25, grown); `xras_rename` retries a refused candidate hourly
+  for 14 days (entry 26). `Episode.latest_log_id` and Pending Users' `latest_action_log_id` are
+  computed and unused; a note's `values.links` is stored and never rendered.
+- [ ] `action_readout` reads a pre-repoint Approved action with no log row as "Approved" while
+  the card counts its New as owed: pre-2026-08-24 only. One Accounts-queue row reads "sent" on
+  Pending Users and "open" on the Accounts queue. Light-merge picks are sorted by number and capped
+  at 100, so the same first rows win every hour.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
