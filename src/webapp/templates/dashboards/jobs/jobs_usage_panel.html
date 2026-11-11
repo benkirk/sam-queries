@@ -117,7 +117,7 @@
         </thead>
         {% for r in rows %}
           {% set val = r.value %}
-          {% set _rid = target_id ~ entity.row_prefix ~ loop.index %}
+          {% set _rid = target_id ~ entity.row_prefix ~ ((val | dom_id) if val else loop.index) %}
           <tbody class="sortable-group">
             {# The sentinel attribute + data-bs-target let a pie-wedge click
                open this row's collapse (svg-chart-links.js), same as the

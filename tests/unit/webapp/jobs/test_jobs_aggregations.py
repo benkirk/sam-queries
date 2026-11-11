@@ -25,6 +25,7 @@ def test_by_user_fragment_renders_rows_and_pie(
     assert 'data-job-user="bob"' in body
     assert '<svg' in body                       # pie rendered
     assert '#sam/row/data-job-user/alice' in body            # clickable wedge sentinel
+    assert '-ualice-row"' in body and '-ubob-row"' in body   # drawers keyed on the user, not the rank
     # No remainder beyond the row cap -> no Other row.
     assert 'beyond top' not in body
     # Plugin was asked for the user dimension, scoped to the project tree.
