@@ -187,7 +187,7 @@
                 cols=[('data', 'size'), ('files', 'number')] + ([('owners', 'blank')] if _show_owners else []),
                 share=_metric, names=_names,
                 drill_url=_band_url, param='owner_uid', loading='directories in this band',
-                noun='band',
+                noun='band', persist=false,
                 other=('Other users (%s more)' % ((owners | length) - 10) | string)
                       if owners | length > 10 else none)) %}
             <span class="font-monospace">{{ _names[uid] }}</span>

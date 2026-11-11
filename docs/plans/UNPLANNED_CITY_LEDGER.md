@@ -2645,6 +2645,10 @@ each Save brought them back closed. The census then looked for ids that name a p
   `dom_id` filter (`webapp/utils/template_filters.py`), since `#a.b` would select a class.
 - [x] C4, drift: the jobs usage panel's persisted `lazy_drill_row` was keyed on the rank, so a
   reload reopened, and re-fetched, whoever now held that rank. Keyed on the user or projcode.
+- [x] Review F1: the disk-scans distribution was the one `owner_tier` caller without
+  `persist=false`, so its owner drawers reopened by rank and re-ran the directories query.
+  Opted out like its two jobs siblings.
+- [x] Review F2: the gate's key pattern took any `-id=` attribute as a persist key; tightened.
 
 **Left alone, on purpose:** positional ids that do not persist (`_alloc_tree_table.html`,
 `calendar.html`, the jobs timeline and histogram bands and owner tiers); the Remediations group
