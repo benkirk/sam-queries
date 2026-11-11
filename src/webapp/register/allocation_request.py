@@ -263,7 +263,7 @@ def _confirm(row, opportunity_id):
 @bp.route('/pending/<token>')
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def pending(token):
-    row, opportunity_id = _row(token, tokens.SALT_REQUEST_PAGE, tokens.verify_ttl_seconds())
+    row, opportunity_id = _row(token, tokens.SALT_REQUEST_PAGE, tokens.pending_page_ttl_seconds())
     if row is None:
         return _expired()
     if row.is_verified:
@@ -285,7 +285,7 @@ def _render_pending(row, token, *, mail_sent, form=None, errors=()):
                            key_func=lambda: f'request-verify:{request.view_args.get("token", "")[:64]}')
 def pending_code(token):
     """The typed six-digit code; an address the help desk already confirmed goes straight on."""
-    row, opportunity_id = _row(token, tokens.SALT_REQUEST_PAGE, tokens.verify_ttl_seconds())
+    row, opportunity_id = _row(token, tokens.SALT_REQUEST_PAGE, tokens.pending_page_ttl_seconds())
     if row is None:
         return _expired()
     if row.is_verified:

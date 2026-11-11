@@ -2,7 +2,8 @@
 
 Two salts on Flask's SECRET_KEY serializer: the PAGE token only identifies
 the row to the "check your mail" page, the LINK token verifies it. A leaked
-page URL therefore cannot confirm an address. The six-digit code is stored
+page URL therefore cannot confirm an address, so it outlives the link
+(ACCOUNT_PENDING_PAGE_TTL_HOURS) for a help desk's late Verify. The six-digit code is stored
 as an HMAC of ``row id : code`` -- constant-time comparison, fixed width,
 and a database read alone cannot validate a code. The brute-force bound is
 the rate limit on the page, not hash cost, so no slow hash is wanted here.
@@ -45,6 +46,11 @@ def verify_ttl_seconds() -> int:
     return verify_ttl_hours() * 3600
 
 
+def pending_page_ttl_seconds() -> int:
+    """ACCOUNT_PENDING_PAGE_TTL_HOURS: how long a "check your mail" page URL stays open."""
+    return int(current_app.config.get('ACCOUNT_PENDING_PAGE_TTL_HOURS', 48)) * 3600
+
+
 def page_token(row_id: int) -> str:
     return _serializer(SALT_PAGE).dumps({'id': int(row_id)})
 
@@ -53,9 +59,9 @@ def link_token(row_id: int) -> str:
     return _serializer(SALT_LINK).dumps({'id': int(row_id)})
 
 
-def _read(token: str, salt: str) -> Optional[int]:
+def _read(token: str, salt: str, max_age: int) -> Optional[int]:
     try:
-        payload = _serializer(salt).loads(token, max_age=verify_ttl_seconds())
+        payload = _serializer(salt).loads(token, max_age=max_age)
     except (SignatureExpired, BadSignature, TypeError, ValueError):
         return None
     row_id = payload.get('id') if isinstance(payload, dict) else None
@@ -64,12 +70,12 @@ def _read(token: str, salt: str) -> Optional[int]:
 
 def read_page_token(token: str) -> Optional[int]:
     """The row a pending-page URL names, or None when bad or expired."""
-    return _read(token, SALT_PAGE)
+    return _read(token, SALT_PAGE, pending_page_ttl_seconds())
 
 
 def read_link_token(token: str) -> Optional[int]:
     """The row a verification link confirms, or None when bad or expired."""
-    return _read(token, SALT_LINK)
+    return _read(token, SALT_LINK, verify_ttl_seconds())
 
 
 def invite_stamp(sent_at: datetime) -> str:

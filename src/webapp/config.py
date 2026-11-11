@@ -75,6 +75,9 @@ class SAMWebappConfig(SAMConfig):
     # How long a self-service (/register, /request) link and code stay valid, in hours.
     # The visitor is waiting for it; a lead's invitation is ACCOUNT_INVITE_TTL_DAYS.
     ACCOUNT_VERIFY_TTL_HOURS = int(os.getenv('ACCOUNT_VERIFY_TTL_HOURS', 1))
+    # How long the "check your mail" page URL stays open, in hours. It only names the
+    # row and cannot confirm an address; a late help-desk Verify still needs it.
+    ACCOUNT_PENDING_PAGE_TTL_HOURS = int(os.getenv('ACCOUNT_PENDING_PAGE_TTL_HOURS', 48))
     # How long a mailed invitation link stays valid, in days.
     ACCOUNT_INVITE_TTL_DAYS = int(os.getenv('ACCOUNT_INVITE_TTL_DAYS', 30))
     # How long a confirmed visitor's /request draft link stays valid, in days.

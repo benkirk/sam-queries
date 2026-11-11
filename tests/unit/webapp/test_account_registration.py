@@ -589,6 +589,28 @@ class TestVerification:
         resp = client.post(f'/register/pending/{page}', data={'code': ''})
         assert resp.status_code == 302 and resp.headers['Location'].endswith('/register/verified')
 
+    def test_the_page_outlives_the_code_for_a_late_operator_verify(self, client, app,
+                                                                   committed_registration, monkeypatch):
+        """The help desk vouches after the one-hour code clock; Continue still goes on."""
+        from sam.core.account_requests import AccountRequest
+        from sam.manage import management_transaction
+        from webapp.extensions import db
+        from webapp.register import tokens
+        row_id, _ = committed_registration
+        with app.app_context():
+            page, link = tokens.page_token(row_id), tokens.link_token(row_id)
+        monkeypatch.setitem(app.config, 'ACCOUNT_VERIFY_TTL_HOURS', -1)
+        assert 'is not valid' in client.get(f'/register/verify/{link}').get_data(as_text=True)
+        assert 'name="code"' in client.get(f'/register/pending/{page}').get_data(as_text=True)
+        with app.app_context():
+            with management_transaction(db.session):
+                db.session.get(AccountRequest, row_id).mark_verified('benkirk')
+        resp = client.get(f'/register/pending/{page}?sent=0')
+        assert resp.status_code == 302 and resp.headers['Location'].endswith('/register/verified')
+        # The page clock is its own lever.
+        monkeypatch.setitem(app.config, 'ACCOUNT_PENDING_PAGE_TTL_HOURS', -1)
+        assert 'is not valid' in client.get(f'/register/pending/{page}').get_data(as_text=True)
+
     def test_mail_off_offers_continue_not_a_code_box(self, client, app, committed_registration):
         from webapp.register import tokens
         row_id, _ = committed_registration

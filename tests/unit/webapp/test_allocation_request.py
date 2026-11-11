@@ -288,6 +288,27 @@ class TestTheVisitorsRequest:
         resp = client.post(pending.split('?')[0], data={'code': ''})
         assert resp.status_code == 302 and '/request/draft/' in resp.location
 
+    def test_the_page_outlives_the_code_for_a_late_operator_verify(self, client, app, visitor,
+                                                                   mail, cleanup, monkeypatch):
+        """After the code clock the page is the only way to the draft; the link stays refused."""
+        from sam.core.account_requests import AccountRequest
+        from sam.manage import management_transaction
+        from webapp.extensions import db
+        pending, context = _submit(client, mail, cleanup)
+        path = pending.split('?')[0]
+        link = re.sub(r'^https?://[^/]+', '', context['verify_url'])
+        monkeypatch.setitem(app.config, 'ACCOUNT_VERIFY_TTL_HOURS', -1)
+        assert 'is not valid' in client.get(link).get_data(as_text=True)
+        assert 'name="code"' in client.get(path).get_data(as_text=True)
+        with app.app_context():
+            row = db.session.query(AccountRequest).filter_by(email=cleanup).one()
+            with management_transaction(db.session):
+                row.mark_verified('benkirk')
+        resp = client.get(f'{path}?sent=0')
+        assert resp.status_code == 302 and '/request/draft/' in resp.location
+        monkeypatch.setitem(app.config, 'ACCOUNT_PENDING_PAGE_TTL_HOURS', -1)
+        assert 'is not valid' in client.get(path).get_data(as_text=True)
+
     def test_mail_off_is_the_same_page_as_register(self, client, visitor, mail, cleanup):
         pending, _ = _submit(client, mail, cleanup)
         path = pending.split('?')[0]
