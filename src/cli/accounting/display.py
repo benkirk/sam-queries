@@ -9,6 +9,7 @@ from rich import box
 from rich.markup import escape
 
 from sam import fmt
+from cli.core.output import print_table
 
 
 def display_dry_run_table(ctx: Context, rows: list, machine: str, adapt_fn,
@@ -69,7 +70,7 @@ def display_dry_run_table(ctx: Context, rows: list, machine: str, adapt_fn,
             f"{charges:.1f}",
         )
 
-    ctx.console.print(table)
+    print_table(ctx.console, table)
     if n_skipped:
         ctx.console.print(f"[dim]({n_skipped} zero-charge rows omitted)[/dim]")
 
@@ -122,7 +123,7 @@ def display_disk_dry_run_table(ctx: Context, entries: list, resource_name: str,
             (e.directory_path or "")[:60],
         )
 
-    ctx.console.print(table)
+    print_table(ctx.console, table)
     if n_synthetic:
         ctx.console.print(
             f"[dim]({n_synthetic} synthetic gap rows attributed to project lead "
@@ -152,7 +153,7 @@ def display_import_summary(ctx: Context, n_created: int, n_updated: int,
     if n_errors:
         table.add_row("Errors", f"[red]{n_errors}[/red]")
 
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
 
 # (title, fix hint) per disk-import category, in print order.
@@ -201,7 +202,7 @@ def display_disk_import_report(ctx: Context, data: dict) -> None:
                       f"[red]{n}[/red]" if n else "0")
     if data.get('errors'):
         table.add_row("Errors", f"[red]{data['errors']}[/red]")
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
     actions: dict[str, int] = {}
     for item in cats['unlinked_directory']:
@@ -321,7 +322,7 @@ def display_charge_summary_table(ctx: Context, rows: list, start_date, end_date)
     table.add_section()
     table.add_row(*footer_cols)
 
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
 
 def _fmt_factor(x) -> str:
@@ -405,7 +406,7 @@ def display_jobs_table(ctx: Context, rows: list, start_date, end_date, *,
     table.add_section()
     table.add_row(*footer)
 
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
 
 HIGH_UTIL_THRESHOLD = 0.95   # annotate matched filesets >95% full
@@ -486,7 +487,7 @@ def _project_table(ctx: Context, title: str, items: list, *, decimals: int,
         if action:
             row.append(f"set amount → {fmt.size(item['quota_bytes'])}")
         t.add_row(*row)
-    ctx.console.print(t)
+    print_table(ctx.console, t)
     for item in items:
         if len(item['filesets']) > 1:
             _render_subtree_panel(ctx, item)
@@ -532,7 +533,7 @@ def display_quota_reconcile_plan(ctx: Context, report: dict) -> None:
                 row.append(markers)
             row.append(action_cell)
             t.add_row(*row)
-        ctx.console.print(t)
+        print_table(ctx.console, t)
         ctx.console.print(
             "[dim italic]Orphaned: project has an active "
             f"{resource_name} allocation in SAM, but no matching "
@@ -559,7 +560,7 @@ def display_quota_reconcile_plan(ctx: Context, report: dict) -> None:
                 row.append(_fs_marker(fs))
             row += [fmt.size(fs['limit_bytes']), fmt.size(fs['usage_bytes'])]
             t.add_row(*row)
-        ctx.console.print(t)
+        print_table(ctx.console, t)
         if show_fs:
             extra = (
                 " FS ✓ indicates a real mapping gap (admin should "
@@ -603,7 +604,7 @@ def display_quota_reconcile_plan(ctx: Context, report: dict) -> None:
         t.add_column("Fix", style="cyan")
         for fs in unlinked:
             t.add_row(fs['projcode'], fs['fileset'], fs['path'] or "—", fs['action'])
-        ctx.console.print(t)
+        print_table(ctx.console, t)
     if unlinked:
         ctx.console.print(
             f"[dim italic]Directory not linked in SAM: {fmt.number(len(unlinked))}. "
@@ -619,7 +620,7 @@ def display_quota_reconcile_plan(ctx: Context, report: dict) -> None:
         t.add_column("Limit", justify="right")
         for fs in cats['known_unowned']:
             t.add_row(fs['fileset'], fs['path'] or "—", fmt.size(fs['limit_bytes']))
-        ctx.console.print(t)
+        print_table(ctx.console, t)
 
     if cats['matched']:
         _project_table(ctx, f"Matched ({resource_name})", cats['matched'],
@@ -646,7 +647,7 @@ def _uncovered_table(ctx: Context, title: str, items: list, *, expired: bool) ->
         row += [fs['fileset'], fs['path'] or "—",
                 fmt.size(fs['limit_bytes']), fmt.size(fs['usage_bytes'])]
         t.add_row(*row)
-    ctx.console.print(t)
+    print_table(ctx.console, t)
 
 
 def display_quota_reconcile_summary(
@@ -687,4 +688,4 @@ def display_quota_reconcile_summary(
     if errors:
         t.add_row("Errors", f"[red]{errors}[/red]")
 
-    ctx.console.print(t)
+    print_table(ctx.console, t)

@@ -11,6 +11,7 @@ from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, T
 
 from cli.core.context import Context
 from sam import fmt
+from cli.core.output import print_table
 
 #: What every formatter here renders for "nothing to show". Matches
 #: `sam.fmt`'s own default null marker.
@@ -83,7 +84,7 @@ def issues_table(ctx, subject: str, issues: list, *,
     table.add_column("Detail", style="yellow")
     for label, detail in issues:
         table.add_row(label, detail)
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
 def directory_unreadable(ctx: Context, view: dict, subject: str) -> bool:
     """The two states before a record: unavailable, or absent. True when nothing more to show."""

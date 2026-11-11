@@ -27,7 +27,7 @@ cli/
 ├── core/                     # Shared infrastructure
 │   ├── context.py            # Context class (session, consoles, flags, output_format)
 │   ├── base.py               # BaseCommand: emit(), not_found(), require_plugin()
-│   ├── options.py            # verbose_option, provisioning_option, directory_option, usage_error
+│   ├── options.py            # verbose_option, format_option, provisioning_option, directory_option, usage_error
 │   ├── directory.py          # The CLI shape of a Directory view (JSON-safe; key absent when unconfigured)
 │   ├── display_utils.py      # Shared cell formatters, stamp, styled, progress, issues_table
 │   ├── output.py             # output_json() + _SAMEncoder
@@ -69,11 +69,12 @@ cli/
 ## Output Formats
 
 Both `sam-search` and `sam-admin` accept `--format [rich|json]` (default
-`rich`) at the group level:
+`rich`) at the group level, and every subcommand accepts it too (`format_option`):
 
 ```bash
 sam-search user benkirk                       # Rich panels + tables
 sam-search --format json user benkirk | jq    # Parseable JSON envelope
+sam-search user benkirk --format json | jq    # Same thing
 ```
 
 A command writes through `BaseCommand.emit(payload, display_fn)`, which picks
@@ -194,12 +195,13 @@ in `core/base.py`; daily-rollup queries work without it.
    ```
 
 3. **Wire up in the entry point** (`cmds/search.py` or `cmds/admin.py`);
-   reuse `verbose_option` / `provisioning_option`, and reject bad flag
-   combinations with `usage_error`:
+   reuse `verbose_option` / `provisioning_option`, give it `format_option` (a gate
+   checks every leaf command has it), and reject bad flag combinations with `usage_error`:
    ```python
    @cli.command()
    @click.option('--flag', is_flag=True)
    @verbose_option()
+   @format_option
    @pass_context
    def new_command(ctx: Context, flag, verbose):
        sys.exit(NewUserCommand(ctx).execute(flag=flag))

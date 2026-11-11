@@ -3,6 +3,7 @@
 from rich.table import Table
 
 from cli.core.display_utils import BLANK, date_cell, text, truncate
+from cli.core.output import print_table
 
 _STATE_STYLE = {'pending': 'yellow', 'confirmed': 'green', 'expired': 'dim', 'withdrawn': 'dim'}
 
@@ -23,7 +24,7 @@ def display_listing(ctx, payload: dict) -> None:
                   f"{r['requested_by']} {date_cell(r['creation_time'])}",
                   date_cell(r['expires_at']) if r['expires_at'] else 'open-ended',
                   truncate(text(r['note']), 40) if r['note'] else BLANK)
-    ctx.console.print(t)
+    print_table(ctx.console, t)
 
 
 def display_opened(ctx, payload: dict) -> None:

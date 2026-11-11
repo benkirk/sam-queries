@@ -3,6 +3,7 @@
 from rich.table import Table
 
 from cli.core.display_utils import BLANK, text
+from cli.core.output import print_table
 
 
 def _what(g: dict) -> str:
@@ -45,7 +46,7 @@ def display_effective(ctx, payload: dict) -> None:
     t.add_row('all facilities', ', '.join(payload['unscoped']) or BLANK)
     for facility, perms in payload['scoped'].items():
         t.add_row(facility, ', '.join(perms))
-    ctx.console.print(t)
+    print_table(ctx.console, t)
 
 
 def display_keys(ctx, payload: dict) -> None:
@@ -55,7 +56,7 @@ def display_keys(ctx, payload: dict) -> None:
     for k in payload['keys']:
         n = k['grants']
         t.add_row(k['name'], k['source'], f'[red]{n}[/red]' if not n else str(n))
-    ctx.console.print(t)
+    print_table(ctx.console, t)
     if payload['ungranted']:
         ctx.console.print(f'[yellow]{len(payload["ungranted"])} key(s) hold no grant and '
                           'are denied everywhere in db mode: '

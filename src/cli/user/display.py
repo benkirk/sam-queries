@@ -11,6 +11,7 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.text import Text
 from rich import box
+from cli.core.output import print_table
 
 
 def _user_line(u: dict) -> str:
@@ -136,7 +137,7 @@ def display_user_directory(ctx: Context, view: dict, username: str):
                           date_cell(r['start']), date_cell(r['end']),
                           'active' if r['active'] else 'finished', r['source'] or '—',
                           str(r.get(extra) or '—'))
-        ctx.console.print(table)
+        print_table(ctx.console, table)
     directory_drift(ctx, view, username)
 
 
@@ -241,7 +242,7 @@ def display_user_projects(ctx: Context, projects: list, username: str):
 
         table.add_row(*row)
 
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
 
 def display_user_search_results(ctx: Context, data: dict):
@@ -268,7 +269,7 @@ def display_user_search_results(ctx: Context, data: dict):
             ])
         table.add_row(*row)
 
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
 
 def display_abandoned_users(ctx: Context, data: dict):
@@ -282,7 +283,7 @@ def display_abandoned_users(ctx: Context, data: dict):
         table.add_column("User")
         for u in data['users']:
             table.add_row(_user_line(u))
-        ctx.console.print(table)
+        print_table(ctx.console, table)
 
 
 def display_users_with_projects(ctx: Context, data: dict, list_projects: bool = False):
@@ -300,7 +301,7 @@ def display_users_with_projects(ctx: Context, data: dict, list_projects: bool = 
         if list_projects and 'projects' in u:
             for p in u['projects']:
                 table.add_row(f"    - {p['projcode']:12} {p['title']}")
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
 
 def display_not_seen_users(ctx: Context, data: dict):
@@ -334,7 +335,7 @@ def display_not_seen_users(ctx: Context, data: dict):
         if ctx.verbose:
             row.append(u['primary_email'] or '—')
         table.add_row(*row)
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
 
 def display_deactivation_restore(ctx: Context, data: dict):
@@ -354,4 +355,4 @@ def display_deactivation_restore(ctx: Context, data: dict):
         shown = verb if outcome == 'restored' else outcome
         table.add_row(row['projcode'], row['resource'], date_cell(row['start_date']),
                       Text(shown, style=style))
-    ctx.console.print(table)
+    print_table(ctx.console, table)

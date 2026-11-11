@@ -5,6 +5,7 @@ from rich.table import Table
 
 from cli.core.context import Context
 from cli.core.display_utils import stamp
+from cli.core.output import print_table
 
 
 def display_report(ctx: Context, data: dict) -> None:
@@ -22,4 +23,4 @@ def display_report(ctx: Context, data: dict) -> None:
             table.add_row(category, f'{n:,}', ', '.join(r['ids'].get(category, [])[:10]))
         if not r['counts']:
             table.add_row('—', '0', 'SAM matches the directory')
-        ctx.console.print(table)
+        print_table(ctx.console, table)

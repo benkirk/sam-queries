@@ -16,6 +16,16 @@ def verbose_option(help: str = 'Show detailed information'):
     return click.option('--verbose', '-v', is_flag=True, help=help, callback=callback)
 
 
+def format_option(f):
+    """A subcommand's ``--format``: does what the group's ``--format`` does."""
+    def callback(click_ctx, param, value):
+        if value is not None:
+            click_ctx.ensure_object(Context).output_format = value
+    return click.option('--format', 'output_format', type=click.Choice(['rich', 'json']),
+                        default=None, expose_value=False, callback=callback,
+                        help='Output format (default: rich); same as the group option')(f)
+
+
 def provisioning_option(f):
     """``--provisioning/--no-provisioning``: override the host-provisioning cross-check."""
     def callback(click_ctx, param, value):

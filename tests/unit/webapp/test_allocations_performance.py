@@ -766,16 +766,16 @@ class TestAllocationSummaryEdgeCases:
             assert s['annualized_rate'] is not None
             assert s['annualized_rate'] >= 0
 
-    def test_aggregated_rows_have_null_rate(self, session):
+    def test_aggregated_rows_have_summed_rate(self, session):
         result = get_allocation_summary(
             session=session,
             resource_name='Derecho',
             projcode='TOTAL',
             active_only=True
         )
-        multis = [r for r in result if r['count'] > 1]
-        for m in multis:
-            assert m['annualized_rate'] is None
+        for m in result:
+            assert m['annualized_rate'] is not None
+            assert m['annualized_rate'] >= 0
 
 
 # ============================================================================
