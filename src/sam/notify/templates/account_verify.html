@@ -11,7 +11,7 @@
         <p class="code">{{ code }}</p>
     </div>
 
-    <p>The link and the code expire in {{ expires_hours }} hours.</p>
+    <p>The link and the code expire in {{ expires_hours }} {{ 'hour' if expires_hours == 1 else 'hours' }}.</p>
 
     <p>If you did not ask for this, ignore this message. Unconfirmed requests
         are discarded.</p>

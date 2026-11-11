@@ -240,7 +240,7 @@ def _account_verify() -> Dict[str, Any]:
     return {
         'verify_url': 'https://sam.hpc.ucar.edu/register/verify/eyJpZCI6NDF9.abc.def',
         'code': '493027',
-        'expires_hours': 48,
+        'expires_hours': 1,
         'event_name': 'WRF Tutorial, October 2026',
         **_agreement(),
     }

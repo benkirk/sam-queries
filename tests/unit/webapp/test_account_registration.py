@@ -606,8 +606,9 @@ class TestVerification:
         with app.app_context():
             page = tokens.page_token(row_id)
         html = client.get(f'/register/pending/{page}').get_data(as_text=True)
-        hours = app.config['ACCOUNT_VERIFY_TTL_HOURS']
-        assert 'name="sent" value="1"' in html and f'expire after {hours} hours' in html
+        from sam.fmt import plural
+        hours = plural(app.config['ACCOUNT_VERIFY_TTL_HOURS'], 'hour')
+        assert 'name="sent" value="1"' in html and f'expire after {hours}.' in html
         wrong = client.post(f'/register/pending/{page}', data={'code': '000000', 'sent': '1'})
         text = wrong.get_data(as_text=True)
         assert 'We emailed a link' in text and 'wrong or has expired' in text

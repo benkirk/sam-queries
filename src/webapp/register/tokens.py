@@ -38,7 +38,7 @@ def _serializer(salt: str) -> URLSafeTimedSerializer:
 
 def verify_ttl_hours() -> int:
     """ACCOUNT_VERIFY_TTL_HOURS: how long a mailed code or link confirms an address."""
-    return int(current_app.config.get('ACCOUNT_VERIFY_TTL_HOURS', 48))
+    return int(current_app.config.get('ACCOUNT_VERIFY_TTL_HOURS', 1))
 
 
 def verify_ttl_seconds() -> int:

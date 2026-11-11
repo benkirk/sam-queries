@@ -9,7 +9,7 @@ or enter this code on the confirmation page:
 
     {{ code }}
 
-The link and the code expire in {{ expires_hours }} hours.
+The link and the code expire in {{ expires_hours }} {{ 'hour' if expires_hours == 1 else 'hours' }}.
 
 If you did not ask for this, ignore this message. Unconfirmed requests are
 discarded.

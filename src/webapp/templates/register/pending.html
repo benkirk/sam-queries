@@ -49,7 +49,7 @@
 <a class="btn btn-primary" href="{{ continue_url }}"><i class="fa-solid fa-arrow-right"></i> Continue</a>
 {% endif %}
 <p class="register-lede small mt-3">
-    The link and code expire after {{ expires_hours }} hours. After that,
+    The link and code expire after {{ expires_hours | fmt_plural('hour') }}. After that,
     <a href="{{ again_url or url_for('register.form') }}">{{ again_label or 'start again' }}</a>.
 </p>
 {% endblock %}

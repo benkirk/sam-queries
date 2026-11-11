@@ -9,7 +9,7 @@ or enter this code on the confirmation page:
 
     493027
 
-The link and the code expire in 48 hours.
+The link and the code expire in 1 hour.
 
 If you did not ask for this, ignore this message. Unconfirmed requests are
 discarded.
