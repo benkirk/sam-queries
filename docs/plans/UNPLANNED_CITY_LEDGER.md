@@ -2632,7 +2632,7 @@ overrides, every Save closed Derecho, five times over. The script keys an open c
 id; the facility rows open together by a class target and had none, so the card reload after
 each Save brought them back closed. The census then looked for ids that name a position.
 
-**Done** (one commit each, on `sweep-39-collapse-persist`):
+**Done** (one commit each, PR #945):
 
 - [x] C1, bug: a collapse persists under `data-collapse-persist-id` when several rows open as
   one group; the Derecho facility rows carry `res-fs-<rid>`. Smoked on a local server: Save and
