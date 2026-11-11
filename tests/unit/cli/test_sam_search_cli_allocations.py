@@ -15,6 +15,9 @@ becomes `facility="TOTAL"`, comma-separated `--resource Derecho,Casper`
 parses correctly, `--active-at` validates date format, etc. Plus the
 Rich-rendered table column shape that the legacy assertions rely on.
 """
+import json
+import re
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -84,7 +87,7 @@ class TestAllocationQueries:
 
         assert result.exit_code == 0
         assert 'Allocation Summary' in result.output
-        assert 'Grand Total:' in result.output
+        assert 'Grand Total' in result.output
         assert 'allocations' in result.output
         assert 'Resource' in result.output
         assert 'Facility' in result.output
@@ -286,3 +289,80 @@ class TestAllocationQueries:
         assert result.exit_code == 0
         assert 'Allocation Summary' in result.output
         assert 'Facility' in result.output
+
+
+class TestAllocationTrees:
+    """A built shared pool (root + two inheriting members): totals count it once, rows mark members."""
+
+    @pytest.fixture(autouse=True)
+    def _wide_terminal(self, monkeypatch):
+        monkeypatch.setenv('COLUMNS', '300')
+
+    @pytest.fixture
+    def pool(self, session):
+        from factories.projects import make_account, make_allocation, make_allocation_type, make_project
+        from factories.resources import make_resource
+        from factories.summaries import make_comp_charge_summary
+        from sam.resources.resources import ResourceType
+
+        hpc = make_resource(session, commission_date=datetime(2000, 1, 1),
+                            resource_type=session.query(ResourceType).filter_by(resource_type='HPC').one())
+        atype = make_allocation_type(session, facility_name='UNIV')
+        span = dict(start_date=datetime(2026, 1, 1), end_date=datetime(2026, 12, 31, 23, 59, 59))
+        root = make_project(session, allocation_type=atype)
+        root_alloc = make_allocation(session, account=make_account(session, project=root, resource=hpc),
+                                     amount=1000.0, **span)
+        members = []
+        for charges in (30.0, 70.0):
+            member = make_project(session, allocation_type=atype, parent=root)
+            account = make_account(session, project=member, resource=hpc)
+            make_allocation(session, account=account, amount=1000.0, parent=root_alloc, **span)
+            make_comp_charge_summary(session, charges=charges,
+                                     activity_date=datetime(2026, 3, 1)).account_id = account.account_id
+            members.append(member)
+        session.flush()
+        return hpc.resource_name, root, members
+
+    def _invoke(self, session, *args):
+        with patch('sam.session.create_sam_engine') as engine, \
+             patch('cli.core.context.Session') as session_cls:
+            engine.return_value = (MagicMock(), None)
+            session_cls.return_value = session
+            return CliRunner().invoke(cli, list(args))
+
+    def test_rollup_counts_the_pool_once(self, session, pool):
+        resource, _, _ = pool
+        result = self._invoke(session, '--format', 'json', 'allocations', '--resource', resource,
+                              '--total-projects', '--active-at', '2026-06-01')
+        data = json.loads(result.output)
+        assert data['roots_only'] is True
+        (row,) = data['rows']
+        assert (row['count'], row['total_amount']) == (1, 1000.0)
+        assert row['annualized_rate'] == pytest.approx(1000.0)
+
+    def test_listing_marks_members_and_totals_roots(self, session, pool):
+        resource, root, members = pool
+        result = self._invoke(session, 'allocations', '--resource', resource, '--active-at', '2026-06-01')
+        assert result.exit_code == 0
+        member_line = next(line for line in result.output.splitlines() if members[0].projcode in line)
+        assert f'↳ {root.projcode}' in member_line
+        assert 'Grand Total (roots only; 2 sub-project rows not summed): 1 allocation, 1,000' in result.output
+
+    def test_roots_only_hides_members(self, session, pool):
+        resource, root, _ = pool
+        result = self._invoke(session, '--format', 'json', 'allocations', '--resource', resource,
+                              '--roots-only', '--active-at', '2026-06-01')
+        assert [r['projcode'] for r in json.loads(result.output)['rows']] == [root.projcode]
+
+    def test_member_used_is_its_own(self, session, pool):
+        resource, root, members = pool
+        result = self._invoke(session, 'allocations', '--resource', resource, '--show-usage',
+                              '--active-at', '2026-06-01')
+        assert result.exit_code == 0
+        def used(projcode):     # the cell after Allocated (1,000)
+            tokens = next(line for line in result.output.splitlines() if projcode in line.split()).split()
+            return tokens[tokens.index('1,000') + 1]
+
+        assert used(members[0].projcode) == '30'     # own, not the pool's 100
+        assert used(root.projcode) == '100'          # the root row carries the pool
+        assert 'Used is the member\'s own' in result.output
