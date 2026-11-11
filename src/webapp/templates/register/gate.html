@@ -16,6 +16,7 @@
 {% block content %}
 {% block heading %}
 <h1>{% if invite %}Before you finish your request{% else %}Before you request an account{% endif %}</h1>
+{% include 'register/_request_pointer.html' %}
 <p class="register-lede">
     NSF NCAR HPC systems are shared federal research resources. Read and accept
     the terms of use to continue.

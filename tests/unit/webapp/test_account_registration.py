@@ -890,3 +890,37 @@ class TestRateLimits:
         from webapp.config import ProductionConfig
         if 'RATELIMIT_REGISTER_GLOBAL' not in os.environ:
             assert ProductionConfig.RATELIMIT_REGISTER_GLOBAL == '10 per hour; 30 per day'
+
+
+POINTER = 'Applying for a new project?'
+
+
+@pytest.fixture
+def request_open(monkeypatch):
+    """The /request visitor lever on, as the shared predicate reads it."""
+    from dataclasses import replace
+    from sam.integration.xras_api.config import XrasApiConfig
+    config = replace(XrasApiConfig(enabled=True, write_enabled=True, api_key='k'),
+                     submit_enabled=True, submit_anonymous_enabled=True,
+                     submit_action_types=frozenset({'New'}))
+    monkeypatch.setattr('webapp.utils.xras.interactive_config', lambda: config)
+
+
+class TestTheRequestPointer:
+
+    def test_the_form_points_a_project_lead_to_request(self, client, request_open):
+        html = client.get('/register/').get_data(as_text=True)
+        assert POINTER in html and 'href="/request/"' in html
+
+    def test_the_gate_points_there_too(self, client, app, request_open, monkeypatch):
+        monkeypatch.setitem(app.config, 'ACCOUNT_REGISTRATION_GATE_ENABLED', True)
+        html = client.get('/register/').get_data(as_text=True)
+        assert 'name="accept"' in html and POINTER in html
+
+    def test_no_pointer_while_request_is_closed(self, client):
+        assert POINTER not in client.get('/register/').get_data(as_text=True)
+
+    def test_no_pointer_on_an_event_page(self, client, request_open, committed_event):
+        code, _ = committed_event
+        html = client.get(f'/register/{code}').get_data(as_text=True)
+        assert 'name="email"' in html and POINTER not in html

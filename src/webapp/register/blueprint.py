@@ -28,6 +28,7 @@ from webapp.extensions import db
 from webapp.limiter import limiter as _rate_limit
 from webapp.utils import human_check
 from webapp.utils.htmx import institution_options, read_flag
+from webapp.utils.nav import visitor_request_url
 from webapp.utils.notify import get_notifier
 
 from . import eula, tokens
@@ -68,6 +69,7 @@ def _render_form(event=None, *, form=None, errors=(), field_errors=None, locked_
                            event_options=[] if locked_code else _event_options(),
                            form_action=url_for('register.submit'),
                            institutions_url=url_for('register.institutions_fragment'),
+                           request_url=None if event else visitor_request_url(),
                            **person_form_context())
 
 
@@ -85,7 +87,8 @@ def _render_gate(event=None, *, locked_code=None, form=None, errors=(), field_er
                            field_errors=field_errors or {},
                            accept_url=url_for('register.accept'),
                            terms_url=url_for('register.terms'),
-                           eula_html=eula.eula_html())
+                           eula_html=eula.eula_html(),
+                           request_url=None if event else visitor_request_url())
 
 
 @bp.route('/', strict_slashes=False)

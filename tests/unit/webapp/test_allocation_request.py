@@ -325,6 +325,19 @@ class TestTheVisitorsRequest:
         assert f'hx-get="/request/draft/{token}/form"' in html and 'X-CSRFToken' in html
         assert 'js/submit-gate.js' in html, 'the review needs the gate and busy handlers'
 
+    def test_requests_own_pages_carry_no_pointer_to_itself(self, client, app, visitor,
+                                                            monkeypatch):
+        from webapp.register import allocation_request
+        config = allocation_request.interactive_config()   # the visitor lever, armed
+        monkeypatch.setattr('webapp.utils.xras.interactive_config', lambda: config)
+        person = client.get('/request/start/777001').get_data(as_text=True)
+        monkeypatch.setitem(app.config, 'ACCOUNT_REGISTRATION_GATE_ENABLED', True)
+        with client.session_transaction() as sess:
+            sess.clear()
+        gate = client.get('/request/start/777001').get_data(as_text=True)
+        assert 'name="email"' in person and 'name="accept"' in gate
+        assert 'Applying for a new project?' not in person + gate
+
     def test_page_one_fixes_the_opportunity_and_names_no_admin(self, client, confirmed):
         _, token, _, _ = confirmed
         html = client.get(f'/request/draft/{token}/form').get_data(as_text=True)
