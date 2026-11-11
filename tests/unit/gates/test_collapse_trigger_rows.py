@@ -205,3 +205,36 @@ def test_scan_is_not_vacuous():
         f'tree — the scan has probably stopped matching. Found: '
         f'{[f"{t}:{n}" for t, n, _ in rows]}'
     )
+
+
+_ANY_OPEN = re.compile(r'<[a-z][a-z0-9]*\b[^>]*>', re.S)
+_CLASS = re.compile(r'\bclass="([^"]*)"')
+_PERSIST_KEY = re.compile(r'\bid=|data-collapse-persist-id=|data-no-persist')
+
+
+def _collapse_elements():
+    """Yield (template, line, tag) for every element whose class list holds `collapse`."""
+    for path in sorted(TEMPLATE_ROOT.rglob('*.html')):
+        raw = _JINJA_COMMENT.sub(lambda m: re.sub(r'[^\n]', ' ', m.group(0)), path.read_text())
+        flat = _JINJA_SPAN.sub(lambda m: ' ' * len(m.group(0)), raw)  # `collapse{{ ' show' }}`
+        for m in _ANY_OPEN.finditer(flat):
+            cls = _CLASS.search(m.group(0))
+            if cls and 'collapse' in cls.group(1).split():
+                line = raw[:m.start()].count('\n') + 1
+                yield str(path.relative_to(TEMPLATE_ROOT)), line, raw[m.start():m.end()]
+
+
+def test_every_collapse_has_a_persist_key():
+    """nav-view-persistence.js remembers an open collapse by its id or group key.
+
+    A collapse with neither reopens closed after every card reload: the Derecho
+    fair-share rows did, after each override Save (sweep 39).
+    """
+    elements = list(_collapse_elements())
+    assert len(elements) >= 30, f'only {len(elements)} collapse elements found; the scan stopped matching'
+    offenders = [f'{t}:{n}  {tag[:90]}' for t, n, tag in elements if not _PERSIST_KEY.search(tag)]
+    assert not offenders, (
+        'A collapse has no id, so its open state is lost on every reload. Give it an id, '
+        'data-collapse-persist-id="<group>" when several rows open together, or '
+        'data-no-persist on purpose.\n  ' + '\n  '.join(offenders)
+    )
