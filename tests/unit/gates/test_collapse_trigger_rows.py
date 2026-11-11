@@ -209,7 +209,7 @@ def test_scan_is_not_vacuous():
 
 _ANY_OPEN = re.compile(r'<[a-z][a-z0-9]*\b[^>]*>', re.S)
 _CLASS = re.compile(r'\bclass="([^"]*)"')
-_PERSIST_KEY = re.compile(r'\bid=|data-collapse-persist-id=|data-no-persist')
+_PERSIST_KEY = re.compile(r'(?<![\w-])id=|data-collapse-persist-id=|data-no-persist')  # not data-x-id=
 
 
 def _collapse_elements():
