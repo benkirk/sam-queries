@@ -5,6 +5,7 @@
  *
  *  1. Tab selections  — key: "tab:<tablistId>"    value: "#pane-id"
  *  2. Collapse state  — key: "collapse:<id>"      value: "1"
+ *     (rows that open as a group share data-collapse-persist-id instead)
  *  3. Chart selectors — key: "chart:<id>"         value: JSON params
  *     …and settings shared across surfaces (the owner dimension, each
  *     metric family) in one bucket: "chart:__shared__"
@@ -199,33 +200,36 @@
 
     var COLLAPSE_PREFIX = 'collapse:';
 
-    // Collapses with `data-no-persist` opt out of restore-on-reload — for
-    // drawers whose contents are expensive to fetch (e.g. the jobs plugin
-    // drill-down), where re-firing the underlying hx-trigger on every
-    // page load is the wrong default. Honored by all three handlers so
-    // existing localStorage entries stay dormant and no new ones are
-    // written.
+    // `data-no-persist` opts a collapse out: a drawer expensive to fetch (the
+    // jobs drill-down) must not re-fire its hx-trigger on every page load.
+
+    /** The storage key for a collapse: its group key, else its id; null opts out. */
+    function collapseKey(el) {
+        if (el.hasAttribute('data-no-persist')) return null;
+        return el.dataset.collapsePersistId || el.id || null;
+    }
 
     /** Save expanded state when a collapse opens. */
     function saveCollapse(event) {
-        var el = event.target;
-        if (!el.id || el.hasAttribute('data-no-persist')) return;
-        try { localStorage.setItem(COLLAPSE_PREFIX + el.id, '1'); } catch (_) {}
+        var key = collapseKey(event.target);
+        if (!key) return;
+        try { localStorage.setItem(COLLAPSE_PREFIX + key, '1'); } catch (_) {}
     }
 
     /** Clear saved state when a collapse closes. */
     function clearCollapse(event) {
-        var el = event.target;
-        if (!el.id || el.hasAttribute('data-no-persist')) return;
-        try { localStorage.removeItem(COLLAPSE_PREFIX + el.id); } catch (_) {}
+        var key = collapseKey(event.target);
+        if (!key) return;
+        try { localStorage.removeItem(COLLAPSE_PREFIX + key); } catch (_) {}
     }
 
     /** Restore saved collapse state within a root element. */
     function restoreCollapses(root) {
-        root.querySelectorAll('.collapse[id]').forEach(function (el) {
-            if (el.hasAttribute('data-no-persist')) return;
+        root.querySelectorAll('.collapse[id], .collapse[data-collapse-persist-id]').forEach(function (el) {
+            var key = collapseKey(el);
+            if (!key) return;
             var saved = null;
-            try { saved = localStorage.getItem(COLLAPSE_PREFIX + el.id); } catch (_) {}
+            try { saved = localStorage.getItem(COLLAPSE_PREFIX + key); } catch (_) {}
             if (!saved) return;
             if (!el.classList.contains('show')) {
                 try { new bootstrap.Collapse(el, { toggle: false }).show(); } catch (_) {}

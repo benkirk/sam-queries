@@ -29,6 +29,7 @@ from _paths import TESTS
 
 
 URL = '/allocations/xras_accounts_fragment'
+ROW_TARGET = 'data-bs-target="#xras-acct-placeholder38-user-00038"'
 
 
 def _recent_submit_date():
@@ -204,7 +205,7 @@ class TestTheRowStillExpands:
 
         # The toggle did not vanish, it multiplied: the chevron's own span
         # plus every cell except the one holding the link.
-        assert body.count('data-bs-target="#xras-acct-1"') >= 5, \
+        assert body.count(ROW_TARGET) >= 5, \
             'the row lost its expand behaviour entirely' 
 
     def test_the_chevron_sits_in_its_own_trigger(self, auth_client,
@@ -215,8 +216,15 @@ class TestTheRowStillExpands:
         body = auth_client.get(URL).get_data(as_text=True)
         cell = body.split('<td class="font-monospace text-nowrap">', 1)[1].split('</td>', 1)[0]
         button = cell.split('<button', 1)[1].split('</button>', 1)[0]
-        assert 'data-bs-target="#xras-acct-1"' in button
+        assert ROW_TARGET in button
         assert 'collapse-icon' in button
+
+    def test_the_drawer_is_keyed_on_the_person_not_the_position(
+            self, auth_client, committed_worklist_action):
+        """A positional id reopened a neighbor's drawer after a sort (sweep 39)."""
+        for qs in ('', '?sort=waiting&dir=asc'):
+            body = auth_client.get(URL + qs).get_data(as_text=True)
+            assert '<tr class="collapse" id="xras-acct-placeholder38-user-00038">' in body
 
 
 class TestAccess:

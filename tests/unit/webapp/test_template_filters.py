@@ -1,7 +1,7 @@
 """The webapp's markup-emitting Jinja filters."""
 from markupsafe import Markup
 
-from webapp.utils.template_filters import path_breaks
+from webapp.utils.template_filters import dom_id, path_breaks
 
 
 class TestPathBreaks:
@@ -22,3 +22,16 @@ class TestPathBreaks:
     def test_registered_on_the_app_and_not_double_escaped(self, app):
         tpl = app.jinja_env.from_string('<code>{{ p | path_breaks }}</code>')
         assert tpl.render(p='/gpfs/csfs1/a&b') == '<code>/<wbr>gpfs/<wbr>csfs1/<wbr>a&amp;b</code>'
+
+
+class TestDomId:
+    def test_selector_characters_become_underscores(self):
+        assert dom_id('j.doe') == 'j_doe'
+        assert dom_id('a b#c:d') == 'a_b_c_d'
+
+    def test_an_id_safe_value_is_unchanged(self):
+        assert dom_id('UCUB0208') == 'UCUB0208'
+        assert dom_id('ben_kirk-2') == 'ben_kirk-2'
+
+    def test_registered_on_the_app(self, app):
+        assert app.jinja_env.from_string("{{ 'x.y' | dom_id }}").render() == 'x_y'
