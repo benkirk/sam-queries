@@ -368,7 +368,7 @@ class TestAllocationTrees:
 
         assert used(members[0].projcode) == '30'     # own, not the pool's 100
         assert used(root.projcode) == '100'          # the root row carries the pool
-        assert 'Used is the member\'s own' in result.output
+        assert "dim figures are the pool's; Used is its own" in result.output
 
     def test_piped_table_keeps_every_column_whole(self, session, pool, monkeypatch):
         monkeypatch.setenv('COLUMNS', '40')

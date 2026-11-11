@@ -175,8 +175,7 @@ def display_allocation_summary(ctx: Context, results: List[Dict], show_usage: bo
         ctx.console.print(f"  Annualized Rate: {fmt.number(total_annual_rate)}")
 
     if any(r.get('is_inheriting') for r in results):
-        own = ", Used is the member's own" if show_usage else ""
-        ctx.console.print(f"  ↳ dim figures on a shared-pool member are its root's pool{own}",
-                          style="dim italic")
+        own = "; Used is its own" if show_usage else ""
+        ctx.console.print(f"  ↳ shared-pool member: dim figures are the pool's{own}", style="dim italic")
     if has_annual_rate and any(row.get('is_open_ended', False) for row in results):
         ctx.console.print("  * = Open-ended allocation (1-year period from now assumed)", style="dim italic")
