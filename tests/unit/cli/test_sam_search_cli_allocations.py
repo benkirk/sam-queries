@@ -76,6 +76,9 @@ class TestAllocationQueries:
         assert '--allocation-type' in result.output
         assert '--project' in result.output
         assert 'comma-separated' in result.output
+        assert '--format' in result.output and '--roots-only' in result.output
+        # Click keeps each \\b example block on its own lines.
+        assert '\n      sam-search allocations --project SCSG0001\n' in result.output
 
     # ------------------------------------------------------------------
     # Default and single-dimension grouping
@@ -332,8 +335,8 @@ class TestAllocationTrees:
 
     def test_rollup_counts_the_pool_once(self, session, pool):
         resource, _, _ = pool
-        result = self._invoke(session, '--format', 'json', 'allocations', '--resource', resource,
-                              '--total-projects', '--active-at', '2026-06-01')
+        result = self._invoke(session, 'allocations', '--resource', resource,
+                              '--total-projects', '--active-at', '2026-06-01', '--format', 'json')
         data = json.loads(result.output)
         assert data['roots_only'] is True
         (row,) = data['rows']
