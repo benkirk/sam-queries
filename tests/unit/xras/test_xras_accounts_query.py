@@ -480,17 +480,22 @@ class TestFeedA:
         assert new.xras_action_log_id in ids
         assert old.xras_action_log_id not in ids
 
-    def test_a_recheck_row_supersedes_nothing(self, session,
-                                             no_committed_placeholder):
+    def test_a_recheck_row_supersedes_nothing_and_is_no_record(
+            self, session, no_committed_placeholder):
+        """The re-check copies the roster and is dated at the click: as a record of
+        its own it put the refused push back inside any window."""
         post = self._log_row(session, PLACEHOLDER_FIXTURE, status='failed',
                              action_id=990388012, request_number='NCAR4227')
-        self._log_row(session, PLACEHOLDER_FIXTURE, status='rechecked',
-                      action_id=990388012, request_number='NCAR4227',
-                      source_action_id=post.xras_action_log_id,
-                      received_time=datetime(2026, 8, 2))
+        recheck = self._log_row(session, PLACEHOLDER_FIXTURE, status='rechecked',
+                                action_id=990388012, request_number='NCAR4227',
+                                source_action_id=post.xras_action_log_id,
+                                received_time=datetime(2026, 8, 2))
         ids = {r.ref.action_log_id
                for r in records_from_action_log(session, validate=False)}
         assert post.xras_action_log_id in ids
+        assert recheck.xras_action_log_id not in ids
+        assert not records_from_action_log(session, validate=False,
+                                           since=datetime(2026, 8, 2))
 
     def test_a_merged_away_identity_is_history_not_work(
             self, session, no_committed_placeholder):

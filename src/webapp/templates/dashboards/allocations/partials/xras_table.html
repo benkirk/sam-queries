@@ -117,7 +117,7 @@
                     <button type="button" class="btn btn-row"
                             title="Re-check: would this succeed if posted now?" aria-label="Re-check: would this succeed if posted now?"
                             hx-post="{{ url_for('allocations_dashboard.xras_recheck', action_id=r.action_log_id) }}"
-                            hx-confirm="Re-check action #{{ r.action_log_id }} against today's code and data?&#10;&#10;Nothing is applied and XRAS is not contacted — this only answers whether a resend would succeed. A new linked audit row records the verdict."
+                            hx-confirm="Re-check log #{{ r.action_log_id }} against today's code and data?&#10;&#10;Nothing is applied and XRAS is not contacted — this only answers whether a resend would succeed. A new linked audit row records the verdict."
                             hx-swap="none">
                         <i class="fa-solid fa-clipboard-check" aria-hidden="true"></i>
                     </button>
@@ -128,7 +128,8 @@
             {% if r.errors %}
             <tr class="collapse" id="{{ errors_id }}">
                 <td colspan="7" class="bg-body-tertiary">
-                    {# Verbatim and in order: what XRAS was told in the 422 body. #}
+                    {# The blockers, verbatim and in order; the 422 body also carried the
+                       ticket line and the pointers (`_refusal_reply`). #}
                     <ol class="mb-0 small">
                         {% for e in r.errors %}
                         <li><code>{{ e }}</code></li>

@@ -189,12 +189,17 @@ def _reader(monkeypatch, payload=_payload(), person=None, candidates=(),
     return client
 
 
+def _posted(push_state):
+    """A real ``seen_in_log`` stamp always carries the row's status; the shorthand is a landed one."""
+    return {'status': 'processed', 'log_id': 7} if push_state == 'seen_in_log' else None
+
+
 def _publish_with_verdict(payload, *, push_state, status='rechecked'):
     verdict = {'status': status, 'would_succeed': status == 'rechecked',
                'messages': [], 'gaps': [], 'service': 'supplement',
                'stage': 'Approved', 'action_status': 'Approved',
                'request_status': 'Approved', 'push_state': push_state,
-               'push_detail': None, 'resolved': None,
+               'push_detail': _posted(push_state), 'resolved': None,
                'checked_at': '2026-08-24T09:00:00'}
     xras_cache.store_requests_index({
         'generated_at': datetime.now(), 'statuses': ['Approved'],

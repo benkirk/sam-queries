@@ -245,18 +245,19 @@ def display_action_detail(ctx, payload) -> None:
     table.add_row('Result projcode', text(a['projcode_result']))
     table.add_row('Posted by', text(a['remote_actor']))
     if a['processed_by']:
-        table.add_row('Replayed by', text(a['processed_by']))
+        table.add_row('Re-checked by', text(a['processed_by']))
     if a['source_action_id']:
-        table.add_row('Replay of', f"#{a['source_action_id']}")
+        table.add_row('Re-check of', f"#{a['source_action_id']}")
     if payload['rechecks']:
-        table.add_row('Replays', ', '.join(f"#{c['action_log_id']} ({c['status']})"
+        table.add_row('Re-checks', ', '.join(f"#{c['action_log_id']} ({c['status']})"
                                            for c in payload['rechecks']))
 
     ctx.console.print(Panel(table, title=f"XRAS action #{a['action_log_id']}",
                             border_style='blue'))
 
     if a['errors']:
-        # Verbatim and in order — this is what XRAS was told in the 422 body.
+        # The blockers, verbatim and in order; the 422 body also carried the ticket
+        # line and the pointers (`_refusal_reply`).
         err = Table(show_header=False, box=None, padding=(0, 1, 0, 0))
         err.add_column('n', justify='right', style='dim')
         err.add_column('message', style='red', overflow='fold')

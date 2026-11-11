@@ -191,16 +191,18 @@ class TestFilters:
         assert (with_errors, without) == (1, 1)
         assert count_recent_xras_actions(session, request_number=rn) == 2
 
-    def test_replays_only_is_tri_state(self, session):
-        rn = _unique_request_number()
-        original = _action(session, request_number=rn)
-        _action(session, source_action_id=original.xras_action_log_id,
-                status='rechecked', request_number=rn)
-        only = count_recent_xras_actions(session, replays_only=True, request_number=rn)
-        originals = count_recent_xras_actions(session, replays_only=False,
-                                              request_number=rn)
-        assert (only, originals) == (1, 1)
-        assert only + originals == count_recent_xras_actions(session, request_number=rn)
+    def test_a_request_number_finds_the_post_that_minted_it(self, session):
+        """A New's row carries the token in request_number and the projcode in
+        projcode_result; a deep link by either must find it."""
+        token, projcode = _unique_request_number(), _unique_request_number()
+        new = _action(session, status='processed', action_type='New',
+                      request_number=token, projcode_result=projcode)
+        later = _action(session, request_number=projcode)
+        by_projcode = {r['action_log_id']
+                       for r in get_recent_xras_actions(session, request_number=projcode)}
+        assert by_projcode == {new.xras_action_log_id, later.xras_action_log_id}
+        assert count_recent_xras_actions(session, request_number=token) == 1
+        assert count_recent_xras_actions(session, request_number=[token, projcode]) == 2
 
     def test_replay_of_finds_the_children_of_one_row(self, session):
         parent = _action(session)
@@ -446,6 +448,25 @@ class TestXrasActivity:
         project = make_project(session, active=False)
         _action(session, status='failed', request_number=project.projcode)
         assert _activity_row(session, project) is None
+
+    def test_a_recheck_is_never_the_latest_action(self, session):
+        """A Re-check copies the request number and is dated at the click, so without
+        the posts-only rule it demoted the New's Activate button and became the
+        activation's provenance."""
+        project = make_project(session, active=False)
+        failed = _action(session, status='failed', http_status=422,
+                         request_number=project.projcode, action_type='Supplement',
+                         received_time=datetime.now() - timedelta(days=10))
+        new = _action(session, status='processed', action_type='New',
+                      request_number='NCAR9998', projcode_result=project.projcode,
+                      received_time=datetime.now() - timedelta(days=5))
+        _action(session, status='rechecked', request_number=project.projcode,
+                action_type='Supplement', source_action_id=failed.xras_action_log_id,
+                processed_by='benkirk', received_time=datetime.now())
+        row = _activity_row(session, project)
+        assert row['action_log_id'] == new.xras_action_log_id
+        assert row['is_latest_action'] is True
+        assert get_latest_xras_action_id(session, project.project_id) == new.xras_action_log_id
 
     def test_matches_on_projcode_result_too(self, session):
         """The New path: request_number is an NCAR token, the minted projcode

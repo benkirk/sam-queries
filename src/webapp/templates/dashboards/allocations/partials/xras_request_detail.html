@@ -40,6 +40,9 @@
     {% if row and (row.activity_date or row.submit_date) %}<span>submitted {{ (row.activity_date or row.submit_date) | fmt_date }}</span>
     <span>waiting {{ waiting(row.activity_date or row.submit_date) }}</span>{% endif %}
     {% if row and row.activity_date and row.submit_date and row.activity_date != row.submit_date %}<span>created {{ row.submit_date | fmt_date }}</span>{% endif %}
+    {# Every post and re-check naming this request, on XRAS Logs (a page, so the URL can be shared). #}
+    <a href="{{ url_for('allocations_dashboard.xras', view='logs', request_number=request_number) }}"
+       title="Every post and re-check naming this request, on XRAS Logs"><i class="fa-solid fa-receipt" aria-hidden="true"></i> log</a>
 </p>
 
 {# What blocks the next push, said first: the verdict and its first reason; the full list is

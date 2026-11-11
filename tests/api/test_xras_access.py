@@ -1783,6 +1783,47 @@ class TestRecheck:
         assert action_log.by_id(second)['source_action_id'] == first
         assert action_log.by_id(second)['processed_by'] == 'mcjones'
 
+    def test_a_recheck_that_raises_closes_its_row_as_failed(
+            self, app, xras_client, action_log, dispatching_recheck):
+        """Left at `received` with no `processed_time`, the row is an in-flight post
+        to the repeat guard and refuses XRAS's next real post of the action."""
+        from webapp.api.xras.recheck import recheck_action
+
+        def broken(session, action, *, validate_only=False):
+            raise RuntimeError('boom')
+
+        dispatching_recheck.register('extend', broken)
+        self._seed(xras_client)
+        original = action_log.one()
+
+        with app.app_context(), pytest.raises(RuntimeError):
+            recheck_action(original['id'], actor='benkirk')
+
+        new, = [r for r in action_log.rows() if r['id'] != original['id']]
+        assert new['status'] == 'failed' and new['http_status'] == 500
+        assert new['outcome_reason'] == 'handler raised: RuntimeError'
+        assert new['processed_time'] is not None
+
+    def test_a_recheck_row_never_refuses_a_repost(self, app, xras_client, action_log):
+        """Only a post can be the earlier live post of an action."""
+        from webapp.api.xras import actions
+        from webapp.api.xras.recheck import recheck_action
+
+        self._seed(xras_client)
+        original = action_log.one()
+        with app.app_context():
+            new_id, _verdict = recheck_action(original['id'], actor='benkirk')
+            # A re-check row that crashed before its close-out, on any outcome.
+            stuck = actions._record(status='received', raw_payload=original['raw_payload'],
+                                    action_id=original['action_id'],
+                                    remote_actor='XRAS', source_action_id=original['id'])
+            assert actions._other_live_post(stuck + 1, original['action_id']) == (
+                original['id'], 'received')
+            for row_id in (new_id, stuck):
+                assert actions._other_live_post(row_id, original['action_id']) == (
+                    original['id'], 'received')
+            assert actions._other_live_post(original['id'], original['action_id']) is None
+
     def test_rechecking_a_missing_id_raises_lookup_error(self, app, action_log):
         from webapp.api.xras.recheck import recheck_action
 

@@ -53,6 +53,7 @@ def committed_action(app):
         log_id = actions._record(
             status='received', raw_payload=payload, http_status=200,
             action_type='Extension', request_number='UCUB0166',
+            action_id=990390001, request_id=990390002,
             remote_actor='samuel',
         )
 
@@ -248,6 +249,25 @@ class TestPayloadGating:
         # never asked the query layer for them, so view-source shows nothing.
         assert b'actionType' not in resp.data
         assert b'UCUB0166' in resp.data, 'non-PII metadata still renders'
+
+
+class TestTheLogRowCanBePointedAt:
+    """A row is named "log #N" on every surface; a URL opens the Logs card filtered to a request."""
+
+    def test_the_details_modal_names_the_log_row_and_the_xras_ids(self, auth_client,
+                                                                   committed_action):
+        body = auth_client.get(
+            f'/allocations/xras_action_details/{committed_action}').get_data(as_text=True)
+        assert 'Log #:' in body and 'Action ID' not in body
+        assert 'action <code>990390001</code>' in body
+        assert 'request <code>990390002</code>' in body
+
+    def test_the_deep_link_prefills_the_request_filter(self, auth_client):
+        body = auth_client.get(
+            '/allocations/xras?view=logs&request_number=UCUB0166').get_data(as_text=True)
+        assert 'name="request_number" value="UCUB0166"' in body
+        assert 'name="request_number" value=""' in auth_client.get(
+            '/allocations/xras').get_data(as_text=True)
 
 
 class TestTheRequestNumberOpensTheRequest:

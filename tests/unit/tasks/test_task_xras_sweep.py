@@ -32,6 +32,7 @@ from scheduling.schedules import (DEFAULT_TZ, AnyOf, BusinessHourly, Hourly, occ
 from scheduling.tasks import xras_sweep as mod
 
 from factories import make_xras_opportunity_mapping
+from sam.queries.xras_actions import LANDED_LOG_STATUSES, XRAS_ACTION_STATUSES
 
 
 # WARNING: One worker at a time for this file. The opportunity-mapping tests insert
@@ -672,6 +673,19 @@ class TestEnumeration:
         assert result.detail['pages'] == 1
         assert result.detail['unavailable_errors'] == 1
         assert result.state == 'partial'
+
+
+class TestOneLandedRule:
+    """The sweep's "applied" and the queue's "owed" invert each other on every status."""
+
+    @pytest.mark.parametrize('status', XRAS_ACTION_STATUSES + ('stale-unknown',))
+    def test_applied_and_owed_push_agree(self, status):
+        from sam.queries.xras_requests import owes_push
+        preflight = {'push_state': 'seen_in_log',
+                     'push_detail': {'status': status, 'log_id': 1}}
+        action = {'action_status': 'Approved', 'preflight': preflight}
+        assert mod._applied(preflight) == (status in LANDED_LOG_STATUSES)
+        assert owes_push({'actions': [action]}) == (status not in LANDED_LOG_STATUSES)
 
 
 class TestPendingPush:

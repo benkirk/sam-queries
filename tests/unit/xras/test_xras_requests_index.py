@@ -582,8 +582,16 @@ class TestIsPendingWork:
 
     def test_a_posted_or_applied_action_is_not_pending(self):
         from sam.queries.xras_requests import is_pending_work
-        for push_state in ('seen_in_log', 'applied_inferred'):
-            assert not is_pending_work(self._entry(self._action('Approved', push_state)))
+        assert not is_pending_work(self._entry(self._action('Approved', 'applied_inferred')))
+        assert not is_pending_work(self._entry(self._action(
+            'Approved', 'seen_in_log', push_detail={'status': 'processed', 'log_id': 9})))
+
+    def test_a_stamp_with_no_landed_status_is_still_owed(self):
+        """The rule is positive: only a landed status closes the push."""
+        from sam.queries.xras_requests import is_pending_work
+        assert is_pending_work(self._entry(self._action('Approved', 'seen_in_log')))
+        assert is_pending_work(self._entry(self._action(
+            'Approved', 'seen_in_log', push_detail={'status': 'duplicate', 'log_id': 9})))
 
     def test_an_action_outside_the_sweep_window_is_not_recent_work(self):
         from sam.queries.xras_requests import is_pending_work

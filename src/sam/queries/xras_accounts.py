@@ -290,7 +290,9 @@ def records_from_action_log(session: Session, *,
 
     from sam.schemas.forms import XrasActionSchema
 
-    query = session.query(XrasActionLog)
+    # Posts only: a Re-check row re-dates the roster it copied to the day of the click,
+    # which would put a refused push of any age back inside *since*.
+    query = session.query(XrasActionLog).filter(XrasActionLog.is_post)
     if statuses:
         query = query.filter(XrasActionLog.status.in_(tuple(statuses)))
     if since is not None:
@@ -404,19 +406,18 @@ def _seed_found(session: Session, kind: str, wanted: set, found: dict) -> None:
 
 
 def superseded_log_ids(session: Session, rows) -> set:
-    """Log ids with a later real post (``source_action_id`` NULL) for the same action.
+    """Log ids with a later post (``is_post``) for the same action.
 
     A failed post stays ``failed`` forever, so without this the roster it named
     keeps a Pending Users row open after XRAS re-posts the action with the fixed
-    identity. Re-check rows replay a post and never supersede one.
+    identity. A Re-check never supersedes a post.
     """
     action_ids = {r.action_id for r in rows if r.action_id is not None}
     if not action_ids:
         return set()
     latest = dict(session.query(XrasActionLog.action_id,
                                 func.max(XrasActionLog.xras_action_log_id))
-                  .filter(XrasActionLog.action_id.in_(action_ids),
-                          XrasActionLog.source_action_id.is_(None))
+                  .filter(XrasActionLog.action_id.in_(action_ids), XrasActionLog.is_post)
                   .group_by(XrasActionLog.action_id).all())
     return {r.xras_action_log_id for r in rows
             if r.action_id in latest
