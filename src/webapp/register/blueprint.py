@@ -28,6 +28,7 @@ from webapp.extensions import db
 from webapp.limiter import limiter as _rate_limit
 from webapp.utils import human_check
 from webapp.utils.htmx import institution_options, read_flag
+from webapp.utils.nav import visitor_request_url
 from webapp.utils.notify import get_notifier
 
 from . import eula, tokens
@@ -39,6 +40,7 @@ from .common import (ACADEMIC_STATUSES, GATE_KEY, anon_tier as _anon_tier,  # no
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('register', __name__, url_prefix='/register')
+_NO_REASON = 'Enter a reason for the account.'
 
 @bp.before_request
 def _login_gate():
@@ -67,6 +69,7 @@ def _render_form(event=None, *, form=None, errors=(), field_errors=None, locked_
                            event_options=[] if locked_code else _event_options(),
                            form_action=url_for('register.submit'),
                            institutions_url=url_for('register.institutions_fragment'),
+                           request_url=None if event else visitor_request_url(),
                            **person_form_context())
 
 
@@ -84,7 +87,8 @@ def _render_gate(event=None, *, locked_code=None, form=None, errors=(), field_er
                            field_errors=field_errors or {},
                            accept_url=url_for('register.accept'),
                            terms_url=url_for('register.terms'),
-                           eula_html=eula.eula_html())
+                           eula_html=eula.eula_html(),
+                           request_url=None if event else visitor_request_url())
 
 
 @bp.route('/', strict_slashes=False)
@@ -150,14 +154,15 @@ def submit():
         data = RegisterForm().load(raw)
     except ValidationError as exc:
         field_errors, form_level = RegisterForm.split_errors(exc.messages)
+        if not raw.get('event_code') and not (raw.get('purpose_note') or '').strip():
+            field_errors.setdefault('purpose_note', [_NO_REASON])
         return _rerender(raw, errors=form_level, field_errors=field_errors)
 
     event, refusal = _open_event(data.get('event_code'))
     if refusal:
         return _rerender(raw, errors=[refusal])
     if event is None and not data.get('purpose_note'):
-        return _rerender(raw, field_errors={
-            'purpose_note': ['Tell us briefly what you need the account for.']})
+        return _rerender(raw, field_errors={'purpose_note': [_NO_REASON]})
     # Last before the write, so a typo elsewhere never spends the one-use token.
     human_error = human_check.verify(raw)
     if human_error:
@@ -206,28 +211,34 @@ def pending(token):
         return expired()
     if row.is_verified:
         return redirect(url_for('register.verified'))
+    return _render_pending(row, token, mail_sent=read_flag(request.args, 'sent', True))
+
+
+def _render_pending(row, token, *, mail_sent, form=None, errors=()):
     return render_template('register/pending.html', row=row, token=token,
-                           mail_sent=read_flag(request.args, 'sent', True),
-                           errors=[], form={})
+                           mail_sent=mail_sent, form=form or {}, errors=list(errors),
+                           expires_hours=tokens.verify_ttl_hours(),
+                           step={'num': 3, 'of': 3, 'label': 'Confirm your email'})
 
 
 @bp.route('/pending/<token>', methods=['POST'])
 @_rate_limit.limiter.limit('10 per hour', key_func=lambda: f'verify:{request.view_args.get("token", "")[:64]}',
                            methods=['POST'])
 def pending_code(token):
-    """The typed six-digit code."""
+    """The typed six-digit code; an address the help desk already confirmed goes straight on."""
     row = _row_for_page(token)
     if row is None:
         return expired()
+    if row.is_verified:
+        return redirect(url_for('register.verified'))
+    mail_sent = read_flag(request.form, 'sent', True)
     try:
         data = VerifyCodeForm().load(request.form)
     except ValidationError:
-        return render_template('register/pending.html', row=row, token=token,
-                               mail_sent=True, form=request.form,
+        return _render_pending(row, token, mail_sent=mail_sent, form=request.form,
                                errors=[VerifyCodeForm.BAD_FORMAT])
     if not tokens.code_matches(row, data['code']):
-        return render_template('register/pending.html', row=row, token=token,
-                               mail_sent=True, form=request.form,
+        return _render_pending(row, token, mail_sent=mail_sent, form=request.form,
                                errors=[VerifyCodeForm.WRONG])
     with management_transaction(db.session):
         row.mark_verified('self')

@@ -1,4 +1,4 @@
-"""Which columns the browser never selects, filters, or sorts.
+"""Which columns the browser never selects, filters, or sorts, and the audit log masks.
 
 Name rules catch secrets by shape (``password``, ``*_hash``, ``*_token``,
 ``api_key``...); ``explicit`` catches the rest. A redacted column must be

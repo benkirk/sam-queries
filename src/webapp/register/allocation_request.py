@@ -263,13 +263,18 @@ def _confirm(row, opportunity_id):
 @bp.route('/pending/<token>')
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def pending(token):
-    row, opportunity_id = _row(token, tokens.SALT_REQUEST_PAGE, tokens.verify_ttl_seconds())
+    row, opportunity_id = _row(token, tokens.SALT_REQUEST_PAGE, tokens.pending_page_ttl_seconds())
     if row is None:
         return _expired()
     if row.is_verified:
         return _to_draft(row, opportunity_id)
+    return _render_pending(row, token, mail_sent=read_flag(request.args, 'sent', True))
+
+
+def _render_pending(row, token, *, mail_sent, form=None, errors=()):
     return render_template('register/request_pending.html', row=row, token=token,
-                           mail_sent=read_flag(request.args, 'sent', True), errors=[], form={},
+                           mail_sent=mail_sent, form=form or {}, errors=list(errors),
+                           expires_hours=tokens.verify_ttl_hours(),
                            code_action=url_for('allocation_request.pending_code', token=token),
                            again_url=url_for('allocation_request.overview'),
                            again_label='start again', step=_step(4, 'Confirm your email'))
@@ -279,21 +284,21 @@ def pending(token):
 @_rate_limit.limiter.limit('10 per hour', methods=['POST'],
                            key_func=lambda: f'request-verify:{request.view_args.get("token", "")[:64]}')
 def pending_code(token):
-    row, opportunity_id = _row(token, tokens.SALT_REQUEST_PAGE, tokens.verify_ttl_seconds())
+    """The typed six-digit code; an address the help desk already confirmed goes straight on."""
+    row, opportunity_id = _row(token, tokens.SALT_REQUEST_PAGE, tokens.pending_page_ttl_seconds())
     if row is None:
         return _expired()
-    context = dict(row=row, token=token, mail_sent=True, form=request.form,
-                   code_action=url_for('allocation_request.pending_code', token=token),
-                   again_url=url_for('allocation_request.overview'), again_label='start again',
-                   step=_step(4, 'Confirm your email'))
+    if row.is_verified:
+        return _to_draft(row, opportunity_id)
+    mail_sent = read_flag(request.form, 'sent', True)
     try:
         data = VerifyCodeForm().load(request.form)
     except ValidationError:
-        return render_template('register/request_pending.html',
-                               errors=[VerifyCodeForm.BAD_FORMAT], **context)
+        return _render_pending(row, token, mail_sent=mail_sent, form=request.form,
+                               errors=[VerifyCodeForm.BAD_FORMAT])
     if not tokens.code_matches(row, data['code']):
-        return render_template('register/request_pending.html',
-                               errors=[VerifyCodeForm.WRONG], **context)
+        return _render_pending(row, token, mail_sent=mail_sent, form=request.form,
+                               errors=[VerifyCodeForm.WRONG])
     return _confirm(row, opportunity_id)
 
 

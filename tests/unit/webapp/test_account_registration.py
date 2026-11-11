@@ -253,7 +253,7 @@ class TestTheAcceptGate:
         assert accepted.status_code == 302 and accepted.headers['Location'].endswith('/register/')
         # The session now carries the marker, so the open form renders...
         form_html = client.get('/register/').get_data(as_text=True)
-        assert 'name="email"' in form_html and 'Send me the confirmation' in form_html
+        assert 'name="email"' in form_html and 'Email me a confirmation code' in form_html
         # ...and the write goes through.
         try:
             resp = client.post('/register/', data={**GOOD, 'email': email})
@@ -397,13 +397,30 @@ class TestSubmit:
         data.pop('purpose_note')
         resp = client.post('/register/', data=data)
         assert resp.status_code == 200
-        assert 'what you need the account for' in resp.get_data(as_text=True)
+        assert 'Enter a reason for the account.' in resp.get_data(as_text=True)
 
-    def test_the_reason_label_is_not_marked_optional(self, client):
+    def test_an_empty_form_flags_the_reason_on_the_first_pass(self, client, null_notifier):
+        html = client.post('/register/', data={}).get_data(as_text=True)
+        assert 'Missing data for required field' in html
+        assert 'Enter a reason for the account.' in html
+
+    @staticmethod
+    def _reason_label(client):
         html = client.get('/register/').get_data(as_text=True)
         label = html[html.index('for="purpose_note"'):]
-        assert '(optional)' not in label[:label.index('</label>')]
-        assert 'new collaborator to be added on project' in html
+        return label[:label.index('</label>')]
+
+    def test_the_reason_is_required_when_no_event_is_listed(self, client, monkeypatch):
+        monkeypatch.setattr('webapp.register.blueprint._event_options', lambda: [])
+        label = self._reason_label(client)
+        assert 'Reason for the account' in label and 'text-danger' in label
+        assert '(optional)' not in label
+
+    def test_the_reason_names_its_exception_when_events_are_listed(self, client, monkeypatch):
+        monkeypatch.setattr('webapp.register.blueprint._event_options',
+                            lambda: [('WKSP01', 'Workshop (WKSP01)')])
+        label = self._reason_label(client)
+        assert '(unless you chose an event)' in label and 'text-danger' not in label
 
     def test_an_event_code_needs_no_reason(self, client, app, null_notifier, committed_event):
         from sam.core.account_requests import AccountRequest
@@ -518,7 +535,7 @@ class TestVerification:
             token = tokens.page_token(row_id)
         resp = client.get(f'/register/verify/{token}')
         assert resp.status_code == 200
-        assert 'no longer valid' in resp.get_data(as_text=True)
+        assert 'is not valid' in resp.get_data(as_text=True)
         assert _row(app, row_id)['verified_at'] is None
 
     def test_a_tampered_or_expired_link_is_refused_at_200(self, client, app,
@@ -532,7 +549,7 @@ class TestVerification:
         # token minted this second; a negative TTL is what forces expiry.
         monkeypatch.setitem(app.config, 'ACCOUNT_VERIFY_TTL_HOURS', -1)
         resp = client.get(f'/register/verify/{token}')
-        assert 'no longer valid' in resp.get_data(as_text=True)
+        assert 'is not valid' in resp.get_data(as_text=True)
         assert _row(app, row_id)['verified_at'] is None
 
     def test_the_code_path(self, client, app, committed_registration):
@@ -557,6 +574,66 @@ class TestVerification:
         client.get(f'/register/verify/{link}')
         resp = client.get(f'/register/pending/{page}')
         assert resp.status_code == 302 and resp.headers['Location'].endswith('/register/verified')
+
+    def test_confirm_after_an_operators_verify_goes_on(self, client, app, committed_registration):
+        """Mail off (samuel-dev): the help desk verifies, the visitor clicks Confirm with no code."""
+        from sam.core.account_requests import AccountRequest
+        from sam.manage import management_transaction
+        from webapp.extensions import db
+        from webapp.register import tokens
+        row_id, _ = committed_registration
+        with app.app_context():
+            page = tokens.page_token(row_id)
+            with management_transaction(db.session):
+                db.session.get(AccountRequest, row_id).mark_verified('benkirk')
+        resp = client.post(f'/register/pending/{page}', data={'code': ''})
+        assert resp.status_code == 302 and resp.headers['Location'].endswith('/register/verified')
+
+    def test_the_page_outlives_the_code_for_a_late_operator_verify(self, client, app,
+                                                                   committed_registration, monkeypatch):
+        """The help desk vouches after the one-hour code clock; Continue still goes on."""
+        from sam.core.account_requests import AccountRequest
+        from sam.manage import management_transaction
+        from webapp.extensions import db
+        from webapp.register import tokens
+        row_id, _ = committed_registration
+        with app.app_context():
+            page, link = tokens.page_token(row_id), tokens.link_token(row_id)
+        monkeypatch.setitem(app.config, 'ACCOUNT_VERIFY_TTL_HOURS', -1)
+        assert 'is not valid' in client.get(f'/register/verify/{link}').get_data(as_text=True)
+        assert 'name="code"' in client.get(f'/register/pending/{page}').get_data(as_text=True)
+        with app.app_context():
+            with management_transaction(db.session):
+                db.session.get(AccountRequest, row_id).mark_verified('benkirk')
+        resp = client.get(f'/register/pending/{page}?sent=0')
+        assert resp.status_code == 302 and resp.headers['Location'].endswith('/register/verified')
+        # The page clock is its own lever.
+        monkeypatch.setitem(app.config, 'ACCOUNT_PENDING_PAGE_TTL_HOURS', -1)
+        assert 'is not valid' in client.get(f'/register/pending/{page}').get_data(as_text=True)
+
+    def test_mail_off_offers_continue_not_a_code_box(self, client, app, committed_registration):
+        from webapp.register import tokens
+        row_id, _ = committed_registration
+        with app.app_context():
+            page = tokens.page_token(row_id)
+        html = client.get(f'/register/pending/{page}?sent=0').get_data(as_text=True)
+        assert 'Mail delivery is switched off' in html and 'choose Continue' in html
+        assert f'href="/register/pending/{page}?sent=0"' in html
+        assert 'name="code"' not in html
+        assert 'Step 3 of 3' in html
+
+    def test_a_wrong_code_keeps_the_mail_on_page(self, client, app, committed_registration):
+        from webapp.register import tokens
+        row_id, _ = committed_registration
+        with app.app_context():
+            page = tokens.page_token(row_id)
+        html = client.get(f'/register/pending/{page}').get_data(as_text=True)
+        from sam.fmt import plural
+        hours = plural(app.config['ACCOUNT_VERIFY_TTL_HOURS'], 'hour')
+        assert 'name="sent" value="1"' in html and f'expire after {hours}.' in html
+        wrong = client.post(f'/register/pending/{page}', data={'code': '000000', 'sent': '1'})
+        text = wrong.get_data(as_text=True)
+        assert 'We emailed a link' in text and 'wrong or has expired' in text
 
 
 @pytest.fixture
@@ -813,3 +890,37 @@ class TestRateLimits:
         from webapp.config import ProductionConfig
         if 'RATELIMIT_REGISTER_GLOBAL' not in os.environ:
             assert ProductionConfig.RATELIMIT_REGISTER_GLOBAL == '10 per hour; 30 per day'
+
+
+POINTER = 'Applying for a new project?'
+
+
+@pytest.fixture
+def request_open(monkeypatch):
+    """The /request visitor lever on, as the shared predicate reads it."""
+    from dataclasses import replace
+    from sam.integration.xras_api.config import XrasApiConfig
+    config = replace(XrasApiConfig(enabled=True, write_enabled=True, api_key='k'),
+                     submit_enabled=True, submit_anonymous_enabled=True,
+                     submit_action_types=frozenset({'New'}))
+    monkeypatch.setattr('webapp.utils.xras.interactive_config', lambda: config)
+
+
+class TestTheRequestPointer:
+
+    def test_the_form_points_a_project_lead_to_request(self, client, request_open):
+        html = client.get('/register/').get_data(as_text=True)
+        assert POINTER in html and 'href="/request/"' in html
+
+    def test_the_gate_points_there_too(self, client, app, request_open, monkeypatch):
+        monkeypatch.setitem(app.config, 'ACCOUNT_REGISTRATION_GATE_ENABLED', True)
+        html = client.get('/register/').get_data(as_text=True)
+        assert 'name="accept"' in html and POINTER in html
+
+    def test_no_pointer_while_request_is_closed(self, client):
+        assert POINTER not in client.get('/register/').get_data(as_text=True)
+
+    def test_no_pointer_on_an_event_page(self, client, request_open, committed_event):
+        code, _ = committed_event
+        html = client.get(f'/register/{code}').get_data(as_text=True)
+        assert 'name="email"' in html and POINTER not in html

@@ -333,12 +333,21 @@ def public_entry_points():
     points = []
     if 'register' in current_app.blueprints:
         points.append(('Request an NCAR account', url_for('register.form'), 'fa-solid fa-user-plus'))
-    if 'allocation_request' in current_app.blueprints:
-        from webapp.utils.xras import interactive_config
-        if interactive_config().visitor_submit_configured:
-            points.append(('Request an allocation', url_for('allocation_request.overview'),
-                           'fa-solid fa-paper-plane'))
+    request_url = visitor_request_url()
+    if request_url:
+        points.append(('Request an allocation', request_url, 'fa-solid fa-paper-plane'))
     return points
+
+
+def visitor_request_url():
+    """``/request``'s overview when a visitor may file there (mounted, lever on), else None."""
+    if 'allocation_request' not in current_app.blueprints:
+        return None
+    from flask import url_for
+    from webapp.utils.xras import interactive_config
+    if not interactive_config().visitor_submit_configured:
+        return None
+    return url_for('allocation_request.overview')
 
 
 def nav_context_processor():

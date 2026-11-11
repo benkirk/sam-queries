@@ -174,3 +174,23 @@ def test_audit_excludes_api_credentials(session, audit_log_path):
     assert not any("ApiCredentials" in line for line in logs), (
         f"ApiCredentials must not appear in audit log; got: {logs}"
     )
+
+
+def test_the_diff_masks_secret_columns_and_keeps_the_rest(session):
+    """The verification code's HMAC never reaches the audit log; who verified does."""
+    from datetime import datetime, timedelta
+    from sam.core.account_requests import CREATED_BY_SELF, AccountRequest
+    from webapp.audit.events import REDACTED, diff_for_object
+    row = AccountRequest.create(
+        session, email=f'zz.audit.{next_seq("au")}@example.invalid', first_name='Au',
+        last_name='Dit', purpose='standalone', created_by=CREATED_BY_SELF)
+    row.verify_code_hash = 'f' * 64
+    row.verify_expires_at = datetime.now() + timedelta(hours=1)
+    changes = diff_for_object(row)
+    assert changes['verify_code_hash'] == {'old': None, 'new': REDACTED}
+    assert changes['verify_expires_at']['new'] is not None
+    session.flush()
+    row.verify_code_hash, row.verified_by = None, 'benkirk'
+    changes = diff_for_object(row)
+    assert changes['verify_code_hash'] == {'old': REDACTED, 'new': None}
+    assert changes['verified_by'] == {'old': None, 'new': 'benkirk'}

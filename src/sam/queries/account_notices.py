@@ -31,7 +31,7 @@ from .account_requests import (
 #: ``notification_log.subject`` column.
 ACCOUNT_KIND_SUBJECTS = {
     'account_queue_summary': 'NCAR HPC account requests: {total} waiting, {new} new',
-    'account_verify': 'Verify your email address for your NCAR HPC account request',
+    'account_verify': 'Confirm your email for your NCAR HPC account request',
     'account_rejected': 'Your NCAR HPC account request',
     'account_invite': 'You are invited to request an NCAR HPC account',
     'account_request_received': 'Your NCAR HPC account request has been received',
