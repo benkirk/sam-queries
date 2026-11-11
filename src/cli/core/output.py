@@ -1,7 +1,8 @@
-"""JSON output helper for CLI commands.
+"""Output helpers for CLI commands.
 
-Bypasses Rich entirely so piped consumers (jq, dashboards, cron jobs)
-get clean, parseable JSON on stdout.
+``output_json`` bypasses Rich entirely so piped consumers (jq, dashboards, cron
+jobs) get clean, parseable JSON on stdout. ``print_table`` keeps a Rich table
+whole when stdout is not a terminal.
 """
 
 import json
@@ -9,6 +10,10 @@ import sys
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
+
+from rich.console import Console
+from rich.measure import Measurement
+from rich.table import Table
 
 
 class _SAMEncoder(json.JSONEncoder):
@@ -38,3 +43,17 @@ def refuse_json_write(kind: str, flags: str) -> int:
     output_json({'kind': kind, 'error': 'json_unsupported_for_writes',
                  'message': f'--format json cannot be combined with {flags}'})
     return EXIT_ERROR
+
+
+def print_table(console: Console, table: Table) -> None:
+    """Print ``table``; off a terminal (a pipe, ssh, a file) at its natural width, never ellipsized."""
+    if console.is_terminal:
+        console.print(table)
+        return
+    # Console.print caps its own width= at the console's, so widen the console itself.
+    width = console.width
+    console.width = max(width, Measurement.get(console, console.options.update_width(100_000), table).maximum)
+    try:
+        console.print(table)
+    finally:
+        console.width = width

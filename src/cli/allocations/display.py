@@ -4,6 +4,7 @@ from typing import List, Dict, Optional, Union
 from cli.core.context import Context
 from rich.table import Table
 from rich import box
+from cli.core.output import print_table
 from sam import fmt
 
 
@@ -143,7 +144,7 @@ def display_allocation_summary(ctx: Context, results: List[Dict], show_usage: bo
 
         table.add_row(*table_row)
 
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
     # Totals count tree roots only, as the rows' rollups do: a member's row repeats its
     # root's award. A filter naming only child projects has no roots: sum what is shown.
