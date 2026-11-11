@@ -112,6 +112,10 @@ Run each pass and collect findings. The examples are real.
     card keys off its own width (`@container`), a fixed table raises its floor, a path gets
     `<wbr>` at its slashes (`path_breaks`). `ui_snapshots.py --midword --pages wraps --width 360`
     is the proof; a token with no break point (a DB URL) is the one legal hit.
+  - Expanded rows: `nav-view-persistence.js` reopens a collapse after a reload only by a stable
+    key. A group of rows opened by a class target needs `data-collapse-persist-id` (held by
+    `test_every_collapse_has_a_persist_key`); an id built from `loop.index` reopens whichever row
+    now holds that position, so key it on the entity through `dom_id` (sweep 39).
   - Modals: an alert per fact, prose restating a glossary term beside its own icon, a read-only
     pair restating the title (`modal-alerts`, ratcheted). Facts go in `.modal-facts`, help in
     `tip=` / a term, identity in `modal_title`. Open the opener first: two "modals" in the

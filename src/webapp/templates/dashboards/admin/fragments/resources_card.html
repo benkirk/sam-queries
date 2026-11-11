@@ -113,9 +113,9 @@
                     </tbody>
                     <tbody class="collapse" id="res-type-{{ rt.resource_type_id }}">
                         {% for r in type_resources %}
-                        {# The fair-share expander (HPC/DAV) targets a class: a resource's
-                           facility rows are several <tr>s in this tbody. It hangs off the
-                           cells, not the <tr>, because this row carries Edit/Delete. #}
+                        {# The fair-share expander (HPC/DAV) targets a class: a resource's facility
+                           rows are several <tr>s in this tbody, remembered open under one
+                           data-collapse-persist-id. It hangs off the cells: this row has Edit/Delete. #}
                         {% set fs_attrs = ('data-bs-toggle="collapse" data-bs-target=".res-fs-' ~ r.resource_id ~ '" aria-expanded="false"') if is_hpc_dav else '' %}
                         {% set fs_cursor = ' cursor-pointer' if is_hpc_dav else '' %}
                         {% set shares = namespace(total=0.0) %}
@@ -167,7 +167,7 @@
                         {% set override = _matches[0] if _matches else none %}
                         {% set has_override = override is not none and override.fair_share_percentage is not none %}
                         {% set effective = override.fair_share_percentage if has_override else fac.fair_share_percentage %}
-                        <tr class="collapse res-fs-{{ r.resource_id }}">
+                        <tr class="collapse res-fs-{{ r.resource_id }}" data-collapse-persist-id="res-fs-{{ r.resource_id }}">
                             <td class="tree-cell tree-d2 text-nowrap" style="--depth: 2;">
                                 {% if fac.code %}<code class="text-reset me-1">{{ fac.code }}</code>{% endif %}
                                 {{- fac.facility_name }}
@@ -204,7 +204,7 @@
                             </td>
                         </tr>
                         {% else %}
-                        <tr class="collapse res-fs-{{ r.resource_id }}">
+                        <tr class="collapse res-fs-{{ r.resource_id }}" data-collapse-persist-id="res-fs-{{ r.resource_id }}">
                             <td colspan="5" class="tree-cell tree-d2 text-muted fst-italic" style="--depth: 2;">No active facilities.</td>
                         </tr>
                         {% endfor %}

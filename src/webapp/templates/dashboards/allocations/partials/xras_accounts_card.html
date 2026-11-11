@@ -109,7 +109,7 @@
             </thead>
             <tbody>
                 {% for row in rows %}
-                {% set body_id = 'xras-acct-' ~ loop.index %}
+                {% set body_id = 'xras-acct-' ~ (row.username | dom_id) %}
                 {% set toggle = collapse_toggle(body_id) %}
                 <tr>
                     <td class="font-monospace text-nowrap">
