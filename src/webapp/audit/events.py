@@ -7,7 +7,12 @@ from datetime import datetime
 from sqlalchemy import event
 from sqlalchemy.orm import Session
 from sqlalchemy import inspect
+
+from dbbrowse.redact import DEFAULT_POLICY
+
 from .logger import get_audit_logger
+
+REDACTED = '<redacted>'
 
 
 # Global flag to prevent double-registration in parallel testing
@@ -42,6 +47,35 @@ def responsible_user():
         pass
 
     return "anonymous"
+
+
+def diff_for_object(obj):
+    """``{attribute: {'old', 'new'}}`` for each changed attribute; secret-shaped columns
+    are masked by the /database browser's policy (``dbbrowse/redact.py``)."""
+    insp = inspect(obj)
+    table = getattr(getattr(obj, '__table__', None), 'name', '')
+    changes = {}
+    for attr in insp.attrs:
+        hist = attr.history
+        if not hist.has_changes():
+            continue
+        old_value = hist.deleted[0] if hist.deleted else None
+        new_value = hist.added[0] if hist.added else None
+        if DEFAULT_POLICY.is_redacted(table, _column_name(insp, attr.key)):
+            old_value = None if old_value is None else REDACTED
+            new_value = None if new_value is None else REDACTED
+        if isinstance(old_value, datetime):
+            old_value = old_value.isoformat()
+        if isinstance(new_value, datetime):
+            new_value = new_value.isoformat()
+        changes[attr.key] = {"old": old_value, "new": new_value}
+    return changes
+
+
+def _column_name(insp, key):
+    """The column behind an attribute (its key can differ), or the key itself."""
+    attrs = insp.mapper.column_attrs
+    return attrs[key].columns[0].name if key in attrs else key
 
 
 def init_audit_events(app, db, logfile_path, stdout=True):
@@ -110,38 +144,6 @@ def init_audit_events(app, db, logfile_path, stdout=True):
         except Exception:
             # Fallback for objects without identity yet (new inserts)
             return None
-
-    def diff_for_object(obj):
-        """
-        Extract changed attributes and their old/new values.
-
-        Args:
-            obj: SQLAlchemy model instance
-
-        Returns:
-            dict: Dictionary of {attribute: {'old': value, 'new': value}}
-        """
-        insp = inspect(obj)
-        changes = {}
-
-        for attr in insp.attrs:
-            hist = attr.history
-            if hist.has_changes():
-                old_value = hist.deleted[0] if hist.deleted else None
-                new_value = hist.added[0] if hist.added else None
-
-                # Serialize datetime objects
-                if isinstance(old_value, datetime):
-                    old_value = old_value.isoformat()
-                if isinstance(new_value, datetime):
-                    new_value = new_value.isoformat()
-
-                changes[attr.key] = {
-                    "old": old_value,
-                    "new": new_value
-                }
-
-        return changes
 
     def before_flush(session, flush_context, instances):
         """
