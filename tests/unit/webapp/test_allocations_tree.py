@@ -85,6 +85,17 @@ def test_elapsed_is_weighted_by_allocation_size():
     assert univ['elapsed_pct'] == pytest.approx(30 * (181 / 365) / 100 * 100)
 
 
+def test_a_row_with_some_dated_allocations_keeps_its_tick():
+    at = datetime(2026, 7, 1)
+    mixed = _row('UNIV', 'Small', 30.0, datetime(2026, 1, 1), datetime(2027, 1, 1),
+                 is_open_ended=True, open_ended_count=1, count=2)
+    only_open = _row('UNIV', 'Large', 70.0, datetime(2026, 1, 1), None,
+                     is_open_ended=True, open_ended_count=2, count=2)
+    weights = elapsed_weights([mixed, only_open], at)
+    assert weights[('R', 'UNIV', 'Small')][1] == 30.0
+    assert ('R', 'UNIV', 'Large') not in weights
+
+
 def test_storage_rows_get_no_elapsed_tick():
     weights = elapsed_weights([_row('NCAR', 'Labs', 100.0, datetime(2025, 1, 1), datetime(2026, 1, 1))],
                               datetime(2026, 7, 1))
