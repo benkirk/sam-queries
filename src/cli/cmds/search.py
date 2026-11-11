@@ -10,7 +10,7 @@ import click
 
 from config import SAMConfig
 from cli.core.context import Context
-from cli.core.options import directory_option, provisioning_option, usage_error, verbose_option
+from cli.core.options import directory_option, format_option, provisioning_option, usage_error, verbose_option
 from cli.core.utils import EXIT_ERROR, configure_logging, parse_duration_days
 from cli.user.commands import (
     UserSearchCommand,
@@ -85,6 +85,7 @@ def cli(ctx: Context, verbose: bool, inactive_projects: bool, inactive_users: bo
 @click.option('--very-verbose', '-vv', is_flag=True, help='Show full information (allocation end dates, timestamps)')
 @provisioning_option
 @directory_option
+@format_option
 @pass_context
 def user(ctx: Context, username, search, abandoned, has_active_project, not_seen_since, source,
          list_projects, limit, verbose, very_verbose, directory):
@@ -155,6 +156,7 @@ def user(ctx: Context, username, search, abandoned, has_active_project, not_seen
 @click.option('--very-verbose', '-vv', is_flag=True, help='Show full information (full abstract, timestamps, IDs, charge breakdown)')
 @provisioning_option
 @directory_option
+@format_option
 @pass_context
 def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirations, since, list_users, limit, facilities, verbose, very_verbose, directory):
     """
@@ -218,11 +220,15 @@ def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirat
 @click.option('--show-usage', is_flag=True, help='Include usage information (total used, percent used)')
 @click.option('--exclude-adjustments', is_flag=True, default=False,
               help='Exclude manual charge adjustments from usage totals.')
+@click.option('--roots-only', is_flag=True,
+              help='List tree roots only: hide shared-pool members and carved-out sub-projects '
+                   '(totals always count roots only)')
 @verbose_option('Show detailed information including averages')
+@format_option
 @pass_context
 def allocations(ctx: Context, resource, facility, allocation_type, project,
                 total_resources, total_facilities, total_types, total_projects,
-                active_at, inactive, show_usage, exclude_adjustments, verbose):
+                active_at, inactive, show_usage, exclude_adjustments, roots_only, verbose):
     """
     Query allocation summaries with flexible grouping and filtering.
 
@@ -230,22 +236,37 @@ def allocations(ctx: Context, resource, facility, allocation_type, project,
     Use specific values to filter to one item, or use TOTAL/--total-* to sum across a dimension.
     You can specify multiple values as comma-separated lists (e.g., --resource Derecho,Casper).
 
+    Totals count tree roots only, as the Allocations page does: a shared pool or a
+    subdivided award counts once, at its root. A listing marks each sub-project row
+    with its root; --roots-only hides them. Annual Rate is each allocation's amount
+    per 365 days, summed over the row.
+
+    For scripting, --format json gives exact numbers and every row's tree fields
+    (is_root, parent_projcode, project_root_projcode, is_inheriting);
+    SAM_RAW_OUTPUT=1 turns off number abbreviation (27.0M) in the table.
+
+    \b
     Examples:
         # All active allocations grouped by everything
         sam-search allocations
 
-        # All Derecho allocations grouped by facility and type
-        sam-search allocations --resource Derecho
+    \b
+        # Derecho per facility and type, roots only, as JSON
+        sam-search allocations --resource Derecho --total-projects --format json
 
+    \b
         # Multiple resources
         sam-search allocations --resource Derecho,Casper --allocation-type Small,Classroom --total-projects
 
+    \b
         # Total allocation amount for Exploratory projects on Casper GPU
         sam-search allocations --resource "Casper GPU" --allocation-type Exploratory --total-projects
 
-        # Allocations that were active 6 months ago
+    \b
+        # Allocations that were active on a past date
         sam-search allocations --active-at 2024-06-15
 
+    \b
         # All allocations for a specific project
         sam-search allocations --project SCSG0001
     """
@@ -263,7 +284,8 @@ def allocations(ctx: Context, resource, facility, allocation_type, project,
         active_at=active_at,
         inactive=inactive,
         show_usage=show_usage,
-        include_adjustments=not exclude_adjustments
+        include_adjustments=not exclude_adjustments,
+        roots_only=roots_only,
     )
     sys.exit(exit_code)
 
@@ -289,6 +311,7 @@ def allocations(ctx: Context, resource, facility, allocation_type, project,
 @click.option('--start', type=str, default=None, metavar='YYYY-MM-DD', help='Start date')
 @click.option('--end',   type=str, default=None, metavar='YYYY-MM-DD', help='End date')
 @verbose_option('Summary: per-day breakdown. --jobs: extra detail columns')
+@format_option
 @pass_context
 def accounting(ctx: Context, user, project, resource, queue, machine,
                jobs, recent, largest, job_id, qos,
@@ -391,6 +414,7 @@ def accounting(ctx: Context, user, project, resource, queue, machine,
 @click.option('--limit', type=int, default=50,
               help='Maximum number of results for pattern search (default: 50)')
 @verbose_option()
+@format_option
 @pass_context
 def contracts(ctx: Context, contract_number, search, search_all, source, pi,
               monitor, program, list_projects, limit, verbose):
@@ -444,6 +468,7 @@ def contracts(ctx: Context, contract_number, search, search_all, source, pi,
 @click.option('--limit', type=int, default=10,
               help='Maximum results per provider (default: 10)')
 @verbose_option()
+@format_option
 @pass_context
 def awards(ctx: Context, contract_number, search, source, limit, verbose):
     """

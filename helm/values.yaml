@@ -710,7 +710,7 @@ tasks:
     # leaves the task inert.
     SAM_TASKS_ACCOUNT_MAX: "500"
     # account_requests_reconcile: an unverified public registration older
-    # than this is purged. The verification mail expires in 48 h; a week is
+    # than this is purged. The verification mail expires in 1 h; a week is
     # long enough for a retry and short enough that a bot's rows do not pile up.
     SAM_TASKS_ACCOUNT_PURGE_DAYS: "7"
     # Comma-separated task names to skip, WITHOUT a code deploy. A staged-enable

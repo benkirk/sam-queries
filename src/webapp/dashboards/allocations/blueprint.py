@@ -261,13 +261,15 @@ def _share(part, whole):
 def elapsed_weights(rows, active_at):
     """``{(resource, facility, type): (sum of amount x elapsed fraction, sum of amount)}``.
 
-    Open-ended and undated rows are left out. A multi-allocation row spans its
-    earliest start to its latest end, close enough for an aggregate tick.
+    Undated rows and rows with only open-ended allocations are left out. A
+    multi-allocation row spans its earliest start to its latest dated end,
+    close enough for an aggregate tick.
     """
     weights = {}
     for r in rows:
         start, end = r.get('start_date'), r.get('end_date')
-        if r.get('is_open_ended') or not start or not end or end <= start:
+        all_open = r.get('is_open_ended') and r.get('open_ended_count', 1) >= r.get('count', 1)
+        if all_open or not start or not end or end <= start:
             continue
         frac = min(max((active_at - start) / (end - start), 0.0), 1.0)
         amount = r.get('total_amount') or 0.0

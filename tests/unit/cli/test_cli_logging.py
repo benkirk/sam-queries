@@ -159,3 +159,41 @@ class TestSubcommandOptions:
         default = ctx.check_provisioning
         CliRunner().invoke(probe, [], obj=ctx, catch_exceptions=False)
         assert seen['verbose'] is False and seen['provisioning'] is default
+
+
+class TestFormatOption:
+    """A subcommand's --format sets what the group's does, and every leaf command takes it."""
+
+    @staticmethod
+    def _leaves(group):
+        import click
+        for cmd in group.commands.values():
+            if isinstance(cmd, click.Group):
+                yield from TestFormatOption._leaves(cmd)
+            else:
+                yield cmd
+
+    @pytest.mark.parametrize('entry', ['search', 'admin'])
+    def test_every_subcommand_takes_format(self, entry):
+        import importlib
+        cli = importlib.import_module(f'cli.cmds.{entry}').cli
+        missing = [c.name for c in self._leaves(cli)
+                   if '--format' not in {o for p in c.params for o in p.opts}]
+        assert missing == []
+
+    @pytest.mark.parametrize('args, expected', [(['--format', 'json'], 'json'), ([], 'rich')])
+    def test_format_sets_the_context(self, args, expected):
+        import click
+        from click.testing import CliRunner
+        from cli.core.context import Context
+        from cli.core.options import format_option
+        seen = {}
+
+        @click.command()
+        @format_option
+        @click.pass_obj
+        def probe(ctx):
+            seen['format'] = ctx.output_format
+
+        CliRunner().invoke(probe, args, obj=Context(), catch_exceptions=False)
+        assert seen == {'format': expected}

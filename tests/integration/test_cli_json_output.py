@@ -198,6 +198,17 @@ class TestAllocationsJSON:
         assert data['kind'] == 'allocation_summary'
         assert 'rows' in data
         assert 'count' in data
+        assert data['roots_only'] is True
+        assert data['rows'][0]['annualized_rate'] is not None
+
+    def test_allocations_rows_carry_tree_fields(self, runner, mock_search_session):
+        result = runner.invoke(
+            search_cli, ['--format', 'json', 'allocations', '--resource', 'Derecho']
+        )
+        assert result.exit_code == 0
+        row = _parse_json(result.output)['rows'][0]
+        for field in ('is_root', 'is_inheriting', 'parent_projcode', 'project_root_projcode'):
+            assert field in row
 
 
 class TestAccountingJSON:

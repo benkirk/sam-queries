@@ -4,6 +4,7 @@ from rich.table import Table
 
 from cli.core.display_utils import stamp
 from sam import fmt
+from cli.core.output import print_table
 
 
 def display_last_seen(ctx, payload):
@@ -18,7 +19,7 @@ def display_last_seen(ctx, payload):
         table.add_row(row['kind'], row['system'],
                       stamp(row['first_seen'], seconds=False),
                       f"{last}  (now)" if row.get('current') else last)
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
 
 def display_backfill(ctx, payload):

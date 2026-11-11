@@ -1,40 +1,55 @@
 {% extends 'register/base_register.html' %}
 {% from 'dashboards/fragments/form_fields.html' import text_field with context %}
 {#
-  "Check your mail": the code form. Context: row, token, mail_sent, errors, form;
-  code_action and again_url default to /register's.
+  "Check your mail": the code form, or with mail off a Continue link that
+  advances once the help desk confirms the row. Shared by /register and
+  /request. Context: row, token, mail_sent, errors, form, expires_hours, step;
+  code_action, again_url and again_label default to /register's.
 #}
 {% block title %}Confirm your email address{% endblock %}
 
+{% block step %}{% if step %}{% include 'register/_request_step.html' %}{% endif %}{% endblock %}
+
 {% block content %}
+{% set continue_url = request.path ~ ('' if mail_sent else '?sent=0') %}
 <h1>Confirm your email address</h1>
 {% include 'register/_preview_banner.html' %}
 {% if mail_sent %}
 <p class="register-lede">
-    We sent a message to <strong>{{ row.email }}</strong> with a link and a
-    six-digit code. Open the link, or enter the code here.
+    We emailed a link and a six-digit code to <strong>{{ row.email }}</strong>.
+    Open the link, or enter the code below.
 </p>
 {% else %}
 <div class="register-callout warn">
     <p><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
     Mail delivery is switched off on this deployment, so no confirmation was
     sent to <strong>{{ row.email }}</strong>. Your request is recorded; ask your
-    sponsor or the help desk to confirm it for you.</p>
+    sponsor or the help desk to confirm it for you. Once they have, choose Continue.</p>
 </div>
 {% endif %}
 
+{% if errors %}
+<div class="register-callout urgent">
+    {% for error in errors %}<p><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> {{ error }}</p>{% endfor %}
+</div>
+{% endif %}
+
+{% if mail_sent %}
 <form method="post" action="{{ code_action or url_for('register.pending_code', token=token) }}" novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="sent" value="1">
     {{ text_field('code', 'Six-digit code', required=True, maxlength=6, placeholder='000000') }}
-    {% if errors %}
-    <div class="register-callout urgent">
-        {% for error in errors %}<p><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> {{ error }}</p>{% endfor %}
-    </div>
-    {% endif %}
     <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check"></i> Confirm</button>
 </form>
 <p class="register-lede small mt-3">
-    The link and the code expire after a while. If they have, just
-    <a href="{{ again_url or url_for('register.form') }}">{{ again_label or 'register again' }}</a>.
+    If the help desk confirmed your address for you, <a href="{{ continue_url }}">continue</a>.
+</p>
+{% else %}
+{# A GET, never a resubmit: the page advances once the row is verified. #}
+<a class="btn btn-primary" href="{{ continue_url }}"><i class="fa-solid fa-arrow-right"></i> Continue</a>
+{% endif %}
+<p class="register-lede small mt-3">
+    The link and code expire after {{ expires_hours | fmt_plural('hour') }}. After that,
+    <a href="{{ again_url or url_for('register.form') }}">{{ again_label or 'start again' }}</a>.
 </p>
 {% endblock %}

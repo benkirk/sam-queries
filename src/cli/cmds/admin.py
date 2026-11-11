@@ -11,9 +11,9 @@ import click
 from datetime import datetime
 
 from config import SAMConfig
-from cli.core.output import refuse_json_write
+from cli.core.output import refuse_json_write, print_table
 from cli.core.context import Context
-from cli.core.options import directory_option, provisioning_option, usage_error, verbose_option
+from cli.core.options import directory_option, format_option, provisioning_option, usage_error, verbose_option
 from cli.core.utils import EXIT_SUCCESS, EXIT_ERROR, configure_logging
 from cli.user.commands import UserAdminCommand
 from cli.project.commands import (
@@ -81,6 +81,7 @@ def cli(ctx: Context, verbose: bool, output_format: str):
                    'the DIRECTORY_APPLY_<KIND> levers gate only the sync hook)')
 @click.option('--dry-run', is_flag=True,
               help='With --restore-deactivation or --directory-apply: report only')
+@format_option
 @pass_context
 def user(ctx: Context, username, validate, list_projects, verbose,
          deactivation, restore_deactivation, directory, directory_apply, dry_run):
@@ -128,6 +129,7 @@ def user(ctx: Context, username, validate, list_projects, verbose,
 @click.option('--facilities', '-F', multiple=True, default=['UNIV', 'WNA'], help='Facilities to include (default: UNIV, WNA). Use * for all facilities.')
 @verbose_option()
 @provisioning_option
+@format_option
 @pass_context
 def project(ctx: Context, projcode, validate, reconcile, reconcile_lead_admin, all_projects, audit_trees, audit_resource,
             upcoming_expirations, recent_expirations,
@@ -229,6 +231,7 @@ def project(ctx: Context, projcode, validate, reconcile, reconcile_lead_admin, a
               show_default=True,
               help='[check-sources] Seconds to wait between provider requests')
 @verbose_option()
+@format_option
 @pass_context
 def contracts(ctx: Context, validate, audit_all, check_sources, limit,
               sleep_between, verbose):
@@ -354,6 +357,7 @@ def contracts(ctx: Context, validate, audit_all, check_sources, limit,
               help='[reconcile] Check fileset/ProjectDirectory paths on disk')
 @click.option('--verify-host', 'verify_host', type=str, default=None, metavar='HOST',
               help='[reconcile] SSH host to use for --verify-paths (default: auto-detect)')
+@format_option
 @pass_context
 def accounting(ctx: Context, comp, disk, reconcile_quotas, resource,
                machine,
@@ -548,6 +552,7 @@ def accounting(ctx: Context, comp, disk, reconcile_quotas, resource,
               help='Scope the refresh to one cache category (default: all)')
 @click.option('--base', 'base_url', type=str, default=None,
               help=f'Webapp base URL (default: $SAM_API_BASE or {_DEFAULT_API_BASE})')
+@format_option
 @pass_context
 def cache(ctx: Context, refresh: bool, category, base_url):
     """Manage the running webapp's caches.
@@ -605,7 +610,7 @@ def cache(ctx: Context, refresh: bool, category, base_url):
     table.add_column("Entries cleared", justify="right", style="green")
     for cat, count in cleared.items():
         table.add_row(cat, str(count))
-    ctx.console.print(table)
+    print_table(ctx.console, table)
     sys.exit(EXIT_SUCCESS)
 
 
@@ -653,6 +658,7 @@ def cache(ctx: Context, refresh: bool, category, base_url):
 @click.option('--limit', type=int, default=50, show_default=True,
               help='[list] Maximum rows to return')
 @verbose_option()
+@format_option
 @pass_context
 def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mapping,
          validate_opportunities, validate_vocabulary, accounts, readiness,
@@ -795,6 +801,7 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
                    'from its occurrence, so this asks "what would that run '
                    'have done?" without waiting for it.')
 @verbose_option()
+@format_option
 @pass_context
 def tasks(ctx: Context, list_tasks, run_due, run, history, task, limit,
           dry_run, force, occurrence, verbose):
@@ -846,6 +853,7 @@ def tasks(ctx: Context, list_tasks, run_due, run, history, task, limit,
 @click.option('--backfill', is_flag=True,
               help='Seed the pbs sources from SAM charge summaries (comp, dav, hpc); idempotent')
 @click.option('--dry-run', is_flag=True, help='[backfill] Read and report; write nothing')
+@format_option
 @pass_context
 def last_seen(ctx: Context, username, backfill, dry_run):
     """When a user was last seen, per source (the system_status ledger)."""
@@ -869,6 +877,7 @@ def directory():
 @click.option('--limit', type=int, default=0, metavar='N',
               help='Read at most N records per kind (a quick smoke; SAM rows the sample lacks are then not counted)')
 @verbose_option()
+@format_option
 @pass_context
 def directory_report(ctx: Context, kind, limit, verbose):
     """Compare every directory record with SAM: counts by kind and category, sample keys."""
@@ -889,6 +898,7 @@ def masks():
               type=click.Choice(['ticket closed', 'no upid', 'no ticket']))
 @click.option('-q', '--search', 'q', metavar='TEXT', help='Group or member substring')
 @verbose_option()
+@format_option
 @pass_context
 def masks_list(ctx: Context, everything, kind, states, flags, q, verbose):
     """Every mask, newest first, with its state, flags and NUSD ticket."""
@@ -906,6 +916,7 @@ def masks_list(ctx: Context, everything, kind, states, flags, q, verbose):
               help='Touch a group that grants a SAMuel role (the webapp needs MANAGE_ROLES)')
 @click.option('--dry-run', is_flag=True, help='Run every guard, write nothing')
 @verbose_option()
+@format_option
 @pass_context
 def masks_open(ctx: Context, target, usernames, remove, until, note, allow_protected, dry_run, verbose):
     """Open one batch of masks (one ticket for an adhoc group); JSON only with --dry-run."""
@@ -918,6 +929,7 @@ def masks_open(ctx: Context, target, usernames, remove, until, note, allow_prote
 @click.argument('mask_id', type=int)
 @click.option('--dry-run', is_flag=True, help='Show what would close, write nothing')
 @verbose_option()
+@format_option
 @pass_context
 def masks_withdraw(ctx: Context, mask_id, dry_run, verbose):
     """Withdraw an open mask (an adhoc one takes its entry rows back); JSON only with --dry-run."""
@@ -943,6 +955,7 @@ def masks_withdraw(ctx: Context, mask_id, dry_run, verbose):
 @click.option('--include-revoked', 'include_revoked', is_flag=True,
               help='[list] Show revoked grants too')
 @verbose_option()
+@format_option
 @pass_context
 def rbac(ctx: Context, seed, keys, effective, diff, grant, role, permission,
          facility, note, revoke, include_revoked, verbose):

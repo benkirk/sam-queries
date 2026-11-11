@@ -1489,21 +1489,23 @@ class TestAllocationSummaryWithRates:
                     expected_rate = (result['total_amount'] / result['duration_days']) * 365
                     assert abs(result['annualized_rate'] - expected_rate) < 0.01
 
-    def test_get_allocation_summary_aggregated_no_rate(self, session):
-        """Aggregated results (count > 1) must have None for rate fields."""
-        # Query a TOTAL rollup for any facility that has one.
-        # If the snapshot has no aggregated results, skip.
-        results = get_allocation_summary(
-            session, projcode="TOTAL", active_only=True
-        )
-        aggregated = [r for r in results if r['count'] > 1]
-        if not aggregated:
-            pytest.skip("Snapshot has no aggregated allocations (count > 1)")
+    def test_get_allocation_summary_aggregated_rate_is_sum(self, session, hpc_resource):
+        """A TOTAL row's rate is the sum of its projects' rates; only day counts stay per allocation."""
+        per_project = get_allocation_summary(
+            session, resource_name=hpc_resource.resource_name, active_only=True)
+        rollup = get_allocation_summary(
+            session, resource_name=hpc_resource.resource_name, projcode="TOTAL", active_only=True)
+        if not rollup:
+            pytest.skip(f"No active allocations on {hpc_resource.resource_name}")
 
-        for result in aggregated:
-            assert result['duration_days'] is None
-            assert result['annualized_rate'] is None
-            assert result['is_open_ended'] is False
+        for result in rollup:
+            members = [r for r in per_project if (r['facility'], r['allocation_type'])
+                       == (result['facility'], result['allocation_type'])]
+            assert result['annualized_rate'] == pytest.approx(
+                sum(r['annualized_rate'] for r in members))
+            assert result['is_open_ended'] == any(r['is_open_ended'] for r in members)
+            if result['count'] > 1:
+                assert result['duration_days'] is None
 
     def test_get_allocation_summary_rate_consistency(
         self, session, active_project, hpc_resource
@@ -1539,10 +1541,7 @@ class TestAllocationSummaryWithRates:
             for field in ('total_used', 'percent_used', 'charges_by_type',
                           'duration_days', 'annualized_rate', 'is_open_ended'):
                 assert field in result
-            if result['count'] == 1:
-                assert result['annualized_rate'] is not None
-            else:
-                assert result['annualized_rate'] is None
+            assert result['annualized_rate'] is not None
 
     def test_get_allocation_summary_zero_duration_handling(self, session):
         results = get_allocation_summary(session, active_only=False)

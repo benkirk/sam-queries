@@ -10,6 +10,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from cli.core.display_utils import BLANK, stamp, styled, text
+from cli.core.output import print_table
 
 #: Rich styles per run state. Same semantics an operator would read on a
 #: dashboard badge, so the terminal and the web teach one vocabulary.
@@ -90,7 +91,7 @@ def display_task_list(ctx, payload) -> None:
             stamp(row['next_occurrence']),
         )
 
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
     if payload['disabled']:
         ctx.console.print(
@@ -130,7 +131,7 @@ def display_task_history(ctx, payload) -> None:
             text(run['runner_id']),
         )
 
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
 
 def display_task_dispatch(ctx, payload) -> None:
@@ -159,7 +160,7 @@ def display_task_dispatch(ctx, payload) -> None:
             text(note) if note else BLANK,
         )
 
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
     counts = ', '.join(f'{k}={v}' for k, v in sorted(payload['counts'].items()))
     ctx.console.print(f'[dim]{counts}[/dim]')

@@ -6,6 +6,7 @@ from cli.core.display_utils import date_cell, text, truncate
 from sam import fmt
 from rich.table import Table
 from rich import box
+from cli.core.output import print_table
 
 #: Rich style per severity, so the eye lands on the 15%-of-open bug first.
 _SEVERITY_STYLE = {'high': 'bold yellow', 'medium': 'yellow', 'low': 'dim'}
@@ -42,7 +43,7 @@ def display_contract(ctx: Context, data: dict, list_projects: bool = False):
     ]
     for label, value in rows:
         table.add_row(label, value)
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
     projects = data.get('projects') or []
     if not list_projects:
@@ -93,7 +94,7 @@ def display_contract_search(ctx: Context, data: dict):
             date_cell(contract.get('start_date')),
             date_cell(contract.get('end_date')),
         )
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
 
 def display_contract_audit(ctx: Context, data: dict):
@@ -148,7 +149,7 @@ def _display_check(ctx: Context, check: dict, audited: int):
         if detail_column:
             row.append(truncate(finding['detail'].get(detail_column[1]), 28))
         table.add_row(*row)
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
     if ctx.verbose:
         for finding in check['findings']:
@@ -188,7 +189,7 @@ def _display_program_findings(ctx: Context, findings: list):
             fmt.number(finding['contract_count']),
             fmt.number(finding['open_contract_count']),
         )
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
 
 def _display_source_check(ctx: Context, source_check: dict):
@@ -222,7 +223,7 @@ def _display_source_check(ctx: Context, source_check: dict):
                     truncate(text(divergence['sam']), 40),
                     truncate(text(divergence['source']), 40),
                 )
-        ctx.console.print(table)
+        print_table(ctx.console, table)
     else:
         ctx.console.print("✅ No divergence from the funding source", style="green")
 
@@ -272,6 +273,6 @@ def _display_suspect_matches(ctx: Context, entries: list):
             truncate(entry['provenance'], 14),
             truncate(summary.get('title'), 34),
         )
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
 

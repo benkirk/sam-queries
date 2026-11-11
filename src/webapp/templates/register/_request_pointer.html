@@ -1,0 +1,8 @@
+{#- /register's pointer to /request for a would-be project lead. Context: request_url (None hides it). -#}
+{% if request_url %}
+<div class="register-callout">
+    <p><i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+    Applying for a new project? Use the <a href="{{ request_url }}">allocation request</a>
+    instead; your account is created as part of the setup process if the project is approved.</p>
+</div>
+{% endif %}

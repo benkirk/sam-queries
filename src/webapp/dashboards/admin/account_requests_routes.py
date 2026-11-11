@@ -236,12 +236,19 @@ def account_request_unclaim(request_id):
 @login_required
 @require_permission(Permission.MANAGE_ACCOUNT_REQUESTS)
 def account_request_verify(request_id):
-    """An operator vouching for an address the mail round trip did not confirm."""
+    """An operator vouching for an address the mail round trip did not confirm.
+
+    A held ``/request`` row files no ticket here; its ticket waits for the approved request.
+    """
     from webapp.register.handoff_mail import send_ticket
-    return _one_click(request_id, 'verify',
-                      lambda row: row.mark_verified(acting_username()),
-                      'Marked {name} verified; the request is now in the queue.',
-                      after=lambda row: send_ticket(row, requested_by=acting_username()))
+    row = _load(request_id)
+    if row is not None and row.is_held:
+        done, after = 'Marked {name} verified; they can choose Continue on their page.', None
+    else:
+        done = 'Marked {name} verified; the request is now in the queue.'
+        after = lambda row: send_ticket(row, requested_by=acting_username())  # noqa: E731
+    return _one_click(request_id, 'verify', lambda row: row.mark_verified(acting_username()),
+                      done, after=after)
 
 
 @bp.route('/account-requests/<int:request_id>/reopen', methods=['POST'])

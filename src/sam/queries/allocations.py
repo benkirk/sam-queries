@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 from typing import Any, List, Optional, Dict, Tuple, Union
 
 from sqlalchemy import or_, func
-from sqlalchemy.orm import Session, noload
+from sqlalchemy.orm import Session, aliased, noload
 
 from sam.dates import end_of_day
 from sam.accounting.calculator import (anchor_sums, anchored_charges, get_charge_models_for_activity,
@@ -535,6 +535,17 @@ def get_allocation_summary_by_facility(
     ]
 
 
+def _annual_rate(amount: float, start: datetime, end: Optional[datetime],
+                 now: datetime) -> Tuple[int, float]:
+    """``(duration_days, amount per 365 days)`` for one allocation."""
+    if end is None:
+        # Open-ended: assume it ends a year from now. No +1, this is an approximation.
+        days = (now + timedelta(days=365) - start).days
+    else:
+        days = (end - start).days + 1   # end_date is inclusive
+    return days, (amount / days * 365 if days > 0 else 0.0)
+
+
 def get_allocation_summary(
     session: Session,
     resource_name: Optional[Union[str, List[str]]] = None,
@@ -546,112 +557,43 @@ def get_allocation_summary(
     root_only: bool = False,
 ) -> List[Dict]:
     """
-    Get allocation summary statistics with flexible grouping.
+    Allocation amounts and annual rates, grouped by every dimension not given as "TOTAL".
 
-    Args:
-        resource_name: None=group by resource, "TOTAL"=sum across, string=filter to one, list=filter to multiple
-        facility_name: None=group by facility, "TOTAL"=sum across, string=filter to one, list=filter to multiple
-        allocation_type: None=group by type, "TOTAL"=sum across, string=filter to one, list=filter to multiple
-        projcode: None=group by project, "TOTAL"=sum across, string=filter to one, list=filter to multiple
-        active_only: If True, filter to allocations active at specified date
-        active_at: Date to check for active status. If None and active_only=True, uses datetime.now()
-                   Useful for historical queries like "what was allocated on 2024-06-15?"
-        root_only: If True, exclude inheriting (child) allocations — only count allocations
-                   where parent_allocation_id IS NULL. Use for dashboard totals/summaries to
-                   avoid double-counting shared-allocation trees where the root amount equals
-                   the sum of all child amounts.
+    Each dimension takes None (group by it), "TOTAL" (sum across it), a string or a list
+    (filter to those values, still grouped). ``active_at`` defaults to now under
+    ``active_only``. ``root_only`` keeps allocations with no parent allocation on projects
+    with no parent project, so a shared pool or a subdivided award counts once, at its root.
 
-    Returns:
-        List of dicts with keys depending on grouping:
-        - Grouped fields (resource, facility, allocation_type, projcode) included when not "TOTAL"
-        - count: Number of allocations
-        - total_amount: Sum of allocation amounts
-        - avg_amount: Average allocation amount
-        - start_date: Earliest start date (datetime or None)
-        - end_date: Latest end date (datetime or None)
-        - duration_days: Number of days in allocation period (None if count > 1)
-        - annualized_rate: Amount per year (None if count > 1)
-        - is_open_ended: True if allocation has no end_date (False if count > 1)
-
-    Examples:
-        # All active Derecho allocations grouped by facility and type
-        >>> get_allocation_summary(session, resource_name="Derecho")
-
-        # Total amount allocated to Exploratory projects on Casper (sum across all projects)
-        >>> get_allocation_summary(session, resource_name="Casper GPU",
-        ...                        allocation_type="Exploratory", projcode="TOTAL")
-
-        # Multiple resources
-        >>> get_allocation_summary(session, resource_name=["Derecho", "Casper"],
-        ...                        allocation_type=["Small", "Classroom"], projcode="TOTAL")
-
-        # What allocations were active 6 months ago?
-        >>> from datetime import datetime, timedelta
-        >>> past_date = datetime.now() - timedelta(days=180)
-        >>> get_allocation_summary(session, active_at=past_date)
+    Rows carry the grouped fields plus count, total_amount, avg_amount, start_date (earliest),
+    end_date (latest), annualized_rate (the sum of each allocation's own rate),
+    duration_days (single-allocation rows only), is_open_ended (any member open-ended,
+    rated as ending a year from now) and open_ended_count. Rows grouped by project also
+    carry is_root and parent_projcode / project_root_projcode (the project tree), and
+    is_inheriting (every allocation in the row draws on a parent allocation).
     """
-    # Determine what fields to group by and what to filter
-    group_by_fields = []
-    select_fields = []
+    ParentProject, RootProject = aliased(Project), aliased(Project)
+    query = session.query(
+        Resource.resource_name, Facility.facility_name, AllocationType.allocation_type,
+        Project.projcode, Project.parent_id, ParentProject.projcode, RootProject.projcode,
+        Allocation.amount, Allocation.start_date, Allocation.end_date,
+        Allocation.parent_allocation_id,
+    ).join(Account, Allocation.account_id == Account.account_id)\
+     .join(Project, Account.project_id == Project.project_id)\
+     .join(Resource, Account.resource_id == Resource.resource_id)\
+     .join(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)\
+     .join(Panel, AllocationType.panel_id == Panel.panel_id)\
+     .join(Facility, Panel.facility_id == Facility.facility_id)\
+     .outerjoin(ParentProject, ParentProject.project_id == Project.parent_id)\
+     .outerjoin(RootProject, RootProject.project_id == Project.tree_root)\
+     .filter(
+         Allocation.deleted == False,
+         Resource.is_active  # Exclude decommissioned resources
+     )
 
-    # Resource handling
-    if resource_name != "TOTAL":
-        select_fields.append(Resource.resource_name)
-        # Group by resource if: None (all), single value, or list (multiple)
-        if resource_name is None or isinstance(resource_name, (str, list)):
-            group_by_fields.append(Resource.resource_name)
-
-    # Facility handling
-    if facility_name != "TOTAL":
-        select_fields.append(Facility.facility_name)
-        # Group by facility if: None (all), single value, or list (multiple)
-        if facility_name is None or isinstance(facility_name, (str, list)):
-            group_by_fields.append(Facility.facility_name)
-
-    # Allocation type handling
-    if allocation_type != "TOTAL":
-        select_fields.append(AllocationType.allocation_type)
-        # Group by type if: None (all), single value, or list (multiple)
-        if allocation_type is None or isinstance(allocation_type, (str, list)):
-            group_by_fields.append(AllocationType.allocation_type)
-
-    # Project code handling
-    if projcode != "TOTAL":
-        select_fields.append(Project.projcode)
-        select_fields.append(Project.parent_id)  # Expose tree position; is_root = (parent_id is None)
-        # Group by project if: None (all), single value, or list (multiple)
-        if projcode is None or isinstance(projcode, (str, list)):
-            group_by_fields.append(Project.projcode)
-            group_by_fields.append(Project.parent_id)  # Functionally dependent on projcode; required for strict-mode SQL
-
-    # Add aggregation fields
-    select_fields.extend([
-        func.count(Allocation.allocation_id).label('count'),
-        func.sum(Allocation.amount).label('total_amount'),
-        func.avg(Allocation.amount).label('avg_amount'),
-        func.min(Allocation.start_date).label('start_date'),
-        func.max(Allocation.end_date).label('end_date')
-    ])
-
-    # Build the query
-    query = session.query(*select_fields)\
-        .join(Account, Allocation.account_id == Account.account_id)\
-        .join(Project, Account.project_id == Project.project_id)\
-        .join(Resource, Account.resource_id == Resource.resource_id)\
-        .join(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)\
-        .join(Panel, AllocationType.panel_id == Panel.panel_id)\
-        .join(Facility, Panel.facility_id == Facility.facility_id)\
-        .filter(
-            Allocation.deleted == False,
-            Resource.is_active  # Exclude decommissioned resources
-        )
-
-    # Apply specific filters
     query = apply_scope_filters(
         query, (Resource.resource_name, resource_name), (Facility.facility_name, facility_name),
         (AllocationType.allocation_type, allocation_type), (Project.projcode, projcode))
 
-    # Apply active_only filter
     if active_only:
         check_date = active_at if active_at is not None else datetime.now()
         query = query.filter(
@@ -662,88 +604,54 @@ def get_allocation_summary(
             )
         )
 
-    # Exclude child allocations and child projects when computing summaries/totals to
-    # avoid double-counting trees where the root amount == sum of child amounts.
-    # Two independent tree structures can cause double-counting:
-    #   1. Allocation-level trees: parent_allocation_id links one allocation to another
-    #   2. Project-level trees: Project.parent_id links child projects to a parent project
-    #      (e.g., CESM0002 -> CESM0002_sub1, CESM0002_sub2 each with their own allocations)
+    # Two trees double-count: allocation trees (parent_allocation_id, a shared pool) and
+    # project trees (Project.parent_id, a subdivided award whose children carve the root).
     if root_only:
         query = query.filter(
-            Allocation.parent_allocation_id.is_(None),  # root-level allocation
-            Project.parent_id.is_(None),                # root or standalone project
+            Allocation.parent_allocation_id.is_(None),
+            Project.parent_id.is_(None),
         )
 
-    # Group by appropriate fields
-    if group_by_fields:
-        query = query.group_by(*group_by_fields)
+    now = datetime.now()
+    dims = (('resource', resource_name), ('facility', facility_name),
+            ('allocation_type', allocation_type), ('projcode', projcode))
+    groups: Dict[tuple, Dict] = {}
+    for (res, fac, atype, pc, parent_id, parent_pc, root_pc,
+         amount, start, end, parent_alloc_id) in query:
+        values = {'resource': res, 'facility': fac, 'allocation_type': atype, 'projcode': pc}
+        key = tuple(values[name] for name, dim in dims if dim != "TOTAL")
+        item = groups.get(key)
+        if item is None:
+            item = {name: values[name] for name, dim in dims if dim != "TOTAL"}
+            if projcode != "TOTAL":
+                item.update(is_root=parent_id is None, parent_projcode=parent_pc,
+                            project_root_projcode=root_pc or pc, is_inheriting=True)
+            item.update(count=0, total_amount=0.0, start_date=None, end_date=None,
+                        annualized_rate=0.0, open_ended_count=0, _days=None)
+            groups[key] = item
+        amount = float(amount or 0.0)
+        days, rate = _annual_rate(amount, start, end, now)
+        item['count'] += 1
+        item['total_amount'] += amount
+        item['annualized_rate'] += rate
+        item['_days'] = days
+        if start is not None and (item['start_date'] is None or start < item['start_date']):
+            item['start_date'] = start
+        if end is None:
+            item['open_ended_count'] += 1
+        elif item['end_date'] is None or end > item['end_date']:
+            item['end_date'] = end
+        if 'is_inheriting' in item and parent_alloc_id is None:
+            item['is_inheriting'] = False
 
-    results = query.all()
-
-    # Build return list
     output = []
-    for row in results:
-        item = {}
-        idx = 0
-
-        # Add grouped/filtered fields
-        if resource_name != "TOTAL":
-            item['resource'] = row[idx]
-            idx += 1
-
-        if facility_name != "TOTAL":
-            item['facility'] = row[idx]
-            idx += 1
-
-        if allocation_type != "TOTAL":
-            item['allocation_type'] = row[idx]
-            idx += 1
-
-        if projcode != "TOTAL":
-            item['projcode'] = row[idx]
-            idx += 1
-            item['is_root'] = row[idx] is None  # parent_id is None -> root or standalone project
-            idx += 1
-
-        # Add aggregations
-        item['count'] = row[idx]
-        item['total_amount'] = float(row[idx + 1]) if row[idx + 1] else 0.0
-        item['avg_amount'] = float(row[idx + 2]) if row[idx + 2] else 0.0
-        item['start_date'] = row[idx + 3]  # datetime object or None
-        item['end_date'] = row[idx + 4]    # datetime object or None
-
-        # Calculate annualized rate for single allocations only
-        if item['count'] == 1:
-            start = item['start_date']
-            end = item['end_date']
-            is_open_ended = (end is None)
-
-            if is_open_ended:
-                # For open-ended allocations, assume end date is 365 days from now.
-                # No +1 here — this is an approximation, not an inclusive date range.
-                assumed_end = datetime.now() + timedelta(days=365)
-                duration_days = (assumed_end - start).days
-            else:
-                # +1: end_date is inclusive (both start and end days count)
-                duration_days = (end - start).days + 1
-
-            # Avoid division by zero; actual/365 annualization convention
-            if duration_days > 0:
-                annualized_rate = (item['total_amount'] / duration_days) * 365
-            else:
-                annualized_rate = 0.0
-
-            item['duration_days'] = duration_days
-            item['annualized_rate'] = annualized_rate
-            item['is_open_ended'] = is_open_ended
-        else:
-            # Aggregated results - no rate calculation
-            item['duration_days'] = None
-            item['annualized_rate'] = None
-            item['is_open_ended'] = False
-
+    for key in sorted(groups):
+        item = groups[key]
+        days = item.pop('_days')
+        item['avg_amount'] = item['total_amount'] / item['count']
+        item['duration_days'] = days if item['count'] == 1 else None
+        item['is_open_ended'] = item['open_ended_count'] > 0
         output.append(item)
-
     return output
 
 
@@ -1015,7 +923,7 @@ def _aggregate_usage_to_total(per_project_usage: List[Dict]) -> List[Dict]:
                 'start_date': None,        # not meaningful across projects
                 'end_date': None,          # not meaningful across projects
                 'duration_days': None,
-                'annualized_rate': None,
+                'annualized_rate': 0.0,
                 'is_open_ended': False,
                 'total_used': 0.0,
                 'total_allocated': 0.0,
@@ -1026,6 +934,8 @@ def _aggregate_usage_to_total(per_project_usage: List[Dict]) -> List[Dict]:
         g = groups[key]
         g['count'] += row.get('count', 0)
         g['total_amount'] += row.get('total_amount', 0.0)
+        g['annualized_rate'] += row.get('annualized_rate') or 0.0
+        g['is_open_ended'] = g['is_open_ended'] or row.get('is_open_ended', False)
         g['total_used'] += row.get('total_used', 0.0)
         g['total_allocated'] += row.get('total_allocated', 0.0)
         for charge_key, amount in row.get('charges_by_type', {}).items():
@@ -1106,6 +1016,9 @@ def get_allocation_summary_with_usage(
         - percent_used: (total_used / total_allocated) * 100
         - charges_by_type: Breakdown of charges by type (comp, dav, disk, archive,
           and optionally adjustments when include_adjustments=True)
+        - a shared-pool row (every allocation inheriting from one pool root) instead
+          reports the pool's use as total_used, its own as self_used/self_percent_used,
+          and the pool's project as root_projcode; is_inheriting is True only there
 
     Example:
         >>> results = get_allocation_summary_with_usage(session, resource_name="Derecho")
@@ -1306,6 +1219,8 @@ def get_allocation_summary_with_usage(
         else:
             item['total_used'] = self_used
             item['percent_used'] = (self_used / item['total_allocated'] * 100) if item['total_allocated'] > 0 else 0
+            if item.get('is_inheriting'):
+                item['is_inheriting'] = False   # no single resolvable pool root, so no pool fields
         item['charges_by_type'] = charges_by_type_total
 
         # Disk capacity override: when every allocation in this row is on

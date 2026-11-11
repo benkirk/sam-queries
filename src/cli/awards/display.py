@@ -6,6 +6,7 @@ from rich.table import Table
 
 from cli.core.context import Context
 from cli.core.display_utils import date_cell, text, truncate
+from cli.core.output import print_table
 
 #: How a cross-referenced status reads, and in what style.
 _STATUS_NOTE = {
@@ -40,7 +41,7 @@ def display_award(ctx: Context, data: dict):
     table.add_row("PI", _person(award['pi']))
     table.add_row("Monitor", _person(award['monitor']))
     table.add_row("URL", text(award['url']))
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
     _display_unavailable(ctx, award)
     _display_in_sam(ctx, data.get('in_sam'))
@@ -143,7 +144,7 @@ def display_award_search(ctx: Context, data: dict):
             date_cell(row['end_date']),
             f"✓ {row['in_sam']['contract_number']}" if row['in_sam'] else '',
         )
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
     # One note per provider that structurally cannot supply people, not one
     # per row — the limitation is the source's, not the award's.

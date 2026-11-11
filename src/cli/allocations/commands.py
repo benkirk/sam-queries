@@ -14,7 +14,8 @@ class AllocationSearchCommand(BaseAllocationCommand):
     def execute(self, resource=None, facility=None, allocation_type=None,
                 project=None, total_resources=False, total_facilities=False,
                 total_types=False, total_projects=False, active_at=None,
-                inactive=False, show_usage=False, include_adjustments=True) -> int:
+                inactive=False, show_usage=False, include_adjustments=True,
+                roots_only=False) -> int:
         try:
             # Handle --total-* flags by converting to "TOTAL" string
             if total_resources:
@@ -42,7 +43,9 @@ class AllocationSearchCommand(BaseAllocationCommand):
                                                   style="bold red")
                     return EXIT_ERROR
 
-            # Query allocations
+            # A rollup counts tree roots only, as the Allocations page does: a member's
+            # inherited copy, or a carved-out child, would count its root's award again.
+            root_only = roots_only or project == "TOTAL"
             if show_usage:
                 results = get_allocation_summary_with_usage(
                     self.session,
@@ -53,6 +56,7 @@ class AllocationSearchCommand(BaseAllocationCommand):
                     active_only=not inactive,
                     active_at=active_at_date,
                     include_adjustments=include_adjustments,
+                    root_only=root_only,
                 )
             else:
                 results = get_allocation_summary(
@@ -63,11 +67,13 @@ class AllocationSearchCommand(BaseAllocationCommand):
                     projcode=project,
                     active_only=not inactive,
                     active_at=active_at_date,
+                    root_only=root_only,
                 )
 
             if self.ctx.output_format == 'json':
                 output_json({'kind': 'allocation_summary', 'count': len(results),
-                             'show_usage': show_usage, 'rows': results})
+                             'show_usage': show_usage, 'roots_only': root_only,
+                             'rows': results})
             elif results:
                 display_allocation_summary(self.ctx, results, show_usage=show_usage)
             else:
