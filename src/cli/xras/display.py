@@ -10,6 +10,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from cli.core.display_utils import BLANK, stamp, styled, text, truncate
+from cli.core.output import print_table
 
 #: Rich styles per action status. Deliberately the same semantics as the web
 #: badges (dashboards/fragments/badges.html) so an operator reading the terminal
@@ -70,7 +71,7 @@ def display_readiness(ctx, payload) -> None:
             text(r['opportunity_name']),
             f"[red]{truncate(r['messages'][0], 60)}[/red]" if r['messages'] else BLANK,
         )
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
 
 def display_mnemonic_report(ctx, payload) -> None:
@@ -92,7 +93,7 @@ def display_mnemonic_report(ctx, payload) -> None:
         for t in targets:
             table.add_row(text(t['name']), t['family'], str(t['unblock_count']),
                           ', '.join(t['sample']))
-        ctx.console.print(table)
+        print_table(ctx.console, table)
     if payload['unresolved']:
         # Not fixable by minting a code — these PIs have no current affiliation.
         pis = sorted({u['pi'] for u in payload['unresolved'] if u['pi']})
@@ -135,7 +136,7 @@ def display_identity_report(ctx, payload) -> None:
                           text(t['email']),
                           'yes' if t['is_reconciled'] else 'no',
                           str(t['unblock_count']), ', '.join(t['sample']))
-        ctx.console.print(table)
+        print_table(ctx.console, table)
     for r in payload['reactivations']:
         ctx.console.print(
             f"[yellow]{r['username']}[/yellow] matches {r['target_username']}, "
@@ -170,7 +171,7 @@ def display_contract_report(ctx, payload) -> None:
                           'yes' if t['award_like'] else 'no',
                           truncate(t['title'] or '', 48), str(t['unblock_count']),
                           ', '.join(t['sample']))
-        ctx.console.print(table)
+        print_table(ctx.console, table)
     for v in variants:
         # A tie is a spelling problem, not a missing row — do not create a second one.
         ctx.console.print(
@@ -223,7 +224,7 @@ def display_action_list(ctx, payload) -> None:
             error_cell,
         )
 
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
 
 def display_action_detail(ctx, payload) -> None:
@@ -342,7 +343,7 @@ def display_mapping_report(ctx, payload) -> None:
         table.add_column('Resource', style='yellow')
         for name in unmapped:
             table.add_row(name)
-        ctx.console.print(table)
+        print_table(ctx.console, table)
         ctx.console.print(
             '[dim]Expected, not a gap: not every internal resource is offered for '
             'allocation through XRAS, so most of these have no mapping by design. '
@@ -362,7 +363,7 @@ def display_mapping_report(ctx, payload) -> None:
         table.add_column('Resource', style='dim')
         for entry in stale:
             table.add_row(str(entry['key']), entry['resource'])
-        ctx.console.print(table)
+        print_table(ctx.console, table)
         ctx.console.print('[dim]Harmless, but misleading in triage.[/dim]')
 
     if payload['dangling_keys']:
@@ -459,7 +460,7 @@ def display_opportunity_report(ctx, payload) -> None:
             table.add_row(str(entry['opportunity_id']),
                           truncate(text(entry['opportunity_name']), 44),
                           _pair(entry['pair']))
-        ctx.console.print(table)
+        print_table(ctx.console, table)
         ctx.console.print(
             '[dim]xras_sweep writes these on its next run, newest first, capped by '
             'SAM_TASKS_XRAS_MAP_MAX. Nothing to do.[/dim]')
@@ -476,7 +477,7 @@ def display_opportunity_report(ctx, payload) -> None:
                           truncate(text(entry['opportunity_name']), 36),
                           _pair(entry.get('xras')),
                           _pair(entry.get('ladder')))
-        ctx.console.print(table)
+        print_table(ctx.console, table)
         ctx.console.print(
             '[dim]A human decides these, as a `source=manual` row. Disagreement is '
             'the rule working: XRAS is not authoritative about SAM, and each known '
@@ -493,7 +494,7 @@ def display_opportunity_report(ctx, payload) -> None:
             table.add_row(str(entry['opportunity_id']),
                           truncate(text(entry['opportunity_name']), 44),
                           _pair(entry.get('ladder')))
-        ctx.console.print(table)
+        print_table(ctx.console, table)
         ctx.console.print(
             '[dim]XRAS shipped an (allocationTypeId, panelId) pair that '
             'sam/xras/opportunity_types.py does not name. Adding it is a one-line '
@@ -560,7 +561,7 @@ def display_account_worklist(ctx, payload) -> None:
                       truncate(', '.join(dict.fromkeys(numbers)), 40), reconciled,
                       BLANK if waited is None else f'{waited}d')
 
-    ctx.console.print(table)
+    print_table(ctx.console, table)
     ctx.console.print(
         # "placeholder", NOT "unreconciled" — a placeholder is a username
         # SHAPE, reconciliation is whether XRAS has linked it to a confirmed
@@ -629,7 +630,7 @@ def display_person(ctx, payload) -> None:
         table.add_row(label, text(value))
     reconciled = person.get('isReconciled')
     table.add_row('Reconciled', 'yes' if reconciled else '[yellow]no[/yellow]')
-    ctx.console.print(table)
+    print_table(ctx.console, table)
     if not reconciled:
         ctx.console.print(
             '[dim]XRAS has not linked this username to a confirmed identity, so '
@@ -694,7 +695,7 @@ def display_vocabulary_report(ctx, payload) -> None:
     table.add_column('Display', style='dim')
     for row in roles['declared']:
         table.add_row(str(row['type_id']), row['name'], row['display'])
-    ctx.console.print(table)
+    print_table(ctx.console, table)
     if roles['extra_live']:
         ctx.console.print(
             f"[yellow]Live but undeclared role type(s):[/yellow] "
@@ -707,7 +708,7 @@ def display_vocabulary_report(ctx, payload) -> None:
     table.add_column('Name')
     for panel_id, name in sorted(panels['declared'].items()):
         table.add_row(str(panel_id), name)
-    ctx.console.print(table)
+    print_table(ctx.console, table)
     if panels['extra_live']:
         ctx.console.print(
             f"[yellow]Live but undeclared panel(s):[/yellow] "
@@ -722,7 +723,7 @@ def display_vocabulary_report(ctx, payload) -> None:
     for row in authorized['types']:
         table.add_row(row['name'], str(row['allocation_type_id']),
                       text(row['panel']))
-    ctx.console.print(table)
+    print_table(ctx.console, table)
     ctx.console.print(
         f"[dim]Wire panels[] abbr(s) treated as panel-authorized: "
         f"{', '.join(authorized['abbrs'])}[/dim]")

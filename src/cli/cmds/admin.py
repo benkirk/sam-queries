@@ -11,7 +11,7 @@ import click
 from datetime import datetime
 
 from config import SAMConfig
-from cli.core.output import refuse_json_write
+from cli.core.output import refuse_json_write, print_table
 from cli.core.context import Context
 from cli.core.options import directory_option, format_option, provisioning_option, usage_error, verbose_option
 from cli.core.utils import EXIT_SUCCESS, EXIT_ERROR, configure_logging
@@ -610,7 +610,7 @@ def cache(ctx: Context, refresh: bool, category, base_url):
     table.add_column("Entries cleared", justify="right", style="green")
     for cat, count in cleared.items():
         table.add_row(cat, str(count))
-    ctx.console.print(table)
+    print_table(ctx.console, table)
     sys.exit(EXIT_SUCCESS)
 
 

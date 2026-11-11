@@ -21,6 +21,7 @@ from rich.panel import Panel
 from rich.text import Text
 from rich import box
 from rich.tree import Tree
+from cli.core.output import print_table
 
 
 def display_project(ctx: Context, data: dict, extra_title_info: str = "",
@@ -368,7 +369,7 @@ def display_project_users(ctx: Context, users: list, projcode: str):
             row.append(str(u['unix_uid']))
         table.add_row(*row)
 
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
 
 def display_project_search_results(ctx: Context, data: dict):
@@ -445,7 +446,7 @@ def display_abandoned_users_from_expired_projects(ctx: Context, abandoned_users)
     table.add_column("User")
     for username, display_name, email in rows:
         table.add_row(f"{username:12} {display_name:30} <{email}>")
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
 
 def display_reconcile_results(ctx: Context, result: dict):
@@ -463,7 +464,7 @@ def display_reconcile_results(ctx: Context, result: dict):
     for r in rows:
         table.add_row(r['projcode'], r['username'], r['role'], r['history'],
                       ', '.join(r['resources']))
-    ctx.console.print(table)
+    print_table(ctx.console, table)
 
     memberships = sum(len(r['resources']) for r in rows)
     projects = len({r['projcode'] for r in rows})
@@ -509,7 +510,7 @@ def display_tree_audit(ctx: Context, violations: list, bad_dates: list):
                 fmt.number(v['deficit']),
                 fmt.number(v['carve_total']),
             )
-        ctx.console.print(table)
+        print_table(ctx.console, table)
 
         if ctx.verbose:
             for v in violations:
@@ -553,7 +554,7 @@ def display_tree_audit(ctx: Context, violations: list, bad_dates: list):
                 fmt.date_str(d['start_date']),
                 fmt.date_str(d['end_date']),
             )
-        ctx.console.print(table)
+        print_table(ctx.console, table)
     else:
         ctx.console.print("✅ No impossible allocation date windows", style="green")
 
