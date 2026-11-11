@@ -214,7 +214,7 @@ class TestTheConfirmation:
         from webapp.register import tokens
         with client.application.test_request_context():
             token = tokens.page_token(1)
-        assert 'no longer valid' in client.get(f'/request/draft/{token}').get_data(as_text=True)
+        assert 'is not valid' in client.get(f'/request/draft/{token}').get_data(as_text=True)
 
 
 _FOS = [{'fosTypeId': 500003, 'fosName': 'Atmospheric Sciences', 'isSelectable': True}]
@@ -274,6 +274,29 @@ class TestTheVisitorsRequest:
         with app.app_context():
             row = db.session.query(AccountRequest).filter_by(email=cleanup).one()
             assert row.xras_username.startswith(f'samr{row.account_request_id}-user-')
+
+    def test_confirm_after_an_operators_verify_goes_on(self, client, app, visitor, mail, cleanup):
+        """The visitor clicks Confirm with no code once the help desk verified the row."""
+        from sam.core.account_requests import AccountRequest
+        from sam.manage import management_transaction
+        from webapp.extensions import db
+        pending, _ = _submit(client, mail, cleanup)
+        with app.app_context():
+            row = db.session.query(AccountRequest).filter_by(email=cleanup).one()
+            with management_transaction(db.session):
+                row.mark_verified('benkirk')
+        resp = client.post(pending.split('?')[0], data={'code': ''})
+        assert resp.status_code == 302 and '/request/draft/' in resp.location
+
+    def test_mail_off_is_the_same_page_as_register(self, client, visitor, mail, cleanup):
+        pending, _ = _submit(client, mail, cleanup)
+        path = pending.split('?')[0]
+        html = client.get(f'{path}?sent=0').get_data(as_text=True)
+        assert 'Mail delivery is switched off' in html and 'choose Continue' in html
+        assert f'href="{path}?sent=0"' in html and 'name="code"' not in html
+        assert 'Step 4 of 5' in html
+        wrong = client.post(path, data={'code': '000000', 'sent': '1'}).get_data(as_text=True)
+        assert 'We emailed a link' in wrong and 'wrong or has expired' in wrong
 
     def test_the_page_loads_the_form_into_its_panel(self, client, confirmed):
         draft, token, _, _ = confirmed

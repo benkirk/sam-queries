@@ -189,7 +189,7 @@
                                 {{ r.creation_time | fmt_date }}, {{ v.purpose }}, via {{ origin_labels[v.origin] }}
                                 {%- if v.sponsor %} by {{ v.sponsor.display_name }} (<span class="font-monospace">{{ v.sponsor.username }}</span>){% endif %}
                                 {%- if v.event %}; event <span class="font-monospace">{{ v.event.event_code }}</span>{% endif %}
-                                {%- if v.verified %}; verified {{ r.verified_at | fmt_date }}{% if r.verified_by %} by {{ r.verified_by }}{% endif %}{% else %}; <span class="text-warning-emphasis">address not verified</span>{% endif %}
+                                {%- if v.verified %}; verified {{ r.verified_at | fmt_date }}{% if r.verified_by %} by {{ r.verified_by }}{% endif %}{% else %}; <span class="text-warning-emphasis">address not verified</span>{% if r.verify_expires_at %} (code expires {{ r.verify_expires_at | fmt_date(fmt='%Y-%m-%d %H:%M') }}){% endif %}{% endif %}
                                 {%- if r.source_ip %}; from <span class="font-monospace">{{ r.source_ip }}</span>{% if (r.verify_sent_count or 0) > 1 %}, {{ r.verify_sent_count }} verification mails{% endif %}{% endif %}
                             </dd>
                             {% if r.desired_username %}

@@ -10,15 +10,15 @@
 {% block title %}Before you begin{% endblock %}
 
 {% block step %}
-<div class="register-step"><span class="register-step-num">Step 1 of 2</span> · Terms of use</div>
+<div class="register-step"><span class="register-step-num">Step 1 of {{ 2 if invite else 3 }}</span> · Terms of use</div>
 {% endblock %}
 
 {% block content %}
 {% block heading %}
 <h1>{% if invite %}Before you finish your request{% else %}Before you request an account{% endif %}</h1>
 <p class="register-lede">
-    NSF NCAR HPC resources are shared federal research systems. Please read and
-    accept the terms of use to continue.
+    NSF NCAR HPC systems are shared federal research resources. Read and accept
+    the terms of use to continue.
 </p>
 
 {% if event %}

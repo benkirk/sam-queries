@@ -17,7 +17,7 @@
 {% block title %}Request an NCAR HPC account{% endblock %}
 
 {% block step %}
-<div class="register-step"><span class="register-step-num">Step 2 of 2</span> · About you</div>
+<div class="register-step"><span class="register-step-num">Step 2 of {{ 2 if invite else 3 }}</span> · About you</div>
 {% endblock %}
 
 {% block content %}
@@ -43,9 +43,8 @@
 {% endif %}
 {% elif not invite %}
 <p class="register-lede">
-    Tell us who you are and why you need an account. We'll email you a link and
-    a code to confirm the address; the request is not visible to anyone until
-    you do.
+    We'll email you a link and a six-digit code to confirm your address. The
+    account team sees your request only after you confirm.
 </p>
 {% endif %}
 {% endblock %}
@@ -64,7 +63,7 @@
     </div>
 
     {{ text_field('email', 'Email address', required=True, type='email', maxlength=255,
-                  help='Your institutional address if you have one. The confirmation goes here.') }}
+                  help='Use your institutional address if you have one; the confirmation goes here.') }}
     {% endif %}
     <div class="row">
         <div class="col-md-5">{{ text_field('first_name', 'First name', required=True, maxlength=64) }}</div>
@@ -85,7 +84,7 @@
     </div>
     <div class="row">
         <div class="col-md-6">{{ text_field('phone', 'Phone', required=True, maxlength=32,
-                                            help='Needed to enroll your account in two-factor authentication.') }}</div>
+                                            help='Used to set up two-factor authentication on your account.') }}</div>
         <div class="col-md-6">{{ text_field('orcid', 'ORCID', maxlength=19, placeholder='0000-0002-1825-0097') }}</div>
     </div>
     {% if invite or hide_purpose %}
@@ -99,10 +98,11 @@
     {{ select_field('event_code', 'Event', options=event_options, placeholder='— none —',
                     help='If you are registering for a workshop or class.') }}
     {% endif %}
-    {# Required only without an event (blueprint.submit), so no asterisk and no "(optional)". #}
-    {{ textarea_field('purpose_note', 'What do you need the account for?', rows=3, maxlength=500,
-                      optional_text='',
-                      help='Required when you are not registering for an event. For example, new collaborator to be added on project ABCD1234 etc...') }}
+    {# Required only without an event (blueprint.submit). #}
+    {{ textarea_field('purpose_note', 'Reason for the account', rows=3, maxlength=500,
+                      required=not event_options,
+                      optional_text='(unless you chose an event)',
+                      help='For example: joining project ABCD1234 to work with Jane Smith.') }}
     {% endif %}
 
     {% if not invite %}{% include 'register/_human_check.html' %}{% endif %}
@@ -116,7 +116,7 @@
     {% if invite %}
     <button type="submit" class="btn btn-primary"><i class="fa-solid fa-paper-plane"></i> Complete my request</button>
     {% else %}
-    <button type="submit" class="btn btn-primary" data-human-check-submit><i class="fa-solid fa-paper-plane"></i> {{ submit_label or 'Send me the confirmation' }}</button>
+    <button type="submit" class="btn btn-primary" data-human-check-submit><i class="fa-solid fa-paper-plane"></i> {{ submit_label or 'Email me a confirmation code' }}</button>
     {% endif %}
 </form>
 {% endblock %}

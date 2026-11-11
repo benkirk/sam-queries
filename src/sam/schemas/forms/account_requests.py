@@ -185,7 +185,7 @@ class RegisterGateForm(HtmxFormSchema):
 
 
 class VerifyCodeForm(HtmxFormSchema):
-    BAD_FORMAT = 'Enter the six-digit code from the mail.'
+    BAD_FORMAT = 'Enter the six-digit code from the email.'
     WRONG = 'That code is wrong or has expired.'
     code = f.Str(required=True, validate=v.Regexp(r'^\s*\d{6}\s*$'))
 

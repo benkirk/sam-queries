@@ -398,6 +398,39 @@ class TestOperatorVerify:
         assert ticket.subject == f"New HPC User Request 'Vou Ched' [SAM-AR-{unverified_request}]"
         assert ticket.requested_by == 'benkirk'
 
+    def test_vouching_a_held_request_files_no_ticket(self, auth_client, app, ticket_mailer):
+        """A visitor's /request row: its ticket waits for the approved request."""
+        from sam.core.account_requests import CREATED_BY_SELF, AccountRequest
+        from webapp.extensions import db
+        with app.app_context():
+            row = AccountRequest.create(
+                db.session, email='zz.vouch.held@example.invalid', first_name='Hel',
+                last_name='D', purpose='submission', created_by=CREATED_BY_SELF)
+            db.session.commit()
+            row_id = row.account_request_id
+            assert row.is_held
+        try:
+            resp = auth_client.post(f'/admin/account-requests/{row_id}/verify')
+            assert resp.status_code == 200 and 'choose Continue' in resp.get_data(as_text=True)
+            assert ticket_mailer.messages == []
+        finally:
+            with app.app_context():
+                db.session.query(AccountRequest).filter(
+                    AccountRequest.account_request_id == row_id).delete()
+                db.session.commit()
+
+    def test_an_unverified_row_shows_when_its_code_expires(self, auth_client, app,
+                                                           unverified_request):
+        from datetime import datetime
+        from sam.core.account_requests import AccountRequest
+        from webapp.extensions import db
+        with app.app_context():
+            db.session.get(AccountRequest, unverified_request).set_verification(
+                'x' * 64, datetime(2031, 1, 2, 3, 4))
+            db.session.commit()
+        html = auth_client.get(f'{FRAGMENT}?request={unverified_request}').get_data(as_text=True)
+        assert 'address not verified</span> (code expires 2031-01-02 03:04)' in html
+
 
 class TestTheTicketDeepLink:
     """``?request=<id>``, the link NUSD's ticket carries, pins the card to one row."""

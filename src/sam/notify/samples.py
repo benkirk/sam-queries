@@ -33,7 +33,7 @@ _SUBJECTS = {
     'xras_adjustment': 'Lead NSF NCAR Exploratory Allocation (University) Adjustment Request Approved: SCSG0001',
     'task_summary': '[SAM] expiration_notices: 11 sent, 1 FAILED',
     'account_queue_summary': 'NCAR HPC account requests: 4 waiting, 3 new',
-    'account_verify': 'Verify your email address for your NCAR HPC account request',
+    'account_verify': 'Confirm your email for your NCAR HPC account request',
     'account_rejected': 'Your NCAR HPC account request',
     'account_invite': 'You are invited to request an NCAR HPC account',
     'account_request_received': 'Your NCAR HPC account request has been received',
