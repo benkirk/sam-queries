@@ -56,6 +56,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-11-05 | `8ea42a3f` (#920, #922 as merged), before sweep 37 | 52 / 65 / 26 | 1 (2) | 28 / 91 | 20 (20), 2 kept | 5,698 / 55 / 10 | 107 (53) | 0 / 0 | 0 | 6 / 5 | 17 (13) | 5 |
 | 2026-11-05 | `8ea42a3f` + sweep 37 (the XRAS tree) | 44 / 56 / 26 | 1 (2) | 28 / 91 | 20 (20), 2 kept | 5,698 / 55 / 10 | 107 (53) | 0 / 0 | 0 | 6 / 5 | 17 (13) | 5 |
 | 2026-11-10 | `148676cb` + sweep 38 (the XRAS loop end to end), py only | 44 / 56 / 26 | 1 (2) | 28 / 91 | — | — | — | — | — | — | — | 5 |
+| 2026-11-11 | `e5398e99` + sweep 39 (expanded rows across a reload) | 44 / 56 / 26 | 1 (2) | 28 / 91 | 20 (20), 2 kept | 5,727 / 55 / 10 | 107 (53) | 0 / 0 | 0 | 6 / 5 | 17 (13) | 5 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -2622,6 +2623,35 @@ it repeated; 0 activation events with Re-check provenance; 0 Re-checks left at `
   the card counts its New as owed: pre-2026-08-24 only. One Accounts-queue row reads "sent" on
   Pending Users and "open" on the Accounts queue. Light-merge picks are sorted by number and capped
   at 100, so the same first rows win every hour.
+
+## 39. 2026-11-11: area sweep, `templates` + `js`, expanded rows across a reload
+
+**Mode:** area, every collapse that `nav-view-persistence.js` remembers. **End commit:** `e5398e99`.
+Ben, on prod `/admin/resources`: with HPC > Derecho open to edit its six facility fair-share
+overrides, every Save closed Derecho, five times over. The script keys an open collapse on its
+id; the facility rows open together by a class target and had none, so the card reload after
+each Save brought them back closed. The census then looked for ids that name a position.
+
+**Done** (one commit each, on `sweep-39-collapse-persist`):
+
+- [x] C1, bug: a collapse persists under `data-collapse-persist-id` when several rows open as
+  one group; the Derecho facility rows carry `res-fs-<rid>`. Smoked on a local server: Save and
+  Unset keep all six rows open, chevron down, `scrollY` unchanged; closed stays closed through a
+  reload; open survives a full page reload.
+- [x] C2, ratchet: `test_every_collapse_has_a_persist_key` (static, 67 collapses, 0 offenders):
+  an id, a group key, or `data-no-persist` on purpose.
+- [x] C3, drift: the XRAS Accounts drawer was `xras-acct-<loop.index>`, so a sort or a refreshed
+  queue reopened a neighbor's drawer. Keyed on the username (the feeds merge on it) through a new
+  `dom_id` filter (`webapp/utils/template_filters.py`), since `#a.b` would select a class.
+- [x] C4, drift: the jobs usage panel's persisted `lazy_drill_row` was keyed on the rank, so a
+  reload reopened, and re-fetched, whoever now held that rank. Keyed on the user or projcode.
+
+**Left alone, on purpose:** positional ids that do not persist (`_alloc_tree_table.html`,
+`calendar.html`, the jobs timeline and histogram bands and owner tiers); the Remediations group
+id, positional only when the opportunity id is null.
+
+**Open:** a detector for a persisted collapse whose id is built from `loop.index` (four found by
+grep; the gate cannot see Jinja expressions).
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
