@@ -266,6 +266,8 @@ class TestWatermark:
 @pytest.fixture
 def patch_cache(monkeypatch):
     """The patch cache on, empty, and off again afterwards."""
+    # In-process: CI's Redis is shared by xdist workers, and clear() would wipe a neighbor's entry.
+    monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
     monkeypatch.setenv('READ_MODEL_PATCH_CACHE_TTL', '3600')
     gate._PATCH_CACHE.reset_for_tests(disabled=False)
     adapter = gate._PATCH_CACHE.adapter('default')
