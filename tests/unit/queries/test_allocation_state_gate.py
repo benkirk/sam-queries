@@ -328,9 +328,16 @@ class TestPatchCache:
         assert look.rows[alloc.allocation_id].allocated == 777.0
 
     def test_a_tree_stamped_at_the_db_clock_is_not_stored(self, session, fed, enabled,
-                                                          patch_cache, projections):
-        """It could change again under the same stamp (MySQL stamps are whole seconds)."""
-        _edit(session, fed['a1'], seconds_ago=0)
+                                                          patch_cache, projections, monkeypatch):
+        """MySQL stamps are whole seconds, so it could change again under the same stamp."""
+        # Pinned at the gate: Postgres reads statement_timestamp(), so no row stamp equals it.
+        real = gate._tree_stamps
+
+        def stamped_now(*a):
+            now, tree_of, stamp_of = real(*a)
+            return now, tree_of, {t: now for t in stamp_of}
+        monkeypatch.setattr(gate, '_tree_stamps', stamped_now)
+        _edit(session, fed['a1'], seconds_ago=20)
         scope = dict(resource_ids=[fed['r1'].resource_id])
         fresh_state(session, **scope)
         look = fresh_state(session, **scope)
