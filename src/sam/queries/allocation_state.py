@@ -139,12 +139,14 @@ def project_allocation_state(session: Session, *, now: datetime,
 # The freshness gate (read side)
 # ============================================================================
 
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 
 from sqlalchemy import func, select, union_all
 
 from sam.accounting.adjustments import ChargeAdjustment
+from sam.caching import BucketedTTLCache, BucketSpec
 from sam.integration._config import config_bool, config_int
 from sam.accounting.allocations import AllocationTransaction
 from sam.summaries.allocation_state import AccountAllocationState
@@ -155,6 +157,18 @@ logger = logging.getLogger(__name__)
 #: forwarder onto the request profile (``webapp.request_timing``); ``sam``
 #: never imports ``webapp``, so the hook is registered from the other side.
 _LOOKUP_OBSERVER: Optional[Callable[['Lookup'], None]] = None
+
+
+#: A stale tree's projection, keyed on (tree, its newest stamp, projects, day). An edit
+#: moves the stamp, so an entry never outlives the tree's state; the TTL only bounds
+#: the hour until the feeder's rows make the tree fresh again.
+_PATCH_CACHE = BucketedTTLCache('read_model_patch', 'read_model', {
+    'default': BucketSpec(
+        name='read_model_patch',
+        ttl_key='READ_MODEL_PATCH_CACHE_TTL', ttl_default=3600,
+        size_key='READ_MODEL_PATCH_CACHE_SIZE', size_default=200,
+    ),
+})
 
 
 def set_lookup_observer(fn: Optional[Callable[['Lookup'], None]]) -> None:
@@ -181,13 +195,15 @@ class ReadModelConfig:
 class Lookup:
     """``rows`` (by ``allocation_id``) when the read-model may serve the scope, else None with why.
 
-    ``patched`` counts the MPTT trees re-projected in memory for this answer;
-    ``stale_trees`` names them (tree = ``project.tree_root`` or the project id).
+    ``patched`` counts the stale MPTT trees overlaid on this answer, ``patch_hits``
+    how many of them came from the patch cache; ``stale_trees`` names them
+    (tree = ``project.tree_root`` or the project id).
     """
     rows: Optional[Dict[int, AccountAllocationState]]
     reason: str
     patched: int = 0
     stale_trees: Tuple[int, ...] = ()
+    patch_hits: int = 0
 
     @property
     def by_account(self) -> Dict[int, AccountAllocationState]:
@@ -295,9 +311,72 @@ def structural_watermark(session: Session, *, resource_ids=None,
     return max(_tree_stamps(session, resource_ids, project_ids)[2].values(), default=None)
 
 
+def _projections(session: Session, stale: Set[int], tree_of: Dict[int, int],
+                 stamp_of: Dict[int, datetime], wanted: Optional[Set[int]],
+                 now: datetime) -> Tuple[List[Dict], int]:
+    """Fresh row dicts (all resources) for the stale trees' projects, and how many trees hit the cache.
+
+    The misses are projected together in one builder call, then stored per tree.
+    """
+    pids_of: Dict[int, List[int]] = defaultdict(list)
+    for p, t in tree_of.items():
+        if t in stale and (wanted is None or p in wanted):
+            pids_of[t].append(p)
+    keys = {t: (t, stamp_of.get(t), tuple(sorted(pids)), date.today())
+            for t, pids in pids_of.items()}
+    adapter = _PATCH_CACHE.adapter('default')
+    fresh: List[Dict] = []
+    missed = []
+    for t, key in keys.items():
+        cached = _cache_get(adapter, key)
+        if cached is None:
+            missed.append(t)
+        else:
+            fresh.extend(cached)
+    if missed:
+        pids = [p for t in missed for p in pids_of[t]]
+        projects = session.query(Project).filter(Project.project_id.in_(pids)).all()
+        computed = project_allocation_state(session, now=datetime.now(), projects=projects)
+        fresh.extend(computed)
+        if adapter is not None:
+            by_tree: Dict[int, List[Dict]] = {t: [] for t in missed}
+            for d in computed:
+                by_tree[tree_of.get(d['project_id'], d['project_id'])].append(d)
+            # Stamps are whole seconds: a tree stamped this second could change again
+            # under the same stamp, so only a stamp older than the DB clock is a safe key.
+            for t, tree_rows in by_tree.items():
+                if stamp_of.get(t) is not None and stamp_of[t] < now:
+                    _cache_put(adapter, keys[t], tree_rows)
+    return fresh, len(keys) - len(missed)
+
+
+# A cache fault is a miss, never a patch failure: the projection still serves the request.
+def _cache_get(adapter, key):
+    if adapter is None:
+        return None
+    try:
+        with adapter.lock:
+            return adapter[key]
+    except KeyError:
+        return None
+    except Exception:
+        logger.warning('read-model patch cache read failed', exc_info=True)
+        return None
+
+
+def _cache_put(adapter, key, value) -> None:
+    try:
+        with adapter.lock:
+            adapter[key] = value
+    except ValueError:              # full, nothing expired: skip the store
+        pass
+    except Exception:
+        logger.warning('read-model patch cache write failed', exc_info=True)
+
+
 def _patch(session: Session, rows, stale: Set[int], tree_of: Dict[int, int],
-           resource_ids, project_ids, refreshed_at: datetime):
-    """Table rows with every stale tree replaced by a fresh in-memory projection.
+           stamp_of: Dict[int, datetime], resource_ids, project_ids, refreshed_at: datetime):
+    """Table rows with every stale tree replaced by a fresh in-memory projection, and the cache hits.
 
     The stale trees' table rows are dropped first, so an allocation the
     projection no longer produces (deleted, expired) leaves the answer. The
@@ -305,12 +384,7 @@ def _patch(session: Session, rows, stale: Set[int], tree_of: Dict[int, int],
     the table's only writer.
     """
     wanted = set(project_ids) if project_ids is not None else None
-    pids = [p for p, t in tree_of.items()
-            if t in stale and (wanted is None or p in wanted)]
-    fresh: List[Dict] = []
-    if pids:
-        projects = session.query(Project).filter(Project.project_id.in_(pids)).all()
-        fresh = project_allocation_state(session, now=datetime.now(), projects=projects)
+    fresh, hits = _projections(session, stale, tree_of, stamp_of, wanted, refreshed_at)
 
     kept = {r.allocation_id: r for r in rows
             if tree_of.get(r.project_id, r.project_id) not in stale}
@@ -322,7 +396,7 @@ def _patch(session: Session, rows, stale: Set[int], tree_of: Dict[int, int],
         values['refreshed_at'] = refreshed_at
         kept[d['allocation_id']] = AccountAllocationState(
             allocation_id=d['allocation_id'], **values)
-    return kept
+    return kept, hits
 
 
 def fresh_state(session: Session, *, resource_ids=None, project_ids=None,
@@ -372,12 +446,14 @@ def fresh_state(session: Session, *, resource_ids=None, project_ids=None,
     if len(stale) > cfg.patch_max_trees:
         return _noted(Lookup(None, 'too-many-stale', stale_trees=trees))
     try:
-        patched = _patch(session, rows, stale, tree_of, resource_ids, project_ids, now)
+        patched, hits = _patch(session, rows, stale, tree_of, stamp_of,
+                               resource_ids, project_ids, now)
     except Exception:
         logger.warning('read-model patch failed for trees %s; serving live',
                        trees[:10], exc_info=True)
         return _noted(Lookup(None, 'patch-failed', stale_trees=trees))
-    return _noted(Lookup(patched, 'ok-patched', patched=len(stale), stale_trees=trees))
+    return _noted(Lookup(patched, 'ok-patched', patched=len(stale), stale_trees=trees,
+                         patch_hits=hits))
 
 
 def read_model_rows_for(session: Session, project: Project) -> Dict[int, AccountAllocationState]:

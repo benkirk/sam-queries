@@ -261,3 +261,94 @@ class TestWatermark:
         stamp = structural_watermark(session, resource_ids=[fed['r1'].resource_id])
         assert stamp is not None                      # the fixture backdated it 60 s
         assert 55 <= (db_now(session) - stamp).total_seconds() <= 120
+
+
+@pytest.fixture
+def patch_cache(monkeypatch):
+    """The patch cache on, empty, and off again afterwards."""
+    monkeypatch.setenv('READ_MODEL_PATCH_CACHE_TTL', '3600')
+    gate._PATCH_CACHE.reset_for_tests(disabled=False)
+    adapter = gate._PATCH_CACHE.adapter('default')
+    adapter.clear()
+    yield adapter
+    adapter.clear()
+    gate._PATCH_CACHE.reset_for_tests(disabled=True)
+
+
+@pytest.fixture
+def projections(monkeypatch):
+    """Count the projections the gate runs."""
+    calls = []
+    real = gate.project_allocation_state
+
+    def counted(session, **kw):
+        calls.append(kw.get('projects'))
+        return real(session, **kw)
+    monkeypatch.setattr(gate, 'project_allocation_state', counted)
+    return calls
+
+
+def _edit(session, account, *, seconds_ago):
+    """A threshold change stamped ``seconds_ago``: after the feed (30 s), before now."""
+    account.update_thresholds(first_threshold=150)
+    account.modified_time = db_now(session) - timedelta(seconds=seconds_ago)
+    session.flush()
+
+
+class TestPatchCache:
+    """A stale tree is projected once per change, not once per request."""
+
+    def test_the_second_request_for_an_unchanged_tree_hits(self, session, fed, enabled,
+                                                          patch_cache, projections):
+        _edit(session, fed['a1'], seconds_ago=20)
+        scope = dict(resource_ids=[fed['r1'].resource_id])
+        first, second = fresh_state(session, **scope), fresh_state(session, **scope)
+
+        assert (first.reason, first.patched, first.patch_hits) == ('ok-patched', 1, 0)
+        assert (second.reason, second.patched, second.patch_hits) == ('ok-patched', 1, 1)
+        assert len(projections) == 1
+        aid = fed['alloc1'].allocation_id
+        cols = [c for c in AccountAllocationState.VALUE_COLUMNS if c != 'refreshed_at']
+        assert ([getattr(second.rows[aid], c) for c in cols]
+                == [getattr(first.rows[aid], c) for c in cols])
+
+    def test_a_later_change_to_the_tree_is_projected_again(self, session, fed, enabled,
+                                                          patch_cache, projections):
+        scope = dict(resource_ids=[fed['r1'].resource_id])
+        _edit(session, fed['a1'], seconds_ago=20)
+        fresh_state(session, **scope)
+        alloc = fed['alloc1']
+        alloc.amount = 777.0
+        alloc.modified_time = db_now(session) - timedelta(seconds=10)
+        session.flush()
+        look = fresh_state(session, **scope)
+
+        assert look.patch_hits == 0
+        assert len(projections) == 2
+        assert look.rows[alloc.allocation_id].allocated == 777.0
+
+    def test_a_tree_stamped_this_second_is_not_stored(self, session, fed, enabled,
+                                                      patch_cache, projections):
+        """It could change again within the second under the same stamp."""
+        fed['a1'].update_thresholds(first_threshold=150)
+        session.flush()
+        scope = dict(resource_ids=[fed['r1'].resource_id])
+        fresh_state(session, **scope)
+        look = fresh_state(session, **scope)
+        assert look.patch_hits == 0
+        assert len(projections) == 2
+
+    def test_a_cache_fault_still_serves_the_patch(self, session, fed, enabled,
+                                                  patch_cache, monkeypatch):
+        class Broken:
+            lock = gate._PATCH_CACHE.adapter('default').lock
+
+            def __getitem__(self, key):
+                raise ConnectionError('redis down')
+
+            def __setitem__(self, key, value):
+                raise ConnectionError('redis down')
+        monkeypatch.setattr(gate._PATCH_CACHE, 'adapter', lambda bucket: Broken())
+        _edit(session, fed['a1'], seconds_ago=20)
+        look = fresh_state(session, resource_ids=[fed['r1'].resource_id])
+        assert (look.reason, look.patch_hits) == ('ok-patched', 0)

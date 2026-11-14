@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 #: cycle (both webapp packages import this facade).
 _BUCKETED_CACHE_MODULES = (
     'sam.queries.usage_cache',
+    'sam.queries.allocation_state',
     'webapp.disk_scans.cache',
     'webapp.jobs.cache',
     'sam.integration.awards.cache',
