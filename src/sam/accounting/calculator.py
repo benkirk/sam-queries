@@ -124,28 +124,35 @@ def anchor_sums(session, infos: List[Dict], *, subtree: bool, table: str, value:
     if not infos:
         return
     cols, join = (_SUBTREE_COLS, _SUBTREE_JOIN) if subtree else (_ACCOUNT_COLS, _ACCOUNT_JOIN)
+    # Identical anchors (a pool's inheriting members all name the root's subtree) go in once:
+    # the join matches each charge row once per anchor row, so N copies cost N scans.
+    members: Dict[Tuple, List[Any]] = defaultdict(list)
+    for info in infos:
+        members[tuple(info[c] for c in cols + _DATE_COLS)].append(info['key'])
+    uniq = list(members)
     # Anchors sharing one date range take it as constants, so the planner can range-scan the
     # date index instead of reading each account's history (0.5 ms vs 104 ms, MySQL). Mixed
     # ranges ride in the anchors table.
-    spans = {(info['start_date'], info['end_date']) for info in infos}
+    spans = {sig[-2:] for sig in uniq}
     params: Dict[str, Any] = {}
     if len(spans) == 1:
         (params['lo'], params['hi']), = spans
         lo, hi = ':lo', ':hi'
     else:
         cols, lo, hi = cols + _DATE_COLS, 'a.start_date', 'a.end_date'
-    for i, info in enumerate(infos):
+    for i, sig in enumerate(uniq):
         params[f'ak{i}'] = i
-        params.update({f'{c}{i}': info[c] for c in cols})
+        params.update({f'{c}{i}': v for c, v in zip(cols, sig)})
     month = f", {month_key(f't.{date_col}')}" if by_month else ''
-    anchors = _anchors_table(session, cols, len(infos))
+    anchors = _anchors_table(session, cols, len(uniq))
     sql = text(f"""
         SELECT a.anchor_key{month}, SUM(COALESCE(t.{value}, 0))
         FROM {table} t {join.format(anchors=anchors, date=date_col, lo=lo, hi=hi)}
         GROUP BY a.anchor_key{month}""")
     for row in session.execute(sql, params):
         if row[-1]:
-            yield infos[row[0]]['key'], int(row[1]) if by_month else None, float(row[-1])
+            for key in members[uniq[row[0]]]:
+                yield key, int(row[1]) if by_month else None, float(row[-1])
 
 
 def batch_charges(session, infos: List[Dict], *, subtree: bool,

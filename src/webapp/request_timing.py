@@ -68,7 +68,7 @@ class RequestProfile:
         self.cpu_start = time.thread_time()   # per-thread CPU; gthread = 1 thread/request
         self.db = {}          # label -> [ms, count]
         self.pool_ms = 0.0
-        self.read_model = None   # [live reason or None, trees patched, served calls]
+        self.read_model = None   # [live reason or None, trees projected, served calls, cache hits]
         self.actor = None        # 'user:<username>' | 'apikey:<name>'
 
     @classmethod
@@ -94,15 +94,16 @@ class RequestProfile:
     def add_pool(self, ms):
         self.pool_ms += ms
 
-    def note_read_model(self, reason, patched=0):
+    def note_read_model(self, reason, patched=0, hits=0):
         """Record one read-model gate verdict; the worst one wins the token."""
         if self.read_model is None:
-            self.read_model = [None, 0, 0]
+            self.read_model = [None, 0, 0, 0]
         live = None if reason in ('ok', 'ok-patched') else reason
         if live is not None and self.read_model[0] is None:
             self.read_model[0] = live
-        self.read_model[1] += patched
+        self.read_model[1] += patched - hits
         self.read_model[2] += 1
+        self.read_model[3] += hits
 
     def note_actor(self, kind, name):
         """Record who made the request; the limiter's vocabulary (user:/apikey:)."""
@@ -110,11 +111,13 @@ class RequestProfile:
             self.actor = '%s:%s' % (kind, name)
 
     def _read_model_token(self):
-        live, patched, calls = self.read_model
+        live, patched, calls, hits = self.read_model
         if live is not None:
             return 'rm=live:%s' % live
         if patched:
             return 'rm=patched:%d' % patched
+        if hits:
+            return 'rm=patched-hit:%d' % hits
         return 'rm=served'
 
     def total_ms(self):
@@ -132,7 +135,7 @@ class RequestProfile:
 
         ``cpu=Xms`` then one ``label=Yms/Nq`` per database the request TOUCHED
         (presence-gated — untouched DBs never appear), then ``pool=`` when
-        non-zero, then ``rm=served|patched:N|live:<reason>`` when the request
+        non-zero, then ``rm=served|patched:N|patched-hit:N|live:<reason>`` when the request
         consulted the allocation read-model, then ``who=user:<u>|apikey:<n>``
         when it authenticated (anonymous requests carry no actor: the client
         IP is lost at the ingress). ``rest`` (GIL/pool-not-attributed) is
@@ -173,7 +176,7 @@ def attach_query_timing(engine, label):
 def _note_read_model(lookup):
     profile = RequestProfile.current()
     if profile is not None:
-        profile.note_read_model(lookup.reason, lookup.patched)
+        profile.note_read_model(lookup.reason, lookup.patched, lookup.patch_hits)
 
 
 def init_request_timing(app, db):

@@ -234,6 +234,9 @@ class SAMWebappConfig(SAMConfig):
     # are younger than READ_MODEL_MAX_AGE seconds, else the live computation.
     READ_MODEL_ENABLED = os.getenv('READ_MODEL_ENABLED', '0').lower() in ('1', 'true', 'yes')
     READ_MODEL_MAX_AGE = int(os.getenv('READ_MODEL_MAX_AGE', 7200))
+    # A stale tree's projection, cached per (tree, newest stamp); TTL or SIZE 0 disables.
+    READ_MODEL_PATCH_CACHE_TTL  = int(os.getenv('READ_MODEL_PATCH_CACHE_TTL', 3600))   # seconds
+    READ_MODEL_PATCH_CACHE_SIZE = int(os.getenv('READ_MODEL_PATCH_CACHE_SIZE', 200))   # max entries
 
     # Award-source lookup cache (sam.integration.awards). Award records are
     # near-immutable, so this sits at the long end of the range like
@@ -509,6 +512,8 @@ class TestingConfig(SAMWebappConfig):
 
     # Read-model off in tests; a test that exercises it flips app.config.
     READ_MODEL_ENABLED = False
+    READ_MODEL_PATCH_CACHE_TTL  = 0
+    READ_MODEL_PATCH_CACHE_SIZE = 0
 
     # Award lookups and searches are stubbed; a live cache leaks one test's stub
     # answer into the next. BOTH buckets must be listed — a bucket absent here

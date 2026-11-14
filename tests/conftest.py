@@ -91,6 +91,10 @@ def pytest_configure(config):
     os.environ.setdefault("TZ", "America/Denver")
     time.tzset()
 
+    # The read-model patch cache is per process outside Flask; a neighbor's entry
+    # would turn a projection into a hit. Cache tests re-enable it explicitly.
+    os.environ["READ_MODEL_PATCH_CACHE_TTL"] = "0"
+
     # Test-only placeholder values for SAM_DB_*/STATUS_DB_*. The test
     # suite never reads these — sessions are routed through SAM_TEST_DB_URL
     # (mysql-test) via `create_app(config_overrides=…)`, and CLI tests
