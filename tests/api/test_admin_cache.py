@@ -53,3 +53,11 @@ class TestAdminCacheRefreshBehavior:
     def test_invalid_category_returns_400(self, auth_client):
         response = auth_client.post('/api/v1/admin/cache/refresh?category=bogus')
         assert response.status_code == 400
+
+
+def test_the_cli_offers_every_facade_category():
+    """`sam-admin cache --category` is a hand-written click.Choice; the facade is the source."""
+    from cli.cmds.admin import cli
+    from webapp.caching import caching
+    choice = next(p for p in cli.commands['cache'].params if p.name == 'category')
+    assert set(choice.type.choices) == set(caching.categories)

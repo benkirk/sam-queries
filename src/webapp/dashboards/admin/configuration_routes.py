@@ -26,11 +26,6 @@ from webapp.utils.config_inspect import gather_runtime_state, gather_server_info
 
 from .blueprint import bp
 
-# Categories accepted by caching.clear(); mirrors the JSON API's set
-# (webapp.api.v1.admin). None (omitted) clears everything.
-_VALID_CACHE_CATEGORIES = {'flask', 'chart', 'usage', 'read_model', 'scans', 'jobs', 'awards'}
-
-
 @bp.route('/htmx/configuration', methods=['GET'])
 @login_required
 @require_permission(Permission.VIEW_SYSTEM_CONFIG)
@@ -69,7 +64,7 @@ def htmx_clear_cache():
 
     Gated one tier above the read-only card (SYSTEM_ADMIN vs
     VIEW_SYSTEM_CONFIG) because it mutates runtime state. ``?category=`` (one
-    of flask|chart|usage|scans) scopes the clear; omit it to clear everything.
+    of ``caching.categories``) scopes the clear; omit it to clear everything.
 
     Runs in-process, so it clears *this* worker's caches directly (no HTTP
     round-trip). With Redis configured the shared stores clear globally; with
@@ -77,7 +72,7 @@ def htmx_clear_cache():
     same worker-affinity caveat as the Server card's refresh button.
     """
     category = request.args.get('category') or None
-    if category is not None and category not in _VALID_CACHE_CATEGORIES:
+    if category is not None and category not in caching.categories:
         category = None  # ignore a bad param rather than 500 the fragment
     cleared = caching.clear(category)
     state = gather_runtime_state(current_app, db)
