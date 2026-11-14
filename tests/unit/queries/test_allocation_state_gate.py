@@ -289,7 +289,7 @@ def projections(monkeypatch):
 
 
 def _edit(session, account, *, seconds_ago):
-    """A threshold change stamped ``seconds_ago``: after the feed (30 s), before now."""
+    """A threshold change stamped ``seconds_ago`` on the DB clock, after the feed (30 s)."""
     account.update_thresholds(first_threshold=150)
     account.modified_time = db_now(session) - timedelta(seconds=seconds_ago)
     session.flush()
@@ -327,11 +327,10 @@ class TestPatchCache:
         assert len(projections) == 2
         assert look.rows[alloc.allocation_id].allocated == 777.0
 
-    def test_a_tree_stamped_this_second_is_not_stored(self, session, fed, enabled,
-                                                      patch_cache, projections):
-        """It could change again within the second under the same stamp."""
-        fed['a1'].update_thresholds(first_threshold=150)
-        session.flush()
+    def test_a_tree_stamped_at_the_db_clock_is_not_stored(self, session, fed, enabled,
+                                                          patch_cache, projections):
+        """It could change again under the same stamp (MySQL stamps are whole seconds)."""
+        _edit(session, fed['a1'], seconds_ago=0)
         scope = dict(resource_ids=[fed['r1'].resource_id])
         fresh_state(session, **scope)
         look = fresh_state(session, **scope)
