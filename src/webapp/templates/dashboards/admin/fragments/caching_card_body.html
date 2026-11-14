@@ -46,6 +46,15 @@
 {% endfor %}
 {% endif %}
 
+{% if cache_state.read_model %}
+<hr class="my-3">
+<div class="text-muted small mb-2"><strong>Read-model patch cache</strong></div>
+{# One entry per stale tree and its newest stamp; an edit moves the stamp. #}
+{% for _b in cache_state.read_model %}
+  {{ cache_row(_b) }}
+{% endfor %}
+{% endif %}
+
 {% if cache_state.scans %}
 <hr class="my-3">
 <div class="text-muted small mb-2"><strong>Filesystem-scan cache</strong></div>

@@ -37,12 +37,12 @@ class TestAdminCacheRefreshBehavior:
     def test_clear_all_covers_every_category(self, auth_client):
         data = auth_client.post('/api/v1/admin/cache/refresh').get_json()
         assert set(data['cleared'].keys()) == {'flask', 'chart', 'usage',
-                                               'scans', 'jobs', 'awards',
-                                               'xras_api'}
+                                               'read_model', 'scans', 'jobs',
+                                               'awards', 'xras_api'}
 
     @pytest.mark.parametrize('category',
-                             ['flask', 'chart', 'usage', 'scans', 'jobs',
-                              'awards', 'xras_api'])
+                             ['flask', 'chart', 'usage', 'read_model', 'scans',
+                              'jobs', 'awards', 'xras_api'])
     def test_single_category_scopes_the_clear(self, auth_client, category):
         data = auth_client.post(
             f'/api/v1/admin/cache/refresh?category={category}'
@@ -53,3 +53,11 @@ class TestAdminCacheRefreshBehavior:
     def test_invalid_category_returns_400(self, auth_client):
         response = auth_client.post('/api/v1/admin/cache/refresh?category=bogus')
         assert response.status_code == 400
+
+
+def test_the_cli_offers_every_facade_category():
+    """`sam-admin cache --category` is a hand-written click.Choice; the facade is the source."""
+    from cli.cmds.admin import cli
+    from webapp.caching import caching
+    choice = next(p for p in cli.commands['cache'].params if p.name == 'category')
+    assert set(choice.type.choices) == set(caching.categories)

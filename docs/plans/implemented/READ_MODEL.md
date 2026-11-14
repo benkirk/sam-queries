@@ -218,6 +218,28 @@ More than `READ_MODEL_PATCH_MAX_TREES` (default 250) stale trees, or a
 projection that raises, sends the scope live (`too-many-stale`,
 `patch-failed`) — a page never breaks on the gate.
 
+**What a patch costs, and the patch cache (2026-11-13).** The ~4 ms per
+project is the feeder's amortized figure. A read-time patch pays the builder's
+fixed cost for one tree, and production showed 0.5–1 s typically and 3–21 s for
+a big tree on a polled scope (SSG's 5-minute `fstree_access/Derecho`: 21.7 s,
+6.3 s, 3.5 s, 3.5 s after one CESM-tree edit). Two changes:
+
+- `anchor_sums` sends identical anchors once. A pool's inheriting members all
+  name the root's subtree, and the join scanned it once per member: CESM's
+  subtree statement took 64 anchors, 16 of them distinct. The local snapshot's
+  CESM projection fell from 580 to 190 ms, and a full feeder pass from 4.3 to
+  2.9 s, with byte-identical rows.
+- Each stale tree's projection is cached (`READ_MODEL_PATCH_CACHE_TTL`, default
+  3600 s; `_SIZE` 200; cache category `read_model`) under (tree, newest stamp, projects,
+  day). An edit moves the stamp, so an entry never outlives the tree's state.
+  A tree stamped in the current second is not stored, because stamps are
+  whole seconds. A cache fault counts as a miss. The request line reads
+  `rm=patched-hit:<n>` when every stale tree came from the cache.
+
+Not done (measure first): nested subtrees re-sum the same rows once per
+ancestor level, and a patch projects every resource of the tree even when the
+request needs one.
+
 Why the grain matters, measured 2026-09-11 with the first implementation
 (a scope-wide watermark): one XRAS handoff at 09:14:38 MDT stamped a project
 with accounts on Casper and Derecho, and both resources' fstree scopes fell to
@@ -429,7 +451,7 @@ enable the task, soak dark for a day (ledger `detail`, row counts), then flip
   re-entrancy guard a stale tree's patch recursed. A projection is always the
   live computation — for the feeder too.
 - **`rm=` on the request line is the only production signal.** The gate logs
-  nothing at INFO; `rm=served`, `rm=patched:<n>` and `rm=live:<reason>` on
+  nothing at INFO; `rm=served`, `rm=patched:<n>`, `rm=patched-hit:<n>` and `rm=live:<reason>` on
   the `webapp.run —` line are how `cirrus_watch.sh` counts fallbacks. A
   `live:too-old` burst inside the hour after a failed feeder run is expected;
   `live:patch-failed` is a bug.

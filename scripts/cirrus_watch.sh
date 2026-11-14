@@ -298,8 +298,8 @@ else
     # Read-model gate verdicts (the rm= token). Report-only: a live count is
     # expected inside the hourly too-old window; a trend is what matters.
     RM=$(printf '%s\n' "$LOGS" | { grep -oE 'rm=[a-z-]+(:[a-z0-9-]+)?' || true; } | awk -F'[=:]' '
-        { if($2=="served") s++; else if($2=="patched"){p++; t+=$3+0} else if($2=="live"){l++; r[$3]++} }
-        END{ if(s+p+l){ line=sprintf("  read-model: served=%d patched=%d (trees=%d) live=%d", s,p,t,l);
+        { if($2=="served") s++; else if($2=="patched"){p++; t+=$3+0} else if($2=="patched-hit") h++; else if($2=="live"){l++; r[$3]++} }
+        END{ if(s+p+h+l){ line=sprintf("  read-model: served=%d patched=%d (trees=%d) cached=%d live=%d", s,p,t,h,l);
              for(k in r) line=line sprintf(" %s=%d", k, r[k]); print line } }')
     [[ -n "$RM" ]] && printf '%s\n' "$RM"
     # Query-count guard: sum of the /Nq tokens per run line. An N+1 shape is

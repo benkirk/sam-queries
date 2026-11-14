@@ -137,6 +137,14 @@ class TestRenderFieldsContract:
             p.note_read_model('ok')
             assert p.render_fields().endswith('rm=live:no-rows')
 
+    def test_a_patch_from_the_cache_reads_patched_hit_until_one_is_projected(self, app):
+        with app.test_request_context('/'):
+            p = RequestProfile.start()
+            p.note_read_model('ok-patched', patched=2, hits=2)
+            assert p.render_fields().endswith('rm=patched-hit:2')
+            p.note_read_model('ok-patched', patched=2, hits=1)
+            assert p.render_fields().endswith('rm=patched:1')
+
     def test_actor_token_is_presence_gated_and_last(self, app):
         with app.test_request_context('/'):
             p = RequestProfile.start()
