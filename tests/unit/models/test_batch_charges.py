@@ -86,6 +86,34 @@ def test_subtree_charges_cover_descendants_on_the_anchors_resource(session):
                    'late': {'charges_by_type': {'comp': 4.0}, 'adjustment': 6.0}}
 
 
+def test_identical_anchors_share_one_row_and_every_key_gets_the_sum(session, monkeypatch):
+    """A pool's inheriting members all name the root's subtree; each copy would rescan it."""
+    from factories.projects import make_account, make_charge_adjustment, make_project
+    hpc = _hpc(session)
+    root = make_project(session, facility_name='UNIV')
+    member = make_project(session, facility_name='UNIV', parent=root)
+    pool = make_account(session, project=root, resource=hpc)
+    member_account = make_account(session, project=member, resource=hpc)
+    _charge(session, pool, datetime(2026, 2, 1), 3.0)
+    _charge(session, member_account, datetime(2026, 4, 2), 11.0)
+    make_charge_adjustment(session, account=member_account, amount=2.0,
+                           adjustment_date=datetime(2026, 8, 1, 8, 0))
+    sizes = []
+    real = calculator._anchors_table
+    monkeypatch.setattr(calculator, '_anchors_table',
+                        lambda s, cols, n: sizes.append(n) or real(s, cols, n))
+    same = [_info(('root', k), pool, *YEAR) for k in range(3)]
+    half = _info('half', pool, datetime(2026, 1, 1), datetime(2026, 6, 30, 23, 59, 59))
+
+    out = calculator.batch_charges(session, same + [half], subtree=True)
+
+    whole = {'charges_by_type': {'comp': 14.0}, 'adjustment': 2.0}
+    assert out == {('root', 0): whole, ('root', 1): whole, ('root', 2): whole,
+                   'half': {'charges_by_type': {'comp': 14.0}, 'adjustment': 0.0}}
+    # comp: one statement per date range (1 row, then 1); adjustments: mixed ranges, 2 rows.
+    assert sizes == [1, 1, 2]
+
+
 def test_an_anchor_without_charges_is_present_and_zeroed(session):
     from factories.projects import make_account, make_project
     hpc = _hpc(session)
