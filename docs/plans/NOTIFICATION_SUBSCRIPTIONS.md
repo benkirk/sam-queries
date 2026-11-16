@@ -33,6 +33,18 @@ projects and resources, and the read model they join to is in `sam`.
 
 ## 2. The table
 
+**Why a new table.** Subscriptions need DDL. The alternatives fall short:
+
+| Alternative | Why not |
+|---|---|
+| A preferences column on `users` | alters a legacy table, and cannot be queried by kind or project |
+| One table per kind | every outage or announcement kind would need its own DDL ticket |
+| `notification_addressing` | holds deployment-wide cc/bcc per family, not per-user choices |
+
+One generic table with typed columns serves every kind.
+`implemented/NOTIFICATION_FRAMEWORK.md` § 6 cut a dormant subscription table because it had no consumer to test its
+shape. The two `usage` kinds are that consumer.
+
 Applied by hand from `create_notification_subscription.sql` in `scripts/sql/`,
 following the conventions of `scripts/sql/create_notification_addressing.sql`:
 
@@ -69,7 +81,13 @@ following the conventions of `scripts/sql/create_notification_addressing.sql`:
 
 ## 3. Who may subscribe to what
 
-`can_subscribe(user, project, include_subtree)` goes in
+Each kind declares the scopes it accepts in a new `NotificationKind.scopes`
+field. The default is `()`, meaning not subscribable. Both `usage` kinds
+declare `('project',)`. `NotificationSubscription.create()` refuses a scope
+its kind does not declare. Until a later kind declares `resource`, `facility`
+or `global` with its own rules (§ 7), no row can use those columns.
+
+For the project scope, `can_subscribe(user, project, include_subtree)` goes in
 `src/webapp/utils/project_permissions.py`:
 
 | Request | Allowed when |
@@ -77,6 +95,9 @@ following the conventions of `scripts/sql/create_notification_addressing.sql`:
 | A project, no subtree | the user is a member (an unended row, or lead or admin) |
 | A project with `include_subtree` | the user is lead or admin of that project or an ancestor (`include_ancestors` semantics) |
 | For another user | `EDIT_PROJECT_MEMBERS` (staff) |
+
+A plain member cannot subscribe to a subtree. This is deliberate: a subtree
+covers projects the member may not belong to.
 
 Access is **re-checked at send time**. A subscriber who has left the project,
 lost the lead or admin role, or is not `User.is_active` is skipped and counted
@@ -96,6 +117,9 @@ Mail goes to `user.primary_email`.
 - Builders live in `sam.queries.usage_notices`, on the `expiration_notices` pattern.
   They return `Message`s and feed both the task and the template editor's
   "Preview for".
+- **The subtree is resolved at send time** from the anchor's nested-set
+  coordinates. The row stores only the anchor, so a child project added later
+  is included and a moved one drops out without a write.
 - **Shared pools.** For an inheriting allocation, `percent_used` is the whole
   pool's, which is what runs out, so alert on it. A subtree subscriber sees one
   pool through N children, so the builder collapses rows by
@@ -154,13 +178,23 @@ Route-map snapshot regenerated (`ROUTE_MAP_REGEN=1`).
 | `announcement` | `facility` or `global` | an operator-composed message, previewed then sent |
 
 Neither needs DDL. Each needs a kind, a template, a builder and a trigger.
+Each also declares its `scopes` and brings the subscribe and send-time rules
+for them, which § 3 does not cover. The proposed rules, settled in that kind's plan:
+
+| Scope | May subscribe | Skipped at send time when |
+|---|---|---|
+| `resource`, `global` | any `User.is_active` user, since outage news is public | the user is not `User.is_active` |
+| `facility` | a member of a live project in that facility, or staff with `EDIT_PROJECT_MEMBERS` acting for them | the user is not `User.is_active` or has no live project there (open question 4) |
+| For another user | staff with `EDIT_PROJECT_MEMBERS`, as in § 3 | |
+
+Like § 3, a skipped row is kept and counted in the run's `detail`.
 `implemented/EXPIRATION_NOTICES.md` already sized the send path for an outage audience of 2000+.
 
 ## 8. Phases
 
 | Phase | Delivers | Gate |
 |---|---|---|
-| 0 | DDL file, ORM, `create()`/`update()`, bootstrap, schema pin, factory, unit tests | go-ahead; then an operator applies the DDL in prod |
+| 0 | DDL file, ORM, `create()`/`update()`, `NotificationKind.scopes`, bootstrap, schema pin, factory, unit tests | go-ahead; then an operator applies the DDL in prod |
 | 1 | `usage` family and kinds, templates, samples, builders, preview | go-ahead |
 | 2 | Both tasks, helm disable-list entries, task tests | go-ahead |
 | 3 | User Notifications tab, admin card, browser smoke | go-ahead |
@@ -169,7 +203,7 @@ Neither needs DDL. Each needs a kind, a template, a builder and a trigger.
 ## 9. Verification
 
 - Unit tests:
-  - model: one-row rule, scope validation;
+  - model: one-row rule, scope validation, a scope the kind does not declare refused;
   - `can_subscribe`: member, ancestor lead, plain member denied a subtree;
   - builders: subtree expansion, pool collapse, dedup keys, lapsed member skipped;
   - tasks: pre-filter, `NOTIFY_ENABLED` guard, cap, stale read model.
@@ -187,3 +221,9 @@ Neither needs DDL. Each needs a kind, a template, a builder and a trigger.
    (for example on the 3rd, alongside `deactivate_expired`)?
 3. Should a project with no subscribers show leads a one-time "you can subscribe"
    hint on the dashboard?
+4. Should a facility subscription follow the user's projects, so it lapses
+   when their last live project there ends? Or should any active user be able
+   to follow a facility's announcements?
+5. Alerts fire per allocation or shared pool. Should a subtree subscriber also
+   get an alert when the subtree's combined use crosses a level, when its
+   children hold separate allocations?
