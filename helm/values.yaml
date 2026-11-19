@@ -432,11 +432,13 @@ webapp:
     XRAS_SUBMIT_ACTION_TYPES: "all"
     # A New filed at /request/ by a visitor with no SAM account (docs/plans/
     # XRAS_SUBMISSION_GO_LIVE.md). Needs XRAS_SUBMIT_ENABLED with New armed; independent of
-    # ACCOUNT_REGISTRATION_ENABLED. ALLOCATION_REQUEST_LOGIN_REQUIRED (unset here, so on)
-    # keeps it to signed-in users until set "0". The same key in tasks.env arms
+    # ACCOUNT_REGISTRATION_ENABLED. The same key in tasks.env arms
     # account_requests_reconcile's merge of a fulfilled visitor's placeholder. Pinned in
     # tests/unit/gates/test_xras_admin_client.py and helm/tests/test-dev-render.sh.
     XRAS_SUBMIT_ANONYMOUS_ENABLED: "1"
+    # /request is public: "0" lets a signed-out visitor in; "1" (or unset) limits it to
+    # signed-in users. Public needs HUMAN_CHECK_PROVIDER above to stay a real check.
+    ALLOCATION_REQUEST_LOGIN_REQUIRED: "0"
     # Activate the project a New creates, right after its post applies (docs/plans/
     # XRAS_POST_AUTOMATION.md § 3 B); "0" leaves it to the card's Activate. Armed after the
     # samuel-dev smoke (#828), NUSD told; pinned in tests/unit/gates/test_xras_admin_client.py.
