@@ -234,20 +234,20 @@ prod_keys=$(env_value_names "$prod_cron" '(SAM_DB|STATUS_DB)_' | tr '\n' ' ')
 prod_deploy=$(render prod -s templates/deployment.yaml)
 [[ "$(env_value "$prod_deploy" XRAS_RENAME_ENABLED)" == "1" ]] || {
   red "FAIL: prod must ship the after-reply rename on (XRAS_RENAME_ENABLED=1)"; exit 1; }
-[[ "$(env_value "$prod_deploy" XRAS_SUBMIT_ENABLED)" == "0" ]] || {
-  red "FAIL: prod must ship request authoring dark (XRAS_SUBMIT_ENABLED=0)"; exit 1; }
-[[ "$(env_value "$prod_deploy" XRAS_SUBMIT_ACTION_TYPES)" == "Extension,Supplement" ]] || {
-  red "FAIL: prod's first submit flip is Extension,Supplement only (XRAS_SUBMIT_ACTION_TYPES)"; exit 1; }
+[[ "$(env_value "$prod_deploy" XRAS_SUBMIT_ENABLED)" == "1" ]] || {
+  red "FAIL: prod files requests from My Requests (XRAS_SUBMIT_ENABLED=1)"; exit 1; }
+[[ "$(env_value "$prod_deploy" XRAS_SUBMIT_ACTION_TYPES)" == "all" ]] || {
+  red "FAIL: prod files every request type (XRAS_SUBMIT_ACTION_TYPES=all)"; exit 1; }
 [[ -z "$(env_value "$prod_cron" XRAS_SUBMIT_ENABLED)" ]] || {
   red "FAIL: the prod CronJob must never carry XRAS_SUBMIT_ENABLED (webapp only)"; exit 1; }
-[[ "$(env_value "$prod_deploy" XRAS_SUBMIT_ANONYMOUS_ENABLED)" == "0" ]] || {
-  red "FAIL: prod must ship the visitor's New dark (XRAS_SUBMIT_ANONYMOUS_ENABLED=0)"; exit 1; }
-[[ -z "$(env_value "$prod_cron" XRAS_SUBMIT_ANONYMOUS_ENABLED)" ]] || {
-  red "FAIL: the prod CronJob must not carry XRAS_SUBMIT_ANONYMOUS_ENABLED (the placeholder merge ships dark)"; exit 1; }
+[[ "$(env_value "$prod_deploy" XRAS_SUBMIT_ANONYMOUS_ENABLED)" == "1" ]] || {
+  red "FAIL: prod serves the visitor's New at /request (XRAS_SUBMIT_ANONYMOUS_ENABLED=1)"; exit 1; }
+[[ "$(env_value "$prod_cron" XRAS_SUBMIT_ANONYMOUS_ENABLED)" == "1" ]] || {
+  red "FAIL: prod tasks must carry XRAS_SUBMIT_ANONYMOUS_ENABLED=1 (the reconcile's placeholder merge)"; exit 1; }
 [[ "$(env_value "$prod_deploy" ACCOUNT_REGISTRATION_LOGIN_REQUIRED)" != "0" ]] || {
   red "FAIL: prod keeps registration login-gated until client-IP forwarding (ACCOUNT_REGISTRATION_LOGIN_REQUIRED)"; exit 1; }
 [[ "$(env_value "$prod_deploy" ALLOCATION_REQUEST_LOGIN_REQUIRED)" != "0" ]] || {
-  red "FAIL: prod keeps /request login-gated until its go-live flip (ALLOCATION_REQUEST_LOGIN_REQUIRED)"; exit 1; }
+  red "FAIL: prod keeps /request to signed-in users until the public step (ALLOCATION_REQUEST_LOGIN_REQUIRED)"; exit 1; }
 [[ -z "$(env_value_names "$prod_deploy" 'RATELIMIT_(AUTHED|M2M|ANON|AUTH_LOGIN)')" ]] || {
   red "FAIL: prod must not carry a RATELIMIT_ tier override (only the dev overlay raises them)"; exit 1; }
 [[ "$(env_value "$prod_deploy" ACCOUNT_REGISTRATION_ENABLED)" == "0" ]] || {
