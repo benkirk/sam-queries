@@ -42,6 +42,18 @@ class TestWithheldResources:
         assert out is resources and [r['name'] for r in resources] == ['Derecho', 'Unmapped']
         assert resources[1]['limit'] is None, 'no limit row is no limit, not withheld'
 
+    def test_one_the_project_already_holds_is_kept_with_no_limit(self):
+        from types import SimpleNamespace as NS
+        from sam.xras.submission_preflight import annotate_resources
+        resources = [{'resource_id': 2, 'name': 'Campaign Store', 'units': 'TB'},
+                     {'resource_id': 4, 'name': 'Other Store', 'units': 'TB'}]
+        sam = {2: NS(resource_name='Campaign_Store'), 4: NS(resource_name='Other_Store')}
+        gone = NS(max_amount=0.0, withheld=True)
+        annotate_resources(resources, sam, {'Campaign_Store': gone, 'Other_Store': gone},
+                           held={2})
+        assert [(r['name'], r['limit'], r.get('kept')) for r in resources] == [
+            ('Campaign Store', None, True)]
+
     def test_a_closed_types_card_leaves_it_out_too(self):
         from types import SimpleNamespace as NS
         from sam.xras.allocation_overview import _sam_limits

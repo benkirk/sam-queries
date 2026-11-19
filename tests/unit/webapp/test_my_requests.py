@@ -763,6 +763,29 @@ class TestTheRenewalForm:
         html = auth_client.post(REN, data=_ren(amount_530275='2')).get_data(as_text=True)
         assert 'XRAS does not offer one of those resources here' in html
 
+    def test_a_withheld_resource_the_project_already_holds_stays_with_no_limit(
+            self, auth_client, renewable, monkeypatch):
+        """Withholding governs a New; a Renewal keeps what the line holds, and the approver decides."""
+        import sam.xras.submission_preflight as pre
+        renewable.available[0]['resources'].append(
+            {'resource_id': 530275, 'name': 'Campaign Store', 'units': 'TB'})
+        none = type('L', (), {'default_amount': None, 'max_amount': 0.0, 'withheld': True,
+                              'refusal': lambda self, amount: 'more than the 0 limit'})()
+        monkeypatch.setattr(pre, 'sam_resources_by_xras_id', lambda s, ids, k: {
+            rid: type('R', (), {'resource_name': name})()
+            for rid, name in ((530902, 'Derecho'), (530275, 'Campaign_Store'))})
+        monkeypatch.setattr('sam.accounting.allocation_type_limits.limits_for_allocation_type',
+                            lambda s, t: {'Campaign_Store': none})
+        real = pre.line_resources
+        monkeypatch.setattr(pre, 'line_resources', lambda line: real(line) + [
+            {'resource_id': 530275, 'name': 'Campaign Store', 'units': 'TB'}])
+        html = auth_client.get(REN).get_data(as_text=True)
+        campaign = html.split('name="amount_530275"')[0].rsplit('<tr', 1)[1] + html.split(
+            'name="amount_530275"')[1].split('</tr>')[0]
+        assert 'up to' not in campaign, 'kept, with no limit shown'
+        html = auth_client.post(REN, data=_ren(amount_530275='40')).get_data(as_text=True)
+        assert 'more than the 0 limit' not in html and 'XRAS does not offer' not in html
+
     def test_a_seven_digit_default_fills_the_box_whole(self, auth_client, renewable,
                                                       monkeypatch):
         import sam.xras.submission_preflight as pre

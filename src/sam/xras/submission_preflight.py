@@ -51,29 +51,39 @@ def sam_resources_by_xras_id(session, resource_ids: Iterable[int],
 
 
 def resources_with_limits(session, resources: List[Dict[str, Any]],
-                          keys: Optional[Mapping[int, int]],
-                          type_name: Optional[str]) -> List[Dict[str, Any]]:
+                          keys: Optional[Mapping[int, int]], type_name: Optional[str],
+                          held: Iterable[int] = ()) -> List[Dict[str, Any]]:
     """Annotate XRAS resource views in place: ``sam_name``, the type's ``limit``, ``yes_no``."""
     from sam.accounting.allocation_type_limits import limits_for_allocation_type
     sam = sam_resources_by_xras_id(session, [r['resource_id'] for r in resources], keys)
     limits = limits_for_allocation_type(session, type_name) if type_name else {}
-    return annotate_resources(resources, sam, limits)
+    return annotate_resources(resources, sam, limits, held=held)
 
 
 def annotate_resources(resources: List[Dict[str, Any]], sam: Mapping[int, Any],
-                       limits: Mapping[str, Any]) -> List[Dict[str, Any]]:
+                       limits: Mapping[str, Any], held: Iterable[int] = ()
+                       ) -> List[Dict[str, Any]]:
     """:func:`resources_with_limits` on maps already read, for a page of many lists.
 
     A resource the type withholds (a ceiling of 0) is dropped from *resources*, in place:
-    XRAS may offer it under the opportunity, SAM's type does not.
+    XRAS may offer it under the opportunity, SAM's type does not. One the project already
+    holds (*held*, XRAS resource ids: a Supplement's or a Renewal's) stays, ``kept`` and
+    with no limit: withholding governs what a New may ask for, and the approver the rest.
     """
+    held = set(held)
+    offered = []
     for r in resources:
         resource = sam.get(r['resource_id'])
         r['sam_name'] = resource.resource_name if resource is not None else None
         r['limit'] = limits.get(r['sam_name']) if r['sam_name'] else None
         # XRAS's "Yes/No" unit is a checkbox, not an amount.
         r['yes_no'] = (r.get('units') or '').replace(' ', '').lower() == 'yes/no'
-    resources[:] = [r for r in resources if not getattr(r['limit'], 'withheld', False)]
+        if getattr(r['limit'], 'withheld', False):
+            if r['resource_id'] not in held:
+                continue
+            r['limit'], r['kept'] = None, True
+        offered.append(r)
+    resources[:] = offered
     return resources
 
 

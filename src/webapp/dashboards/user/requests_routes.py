@@ -253,7 +253,9 @@ class _RequestForm(HtmxFormHandler):
             return {'floor': floor, 'end_min': floor + timedelta(days=1) if floor else None,
                     'resources': [], 'resource_keys': None}
         if self.action_type == 'Supplement':
-            return {'floor': None, **self._with_limits(config, line_resources(decision.line))}
+            held = line_resources(decision.line)
+            return {'floor': None, **self._with_limits(
+                config, held, held=[r['resource_id'] for r in held])}
         return self._renewal_context(config, decision, floor)
 
     def _renewal_context(self, config, decision, floor):
@@ -281,7 +283,7 @@ class _RequestForm(HtmxFormHandler):
                 'default_begin': begin, 'default_end': end,
                 'line_abstract': (decision.line or {}).get('abstract') or '',
                 'grant_defaults': self._line_grant(decision.line),
-                **self._with_limits(config, resources)}
+                **self._with_limits(config, resources, held=held)}
 
     @staticmethod
     def _line_grant(line):
@@ -298,12 +300,15 @@ class _RequestForm(HtmxFormHandler):
             values[name] = parse_wire_date(values[name])
         return {k: v for k, v in values.items() if v}
 
-    def _with_limits(self, config, resources, type_name=None):
-        """*resources* with their SAM resource and type limit, through the catalog key."""
+    def _with_limits(self, config, resources, type_name=None, held=()):
+        """*resources* with their SAM resource and type limit, through the catalog key.
+
+        *held* are the XRAS resource ids the project's line already holds: kept though withheld.
+        """
         from sam.xras.submission_preflight import resources_with_limits
         keys = resource_keys(config)
         name = type_name or (_type_name(self.project) if self.project else None)
-        resources_with_limits(db.session, resources, keys, name)
+        resources_with_limits(db.session, resources, keys, name, held=held)
         return {'resources': resources, 'resource_keys': keys}
 
     def context(self):
@@ -358,8 +363,9 @@ class _RequestForm(HtmxFormHandler):
         by_id = {r['resource_id']: r for r in ctx['resources']}
         if any(rid not in by_id for rid in data['amounts']):
             raise FormError('XRAS does not offer one of those resources here; reopen the form.')
+        # A resource kept because the project holds it carries no limit (annotate_resources).
         named = {by_id[rid]['sam_name']: amt for rid, amt in data['amounts'].items()
-                 if by_id[rid]['sam_name']}
+                 if by_id[rid]['sam_name'] and not by_id[rid].get('kept')}
         refused = limit_refusals(db.session, type_name, named)
         errors = {f'amount_{rid}': [refused[by_id[rid]['sam_name']]]
                   for rid in data['amounts'] if by_id[rid]['sam_name'] in refused}

@@ -558,9 +558,12 @@ maximum a project may hold, supplements included. The first seed's medians and p
 | Data Analysis | not offered | not offered | a yes (1 / 1) | a yes (1 / 1) | withheld |
 
 - **No default** on a resource granted only with a justification (Casper GPU, Campaign Store).
-- **Withheld** is a ceiling of 0: the type does not offer the resource, whatever the XRAS
-  opportunity lists (`AllocationTypeResourceLimit.withheld`; the form, the cards and the
-  server check all read the annotated list).
+- **Withheld** is a ceiling of 0: the type does not offer the resource to a New, whatever the
+  XRAS opportunity lists (`AllocationTypeResourceLimit.withheld`; the form, the cards and the
+  server check all read the annotated list). A project keeps a resource its line already
+  holds: on a Supplement or a Renewal it stays on the form with no SAM limit, and the
+  approver decides (Ben, 2026-11-18; about 147 live projects held Campaign Store under a
+  type that now withholds it).
 - **Data Analysis** asks for no amount; its card copy states what the yes carries and the
   operator sets the SAM amount.
 - **CHAP and NSC:** no default; ceilings of 500 million and 200 million Derecho core-hours.
