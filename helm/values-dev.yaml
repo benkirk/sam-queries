@@ -34,7 +34,8 @@ webapp:
     AUTH_PROVIDER: "oidc"
     DISABLE_AUTH: "0"
     ACCOUNT_REGISTRATION_ENABLED: "1"     # the anonymous account-creation form, live here and dark in prod
-    ACCOUNT_REGISTRATION_LOGIN_REQUIRED: "0"  # /register and /request open to visitors (prod: login-gated)
+    ACCOUNT_REGISTRATION_LOGIN_REQUIRED: "0"  # /register open to visitors (prod: unmounted)
+    ALLOCATION_REQUEST_LOGIN_REQUIRED: "0"    # /request open to visitors, its own flag (prod: unset, so login-gated)
     ACCOUNT_INVITATIONS_ENABLED: "1"      # invitations, invite links and the event pages, live here as in prod
     COMPONENT_GALLERY_ENABLED: "1"        # the /dev/gallery component gallery, live here and dark in prod
     SAM_DB_DRIVER: "postgresql"

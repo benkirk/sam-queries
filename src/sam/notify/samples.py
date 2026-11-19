@@ -37,6 +37,7 @@ _SUBJECTS = {
     'account_rejected': 'Your NCAR HPC account request',
     'account_invite': 'You are invited to request an NCAR HPC account',
     'account_request_received': 'Your NCAR HPC account request has been received',
+    'allocation_request_received': 'Your NCAR allocation request has been received (NCAR4477)',
     'account_ticket': "New HPC User Request 'Ada Lovelace' for WRF-OCT-2026 [SAM-AR-41]",
     'xras_request_ticket': 'XRAS request NCAR4391 cannot be posted [SAM-XR-1446100]',
     'hpc_group_ticket': 'Unix group change: add 2 members to cgdoce [SAM-GM-12]',
@@ -256,6 +257,23 @@ def _account_request_received() -> Dict[str, Any]:
     }
 
 
+def _allocation_request_received() -> Dict[str, Any]:
+    return {
+        'name': 'Ada Lovelace',
+        'request_number': 'NCAR4477',
+        'title': 'Ensemble downscaling of western U.S. snowpack',
+        'allocation_type': 'Small Allocation (University)',
+        'resources': [
+            {'name': 'Derecho', 'amount': '500,000', 'units': 'core-hours'},
+            {'name': 'Casper', 'amount': '5,000', 'units': 'core-hours'},
+        ],
+        'submitted_on': '2026-11-18',
+        'cadence': 'Continuous',
+        'status_url': 'https://sam.hpc.ucar.edu/request/status/eyJpZCI6NDF9.abc.def',
+        'status_days': 365,
+    }
+
+
 def _account_rejected() -> Dict[str, Any]:
     return {
         'name': 'Ada Lovelace',
@@ -364,6 +382,8 @@ def sample_context(kind: str, facility: Optional[str] = None) -> Dict[str, Any]:
         return _account_invite()
     if key == 'account_request_received':
         return _account_request_received()
+    if key == 'allocation_request_received':
+        return _allocation_request_received()
     if key == 'account_ticket':
         return _account_ticket()
     if key == 'xras_request_ticket':
@@ -540,6 +560,11 @@ VARIABLE_NOTES: Dict[str, str] = {
     'request_number': 'The XRAS request number as last posted (NCAR#### or the projcode).',
     'xras_request_id': "The XRAS requestId, stable across the request's rename.",
     'title': 'The request title as XRAS posted it, or empty.',
+    'resources.name': "Receipt: the resource's name as XRAS offers it.",
+    'submitted_on': 'Receipt: the day the request reached XRAS.',
+    'cadence': "Receipt: the type's review cadence from its guide row, or empty.",
+    'status_url': "Receipt: the visitor's status page for this request.",
+    'status_days': 'Receipt: how many days the status link works.',
     'pi': "The posted PI, as 'Name (username)', or empty.",
     'first_refused': 'When SAM first refused the request, formatted.',
     'refusals': 'How many posts SAM has refused for it.',

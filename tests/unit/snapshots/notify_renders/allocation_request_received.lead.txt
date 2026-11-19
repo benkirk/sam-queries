@@ -1,0 +1,28 @@
+Hello Ada Lovelace,
+
+CISL has received your request for an NCAR allocation. This confirms receipt; it
+is not a decision.
+
+  Request:   NCAR4477
+  Type:      Small Allocation (University)
+  Title:     Ensemble downscaling of western U.S. snowpack
+  Submitted: 2026-11-18
+  Review:    Continuous
+
+Requested:
+
+  - Derecho: 500,000 core-hours
+  - Casper: 5,000 core-hours
+
+What happens next: CISL reviews the request. If it is approved and you do not
+have an NCAR account yet, the NCAR account team creates one and emails you how
+to sign in; your project is set up then.
+
+Where the request stands, at any time:
+https://sam.hpc.ucar.edu/request/status/eyJpZCI6NDF9.abc.def
+The link works for 365 days. Keep this message.
+
+Questions: help@ucar.edu; mention request NCAR4477.
+
+--
+NSF NCAR Systems Accounting Manager

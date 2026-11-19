@@ -506,6 +506,11 @@ class UserInstitution(Base, TimestampMixin, DateRangeMixin):
 # ============================================================================
 
 
+#: What an operator's screen shows where a project code's letters are not assigned yet.
+#: Display only, never a row: a code is three capital letters, which this cannot be.
+UNASSIGNED_MNEMONIC = '---'
+
+
 #----------------------------------------------------------------------------
 class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     """Mnemonic codes for project naming."""

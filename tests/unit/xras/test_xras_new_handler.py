@@ -669,6 +669,39 @@ class TestTheSubmissionRow:
             requestId=row.request_id, actionId=row.action_id))
         assert creatable['mnemonic'].code in result.projcode
 
+    def test_no_code_at_filing_is_flagged_until_one_is_assigned(self, session, creatable,
+                                                               mapped_resource):
+        """A visitor's New: SAM does not hold the PI, so no mnemonic message would name it."""
+        from sam.core.organizations import UNASSIGNED_MNEMONIC
+        row = self._filed(session, creatable, None)
+        payload = action_for(creatable, wire_resource(mapped_resource.xras_key),
+                             requestId=row.request_id, actionId=row.action_id)
+        payload['roles'] = [{'roleType': 'PI', 'username': 'samr7-user-0a1b2c',
+                             'beginDate': '2025-01-01', 'endDate': None}]
+        with pytest.raises(XrasActionRejected) as exc:
+            handle_new(session, payload, validate_only=True)
+        resolved = exc.value.resolved
+        assert resolved['mnemonic_unassigned'] is True
+        assert resolved['series'] == resolved['facility_code'] + UNASSIGNED_MNEMONIC
+        assert 'mnemonic_code' not in resolved
+
+    def test_a_code_the_ladder_finds_is_not_flagged(self, session, creatable, mapped_resource):
+        row = self._filed(session, creatable, None)
+        result = handle_new(session, action_for(
+            creatable, wire_resource(mapped_resource.xras_key),
+            requestId=row.request_id, actionId=row.action_id), validate_only=True)
+        assert 'mnemonic_unassigned' not in result.resolved
+        assert result.resolved['series'].endswith(creatable['mnemonic'].code)
+
+    def test_a_new_sam_did_not_file_is_never_flagged(self, session, creatable, mapped_resource):
+        payload = action_for(creatable, wire_resource(mapped_resource.xras_key))
+        payload['roles'] = [{'roleType': 'PI', 'username': 'placeholder07-user-00007',
+                             'beginDate': '2025-01-01', 'endDate': None}]
+        with pytest.raises(XrasActionRejected) as exc:
+            handle_new(session, payload, validate_only=True)
+        assert 'mnemonic_unassigned' not in exc.value.resolved
+        assert 'series' not in exc.value.resolved
+
     def test_a_validate_only_run_reads_the_preset_and_stamps_nothing(self, session, creatable,
                                                                     mapped_resource):
         from factories import make_mnemonic_code

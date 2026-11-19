@@ -26,6 +26,41 @@ def _line(**kw):
     return line
 
 
+class TestWithheldResources:
+    """A ceiling of 0 takes the resource off the type's offered list (form, cards, server check)."""
+
+    def test_annotate_drops_it_in_place_and_keeps_the_rest(self):
+        from types import SimpleNamespace as NS
+        from sam.xras.submission_preflight import annotate_resources
+        resources = [{'resource_id': 1, 'name': 'Derecho', 'units': 'Core-hours'},
+                     {'resource_id': 2, 'name': 'Campaign Store', 'units': 'TB'},
+                     {'resource_id': 3, 'name': 'Unmapped', 'units': ''}]
+        sam = {1: NS(resource_name='Derecho'), 2: NS(resource_name='Campaign_Store')}
+        limits = {'Derecho': NS(max_amount=500.0, withheld=False),
+                  'Campaign_Store': NS(max_amount=0.0, withheld=True)}
+        out = annotate_resources(resources, sam, limits)
+        assert out is resources and [r['name'] for r in resources] == ['Derecho', 'Unmapped']
+        assert resources[1]['limit'] is None, 'no limit row is no limit, not withheld'
+
+    def test_one_the_project_already_holds_is_kept_with_no_limit(self):
+        from types import SimpleNamespace as NS
+        from sam.xras.submission_preflight import annotate_resources
+        resources = [{'resource_id': 2, 'name': 'Campaign Store', 'units': 'TB'},
+                     {'resource_id': 4, 'name': 'Other Store', 'units': 'TB'}]
+        sam = {2: NS(resource_name='Campaign_Store'), 4: NS(resource_name='Other_Store')}
+        gone = NS(max_amount=0.0, withheld=True)
+        annotate_resources(resources, sam, {'Campaign_Store': gone, 'Other_Store': gone},
+                           held={2})
+        assert [(r['name'], r['limit'], r.get('kept')) for r in resources] == [
+            ('Campaign Store', None, True)]
+
+    def test_a_closed_types_card_leaves_it_out_too(self):
+        from types import SimpleNamespace as NS
+        from sam.xras.allocation_overview import _sam_limits
+        rows = _sam_limits({'Casper': NS(withheld=False), 'Campaign_Store': NS(withheld=True)})
+        assert [r['name'] for r in rows] == ['Casper']
+
+
 class TestTheLine:
 
     def test_resources_once_each_from_live_actions(self):
@@ -157,6 +192,28 @@ class TestTheNew:
             assert set(state['mnemonic_errors']) <= set(verdict.messages)
         else:
             assert verdict.status == 'rechecked'
+
+
+    def test_a_placeholder_pi_fails_only_on_its_own_person_messages(self, session):
+        """What the visitor's review must expect: SAM does not hold the PI until approval."""
+        from sam.integration.xras import XrasResourceRepositoryKeyResource
+        from sam.queries.xras_requests import person_username
+        from sam.xras.errors import pi_not_in_database
+        key = next((k.resource_repository_key for k in session.query(
+            XrasResourceRepositoryKeyResource) if k.resource
+            and k.resource.resource_name == 'Derecho'), None)
+        if key is None:
+            pytest.skip('no Derecho key mapping in this snapshot')
+        placeholder = 'samr999-user-abc123'
+        draft = self._draft()
+        verdict = preflight_draft(
+            session, new_request_line(draft, pi_username=placeholder, opportunity=_EXPLORATORY,
+                                      fos={'fosTypeId': 500003, 'fosNum': '1'}),
+            draft, resource_keys={530902: key},
+            opportunities={532221: {'allocationType': 'Exploratory'}})
+        assert verdict.status == 'failed'
+        assert pi_not_in_database(placeholder) in verdict.messages
+        assert {person_username(m) for m in verdict.messages} == {placeholder}
 
 
 class TestTheDocumentCheck:

@@ -117,9 +117,10 @@ def _pick(opportunities: Sequence[Mapping[str, Any]]) -> Dict[int, Dict[str, Any
 
 
 def _sam_limits(limits: Mapping[str, Any]) -> Tuple[Dict[str, Any], ...]:
-    """A closed type's resources: its SAM limits by resource name."""
+    """A closed type's resources: its SAM limits by resource name, less the ones it withholds."""
     return tuple({'resource_id': None, 'name': name, 'units': '', 'sam_name': name,
-                  'limit': limit, 'yes_no': False} for name, limit in sorted(limits.items()))
+                  'limit': limit, 'yes_no': False} for name, limit in sorted(limits.items())
+                 if not limit.withheld)
 
 
 def _limited_type_names(session) -> List[str]:

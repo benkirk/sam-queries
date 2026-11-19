@@ -94,6 +94,11 @@ class AllocationTypeResourceLimit(Base, SessionMixin, ActiveFlagMixin):
         self.session.flush()
         return self
 
+    @property
+    def withheld(self) -> bool:
+        """A ceiling of 0: this type does not offer the resource at all."""
+        return self.max_amount == 0
+
     def refusal(self, amount: float) -> Optional[str]:
         """Why *amount* is out of bounds, or ``None`` when it is within them."""
         if self.max_amount is not None and amount > self.max_amount:

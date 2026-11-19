@@ -745,6 +745,47 @@ class TestTheRenewalForm:
         casper = available.split('name="amount_530275"')[1].split('>', 1)[0]
         assert 'value=""' in casper and 'disabled' in casper and 'data-suggest="5000"' in casper
 
+    def test_a_resource_the_type_withholds_is_not_offered_or_accepted(self, auth_client,
+                                                                      renewable, monkeypatch):
+        import sam.xras.submission_preflight as pre
+        renewable.available[0]['resources'].append(
+            {'resource_id': 530275, 'name': 'Campaign Store', 'units': 'TB'})
+        derecho = type('L', (), {'default_amount': 5000.0, 'max_amount': 10000.0,
+                                 'withheld': False})()
+        none = type('L', (), {'default_amount': None, 'max_amount': 0.0, 'withheld': True})()
+        monkeypatch.setattr(pre, 'sam_resources_by_xras_id', lambda s, ids, k: {
+            rid: type('R', (), {'resource_name': name})()
+            for rid, name in ((530902, 'Derecho'), (530275, 'Campaign_Store'))})
+        monkeypatch.setattr('sam.accounting.allocation_type_limits.limits_for_allocation_type',
+                            lambda s, t: {'Derecho': derecho, 'Campaign_Store': none})
+        html = auth_client.get(REN).get_data(as_text=True)
+        assert 'name="amount_530902"' in html and 'amount_530275' not in html
+        html = auth_client.post(REN, data=_ren(amount_530275='2')).get_data(as_text=True)
+        assert 'XRAS does not offer one of those resources here' in html
+
+    def test_a_withheld_resource_the_project_already_holds_stays_with_no_limit(
+            self, auth_client, renewable, monkeypatch):
+        """Withholding governs a New; a Renewal keeps what the line holds, and the approver decides."""
+        import sam.xras.submission_preflight as pre
+        renewable.available[0]['resources'].append(
+            {'resource_id': 530275, 'name': 'Campaign Store', 'units': 'TB'})
+        none = type('L', (), {'default_amount': None, 'max_amount': 0.0, 'withheld': True,
+                              'refusal': lambda self, amount: 'more than the 0 limit'})()
+        monkeypatch.setattr(pre, 'sam_resources_by_xras_id', lambda s, ids, k: {
+            rid: type('R', (), {'resource_name': name})()
+            for rid, name in ((530902, 'Derecho'), (530275, 'Campaign_Store'))})
+        monkeypatch.setattr('sam.accounting.allocation_type_limits.limits_for_allocation_type',
+                            lambda s, t: {'Campaign_Store': none})
+        real = pre.line_resources
+        monkeypatch.setattr(pre, 'line_resources', lambda line: real(line) + [
+            {'resource_id': 530275, 'name': 'Campaign Store', 'units': 'TB'}])
+        html = auth_client.get(REN).get_data(as_text=True)
+        campaign = html.split('name="amount_530275"')[0].rsplit('<tr', 1)[1] + html.split(
+            'name="amount_530275"')[1].split('</tr>')[0]
+        assert 'up to' not in campaign, 'kept, with no limit shown'
+        html = auth_client.post(REN, data=_ren(amount_530275='40')).get_data(as_text=True)
+        assert 'more than the 0 limit' not in html and 'XRAS does not offer' not in html
+
     def test_a_seven_digit_default_fills_the_box_whole(self, auth_client, renewable,
                                                       monkeypatch):
         import sam.xras.submission_preflight as pre
@@ -1043,19 +1084,24 @@ class TestTheNewForm:
                                 ).get_data(as_text=True)
         assert 'Required for the grant.' in html
 
-    def test_where_the_ladder_misses_the_pi_picks_the_letters(self, auth_client, newable,
-                                                              session):
-        from sam.core.organizations import MnemonicCode
+    def test_where_the_ladder_misses_no_one_is_asked_for_the_letters(self, auth_client, newable,
+                                                                     monkeypatch):
+        from sam.xras import submission_preflight
+        real = submission_preflight.new_request_sam_state
+        monkeypatch.setattr(
+            submission_preflight, 'new_request_sam_state',
+            lambda *a, **k: dict(real(*a, **k), mnemonic=None,
+                                 mnemonic_errors=['Could not determine Mnemonic code']))
         html = _choose(auth_client, 532221)
-        if 'project code starts with' in html:
-            pytest.skip("the ladder resolves benkirk's code in this snapshot")
-        assert 'name="mnemonic_code_id"' in html
+        assert 'mnemonic_code_id' not in html and 'project code starts with' not in html
         html = auth_client.post(NEW, data=_new()).get_data(as_text=True)
-        assert 'Choose the letters' in html
-        code = session.query(MnemonicCode).filter(MnemonicCode.is_active).first()
-        html = auth_client.post(NEW, data=_new(mnemonic_code_id=str(code.mnemonic_code_id))
-                                ).get_data(as_text=True)
-        assert 'name="amount_530902"' in html
+        assert 'name="amount_530902"' in html, 'page one passes with no code letters'
+
+    def test_a_posted_code_is_ignored(self, auth_client, newable, lettered):
+        """No requester sets the letters: the field is not in the schema or carried forward."""
+        html = auth_client.post(NEW, data=_new(mnemonic_code_id='999999999')).get_data(
+            as_text=True)
+        assert 'name="amount_530902"' in html and 'mnemonic_code_id' not in html
 
     def test_page_two_carries_page_one_and_offers_the_resources(self, auth_client, newable,
                                                                lettered):
@@ -1268,10 +1314,5 @@ class TestThePickers:
             assert 'data-fk-id' not in html and 'no email on file' in html
         assert 'data-fk-id' not in auth_client.get(url + 'benkirk').get_data(as_text=True)
 
-    def test_the_mnemonic_suggest_needs_two_letters(self, auth_client, session):
-        from sam.core.organizations import MnemonicCode
-        code = session.query(MnemonicCode).filter(MnemonicCode.is_active).first()
-        assert auth_client.get('/user/requests/htmx/mnemonic-suggest?q=a').get_data() == b''
-        html = auth_client.get(f'/user/requests/htmx/mnemonic-suggest?q={code.code}').get_data(
-            as_text=True)
-        assert f'data-fk-label="{code.code}"' in html
+    def test_nothing_serves_the_code_letters_to_a_requester(self, auth_client):
+        assert auth_client.get('/user/requests/htmx/mnemonic-suggest?q=cub').status_code == 404

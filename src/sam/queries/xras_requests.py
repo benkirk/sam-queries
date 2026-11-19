@@ -548,9 +548,10 @@ def message_kind(message: str) -> Optional[str]:
 def row_blockers(row: Mapping[str, Any]) -> set:
     """Which push-blocker categories a Remediations row is stuck on.
 
-    Derived, not stored, from four signals: a roster person missing or inactive
-    in SAM, the mnemonic 422 prefix, the structured unresolved-grant channel, and
-    the stuck-placeholder flag. Pure, so the card route and a unit test agree.
+    Derived, not stored, from five signals: a roster person missing or inactive
+    in SAM, the mnemonic 422 prefix, a SAM-filed New with no code assigned
+    (``mnemonic_unassigned``), the structured unresolved-grant channel, and the
+    stuck-placeholder flag. Pure, so the card route and a unit test agree.
     """
     kinds = set()
     for action in row.get('actions') or []:
@@ -561,8 +562,11 @@ def row_blockers(row: Mapping[str, Any]) -> set:
                 kinds.add('person')
             elif kind == 'mnemonic':
                 kinds.add('mnemonic')
-        if (preflight.get('resolved') or {}).get('unresolved_grants'):
+        resolved = preflight.get('resolved') or {}
+        if resolved.get('unresolved_grants'):
             kinds.add('contract')
+        if resolved.get('mnemonic_unassigned'):
+            kinds.add('mnemonic')
     if row.get('has_stuck_placeholder'):
         kinds.add('account')
     return kinds

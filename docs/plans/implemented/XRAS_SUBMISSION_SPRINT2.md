@@ -77,6 +77,10 @@ Each commit regenerates the route-map snapshot it changes and lands its own test
 
 ## 3. Levers
 
+`/request` now has its own mount and login flag (`ALLOCATION_REQUEST_LOGIN_REQUIRED`), so
+the first three rows describe the sprint as shipped, not today: `/request` no longer needs
+`ACCOUNT_REGISTRATION_ENABLED` or reads `ACCOUNT_REGISTRATION_LOGIN_REQUIRED`.
+
 | Lever | Read by | dev | prod |
 |---|---|---|---|
 | `XRAS_SUBMIT_ANONYMOUS_ENABLED` | every `/request/` route (404 when off; the mount is `ACCOUNT_REGISTRATION_ENABLED`), the visitor door of the flow, and in the task env the placeholder merge | "1" | "0" |

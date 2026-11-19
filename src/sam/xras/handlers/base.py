@@ -161,12 +161,20 @@ class ActionHandler(ABC):
             out['facility_code'] = getattr(facility, 'code', None)
         if mnem is not None:
             out['mnemonic_code'] = getattr(mnem, 'code', None)
+        # A New SAM filed with no code matched and none set since: flagged from the day it
+        # is filed, before a PI SAM does not hold yet lets any mnemonic message through.
+        submission = getattr(self, 'submission', None)
+        if mnem is None and submission is not None and submission.mnemonic_code_id is None:
+            out['mnemonic_unassigned'] = True
         aoi = getattr(self, 'aoi', None)
         if aoi is not None:
             out['area_of_interest'] = getattr(aoi, 'area_of_interest', None)
         # The New path mints a projcode in this series; show it before it burns one.
         if out.get('facility_code') and out.get('mnemonic_code'):
             out['series'] = f"{out['facility_code']}{out['mnemonic_code']}"
+        elif out.get('facility_code') and out.get('mnemonic_unassigned'):
+            from sam.core.organizations import UNASSIGNED_MNEMONIC
+            out['series'] = f"{out['facility_code']}{UNASSIGNED_MNEMONIC}"
         unresolved = getattr(self, 'unresolved_grants', None)
         if unresolved:
             out['unresolved_grants'] = [dict(g) for g in unresolved]
