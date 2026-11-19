@@ -1,0 +1,28 @@
+Hello {{ name }},
+
+CISL has received your request for an NCAR allocation. This confirms receipt; it
+is not a decision.
+{% if request_number %}
+  Request:   {{ request_number }}{% endif %}{% if allocation_type %}
+  Type:      {{ allocation_type }}{% endif %}{% if title %}
+  Title:     {{ title }}{% endif %}{% if submitted_on %}
+  Submitted: {{ submitted_on }}{% endif %}{% if cadence %}
+  Review:    {{ cadence }}{% endif %}
+{% if resources %}
+Requested:
+{% for r in resources %}
+  - {{ r.name }}: {{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}
+{%- endfor %}
+{% endif %}
+What happens next: CISL reviews the request. If it is approved and you do not
+have an NCAR account yet, the NCAR account team creates one and emails you how
+to sign in; your project is set up then.
+
+Where the request stands, at any time:
+{{ status_url }}
+The link works for {{ status_days }} days. Keep this message.
+
+Questions: help@ucar.edu{% if request_number %}; mention request {{ request_number }}{% endif %}.
+
+--
+NSF NCAR Systems Accounting Manager

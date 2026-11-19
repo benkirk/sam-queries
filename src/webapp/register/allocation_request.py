@@ -61,6 +61,12 @@ def _draft_ttl() -> int:
     return int(current_app.config.get('REQUEST_DRAFT_TTL_DAYS', 30)) * 86400
 
 
+def _status_days() -> int:
+    """How long a draft link still opens the read-only status page; never under the draft's."""
+    return max(int(current_app.config.get('REQUEST_STATUS_TTL_DAYS', 365)),
+               int(current_app.config.get('REQUEST_DRAFT_TTL_DAYS', 30)))
+
+
 def _cards(config):
     from sam.xras.audiences import VISITOR_AUDIENCES
     opportunities, outage = report_opportunities(config)
@@ -310,9 +316,10 @@ def verify(token):
     return _confirm(row, opportunity_id)
 
 
-def draft_row(token):
+def draft_row(token, *, max_age=None):
     """``(row, opportunity_id)`` for a draft token still bound to the row's verification, else Nones."""
-    read = tokens.read_request_token(token, tokens.SALT_REQUEST_DRAFT, max_age=_draft_ttl())
+    read = tokens.read_request_token(token, tokens.SALT_REQUEST_DRAFT,
+                                     max_age=max_age or _draft_ttl())
     if read is None:
         return None, None
     row_id, opportunity_id, stamp = read
@@ -328,6 +335,50 @@ def _filed(row):
     from sam.integration.xras_submission import submissions_for_registration
     rows = submissions_for_registration(db.session, row.account_request_id)
     return rows[0] if rows else None
+
+
+def _filing_facts(submission, opportunity_id):
+    """What a filed request says back to its visitor: number, title, type, cadence, amounts.
+
+    Names come from the opportunity XRAS offers now; an outage or a closed one leaves the
+    type and the amounts out, never the page.
+    """
+    from sam import fmt
+    from sam.accounting.allocation_type_guide import public_guides
+    payload = submission.payload_dict if submission is not None else {}
+    opportunities, _ = report_opportunities(interactive_config())
+    opp = next((o for o in opportunities if o.get('opportunity_id') == opportunity_id), None) or {}
+    views = {r['resource_id']: r for r in opp.get('resources') or ()}
+    resources = []
+    for asked in payload.get('resources') or ():
+        view = views.get(asked.get('resource_id'))
+        if view is None:
+            continue
+        yes_no = (view.get('units') or '').replace(' ', '').lower() == 'yes/no'
+        resources.append({'name': view.get('name'),
+                          'amount': 'Yes' if yes_no else fmt.number(asked.get('amount')),
+                          'units': '' if yes_no else fmt.unit_label(view.get('units'))})
+    guide = next((g for g in public_guides(db.session)
+                  if g.xras_allocation_type_id == opp.get('allocation_type_id')), None)
+    return {'request_number': submission.request_number if submission is not None else None,
+            'title': payload.get('title') or '', 'resources': resources,
+            'allocation_type': opp.get('opportunity_name') or (guide.title if guide else ''),
+            'cadence': (guide.cadence if guide else '') or ''}
+
+
+def _send_receipt(row, submission, opportunity_id, token):
+    """Mail the visitor the receipt for *submission*; the DeliveryResult."""
+    from sam.queries.account_notices import build_allocation_receipt_message
+    from webapp.utils.notify import public_url_for
+    message = build_allocation_receipt_message(
+        row, submission_id=submission.xras_submission_id,
+        submitted_at=submission.submitted_time, status_days=_status_days(),
+        status_url=public_url_for('allocation_request.status', token=token),
+        **_filing_facts(submission, opportunity_id))
+    result = get_notifier().send(message)
+    logger.info('request registration %s: receipt for submission %s %s',
+                row.account_request_id, submission.xras_submission_id, result.status)
+    return result
 
 
 def _to_status(token):
@@ -413,6 +464,31 @@ class _VisitorNewRequest(NewRequestForm):
                                    actor=f'registration:{self.row.account_request_id}',
                                    xa_user=self.row.xras_username, eula=eula, door='visitor')
 
+    def after_commit(self, data):
+        """A filed request mails its receipt; a failed send is logged, never the filing's failure."""
+        from sam.integration.xras_submission import XrasSubmission
+        super().after_commit(data)
+        outcome = data.get('outcome')
+        if outcome is None or not outcome.succeeded or not outcome.submission_id:
+            return
+        submission = db.session.get(XrasSubmission, outcome.submission_id)
+        if submission is None:
+            return
+        data['filed_number'] = submission.request_number
+        try:
+            sent = _send_receipt(self.row, submission, self.opportunity_id, self.token)
+        except Exception:                                       # noqa: BLE001
+            logger.exception('request registration %s: receipt for submission %s failed',
+                             self.row.account_request_id, outcome.submission_id)
+            return
+        if sent.status in ('sent', 'redirected'):
+            data['receipt_to'] = self.row.email
+
+    def on_success(self, data):
+        self._ctx = dict(self._ctx, filed_number=data.get('filed_number'),
+                         receipt_to=data.get('receipt_to'))
+        return super().on_success(data)
+
 
 @bp.route('/draft/<token>')
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
@@ -476,7 +552,7 @@ def award_lookup(token):
 def status(token):
     """Where a visitor's request stands: the confirmation, then the filing SAM made."""
     from sam.integration.xras_submission import submissions_for_registration
-    row, opportunity_id = draft_row(token)
+    row, opportunity_id = draft_row(token, max_age=_status_days() * 86400)
     if row is None:
         return _expired()
     rows = submissions_for_registration(db.session, row.account_request_id, include_aborted=True)
@@ -489,7 +565,9 @@ def status(token):
     # appear under it once the placeholder merges.
     existing = row.is_fulfilled or (row.requested_at is not None
                                     and active_holder(db.session, row.email) is not None)
+    facts = (_filing_facts(submission, opportunity_id)
+             if submission is not None and submission.state in ('submitted', 'applied') else None)
     return render_template('register/request_status.html', row=row, submission=submission,
-                           project=project, existing_account=existing,
+                           project=project, existing_account=existing, facts=facts,
                            draft_url=url_for('allocation_request.draft', token=token),
                            step=_step(5, 'Your request'))

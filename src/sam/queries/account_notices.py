@@ -35,6 +35,7 @@ ACCOUNT_KIND_SUBJECTS = {
     'account_rejected': 'Your NCAR HPC account request',
     'account_invite': 'You are invited to request an NCAR HPC account',
     'account_request_received': 'Your NCAR HPC account request has been received',
+    'allocation_request_received': 'Your NCAR allocation request has been received',
     'account_ticket': "New HPC User Request '{name}'",
 }
 #: The ticket subject for a ``reactivation`` row, in place of ``account_ticket``'s.
@@ -258,6 +259,39 @@ def build_receipt_message(row: AccountRequest, *, project_code: str = '',
         projcode=project_code or None,
         dedup_key=f'account_request_received:{row.account_request_id}:{completed}',
         requested_by=requested_by,
+    )
+
+
+def build_allocation_receipt_message(row: AccountRequest, *, submission_id: int,
+                                     request_number: Optional[str], title: str,
+                                     allocation_type: str, resources: Sequence[dict],
+                                     status_url: str, status_days: int,
+                                     submitted_at: Optional[datetime] = None,
+                                     cadence: str = '') -> Message:
+    """A visitor's receipt for the allocation request they filed at ``/request``.
+
+    The address is confirmed, so their own name and title are echoed. *resources* are
+    ``{name, amount, units}`` already formatted. Keyed on the submission: one per filing.
+    """
+    subject = ACCOUNT_KIND_SUBJECTS['allocation_request_received']
+    return Message(
+        kind='allocation_request_received',
+        recipient=Recipient(row.email, name=row.display_name, role='user'),
+        subject=f'{subject} ({request_number})' if request_number else subject,
+        context={
+            'name': row.display_name,
+            'request_number': request_number or '',
+            'title': title or '',
+            'allocation_type': allocation_type or '',
+            'resources': [dict(r) for r in resources],
+            'submitted_on': fmt.date_str(submitted_at) if submitted_at else '',
+            'cadence': cadence or '',
+            'status_url': status_url,
+            'status_days': status_days,
+        },
+        entity=('account_request', row.account_request_id),
+        dedup_key=f'allocation_request_received:{submission_id}',
+        requested_by=CREATED_BY_SELF,
     )
 
 

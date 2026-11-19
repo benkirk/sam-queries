@@ -7,6 +7,13 @@
     {% if outcome.succeeded %}
     {% call outcome_block('success', 'XRAS has your ' ~ ('new request' if action_type == 'New' else action_type ~ ' on ' ~ decision.request_number) ~ ' for review.') %}
     <p class="mb-0 small text-muted">{% if action_type == 'New' %}Once approved, SAM creates the project and names it; {% endif %}{{ (request_urls or {}).get('where') or 'My Requests' }} shows its progress.</p>
+    {#- A visitor's filing (/request): its number, and the receipt mail when one went out. -#}
+    {% if filed_number or receipt_to %}
+    <p class="mb-0 mt-2 small">
+        {%- if filed_number %}Your request number is <strong class="font-monospace">{{ filed_number }}</strong>. {% endif -%}
+        {%- if receipt_to %}A confirmation was sent to <strong>{{ receipt_to }}</strong>.{% endif -%}
+    </p>
+    {% endif %}
     {% endcall %}
     {% else %}
     {% call outcome_block('warning', 'The request stopped at ' ~ outcome.step ~ (': ' ~ outcome.error if outcome.error else '') ~ '.') %}

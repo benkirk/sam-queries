@@ -1,0 +1,35 @@
+{% extends "_email_base.html" %}
+
+{% block content %}
+    <p>Hello {{ name }},</p>
+
+    <div class="callout good">
+        <p>CISL has received your request for an NCAR allocation{% if request_number %}
+            (<strong>{{ request_number }}</strong>){% endif %}. This confirms receipt; it is
+            not a decision.</p>
+    </div>
+
+    <table class="data">
+        {% if request_number %}<tr><th>Request</th><td>{{ request_number }}</td></tr>{% endif %}
+        {% if allocation_type %}<tr><th>Type</th><td>{{ allocation_type }}</td></tr>{% endif %}
+        {% if title %}<tr><th>Title</th><td>{{ title }}</td></tr>{% endif %}
+        {% if submitted_on %}<tr><th>Submitted</th><td>{{ submitted_on }}</td></tr>{% endif %}
+        {% if cadence %}<tr><th>Review</th><td>{{ cadence }}</td></tr>{% endif %}
+        {% for r in resources %}
+        <tr><th>{{ 'Requested' if loop.first }}</th><td>{{ r.name }}: {{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}</td></tr>
+        {% endfor %}
+    </table>
+
+    <p><strong>What happens next.</strong> CISL reviews the request. If it is approved
+        and you do not have an NCAR account yet, the NCAR account team creates one and
+        emails you how to sign in; your project is set up then.</p>
+
+    <p>Where the request stands, at any time:
+        <a href="{{ status_url }}">{{ status_url }}</a><br>
+        The link works for {{ status_days }} days. Keep this message.</p>
+{% endblock %}
+
+{% block footer_extra %}
+        <p>Questions: <a href="mailto:help@ucar.edu">help@ucar.edu</a>{% if request_number %};
+            mention request {{ request_number }}{% endif %}.</p>
+{% endblock %}

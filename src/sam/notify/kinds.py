@@ -240,6 +240,16 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
         facility_aware=False,
         family='account',
     ),
+    # A visitor's receipt for the allocation request they filed at /request: sent once the
+    # filing reaches XRAS, to the address they confirmed. Not an approval.
+    NotificationKind(
+        key='allocation_request_received',
+        label='Allocation-request receipt (visitor)',
+        template_base='allocation_request_received',
+        default_subscribed=True,
+        facility_aware=False,
+        family='account',
+    ),
     # NUSD's handoff: one plain-text ticket per request into Jira-by-email,
     # sent the moment the request is ready for them (verified, or the invitee
     # completed the link). Text-only by design; keyed on the row alone, so a

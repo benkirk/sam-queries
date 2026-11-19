@@ -481,6 +481,99 @@ class TestTheVisitorsRequest:
         assert 'Known Person' in facts and 'Me Again' not in facts
         assert 'in XRAS as' not in html and f'>{username}<' not in html
 
+    def test_a_filed_request_says_so_mails_a_receipt_and_reads_as_received(
+            self, client, confirmed, mail, cleanup, monkeypatch):
+        from datetime import datetime
+        from sam.integration.xras_submission import XrasSubmission
+        from sam.manage import management_transaction
+        from sam.manage import xras_submission as flow
+        from sam.manage.xras_submission import SubmissionOutcome
+        from webapp.extensions import db
+        from webapp.register.eula import eula_sha
+        _, token, row_id, placeholder = confirmed
+        with client.application.app_context():
+            with management_transaction(db.session):
+                sub = XrasSubmission.create(
+                    db.session, action_type='New', created_by=f'registration:{row_id}',
+                    xa_user=placeholder, eula_sha='a' * 40, eula_accepted_at=datetime.now(),
+                    payload={'title': 'Ensemble downscaling',
+                             'resources': [{'resource_id': 530902, 'amount': 1000.0}]},
+                    registration_id=row_id, request_number='NCAR9477')
+                sub.advance('created').advance('submitted')
+            sid = sub.xras_submission_id
+        try:
+            # Not filed yet as far as the draft routes know: the flow is faked to file it.
+            with client.application.test_request_context():
+                sha = eula_sha()
+            with monkeypatch.context() as patch:
+                patch.setattr('webapp.register.allocation_request._filed', lambda row: None)
+                patch.setattr('sam.xras.submission_preflight.preflight_draft',
+                              lambda *a, **k: _verdict('rechecked', ()))
+                patch.setattr(flow, 'request_action',
+                              lambda *a, **k: SubmissionOutcome(sid, 'submitted'))
+                html = client.post(f'/request/draft/{token}', data=_describe(
+                    stage='submit', begin_date='2026-12-01', end_date='2027-11-30',
+                    amount_530902='1000', agree='1', eula_sha=sha)).get_data(as_text=True)
+            assert 'Your request number is' in html and 'NCAR9477' in html
+            assert f'A confirmation was sent to <strong>{cleanup}</strong>' in html
+            assert f'href="/request/status/{token}"' in html, 'Done is still a click'
+            receipt = mail.verify.messages[-1]
+            assert receipt.kind == 'allocation_request_received'
+            assert receipt.recipient.address == cleanup
+            assert receipt.dedup_key == f'allocation_request_received:{sid}'
+            assert receipt.context['status_url'].endswith(f'/request/status/{token}')
+            assert receipt.context['resources'] == [
+                {'name': 'NSF NCAR Derecho', 'amount': '1,000', 'units': 'core-hours'}]
+            page = client.get(f'/request/status/{token}').get_data(as_text=True)
+            assert '<h1>Request received</h1>' in page and 'NCAR9477' in page
+            assert 'Ensemble downscaling' in page and 'NSF NCAR Derecho: 1,000 core-hours' in page
+            assert 'Bookmark this page' in page
+        finally:
+            with client.application.app_context():
+                db.session.query(XrasSubmission).filter_by(xras_submission_id=sid).delete()
+                db.session.commit()
+
+    def test_a_receipt_that_cannot_be_sent_does_not_fail_the_filing(self, client, confirmed,
+                                                                    monkeypatch):
+        from sam.integration.xras_submission import XrasSubmission
+        from sam.manage import xras_submission as flow
+        from sam.manage.xras_submission import SubmissionOutcome
+        from webapp.extensions import db
+        from webapp.register import allocation_request
+        from webapp.register.eula import eula_sha
+        _, token, _, _ = confirmed
+        with client.application.app_context():
+            sid = db.session.query(XrasSubmission.xras_submission_id).order_by(
+                XrasSubmission.xras_submission_id).limit(1).scalar()
+        if sid is None:
+            pytest.skip('no xras_submission row in this snapshot')
+
+        def _boom(*a, **k):
+            raise RuntimeError('relay down')
+        monkeypatch.setattr(allocation_request, '_send_receipt', _boom)
+        monkeypatch.setattr('sam.xras.submission_preflight.preflight_draft',
+                            lambda *a, **k: _verdict('rechecked', ()))
+        monkeypatch.setattr(flow, 'request_action',
+                            lambda *a, **k: SubmissionOutcome(sid, 'submitted'))
+        with client.application.test_request_context():
+            sha = eula_sha()
+        html = client.post(f'/request/draft/{token}', data=_describe(
+            stage='submit', begin_date='2026-12-01', end_date='2027-11-30',
+            amount_530902='1000', agree='1', eula_sha=sha)).get_data(as_text=True)
+        assert 'XRAS has your new request for review' in html
+        assert 'A confirmation was sent' not in html
+
+    def test_the_status_link_outlives_the_draft_link(self, client, confirmed, monkeypatch):
+        from webapp.register import tokens
+        _, token, _, _ = confirmed
+        seen, real = [], tokens.read_request_token
+        monkeypatch.setattr(tokens, 'read_request_token',
+                            lambda t, s, *, max_age: seen.append(max_age) or real(
+                                t, s, max_age=max_age))
+        client.get(f'/request/status/{token}')
+        client.get(f'/request/draft/{token}')
+        assert seen == [365 * 86400, 30 * 86400]
+
     def test_the_award_lookup_needs_a_live_token(self, client, visitor):
         assert client.get('/request/draft/nope/award-lookup?grant_number=1').status_code == 404
 

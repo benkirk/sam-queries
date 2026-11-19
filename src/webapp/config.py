@@ -82,6 +82,9 @@ class SAMWebappConfig(SAMConfig):
     ACCOUNT_INVITE_TTL_DAYS = int(os.getenv('ACCOUNT_INVITE_TTL_DAYS', 30))
     # How long a confirmed visitor's /request draft link stays valid, in days.
     REQUEST_DRAFT_TTL_DAYS = int(os.getenv('REQUEST_DRAFT_TTL_DAYS', 30))
+    # How long the same link still opens the read-only /request status page, in days:
+    # the receipt mail carries it and a panel review can outlast the draft window.
+    REQUEST_STATUS_TTL_DAYS = int(os.getenv('REQUEST_STATUS_TTL_DAYS', 365))
     # Limit /register to signed-in users (a redirect to login, and a preview
     # banner on the form). ON by default: the form is shared with authenticated
     # testers on dev; switch it off per deployment to open the form to the public.

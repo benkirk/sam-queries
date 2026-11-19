@@ -24,6 +24,7 @@ from sam.queries.account_notices import (
     ACCOUNT_KIND_SUBJECTS,
     build_invite_message,
     build_queue_summary,
+    build_allocation_receipt_message,
     build_receipt_message,
     build_ticket_message,
     subject_token,
@@ -231,6 +232,46 @@ class TestInviteMessage:
         assert message.entity == ('account_request', row.account_request_id)
         assert message.projcode == 'SCSG0001' and message.requested_by == 'jlead'
         assert message.subject == ACCOUNT_KIND_SUBJECTS['account_invite']
+
+
+class TestAllocationReceiptMessage:
+    """A visitor's receipt for the allocation request filed at /request."""
+
+    def _message(self, session, **kw):
+        row = make_account_request(session, first_name='Ada', last_name='Lovelace',
+                                   email='ada@example.edu')
+        return row, build_allocation_receipt_message(
+            row, submission_id=77, title='Snowpack ensembles',
+            allocation_type='Small Allocation (University)',
+            resources=[{'name': 'Derecho', 'amount': '500,000', 'units': 'core-hours'}],
+            status_url='https://sam.example/request/status/tok', status_days=365,
+            submitted_at=datetime(2026, 11, 18, 9, 30), cadence='Continuous', **kw)
+
+    def test_the_context_matches_the_sample_and_is_keyed_on_the_submission(self, session):
+        row, message = self._message(session, request_number='NCAR4477')
+        assert set(message.context) == set(sample_context('allocation_request_received'))
+        assert message.recipient.address == 'ada@example.edu'
+        assert (message.context['name'], message.context['submitted_on']) == (
+            'Ada Lovelace', '2026-11-18')
+        assert message.entity == ('account_request', row.account_request_id)
+        assert message.dedup_key == 'allocation_request_received:77'
+        assert message.subject == 'Your NCAR allocation request has been received (NCAR4477)'
+
+    def test_no_number_yet_leaves_it_out_of_the_subject(self, session):
+        _, message = self._message(session, request_number=None)
+        assert message.subject == ACCOUNT_KIND_SUBJECTS['allocation_request_received']
+        assert message.context['request_number'] == ''
+
+    def test_both_bodies_render_the_number_the_amounts_and_the_link(self, session):
+        from sam.notify.render import TemplateRenderer
+        _, message = self._message(session, request_number='NCAR4477')
+        renderer = TemplateRenderer()
+        for suffix in ('txt', 'html'):
+            body = renderer.env.get_template(
+                f'allocation_request_received.{suffix}').render(**message.context)
+            assert 'NCAR4477' in body and 'Derecho: 500,000 core-hours' in body
+            assert 'https://sam.example/request/status/tok' in body and '365 days' in body
+            assert 'not a decision' in ' '.join(body.split())
 
 
 class TestReceiptMessage:
