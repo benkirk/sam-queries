@@ -62,13 +62,18 @@ def resources_with_limits(session, resources: List[Dict[str, Any]],
 
 def annotate_resources(resources: List[Dict[str, Any]], sam: Mapping[int, Any],
                        limits: Mapping[str, Any]) -> List[Dict[str, Any]]:
-    """:func:`resources_with_limits` on maps already read, for a page of many lists."""
+    """:func:`resources_with_limits` on maps already read, for a page of many lists.
+
+    A resource the type withholds (a ceiling of 0) is dropped from *resources*, in place:
+    XRAS may offer it under the opportunity, SAM's type does not.
+    """
     for r in resources:
         resource = sam.get(r['resource_id'])
         r['sam_name'] = resource.resource_name if resource is not None else None
         r['limit'] = limits.get(r['sam_name']) if r['sam_name'] else None
         # XRAS's "Yes/No" unit is a checkbox, not an amount.
         r['yes_no'] = (r.get('units') or '').replace(' ', '').lower() == 'yes/no'
+    resources[:] = [r for r in resources if not getattr(r['limit'], 'withheld', False)]
     return resources
 
 

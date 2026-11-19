@@ -26,6 +26,29 @@ def _line(**kw):
     return line
 
 
+class TestWithheldResources:
+    """A ceiling of 0 takes the resource off the type's offered list (form, cards, server check)."""
+
+    def test_annotate_drops_it_in_place_and_keeps_the_rest(self):
+        from types import SimpleNamespace as NS
+        from sam.xras.submission_preflight import annotate_resources
+        resources = [{'resource_id': 1, 'name': 'Derecho', 'units': 'Core-hours'},
+                     {'resource_id': 2, 'name': 'Campaign Store', 'units': 'TB'},
+                     {'resource_id': 3, 'name': 'Unmapped', 'units': ''}]
+        sam = {1: NS(resource_name='Derecho'), 2: NS(resource_name='Campaign_Store')}
+        limits = {'Derecho': NS(max_amount=500.0, withheld=False),
+                  'Campaign_Store': NS(max_amount=0.0, withheld=True)}
+        out = annotate_resources(resources, sam, limits)
+        assert out is resources and [r['name'] for r in resources] == ['Derecho', 'Unmapped']
+        assert resources[1]['limit'] is None, 'no limit row is no limit, not withheld'
+
+    def test_a_closed_types_card_leaves_it_out_too(self):
+        from types import SimpleNamespace as NS
+        from sam.xras.allocation_overview import _sam_limits
+        rows = _sam_limits({'Casper': NS(withheld=False), 'Campaign_Store': NS(withheld=True)})
+        assert [r['name'] for r in rows] == ['Casper']
+
+
 class TestTheLine:
 
     def test_resources_once_each_from_live_actions(self):

@@ -118,7 +118,7 @@
             <tr{% if not lim.active %} class="row-inactive"{% endif %}>
                 <td>{{ row.name }}{% if not lim.active %}{{ state_tag('inactive', title='Retired: it bounds nothing') }}{% endif %}</td>
                 <td class="col-num">{{ lim.default_amount | fmt_number(raw=True) if lim.default_amount is not none else '—' }}</td>
-                <td class="col-num">{{ lim.max_amount | fmt_number(raw=True) if lim.max_amount is not none else 'no set limit' }}</td>
+                <td class="col-num">{{ 'not offered' if lim.withheld else (lim.max_amount | fmt_number(raw=True) if lim.max_amount is not none else 'no set limit') }}</td>
                 <td class="text-end text-nowrap"><span class="row-actions">
                     {{- edit_modal_button(url_for('allocations_dashboard.htmx_allocation_limit_edit_form', allocation_type_resource_limit_id=lim.allocation_type_resource_limit_id),
                                           'editAllocationLimitModal', 'editAllocationLimitFormContainer',

@@ -84,6 +84,15 @@ class TestBounds:
         assert '10 minimum' in row.refusal(5)
 
 
+    def test_a_ceiling_of_zero_withholds_the_resource(self):
+        # Transient rows: the Education/Derecho pair is contended enough under xdist.
+        row = AllocationTypeResourceLimit(max_amount=0)
+        assert row.withheld and 'more than the 0 limit' in row.refusal(1)
+        assert not AllocationTypeResourceLimit(max_amount=5).withheld
+        assert not AllocationTypeResourceLimit(max_amount=None).withheld, \
+            'no ceiling is no limit, not none offered'
+
+
 class TestLookupByName:
 
     def test_every_row_of_a_duplicated_name_maps(self, session, education_derecho):
@@ -127,6 +136,20 @@ class TestTheSeed:
                 'seed_allocation_type_resource_limit.sql'):
             if default != 'NULL':
                 assert float(default) <= float(ceiling), (type_name, resource)
+
+    def test_no_campaign_for_exploratory_classroom_or_data(self):
+        """CISL's approval rules: a ceiling of 0 withholds it, and nothing is pre-filled."""
+        rows = {(t, r): (d, c) for t, r, d, c in _seed_rows(
+            'seed_allocation_type_resource_limit.sql')}
+        for type_name in ('Small (No NSF award)', 'Classroom', 'Data'):
+            assert rows[(type_name, 'Campaign_Store')] == ('NULL', '0'), type_name
+        assert rows[('Small', 'Campaign_Store')] == ('NULL', '10')
+
+    def test_a_justified_resource_has_no_default(self):
+        rows = _seed_rows('seed_allocation_type_resource_limit.sql')
+        university = ('Small', 'Small (No NSF award)', 'Classroom')
+        assert {d for t, r, d, _ in rows
+                if t in university and r in ('Casper GPU', 'Campaign_Store')} == {'NULL'}
 
     def test_the_panels_get_no_default(self):
         rows = _seed_rows('seed_allocation_type_resource_limit.sql')

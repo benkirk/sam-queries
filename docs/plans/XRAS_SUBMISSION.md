@@ -544,20 +544,32 @@ no editor for a maximum:
 
 NCAR's data agrees: two decade-old defaults and Derecho dollar values, never a maximum. ARC
 publishes the policy limits as text on its opportunities page and enforces nothing, so SAM's
-table is the only enforcement. Its seed script (both dialects, sprint 1) carries ARC's
-published policy where one exists and the snapshot's medians elsewhere (Ben, 2026-10-28:
-the default is a nice median of what active projects of the type hold, the limit a multiple
-above, and the peer-reviewed panels get a high ceiling and no default). The full table, with
-the measured medians beside each proposed value, is `implemented/XRAS_SUBMISSION_SPRINT1.md` § 4. In short:
-- **Small:** Derecho 500,000 default under the published 1,000,000 cap; Derecho GPU 1,500 under 2,500.
-- **Exploratory and Classroom:** 500,000 and 400,000 defaults under the published 500,000 cap; GPU 1,500.
-- **Casper, Casper GPU, Campaign Storage:** medians as defaults, p90 as the limit, per type.
-- **Data Analysis:** Casper 1 / 1, the allocation is a yes, not a quota.
-- **CHAP and NSC:** no default; ceilings of 500 million and 200 million Derecho core-hours.
+table is the only enforcement. The university types carry CISL's approval rules (Ben,
+2026-11-18, from the allocations staff's approval document): the default sits inside the
+initial range a first request is expected to fall in, and the ceiling is the absolute
+maximum a project may hold, supplements included. The first seed's medians and p90s are in
+`implemented/XRAS_SUBMISSION_SPRINT1.md` § 4. Default / ceiling:
 
-Two published rules the table does not encode: requesting Derecho and Derecho GPU together
-reduces each limit proportionally, and a Small or Exploratory one-time supplement may reach
-twice the original. The form states them; nothing enforces them.
+| Type | Derecho | Derecho GPU | Casper | Casper GPU | Campaign Store (TB) |
+|---|---|---|---|---|---|
+| Small | 500,000 / 4,000,000 | 1,500 / 10,000 | 5,000 / 40,000 | none / 6,000 | none / 10 |
+| Exploratory | 500,000 / 2,000,000 | 1,500 / 6,000 | 5,000 / 20,000 | none / 4,000 | withheld |
+| Classroom | 400,000 / 2,000,000 | 1,500 / 6,000 | 5,000 / 20,000 | none / 4,000 | withheld |
+| Data Analysis | not offered | not offered | a yes (1 / 1) | a yes (1 / 1) | withheld |
+
+- **No default** on a resource granted only with a justification (Casper GPU, Campaign Store).
+- **Withheld** is a ceiling of 0: the type does not offer the resource, whatever the XRAS
+  opportunity lists (`AllocationTypeResourceLimit.withheld`; the form, the cards and the
+  server check all read the annotated list).
+- **Data Analysis** asks for no amount; its card copy states what the yes carries and the
+  operator sets the SAM amount.
+- **CHAP and NSC:** no default; ceilings of 500 million and 200 million Derecho core-hours.
+- **NCAR External Projects:** the first seed's measured values.
+
+Rules the table does not encode, which the approver applies: Derecho and Derecho GPU are
+weighed together; the ceiling is cumulative across a project's supplements (SAM checks each
+request against it, not the running total); a Large supplement is capped far below the
+type's ceiling; an extension runs at most a year, or to the grant's end for Small.
 
 The same limits apply to initial requests and supplements.
 

@@ -745,6 +745,24 @@ class TestTheRenewalForm:
         casper = available.split('name="amount_530275"')[1].split('>', 1)[0]
         assert 'value=""' in casper and 'disabled' in casper and 'data-suggest="5000"' in casper
 
+    def test_a_resource_the_type_withholds_is_not_offered_or_accepted(self, auth_client,
+                                                                      renewable, monkeypatch):
+        import sam.xras.submission_preflight as pre
+        renewable.available[0]['resources'].append(
+            {'resource_id': 530275, 'name': 'Campaign Store', 'units': 'TB'})
+        derecho = type('L', (), {'default_amount': 5000.0, 'max_amount': 10000.0,
+                                 'withheld': False})()
+        none = type('L', (), {'default_amount': None, 'max_amount': 0.0, 'withheld': True})()
+        monkeypatch.setattr(pre, 'sam_resources_by_xras_id', lambda s, ids, k: {
+            rid: type('R', (), {'resource_name': name})()
+            for rid, name in ((530902, 'Derecho'), (530275, 'Campaign_Store'))})
+        monkeypatch.setattr('sam.accounting.allocation_type_limits.limits_for_allocation_type',
+                            lambda s, t: {'Derecho': derecho, 'Campaign_Store': none})
+        html = auth_client.get(REN).get_data(as_text=True)
+        assert 'name="amount_530902"' in html and 'amount_530275' not in html
+        html = auth_client.post(REN, data=_ren(amount_530275='2')).get_data(as_text=True)
+        assert 'XRAS does not offer one of those resources here' in html
+
     def test_a_seven_digit_default_fills_the_box_whole(self, auth_client, renewable,
                                                       monkeypatch):
         import sam.xras.submission_preflight as pre
