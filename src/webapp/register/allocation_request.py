@@ -9,7 +9,6 @@ Always mounted, independent of /register; every route 404s unless the visitor le
 Design: docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md.
 """
 
-import functools
 import logging
 from datetime import datetime, timedelta
 
@@ -28,10 +27,10 @@ from webapp.auth.redirects import login_url
 from webapp.extensions import db
 from webapp.limiter import limiter as _rate_limit
 from webapp.utils import human_check
-from webapp.utils.htmx import institution_options, read_flag, register_typeahead
+from webapp.utils.htmx import institution_options, read_flag
 from webapp.utils.notify import get_notifier
 from webapp.dashboards.user.requests_routes import (NewRequestForm, award_lookup_fragment,
-                                                    message_fragment, mnemonic_code_search)
+                                                    message_fragment)
 from webapp.utils.form_handler import FormError
 from webapp.utils.xras import interactive_config, report_opportunities, type_cards
 
@@ -354,7 +353,6 @@ class _VisitorNewRequest(NewRequestForm):
         super().__init__()
         self.row, self.opportunity_id, self.token = row, opportunity_id, token
         self.request_urls = {
-            'mnemonic_suggest': url_for('allocation_request.mnemonic_suggest', token=token),
             'award_lookup': url_for('allocation_request.award_lookup', token=token),
             'terms': url_for('allocation_request.terms'),
             'done': url_for('allocation_request.status', token=token),
@@ -397,12 +395,13 @@ class _VisitorNewRequest(NewRequestForm):
         data['admin_username'] = None
 
     def _expected_messages(self, messages):
-        """XRAS will not know the PI until the account exists: its 422 is the approval's step."""
-        from sam.xras.errors import pi_not_in_database
-        state = (self._ctx or {}).get('sam_state') or {}
-        expected = set(state.get('mnemonic_errors') or ()) if state.get('mnemonic') else set()
-        expected.add(pi_not_in_database(self._pi_username()))
-        return [m for m in messages if m in expected]
+        """SAM will not hold the PI until the account exists: its 422 is the approval's step.
+
+        The placeholder's own person messages (as PI, as a roster name, as the affiliation
+        the code lookup wants); anything naming someone else still counts.
+        """
+        from sam.queries.xras_requests import person_username
+        return [m for m in messages if person_username(m) == self._pi_username()]
 
     def draft(self, data):
         from dataclasses import replace
@@ -461,24 +460,6 @@ def draft_post(token):
     if _filed(row) is not None:
         return _to_status(token)
     return _VisitorNewRequest(row, opportunity_id, token).handle()
-
-
-def _draft_guard(view):
-    """Admits a typeahead by the draft token in its rule, on the anonymous tier."""
-    @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
-    @functools.wraps(view)
-    def guarded(token):
-        if draft_row(token)[0] is None:
-            abort(404)
-        return view()
-    return guarded
-
-
-register_typeahead(
-    bp, rule='/draft/<token>/mnemonic-suggest', endpoint='mnemonic_suggest', permission=None,
-    search=mnemonic_code_search,
-    template='dashboards/allocations/partials/mnemonic_code_search_results_fk_htmx.html',
-    ctx_key='codes', guard=_draft_guard)
 
 
 @bp.route('/draft/<token>/award-lookup')

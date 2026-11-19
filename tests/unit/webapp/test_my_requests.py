@@ -1043,19 +1043,24 @@ class TestTheNewForm:
                                 ).get_data(as_text=True)
         assert 'Required for the grant.' in html
 
-    def test_where_the_ladder_misses_the_pi_picks_the_letters(self, auth_client, newable,
-                                                              session):
-        from sam.core.organizations import MnemonicCode
+    def test_where_the_ladder_misses_no_one_is_asked_for_the_letters(self, auth_client, newable,
+                                                                     monkeypatch):
+        from sam.xras import submission_preflight
+        real = submission_preflight.new_request_sam_state
+        monkeypatch.setattr(
+            submission_preflight, 'new_request_sam_state',
+            lambda *a, **k: dict(real(*a, **k), mnemonic=None,
+                                 mnemonic_errors=['Could not determine Mnemonic code']))
         html = _choose(auth_client, 532221)
-        if 'project code starts with' in html:
-            pytest.skip("the ladder resolves benkirk's code in this snapshot")
-        assert 'name="mnemonic_code_id"' in html
+        assert 'mnemonic_code_id' not in html and 'project code starts with' not in html
         html = auth_client.post(NEW, data=_new()).get_data(as_text=True)
-        assert 'Choose the letters' in html
-        code = session.query(MnemonicCode).filter(MnemonicCode.is_active).first()
-        html = auth_client.post(NEW, data=_new(mnemonic_code_id=str(code.mnemonic_code_id))
-                                ).get_data(as_text=True)
-        assert 'name="amount_530902"' in html
+        assert 'name="amount_530902"' in html, 'page one passes with no code letters'
+
+    def test_a_posted_code_that_is_not_active_is_refused_in_the_panel(self, auth_client, newable,
+                                                                      lettered):
+        html = auth_client.post(NEW, data=_new(mnemonic_code_id='999999999')).get_data(
+            as_text=True)
+        assert 'not an active one' in html and 'name="amount_530902"' not in html
 
     def test_page_two_carries_page_one_and_offers_the_resources(self, auth_client, newable,
                                                                lettered):
@@ -1268,10 +1273,5 @@ class TestThePickers:
             assert 'data-fk-id' not in html and 'no email on file' in html
         assert 'data-fk-id' not in auth_client.get(url + 'benkirk').get_data(as_text=True)
 
-    def test_the_mnemonic_suggest_needs_two_letters(self, auth_client, session):
-        from sam.core.organizations import MnemonicCode
-        code = session.query(MnemonicCode).filter(MnemonicCode.is_active).first()
-        assert auth_client.get('/user/requests/htmx/mnemonic-suggest?q=a').get_data() == b''
-        html = auth_client.get(f'/user/requests/htmx/mnemonic-suggest?q={code.code}').get_data(
-            as_text=True)
-        assert f'data-fk-label="{code.code}"' in html
+    def test_nothing_serves_the_code_letters_to_a_requester(self, auth_client):
+        assert auth_client.get('/user/requests/htmx/mnemonic-suggest?q=cub').status_code == 404

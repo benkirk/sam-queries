@@ -393,7 +393,7 @@ class TestTheVisitorsRequest:
         assert 'name="opportunity_id" value="777001"' in html and 'xrasNewOpportunitySelect' not in html
         assert 'admin_user_id' not in html
         assert 'roster-suggest' not in html, 'the user search is the signed-in door alone'
-        assert f'/request/draft/{token}/mnemonic-suggest' in html, 'the letters picker is its own'
+        assert 'mnemonic' not in html, 'no form asks for the project code letters'
 
     def test_the_review_does_not_count_the_pi_xras_cannot_know_yet(self, client, confirmed,
                                                                     monkeypatch):
@@ -408,12 +408,29 @@ class TestTheVisitorsRequest:
         html = resp.get_data(as_text=True)
         assert 'data-gate-blocked disabled' not in html, 'only the PI message failed it'
 
-    def test_a_message_that_merely_names_the_placeholder_still_counts(self, client, confirmed,
-                                                                       monkeypatch):
-        """The expected refusal is the exact `pi_not_in_database` text, as the release hook reads it."""
+    def test_no_code_and_the_placeholders_own_messages_leave_submit_open(self, client, confirmed,
+                                                                         monkeypatch):
+        """The real verdict for a visitor (test_xras_submission_preflight pins its three lines)."""
         _, token, _, placeholder = confirmed
         verdict = _verdict('failed', (f'PI {placeholder} is not in database',
-                                      f'Username {placeholder} is missing'))
+                                      f'Username {placeholder} is missing',
+                                      f'Could not produce affiliation data for PI {placeholder}'))
+        monkeypatch.setattr('sam.xras.submission_preflight.preflight_draft',
+                            lambda *a, **k: verdict)
+        page_two = client.post(f'/request/draft/{token}', data=_describe()).get_data(as_text=True)
+        assert 'name="amount_530902"' in page_two, 'page one passes with no code letters'
+        html = client.post(f'/request/draft/{token}', data=_describe(
+            stage='review', begin_date='2026-12-01', end_date='2027-11-30',
+            amount_530902='1000')).get_data(as_text=True)
+        assert 'data-gate-blocked disabled' not in html
+        assert 'CISL assigns it when the request is approved' in html
+
+    def test_a_message_about_anyone_or_anything_else_still_counts(self, client, confirmed,
+                                                                   monkeypatch):
+        """Only the placeholder's own person messages are expected."""
+        _, token, _, placeholder = confirmed
+        verdict = _verdict('failed', (f'PI {placeholder} is not in database',
+                                      'Username someone-else is missing'))
         monkeypatch.setattr('sam.xras.submission_preflight.preflight_draft',
                             lambda *a, **k: verdict)
         code = _a_code(client.application)
@@ -464,9 +481,12 @@ class TestTheVisitorsRequest:
         assert 'Known Person' in facts and 'Me Again' not in facts
         assert 'in XRAS as' not in html and f'>{username}<' not in html
 
-    def test_the_pickers_need_a_live_token(self, client, visitor):
-        assert client.get('/request/draft/nope/mnemonic-suggest?q=cub').status_code == 404
+    def test_the_award_lookup_needs_a_live_token(self, client, visitor):
         assert client.get('/request/draft/nope/award-lookup?grant_number=1').status_code == 404
+
+    def test_nothing_serves_the_code_letters_to_a_visitor(self, client, confirmed):
+        _, token, _, _ = confirmed
+        assert client.get(f'/request/draft/{token}/mnemonic-suggest?q=cub').status_code == 404
 
     def test_the_status_page_says_approved_once_released(self, client, confirmed, monkeypatch):
         from datetime import datetime

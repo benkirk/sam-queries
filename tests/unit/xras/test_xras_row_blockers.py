@@ -19,6 +19,18 @@ def test_empty_row_has_no_blockers():
     assert row_blockers({'actions': [], 'has_stuck_placeholder': False}) == set()
 
 
+def test_a_sam_filed_new_with_no_code_is_a_mnemonic_blocker_beside_its_person():
+    """A visitor's New: the placeholder PI alone reads person; the unassigned code adds mnemonic."""
+    action = _action(messages=[e.pi_not_in_database('samr7-user-0a1b2c'),
+                               no_affiliation_for_pi('samr7-user-0a1b2c')])
+    assert row_blockers({'actions': [action]}) == {'person'}
+    action['preflight']['resolved'].update(mnemonic_unassigned=True, series='U---')
+    action['action_type'] = 'New'
+    row = {'actions': [action]}
+    assert row_blockers(row) == {'person', 'mnemonic'}
+    assert projcode_series(row) == 'U---'
+
+
 def test_mnemonic_internal_prefix_is_a_mnemonic_blocker():
     row = {'actions': [_action(messages=[MNEMONIC_INTERNAL_PREFIX + ': ACME'])]}
     assert row_blockers(row) == {'mnemonic'}

@@ -159,6 +159,28 @@ class TestTheNew:
             assert verdict.status == 'rechecked'
 
 
+    def test_a_placeholder_pi_fails_only_on_its_own_person_messages(self, session):
+        """What the visitor's review must expect: SAM does not hold the PI until approval."""
+        from sam.integration.xras import XrasResourceRepositoryKeyResource
+        from sam.queries.xras_requests import person_username
+        from sam.xras.errors import pi_not_in_database
+        key = next((k.resource_repository_key for k in session.query(
+            XrasResourceRepositoryKeyResource) if k.resource
+            and k.resource.resource_name == 'Derecho'), None)
+        if key is None:
+            pytest.skip('no Derecho key mapping in this snapshot')
+        placeholder = 'samr999-user-abc123'
+        draft = self._draft()
+        verdict = preflight_draft(
+            session, new_request_line(draft, pi_username=placeholder, opportunity=_EXPLORATORY,
+                                      fos={'fosTypeId': 500003, 'fosNum': '1'}),
+            draft, resource_keys={530902: key},
+            opportunities={532221: {'allocationType': 'Exploratory'}})
+        assert verdict.status == 'failed'
+        assert pi_not_in_database(placeholder) in verdict.messages
+        assert {person_username(m) for m in verdict.messages} == {placeholder}
+
+
 class TestTheDocumentCheck:
 
     def test_a_pdf_passes_and_anything_else_is_refused(self):

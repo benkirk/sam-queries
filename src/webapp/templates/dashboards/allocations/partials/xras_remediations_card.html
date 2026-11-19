@@ -397,7 +397,9 @@
                            withhold a link but never offer one to a missing project. A
                            pending row's series is the pre-flight's prediction, not a project.
                            `no match` only on a mnemonic blocker: a missing PI also leaves no series. #}
-                        {% if row.pending_push and row.series %}
+                        {% if row.pending_push and row.series and 'mnemonic' in row.blockers %}
+                        <span class="badge state-tag" title="No SAM project yet, and no mnemonic code matched the requester's institution when the request was filed. Set the request's mnemonic override to assign the letters.">{{ projcode_series(row.series) }}</span>
+                        {% elif row.pending_push and row.series %}
                         <span class="badge state-tag" title="No SAM project yet. The pre-flight resolves this series (facility letter and the PI's organization mnemonic); the number is assigned when the project is created.">{{ projcode_series(row.series) }}</span>
                         {% elif row.pending_push and 'mnemonic' in row.blockers %}
                         {{ tag('no match', title="No SAM project yet, and the pre-flight resolved no series: no organization mnemonic matched the PI's affiliation.") }}

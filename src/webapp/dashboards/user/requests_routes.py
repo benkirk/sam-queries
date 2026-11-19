@@ -707,9 +707,8 @@ class NewRequestForm(_RequestForm):
         if data['mnemonic_code_id']:
             code = db.session.get(MnemonicCode, data['mnemonic_code_id'])
             if code is None or not code.is_active:
-                errors['mnemonic_code_id'] = ['Choose an active code.']
-        elif ctx['sam_state']['mnemonic'] is None:
-            errors['mnemonic_code_id'] = ['Choose the letters the project code starts with.']
+                # No form shows this input, so the refusal goes to the panel.
+                raise FormError('That project code is not an active one.')
         if ctx['rules'].wants_grants:
             errors.update(self._grant_errors(data, ctx['rules']))
         errors.update(self._roster_errors(data))
@@ -772,7 +771,7 @@ class NewRequestForm(_RequestForm):
             return unsure
 
     def _verdict(self, data, ctx):
-        """The preflight on the draft; a code the PI chose stands in for the ladder's miss."""
+        """The preflight on the draft; the ladder's mnemonic miss never blocks (an operator assigns it)."""
         from dataclasses import replace
         from sam.xras.submission_preflight import new_request_line, preflight_draft
         fos = next((r for r in ctx['fos_options'] if r.get('fosTypeId') == data['fos_type_id']),
@@ -785,9 +784,9 @@ class NewRequestForm(_RequestForm):
             db.session, line, data['draft'], resource_keys=ctx['resource_keys'],
             opportunities={opportunity['opportunity_id']: {
                 'allocationType': opportunity['allocation_type']}})
-        # NOTE: the review runs before the row exists, so the handler cannot consult it yet;
-        # a code the PI chose stands in for the ladder's miss, as the handler will use it.
-        skip = set(ctx['sam_state']['mnemonic_errors']) if data['mnemonic_code_id'] else set()
+        # NOTE: no form asks for the code letters. A miss files with none and Remediations
+        # flags it (UNASSIGNED_MNEMONIC) for the operator's override, so it is not the requester's.
+        skip = set(ctx['sam_state']['mnemonic_errors'])
         skip |= set(self._expected_messages(verdict.messages))
         if verdict.status == 'failed' and skip:
             left = tuple(m for m in verdict.messages if m not in skip)
@@ -855,12 +854,6 @@ def my_request_new_post():
         return message_fragment('New request unavailable', ' '.join(exc.errors))
 
 
-def mnemonic_code_search(q, active_only):
-    """The code-letter picker's search; codes and their institutions are public knowledge."""
-    from sam.queries.mnemonic_console import search_mnemonic_codes
-    return search_mnemonic_codes(db.session, q, limit=10)
-
-
 def _search_admins(q, active_only):
     from sam.queries.users import search_users_by_pattern
     if not _config().submit_allows('New'):
@@ -882,14 +875,6 @@ register_typeahead(
     search=_search_admins,
     template='dashboards/user/fragments/request_roster_results_htmx.html',
     ctx_key='users')
-
-
-register_typeahead(
-    bp, rule='/requests/htmx/mnemonic-suggest', endpoint='my_requests_mnemonic_suggest',
-    permission=None,                    # any user may pick the letters for a New
-    search=mnemonic_code_search,
-    template='dashboards/allocations/partials/mnemonic_code_search_results_fk_htmx.html',
-    ctx_key='codes')
 
 
 @bp.route('/requests/htmx/award-lookup')
