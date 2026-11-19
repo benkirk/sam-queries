@@ -173,7 +173,6 @@ class XrasNewRequestForm(XrasGrantMixin, XrasAgreementMixin):
     fos_type_id = f.Int(required=True,
                         error_messages={'required': 'Choose the field of science.'})
     admin_user_id = f.Int(load_default=None)
-    mnemonic_code_id = f.Int(load_default=None)
     roster = f.Str(load_default=None, validate=v.Length(max=4000))     # Name <email> lines
     begin_date = f.Date(load_default=None)
     end_date = f.Date(load_default=None)

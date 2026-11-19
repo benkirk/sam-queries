@@ -4,6 +4,7 @@ The overview, the person, the confirmation. The POST creates a committed row thr
 ``db.session``, so tests clean up by address; the mailer records instead of sending.
 """
 
+import contextlib
 import re
 import secrets
 from dataclasses import replace
@@ -123,11 +124,60 @@ def _submit(client, mail, address):
     return resp.location, mail.verify.messages[-1].context
 
 
+@pytest.fixture(scope='module')
+def register_off_app(test_db_url, status_db_url):
+    """Production's posture: the account-creation form unmounted."""
+    from webapp.run import create_app
+    return create_app(config_overrides={
+        'SQLALCHEMY_DATABASE_URI': test_db_url,
+        'SQLALCHEMY_BINDS': {'system_status': status_db_url},
+        'ACCOUNT_REGISTRATION_ENABLED': False,
+    })
+
+
 class TestTheLever:
 
     def test_off_every_route_is_a_404(self, client):
         assert client.get('/request/').status_code == 404
         assert client.get('/request/start/777001').status_code == 404
+
+
+class TestIndependentOfRegister:
+    """/request is served by its own lever and login flag, with /register mounted or not."""
+
+    def test_the_walk_runs_with_register_unmounted(self, register_off_app, visitor, mail,
+                                                   cleanup):
+        client = register_off_app.test_client()
+        assert 'register' not in register_off_app.blueprints
+        assert client.get('/register/').status_code == 404
+        overview = client.get('/request/')
+        assert overview.status_code == 200 and 'href="/register/"' not in overview.get_data(
+            as_text=True)
+        assert 'About you' in client.get('/request/start/777001').get_data(as_text=True)
+        pending, context = _submit(client, mail, cleanup)
+        assert 'Confirm your email address' in client.get(pending).get_data(as_text=True)
+        resp = client.post(pending, data={'code': context['code']})
+        assert resp.status_code == 302 and '/request/draft/' in resp.location
+        assert client.get(resp.location).status_code == 200
+
+    def test_an_expired_link_points_back_at_request_with_register_unmounted(
+            self, register_off_app, visitor):
+        html = register_off_app.test_client().get('/request/verify/not-a-token').get_data(
+            as_text=True)
+        assert 'expired or is not valid' in html and 'href="/request/"' in html
+
+    def test_its_own_flag_sends_a_visitor_to_login(self, app, client, visitor, monkeypatch):
+        monkeypatch.setitem(app.config, 'ALLOCATION_REQUEST_LOGIN_REQUIRED', True)
+        resp = client.get('/request/')
+        assert resp.status_code == 302 and '/auth/login' in resp.location
+
+    def test_registers_flag_does_not_gate_it(self, app, client, visitor, monkeypatch):
+        monkeypatch.setitem(app.config, 'ACCOUNT_REGISTRATION_LOGIN_REQUIRED', True)
+        html = client.get('/request/').get_data(as_text=True)
+        assert 'Probeopen' in html and 'Signed-in only.' not in html
+
+    def test_the_lever_does_not_open_register(self, register_off_app, visitor):
+        assert register_off_app.test_client().get('/register/').status_code == 404
 
 
 class TestTheOverview:
@@ -249,7 +299,7 @@ _GRANT = {'grant_agency_id': '1', 'grant_number': '2441755', 'grant_title': 'Ens
 def _describe(**extra):
     return {'stage': 'request', 'opportunity_id': '777001', 'title': 'Ensemble downscaling',
             'abstract': 'Regional runs for the next three summers.', 'fos_type_id': '500003',
-            'mnemonic_code_id': '', **_GRANT, **extra}
+            **_GRANT, **extra}
 
 
 class TestTheVisitorsRequest:
@@ -344,7 +394,7 @@ class TestTheVisitorsRequest:
         assert 'name="opportunity_id" value="777001"' in html and 'xrasNewOpportunitySelect' not in html
         assert 'admin_user_id' not in html
         assert 'roster-suggest' not in html, 'the user search is the signed-in door alone'
-        assert f'/request/draft/{token}/mnemonic-suggest' in html, 'the letters picker is its own'
+        assert 'mnemonic' not in html, 'no form asks for the project code letters'
 
     def test_the_review_does_not_count_the_pi_xras_cannot_know_yet(self, client, confirmed,
                                                                     monkeypatch):
@@ -352,24 +402,39 @@ class TestTheVisitorsRequest:
         verdict = _verdict('failed', (f'PI {placeholder} is not in database',))
         monkeypatch.setattr('sam.xras.submission_preflight.preflight_draft',
                             lambda *a, **k: verdict)
-        code = _a_code(client.application)
         resp = client.post(f'/request/draft/{token}', data=_describe(
-            stage='review', mnemonic_code_id=str(code), begin_date='2026-12-01',
+            stage='review', begin_date='2026-12-01',
             end_date='2027-11-30', amount_530902='1000'))
         html = resp.get_data(as_text=True)
         assert 'data-gate-blocked disabled' not in html, 'only the PI message failed it'
 
-    def test_a_message_that_merely_names_the_placeholder_still_counts(self, client, confirmed,
-                                                                       monkeypatch):
-        """The expected refusal is the exact `pi_not_in_database` text, as the release hook reads it."""
+    def test_no_code_and_the_placeholders_own_messages_leave_submit_open(self, client, confirmed,
+                                                                         monkeypatch):
+        """The real verdict for a visitor (test_xras_submission_preflight pins its three lines)."""
         _, token, _, placeholder = confirmed
         verdict = _verdict('failed', (f'PI {placeholder} is not in database',
-                                      f'Username {placeholder} is missing'))
+                                      f'Username {placeholder} is missing',
+                                      f'Could not produce affiliation data for PI {placeholder}'))
         monkeypatch.setattr('sam.xras.submission_preflight.preflight_draft',
                             lambda *a, **k: verdict)
-        code = _a_code(client.application)
+        page_two = client.post(f'/request/draft/{token}', data=_describe()).get_data(as_text=True)
+        assert 'name="amount_530902"' in page_two, 'page one passes with no code letters'
+        html = client.post(f'/request/draft/{token}', data=_describe(
+            stage='review', begin_date='2026-12-01', end_date='2027-11-30',
+            amount_530902='1000')).get_data(as_text=True)
+        assert 'data-gate-blocked disabled' not in html
+        assert 'CISL assigns it when the request is approved' in html
+
+    def test_a_message_about_anyone_or_anything_else_still_counts(self, client, confirmed,
+                                                                   monkeypatch):
+        """Only the placeholder's own person messages are expected."""
+        _, token, _, placeholder = confirmed
+        verdict = _verdict('failed', (f'PI {placeholder} is not in database',
+                                      'Username someone-else is missing'))
+        monkeypatch.setattr('sam.xras.submission_preflight.preflight_draft',
+                            lambda *a, **k: verdict)
         resp = client.post(f'/request/draft/{token}', data=_describe(
-            stage='review', mnemonic_code_id=str(code), begin_date='2026-12-01',
+            stage='review', begin_date='2026-12-01',
             end_date='2027-11-30', amount_530902='1000'))
         assert 'data-gate-blocked disabled' in resp.get_data(as_text=True)
 
@@ -380,20 +445,21 @@ class TestTheVisitorsRequest:
         _, token, row_id, placeholder = confirmed
         monkeypatch.setattr('sam.xras.submission_preflight.preflight_draft',
                             lambda *a, **k: _verdict('rechecked', ()))
-        calls = []
-        monkeypatch.setattr(flow, 'request_action',
-                            lambda *a, **k: calls.append(k) or SubmissionOutcome(1, 'submitted'))
-        code = _a_code(client.application)
+        calls, drafts = [], []
+        monkeypatch.setattr(flow, 'request_action', lambda *a, **k: (
+            drafts.append(a[1]), calls.append(k)) and SubmissionOutcome(1, 'submitted'))
         with client.application.test_request_context():
             sha = eula_sha()
         html = client.post(f'/request/draft/{token}', data=_describe(
-            stage='submit', mnemonic_code_id=str(code), begin_date='2026-12-01',
-            end_date='2027-11-30', amount_530902='1000', agree='1',
+            stage='submit', mnemonic_code_id=str(_a_code(client.application)),
+            begin_date='2026-12-01', end_date='2027-11-30', amount_530902='1000', agree='1',
             eula_sha=sha)).get_data(as_text=True)
         [call] = calls
         assert (call['door'], call['actor'], call['xa_user']) == (
             'visitor', f'registration:{row_id}', placeholder)
         assert f'/request/status/{token}' in html, 'Done goes to the status page'
+        assert drafts[0].sam.mnemonic_code_id is None, \
+            'a posted code is ignored: no requester sets the letters'
 
     def test_the_review_never_says_whom_an_address_belongs_to(self, client, confirmed,
                                                               monkeypatch):
@@ -408,16 +474,93 @@ class TestTheVisitorsRequest:
             username, email = known.username, known.primary_email
         roster = f'Known Person <{email}>\nMe Again <{_visitor_email(client, token)}>'
         html = client.post(f'/request/draft/{token}', data=_describe(
-            stage='review', mnemonic_code_id=str(_a_code(client.application)),
-            begin_date='2026-12-01', end_date='2027-11-30', amount_530902='1000',
-            roster=roster)).get_data(as_text=True)
+            stage='review', begin_date='2026-12-01', end_date='2027-11-30',
+            amount_530902='1000', roster=roster)).get_data(as_text=True)
         facts = html.split('</dl>')[0]
         assert 'Known Person' in facts and 'Me Again' not in facts
         assert 'in XRAS as' not in html and f'>{username}<' not in html
 
-    def test_the_pickers_need_a_live_token(self, client, visitor):
-        assert client.get('/request/draft/nope/mnemonic-suggest?q=cub').status_code == 404
+    def test_a_filed_request_says_so_mails_a_receipt_and_reads_as_received(
+            self, client, confirmed, mail, cleanup, monkeypatch):
+        from sam.manage import xras_submission as flow
+        from sam.manage.xras_submission import SubmissionOutcome
+        from webapp.register.eula import eula_sha
+        _, token, row_id, placeholder = confirmed
+        with client.application.test_request_context():
+            sha = eula_sha()
+        # Above 100,000, where the compact display form would round it.
+        with _filed_submission(client.application, row_id, placeholder, 1234567.0) as sid:
+            with monkeypatch.context() as patch:
+                # Not filed yet as far as the draft routes know: the flow is faked to file it.
+                patch.setattr('webapp.register.allocation_request._filed', lambda row: None)
+                patch.setattr('sam.xras.submission_preflight.preflight_draft',
+                              lambda *a, **k: _verdict('rechecked', ()))
+                patch.setattr(flow, 'request_action',
+                              lambda *a, **k: SubmissionOutcome(sid, 'submitted'))
+                html = client.post(f'/request/draft/{token}', data=_describe(
+                    stage='submit', begin_date='2026-12-01', end_date='2027-11-30',
+                    amount_530902='1234567', agree='1', eula_sha=sha)).get_data(as_text=True)
+            assert 'Your request number is' in html and 'NCAR9477' in html
+            assert f'A confirmation was sent to <strong>{cleanup}</strong>' in html
+            assert f'href="/request/status/{token}"' in html, 'Done is still a click'
+            receipt = mail.verify.messages[-1]
+            assert receipt.kind == 'allocation_request_received'
+            assert receipt.recipient.address == cleanup
+            assert receipt.dedup_key == f'allocation_request_received:{sid}'
+            assert receipt.context['status_url'].endswith(f'/request/status/{token}')
+            assert receipt.context['resources'] == [
+                {'name': 'NSF NCAR Derecho', 'amount': '1,234,567', 'units': 'core-hours'}]
+            page = client.get(f'/request/status/{token}').get_data(as_text=True)
+            assert '<h1>Request received</h1>' in page and 'NCAR9477' in page
+            assert 'Ensemble downscaling' in page
+            assert 'NSF NCAR Derecho: 1,234,567 core-hours' in page
+            assert 'Bookmark this page' in page
+
+    def test_a_receipt_that_cannot_be_sent_does_not_fail_the_filing(self, client, confirmed,
+                                                                    monkeypatch):
+        from sam.manage import xras_submission as flow
+        from sam.manage.xras_submission import SubmissionOutcome
+        from webapp.register import allocation_request
+        from webapp.register.eula import eula_sha
+        _, token, row_id, placeholder = confirmed
+        attempts = []
+
+        def _boom(*a, **k):
+            attempts.append(a)
+            raise RuntimeError('relay down')
+        with client.application.test_request_context():
+            sha = eula_sha()
+        with _filed_submission(client.application, row_id, placeholder, 1000.0) as sid:
+            monkeypatch.setattr(allocation_request, '_filed', lambda row: None)
+            monkeypatch.setattr(allocation_request, '_send_receipt', _boom)
+            monkeypatch.setattr('sam.xras.submission_preflight.preflight_draft',
+                                lambda *a, **k: _verdict('rechecked', ()))
+            monkeypatch.setattr(flow, 'request_action',
+                                lambda *a, **k: SubmissionOutcome(sid, 'submitted'))
+            html = client.post(f'/request/draft/{token}', data=_describe(
+                stage='submit', begin_date='2026-12-01', end_date='2027-11-30',
+                amount_530902='1000', agree='1', eula_sha=sha)).get_data(as_text=True)
+        assert len(attempts) == 1, 'the send was tried'
+        assert 'XRAS has your new request for review' in html and 'NCAR9477' in html
+        assert 'A confirmation was sent' not in html
+
+    def test_the_status_link_outlives_the_draft_link(self, client, confirmed, monkeypatch):
+        from webapp.register import tokens
+        _, token, _, _ = confirmed
+        seen, real = [], tokens.read_request_token
+        monkeypatch.setattr(tokens, 'read_request_token',
+                            lambda t, s, *, max_age: seen.append(max_age) or real(
+                                t, s, max_age=max_age))
+        client.get(f'/request/status/{token}')
+        client.get(f'/request/draft/{token}')
+        assert seen == [365 * 86400, 30 * 86400]
+
+    def test_the_award_lookup_needs_a_live_token(self, client, visitor):
         assert client.get('/request/draft/nope/award-lookup?grant_number=1').status_code == 404
+
+    def test_nothing_serves_the_code_letters_to_a_visitor(self, client, confirmed):
+        _, token, _, _ = confirmed
+        assert client.get(f'/request/draft/{token}/mnemonic-suggest?q=cub').status_code == 404
 
     def test_the_status_page_says_approved_once_released(self, client, confirmed, monkeypatch):
         from datetime import datetime
@@ -504,6 +647,31 @@ def _verdict(status, messages):
                    action_status=None, request_status=None, stage='Requested',
                    push_state='unknown', push_detail=None, checked_at=datetime.now(),
                    resolved=None)
+
+
+@contextlib.contextmanager
+def _filed_submission(app, row_id, placeholder, amount):
+    """A committed ``submitted`` New under the registration, deleted afterwards; yields its id."""
+    from datetime import datetime
+    from sam.integration.xras_submission import XrasSubmission
+    from sam.manage import management_transaction
+    from webapp.extensions import db
+    with app.app_context():
+        with management_transaction(db.session):
+            sub = XrasSubmission.create(
+                db.session, action_type='New', created_by=f'registration:{row_id}',
+                xa_user=placeholder, eula_sha='a' * 40, eula_accepted_at=datetime.now(),
+                payload={'title': 'Ensemble downscaling',
+                         'resources': [{'resource_id': 530902, 'amount': amount}]},
+                registration_id=row_id, request_number='NCAR9477')
+            sub.advance('created').advance('submitted')
+        sid = sub.xras_submission_id
+    try:
+        yield sid
+    finally:
+        with app.app_context():
+            db.session.query(XrasSubmission).filter_by(xras_submission_id=sid).delete()
+            db.session.commit()
 
 
 def _a_code(app):

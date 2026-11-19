@@ -4,10 +4,13 @@
 --   Apply after create_allocation_type_resource_limit_pg.sql:
 --     psql -h csg-postgres.k8s.ucar.edu -d sam_dev -f scripts/sql/seed_allocation_type_resource_limit_pg.sql
 --
--- Ben, 2026-10-29: defaults are the median award active projects of the type
--- hold; ceilings are ARC's published caps where they exist, else about p90;
--- CHAP and NSC get a high ceiling and no default; Data Analysis Casper is 1/1
--- (a yes, not a quota). Measured values: XRAS_SUBMISSION_SPRINT1.md § 4.
+-- The university types follow CISL's approval rules (Ben, 2026-11-18):
+-- the default sits inside the initial range, the ceiling is the
+-- absolute maximum a project may hold, justified resources (Casper GPU,
+-- Campaign_Store) get no default, and a ceiling of 0 withholds the resource
+-- from the type. Data Analysis Casper is 1/1 (a yes, not a quota). CHAP and
+-- NSC get a high ceiling and no default; External Project keeps the measured
+-- values of XRAS_SUBMISSION_SPRINT1.md § 4.
 -- Both "Small" rows take the same limits. Inserts only absent pairs, so a
 -- re-run never overwrites an edit made on the admin card. The _pg twin must
 -- carry the same rows (tests/unit/models/test_allocation_type_limits.py).
@@ -19,24 +22,24 @@ INSERT INTO allocation_type_resource_limit
 SELECT at.allocation_type_id, r.resource_id, NULL, v.default_amount, v.max_amount, TRUE,
        'seed', TIMESTAMP '2026-10-29 00:00:00', TIMESTAMP '2026-10-29 00:00:00'
   FROM (
-         SELECT 'Small'               , 'Derecho'       ,    500000,    1000000
-    UNION ALL SELECT 'Small'               , 'Derecho GPU'   ,      1500,       2500
-    UNION ALL SELECT 'Small'               , 'Casper'        ,      5000,      20000
-    UNION ALL SELECT 'Small'               , 'Casper GPU'    ,      1500,       6000
-    UNION ALL SELECT 'Small'               , 'Campaign_Store',         5,         20
-    UNION ALL SELECT 'Small (No NSF award)', 'Derecho'       ,    500000,     500000
-    UNION ALL SELECT 'Small (No NSF award)', 'Derecho GPU'   ,      1500,       1500
-    UNION ALL SELECT 'Small (No NSF award)', 'Casper'        ,      5000,      10000
-    UNION ALL SELECT 'Small (No NSF award)', 'Casper GPU'    ,      1000,       5000
-    UNION ALL SELECT 'Small (No NSF award)', 'Campaign_Store',         5,         10
-    UNION ALL SELECT 'Classroom'           , 'Derecho'       ,    400000,     500000
-    UNION ALL SELECT 'Classroom'           , 'Derecho GPU'   ,      1500,       1500
-    UNION ALL SELECT 'Classroom'           , 'Casper'        ,      5000,      10000
-    UNION ALL SELECT 'Classroom'           , 'Casper GPU'    ,      1500,       4500
-    UNION ALL SELECT 'Classroom'           , 'Campaign_Store',         2,          5
+         SELECT 'Small'               , 'Derecho'       ,    500000,    4000000
+    UNION ALL SELECT 'Small'               , 'Derecho GPU'   ,      1500,      10000
+    UNION ALL SELECT 'Small'               , 'Casper'        ,      5000,      40000
+    UNION ALL SELECT 'Small'               , 'Casper GPU'    ,      NULL,       6000
+    UNION ALL SELECT 'Small'               , 'Campaign_Store',      NULL,         10
+    UNION ALL SELECT 'Small (No NSF award)', 'Derecho'       ,    500000,    2000000
+    UNION ALL SELECT 'Small (No NSF award)', 'Derecho GPU'   ,      1500,       6000
+    UNION ALL SELECT 'Small (No NSF award)', 'Casper'        ,      5000,      20000
+    UNION ALL SELECT 'Small (No NSF award)', 'Casper GPU'    ,      NULL,       4000
+    UNION ALL SELECT 'Small (No NSF award)', 'Campaign_Store',      NULL,          0
+    UNION ALL SELECT 'Classroom'           , 'Derecho'       ,    400000,    2000000
+    UNION ALL SELECT 'Classroom'           , 'Derecho GPU'   ,      1500,       6000
+    UNION ALL SELECT 'Classroom'           , 'Casper'        ,      5000,      20000
+    UNION ALL SELECT 'Classroom'           , 'Casper GPU'    ,      NULL,       4000
+    UNION ALL SELECT 'Classroom'           , 'Campaign_Store',      NULL,          0
     UNION ALL SELECT 'Data'                , 'Casper'        ,         1,          1
     UNION ALL SELECT 'Data'                , 'Casper GPU'    ,         1,          1
-    UNION ALL SELECT 'Data'                , 'Campaign_Store',         5,         20
+    UNION ALL SELECT 'Data'                , 'Campaign_Store',      NULL,          0
     UNION ALL SELECT 'External Project'    , 'Derecho'       ,   2000000,    4000000
     UNION ALL SELECT 'External Project'    , 'Derecho GPU'   ,      5000,      50000
     UNION ALL SELECT 'External Project'    , 'Casper'        ,     10000,     100000

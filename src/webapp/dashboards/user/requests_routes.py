@@ -253,7 +253,9 @@ class _RequestForm(HtmxFormHandler):
             return {'floor': floor, 'end_min': floor + timedelta(days=1) if floor else None,
                     'resources': [], 'resource_keys': None}
         if self.action_type == 'Supplement':
-            return {'floor': None, **self._with_limits(config, line_resources(decision.line))}
+            held = line_resources(decision.line)
+            return {'floor': None, **self._with_limits(
+                config, held, held=[r['resource_id'] for r in held])}
         return self._renewal_context(config, decision, floor)
 
     def _renewal_context(self, config, decision, floor):
@@ -281,7 +283,7 @@ class _RequestForm(HtmxFormHandler):
                 'default_begin': begin, 'default_end': end,
                 'line_abstract': (decision.line or {}).get('abstract') or '',
                 'grant_defaults': self._line_grant(decision.line),
-                **self._with_limits(config, resources)}
+                **self._with_limits(config, resources, held=held)}
 
     @staticmethod
     def _line_grant(line):
@@ -298,12 +300,15 @@ class _RequestForm(HtmxFormHandler):
             values[name] = parse_wire_date(values[name])
         return {k: v for k, v in values.items() if v}
 
-    def _with_limits(self, config, resources, type_name=None):
-        """*resources* with their SAM resource and type limit, through the catalog key."""
+    def _with_limits(self, config, resources, type_name=None, held=()):
+        """*resources* with their SAM resource and type limit, through the catalog key.
+
+        *held* are the XRAS resource ids the project's line already holds: kept though withheld.
+        """
         from sam.xras.submission_preflight import resources_with_limits
         keys = resource_keys(config)
         name = type_name or (_type_name(self.project) if self.project else None)
-        resources_with_limits(db.session, resources, keys, name)
+        resources_with_limits(db.session, resources, keys, name, held=held)
         return {'resources': resources, 'resource_keys': keys}
 
     def context(self):
@@ -358,8 +363,9 @@ class _RequestForm(HtmxFormHandler):
         by_id = {r['resource_id']: r for r in ctx['resources']}
         if any(rid not in by_id for rid in data['amounts']):
             raise FormError('XRAS does not offer one of those resources here; reopen the form.')
+        # A resource kept because the project holds it carries no limit (annotate_resources).
         named = {by_id[rid]['sam_name']: amt for rid, amt in data['amounts'].items()
-                 if by_id[rid]['sam_name']}
+                 if by_id[rid]['sam_name'] and not by_id[rid].get('kept')}
         refused = limit_refusals(db.session, type_name, named)
         errors = {f'amount_{rid}': [refused[by_id[rid]['sam_name']]]
                   for rid in data['amounts'] if by_id[rid]['sam_name'] in refused}
@@ -484,7 +490,7 @@ _NEW_AMOUNTS = 'dashboards/user/fragments/request_new_amounts_htmx.html'
 _GRANT = 'dashboards/user/fragments/request_grant_htmx.html'
 #: The page-one inputs a later page carries in hidden fields, and whose errors land on page one.
 _DESCRIBE_FIELDS = ('opportunity_id', 'title', 'abstract', 'keywords', 'fos_type_id',
-                    'admin_user_id', 'mnemonic_code_id', 'roster') + tuple(GRANT_INPUTS)
+                    'admin_user_id', 'roster') + tuple(GRANT_INPUTS)
 #: People a New may name on page one; the rest join once the project exists.
 ROSTER_MAX = 20
 
@@ -524,12 +530,6 @@ def _opportunity_context(config, opportunity, pi, institution_name=None):
 
 def _chosen(opportunities, opportunity_id):
     return next((o for o in opportunities if o['opportunity_id'] == opportunity_id), None)
-
-
-def _mnemonic_label(mnemonic_code_id):
-    from sam.core.organizations import MnemonicCode
-    code = db.session.get(MnemonicCode, mnemonic_code_id) if mnemonic_code_id else None
-    return code.code if code is not None else ''
 
 
 def _user_label(user_id):
@@ -633,8 +633,6 @@ class NewRequestForm(_RequestForm):
                          names_sam_users=self.names_sam_users, type_url=self._type_url(),
                          opportunities=opportunities, fos_options=fos,
                          fos_choices=[(r['fosTypeId'], r.get('fosName')) for r in fos],
-                         chosen_mnemonic=_mnemonic_label(request.values.get(
-                             'mnemonic_code_id', type=int)),
                          chosen_admin=_user_label(request.values.get('admin_user_id', type=int)),
                          grant_agencies=funding_agency_choices(),
                          carry_fields=_DESCRIBE_FIELDS,
@@ -663,7 +661,7 @@ class NewRequestForm(_RequestForm):
             return dict(project=None, action_type='New', decision=None, opportunities=[],
                         names_sam_users=self.names_sam_users, type_url=self._type_url(),
                         fos_options=[], fos_choices=[],
-                        opportunity=None, rules=None, sam_state=None, chosen_mnemonic='',
+                        opportunity=None, rules=None, sam_state=None,
                         chosen_admin='',
                         carry_fields=_DESCRIBE_FIELDS, resources=[], documents=[],
                         eula_sha=None, post_url=self._post_url(),
@@ -692,7 +690,6 @@ class NewRequestForm(_RequestForm):
 
     def _describe_errors(self, data, ctx):
         """Page one's checks against XRAS and SAM, as ``{field: [message]}``."""
-        from sam.core.organizations import MnemonicCode
         errors = {}
         opportunity = ctx['opportunity']
         if opportunity is None or opportunity['opportunity_id'] != data['opportunity_id']:
@@ -704,12 +701,6 @@ class NewRequestForm(_RequestForm):
         if data['fos_type_id'] not in {r.get('fosTypeId') for r in ctx['fos_options']}:
             errors['fos_type_id'] = ['Choose the field of science.']
         self._check_admin(data, errors)
-        if data['mnemonic_code_id']:
-            code = db.session.get(MnemonicCode, data['mnemonic_code_id'])
-            if code is None or not code.is_active:
-                errors['mnemonic_code_id'] = ['Choose an active code.']
-        elif ctx['sam_state']['mnemonic'] is None:
-            errors['mnemonic_code_id'] = ['Choose the letters the project code starts with.']
         if ctx['rules'].wants_grants:
             errors.update(self._grant_errors(data, ctx['rules']))
         errors.update(self._roster_errors(data))
@@ -772,7 +763,7 @@ class NewRequestForm(_RequestForm):
             return unsure
 
     def _verdict(self, data, ctx):
-        """The preflight on the draft; a code the PI chose stands in for the ladder's miss."""
+        """The preflight on the draft; the ladder's mnemonic miss never blocks (an operator assigns it)."""
         from dataclasses import replace
         from sam.xras.submission_preflight import new_request_line, preflight_draft
         fos = next((r for r in ctx['fos_options'] if r.get('fosTypeId') == data['fos_type_id']),
@@ -785,9 +776,9 @@ class NewRequestForm(_RequestForm):
             db.session, line, data['draft'], resource_keys=ctx['resource_keys'],
             opportunities={opportunity['opportunity_id']: {
                 'allocationType': opportunity['allocation_type']}})
-        # NOTE: the review runs before the row exists, so the handler cannot consult it yet;
-        # a code the PI chose stands in for the ladder's miss, as the handler will use it.
-        skip = set(ctx['sam_state']['mnemonic_errors']) if data['mnemonic_code_id'] else set()
+        # NOTE: no form asks for the code letters. A miss files with none and Remediations
+        # flags it (UNASSIGNED_MNEMONIC) for the operator's override, so it is not the requester's.
+        skip = set(ctx['sam_state']['mnemonic_errors'])
         skip |= set(self._expected_messages(verdict.messages))
         if verdict.status == 'failed' and skip:
             left = tuple(m for m in verdict.messages if m not in skip)
@@ -804,8 +795,8 @@ class NewRequestForm(_RequestForm):
         ctx = self._ctx
         opportunity, state = ctx['opportunity'], ctx['sam_state']
         allocation_type = state['allocation_type']
-        mnemonic_id = data['mnemonic_code_id'] or (
-            state['mnemonic'].mnemonic_code_id if state['mnemonic'] else None)
+        # The ladder's code or none: a requester never sets the letters (the operator's override does).
+        mnemonic_id = state['mnemonic'].mnemonic_code_id if state['mnemonic'] else None
         return ActionRequest(
             action_type='New', opportunity_id=opportunity['opportunity_id'],
             title=data['title'], abstract=data['abstract'], keywords=data['keywords'],
@@ -855,12 +846,6 @@ def my_request_new_post():
         return message_fragment('New request unavailable', ' '.join(exc.errors))
 
 
-def mnemonic_code_search(q, active_only):
-    """The code-letter picker's search; codes and their institutions are public knowledge."""
-    from sam.queries.mnemonic_console import search_mnemonic_codes
-    return search_mnemonic_codes(db.session, q, limit=10)
-
-
 def _search_admins(q, active_only):
     from sam.queries.users import search_users_by_pattern
     if not _config().submit_allows('New'):
@@ -882,14 +867,6 @@ register_typeahead(
     search=_search_admins,
     template='dashboards/user/fragments/request_roster_results_htmx.html',
     ctx_key='users')
-
-
-register_typeahead(
-    bp, rule='/requests/htmx/mnemonic-suggest', endpoint='my_requests_mnemonic_suggest',
-    permission=None,                    # any user may pick the letters for a New
-    search=mnemonic_code_search,
-    template='dashboards/allocations/partials/mnemonic_code_search_results_fk_htmx.html',
-    ctx_key='codes')
 
 
 @bp.route('/requests/htmx/award-lookup')

@@ -2003,13 +2003,6 @@
     ]
   ],
   [
-    "allocation_request.mnemonic_suggest",
-    "/request/draft/<token>/mnemonic-suggest",
-    [
-      "GET"
-    ]
-  ],
-  [
     "allocation_request.overview",
     "/request/",
     [
@@ -3560,13 +3553,6 @@
   [
     "user_dashboard.my_requests_award_lookup",
     "/user/requests/htmx/award-lookup",
-    [
-      "GET"
-    ]
-  ],
-  [
-    "user_dashboard.my_requests_mnemonic_suggest",
-    "/user/requests/htmx/mnemonic-suggest",
     [
       "GET"
     ]

@@ -3,7 +3,7 @@
 
 Separate blueprints because they are mounted by different switches: the creation form by
 ACCOUNT_REGISTRATION_ENABLED, the event pages and the invitation link by
-ACCOUNT_INVITATIONS_ENABLED, the visitor's request by the former plus its own lever. They
+ACCOUNT_INVITATIONS_ENABLED, the visitor's request by XRAS_SUBMIT_ANONYMOUS_ENABLED alone. They
 render the same templates, so the form context, the rate-limit keys and tiers, the gate
 and the event lookup live here.
 """
@@ -121,7 +121,12 @@ def terms_page():
 
 
 def expired(*, again_url=None, again_label=None):
-    """The expired-token page, 200: it names no address (a guessed URL learns nothing)."""
+    """The expired-token page, 200: it names no address (a guessed URL learns nothing).
+
+    *again_url* defaults to the creation form where that is mounted; /request passes its own.
+    """
+    if again_url is None and creation_form_mounted():
+        again_url = url_for('register.form')
     return render_template('register/expired.html', again_url=again_url,
                            again_label=again_label), 200
 
