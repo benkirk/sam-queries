@@ -11,9 +11,9 @@ the design is `XRAS_SUBMISSION.md`.
 | Phase | Change |
 |---|---|
 | 1 | `/request` is gated on its own. It is always mounted; `XRAS_SUBMIT_ANONYMOUS_ENABLED` serves it and the new `ALLOCATION_REQUEST_LOGIN_REQUIRED` (default on) keeps it to signed-in users. `ACCOUNT_REGISTRATION_ENABLED` and `ACCOUNT_REGISTRATION_LOGIN_REQUIRED` now cover `/register` alone |
-| 2 | No form asks for the project code letters. A New with no mnemonic match files with none; Remediations shows series `<facility>---` and the Mnemonic blocker from the day it is filed, and the existing override assigns the code. The visitor's review expects all three of the placeholder PI's own person messages |
+| 2 | No form asks for the project code letters. A posted code is ignored. A New with no mnemonic match files with none; Remediations shows series `<facility>---` and the Mnemonic blocker from the day it is filed, and the existing override assigns the code. The visitor's review expects all three of the placeholder PI's own person messages |
 | 3 | A filed visitor request says so: the outcome block gives the request number, the status page reads "Request received", and the `allocation_request_received` mail carries the facts and a status link good for `REQUEST_STATUS_TTL_DAYS` (365) |
-| 4 | Limits follow CISL's approval rules: the ceiling is the absolute maximum, the default sits in the initial range, a justified resource has no default, and a ceiling of 0 withholds a resource from a type. Values: `XRAS_SUBMISSION.md` § 4.5 |
+| 4 | Limits follow CISL's approval rules: the ceiling is the absolute maximum, the default sits in the initial range, a justified resource has no default, and a ceiling of 0 withholds a resource from a type's New requests (a project keeps what its line already holds). Values: `XRAS_SUBMISSION.md` § 4.5 |
 
 ## Phase 5: dev proof
 
@@ -72,6 +72,10 @@ My Requests; there is no lever for the visitor's New alone.
 
 - **A cumulative ceiling.** SAM checks each request against the ceiling, not the project's
   running total across supplements; the approver applies the total.
+- **A renewal above a ceiling.** A Renewal asks for the whole amount again, so a project
+  already above its type's ceiling cannot renew at its current size on the form (on the
+  2026-11-18 snapshot: 16 Small projects over 10 TB of Campaign Store, and a handful over
+  the Derecho, Casper and Casper GPU ceilings). The operator's request editor is not bound.
 - **A Large supplement's cap.** It is checked against the type's ceiling (500 million Derecho
   core-hours); the approval rules cap it near a Small's initial amount.
 - **Extension length.** One year at most, or to the grant's end for Small; SAM checks only that

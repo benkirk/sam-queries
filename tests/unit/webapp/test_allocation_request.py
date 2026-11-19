@@ -299,7 +299,7 @@ _GRANT = {'grant_agency_id': '1', 'grant_number': '2441755', 'grant_title': 'Ens
 def _describe(**extra):
     return {'stage': 'request', 'opportunity_id': '777001', 'title': 'Ensemble downscaling',
             'abstract': 'Regional runs for the next three summers.', 'fos_type_id': '500003',
-            'mnemonic_code_id': '', **_GRANT, **extra}
+            **_GRANT, **extra}
 
 
 class TestTheVisitorsRequest:
@@ -402,9 +402,8 @@ class TestTheVisitorsRequest:
         verdict = _verdict('failed', (f'PI {placeholder} is not in database',))
         monkeypatch.setattr('sam.xras.submission_preflight.preflight_draft',
                             lambda *a, **k: verdict)
-        code = _a_code(client.application)
         resp = client.post(f'/request/draft/{token}', data=_describe(
-            stage='review', mnemonic_code_id=str(code), begin_date='2026-12-01',
+            stage='review', begin_date='2026-12-01',
             end_date='2027-11-30', amount_530902='1000'))
         html = resp.get_data(as_text=True)
         assert 'data-gate-blocked disabled' not in html, 'only the PI message failed it'
@@ -434,9 +433,8 @@ class TestTheVisitorsRequest:
                                       'Username someone-else is missing'))
         monkeypatch.setattr('sam.xras.submission_preflight.preflight_draft',
                             lambda *a, **k: verdict)
-        code = _a_code(client.application)
         resp = client.post(f'/request/draft/{token}', data=_describe(
-            stage='review', mnemonic_code_id=str(code), begin_date='2026-12-01',
+            stage='review', begin_date='2026-12-01',
             end_date='2027-11-30', amount_530902='1000'))
         assert 'data-gate-blocked disabled' in resp.get_data(as_text=True)
 
@@ -447,20 +445,21 @@ class TestTheVisitorsRequest:
         _, token, row_id, placeholder = confirmed
         monkeypatch.setattr('sam.xras.submission_preflight.preflight_draft',
                             lambda *a, **k: _verdict('rechecked', ()))
-        calls = []
-        monkeypatch.setattr(flow, 'request_action',
-                            lambda *a, **k: calls.append(k) or SubmissionOutcome(1, 'submitted'))
-        code = _a_code(client.application)
+        calls, drafts = [], []
+        monkeypatch.setattr(flow, 'request_action', lambda *a, **k: (
+            drafts.append(a[1]), calls.append(k)) and SubmissionOutcome(1, 'submitted'))
         with client.application.test_request_context():
             sha = eula_sha()
         html = client.post(f'/request/draft/{token}', data=_describe(
-            stage='submit', mnemonic_code_id=str(code), begin_date='2026-12-01',
-            end_date='2027-11-30', amount_530902='1000', agree='1',
+            stage='submit', mnemonic_code_id=str(_a_code(client.application)),
+            begin_date='2026-12-01', end_date='2027-11-30', amount_530902='1000', agree='1',
             eula_sha=sha)).get_data(as_text=True)
         [call] = calls
         assert (call['door'], call['actor'], call['xa_user']) == (
             'visitor', f'registration:{row_id}', placeholder)
         assert f'/request/status/{token}' in html, 'Done goes to the status page'
+        assert drafts[0].sam.mnemonic_code_id is None, \
+            'a posted code is ignored: no requester sets the letters'
 
     def test_the_review_never_says_whom_an_address_belongs_to(self, client, confirmed,
                                                               monkeypatch):
@@ -475,9 +474,8 @@ class TestTheVisitorsRequest:
             username, email = known.username, known.primary_email
         roster = f'Known Person <{email}>\nMe Again <{_visitor_email(client, token)}>'
         html = client.post(f'/request/draft/{token}', data=_describe(
-            stage='review', mnemonic_code_id=str(_a_code(client.application)),
-            begin_date='2026-12-01', end_date='2027-11-30', amount_530902='1000',
-            roster=roster)).get_data(as_text=True)
+            stage='review', begin_date='2026-12-01', end_date='2027-11-30',
+            amount_530902='1000', roster=roster)).get_data(as_text=True)
         facts = html.split('</dl>')[0]
         assert 'Known Person' in facts and 'Me Again' not in facts
         assert 'in XRAS as' not in html and f'>{username}<' not in html

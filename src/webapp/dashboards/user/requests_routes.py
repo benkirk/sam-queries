@@ -490,7 +490,7 @@ _NEW_AMOUNTS = 'dashboards/user/fragments/request_new_amounts_htmx.html'
 _GRANT = 'dashboards/user/fragments/request_grant_htmx.html'
 #: The page-one inputs a later page carries in hidden fields, and whose errors land on page one.
 _DESCRIBE_FIELDS = ('opportunity_id', 'title', 'abstract', 'keywords', 'fos_type_id',
-                    'admin_user_id', 'mnemonic_code_id', 'roster') + tuple(GRANT_INPUTS)
+                    'admin_user_id', 'roster') + tuple(GRANT_INPUTS)
 #: People a New may name on page one; the rest join once the project exists.
 ROSTER_MAX = 20
 
@@ -530,12 +530,6 @@ def _opportunity_context(config, opportunity, pi, institution_name=None):
 
 def _chosen(opportunities, opportunity_id):
     return next((o for o in opportunities if o['opportunity_id'] == opportunity_id), None)
-
-
-def _mnemonic_label(mnemonic_code_id):
-    from sam.core.organizations import MnemonicCode
-    code = db.session.get(MnemonicCode, mnemonic_code_id) if mnemonic_code_id else None
-    return code.code if code is not None else ''
 
 
 def _user_label(user_id):
@@ -639,8 +633,6 @@ class NewRequestForm(_RequestForm):
                          names_sam_users=self.names_sam_users, type_url=self._type_url(),
                          opportunities=opportunities, fos_options=fos,
                          fos_choices=[(r['fosTypeId'], r.get('fosName')) for r in fos],
-                         chosen_mnemonic=_mnemonic_label(request.values.get(
-                             'mnemonic_code_id', type=int)),
                          chosen_admin=_user_label(request.values.get('admin_user_id', type=int)),
                          grant_agencies=funding_agency_choices(),
                          carry_fields=_DESCRIBE_FIELDS,
@@ -669,7 +661,7 @@ class NewRequestForm(_RequestForm):
             return dict(project=None, action_type='New', decision=None, opportunities=[],
                         names_sam_users=self.names_sam_users, type_url=self._type_url(),
                         fos_options=[], fos_choices=[],
-                        opportunity=None, rules=None, sam_state=None, chosen_mnemonic='',
+                        opportunity=None, rules=None, sam_state=None,
                         chosen_admin='',
                         carry_fields=_DESCRIBE_FIELDS, resources=[], documents=[],
                         eula_sha=None, post_url=self._post_url(),
@@ -698,7 +690,6 @@ class NewRequestForm(_RequestForm):
 
     def _describe_errors(self, data, ctx):
         """Page one's checks against XRAS and SAM, as ``{field: [message]}``."""
-        from sam.core.organizations import MnemonicCode
         errors = {}
         opportunity = ctx['opportunity']
         if opportunity is None or opportunity['opportunity_id'] != data['opportunity_id']:
@@ -710,11 +701,6 @@ class NewRequestForm(_RequestForm):
         if data['fos_type_id'] not in {r.get('fosTypeId') for r in ctx['fos_options']}:
             errors['fos_type_id'] = ['Choose the field of science.']
         self._check_admin(data, errors)
-        if data['mnemonic_code_id']:
-            code = db.session.get(MnemonicCode, data['mnemonic_code_id'])
-            if code is None or not code.is_active:
-                # No form shows this input, so the refusal goes to the panel.
-                raise FormError('That project code is not an active one.')
         if ctx['rules'].wants_grants:
             errors.update(self._grant_errors(data, ctx['rules']))
         errors.update(self._roster_errors(data))
@@ -809,8 +795,8 @@ class NewRequestForm(_RequestForm):
         ctx = self._ctx
         opportunity, state = ctx['opportunity'], ctx['sam_state']
         allocation_type = state['allocation_type']
-        mnemonic_id = data['mnemonic_code_id'] or (
-            state['mnemonic'].mnemonic_code_id if state['mnemonic'] else None)
+        # The ladder's code or none: a requester never sets the letters (the operator's override does).
+        mnemonic_id = state['mnemonic'].mnemonic_code_id if state['mnemonic'] else None
         return ActionRequest(
             action_type='New', opportunity_id=opportunity['opportunity_id'],
             title=data['title'], abstract=data['abstract'], keywords=data['keywords'],

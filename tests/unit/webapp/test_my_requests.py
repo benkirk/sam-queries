@@ -1097,11 +1097,11 @@ class TestTheNewForm:
         html = auth_client.post(NEW, data=_new()).get_data(as_text=True)
         assert 'name="amount_530902"' in html, 'page one passes with no code letters'
 
-    def test_a_posted_code_that_is_not_active_is_refused_in_the_panel(self, auth_client, newable,
-                                                                      lettered):
+    def test_a_posted_code_is_ignored(self, auth_client, newable, lettered):
+        """No requester sets the letters: the field is not in the schema or carried forward."""
         html = auth_client.post(NEW, data=_new(mnemonic_code_id='999999999')).get_data(
             as_text=True)
-        assert 'not an active one' in html and 'name="amount_530902"' not in html
+        assert 'name="amount_530902"' in html and 'mnemonic_code_id' not in html
 
     def test_page_two_carries_page_one_and_offers_the_resources(self, auth_client, newable,
                                                                lettered):

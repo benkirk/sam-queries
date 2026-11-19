@@ -17,7 +17,7 @@
             <dt class="col-sm-4">Title</dt>
             <dd class="col-sm-8 text-break">{{ data.title }}</dd>
             <dt class="col-sm-4">Project code</dt>
-            {%- set _letters = chosen_mnemonic or (sam_state.mnemonic.code if sam_state.mnemonic else '') %}
+            {%- set _letters = sam_state.mnemonic.code if sam_state.mnemonic else '' %}
             <dd class="col-sm-8">{% if _letters %}<span class="font-monospace">{{ _letters }}</span>
                 <span class="text-muted">letters; XRAS numbers the request when you submit</span>
                 {%- else %}<span class="text-muted">CISL assigns it when the request is approved</span>{% endif %}</dd>
