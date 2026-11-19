@@ -1,10 +1,12 @@
-{#- Shown while ACCOUNT_REGISTRATION_LOGIN_REQUIRED limits the form to signed-in users. -#}
-{% if config.ACCOUNT_REGISTRATION_LOGIN_REQUIRED %}
+{#- Shown while the page's own login flag limits it to signed-in users: /request reads
+    ALLOCATION_REQUEST_LOGIN_REQUIRED, every other page ACCOUNT_REGISTRATION_LOGIN_REQUIRED. -#}
+{% set _for_request = request.blueprint == 'allocation_request' %}
+{% if (config.ALLOCATION_REQUEST_LOGIN_REQUIRED if _for_request else config.ACCOUNT_REGISTRATION_LOGIN_REQUIRED) %}
 <div class="alert alert-info d-flex align-items-start gap-2" role="status">
     <i class="fa-solid fa-flask mt-1" aria-hidden="true"></i>
     <div>
         <strong>Signed-in only.</strong> This deployment limits the form to signed-in users.
-        Requests made here are real and reach the account team's queue.
+        Requests made here are real and reach {{ "the allocations team" if _for_request else "the account team's queue" }}.
     </div>
 </div>
 {% endif %}

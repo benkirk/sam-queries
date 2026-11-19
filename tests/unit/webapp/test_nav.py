@@ -210,11 +210,25 @@ class TestPublicEntryPoints:
         assert 'New to NCAR?' not in client.get('/auth/login').get_data(as_text=True)
         assert 'getAccessDropdown' not in client.get('/status/derecho').get_data(as_text=True)
 
+    def test_each_form_reads_its_own_login_flag(self, app, monkeypatch):
+        from types import SimpleNamespace
+        import webapp.utils.xras as xras
+        from webapp.utils.nav import public_entry_points
+        monkeypatch.setattr(xras, 'interactive_config',
+                            lambda: SimpleNamespace(visitor_submit_configured=True))
+        both = ['Request an NCAR account', 'Request an allocation']
+        with app.test_request_context('/auth/login'):
+            assert [p[0] for p in public_entry_points()] == both
+            monkeypatch.setitem(app.config, 'ACCOUNT_REGISTRATION_LOGIN_REQUIRED', True)
+            assert [p[0] for p in public_entry_points()] == both[1:]
+            monkeypatch.setitem(app.config, 'ACCOUNT_REGISTRATION_LOGIN_REQUIRED', False)
+            monkeypatch.setitem(app.config, 'ALLOCATION_REQUEST_LOGIN_REQUIRED', True)
+            assert [p[0] for p in public_entry_points()] == both[:1]
+
     def test_request_link_needs_the_visitor_lever(self, app, monkeypatch):
         from types import SimpleNamespace
         import webapp.utils.xras as xras
-        if 'allocation_request' not in app.blueprints:
-            pytest.skip('allocation_request blueprint not mounted')
+        assert 'allocation_request' in app.blueprints, 'always mounted'
         with app.test_request_context('/auth/login'):
             from webapp.utils.nav import public_entry_points
             monkeypatch.setattr(xras, 'interactive_config',

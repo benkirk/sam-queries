@@ -3,8 +3,10 @@
 
 {% block content %}
 <h1>This link has expired or is not valid</h1>
+{% if again_url %}
 <p class="register-lede">
-    <a href="{{ again_url or url_for('register.form') }}">{{ (again_label or 'start a new request') | capitalize }}</a>
+    <a href="{{ again_url }}">{{ (again_label or 'start a new request') | capitalize }}</a>
     to get a new link.
 </p>
+{% endif %}
 {% endblock %}

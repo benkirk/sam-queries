@@ -123,11 +123,60 @@ def _submit(client, mail, address):
     return resp.location, mail.verify.messages[-1].context
 
 
+@pytest.fixture(scope='module')
+def register_off_app(test_db_url, status_db_url):
+    """Production's posture: the account-creation form unmounted."""
+    from webapp.run import create_app
+    return create_app(config_overrides={
+        'SQLALCHEMY_DATABASE_URI': test_db_url,
+        'SQLALCHEMY_BINDS': {'system_status': status_db_url},
+        'ACCOUNT_REGISTRATION_ENABLED': False,
+    })
+
+
 class TestTheLever:
 
     def test_off_every_route_is_a_404(self, client):
         assert client.get('/request/').status_code == 404
         assert client.get('/request/start/777001').status_code == 404
+
+
+class TestIndependentOfRegister:
+    """/request is served by its own lever and login flag, with /register mounted or not."""
+
+    def test_the_walk_runs_with_register_unmounted(self, register_off_app, visitor, mail,
+                                                   cleanup):
+        client = register_off_app.test_client()
+        assert 'register' not in register_off_app.blueprints
+        assert client.get('/register/').status_code == 404
+        overview = client.get('/request/')
+        assert overview.status_code == 200 and 'href="/register/"' not in overview.get_data(
+            as_text=True)
+        assert 'About you' in client.get('/request/start/777001').get_data(as_text=True)
+        pending, context = _submit(client, mail, cleanup)
+        assert 'Confirm your email address' in client.get(pending).get_data(as_text=True)
+        resp = client.post(pending, data={'code': context['code']})
+        assert resp.status_code == 302 and '/request/draft/' in resp.location
+        assert client.get(resp.location).status_code == 200
+
+    def test_an_expired_link_points_back_at_request_with_register_unmounted(
+            self, register_off_app, visitor):
+        html = register_off_app.test_client().get('/request/verify/not-a-token').get_data(
+            as_text=True)
+        assert 'expired or is not valid' in html and 'href="/request/"' in html
+
+    def test_its_own_flag_sends_a_visitor_to_login(self, app, client, visitor, monkeypatch):
+        monkeypatch.setitem(app.config, 'ALLOCATION_REQUEST_LOGIN_REQUIRED', True)
+        resp = client.get('/request/')
+        assert resp.status_code == 302 and '/auth/login' in resp.location
+
+    def test_registers_flag_does_not_gate_it(self, app, client, visitor, monkeypatch):
+        monkeypatch.setitem(app.config, 'ACCOUNT_REGISTRATION_LOGIN_REQUIRED', True)
+        html = client.get('/request/').get_data(as_text=True)
+        assert 'Probeopen' in html and 'Signed-in only.' not in html
+
+    def test_the_lever_does_not_open_register(self, register_off_app, visitor):
+        assert register_off_app.test_client().get('/register/').status_code == 404
 
 
 class TestTheOverview:

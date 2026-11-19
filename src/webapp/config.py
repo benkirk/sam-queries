@@ -86,6 +86,10 @@ class SAMWebappConfig(SAMConfig):
     # banner on the form). ON by default: the form is shared with authenticated
     # testers on dev; switch it off per deployment to open the form to the public.
     ACCOUNT_REGISTRATION_LOGIN_REQUIRED = os.getenv('ACCOUNT_REGISTRATION_LOGIN_REQUIRED', '1').lower() in ('1', 'true', 'yes')
+    # The same limit for /request (a visitor's allocation request), independent of
+    # /register's. /request itself is served only while XRAS_SUBMIT_ANONYMOUS_ENABLED
+    # is on: on with this on is the signed-in preview, on with this off is public.
+    ALLOCATION_REQUEST_LOGIN_REQUIRED = os.getenv('ALLOCATION_REQUEST_LOGIN_REQUIRED', '1').lower() in ('1', 'true', 'yes')
     # Per-address cap on the registration POST, on top of the per-IP login
     # tier: nobody can flood a stranger's inbox with verification mail.
     RATELIMIT_REGISTER_EMAIL = os.getenv('RATELIMIT_REGISTER_EMAIL', '3 per hour; 5 per day')
@@ -407,27 +411,32 @@ class ProductionConfig(SAMWebappConfig):
     @classmethod
     def validate(cls):
         super().validate()
-        # A registration form whose verification mail is switched off takes
-        # requests nobody can confirm; an operator must then vouch for each.
-        # Legal (that is the k8s dev posture), but never silent.
-        if (cls.ACCOUNT_REGISTRATION_ENABLED
-                and os.getenv('NOTIFY_ENABLED', '0').lower() not in ('1', 'true', 'yes')):
-            import warnings
-            warnings.warn(
-                "ACCOUNT_REGISTRATION_ENABLED is on but NOTIFY_ENABLED is not: "
-                "public registrations cannot verify their address by mail and "
-                "will wait for an operator to mark them verified.",
-                stacklevel=2,
-            )
-        if (cls.ACCOUNT_REGISTRATION_ENABLED and not cls.ACCOUNT_REGISTRATION_LOGIN_REQUIRED
-                and (cls.HUMAN_CHECK_PROVIDER or 'none').strip().lower() == 'none'):
-            import warnings
-            warnings.warn(
-                "The registration form is public (LOGIN_REQUIRED off) with "
-                "HUMAN_CHECK_PROVIDER=none: nothing but the rate limits stands "
-                "between a bot and the verification mailer.",
-                stacklevel=2,
-            )
+        # A public form whose verification mail is switched off takes requests nobody
+        # can confirm; an operator must then vouch for each. Legal (the k8s dev
+        # posture), but never silent. /register and /request are judged separately.
+        import warnings
+        on = ('1', 'true', 'yes')
+        request_served = os.getenv('XRAS_SUBMIT_ANONYMOUS_ENABLED', '0').lower() in on
+        forms = (('/register', cls.ACCOUNT_REGISTRATION_ENABLED,
+                  cls.ACCOUNT_REGISTRATION_LOGIN_REQUIRED),
+                 ('/request', request_served, cls.ALLOCATION_REQUEST_LOGIN_REQUIRED))
+        mail_on = os.getenv('NOTIFY_ENABLED', '0').lower() in on
+        no_human_check = (cls.HUMAN_CHECK_PROVIDER or 'none').strip().lower() == 'none'
+        for path, served, login_required in forms:
+            if served and not mail_on:
+                warnings.warn(
+                    f"{path} is served but NOTIFY_ENABLED is not on: visitors cannot "
+                    "verify their address by mail and will wait for an operator to "
+                    "mark them verified.",
+                    stacklevel=2,
+                )
+            if served and not login_required and no_human_check:
+                warnings.warn(
+                    f"{path} is public (its LOGIN_REQUIRED flag is off) with "
+                    "HUMAN_CHECK_PROVIDER=none: nothing but the rate limits stands "
+                    "between a bot and the verification mailer.",
+                    stacklevel=2,
+                )
         key = os.getenv('FLASK_SECRET_KEY', '')
         if not key:
             raise EnvironmentError(
@@ -487,6 +496,7 @@ class TestingConfig(SAMWebappConfig):
     # The public-form tests exercise the anonymous path; the gate and the human
     # check have their own.
     ACCOUNT_REGISTRATION_LOGIN_REQUIRED = False
+    ALLOCATION_REQUEST_LOGIN_REQUIRED = False
     ACCOUNT_REGISTRATION_GATE_ENABLED = False
     HUMAN_CHECK_PROVIDER = 'none'
 

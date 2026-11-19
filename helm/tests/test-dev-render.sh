@@ -109,7 +109,8 @@ check_dev() {
   [[ -z "$(env_value "$cron" XRAS_SUBMIT_ENABLED)" ]] || { red "FAIL: the dev CronJob must never carry XRAS_SUBMIT_ENABLED (webapp only)"; return 1; }
   [[ "$(env_value "$deploy" XRAS_SUBMIT_ANONYMOUS_ENABLED)" == "1" ]] || { red "FAIL: XRAS_SUBMIT_ANONYMOUS_ENABLED must be 1 on dev (a visitor's New files to the demo)"; return 1; }
   [[ "$(env_value "$cron" XRAS_SUBMIT_ANONYMOUS_ENABLED)" == "1" ]] || { red "FAIL: dev tasks must carry XRAS_SUBMIT_ANONYMOUS_ENABLED=1 (the reconcile's placeholder merge)"; return 1; }
-  [[ "$(env_value "$deploy" ACCOUNT_REGISTRATION_LOGIN_REQUIRED)" == "0" ]] || { red "FAIL: dev opens /register and /request to visitors (ACCOUNT_REGISTRATION_LOGIN_REQUIRED=0)"; return 1; }
+  [[ "$(env_value "$deploy" ACCOUNT_REGISTRATION_LOGIN_REQUIRED)" == "0" ]] || { red "FAIL: dev opens /register to visitors (ACCOUNT_REGISTRATION_LOGIN_REQUIRED=0)"; return 1; }
+  [[ "$(env_value "$deploy" ALLOCATION_REQUEST_LOGIN_REQUIRED)" == "0" ]] || { red "FAIL: dev opens /request to visitors (ALLOCATION_REQUEST_LOGIN_REQUIRED=0)"; return 1; }
   # xras_rename's lever reaches the task pod through dev's tasks.env alone.
   [[ "$(env_value "$cron" XRAS_WRITE_ENABLED)" == "1" ]] || { red "FAIL: dev tasks must carry XRAS_WRITE_ENABLED=1 (xras_rename's test bed)"; return 1; }
   [[ "$(env_value "$deploy" XRAS_ACTIONS_CAPTURE_ONLY)" == "0" ]] || { red "FAIL: XRAS_ACTIONS_CAPTURE_ONLY must be 0 on dev (demo posts dispatch)"; return 1; }
@@ -245,6 +246,8 @@ prod_deploy=$(render prod -s templates/deployment.yaml)
   red "FAIL: the prod CronJob must not carry XRAS_SUBMIT_ANONYMOUS_ENABLED (the placeholder merge ships dark)"; exit 1; }
 [[ "$(env_value "$prod_deploy" ACCOUNT_REGISTRATION_LOGIN_REQUIRED)" != "0" ]] || {
   red "FAIL: prod keeps registration login-gated until client-IP forwarding (ACCOUNT_REGISTRATION_LOGIN_REQUIRED)"; exit 1; }
+[[ "$(env_value "$prod_deploy" ALLOCATION_REQUEST_LOGIN_REQUIRED)" != "0" ]] || {
+  red "FAIL: prod keeps /request login-gated until its go-live flip (ALLOCATION_REQUEST_LOGIN_REQUIRED)"; exit 1; }
 [[ -z "$(env_value_names "$prod_deploy" 'RATELIMIT_(AUTHED|M2M|ANON|AUTH_LOGIN)')" ]] || {
   red "FAIL: prod must not carry a RATELIMIT_ tier override (only the dev overlay raises them)"; exit 1; }
 [[ "$(env_value "$prod_deploy" ACCOUNT_REGISTRATION_ENABLED)" == "0" ]] || {

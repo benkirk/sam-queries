@@ -5,7 +5,7 @@ and review cadence, before anything starts. Then the terms, the person (``Regist
 /register's protections: CSRF, the per-IP, per-address and global POST tiers, the honeypot,
 the human check) and the email confirmation, which files no NUSD ticket: the account waits
 for an approved request. A confirmed row's signed draft token admits the request form.
-Mounted with ACCOUNT_REGISTRATION_ENABLED; every route 404s unless the visitor lever is on.
+Always mounted, independent of /register; every route 404s unless the visitor lever is on.
 Design: docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md.
 """
 
@@ -49,10 +49,10 @@ _PERSON = ('email', 'first_name', 'last_name', 'middle_name', 'organization',
 
 @bp.before_request
 def _gates():
-    """The visitor lever (404 when off), then the registration preview's login gate."""
+    """The visitor lever (404 when off), then the preview's login gate (/request's own flag)."""
     if not interactive_config().visitor_submit_configured:
         abort(404)
-    if (current_app.config.get('ACCOUNT_REGISTRATION_LOGIN_REQUIRED', False)
+    if (current_app.config.get('ALLOCATION_REQUEST_LOGIN_REQUIRED', False)
             and not current_user.is_authenticated):
         return redirect(login_url())
     return None

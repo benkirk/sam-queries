@@ -431,7 +431,9 @@ webapp:
     XRAS_SUBMIT_ENABLED: "0"
     XRAS_SUBMIT_ACTION_TYPES: "Extension,Supplement"
     # A New filed at /request/ by a visitor with no SAM account (docs/plans/
-    # XRAS_SUBMISSION_SPRINT2.md). Needs XRAS_SUBMIT_ENABLED with New armed. In tasks.env
+    # XRAS_SUBMISSION_SPRINT2.md). Needs XRAS_SUBMIT_ENABLED with New armed; independent of
+    # ACCOUNT_REGISTRATION_ENABLED. ALLOCATION_REQUEST_LOGIN_REQUIRED (unset here, so on)
+    # keeps it to signed-in users until set "0". In tasks.env
     # (absent here, so off) it arms account_requests_reconcile's merge of a fulfilled
     # visitor's placeholder (with XRAS_WRITE_ENABLED). Pinned in
     # tests/unit/gates/test_xras_admin_client.py and helm/tests/test-dev-render.sh.
