@@ -356,7 +356,8 @@ def _filing_facts(submission, opportunity_id):
             continue
         yes_no = (view.get('units') or '').replace(' ', '').lower() == 'yes/no'
         resources.append({'name': view.get('name'),
-                          'amount': 'Yes' if yes_no else fmt.number(asked.get('amount')),
+                          # Exact, as the review showed it: the receipt is the record of what was asked.
+                          'amount': 'Yes' if yes_no else fmt.number(asked.get('amount'), raw=True),
                           'units': '' if yes_no else fmt.unit_label(view.get('units'))})
     guide = next((g for g in public_guides(db.session)
                   if g.xras_allocation_type_id == opp.get('allocation_type_id')), None)
