@@ -1149,10 +1149,12 @@ class TestTheVisitorLever:
             assert str(values['webapp']['env']['XRAS_SUBMIT_ANONYMOUS_ENABLED']) == '1', name
             assert str(values['tasks']['env']['XRAS_SUBMIT_ANONYMOUS_ENABLED']) == '1', name
 
-    def test_prod_keeps_request_signed_in_only_and_register_unmounted(self):
+    def test_prod_opens_request_to_visitors_behind_the_human_check_with_register_unmounted(self):
         env = yaml.safe_load((REPO_ROOT / 'helm' / 'values.yaml').read_text())['webapp']['env']
-        assert str(env.get('ALLOCATION_REQUEST_LOGIN_REQUIRED', '1')) != '0', 'the public step'
+        assert str(env['ALLOCATION_REQUEST_LOGIN_REQUIRED']) == '0'
+        assert env['HUMAN_CHECK_PROVIDER'] == 'turnstile', 'a public form needs the human check'
         assert str(env['ACCOUNT_REGISTRATION_ENABLED']) == '0'
+        assert str(env.get('ACCOUNT_REGISTRATION_LOGIN_REQUIRED', '1')) != '0'
 
     @pytest.mark.parametrize('write, anonymous, expected', [
         (True, True, True), (False, True, False), (True, False, False)])

@@ -2,7 +2,7 @@
 
 **Status:** phases 1 to 4 merged 2026-11-18 as #953 (`0a6e10f1`), reviewed, promoted to `main`
 in #952. The limits one-off ran on `sam_dev` and on production the same day. Phase 6's preview
-step is its own PR (this file changes with it); the public step follows the preview pass.
+step is #954; the public step is the PR after it, merged once the preview pass is done.
 Builds on `implemented/XRAS_SUBMISSION_SPRINT2.md` (#880) and `XRAS_SUBMISSION_SPRINT3.md` (#886);
 the design is `XRAS_SUBMISSION.md`.
 
