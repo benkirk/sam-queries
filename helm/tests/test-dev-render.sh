@@ -246,8 +246,10 @@ prod_deploy=$(render prod -s templates/deployment.yaml)
   red "FAIL: prod tasks must carry XRAS_SUBMIT_ANONYMOUS_ENABLED=1 (the reconcile's placeholder merge)"; exit 1; }
 [[ "$(env_value "$prod_deploy" ACCOUNT_REGISTRATION_LOGIN_REQUIRED)" != "0" ]] || {
   red "FAIL: prod keeps registration login-gated until client-IP forwarding (ACCOUNT_REGISTRATION_LOGIN_REQUIRED)"; exit 1; }
-[[ "$(env_value "$prod_deploy" ALLOCATION_REQUEST_LOGIN_REQUIRED)" != "0" ]] || {
-  red "FAIL: prod keeps /request to signed-in users until the public step (ALLOCATION_REQUEST_LOGIN_REQUIRED)"; exit 1; }
+[[ "$(env_value "$prod_deploy" ALLOCATION_REQUEST_LOGIN_REQUIRED)" == "0" ]] || {
+  red "FAIL: prod serves /request to signed-out visitors (ALLOCATION_REQUEST_LOGIN_REQUIRED=0)"; exit 1; }
+[[ "$(env_value "$prod_deploy" HUMAN_CHECK_PROVIDER)" == "turnstile" ]] || {
+  red "FAIL: a public /request needs the human check (HUMAN_CHECK_PROVIDER=turnstile)"; exit 1; }
 [[ -z "$(env_value_names "$prod_deploy" 'RATELIMIT_(AUTHED|M2M|ANON|AUTH_LOGIN)')" ]] || {
   red "FAIL: prod must not carry a RATELIMIT_ tier override (only the dev overlay raises them)"; exit 1; }
 [[ "$(env_value "$prod_deploy" ACCOUNT_REGISTRATION_ENABLED)" == "0" ]] || {
