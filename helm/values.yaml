@@ -428,16 +428,17 @@ webapp:
     # Webapp only, never tasks.env; needs XRAS_WRITE_ENABLED. ACTION_TYPES narrows it:
     # all | none | a list of Extension,Supplement,Renewal,New. Pinned in
     # tests/unit/gates/test_xras_admin_client.py.
-    XRAS_SUBMIT_ENABLED: "0"
-    XRAS_SUBMIT_ACTION_TYPES: "Extension,Supplement"
+    XRAS_SUBMIT_ENABLED: "1"
+    XRAS_SUBMIT_ACTION_TYPES: "all"
     # A New filed at /request/ by a visitor with no SAM account (docs/plans/
-    # XRAS_SUBMISSION_SPRINT2.md). Needs XRAS_SUBMIT_ENABLED with New armed; independent of
-    # ACCOUNT_REGISTRATION_ENABLED. ALLOCATION_REQUEST_LOGIN_REQUIRED (unset here, so on)
-    # keeps it to signed-in users until set "0". In tasks.env
-    # (absent here, so off) it arms account_requests_reconcile's merge of a fulfilled
-    # visitor's placeholder (with XRAS_WRITE_ENABLED). Pinned in
+    # XRAS_SUBMISSION_GO_LIVE.md). Needs XRAS_SUBMIT_ENABLED with New armed; independent of
+    # ACCOUNT_REGISTRATION_ENABLED. The same key in tasks.env arms
+    # account_requests_reconcile's merge of a fulfilled visitor's placeholder. Pinned in
     # tests/unit/gates/test_xras_admin_client.py and helm/tests/test-dev-render.sh.
-    XRAS_SUBMIT_ANONYMOUS_ENABLED: "0"
+    XRAS_SUBMIT_ANONYMOUS_ENABLED: "1"
+    # /request is public: "0" lets a signed-out visitor in; "1" (or unset) limits it to
+    # signed-in users. Public needs HUMAN_CHECK_PROVIDER above to stay a real check.
+    ALLOCATION_REQUEST_LOGIN_REQUIRED: "0"
     # Activate the project a New creates, right after its post applies (docs/plans/
     # XRAS_POST_AUTOMATION.md § 3 B); "0" leaves it to the card's Activate. Armed after the
     # samuel-dev smoke (#828), NUSD told; pinned in tests/unit/gates/test_xras_admin_client.py.
@@ -765,9 +766,13 @@ tasks:
     # named here until its first weeks on dev are read (docs/plans/DIRECTORY_CLIENT_NEXT.md).
     SAM_TASKS_DISABLED: "account_queue_digest,directory_report"
     # Arms xras_rename's write (the XRAS_WRITE_ENABLED warning in webapp.env), and with
-    # XRAS_SUBMIT_ANONYMOUS_ENABLED (absent here) the reconcile's placeholder merge.
+    # XRAS_SUBMIT_ANONYMOUS_ENABLED below the reconcile's placeholder merge.
     # Removing it disarms both without a code change.
     XRAS_WRITE_ENABLED: "1"
+    # account_requests_reconcile merges a fulfilled /request visitor's placeholder into the
+    # account that arrived for them (a merge deletes the XRAS placeholder person). Needs the
+    # write lever above; matches webapp.env. "0" | "1".
+    XRAS_SUBMIT_ANONYMOUS_ENABLED: "1"
     # account_requests_reconcile merges each "Ready to merge" placeholder (5 a run, never a
     # retry) and dismisses a fulfilled placeholder request XRAS no longer holds. Needs the
     # write lever above. Tasks env only. "0" | "1".

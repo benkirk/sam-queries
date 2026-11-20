@@ -1,8 +1,8 @@
 # XRAS submission go-live
 
-**Status:** phases 1 to 4 built 2026-11-18 on `xras-submission-go-live` (from `origin/staging`),
-one commit per phase with its tests. Production is still dark after this branch merges. Phase 5
-(the dev proof) and phase 6 (the production flip, its own small PR) are open.
+**Status:** phases 1 to 4 merged 2026-11-18 as #953 (`0a6e10f1`), reviewed, promoted to `main`
+in #952. The limits one-off ran on `sam_dev` and on production the same day. Phase 6's preview
+step is #954; the public step is the PR after it, merged once the preview pass is done.
 Builds on `implemented/XRAS_SUBMISSION_SPRINT2.md` (#880) and `XRAS_SUBMISSION_SPRINT3.md` (#886);
 the design is `XRAS_SUBMISSION.md`.
 
@@ -29,9 +29,9 @@ After the dev roll, run the one-off limits script on `sam_dev`, then in a browse
 6. A Classroom card and form with no Campaign Store; Casper GPU with no pre-filled amount; a
    Small request accepted at 4,000,000 Derecho and refused above it.
 
-## Phase 6: the production flip (separate PR)
+## Phase 6: the production flip
 
-`helm/values.yaml`, in two steps:
+`helm/values.yaml`, in two PRs:
 
 | Step | Values |
 |---|---|
@@ -47,8 +47,8 @@ My Requests; there is no lever for the visitor's New alone.
 
 ### Checks before the flip
 
-1. **Limits applied.** The one-off script run on production, after this branch is deployed there
-   (an older build reads a ceiling of 0 as "up to 0", not as withheld).
+1. **Limits applied.** Done 2026-11-18: the one-off script ran on production (verification
+   row 3 | 8 | 4).
 2. **Tables present on production:** `xras_submission`, `allocation_type_guide`,
    `allocation_type_resource_limit`, the account-request `purpose` column.
 3. **Production XRAS:** the public opportunities are open and offer the expected resources; the

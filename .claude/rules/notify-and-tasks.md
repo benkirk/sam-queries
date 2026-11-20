@@ -156,7 +156,7 @@ rollback. Live in prod and dev (its writes are SAM's own mask and entry rows). R
 requests, enrolls inside a savepoint so one project without accounts cannot fail the
 pass, purges unverified public rows past `SAM_TASKS_ACCOUNT_PURGE_DAYS`; its XRAS
 writes are merges: a fulfilled `/request` placeholder's needs `XRAS_SUBMIT_ANONYMOUS_ENABLED`
-in `tasks.env`, which only dev carries; behind `XRAS_AUTO_MERGE`, on in both, it also merges
+in `tasks.env`, which prod and dev both carry; behind `XRAS_AUTO_MERGE`, on in both, it also merges
 each "Ready to merge" placeholder, 5 a run and never a retry (one XRAS no longer holds is
 recorded `rejected` once), reading pushes from the sweep's window only and checking each
 placeholder against the request index's current rosters, and dismisses a fulfilled

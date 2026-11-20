@@ -1142,14 +1142,19 @@ class TestTheVisitorLever:
         assert config.visitor_submit_configured is expected
         assert config.summary()['visitor_submit_configured'] is expected
 
-    def test_prod_ships_it_dark_and_dev_arms_it_in_both_pods(self):
-        def values(name):
-            return yaml.safe_load((REPO_ROOT / 'helm' / name).read_text())
-        prod, dev = values('values.yaml'), values('values-dev.yaml')
-        assert str(prod['webapp']['env']['XRAS_SUBMIT_ANONYMOUS_ENABLED']) == '0'
-        assert 'XRAS_SUBMIT_ANONYMOUS' not in str(prod['tasks']['env']), 'the merge ships dark'
-        assert dev['webapp']['env']['XRAS_SUBMIT_ANONYMOUS_ENABLED'] == '1'
-        assert dev['tasks']['env']['XRAS_SUBMIT_ANONYMOUS_ENABLED'] == '1'
+    def test_prod_and_dev_arm_it_in_both_pods(self):
+        """The webapp serves /request; the tasks pod merges the placeholder once the account arrives."""
+        for name in ('values.yaml', 'values-dev.yaml'):
+            values = yaml.safe_load((REPO_ROOT / 'helm' / name).read_text())
+            assert str(values['webapp']['env']['XRAS_SUBMIT_ANONYMOUS_ENABLED']) == '1', name
+            assert str(values['tasks']['env']['XRAS_SUBMIT_ANONYMOUS_ENABLED']) == '1', name
+
+    def test_prod_opens_request_to_visitors_behind_the_human_check_with_register_unmounted(self):
+        env = yaml.safe_load((REPO_ROOT / 'helm' / 'values.yaml').read_text())['webapp']['env']
+        assert str(env['ALLOCATION_REQUEST_LOGIN_REQUIRED']) == '0'
+        assert env['HUMAN_CHECK_PROVIDER'] == 'turnstile', 'a public form needs the human check'
+        assert str(env['ACCOUNT_REGISTRATION_ENABLED']) == '0'
+        assert str(env.get('ACCOUNT_REGISTRATION_LOGIN_REQUIRED', '1')) != '0'
 
     @pytest.mark.parametrize('write, anonymous, expected', [
         (True, True, True), (False, True, False), (True, False, False)])
@@ -1161,16 +1166,16 @@ class TestTheVisitorLever:
 
 
 class TestHelmSubmitLever:
-    """Prod ships dark and narrowed, dev armed, and neither CronJob ever carries it."""
+    """Prod and dev file every request type, and neither CronJob ever carries the lever."""
 
     def _values(self, name):
         return yaml.safe_load((REPO_ROOT / 'helm' / name).read_text())
 
-    def test_prod_ships_it_dark_and_narrowed(self):
+    def test_prod_files_every_request_type(self):
         env = self._values('values.yaml')['webapp']['env']
-        assert str(env['XRAS_SUBMIT_ENABLED']) == '0'
-        assert parse_submit_action_types(env['XRAS_SUBMIT_ACTION_TYPES']) == {
-            'Extension', 'Supplement'}
+        assert str(env['XRAS_SUBMIT_ENABLED']) == '1'
+        assert parse_submit_action_types(env['XRAS_SUBMIT_ACTION_TYPES']) == set(
+            SUBMIT_ACTION_TYPES)
 
     def test_dev_arms_it(self):
         assert self._values('values-dev.yaml')['webapp']['env']['XRAS_SUBMIT_ENABLED'] == '1'
