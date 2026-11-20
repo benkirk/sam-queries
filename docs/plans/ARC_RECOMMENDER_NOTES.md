@@ -1,6 +1,7 @@
 # ARC Allocation Recommender notes on XRAS requests
 
-**Status: PR 1 built (2026-11-05), awaiting review; PR 2 not started.** Branch
+**Status: PR 1 merged 2026-11-05 (#916, to main in #915); PR 2 merged in the recommender
+(its PR 71, 2026-11-05), whose dev host posts each run's notes to SAMuel prod.** Built on branch
 `xras-recommender-notes` (this document is its first commit). Two PRs: this repo (the table,
 the endpoint, the dialog and the card), then `NCAR/arc-allocation-recommender` (the poster).
 The decisions in § 8 are Ben's (2026-11-05).
@@ -13,10 +14,12 @@ The decisions in § 8 are Ben's (2026-11-05).
 - [x] Dialog section `_xras_recommender_note.html` with the copy button and source links
 - [x] Card marker on the remediation card, one query per render
 - [x] Rename follows the note (`_rekey_overrides`)
-- [ ] DDL applied: local, test container, LFS blob (done 2026-11-05); `sam_dev`, prod and the
-      RBAC grant on dev and prod are Ben's (§ 7)
-- [ ] Dev smoke: one hand-posted batch, the dialog and the card in a browser
-- [ ] PR 2 in the recommender: `SamNotesClient`, `sam_notes_enabled`, the hook after `save_run`
+- [x] DDL applied: local, test container, LFS blob (done 2026-11-05); `sam_dev` and the dev
+      RBAC grant (the recommender's 2026-11-05 samuel-dev run posted 32 notes as heuv)
+- [ ] DDL and the RBAC grant on prod, Ben's (§ 7)
+- [ ] Dev smoke: the batch is done (that 32-note run); the dialog and the card in a browser are not recorded
+- [x] PR 2 in the recommender: `SamNotesClient`, `sam_notes_enabled`, the hook after `save_run`
+      (its PR 71; `src/arc_recommender/clients/sam_notes_client.py`; `arc_sam_notes_enabled = true` on its dev host)
 
 ## 1. What is true
 

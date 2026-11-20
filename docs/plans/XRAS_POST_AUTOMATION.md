@@ -2,8 +2,8 @@
 
 **Status: roadmap, 2026-10-15.** Phase A (renames) is live in production (#819, #820). B is live
 in production (built in #828, armed by #831; first case NCAR4407 → UMMM0018, 2026-10-15); D is built and on in samuel-dev, and armed for production in PR #845 with a
-since-floor (D's item 2 deferred); C is planned, with D's production arming, in
-[`implemented/XRAS_PHASE_C_AND_TICKETS.md`](implemented/XRAS_PHASE_C_AND_TICKETS.md) (2026-10-19); E is built (`implemented/EXTERNAL_CONTACTS.md`, 2026-11-05) and on in both
+since-floor (D's item 2 deferred); C is live in production since its 2026-10-20 cutover, carried out with D's production arming by
+[`implemented/XRAS_PHASE_C_AND_TICKETS.md`](implemented/XRAS_PHASE_C_AND_TICKETS.md); E is built (`implemented/EXTERNAL_CONTACTS.md`, 2026-11-05) and on in both
 (`XRAS_AUTO_CONTRACTS`, 2026-11-07), the sweep creating contracts ahead of the post. This file sequences the work and points at the plans that hold the
 detail; it holds the decisions, not the designs.
 
@@ -25,11 +25,11 @@ new projcode into XRAS's "Edit Request Number", and sending the notification fro
 | Rename `NCAR####` → projcode | live in production 2026-10-14 (#819, #820): the route and the task | NUSD stops renaming by hand | A |
 | Project, accounts, memberships | automatic in the New handler (`sam/xras/handlers/new.py`) | the whole New answers 422 on any missing or inactive user, or unresolved contract | D |
 | Activate the project | live: after the reply, behind `XRAS_AUTO_ACTIVATE` (on in both; `sam/manage/xras_activation.py`); NUSD no longer activates by hand | — | B |
-| Notify, New | manual Notify button; sent from XRAS today | must follow activation; XRAS's own notify mail | C |
-| Notify, extend/supplement/adjust/update | built: the `xras_notices` task (1-day delay), disabled in production | soak; XRAS's own notify mail | C |
+| Notify, New | live: SAM mails it right after activation (`XRAS_AUTO_NOTIFY`, on in both; `sam/manage/xras_activation.py`), floored by `SAM_TASKS_XRAS_NOTICES_SINCE`; the `xras_notices` task backstops it | — | C |
+| Notify, extend/supplement/adjust/update | live: the `xras_notices` task, in production since the 2026-10-20 cutover (not in `SAM_TASKS_DISABLED`) | — | C |
 | Contracts | the sweep creates the NSF contract an approved request cites, the post if the sweep has not yet (`XRAS_AUTO_CONTRACTS`), and the post links a contact PI its roster names; otherwise a 422 with one-click Create on the strip, the seeded form, or `ignore_contract` | non-NSF awards; an award whose PI differs from the grant's `piName` | E |
 | Users absent or inactive, ARC placeholders | the sweep files `account_request` rows (live); the request ticket (`xras_request_tickets`): dev on dry-run, prod armed with a floor (#845); a "Ready to merge" placeholder merges on its own once its account exists (`XRAS_AUTO_MERGE`, 2026-11-05) | users come only from IGA and the LDAP sync | D |
-| XRAS's own notify mail | on | the Action Approved rules on the NCAR process's notification templates, which we own (§ 3, C) | C (cutover step) |
+| XRAS's own notify mail | off for award mail: the 29 Action Approved rules were deleted 2026-10-20 (`implemented/XRAS_NOTICES_CUTOVER.md` § 6) | — | C (cutover step) |
 
 ## 3. Phases
 
