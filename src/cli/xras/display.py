@@ -180,6 +180,52 @@ def display_contract_report(ctx, payload) -> None:
             f"not a missing contract ({v['unblock_count']} push(es))")
 
 
+#: Rich styles per award-audit issue: red is a discrepancy, yellow is context.
+_AUDIT_STYLE = {
+    'project_missing': 'red', 'resource_unmapped': 'red', 'allocation_missing': 'red',
+    'amount_differs': 'red', 'begin_differs': 'red', 'end_differs': 'red',
+    'renamed_pending': 'yellow', 'project_inactive': 'yellow', 'approximate': 'yellow',
+    'sam_only': 'yellow',
+}
+
+
+def display_award_audit(ctx, payload) -> None:
+    """Awards whose SAM allocation differs, then the per-kind counts."""
+    from sam import fmt
+
+    shown = [r for r in payload['rows'] if r['issues']]
+    scope = payload.get('projcode') or 'current awards'
+    if not shown:
+        ctx.console.print(f"All {fmt.plural(payload['checked'], 'award', 'awards')} "
+                          f"({scope}) match SAM.", style='green')
+        return
+    table = Table(title=f"XRAS awarded vs SAM allocated ({scope}, as of {payload['as_of']})",
+                  show_lines=False, header_style='bold')
+    table.add_column('Project', no_wrap=True)
+    table.add_column('Resource', overflow='fold')
+    table.add_column('XRAS', justify='right', no_wrap=True)
+    table.add_column('SAM', justify='right', no_wrap=True)
+    table.add_column('XRAS dates', no_wrap=True)
+    table.add_column('SAM dates', no_wrap=True)
+    table.add_column('Issues', overflow='fold')
+    for r in shown:
+        project = r['projcode'] if r['sam_projcode'] in (None, r['projcode']) \
+            else f"{r['projcode']} -> {r['sam_projcode']}"
+        table.add_row(
+            project, text(r['sam_resource'] or r['xras_resource']),
+            # Exact: compact notation would print a 1.25M vs 1.2M mismatch as equal-looking.
+            fmt.number(r['xras_amount'], raw=True), fmt.number(r['sam_amount'], raw=True),
+            f"{text(r['xras_begin'])} .. {text(r['xras_end'])}",
+            f"{text(r['sam_begin'])} .. {text(r['sam_end'])}",
+            ', '.join(styled(k, _AUDIT_STYLE) for k in r['issues']))
+    print_table(ctx.console, table)
+    counts = ', '.join(f'{k} {n}' for k, n in payload['counts'].items() if n)
+    ctx.console.print(f"{payload['mismatched']} of {fmt.plural(payload['checked'], 'row', 'rows')} "
+                      f"mismatched; {counts}")
+    if not payload['complete']:
+        ctx.console.print('Incomplete: the request page budget ran out.', style='yellow')
+
+
 def display_action_list(ctx, payload) -> None:
     """Table of recent actions."""
     actions = payload['actions']

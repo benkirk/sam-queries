@@ -640,6 +640,9 @@ def cache(ctx: Context, refresh: bool, category, base_url):
               help='[board] Contracts to create, ranked by the failing pushes each would unblock')
 @click.option('--identity-report', is_flag=True,
               help='[board] Placeholders to merge, ranked by the failing pushes each would unblock')
+@click.option('--award-audit', is_flag=True,
+              help='[check] XRAS awarded vs SAM allocated, per project and resource '
+                   '(needs the API; --request narrows to one projcode)')
 @click.option('--enrich', is_flag=True,
               help='[worklist] Add XRAS person detail (requires --accounts and the API)')
 @click.option('--person', type=str, default=None,
@@ -662,8 +665,8 @@ def cache(ctx: Context, refresh: bool, category, base_url):
 @pass_context
 def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mapping,
          validate_opportunities, validate_vocabulary, accounts, readiness,
-         mnemonic_report, contract_report, identity_report, enrich, person,
-         family, status, action_type, request_number, last, limit, verbose):
+         mnemonic_report, contract_report, identity_report, award_audit, enrich,
+         person, family, status, action_type, request_number, last, limit, verbose):
     """Inspect and re-check the XRAS action log.
 
     \b
@@ -682,6 +685,7 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
       --mnemonic-report  orgs to link, ranked by the pushes each would unblock
       --contract-report  contracts to create, ranked by the pushes each would unblock
       --identity-report  placeholders to merge, ranked by the pushes each would unblock
+      --award-audit  what XRAS awarded vs what SAM allocated (amount, dates, missing)
       --person U   one username in the XRAS directory
       --family P   a projcode's whole allocation lifecycle as a request tree
       --validate-mapping  which resources XRAS and SAM can name each other's
@@ -736,6 +740,8 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
       sam-admin --format json xras --mnemonic-report | jq .targets
       sam-admin xras --contract-report
       sam-admin xras --identity-report
+      sam-admin xras --award-audit
+      sam-admin --format json xras --award-audit --request UCUB0089 | jq .rows
       sam-admin xras --person somebody-user-00042
       sam-admin xras --family UCUB0089
       sam-admin --format json xras --family UCUB0089 | jq .timeline
@@ -768,6 +774,7 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
         mnemonic_report=mnemonic_report,
         contract_report=contract_report,
         identity_report=identity_report,
+        award_audit=award_audit,
         enrich=enrich,
         person=person,
         family=family,
