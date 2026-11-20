@@ -16,6 +16,7 @@ scripts/
 ├── ui_snapshots.py              # Pages x layouts x themes screenshots for before/after review (no baselines); --headers checks sort icons; --modal / --recipes shoot dialogs with their heights; --pages charts shoots every chart host (+ ui_snapshots_modals.json: 42 dialog recipes naming rows of the local dev DB; one whose row is gone prints "not opened" and the run carries on)
 ├── chart_sheet.py               # Every chart sample x layout x theme as SVG plus an index.html sheet (no DB); byte-stable, so --compare proves a drawing refactor changed nothing
 ├── er_diagram.py                # Graphviz ER diagram of named tables, from the ORM (no DB)
+├── xras_repost_wait.py          # Read-only: how long refused XRAS posts wait for the re-post (SAM_DB_*; --json, --episodes)
 ├── zap_probe_docker.sh          # Dockerized OWASP ZAP scan of the webapp
 ├── lib/                         # Sourceable shell helpers (see below)
 │   ├── common.sh               # Generic: colors, log/verdict helpers, usage
