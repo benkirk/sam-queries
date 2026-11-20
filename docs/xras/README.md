@@ -19,7 +19,9 @@ and each attempt leaves an audit row.
 **samuel-dev** (`https://samuel-dev.k8s.ucar.edu`) runs the same loop against
 XRAS's demo instance: `xras-admin-demo.xsede.org` posts to it, and it calls
 `xras-submit-api-demo.xsede.org` with the production key at its own OpenBao
-path (`docs/plans/implemented/XRAS_SUBMISSION.md` § 5).
+path (`docs/plans/implemented/XRAS_SUBMISSION.md` § 5). ACCESS runs that host, so when its
+certificate lapses (it expired 2026-11-19) every dev call fails the TLS check and
+`/request` says the allocation system is not answering; the fix is theirs.
 
 Filing rule: this tree keeps the living references. A shipped plan or sprint
 record lives in `docs/plans/implemented/`, whatever its topic; the last table

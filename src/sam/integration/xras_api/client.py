@@ -153,6 +153,12 @@ class XrasTransport:
                 response = self.session.request(
                     'GET', url, params=params, headers=headers, stream=stream,
                     timeout=(self.config.connect_timeout, self.config.timeout))
+            except requests.exceptions.SSLError as exc:
+                # A failed certificate check (expired, wrong host) fails every
+                # attempt the same way: say so once instead of backing off.
+                logger.error('xras api GET %s: TLS check failed: %s', url, exc)
+                raise XrasSourceUnavailable(
+                    f'{url} failed its TLS certificate check: {exc}') from exc
             except requests.RequestException as exc:
                 last_error = exc
                 if attempt == self.config.max_retries - 1:
