@@ -3,7 +3,7 @@
 A JSON body, so the plain-marshmallow ``WireInput`` base, not ``HtmxFormSchema``
 (see :mod:`sam.schemas.forms.xras`). Every link is followed by an operator's click,
 so a URL that is not ``http(s)`` is refused here, at ingest.
-Design: ``docs/plans/ARC_RECOMMENDER_NOTES.md`` § 3.
+Design: ``docs/plans/implemented/ARC_RECOMMENDER_NOTES.md`` § 3.
 """
 from urllib.parse import urlsplit
 

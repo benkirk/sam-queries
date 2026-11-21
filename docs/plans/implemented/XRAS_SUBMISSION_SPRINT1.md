@@ -200,12 +200,12 @@ stands in for the ladder's miss in its verdict.
 
 | Lever | Read by | dev | prod |
 |---|---|---|---|
-| `XRAS_SUBMIT_ENABLED` | `XrasApiConfig.submit_enabled`, `xras_submit_configured()`; webapp only, never `tasks.env` | "1" | "0" |
-| `XRAS_SUBMIT_ACTION_TYPES` | `XrasApiConfig.submit_action_types` (`parse_submit_action_types`), then the routing | `all` | `Extension,Supplement`, shipped with the lever off so the first flip cannot expose New or Renewal |
+| `XRAS_SUBMIT_ENABLED` | `XrasApiConfig.submit_enabled`, `xras_submit_configured()`; webapp only, never `tasks.env` | "1" | "1" (`helm/values.yaml`); the sprint shipped "0" |
+| `XRAS_SUBMIT_ACTION_TYPES` | `XrasApiConfig.submit_action_types` (`parse_submit_action_types`), then the routing | `all` | `all`; the sprint shipped `Extension,Supplement` with the lever off, so the first flip could not expose New or Renewal |
 | `SUBMISSION_DOCUMENT_MAX_BYTES`, `SUBMISSION_DOCUMENT_MAX_PAGES` | the document helper | unset | unset |
 
 The admin door runs under `XRAS_WRITE_ENABLED` alone: the Remediations card's Add-action opens
-`xras_submission` rows on production with the submit lever off. On such a row the PI's Resume
+`xras_submission` rows even with the submit lever off. On such a row the PI's Resume
 and Discard need `XRAS_SUBMIT_ENABLED` with the type armed (the page hides them otherwise), and a
 resume honors the `submit` the row was opened with, so it never submits what the operator
 left unsubmitted.
