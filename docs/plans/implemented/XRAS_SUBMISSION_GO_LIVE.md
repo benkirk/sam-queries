@@ -1,8 +1,9 @@
 # XRAS submission go-live
 
-**Status:** phases 1 to 4 merged 2026-11-18 as #953 (`0a6e10f1`), reviewed, promoted to `main`
-in #952. The limits one-off ran on `sam_dev` and on production the same day. Phase 6's preview
-step is #954; the public step is the PR after it, merged once the preview pass is done.
+**Status: implemented; live in production 2026-11-19** (`sha-cb397b6`, promoted in #956).
+Phases 1 to 4 merged 2026-11-18 as #953 (`0a6e10f1`), promoted in #952; the limits one-off ran
+on `sam_dev` and on production the same day. Phase 6 was two steps: #954 (filing from My
+Requests, `/request` for signed-in users) and #957 (`/request` public).
 Builds on `implemented/XRAS_SUBMISSION_SPRINT2.md` (#880) and `XRAS_SUBMISSION_SPRINT3.md` (#886);
 the design is `XRAS_SUBMISSION.md`.
 

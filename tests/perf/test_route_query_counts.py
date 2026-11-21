@@ -670,6 +670,45 @@ def test_user_my_requests_new_route(auth_client, route_count_queries, visitor_ov
 
 
 
+def test_user_my_requests_more_route(auth_client, route_count_queries, monkeypatch, app):
+    """The More dialog: the line's resources, their limits and the supplement advice, one
+    usage build and one trailing-window read for the project, not a read per resource."""
+    from dataclasses import replace
+    from sam.integration.xras import XrasResourceRepositoryKeyResource
+    from sam.integration.xras_api.config import XrasApiConfig
+    from sam.resources.resources import Resource
+    from webapp.dashboards.user import requests_routes
+    from webapp.extensions import db
+    with app.app_context():
+        keys = dict(db.session.query(Resource.resource_name,
+                                     XrasResourceRepositoryKeyResource.resource_repository_key)
+                    .join(XrasResourceRepositoryKeyResource,
+                          XrasResourceRepositoryKeyResource.resource_id == Resource.resource_id)
+                    .filter(Resource.resource_name.in_(('Derecho', 'Casper'))))
+    if len(keys) < 2:
+        pytest.skip('Derecho and Casper carry no XRAS repository key in this snapshot')
+    line = {'requestNumber': 'UHSS0001', 'requestId': 1449367, 'requestStatus': 'Approved',
+            'requestType': 'New', 'actions': [{'actionId': 1, 'actionType': 'New',
+                                               'actionStatus': 'Approved', 'resources': [
+                {'resourceId': 1, 'resourceName': 'Derecho', 'resourceUnits': 'Core-hours'},
+                {'resourceId': 2, 'resourceName': 'Casper', 'resourceUnits': 'Core-hours'}]}],
+            'roles': [{'person': {'username': 'benkirk'}, 'roles': [{'roleTypeId': 13}]}]}
+    reader = type('Reader', (), {'get_request_family_by_number': lambda self, n: [line]})()
+    config = replace(XrasApiConfig(enabled=True, write_enabled=True, api_key='k'),
+                     submit_enabled=True, submit_action_types=('Extension', 'Supplement'))
+    monkeypatch.setattr(requests_routes, '_config', lambda: config)
+    monkeypatch.setattr(requests_routes, 'read_client', lambda c=None: reader)
+    monkeypatch.setattr(requests_routes, 'resource_keys',
+                        lambda c=None: {1: keys['Derecho'], 2: keys['Casper']})
+    baseline = get_baseline('user_my_requests_more_route')
+    with route_count_queries() as stats:
+        response = auth_client.get('/user/requests/UHSS0001/more')
+    assert response.status_code == 200, f'the More form returned {response.status_code}'
+    assert 'name="amount_1"' in response.get_data(as_text=True)
+    assert stats.count <= baseline, (
+        f'More form: {stats.count} queries > {baseline} baseline. {stats.summary()}')
+
+
 def _remediation_rows(n):
     from datetime import datetime as _dt
     from sam.queries.xras_requests import request_index_entry

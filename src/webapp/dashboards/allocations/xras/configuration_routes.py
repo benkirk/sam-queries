@@ -4,7 +4,7 @@ Viewed with ``VIEW_XRAS`` (the XRAS tab's permission, not facility-scopable); th
 (``sam/accounting/allocation_type_guide.py``, the card's words) and the request limits
 (``sam/accounting/allocation_type_limits.py``, the amounts) are written with ``MANAGE_XRAS``.
 A row is retired through its edit form's Active box. Design:
-``docs/plans/XRAS_SUBMISSION_SPRINT3.md``.
+``docs/plans/implemented/XRAS_SUBMISSION_SPRINT3.md``.
 """
 
 from flask import render_template, request

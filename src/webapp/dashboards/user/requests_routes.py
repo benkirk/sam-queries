@@ -5,7 +5,7 @@ project's picker reads XRAS lazily when opened (the family, then the user's offe
 re-reads the family and re-runs the routing at every stage (edit, review, submit), so a
 decision is never carried in the browser; a New re-reads the user's opportunities the same
 way, and nothing reaches XRAS before its submit. Files go through
-``sam.manage.xras_submission``. Design: ``docs/plans/XRAS_SUBMISSION.md`` § 4.0-4.1.
+``sam.manage.xras_submission``. Design: ``docs/plans/implemented/XRAS_SUBMISSION.md`` § 4.0-4.1.
 """
 
 from datetime import datetime, timedelta
@@ -22,14 +22,14 @@ from flask import (
 from flask_login import current_user, login_required
 
 from sam.dates import add_months, first_of_next_month, parse_wire_date
+from sam.fmt import input_value
 from sam.integration.xras_api import XrasSourceUnavailable
 from sam.integration.xras_api.lookups import funding_agency_choices
 from sam.queries.xras_my_requests import led_projects, my_requests
 from sam.schemas.forms import (
-    XrasExtensionRequestForm,
+    XrasMoreRequestForm,
     XrasNewRequestForm,
     XrasRenewalRequestForm,
-    XrasSupplementRequestForm,
 )
 from sam.schemas.forms.xras_submission import GRANT_INPUTS
 from sam.xras.routing import (
@@ -62,9 +62,12 @@ _FORM = 'dashboards/user/fragments/request_form_htmx.html'
 _REVIEW = 'dashboards/user/fragments/request_review_htmx.html'
 _OUTCOME = 'dashboards/user/fragments/request_outcome_htmx.html'
 _MESSAGE = 'dashboards/user/fragments/request_message_htmx.html'
-_FORM_TYPES = {'extension': 'Extension', 'supplement': 'Supplement', 'renewal': 'Renewal'}
-_SCHEMAS = {'Extension': XrasExtensionRequestForm, 'Supplement': XrasSupplementRequestForm,
-            'Renewal': XrasRenewalRequestForm}
+_FORM_TYPES = {'more': 'More', 'renewal': 'Renewal'}
+_SCHEMAS = {'More': XrasMoreRequestForm, 'Renewal': XrasRenewalRequestForm}
+#: The XRAS types one "more time or resources" request files, in filing order.
+MORE_TYPES = ('Extension', 'Supplement')
+_LABELS = {'More': 'More time or resources'}
+_REFUSED = {'More': 'Requests for more time or resources'}
 
 
 #: The module's seam for the tests; the plumbing itself is ``webapp.utils.xras``.
@@ -131,12 +134,11 @@ def my_requests_actions(project):
             available = None
     return render_template(
         'dashboards/user/fragments/request_actions_htmx.html',
-        project=project, decision=decision, outage=outage,
-        form_types={v: k for k, v in _FORM_TYPES.items()},
+        project=project, decision=decision, outage=outage, more_types=MORE_TYPES,
         offers=action_offers(decision, available, config.submit_allows) if decision else [])
 
 
-# the Extension, Supplement and Renewal forms
+# the row buttons and the forms: more time or resources, and Renewal
 
 @bp.route('/requests/htmx/offers')
 @login_required
@@ -149,7 +151,7 @@ def my_requests_offers():
     index_rows = _index_rows()
     available = None
     # The read feeds the Renewal check alone: a lead of staff-routed projects, or a site with
-    # Renewal off, gets Extend and Supplement with no XRAS round trip.
+    # Renewal off, gets the "Extend or add" button with no XRAS round trip.
     if config.submit_allows('Renewal') and offer_candidates(
             projects, current_user.username, index_rows, armed=True):
         try:
@@ -159,8 +161,7 @@ def my_requests_offers():
     offers = inline_offers(db.session, projects, current_user.username, index_rows,
                            available, config.submit_allows, armed=True)
     return render_template('dashboards/user/fragments/request_offers_htmx.html',
-                           projects=projects, offers=offers,
-                           form_types={v: k for k, v in _FORM_TYPES.items()})
+                           projects=projects, offers=offers, more_types=MORE_TYPES)
 
 
 @bp.route('/requests/<number>/notes')
@@ -195,8 +196,10 @@ def _refuse_unless_armed(config, action_type):
     if is_impersonating():
         raise FormError('You are viewing SAM as another user. They file their own '
                         'requests, under their own agreement.')
-    if not config.submit_allows(action_type):
-        raise FormError(f'{action_type} requests through SAM are not enabled here.')
+    types = MORE_TYPES if action_type == 'More' else (action_type,)
+    if not any(config.submit_allows(t) for t in types):
+        raise FormError(f'{_REFUSED.get(action_type, action_type + " requests")} through SAM '
+                        'are not enabled here.')
 
 
 def _read_upload(field, label):
@@ -218,11 +221,10 @@ class _RequestForm(HtmxFormHandler):
     def __init__(self, *, project, action_type):
         super().__init__(project=project, action_type=action_type)
         self.schema_cls = _SCHEMAS[action_type]
+        self.label = _LABELS.get(action_type, action_type)
         self._ctx = None
 
     def form_input(self):
-        if self.action_type == 'Extension':
-            return request.form
         raw = request.form.to_dict()
         raw['amounts'] = {k[len('amount_'):]: v for k, v in request.form.items()
                           if k.startswith('amount_')}
@@ -240,23 +242,15 @@ class _RequestForm(HtmxFormHandler):
             raise FormError(outage)
         if not decision.allowed:
             raise FormError(decision.message)
-        self._ctx = dict(project=self.project, action_type=self.action_type,
+        self._ctx = dict(project=self.project, action_type=self.action_type, label=self.label,
                          decision=decision, eula_sha=eula_sha(), grant_inputs=list(GRANT_INPUTS),
                          grant_agencies=funding_agency_choices(),
                          post_url=request.path, **self._type_context(config, decision))
         return self._ctx
 
     def _type_context(self, config, decision):
-        from sam.xras.submission_preflight import extension_floor, line_resources
-        floor = extension_floor(self.project)
-        if self.action_type == 'Extension':
-            return {'floor': floor, 'end_min': floor + timedelta(days=1) if floor else None,
-                    'resources': [], 'resource_keys': None}
-        if self.action_type == 'Supplement':
-            held = line_resources(decision.line)
-            return {'floor': None, **self._with_limits(
-                config, held, held=[r['resource_id'] for r in held])}
-        return self._renewal_context(config, decision, floor)
+        from sam.xras.submission_preflight import extension_floor
+        return self._renewal_context(config, decision, extension_floor(self.project))
 
     def _renewal_context(self, config, decision, floor):
         """XRAS's renewal offer for the line (opportunity, resources, award period) and its rule book."""
@@ -315,8 +309,9 @@ class _RequestForm(HtmxFormHandler):
         try:
             return self.gate()
         except FormError:
-            return dict(project=self.project, action_type=self.action_type, decision=None,
-                        resources=[], floor=None, eula_sha=None, post_url=request.path)
+            return dict(project=self.project, action_type=self.action_type, label=self.label,
+                        decision=None, resources=[], floor=None, eula_sha=None,
+                        post_url=request.path)
 
     def draft(self, data):
         from sam.manage.xras_submission import ActionRequest, ResourceAmount, SamRefs
@@ -326,11 +321,7 @@ class _RequestForm(HtmxFormHandler):
                       request_id=decision.request_id, user_comments=data.get('user_comments'),
                       sam=SamRefs(project_id=project.project_id,
                                   allocation_type_id=project.allocation_type_id))
-        if self.action_type == 'Extension':
-            return ActionRequest(dates=(None, data['end_date']), **common)
         resources = tuple(ResourceAmount(rid, amount) for rid, amount in data['amounts'].items())
-        if self.action_type == 'Supplement':
-            return ActionRequest(resources=resources, **common)
         return ActionRequest(opportunity_id=ctx['offer']['opportunity_id'],
                              eua_attribute_id=ctx['offer'].get('eua_attribute_id'),
                              abstract=data['abstract'], resources=resources,
@@ -343,17 +334,11 @@ class _RequestForm(HtmxFormHandler):
         ctx = self.gate()
         if data['stage'] == 'edit':
             return data
-        if self.action_type == 'Extension':
-            if ctx['floor'] and data['end_date'] <= ctx['floor']:
-                raise ValidationError({'end_date': [
-                    f'Choose a date after {ctx["floor"].isoformat()}, the project\'s '
-                    'current end.']})
-        else:
-            if ctx.get('rules') and ctx['rules'].wants_grants:
-                errors = self._grant_errors(data, ctx['rules'])
-                if errors:
-                    raise ValidationError(errors)
-            self._check_limits(data, ctx, _type_name(self.project))
+        if ctx.get('rules') and ctx['rules'].wants_grants:
+            errors = self._grant_errors(data, ctx['rules'])
+            if errors:
+                raise ValidationError(errors)
+        self._check_limits(data, ctx, _type_name(self.project))
         return self._assemble(data, ctx)
 
     def _check_limits(self, data, ctx, type_name):
@@ -462,24 +447,148 @@ class _RequestForm(HtmxFormHandler):
         return render_template(_OUTCOME, outcome=data['outcome'], **ctx)
 
 
-@bp.route('/requests/<projcode>/<any(extension, supplement, renewal):kind>')
+class _MoreForm(_RequestForm):
+    """More time, more resources or both: an Extension then a Supplement on the same line."""
+
+    def _type_context(self, config, decision):
+        from sam.queries.supplement_advice import suggest_supplements
+        from sam.xras.submission_preflight import extension_floor, line_resources
+        floor = extension_floor(self.project)
+        allow_extension, allow_supplement = (config.submit_allows(t) for t in MORE_TYPES)
+        ctx = {'floor': floor, 'end_min': floor + timedelta(days=1) if floor else None,
+               'allow_extension': allow_extension, 'allow_supplement': allow_supplement,
+               'resources': [], 'resource_keys': None, 'advice': {}}
+        if allow_supplement:
+            held = line_resources(decision.line)
+            ctx.update(self._with_limits(config, held, held=[r['resource_id'] for r in held]))
+            ctx['advice'] = suggest_supplements(db.session, self.project, ctx['resources'],
+                                                end_date=self._asked_end(floor), floor=floor)
+        return ctx
+
+    @staticmethod
+    def _asked_end(floor):
+        """The end date being typed, for the suggestions only; the schema validates it."""
+        end = parse_wire_date(request.values.get('end_date'))
+        return end if end and (floor is None or end > floor) else None
+
+    def clean(self, data):
+        from marshmallow import ValidationError
+        ctx = self.gate()
+        if data['stage'] == 'edit':
+            return data
+        if data['end_date'] is not None:
+            if not ctx['allow_extension']:
+                raise FormError('Extension requests through SAM are not enabled here.')
+            if ctx['floor'] and data['end_date'] <= ctx['floor']:
+                raise ValidationError({'end_date': [
+                    f'Choose a date after {ctx["floor"].isoformat()}, the project\'s '
+                    'current end.']})
+        if data['amounts']:
+            if not ctx['allow_supplement']:
+                raise FormError('Supplement requests through SAM are not enabled here.')
+            self._check_limits(data, ctx, _type_name(self.project))
+        return self._assemble(data, ctx)
+
+    def drafts(self, data):
+        """The Extension (a new end date) and the Supplement (amounts), as asked, in filing order."""
+        from uuid import uuid4
+        from sam.manage.xras_submission import ActionRequest, ResourceAmount, SamRefs
+        decision, project = self._ctx['decision'], self.project
+        end, amounts, why = data['end_date'], data['amounts'], data['user_comments']
+        common = dict(request_number=decision.request_number, request_id=decision.request_id,
+                      bundle=uuid4().hex if end and amounts else None,
+                      sam=SamRefs(project_id=project.project_id,
+                                  allocation_type_id=project.allocation_type_id))
+        out = []
+        if end:
+            out.append(ActionRequest(action_type='Extension', dates=(None, end),
+                                     user_comments=why, **common))
+        if amounts:
+            note = f'Requested together with an Extension to {end.isoformat()}. ' if end else ''
+            out.append(ActionRequest(
+                action_type='Supplement', user_comments=note + why,
+                resources=tuple(ResourceAmount(rid, a) for rid, a in amounts.items()), **common))
+        return out
+
+    def _assemble(self, data, ctx):
+        from sam.xras.submission_preflight import preflight_draft
+        data['drafts'] = self.drafts(data)
+        verdicts = [preflight_draft(db.session, ctx['decision'].line, d,
+                                    resource_keys=ctx['resource_keys']) for d in data['drafts']]
+        # The review shows one verdict: the worst of the two.
+        data['verdict'] = next((v for status in ('failed', 'manual') for v in verdicts
+                                if v.status == status), verdicts[0])
+        if data['stage'] == 'submit':
+            back = self._back_to_review(data)
+            if back:
+                data.update(stage='review', review_error=back)
+        return data
+
+    def perform(self, data):
+        if data['stage'] != 'submit':
+            return data
+        from sam.manage import xras_submission as flow
+        from webapp.register.eula import accepted
+        try:
+            data['outcomes'] = flow.request_actions(
+                self._sessions(), data['drafts'], actor=acting_username(),
+                xa_user=current_user.username, eula=accepted(data['eula_sha']), door='pi')
+        except flow.SubmissionRefused as exc:
+            raise FormError(str(exc))
+        data['outcome'] = data['outcomes'][-1]
+        return data
+
+
+def _form_handler(project, kind):
+    cls = _MoreForm if kind == 'more' else _RequestForm
+    return cls(project=project, action_type=_FORM_TYPES[kind])
+
+
+@bp.route('/requests/<projcode>/<any(more, renewal):kind>')
 @login_required
 @require_project_permission(Permission.EDIT_PROJECTS)
 def my_request_form(project, kind):
     """The request form, into ``#xrasRequestModalBody``; a refusal renders as a message."""
-    handler = _RequestForm(project=project, action_type=_FORM_TYPES[kind])
+    handler = _form_handler(project, kind)
     try:
         ctx = handler.gate()
     except FormError as exc:
-        return message_fragment(f'{handler.action_type} unavailable', ' '.join(exc.errors))
+        return message_fragment(f'{handler.label} unavailable', ' '.join(exc.errors))
     return render_template(_FORM, errors=[], field_errors={}, form=None, **ctx)
 
 
-@bp.route('/requests/<projcode>/<any(extension, supplement, renewal):kind>', methods=['POST'])
+@bp.route('/requests/<projcode>/<any(more, renewal):kind>', methods=['POST'])
 @login_required
 @require_project_permission(Permission.EDIT_PROJECTS)
 def my_request_post(project, kind):
-    return _RequestForm(project=project, action_type=_FORM_TYPES[kind]).handle()
+    return _form_handler(project, kind).handle()
+
+
+@bp.route('/requests/<projcode>/more/amounts')
+@login_required
+@require_project_permission(Permission.EDIT_PROJECTS)
+def my_request_more_amounts(project):
+    """The amounts re-suggested for the end date being typed; an amount the lead changed stays.
+
+    A row's ``suggested_<id>`` marker arrives unless the lead removed the row: with no amount it
+    was never picked, and with the amount it shows, the lead left the suggestion alone. Such a
+    row takes the new suggestion, or goes back to Available when the new date needs none.
+    """
+    try:
+        ctx = _form_handler(project, 'more').gate()
+    except FormError:
+        return '', 204
+    form = request.args.to_dict()
+    for r in ctx['resources']:
+        name, mark = f'amount_{r["resource_id"]}', f'suggested_{r["resource_id"]}'
+        advice = ctx['advice'].get(r['resource_id'])
+        untouched = mark in form and form.get(name, '') in ('', form[mark])
+        if untouched and advice and advice.suggest:
+            form[name] = input_value(advice.suggest)
+        elif untouched:
+            form.pop(name, None)
+    return render_template('dashboards/user/fragments/request_more_amounts_htmx.html',
+                           form=form, field_errors={}, **ctx)
 
 
 # the New request: describe -> request -> review -> submit

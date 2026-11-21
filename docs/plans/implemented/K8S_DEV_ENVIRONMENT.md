@@ -563,7 +563,7 @@ dual-posting to dev; a Flask-Admin toggle for dev; the mail redirect valve (a on
 overlay edit the test already tolerates); moving the refresh into the cluster (needs the
 `hpc-reader` MySQL credential in OpenBao); a second namespace; pointing samuel-dev at
 the XRAS test instance — done 2026-10-08, both directions against XRAS's demo
-instance, recorded in `../XRAS_SUBMISSION.md` § 5.
+instance, recorded in `XRAS_SUBMISSION.md` § 5.
 
 ## 10. Status
 

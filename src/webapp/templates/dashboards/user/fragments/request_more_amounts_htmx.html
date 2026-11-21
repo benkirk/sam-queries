@@ -1,0 +1,9 @@
+{#- The amounts of a "more time or resources" request, in its form and re-rendered by
+    GET /user/requests/<projcode>/more/amounts when the end date changes (outerHTML).
+    Context: resources (annotated line resources), advice {resource id: Advice}, form,
+    field_errors. -#}
+{% from 'dashboards/user/partials/request_bits.html' import amounts_table %}
+<div id="xrasMoreAmounts">
+{{ amounts_table(resources, form, field_errors, advice=advice, auto_single=false,
+                 note="Suggested amounts are based on the project's use, through the end date. Change or remove any amount; to add a resource, select it under Available.") }}
+</div>

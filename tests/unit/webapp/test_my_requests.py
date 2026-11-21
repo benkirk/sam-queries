@@ -5,6 +5,7 @@ covered against real rows in ``tests/unit/queries/test_xras_my_requests.py``.
 """
 
 from dataclasses import replace
+from datetime import timedelta
 
 import pytest
 
@@ -207,13 +208,13 @@ class TestTheRowButtons:
         html = auth_client.get(self.OFFERS).get_data(as_text=True)
         cell = html.split('id="req-offers-UHSS0001"')[1].split('</span>\n', 1)[0]
         assert 'hx-swap-oob' in html.split('id="req-offers-UHSS0001"')[1][:40]
-        for kind, word in (('extension', 'Extend'), ('supplement', 'Supplement'),
-                           ('renewal', 'Renew')):
-            assert f'/user/requests/UHSS0001/{kind}' in cell and f'>{word}</span>' in cell
+        for kind, word in (('more', 'Extend or add'), ('renewal', 'Renew')):
+            assert f'/user/requests/UHSS0001/{kind}"' in cell and f'>{word}</span>' in cell
+        assert cell.count('<button') == 2
         assert armed.reads.count(('offers', 'benkirk')) == 1
 
-    def test_an_outage_still_offers_extension_and_supplement(self, auth_client, armed, rostered,
-                                                             monkeypatch):
+    def test_an_outage_still_offers_more_time_or_resources(self, auth_client, armed, rostered,
+                                                           monkeypatch):
         from sam.integration.xras_api import XrasSourceUnavailable
 
         def down(self, username):
@@ -222,7 +223,7 @@ class TestTheRowButtons:
                             down)
         cell = auth_client.get(self.OFFERS).get_data(as_text=True).split(
             'id="req-offers-UHSS0001"')[1].split('</span>\n', 1)[0]
-        assert '/extension' in cell and '/supplement' in cell and '/renewal' not in cell
+        assert '/more"' in cell and '/renewal' not in cell
 
     def test_off_the_roster_the_cell_is_emptied_without_a_read(self, auth_client, armed):
         html = auth_client.get(self.OFFERS).get_data(as_text=True)
@@ -237,8 +238,16 @@ class TestTheRowButtons:
         monkeypatch.setattr(requests_routes, '_config', lambda: config)
         cell = auth_client.get(self.OFFERS).get_data(as_text=True).split(
             'id="req-offers-UHSS0001"')[1].split('</span>\n', 1)[0]
-        assert '/extension' in cell and '/supplement' in cell and '/renewal' not in cell
+        assert '/more"' in cell and '/renewal' not in cell
         assert armed.reads == []
+
+    def test_one_of_the_two_types_still_offers_more(self, auth_client, armed, rostered,
+                                                    monkeypatch):
+        config = replace(requests_routes._config(), submit_action_types=('Supplement',))
+        monkeypatch.setattr(requests_routes, '_config', lambda: config)
+        cell = auth_client.get(self.OFFERS).get_data(as_text=True).split(
+            'id="req-offers-UHSS0001"')[1].split('</span>\n', 1)[0]
+        assert '/more"' in cell and '/renewal' not in cell
 
 
 class TestThePicker:
@@ -263,10 +272,11 @@ class TestThePicker:
         html = auth_client.get(_picker('UHSS0001')).get_data(as_text=True)
         assert 'You hold no role' in html
 
-    def test_on_the_roster_offers_extension_and_supplement(self, auth_client, armed):
+    def test_on_the_roster_offers_more_time_or_resources(self, auth_client, armed):
         armed.family = [_line('UHSS0001')]
         html = auth_client.get(_picker('UHSS0001')).get_data(as_text=True)
-        assert 'Request extension' in html and 'Request supplement' in html
+        assert 'Request more time or resources' in html and '/user/requests/UHSS0001/more' in html
+        assert 'Request extension' not in html and 'Request supplement' not in html
         assert 'data-bs-target="#xrasRequestModal"' in html
         assert 'XRAS offers no renewal' in html
         assert ('offers', 'benkirk') in armed.reads
@@ -303,8 +313,9 @@ class TestTheCardLink:
 
 # 1b: the forms
 
-EXT = '/user/requests/UHSS0001/extension'
-SUP = '/user/requests/UHSS0001/supplement'
+MORE = '/user/requests/UHSS0001/more'
+AMOUNTS = MORE + '/amounts'
+WHY = 'The runs need another quarter.'
 
 
 @pytest.fixture
@@ -331,10 +342,25 @@ def filed(monkeypatch):
 
     def fake(factory, draft, **kw):
         calls.append((draft, kw))
-        return flow.SubmissionOutcome(submission_id=1, state='submitted', step='submit',
+        return flow.SubmissionOutcome(submission_id=len(calls), state='submitted', step='submit',
                                       step_outcome=None, error=None)
     monkeypatch.setattr(flow, 'request_action', fake)
     return calls
+
+
+@pytest.fixture
+def advised(monkeypatch):
+    """Derecho on the line, with SAM suggesting 5,000 for it."""
+    import sam.queries.supplement_advice as advice
+    from sam.queries.supplement_advice import Advice
+    seen = []
+
+    def fake(session, project, resources, *, end_date, floor=None, now=None):
+        seen.append(end_date)
+        return {530902: Advice(remaining=200.0, rate_per_day=50.0, basis='recent', days=100,
+                               last_amount=20_000.0, suggest=5_000.0)}
+    monkeypatch.setattr(advice, 'suggest_supplements', fake)
+    return seen
 
 
 def _sha():
@@ -342,89 +368,151 @@ def _sha():
     return eula_sha()
 
 
-def _ext(end, stage='review', **extra):
-    return dict(stage=stage, end_date=end.isoformat(),
-                user_comments='The runs need another quarter.', **extra)
+def _more(stage='review', end=None, **extra):
+    body = dict(stage=stage, user_comments=WHY, **extra)
+    if end is not None:
+        body['end_date'] = end.isoformat()
+    return body
 
 
-class TestTheExtensionForm:
+def _submit(**extra):
+    return dict(extra, stage='submit', eula_sha=_sha(), agree='1')
+
+
+class TestTheMoreForm:
 
     def test_the_lever_off_refuses_with_a_message(self, auth_client):
-        html = auth_client.get(EXT).get_data(as_text=True)
+        html = auth_client.get(MORE).get_data(as_text=True)
         assert 'not enabled here' in html and 'name="end_date"' not in html
 
-    def test_the_form_shows_the_floor(self, auth_client, on_roster, floor):
-        html = auth_client.get(EXT).get_data(as_text=True)
-        assert 'name="end_date"' in html and floor.isoformat() in html
-        assert 'xrasRequestModalLabel' in html
+    def test_the_form_offers_a_date_and_the_lines_resources(self, auth_client, on_roster, floor):
+        html = auth_client.get(MORE).get_data(as_text=True)
+        assert 'More time or resources' in html and floor.isoformat() in html
+        assert 'Please explain why this is required' in html
+        assert 'name="end_date"' in html and 'name="amount_530902"' in html
+        assert f'hx-get="{AMOUNTS}"' in html
+
+    def test_no_suggestion_leaves_a_lone_resource_unselected(self, auth_client, on_roster):
+        html = auth_client.get(MORE).get_data(as_text=True)
+        row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
+        assert 'disabled' in row
+
+    def test_a_suggestion_selects_and_fills_its_row(self, auth_client, on_roster, advised):
+        html = auth_client.get(MORE).get_data(as_text=True)
+        row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
+        assert 'value="5000"' in row and 'disabled' not in row
+        assert '200 remaining; the suggestion covers 100 days at the recent rate' in html
+
+    @pytest.mark.parametrize('types, shown, hidden', [
+        (('Extension',), 'name="end_date"', 'name="amount_530902"'),
+        (('Supplement',), 'name="amount_530902"', 'name="end_date"')])
+    def test_one_lever_off_hides_its_half(self, auth_client, on_roster, monkeypatch, types,
+                                          shown, hidden):
+        config = replace(requests_routes._config(), submit_action_types=types)
+        monkeypatch.setattr(requests_routes, '_config', lambda: config)
+        html = auth_client.get(MORE).get_data(as_text=True)
+        assert shown in html and hidden not in html
+
+    def test_neither_half_is_refused(self, auth_client, on_roster, filed):
+        html = auth_client.post(MORE, data=_more()).get_data(as_text=True)
+        assert 'Please choose a new end date, add a resource, or both.' in html and not filed
 
     def test_a_date_on_or_before_the_floor_is_refused(self, auth_client, on_roster, floor,
                                                       filed):
-        html = auth_client.post(EXT, data=_ext(floor)).get_data(as_text=True)
+        html = auth_client.post(MORE, data=_more(end=floor)).get_data(as_text=True)
         assert 'Choose a date after' in html and not filed
 
-    def test_review_shows_the_preflight_and_the_terms(self, auth_client, on_roster, floor,
-                                                     filed):
-        from datetime import timedelta
-        html = auth_client.post(EXT, data=_ext(floor + timedelta(days=365))).get_data(
+    def test_review_shows_both_halves_and_the_terms(self, auth_client, on_roster, floor,
+                                                    filed):
+        end = floor + timedelta(days=365)
+        html = auth_client.post(MORE, data=_more(end=end, amount_530902='1,500')).get_data(
             as_text=True)
-        assert 'Review the Extension' in html and 'name="agree"' in html
-        assert 'SAM checked this' not in html and _sha() in html   # a clean check says nothing
+        assert 'Review your request' in html and 'name="agree"' in html and _sha() in html
+        assert 'New end date' in html and '1,500' in html and 'reviews each separately' in html
+        assert 'Justification' in html
+        assert 'name="amount_530902" value="1500"' in html
+        assert f'name="end_date" value="{end.isoformat()}"' in html
         assert not filed
 
     def test_submit_without_the_tick_returns_to_the_review(self, auth_client, on_roster,
                                                            floor, filed):
-        from datetime import timedelta
-        html = auth_client.post(EXT, data=_ext(floor + timedelta(days=365), 'submit',
-                                               eula_sha=_sha())).get_data(as_text=True)
+        body = _more(stage='submit', end=floor + timedelta(days=365), eula_sha=_sha())
+        html = auth_client.post(MORE, data=body).get_data(as_text=True)
         assert 'Accept the terms of use' in html and not filed
 
     def test_a_stale_agreement_returns_to_the_review(self, auth_client, on_roster, floor,
                                                     filed):
-        from datetime import timedelta
-        html = auth_client.post(EXT, data=_ext(floor + timedelta(days=365), 'submit',
-                                               eula_sha='b' * 40, agree='1')).get_data(
-            as_text=True)
-        assert 'terms changed' in html and not filed
+        body = _more(stage='submit', end=floor + timedelta(days=365), eula_sha='b' * 40,
+                     agree='1')
+        assert 'terms changed' in auth_client.post(MORE, data=body).get_data(as_text=True)
+        assert not filed
 
-    def test_submit_files_through_the_pi_door(self, auth_client, on_roster, floor, filed):
-        from datetime import timedelta
+    def test_both_halves_file_an_extension_then_a_supplement(self, auth_client, on_roster,
+                                                             floor, filed):
         end = floor + timedelta(days=365)
-        html = auth_client.post(EXT, data=_ext(end, 'submit', eula_sha=_sha(),
-                                               agree='1')).get_data(as_text=True)
-        assert 'Extension filed' in html
-        draft, kw = filed[0]
-        assert (draft.action_type, draft.request_id, draft.dates) == \
-            ('Extension', 1449367, (None, end))
+        html = auth_client.post(MORE, data=_submit(**_more(end=end, amount_530902='1500'))
+                                ).get_data(as_text=True)
+        assert 'Request submitted' in html and html.count('XRAS has your') == 2
+        assert 'Track both on My Requests.' in html
+        (ext, kw), (sup, _) = filed
+        assert (ext.action_type, ext.request_id, ext.dates, ext.user_comments) == \
+            ('Extension', 1449367, (None, end), WHY)
+        assert sup.action_type == 'Supplement'
+        assert [(r.resource_id, r.amount) for r in sup.resources] == [(530902, 1500.0)]
+        assert sup.user_comments == \
+            f'Requested together with an Extension to {end.isoformat()}. {WHY}'
+        assert ext.bundle and ext.bundle == sup.bundle
         assert (kw['door'], kw['xa_user'], kw['actor'], kw['eula'][0]) == \
             ('pi', 'benkirk', 'benkirk', _sha())
 
-    def test_back_returns_to_the_form_with_the_values(self, auth_client, on_roster, floor):
-        from datetime import timedelta
+    def test_a_date_alone_files_an_extension(self, auth_client, on_roster, floor, filed):
         end = floor + timedelta(days=365)
-        html = auth_client.post(EXT, data=_ext(end, 'edit')).get_data(as_text=True)
-        assert f'value="{end.isoformat()}"' in html
+        auth_client.post(MORE, data=_submit(**_more(end=end)))
+        (draft, _), = filed
+        assert (draft.action_type, draft.bundle) == ('Extension', None)
 
-    def test_an_impersonator_cannot_file(self, auth_client, on_roster):
-        with auth_client.session_transaction() as sess:
-            sess['impersonator_id'] = 1
-        html = auth_client.get(EXT).get_data(as_text=True)
-        assert 'viewing SAM as another user' in html
+    def test_amounts_alone_file_a_supplement(self, auth_client, on_roster, filed):
+        auth_client.post(MORE, data=_submit(**_more(amount_530902='1500')))
+        (draft, _), = filed
+        assert (draft.action_type, draft.user_comments, draft.bundle) == ('Supplement', WHY,
+                                                                          None)
 
-    def test_a_non_lead_is_refused(self, non_admin_client):
-        assert non_admin_client.get(EXT).status_code == 403
+    def test_a_stopped_supplement_says_the_extension_is_filed(self, auth_client, on_roster,
+                                                              floor, monkeypatch):
+        from sam.manage import xras_submission as flow
+        outcomes = iter([
+            flow.SubmissionOutcome(1, 'submitted'),
+            flow.SubmissionOutcome(2, 'created', step='resource:530902', error='rejected')])
+        monkeypatch.setattr(flow, 'request_action', lambda *a, **k: next(outcomes))
+        body = _submit(**_more(end=floor + timedelta(days=365), amount_530902='1500'))
+        html = auth_client.post(MORE, data=body).get_data(as_text=True)
+        assert 'Request incomplete' in html and 'The Supplement stopped at resource:530902' in html
+        assert 'Your Extension was submitted.' in html and 'resume or discard it' in html
 
+    def test_a_refused_supplement_leaves_one_row_to_track(self, auth_client, on_roster, floor,
+                                                          monkeypatch):
+        from sam.manage import xras_submission as flow
+        outcomes = iter([flow.SubmissionOutcome(1, 'submitted'),
+                         flow.SubmissionOutcome(None, None, step='open', error='not enabled')])
+        monkeypatch.setattr(flow, 'request_action', lambda *a, **k: next(outcomes))
+        body = _submit(**_more(end=floor + timedelta(days=365), amount_530902='1500'))
+        html = auth_client.post(MORE, data=body).get_data(as_text=True)
+        assert 'The Supplement was not submitted: not enabled.' in html
+        assert 'Track it on My Requests.' in html
 
-class TestTheSupplementForm:
-
-    def test_the_form_lists_the_lines_resources(self, auth_client, on_roster):
-        html = auth_client.get(SUP).get_data(as_text=True)
-        assert 'name="amount_530902"' in html and 'Derecho' in html
-
-    def test_nothing_asked_is_refused(self, auth_client, on_roster, filed):
-        html = auth_client.post(SUP, data={'amount_530902': '', 'user_comments':
-                                           'GPU work for the paper.'}).get_data(as_text=True)
-        assert 'at least one resource' in html
+    def test_a_seven_digit_amount_survives_review_back_and_submit(self, auth_client,
+                                                                   on_roster, filed):
+        """The review's hidden fields and the figure it shows keep every digit: a '%g'
+        there filed 1,234,567 as 1,234,570."""
+        body = _more(amount_530902='1,234,567')
+        html = auth_client.post(MORE, data=body).get_data(as_text=True)
+        assert 'name="amount_530902" value="1234567"' in html and '1,234,567' in html
+        back = auth_client.post(MORE, data=dict(body, amount_530902='1234567', stage='edit')
+                                ).get_data(as_text=True)
+        assert 'name="amount_530902"' in back and 'value="1234567"' in back
+        auth_client.post(MORE, data=_submit(**dict(body, amount_530902='1234567')))
+        (draft, _), = filed
+        assert [(r.resource_id, r.amount) for r in draft.resources] == [(530902, 1234567.0)]
 
     def test_a_limit_refusal_lands_on_its_field(self, auth_client, on_roster, monkeypatch):
         import sam.xras.submission_preflight as pre
@@ -433,30 +521,109 @@ class TestTheSupplementForm:
         on_roster.catalog = [{'resourceId': 530902, 'resourceRepositoryKey': 1}]
         monkeypatch.setattr(pre, 'sam_resources_by_xras_id', lambda s, ids, c: {
             530902: type('R', (), {'resource_name': 'Derecho'})()})
-        html = auth_client.post(SUP, data={'amount_530902': '9000', 'user_comments':
-                                           'GPU work for the paper.'}).get_data(as_text=True)
+        html = auth_client.post(MORE, data=_more(amount_530902='9000')).get_data(as_text=True)
         assert 'Over the 5,000 limit.' in html and 'is-invalid' in html
 
-    def test_review_carries_the_amounts(self, auth_client, on_roster, filed):
-        html = auth_client.post(SUP, data={'amount_530902': '1,500', 'user_comments':
-                                           'GPU work for the paper.'}).get_data(as_text=True)
-        assert 'Review the Supplement' in html
-        assert 'name="amount_530902" value="1500"' in html
+    def test_a_resource_off_the_line_is_refused(self, auth_client, on_roster, filed):
+        html = auth_client.post(MORE, data=_more(amount_999='10')).get_data(as_text=True)
+        assert 'XRAS does not offer one of those resources' in html and not filed
 
-    def test_a_seven_digit_amount_survives_review_back_and_submit(self, auth_client,
-                                                                   on_roster, filed):
-        """The review's hidden fields and the figure it shows keep every digit: a '%g'
-        there filed 1,234,567 as 1,234,570."""
-        body = {'amount_530902': '1,234,567', 'user_comments': 'GPU work for the paper.'}
-        html = auth_client.post(SUP, data=body).get_data(as_text=True)
-        assert 'name="amount_530902" value="1234567"' in html and '1,234,567' in html
-        back = auth_client.post(SUP, data=dict(body, amount_530902='1234567', stage='edit')
-                                ).get_data(as_text=True)
-        assert 'name="amount_530902"' in back and 'value="1234567"' in back
-        auth_client.post(SUP, data=dict(body, amount_530902='1234567', stage='submit',
-                                        eula_sha=_sha(), agree='1'))
-        (draft, _), = filed
-        assert [(r.resource_id, r.amount) for r in draft.resources] == [(530902, 1234567.0)]
+    def test_back_returns_to_the_form_with_the_values(self, auth_client, on_roster, floor):
+        end = floor + timedelta(days=365)
+        html = auth_client.post(MORE, data=_more('edit', end=end)).get_data(as_text=True)
+        assert f'value="{end.isoformat()}"' in html
+
+    def test_an_impersonator_cannot_file(self, auth_client, on_roster):
+        with auth_client.session_transaction() as sess:
+            sess['impersonator_id'] = 1
+        assert 'viewing SAM as another user' in auth_client.get(MORE).get_data(as_text=True)
+
+    def test_a_non_lead_is_refused(self, non_admin_client):
+        assert non_admin_client.get(MORE).status_code == 403
+        assert non_admin_client.get(AMOUNTS).status_code == 403
+
+
+class TestTheSuggestedAmounts:
+
+    def test_an_untouched_suggestion_follows_the_new_date(self, auth_client, on_roster,
+                                                          floor, advised):
+        end = floor + timedelta(days=90)
+        html = auth_client.get(AMOUNTS, query_string={
+            'end_date': end.isoformat(), 'amount_530902': '1000', 'suggested_530902': '1000',
+            'amounts_present': '1'}).get_data(as_text=True)
+        assert html.lstrip().startswith('<div id="xrasMoreAmounts">')
+        assert 'value="5000"' in html and advised[-1] == end
+
+    def test_an_amount_the_lead_changed_stays(self, auth_client, on_roster, advised):
+        html = auth_client.get(AMOUNTS, query_string={
+            'amount_530902': '1234', 'suggested_530902': '1000',
+            'amounts_present': '1'}).get_data(as_text=True)
+        assert 'value="1234"' in html
+
+    def test_a_row_never_picked_takes_the_new_suggestion(self, auth_client, on_roster, floor,
+                                                         advised):
+        """An ended window opens with no suggestion; choosing a date then selects the row."""
+        html = auth_client.get(AMOUNTS, query_string={
+            'end_date': (floor + timedelta(days=365)).isoformat(), 'suggested_530902': '',
+            'amounts_present': '1'}).get_data(as_text=True)
+        row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
+        assert 'value="5000"' in row and 'disabled' not in row
+
+    @pytest.fixture
+    def covered(self, monkeypatch):
+        """The balance covers the window: SAM suggests nothing."""
+        import sam.queries.supplement_advice as advice
+        from sam.queries.supplement_advice import Advice
+        monkeypatch.setattr(advice, 'suggest_supplements', lambda *a, **k: {530902: Advice(
+            remaining=9_000.0, rate_per_day=50.0, basis='recent', days=30, last_amount=None,
+            suggest=None)})
+
+    def test_an_untouched_suggestion_the_new_date_does_not_need_is_dropped(
+            self, auth_client, on_roster, covered):
+        html = auth_client.get(AMOUNTS, query_string={
+            'amount_530902': '5000', 'suggested_530902': '5000',
+            'amounts_present': '1'}).get_data(as_text=True)
+        row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
+        marker = html.split('name="suggested_530902"')[1].split('>', 1)[0]
+        assert 'disabled' in row and 'value=""' in marker and 'disabled' not in marker
+        assert 'enough through the end date' in html
+
+    def test_an_amount_picked_at_the_default_is_the_leads(self, auth_client, on_roster,
+                                                          covered):
+        """The marker carries only a real suggestion, so a row picked by hand is kept."""
+        html = auth_client.get(AMOUNTS, query_string={
+            'amount_530902': '5000', 'suggested_530902': '',
+            'amounts_present': '1'}).get_data(as_text=True)
+        row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
+        assert 'value="5000"' in row and 'disabled' not in row
+
+    def test_a_removed_resource_stays_removed(self, auth_client, on_roster, advised):
+        """A removed row posts no marker: it stays under Available, its marker disabled."""
+        html = auth_client.get(AMOUNTS, query_string={'amounts_present': '1'}).get_data(
+            as_text=True)
+        row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
+        marker = html.split('name="suggested_530902"')[1].split('>', 1)[0]
+        assert 'disabled' in row and 'disabled' in marker
+
+    def test_an_available_row_keeps_its_marker_enabled(self, auth_client, on_roster,
+                                                       monkeypatch):
+        import sam.queries.supplement_advice as advice
+        from sam.queries.supplement_advice import Advice
+        monkeypatch.setattr(advice, 'suggest_supplements', lambda *a, **k: {530902: Advice(
+            remaining=0.0, rate_per_day=None, basis=None, days=0, last_amount=None,
+            suggest=None)})
+        html = auth_client.get(MORE).get_data(as_text=True)
+        row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
+        marker = html.split('name="suggested_530902"')[1].split('>', 1)[0]
+        assert 'disabled' in row and 'disabled' not in marker
+
+    def test_a_date_on_the_floor_asks_for_the_current_window(self, auth_client, on_roster,
+                                                             floor, advised):
+        auth_client.get(AMOUNTS, query_string={'end_date': floor.isoformat()})
+        assert advised[-1] is None
+
+    def test_the_lever_off_answers_no_content(self, auth_client):
+        assert auth_client.get(AMOUNTS).status_code == 204
 
 
 class TestResumeAndDiscard:

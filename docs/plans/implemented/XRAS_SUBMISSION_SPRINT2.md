@@ -5,7 +5,7 @@ UCUB0209); the guide table's DDL is applied in production. As built, three lines
 1a's cards are inline in `request_overview.html` (no `allocation_type_cards` macro), 1c sends
 no receipt mail (the status page is reached from the outcome), and 1d's status page offers the
 help desk on a stopped row, not Resume and Discard.** Builds phase 3 of
-[`XRAS_SUBMISSION.md`](../XRAS_SUBMISSION.md): someone with no SAM account files a New from SAMuel,
+[`XRAS_SUBMISSION.md`](XRAS_SUBMISSION.md): someone with no SAM account files a New from SAMuel,
 and the New form gains an optional roster. Sprint 1's build plan,
 [`XRAS_SUBMISSION_SPRINT1.md`](XRAS_SUBMISSION_SPRINT1.md), is the shape this one follows. Every UI
 step loads the `wire-dashboard-feature` skill first.

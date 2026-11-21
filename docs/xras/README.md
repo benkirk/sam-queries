@@ -19,7 +19,7 @@ and each attempt leaves an audit row.
 **samuel-dev** (`https://samuel-dev.k8s.ucar.edu`) runs the same loop against
 XRAS's demo instance: `xras-admin-demo.xsede.org` posts to it, and it calls
 `xras-submit-api-demo.xsede.org` with the production key at its own OpenBao
-path (`docs/plans/XRAS_SUBMISSION.md` § 5).
+path (`docs/plans/implemented/XRAS_SUBMISSION.md` § 5).
 
 Filing rule: this tree keeps the living references. A shipped plan or sprint
 record lives in `docs/plans/implemented/`, whatever its topic; the last table
@@ -43,7 +43,7 @@ links the XRAS ones.
 
 | Doc | What it is |
 |---|---|
-| [`XRAS_SUBMISSION.md`](../plans/XRAS_SUBMISSION.md) | **Shipped, sprints 1 and 2** ([`XRAS_SUBMISSION_SPRINT1.md`](../plans/implemented/XRAS_SUBMISSION_SPRINT1.md), [`XRAS_SUBMISSION_SPRINT2.md`](../plans/implemented/XRAS_SUBMISSION_SPRINT2.md)); the living design. Authoring requests from SAMuel: Supplement and Extension from the lead's dashboard, a New from a logged-in user, and a New from someone with no SAM account, with its roster. One flow layer serves the PI form and the admin editor. Next: the signed-in New's eligibility filter |
+| [`XRAS_SUBMISSION.md`](../plans/implemented/XRAS_SUBMISSION.md) | **Implemented, live in production 2026-11-19** (sprints 1 to 3, the go-live, and the "Extend or add" dialog; its status line lists each record). Authoring requests from SAMuel: more time or resources (an Extension and a Supplement from one dialog) from the lead's dashboard, a Renewal, a New from a signed-in user, and a New from someone with no SAM account at `/request`, with its roster. One flow layer serves the PI form and the admin editor. Open: § 5, and the signed-in New's eligibility filter |
 | [`XRAS_POST_AUTOMATION.md`](../plans/XRAS_POST_AUTOMATION.md) | The roadmap for approve-and-post doing everything: phases A to D live, E open |
 | [`XRAS_OUTGOING_QUERIES.md`](outgoing/XRAS_OUTGOING_QUERIES.md) | The account-creation worklist: the readable API surface, every closed path, and the two-feed design. Implemented 2026-08-20; § 0 records what the build learned |
 | [`REQUEST_EDITOR.md`](outgoing/REQUEST_EDITOR.md) | The request editor on the XRAS Remediations card: the Requested-stage editors are live; the Approved-stage editors are built and dark until an admin-provisioned key exists |

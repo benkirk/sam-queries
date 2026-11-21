@@ -4,7 +4,7 @@ Two gates. The **policy**, keyed by allocation-type name, says where a project's
 go (``xras``, ``email:<address>``, ``staff``). For ``xras`` the **family read** must hold a
 live line and the user must hold an active role on it: every request-scoped write
 authorizes on ``XA-USER``. Roster drift is refused with its reason, never worked around.
-Flask-free. Design: ``docs/plans/XRAS_SUBMISSION.md`` § 4.4.
+Flask-free. Design: ``docs/plans/implemented/XRAS_SUBMISSION.md`` § 4.4.
 """
 
 from __future__ import annotations

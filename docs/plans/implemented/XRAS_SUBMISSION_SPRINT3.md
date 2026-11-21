@@ -1,9 +1,9 @@
 # XRAS submission sprint 3: the request types under Allocations > XRAS
 
-**Status:** built 2026-10-31 on `xras-submission-sprint3` (from `origin/staging` at the #883
-merge), PR #886 to `staging`, issue #884: refactor commits first, one commit per step with its
-tests. The dev proof in § C waits on the merge; this file moves to `implemented/` in the window
-sweep after it.
+**Status: implemented.** PR #886 merged to `staging` as `d9dcaaed` on 2026-11-01 (issue #884
+closed 2026-11-03), dev-proven 2026-11-01, live with the go-live (`XRAS_SUBMISSION_GO_LIVE.md`).
+Built 2026-10-31 on `xras-submission-sprint3`: refactor commits first, one commit per step with
+its tests.
 Builds on sprint 2 (`docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md`, #880) and sweep 33 (#883).
 
 ## Context

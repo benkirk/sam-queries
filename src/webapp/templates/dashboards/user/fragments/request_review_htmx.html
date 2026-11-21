@@ -5,7 +5,7 @@
 {% from 'dashboards/fragments/xras_bits.html' import agreement %}
 {% from 'dashboards/user/partials/request_bits.html' import request_title, carry, document_field, grant_facts, roster_facts, verdict_note %}
 {% set _new = action_type == 'New' %}
-{{ request_title('Review the ' ~ action_type ~ (' request' if _new else ''), meta=project.projcode if project else None) }}
+{{ request_title('Review your request' if action_type == 'More' else 'Review the ' ~ action_type ~ (' request' if _new else ''), meta=project.projcode if project else None) }}
 <form hx-post="{{ post_url }}" hx-target="#xrasRequestModalBody" hx-swap="innerHTML"
       {%- if documents %} hx-encoding="multipart/form-data"{% endif %}
       hx-disabled-elt="find button[type='submit']" hx-disinherit="hx-disabled-elt" novalidate>
@@ -30,10 +30,11 @@
             <dt class="col-sm-4">XRAS request</dt>
             <dd class="col-sm-8 font-monospace">{{ decision.request_number }}</dd>
             {% endif %}
-            {% if action_type == 'Extension' %}
+            {% if action_type == 'More' and data.end_date %}
             <dt class="col-sm-4">New end date</dt>
             <dd class="col-sm-8">{{ data.end_date | fmt_date }}{% if floor %} <span class="text-muted">(from {{ floor | fmt_date }})</span>{% endif %}</dd>
-            {% else %}
+            {% endif %}
+            {% if action_type != 'More' or data.amounts %}
             {% if action_type in ('Renewal', 'New') %}
             <dt class="col-sm-4">Window</dt>
             <dd class="col-sm-8">{{ data.begin_date | fmt_date }} to {{ data.end_date | fmt_date }}</dd>
@@ -48,10 +49,14 @@
             <dt class="col-sm-4">Abstract</dt>
             <dd class="col-sm-8 text-break">{{ data.abstract | truncate(300) }}</dd>
             {% else %}
-            <dt class="col-sm-4">Why</dt>
+            <dt class="col-sm-4">Justification</dt>
             <dd class="col-sm-8 text-break">{{ data.user_comments }}</dd>
             {% endif %}
         </dl>
+        {% if action_type == 'More' and data.end_date and data.amounts %}
+        <p class="small text-muted mb-2">XRAS receives this as two requests, an Extension and a
+            Supplement, and reviews each separately.</p>
+        {% endif %}
         {{ verdict_note(data.verdict) }}
         {% for d in documents %}
         {{ document_field('xrasRequestDoc' ~ loop.index, 'document_' ~ d.code, d.label,
@@ -60,9 +65,12 @@
         {% endfor %}
         <p class="small text-muted mb-2">Submitting sends this to XRAS for review. You can follow it
             on {{ (request_urls or {}).get('where') or 'My Requests' }}.</p>
-        {% if action_type == 'Extension' %}
-        <input type="hidden" name="end_date" value="{{ data.end_date.isoformat() }}">
-        {% else %}
+        {% if action_type == 'More' %}
+        {#- Back keeps the lead's choice of resources, none included, over the suggestions. -#}
+        <input type="hidden" name="amounts_present" value="1">
+        {% if data.end_date %}<input type="hidden" name="end_date" value="{{ data.end_date.isoformat() }}">{% endif %}
+        {% endif %}
+        {% if data.amounts %}
         {% for rid, amount in data.amounts.items() %}<input type="hidden" name="amount_{{ rid }}" value="{{ amount | fmt_input }}">{% endfor %}
         {% endif %}
         {% if _new %}

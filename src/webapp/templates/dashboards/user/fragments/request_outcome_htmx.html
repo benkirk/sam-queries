@@ -1,12 +1,40 @@
 {#- After Submit: filed, or stopped at a step (the row keeps the reason; Resume or Discard
-    from My Requests). Context: the form's, plus outcome (SubmissionOutcome). -#}
+    from My Requests). Context: the form's, plus outcome (SubmissionOutcome); a "more time or
+    resources" request adds data.outcomes and data.drafts, one per action, in filing order. -#}
 {% from 'dashboards/fragments/xras_bits.html' import outcome as outcome_block %}
 {% from 'dashboards/user/partials/request_bits.html' import request_title %}
+{%- set _where = (request_urls or {}).get('where') or 'My Requests' %}
+{% if action_type == 'More' %}
+{%- set _outcomes = data.outcomes %}
+{%- set _ok = _outcomes | selectattr('succeeded') | list %}
+{{ request_title('Request submitted' if _ok | length == _outcomes | length else 'Request incomplete', meta=project.projcode) }}
+<div class="modal-body">
+    {% for o in _outcomes %}
+    {%- set _type = data.drafts[loop.index0].action_type %}
+    {% if o.succeeded %}
+    {% call outcome_block('success', 'XRAS has your ' ~ _type ~ ' on ' ~ decision.request_number ~ ' for review.') %}{% endcall %}
+    {% elif o.submission_id is none %}
+    {% call outcome_block('warning', 'The ' ~ _type ~ ' was not submitted: ' ~ o.error ~ '.') %}
+    <p class="mb-0 small text-muted">{% if _ok %}Your {{ data.drafts[0].action_type }} was submitted. {% endif %}Request the {{ _type }} again from {{ _where }}.</p>
+    {% endcall %}
+    {% else %}
+    {% call outcome_block('warning', 'The ' ~ _type ~ ' stopped at ' ~ o.step ~ (': ' ~ o.error if o.error else '') ~ '.') %}
+    <p class="mb-0 small text-muted">{% if _ok %}Your {{ data.drafts[0].action_type }} was submitted. {% endif %}The {{ _type }} is saved where it stopped; resume or discard it from {{ _where }}.</p>
+    {% endcall %}
+    {% endif %}
+    {% endfor %}
+    {% if _outcomes | length < data.drafts | length %}
+    <p class="small text-muted mb-0">The {{ data.drafts[_outcomes | length].action_type }} was not submitted. Request it again once the request above is resolved.</p>
+    {% endif %}
+    {%- set _rows = _outcomes | rejectattr('submission_id', 'none') | list %}
+    <p class="mb-0 small text-muted">Track {{ 'both' if _rows | length > 1 else 'it' }} on {{ _where }}.</p>
+</div>
+{% else %}
 {{ request_title(action_type ~ (' request' if action_type == 'New' else '') ~ (' filed' if outcome.succeeded else ' stopped'), meta=project.projcode if project else None) }}
 <div class="modal-body">
     {% if outcome.succeeded %}
     {% call outcome_block('success', 'XRAS has your ' ~ ('new request' if action_type == 'New' else action_type ~ ' on ' ~ decision.request_number) ~ ' for review.') %}
-    <p class="mb-0 small text-muted">{% if action_type == 'New' %}Once approved, SAM creates the project and names it; {% endif %}{{ (request_urls or {}).get('where') or 'My Requests' }} shows its progress.</p>
+    <p class="mb-0 small text-muted">{% if action_type == 'New' %}Once approved, SAM creates the project and names it; {% endif %}{{ _where }} shows its progress.</p>
     {#- A visitor's filing (/request): its number, and the receipt mail when one went out. -#}
     {% if filed_number or receipt_to %}
     <p class="mb-0 mt-2 small">
@@ -17,10 +45,11 @@
     {% endcall %}
     {% else %}
     {% call outcome_block('warning', 'The request stopped at ' ~ outcome.step ~ (': ' ~ outcome.error if outcome.error else '') ~ '.') %}
-    <p class="mb-0 small text-muted">What SAM already sent to XRAS is kept. Resume or discard it from {{ (request_urls or {}).get('where') or 'My Requests' }}.</p>
+    <p class="mb-0 small text-muted">What SAM already sent to XRAS is kept. Resume or discard it from {{ _where }}.</p>
     {% endcall %}
     {% endif %}
 </div>
+{% endif %}
 <div class="modal-footer">
     <a class="btn btn-primary" href="{{ (request_urls or {}).get('done') or url_for('user_dashboard.my_requests_page') }}">Done</a>
 </div>

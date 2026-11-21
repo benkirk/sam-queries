@@ -15,7 +15,7 @@ from sam.text import strip_or_none
 from . import HtmxFormSchema
 from .xras_remediation import XRAS_LONGTEXT_MAX, XRAS_TITLE_MAX, clean_text
 
-__all__ = ['XrasAgreementMixin', 'XrasExtensionRequestForm', 'XrasSupplementRequestForm',
+__all__ = ['XrasAgreementMixin', 'XrasMoreRequestForm',
            'XrasRenewalRequestForm', 'XrasNewRequestForm', 'XrasGrantMixin',
            'XrasAddActionAgreementForm', 'SUBMISSION_STAGES', 'NEW_REQUEST_STAGES', 'GRANT_INPUTS']
 
@@ -52,23 +52,7 @@ class XrasAgreementMixin(XrasAgreementFields):
     stage = f.Str(load_default='review', validate=v.OneOf(SUBMISSION_STAGES))
 
 
-class XrasExtensionRequestForm(XrasAgreementMixin):
-    """An Extension: the new end date and why (XRAS's rule book requires both)."""
-
-    end_date = f.Date(required=True, error_messages={'required': 'Choose the new end date.'})
-    user_comments = f.Str(required=True, validate=v.Length(max=XRAS_LONGTEXT_MAX),
-                          error_messages={'required': 'Say why the project needs more time.'})
-
-    @post_load
-    def _comments(self, data, **kwargs):
-        data['user_comments'] = clean_text(data.get('user_comments'))
-        if len(data['user_comments']) < _COMMENTS_MIN:
-            raise ValidationError({'user_comments': [
-                'Say why the project needs more time, in a sentence or two.']})
-        return data
-
-
-def _parse_amounts(raw: dict) -> dict:
+def _parse_amounts(raw: dict, required: bool = True) -> dict:
     """``{resource id: amount}`` from the typed amounts; blank and zero ask for none."""
     amounts, errors = {}, {}
     for rid, text in raw.items():
@@ -86,29 +70,31 @@ def _parse_amounts(raw: dict) -> dict:
             amounts[rid] = value
     if errors:
         raise ValidationError(errors)
-    if not amounts:
+    if required and not amounts:
         raise ValidationError('Add at least one resource.')
     return amounts
 
 
-class XrasSupplementRequestForm(XrasAgreementMixin):
-    """A Supplement: ``amounts`` maps an XRAS resource id to its typed amount (blank asks none).
+class XrasMoreRequestForm(XrasAgreementMixin):
+    """More time, more resources or both: SAM files an Extension and/or a Supplement.
 
-    The handler folds the ``amount_<id>`` inputs into ``amounts`` (``form_input``): blank list
-    entries would be dropped by the base, and the ids would no longer line up.
+    ``amounts`` is folded by the handler as for a Supplement; one of the two halves is required.
     """
 
+    end_date = f.Date(load_default=None)
     amounts = f.Dict(keys=f.Int(), values=f.Str(), load_default=dict)
     user_comments = f.Str(required=True, validate=v.Length(max=XRAS_LONGTEXT_MAX),
-                          error_messages={'required': 'Say what the extra resources are for.'})
+                          error_messages={'required': 'Please explain why this is required.'})
 
     @post_load
-    def _amounts(self, data, **kwargs):
+    def _halves(self, data, **kwargs):
         data['user_comments'] = clean_text(data.get('user_comments'))
         if len(data['user_comments']) < _COMMENTS_MIN:
             raise ValidationError({'user_comments': [
-                'Say what the extra resources are for, in a sentence or two.']})
-        data['amounts'] = _parse_amounts(data['amounts'])
+                'Please explain why this is required, in a sentence or two.']})
+        data['amounts'] = _parse_amounts(data['amounts'], required=False)
+        if data['end_date'] is None and not data['amounts']:
+            raise ValidationError('Please choose a new end date, add a resource, or both.')
         return data
 
 
