@@ -39,7 +39,8 @@ After Argo syncs `sam-query-dev`:
 
 ## Prod and revert
 
-Prod: the same line in `helm/values.yaml`, merged to staging and promoted, then steps
-1-5 for `samuel` with `samuel.k8s.ucar.edu` (`sam.hpc.ucar.edu` is a CNAME to it).
-Revert: drop both lines once `nc -z 128.117.41.125 443` succeeds from outside; DNS
-follows back, with up to one TTL on the old VIP.
+Prod: the line moves to `helm/values.yaml` (dev inherits it, so `values-dev.yaml` no
+longer carries one), merged to staging and promoted, then steps 1-5 for `samuel` with
+`samuel.k8s.ucar.edu` (`sam.hpc.ucar.edu` is a CNAME to it).
+Revert: set `helm/values.yaml` back to `traefik-external` once `nc -z 128.117.41.125 443`
+succeeds from outside; DNS follows back, with up to one TTL on the old VIP.

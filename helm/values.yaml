@@ -89,7 +89,7 @@ webapp:
     # IngressClass name as CIRRUS gives it: traefik-external, or nginx-external
     # (retired controller) only as the outage stopgap in
     # docs/plans/INGRESS_NGINX_STOPGAP.md. No edge rate limit; Flask-Limiter is the limiter.
-    className: traefik-external
+    className: nginx-external             # stopgap; revert to traefik-external (docs/plans/INGRESS_NGINX_STOPGAP.md)
     # Traefik does not redirect :80 and the tenant may not create a Middleware,
     # so the router is bound to the TLS entrypoint and plain http answers 404
     # instead of serving the app. Empty binds every entrypoint (plaintext on :80).
