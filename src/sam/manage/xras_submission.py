@@ -98,6 +98,8 @@ class ActionRequest:
     #: for an active SAM user XRAS knows (an XRAS User role); the rest are invited at activation.
     roster: Tuple[Dict[str, Any], ...] = ()
     sam: SamRefs = SamRefs()
+    #: Shared by the drafts one form filed together (an Extension and its Supplement).
+    bundle: Optional[str] = None
 
     @property
     def roster_usernames(self) -> Tuple[str, ...]:
@@ -120,6 +122,7 @@ class ActionRequest:
             'eua_attribute_id': self.eua_attribute_id,
             'admin_username': self.admin_username,
             'roster': [dict(e) for e in self.roster], 'sam': vars(self.sam),
+            'bundle': self.bundle,
         }
 
     @classmethod
@@ -146,6 +149,7 @@ class ActionRequest:
             admin_username=payload.get('admin_username'),
             roster=tuple(payload.get('roster') or ()),
             sam=SamRefs(**(payload.get('sam') or {})),
+            bundle=payload.get('bundle'),
         )
 
 
@@ -526,6 +530,27 @@ def request_action(session_factory, draft: Optional[ActionRequest], *, actor: st
     logger.info('xras submission %s: opened %s for %s by %s', view['id'],
                 draft.action_type, xa_user, actor)
     return _drive(session_factory, draft, view, submit=submit, admin=admin)
+
+
+def request_actions(session_factory, drafts: List[ActionRequest],
+                    **kwargs) -> List[SubmissionOutcome]:
+    """File *drafts* in order through ``request_action``, stopping at the first that does not succeed.
+
+    The first draft's refusal raises, as a single filing does; a later one's becomes a stopped
+    outcome, since the drafts before it are already with XRAS.
+    """
+    outcomes: List[SubmissionOutcome] = []
+    for draft in drafts:
+        try:
+            outcome = request_action(session_factory, draft, **kwargs)
+        except SubmissionRefused as exc:
+            if not outcomes:
+                raise
+            outcome = SubmissionOutcome(None, None, step='open', error=str(exc))
+        outcomes.append(outcome)
+        if not outcome.succeeded:
+            break
+    return outcomes
 
 
 def resume_submission(session_factory, submission_id: int, *, actor: str,

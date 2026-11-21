@@ -402,6 +402,60 @@ class TestRefusals:
                                 xa_user='pi1', eula=EULA, client=client)
 
 
+class TestAPair:
+    """``request_actions``: an Extension and its Supplement from one form."""
+
+    def _pair(self):
+        rid = next(_IDS)
+        ext = _extension(request_id=rid, bundle='pair-1')
+        sup = ActionRequest(action_type='Supplement', request_number='UHSS0001', request_id=rid,
+                            user_comments='more hours', resources=(ResourceAmount(7, 1000.0),),
+                            sam=SamRefs(project_id=11), bundle='pair-1')
+        return ext, sup
+
+    def _client(self):
+        client = _client()
+        ids = [next(_IDS), next(_IDS)]
+        client.add_action.side_effect = [_ok('add_action', action_id=i) for i in ids]
+        client.update_resource_amount.return_value = _ok('update_resource_amount')
+        client.ids = ids
+        return client
+
+    def test_both_file_in_order_on_one_line(self, factory):
+        client = self._client()
+        outs = flow.request_actions(factory, list(self._pair()), actor='pi1', xa_user='pi1',
+                                    eula=EULA, client=client)
+        assert [o.state for o in outs] == ['submitted', 'submitted']
+        rows = [_row(factory, o.submission_id) for o in outs]
+        assert [r.action_type for r in rows] == ['Extension', 'Supplement']
+        assert [r.action_id for r in rows] == client.ids
+        assert {r.payload_dict['bundle'] for r in rows} == {'pair-1'}
+        assert [c.args[1] for c in client.add_action.call_args_list] == ['Extension',
+                                                                        'Supplement']
+
+    def test_a_stopped_extension_files_nothing_more(self, factory):
+        client = self._client()
+        client.submit_action.side_effect = XrasWriteRejected('no', status=400)
+        outs = flow.request_actions(factory, list(self._pair()), actor='pi1', xa_user='pi1',
+                                    eula=EULA, client=client)
+        assert len(outs) == 1 and not outs[0].succeeded
+        assert client.add_action.call_count == 1
+
+    def test_a_refused_supplement_after_a_filed_extension_is_an_outcome(self, factory,
+                                                                         monkeypatch):
+        monkeypatch.setattr(flow, 'submit_armed', lambda t=None, **k: t != 'Supplement')
+        outs = flow.request_actions(factory, list(self._pair()), actor='pi1', xa_user='pi1',
+                                    eula=EULA, client=self._client())
+        assert outs[0].state == 'submitted'
+        assert outs[1].submission_id is None and 'not enabled' in outs[1].error
+
+    def test_a_refused_first_draft_still_raises(self, factory, monkeypatch):
+        monkeypatch.setattr(flow, 'submit_armed', lambda *a, **k: False)
+        with pytest.raises(SubmissionRefused):
+            flow.request_actions(factory, list(self._pair()), actor='pi1', xa_user='pi1',
+                                 eula=EULA, client=self._client())
+
+
 class TestThePayload:
 
     def test_round_trip(self):
@@ -411,7 +465,7 @@ class TestThePayload:
                               resources=(ResourceAmount(1, 2.0, 'why'),),
                               roster=({'first_name': 'A', 'last_name': 'B', 'email': 'a@x.edu',
                                        'username': None},),
-                              sam=SamRefs(project_id=4, contract_id=5))
+                              sam=SamRefs(project_id=4, contract_id=5), bundle='b1')
         assert ActionRequest.from_payload(draft.to_payload()) == draft
         assert draft.invitees == draft.roster and draft.roster_usernames == ()
 
