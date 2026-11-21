@@ -307,7 +307,7 @@ class XrasRequestNote(Base, SessionMixin, ActiveFlagMixin):
     ``NCAR####`` / projcode token, never the volatile ``request_id``; :meth:`rekey`
     follows the rename. Each run overwrites the row; the run history stays in the
     poster's own store. No foreign keys: every id is XRAS-owned.
-    Design: ``docs/plans/ARC_RECOMMENDER_NOTES.md``.
+    Design: ``docs/plans/implemented/ARC_RECOMMENDER_NOTES.md``.
     """
     __tablename__ = 'xras_request_note'
 

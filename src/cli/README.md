@@ -172,7 +172,7 @@ in `core/base.py`; daily-rollup queries work without it.
 - **Audits** exit non-zero when findings exist, so CI can gate on them:
   `sam-admin contracts --validate` and `project --audit-trees` use 2;
   the `sam-admin xras --validate-mapping/-opportunities/-vocabulary` checks
-  use 1.
+  and `--award-audit` use 1.
 
 ## Adding New Commands
 

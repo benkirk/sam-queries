@@ -754,6 +754,15 @@ Extending the existing mode-dispatch in `src/cli/xras/commands.py`
 - `--person USERNAME` — direct `/v1/people` probe: found → 0, 404 → 1,
   unavailable/unconfigured → 2 (`kind: xras_person`).
 - `--validate-mapping` becomes two-sided automatically (§ 8.1).
+- `--award-audit [--request PROJCODE]` — what XRAS awarded vs what SAM allocated,
+  per project and resource (`kind: xras_award_audit`). Reads `reports/requests`
+  (`active=true`; one family with `--request`, expired awards included) and folds
+  each family's approved actions: Supplement and Adjustment add, Extension moves the
+  end. Kinds: `project_missing`, `resource_unmapped`, `allocation_missing`,
+  `amount_differs`, `begin_differs`, `end_differs`, plus context (`renamed_pending`,
+  `project_inactive`, `approximate`, `sam_only`). Exit 1 on any mismatch, 2 when
+  XRAS is unconfigured or down. The logic is `src/sam/queries/xras_award_audit.py`,
+  callable with reports payloads already in hand.
 
 ### 7.6 Schema — none now, one table next
 

@@ -19,7 +19,9 @@ and each attempt leaves an audit row.
 **samuel-dev** (`https://samuel-dev.k8s.ucar.edu`) runs the same loop against
 XRAS's demo instance: `xras-admin-demo.xsede.org` posts to it, and it calls
 `xras-submit-api-demo.xsede.org` with the production key at its own OpenBao
-path (`docs/plans/implemented/XRAS_SUBMISSION.md` § 5).
+path (`docs/plans/implemented/XRAS_SUBMISSION.md` § 5). ACCESS runs that host, so when its
+certificate lapses every dev call fails the TLS check and
+`/request` says the allocation system is not answering; the fix is theirs.
 
 Filing rule: this tree keeps the living references. A shipped plan or sprint
 record lives in `docs/plans/implemented/`, whatever its topic; the last table
@@ -84,6 +86,7 @@ measurements behind the decisions.
 | [`XRAS_PHASE_C_AND_TICKETS.md`](../plans/implemented/XRAS_PHASE_C_AND_TICKETS.md) | Phase C: SAMuel sends the award mail, with the cutover checklist [`XRAS_NOTICES_CUTOVER.md`](../plans/implemented/XRAS_NOTICES_CUTOVER.md) |
 | [`XRAS_REQUEST_TICKETS.md`](../plans/implemented/XRAS_REQUEST_TICKETS.md) | Phase D: one NUSD ticket per refused post |
 | [`XRAS_EXTENSION_INACTIVE_PROJECT.md`](../plans/implemented/XRAS_EXTENSION_INACTIVE_PROJECT.md) | The UCLA0042 incident: an Extension on a project the expiry task switched off |
+| [`ARC_RECOMMENDER_NOTES.md`](../plans/implemented/ARC_RECOMMENDER_NOTES.md) | The ARC recommender's per-request notes: `POST /api/v1/xras/notes`, the dialog section and the card marker |
 
 The rest of the XRAS records (the attention queue, pending users, pending work, identity
 merge, push-readiness, contract blockers, the data-model uplift, auto notices, the triage

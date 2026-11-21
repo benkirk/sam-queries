@@ -35,7 +35,7 @@ webapp:
     DISABLE_AUTH: "0"
     ACCOUNT_REGISTRATION_ENABLED: "1"     # the anonymous account-creation form, live here and dark in prod
     ACCOUNT_REGISTRATION_LOGIN_REQUIRED: "0"  # /register open to visitors (prod: unmounted)
-    ALLOCATION_REQUEST_LOGIN_REQUIRED: "0"    # /request open to visitors, its own flag (prod: unset, so login-gated)
+    ALLOCATION_REQUEST_LOGIN_REQUIRED: "0"    # /request open to visitors, its own flag (prod: "0" too)
     ACCOUNT_INVITATIONS_ENABLED: "1"      # invitations, invite links and the event pages, live here as in prod
     COMPONENT_GALLERY_ENABLED: "1"        # the /dev/gallery component gallery, live here and dark in prod
     SAM_DB_DRIVER: "postgresql"
@@ -60,9 +60,9 @@ webapp:
     XRAS_OUTGOING_ENABLED: "1"
     XRAS_WRITE_ENABLED: "1"
     XRAS_RENAME_ENABLED: "1"              # the after-reply rename (prod: "1" too; both gated)
-    XRAS_SUBMIT_ENABLED: "1"              # My Requests files to the demo (prod: "0"); webapp only
-    XRAS_SUBMIT_ACTION_TYPES: "all"       # prod narrows to Extension,Supplement; unset is none
-    XRAS_SUBMIT_ANONYMOUS_ENABLED: "1"    # a visitor's New at /request/ (prod: "0"); tasks.env too
+    XRAS_SUBMIT_ENABLED: "1"              # My Requests files to the demo (prod: "1" too); webapp only
+    XRAS_SUBMIT_ACTION_TYPES: "all"       # prod: "all" too; unset is none
+    XRAS_SUBMIT_ANONYMOUS_ENABLED: "1"    # a visitor's New at /request/ (prod: "1" too); tasks.env too
     XRAS_AUTO_ACTIVATE: "1"               # a New that applies activates its project (prod: "1" too)
     XRAS_AUTO_CONTRACTS: "1"              # post and sweep create NSF contracts (prod: "1" too)
     XRAS_AUTO_NOTIFY: "1"                 # then mails it; NOTIFY_ENABLED=0 keeps that a no-send

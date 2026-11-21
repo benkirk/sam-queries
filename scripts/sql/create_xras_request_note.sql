@@ -7,7 +7,7 @@
 -- Written by POST /api/v1/xras/notes (the ARC Allocation Recommender, one batch
 -- per run) and read by the request dialog and the Remediations card. Keyed on
 -- (request_number, source) like xras_request_override; each run overwrites the
--- row. Design: docs/plans/ARC_RECOMMENDER_NOTES.md. ORM: src/sam/integration/xras.py
+-- row. Design: docs/plans/implemented/ARC_RECOMMENDER_NOTES.md. ORM: src/sam/integration/xras.py
 -- (XrasRequestNote). Pinned by tests/integration/test_schema_validation.py.
 --
 -- NO DROP. Created empty; apply BEFORE the image that serves the endpoint rolls.

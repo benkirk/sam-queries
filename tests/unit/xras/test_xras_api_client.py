@@ -245,6 +245,13 @@ class TestTransport:
         assert client.get_resources() == RESOURCES
         assert client.session.request.call_count == 2
 
+    def test_tls_failure_does_not_retry(self, monkeypatch):
+        client = _client(monkeypatch, [
+            requests.exceptions.SSLError('certificate has expired')])
+        with pytest.raises(XrasSourceUnavailable, match='TLS certificate check'):
+            client.get_resources()
+        assert client.session.request.call_count == 1
+
     def test_a_non_json_body_is_unavailable(self, monkeypatch):
         resp = _response(200)
         resp.json.side_effect = ValueError('Expecting value')

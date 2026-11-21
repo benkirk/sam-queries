@@ -1,7 +1,7 @@
 """``POST /api/v1/xras/notes``: a recommender run's notes on XRAS requests, key only.
 
 Not the frozen ``/api/xras/v1`` blueprint, which is XRAS's own inbound contract.
-Design: ``docs/plans/ARC_RECOMMENDER_NOTES.md`` § 3.
+Design: ``docs/plans/implemented/ARC_RECOMMENDER_NOTES.md`` § 3.
 """
 import json
 
