@@ -1,17 +1,20 @@
 {#- Every "Your projects" row's request buttons, swapped out of band into #req-offers-<projcode>
     (GET /user/requests/htmx/offers). Context: projects, offers {projcode: [action types]},
-    form_types {action type: url kind}. Openers for #xrasRequestModal, which the page hosts. -#}
-{%- set _BUTTONS = {'Extension': ('calendar-plus', 'Extend', 'Request an extension'),
-                    'Supplement': ('circle-plus', 'Supplement', 'Request a supplement'),
-                    'Renewal': ('arrows-rotate', 'Renew', 'Request a renewal')} -%}
+    more_types (the XRAS types one More button files). Openers for #xrasRequestModal, which the
+    page hosts. -#}
+{%- set _BUTTONS = {'more': ('calendar-plus', 'More', 'Request more time or resources'),
+                    'renewal': ('arrows-rotate', 'Renew', 'Request a renewal')} -%}
 {% for project in projects %}
+{%- set _types = offers.get(project.projcode, []) %}
+{%- set _kinds = (['more'] if _types | select('in', more_types) | first else [])
+                 + (['renewal'] if 'Renewal' in _types else []) %}
 <span id="req-offers-{{ project.projcode }}" hx-swap-oob="innerHTML">
-    {%- for action_type in offers.get(project.projcode, []) if action_type in form_types %}
-    {%- set icon, word, verb = _BUTTONS[action_type] %}
-    <button type="button" class="btn btn-row btn-row-primary" data-offer="{{ action_type }}"
+    {%- for kind in _kinds %}
+    {%- set icon, word, verb = _BUTTONS[kind] %}
+    <button type="button" class="btn btn-row btn-row-primary" data-offer="{{ kind }}"
             title="{{ verb }}" aria-label="{{ verb }} for {{ project.projcode }}"
             data-bs-toggle="modal" data-bs-target="#xrasRequestModal"
-            hx-get="{{ url_for('user_dashboard.my_request_form', projcode=project.projcode, kind=form_types[action_type]) }}"
+            hx-get="{{ url_for('user_dashboard.my_request_form', projcode=project.projcode, kind=kind) }}"
             hx-target="#xrasRequestModalBody" hx-swap="innerHTML">
         <i class="fa-solid fa-{{ icon }}" aria-hidden="true"></i><span class="d-none d-md-inline ms-1">{{ word }}</span></button>
     {%- endfor %}
