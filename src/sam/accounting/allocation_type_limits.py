@@ -6,7 +6,7 @@ request editor. Rows are keyed by id, but callers look up by **name**, mapping e
 of a duplicated name ("Small" is two allocation types). No foreign keys (two dialects).
 DDL and seed: ``scripts/sql/create_allocation_type_resource_limit.sql`` and
 ``seed_allocation_type_resource_limit.sql``, each with a ``_pg`` twin. Design:
-``docs/plans/XRAS_SUBMISSION.md`` § 4.5.
+``docs/plans/implemented/XRAS_SUBMISSION.md`` § 4.5.
 """
 
 from datetime import datetime

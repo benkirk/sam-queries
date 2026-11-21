@@ -5,7 +5,7 @@ specific to; NULL is everyone. Breadth lives on the user's side: ``user_audience
 audience whose rule applies, so a type for one audience never needs a list. A facility that joins
 later (Wyoming, say: the current institution's state is Wyoming) is one more row here plus its
 guide rows. ``public`` marks the audiences an anonymous visitor's page shows. Flask-free.
-Design: ``docs/plans/XRAS_SUBMISSION_SPRINT3.md``.
+Design: ``docs/plans/implemented/XRAS_SUBMISSION_SPRINT3.md``.
 """
 
 from __future__ import annotations

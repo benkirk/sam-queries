@@ -1,13 +1,19 @@
 # Reimplementing XRAS submission from SAMuel
 
-**Status: sprint 1 (phases 0, 1, 1b and 2) shipped 2026-10-29 in #874, issue #871, build plan
-[`implemented/XRAS_SUBMISSION_SPRINT1.md`](implemented/XRAS_SUBMISSION_SPRINT1.md); sprint 2 (phase 3) shipped 2026-10-31 in #880, issue #872, build plan
-[`implemented/XRAS_SUBMISSION_SPRINT2.md`](implemented/XRAS_SUBMISSION_SPRINT2.md) (decisions of 2026-10-31 in its § 0).
-Sprint 3, PR #886, issue #884, build plan [`XRAS_SUBMISSION_SPRINT3.md`](XRAS_SUBMISSION_SPRINT3.md):
-the request types as editable cards on Allocations → XRAS → Configuration, and a type stage
-filtered by audience as the signed-in New's first step.
-The incoming half (§ 4.6 items 1-3) and every phase of
-[`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md) this plan waited on are live in
+**Status: implemented; every phase is built.** The records, in order:
+- sprint 1 (phases 0, 1, 1b and 2), #874 (issue #871), 2026-10-29:
+  [`XRAS_SUBMISSION_SPRINT1.md`](XRAS_SUBMISSION_SPRINT1.md);
+- sprint 2 (phase 3), #880 (issue #872), 2026-10-31:
+  [`XRAS_SUBMISSION_SPRINT2.md`](XRAS_SUBMISSION_SPRINT2.md), decisions of 2026-10-31 in its § 0;
+- sprint 3, the request types on Allocations → XRAS → Configuration and the audience-filtered
+  type stage, #886 (issue #884), 2026-11-01: [`XRAS_SUBMISSION_SPRINT3.md`](XRAS_SUBMISSION_SPRINT3.md);
+- go-live, all four types on production with `/request` public, #953, #954 and #957, live
+  2026-11-19: [`XRAS_SUBMISSION_GO_LIVE.md`](XRAS_SUBMISSION_GO_LIVE.md);
+- one "Extend or add" dialog filing an Extension and a Supplement, #962:
+  [`XRAS_MORE_TIME_OR_RESOURCES.md`](XRAS_MORE_TIME_OR_RESOURCES.md).
+
+The open questions of § 5 stand. The incoming half (§ 4.6 items 1-3) and every phase of
+[`XRAS_POST_AUTOMATION.md`](../XRAS_POST_AUTOMATION.md) this plan waited on are live in
 production.** The decisions of 2026-10-27 are § 3.5. A project's allocation
 life begins at ARC (`arc.ucar.edu/xras_submit`), is reviewed in XRAS, and reaches SAM at
 approval (`docs/xras/incoming/`). This document designs the return path, **SAM → XRAS (review)
@@ -15,14 +21,14 @@ approval (`docs/xras/incoming/`). This document designs the return path, **SAM �
 The evidence:
 
 - every XRAS verb below, driven live on production 2026-09-14
-  ([`XRAS_SUBMISSION_PROBES.md`](../xras/outgoing/XRAS_SUBMISSION_PROBES.md));
+  ([`XRAS_SUBMISSION_PROBES.md`](../../xras/outgoing/XRAS_SUBMISSION_PROBES.md));
 - the ARC workflow, driven once for real 2026-09-15
-  ([`XRAS_ARC_BASELINE.md`](../xras/outgoing/XRAS_ARC_BASELINE.md));
+  ([`XRAS_ARC_BASELINE.md`](../../xras/outgoing/XRAS_ARC_BASELINE.md));
 - the samuel-dev ↔ XRAS-dev loop, 2026-10-13/14
-  ([`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md)).
+  ([`XRAS_DEV_PROBES.md`](../../xras/outgoing/XRAS_DEV_PROBES.md)).
 
 The identity step of phase 3 is its own product,
-[`ACCOUNT_REGISTRATION.md`](implemented/ACCOUNT_REGISTRATION.md).
+[`ACCOUNT_REGISTRATION.md`](ACCOUNT_REGISTRATION.md).
 
 ---
 
@@ -91,7 +97,7 @@ My Requests tab on the user dashboard (§ 4.0).
 | **0 — plumbing** | — | a JSON-body path in the write client's `_write`; the vocabulary module; the `xras_submission` table and the flow layer (§ 4.2, § 4.3); the ownership predicate; the routing policy (§ 4.4); the limits table and its admin card (§ 4.5); `XRAS_SUBMIT_ENABLED`; the asks to Steve (§ 5) | nothing by itself | nothing external | sprint 1, commits 0a and 0b |
 | **1 — existing projects** | the lead or admin, from the project card | Supplement and Extension, with a status readout beside the control (described below the table); the admin Add-action modal re-pointed at the flow; the routed answer for projects that cannot use XRAS. **1b — Renewal:** `/renew` on the primary line, then the abstract, grants on Large and Small, and the document the rule book names, through the base64 upload | the flow layer, the audit trail and the lever. The incoming side is unchanged, because the request is the shape ARC would have sent | 0 | sprint 1, commits 1a-1c; every verb measured, the Extension's two-write shape on 2026-10-27 |
 | **2 — new request, logged in** | any SAM user | the form of § 4.1, through preflight and submit (its parts are listed below the table); the `New` handler's consult point (§ 4.6 item 4) | the first phase that changes what arrives at the handoff | 0, 1 | sprint 1, commits 2a and 2b; the New rule book and the grant validation measured 2026-10-27 (§ 3.1) |
-| **3 — new request, no account** | someone without a SAM login | `ACCOUNT_REGISTRATION.md` phase 2 first. The request is created under an XRAS person SAM mints (`POST /v1/people/<u>` with `isReconciled = false`); the `xras_submission` row carries `registration_id`; the account's arrival merges the placeholder into the real username with `merge_placeholder`, which moves the PI and Allocation Manager roles (§ 5 has the two constraints this brings) | the 55% row of § 1 | 2 in production; `ACCOUNT_REGISTRATION.md` phase 2 | sprint 2 (#872), [`implemented/XRAS_SUBMISSION_SPRINT2.md`](implemented/XRAS_SUBMISSION_SPRINT2.md): an allocation-type overview first, identity and verify inside the flow, the account ticket only at approval |
+| **3 — new request, no account** | someone without a SAM login | `ACCOUNT_REGISTRATION.md` phase 2 first. The request is created under an XRAS person SAM mints (`POST /v1/people/<u>` with `isReconciled = false`); the `xras_submission` row carries `registration_id`; the account's arrival merges the placeholder into the real username with `merge_placeholder`, which moves the PI and Allocation Manager roles (§ 5 has the two constraints this brings) | the 55% row of § 1 | 2 in production; `ACCOUNT_REGISTRATION.md` phase 2 | sprint 2 (#872), [`implemented/XRAS_SUBMISSION_SPRINT2.md`](XRAS_SUBMISSION_SPRINT2.md): an allocation-type overview first, identity and verify inside the flow, the account ticket only at approval |
 
 **Phase 1's status readout** is the sweep cache entry for the projcode with
 `is_pending_work`, plus `get_recent_xras_actions`. `manual` and `failed` read as "being reviewed
@@ -683,21 +689,21 @@ Open questions are in § 5.
 
 | | |
 |---|---|
-| [`implemented/XRAS_SUBMISSION_SPRINT1.md`](implemented/XRAS_SUBMISSION_SPRINT1.md) | the sprint-1 build plan: the commit map, the file plan, the DDL in two dialects, the dev proof |
-| [`XRAS_POST_AUTOMATION.md`](XRAS_POST_AUTOMATION.md) | the incoming roadmap this plan followed: approve and post does everything SAM can, and a failed post opens one ticket |
-| [`implemented/XRAS_PHASE_C_AND_TICKETS.md`](implemented/XRAS_PHASE_C_AND_TICKETS.md), [`implemented/XRAS_NOTICES_CUTOVER.md`](implemented/XRAS_NOTICES_CUTOVER.md) | how phase C deleted XRAS's rules at its cutover: the shape the agreement's pivot follows |
-| [`XRAS_SUBMISSION_PROBES.md`](../xras/outgoing/XRAS_SUBMISSION_PROBES.md) | the 2026-09-14 probe record: every verb in § 3.1, the NCAR vocabularies, the rule-book tables, the final state left in XRAS |
-| [`XRAS_ARC_BASELINE.md`](../xras/outgoing/XRAS_ARC_BASELINE.md) | W9, 2026-09-15: the ARC form page by page, and one real New and Extension seen from ARC, the admin app, the API, SAM and mail |
-| [`XRAS_DEV_PROBES.md`](../xras/outgoing/XRAS_DEV_PROBES.md) | the XRAS-dev read and write map, the posts to samuel-dev, the rename loop and the Track 2 scenarios |
-| [`implemented/XRAS_CLOSED_LOOP.md`](implemented/XRAS_CLOSED_LOOP.md) | the rename (§ 4.6 item 3), the production census and backfill, and the test bed |
-| [`implemented/XRAS_REQUEST_TICKETS.md`](implemented/XRAS_REQUEST_TICKETS.md) | the ticket a blocked post opens (post automation phase D) |
-| [`ACCOUNT_REGISTRATION.md`](implemented/ACCOUNT_REGISTRATION.md) | the identity step of phase 3, as a product of its own |
-| [`REQUEST_EDITOR.md`](../xras/outgoing/REQUEST_EDITOR.md) | the write client, tiers, levers and stage model the flow layer extends |
-| [`XRAS_WRITE_PROBES.md`](../xras/outgoing/XRAS_WRITE_PROBES.md) | probe methodology, the one authorization rule, the privilege register |
-| [`XRAS_OUTGOING_QUERIES.md`](../xras/outgoing/XRAS_OUTGOING_QUERIES.md) | the readable surface and the request payload shape |
-| [`PROJECT_AND_ACCOUNT_LIFECYCLE.md`](../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md) | where a project comes from; SAM never originates users |
-| [`XRAS_TRIAGE_PLAYBOOK.md`](../xras/incoming/XRAS_TRIAGE_PLAYBOOK.md) | the 422 catalog § 1 answers |
-| [`XRAS_PUSH_READINESS.md`](implemented/XRAS_PUSH_READINESS.md) | the preflight engine reused as the pre-submit check |
-| [`XRAS_INGEST_IMPROVEMENTS.md`](XRAS_INGEST_IMPROVEMENTS.md) | ingest paper cuts, including the Supplement-after-Renewal window |
-| [`XRAS_ACCOUNT_QUEUE.md`](XRAS_ACCOUNT_QUEUE.md) | the Pending Users queue the registration product generalizes |
+| [`implemented/XRAS_SUBMISSION_SPRINT1.md`](XRAS_SUBMISSION_SPRINT1.md) | the sprint-1 build plan: the commit map, the file plan, the DDL in two dialects, the dev proof |
+| [`XRAS_POST_AUTOMATION.md`](../XRAS_POST_AUTOMATION.md) | the incoming roadmap this plan followed: approve and post does everything SAM can, and a failed post opens one ticket |
+| [`implemented/XRAS_PHASE_C_AND_TICKETS.md`](XRAS_PHASE_C_AND_TICKETS.md), [`implemented/XRAS_NOTICES_CUTOVER.md`](XRAS_NOTICES_CUTOVER.md) | how phase C deleted XRAS's rules at its cutover: the shape the agreement's pivot follows |
+| [`XRAS_SUBMISSION_PROBES.md`](../../xras/outgoing/XRAS_SUBMISSION_PROBES.md) | the 2026-09-14 probe record: every verb in § 3.1, the NCAR vocabularies, the rule-book tables, the final state left in XRAS |
+| [`XRAS_ARC_BASELINE.md`](../../xras/outgoing/XRAS_ARC_BASELINE.md) | W9, 2026-09-15: the ARC form page by page, and one real New and Extension seen from ARC, the admin app, the API, SAM and mail |
+| [`XRAS_DEV_PROBES.md`](../../xras/outgoing/XRAS_DEV_PROBES.md) | the XRAS-dev read and write map, the posts to samuel-dev, the rename loop and the Track 2 scenarios |
+| [`implemented/XRAS_CLOSED_LOOP.md`](XRAS_CLOSED_LOOP.md) | the rename (§ 4.6 item 3), the production census and backfill, and the test bed |
+| [`implemented/XRAS_REQUEST_TICKETS.md`](XRAS_REQUEST_TICKETS.md) | the ticket a blocked post opens (post automation phase D) |
+| [`ACCOUNT_REGISTRATION.md`](ACCOUNT_REGISTRATION.md) | the identity step of phase 3, as a product of its own |
+| [`REQUEST_EDITOR.md`](../../xras/outgoing/REQUEST_EDITOR.md) | the write client, tiers, levers and stage model the flow layer extends |
+| [`XRAS_WRITE_PROBES.md`](../../xras/outgoing/XRAS_WRITE_PROBES.md) | probe methodology, the one authorization rule, the privilege register |
+| [`XRAS_OUTGOING_QUERIES.md`](../../xras/outgoing/XRAS_OUTGOING_QUERIES.md) | the readable surface and the request payload shape |
+| [`PROJECT_AND_ACCOUNT_LIFECYCLE.md`](../../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md) | where a project comes from; SAM never originates users |
+| [`XRAS_TRIAGE_PLAYBOOK.md`](../../xras/incoming/XRAS_TRIAGE_PLAYBOOK.md) | the 422 catalog § 1 answers |
+| [`XRAS_PUSH_READINESS.md`](XRAS_PUSH_READINESS.md) | the preflight engine reused as the pre-submit check |
+| [`XRAS_INGEST_IMPROVEMENTS.md`](../XRAS_INGEST_IMPROVEMENTS.md) | ingest paper cuts, including the Supplement-after-Renewal window |
+| [`XRAS_ACCOUNT_QUEUE.md`](../XRAS_ACCOUNT_QUEUE.md) | the Pending Users queue the registration product generalizes |
 | `https://api.xras.org/apidoc.html` | the index (86 endpoints; the same URL without `.html` is a 404 decoy). Detail pages are static under `https://api.xras.org/apidoc/1.0/` (plain `curl`), and their examples are XSEDE's, so every id is read live for NCAR |

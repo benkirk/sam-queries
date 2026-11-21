@@ -4,7 +4,7 @@
 `xras-admin-demo.xsede.org`, with samuel-dev on `sha-f5237f1`.** This is the first time
 anything was pushed from XRAS-dev to samuel-dev. Claude made every API call; Ben made every
 approve and post click in the admin app. It answers the "no clean test loop" gap of
-[`XRAS_SUBMISSION.md`](../../plans/XRAS_SUBMISSION.md) § 5 and the experiments of
+[`XRAS_SUBMISSION.md`](../../plans/implemented/XRAS_SUBMISSION.md) § 5 and the experiments of
 [`XRAS_REQUEST_TICKETS.md`](../../plans/implemented/XRAS_REQUEST_TICKETS.md) § 9, except those that
 need a SAM-authored submit (§ 7).
 
@@ -232,7 +232,7 @@ it. Record: `docs/plans/implemented/XRAS_NOTICES_CUTOVER.md` § 8.
 | Object | State |
 |---|---|
 | 1439539 / NCAR4088 (Draft A) | Approved; posted and refused (#9, 422) |
-| 1439543 / **UHSS0002** (Draft B; minted as NCAR4087, renamed by Claude) | Approved and posted (UHSS0002); Extension 372862 and Supplement 372863 parked on SAM (#7, #8); Extension 372866 applied (#12); actions 372857–58 soft-deleted. Family UHSS0002 also holds soft-deleted 1439547. Its Renewal line 1439769 holds Extension 373280 and Supplement 373281, Submitted together, then approved, posted and applied 2026-11-20 (not notified; `../../plans/XRAS_MORE_TIME_OR_RESOURCES.md` § 2) |
+| 1439543 / **UHSS0002** (Draft B; minted as NCAR4087, renamed by Claude) | Approved and posted (UHSS0002); Extension 372862 and Supplement 372863 parked on SAM (#7, #8); Extension 372866 applied (#12); actions 372857–58 soft-deleted. Family UHSS0002 also holds soft-deleted 1439547. Its Renewal line 1439769 holds Extension 373280 and Supplement 373281, Submitted together, then approved, posted and applied 2026-11-20 (not notified; `../../plans/implemented/XRAS_MORE_TIME_OR_RESOURCES.md` § 2) |
 | 1439538, 1439540–42, 1439544–48 | soft-deleted drafts (1439545 is the renewal line; 1439547 and 1439548 the `requestNumber` probes) |
 | person `samprobe-20261013` | **deleted**: merged into benkirk (sam_dev remediation #4, scenario 6) |
 | 1439308 / **UCSG0004** (minted as NCAR4086, renamed by `xras_rename` 2026-10-14) | Approved, posted, not notified; SAM project UCSG0004 (active) |

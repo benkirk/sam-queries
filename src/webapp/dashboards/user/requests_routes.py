@@ -5,7 +5,7 @@ project's picker reads XRAS lazily when opened (the family, then the user's offe
 re-reads the family and re-runs the routing at every stage (edit, review, submit), so a
 decision is never carried in the browser; a New re-reads the user's opportunities the same
 way, and nothing reaches XRAS before its submit. Files go through
-``sam.manage.xras_submission``. Design: ``docs/plans/XRAS_SUBMISSION.md`` § 4.0-4.1.
+``sam.manage.xras_submission``. Design: ``docs/plans/implemented/XRAS_SUBMISSION.md`` § 4.0-4.1.
 """
 
 from datetime import datetime, timedelta

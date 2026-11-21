@@ -3,7 +3,7 @@
 Two sources, one readout. ``xras_submission`` rows are what SAM filed; the sweep's request
 index holds every request the user has a role on. An action reads its ``xras_action_log``
 row once XRAS has posted it, else XRAS's own action status. Flask-free.
-Design: ``docs/plans/XRAS_SUBMISSION.md`` § 4.0.
+Design: ``docs/plans/implemented/XRAS_SUBMISSION.md`` § 4.0.
 """
 
 from __future__ import annotations

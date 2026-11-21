@@ -8,7 +8,7 @@ limits and no Start. The active guide row is the publish switch; ``audiences`` n
 rows to the types for those audiences (``sam/xras/audiences.py``). ``include_unguided`` (the
 admin's page) adds the retired guide rows, the SAM types with limits but no guide row, and the
 XRAS types no guide row names. Flask-free. Design: ``docs/plans/implemented/XRAS_SUBMISSION_SPRINT2.md`` § 0 and
-``docs/plans/XRAS_SUBMISSION_SPRINT3.md``.
+``docs/plans/implemented/XRAS_SUBMISSION_SPRINT3.md``.
 """
 
 from __future__ import annotations

@@ -6,7 +6,7 @@ steps SAM owns (``draft`` through ``submitted``, ``aborted``) plus ``applied``, 
 when the post is processed; between submit and apply XRAS owns the status and this row
 does not copy it. No foreign keys (two dialects, the external_ticket convention).
 DDL: ``scripts/sql/create_xras_submission.sql`` and its ``_pg`` twin. Design:
-``docs/plans/XRAS_SUBMISSION.md`` § 4.2.
+``docs/plans/implemented/XRAS_SUBMISSION.md`` § 4.2.
 """
 
 import json

@@ -1,7 +1,8 @@
 # More time or resources: one request, two XRAS actions
 
-**Status: built on branch `xras-more-time-or-resources` (2026-11-20); dev smoke after the
-branch rolls to samuel-dev.** Supersedes Kyle's plan `XRAS_EXTENSION_BALANCE_CHECK.md` (branch
+**Status: implemented in PR #962** (branch `xras-more-time-or-resources`, 2026-11-20),
+reviewed with `/pr-review` at `3e310de4` (F1 to F3 landed by `16a0520a`); the samuel-dev
+smoke follows the roll. Supersedes Kyle's plan `XRAS_EXTENSION_BALANCE_CHECK.md` (branch
 `xras-extension-balance-check`, 2026-11-11, never built): his flow shape is kept, and his
 per-type zero-balance minimums give way to the recommender in § 3.
 

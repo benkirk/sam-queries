@@ -7,7 +7,7 @@
 --
 -- A draft exists before XRAS assigns anything, so the key is a surrogate;
 -- action_id is unique once known, request_id is the line it hangs on. Design:
--- docs/plans/XRAS_SUBMISSION.md § 4.2; build plan XRAS_SUBMISSION_SPRINT1.md § 4.
+-- docs/plans/implemented/XRAS_SUBMISSION.md § 4.2; build plan XRAS_SUBMISSION_SPRINT1.md § 4.
 -- ORM: src/sam/integration/xras_submission.py. Pinned by
 -- tests/integration/test_schema_validation.py.
 --
