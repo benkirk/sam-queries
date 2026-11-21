@@ -102,30 +102,6 @@ class AwardAudit:
                 'counts': self.counts(), 'rows': [r.to_dict() for r in self.rows]}
 
 
-def _action_dates(action: Mapping[str, Any]) -> Tuple[Optional[date], Optional[date]]:
-    from sam.dates import parse_wire_date
-    by_type = {str(d.get('allocationDateType') or ''): d
-               for d in action.get('allocationDates') or () if isinstance(d, dict)}
-    for stage in _STAGES:
-        entry = by_type.get(stage)
-        if entry and (entry.get('beginDate') or entry.get('endDate')):
-            return parse_wire_date(entry.get('beginDate')), parse_wire_date(entry.get('endDate'))
-    return None, None
-
-
-def _awarded_lines(action: Mapping[str, Any]) -> Dict[Any, Mapping[str, Any]]:
-    """One resource line per ``resourceId`` at its best stage (Approved, else the next one down)."""
-    best: Dict[Any, Tuple[int, Mapping[str, Any]]] = {}
-    for line in action.get('resources') or ():
-        if not isinstance(line, dict) or line.get('resourceId') is None:
-            continue
-        rank = _STAGES.index(line['type']) if line.get('type') in _STAGES else len(_STAGES)
-        prev = best.get(line['resourceId'])
-        if prev is None or rank < prev[0]:
-            best[line['resourceId']] = (rank, line)
-    return {rid: line for rid, (_, line) in best.items()}
-
-
 def _amount(line: Mapping[str, Any]) -> Optional[float]:
     try:
         return float(line.get('amount'))
@@ -138,6 +114,7 @@ def fold_awards(lines: Sequence[Mapping[str, Any]]) -> List[Award]:
     from sam.queries.xras_accounts import live_actions
     from sam.queries.xras_actions import canonical_action_type
     from sam.queries.xras_requests import live_lines
+    from sam.xras.preflight import best_dates, best_stage_lines
     from sam.xras.wire import resource_label
 
     live = live_lines(lines)
@@ -150,7 +127,8 @@ def fold_awards(lines: Sequence[Mapping[str, Any]]) -> List[Award]:
     awards: Dict[Any, Award] = {}
     for action in actions:
         kind = canonical_action_type(action.get('actionType'))
-        begin, end = _action_dates(action)
+        # Dates fall back through Recommended too, which preflight's own order skips.
+        begin, end, _ = best_dates(action, _STAGES)
         if kind in _DATING:
             # Extension walks every account, not resources[] (handlers/extension.py).
             for award in awards.values():
@@ -160,7 +138,9 @@ def fold_awards(lines: Sequence[Mapping[str, Any]]) -> List[Award]:
                 award.action_ids.append(action.get('actionId'))
                 award.action_types.append(kind)
             continue
-        for rid, line in _awarded_lines(action).items():
+        for rid, (_, line) in best_stage_lines(action).items():
+            if rid is None:
+                continue
             amount = _amount(line)
             if amount is None:
                 continue

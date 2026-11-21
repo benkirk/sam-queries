@@ -104,24 +104,29 @@ def iter_candidate_actions(report_payload: dict, *,
         yield action
 
 
-def _best_dates(action: dict) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-    """The action's begin/end at the best available allocationDate stage."""
+def best_dates(action: Mapping[str, Any], stages: Tuple[str, ...] = _DATE_STAGE_ORDER
+               ) -> Tuple[Optional[date], Optional[date], Optional[str]]:
+    """``(begin, end, stage)`` at the first of *stages* whose allocationDate carries a date."""
     by_type: Dict[str, dict] = {}
     for entry in action.get('allocationDates') or ():
         if isinstance(entry, dict):
             by_type[str(entry.get('allocationDateType') or '')] = entry
-    for stage in _DATE_STAGE_ORDER:
+    for stage in stages:
         entry = by_type.get(stage)
         if entry and (entry.get('beginDate') or entry.get('endDate')):
-            begin = parse_wire_date(entry.get('beginDate'))
-            end = parse_wire_date(entry.get('endDate'))
-            return (begin.strftime('%Y-%m-%d') if begin else None,
-                    end.strftime('%Y-%m-%d') if end else None, stage)
+            begin, end = entry.get('beginDate'), entry.get('endDate')
+            return parse_wire_date(begin), parse_wire_date(end), stage
     return None, None, None
 
 
-def _best_resource_lines(action: dict) -> Tuple[list, Optional[str]]:
-    """One line per resourceId at its best stage: (resourceId, amount, comments)."""
+def _best_dates(action: dict) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    begin, end, stage = best_dates(action)
+    return (begin.strftime('%Y-%m-%d') if begin else None,
+            end.strftime('%Y-%m-%d') if end else None, stage)
+
+
+def best_stage_lines(action: Mapping[str, Any]) -> Dict[Any, Tuple[int, dict]]:
+    """``resourceId -> (rank, line)`` at each resource's best stage (rank 3: unstaged)."""
     best: Dict[Any, Tuple[int, dict]] = {}
     for line in action.get('resources') or ():
         if not isinstance(line, dict):
@@ -132,9 +137,14 @@ def _best_resource_lines(action: dict) -> Tuple[list, Optional[str]]:
         prev = best.get(rid)
         if prev is None or rank < prev[0]:
             best[rid] = (rank, line)
+    return best
+
+
+def _best_resource_lines(action: dict) -> Tuple[list, Optional[str]]:
+    """One line per resourceId at its best stage: (resourceId, amount, comments)."""
     stage = None
     lines = []
-    for rid, (rank, line) in best.items():
+    for rid, (rank, line) in best_stage_lines(action).items():
         if rank < len(_STAGE_ORDER):
             line_stage = _STAGE_ORDER[rank]
             if stage is None or _STAGE_ORDER.index(line_stage) < _STAGE_ORDER.index(stage):
