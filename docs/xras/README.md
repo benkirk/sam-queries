@@ -20,7 +20,7 @@ and each attempt leaves an audit row.
 XRAS's demo instance: `xras-admin-demo.xsede.org` posts to it, and it calls
 `xras-submit-api-demo.xsede.org` with the production key at its own OpenBao
 path (`docs/plans/implemented/XRAS_SUBMISSION.md` § 5). ACCESS runs that host, so when its
-certificate lapses (it expired 2026-11-19) every dev call fails the TLS check and
+certificate lapses every dev call fails the TLS check and
 `/request` says the allocation system is not answering; the fix is theirs.
 
 Filing rule: this tree keeps the living references. A shipped plan or sprint
