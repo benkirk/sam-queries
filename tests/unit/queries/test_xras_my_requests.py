@@ -136,6 +136,17 @@ class TestMyRequests:
         assert [r['request_number'] for r in my_requests(session, 'pi9', None)] == [
             active_project.projcode]
 
+    def test_rows_filed_together_name_each_other(self, session):
+        for kind in ('Extension', 'Supplement'):
+            XrasSubmission.create(session, action_type=kind, created_by='pi9', xa_user='pi9',
+                                  payload={'bundle': 'b-1'}, **EULA)
+        XrasSubmission.create(session, action_type='Extension', created_by='pi9',
+                              xa_user='pi9', payload={}, **EULA)
+        pairs = sorted((r['action_type'], tuple(r['filed_with']))
+                       for r in my_requests(session, 'pi9', None))
+        assert pairs == [('Extension', ()), ('Extension', ('Supplement',)),
+                         ('Supplement', ('Extension',))]
+
     def test_an_open_row_sorts_first(self, session):
         old = XrasSubmission.create(session, action_type='Extension', created_by='pi9',
                                     xa_user='pi9', payload={}, **EULA)

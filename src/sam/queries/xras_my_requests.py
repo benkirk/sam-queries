@@ -92,7 +92,8 @@ def my_requests(session, username: str,
     """Every request row for *username*: SAM's filings, then the index's lines not already shown.
 
     Each row: ``kind`` (filed | xras), ``request_number``, ``action_id``, ``action_type``,
-    ``readout``, ``when``, ``submission`` (the row, or ``None``). Open and stopped rows sort first.
+    ``readout``, ``when``, ``submission`` (the row, or ``None``), ``filed_with`` (the action types
+    filed with it from one form). Open and stopped rows sort first.
     """
     from sam.integration.xras import latest_action_logs
     from sam.integration.xras_submission import XrasSubmission
@@ -118,6 +119,11 @@ def my_requests(session, username: str,
     numbered = {e['request_id']: e['request_number'] for e in index_rows or ()
                 if e.get('request_id') and e.get('request_number')}
 
+    bundles: Dict[str, List[Any]] = {}
+    for sub in filed:
+        if sub.payload_dict.get('bundle'):
+            bundles.setdefault(sub.payload_dict['bundle'], []).append(sub)
+
     rows: List[Dict[str, Any]] = []
     shown = set()
     for sub in filed:
@@ -133,6 +139,8 @@ def my_requests(session, username: str,
                          action_id=sub.action_id, action_type=sub.action_type, readout=readout,
                          when=sub.submitted_time or sub.creation_time, submission=sub,
                          open=sub.is_active,
+                         filed_with=[o.action_type for o in bundles.get(
+                             sub.payload_dict.get('bundle'), ()) if o is not sub],
                          needs_documents=missing_documents(session, sub) if sub.is_active else []))
     for number in numbers:
         action = latest.get(number)
@@ -144,7 +152,8 @@ def my_requests(session, username: str,
                          readout=action_readout(action.get('action_status'),
                                                 logs.get(action['action_id']), entered,
                                                 (action.get('preflight') or {}).get('push_state')),
-                         when=entered, submission=None, open=False, needs_documents=[]))
+                         when=entered, submission=None, open=False, needs_documents=[],
+                         filed_with=[]))
     rows.sort(key=lambda r: (not r['open'], -_ordinal(r['when'])))
     return rows
 
