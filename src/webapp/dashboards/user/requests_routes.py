@@ -571,7 +571,8 @@ def my_request_more_amounts(project):
     """The amounts re-suggested for the end date being typed; an amount the lead changed stays.
 
     A row's ``suggested_<id>`` marker arrives unless the lead removed the row: with no amount it
-    was never picked, and with the amount it shows, the lead left the suggestion alone.
+    was never picked, and with the amount it shows, the lead left the suggestion alone. Such a
+    row takes the new suggestion, or goes back to Available when the new date needs none.
     """
     try:
         ctx = _form_handler(project, 'more').gate()
@@ -584,6 +585,8 @@ def my_request_more_amounts(project):
         untouched = mark in form and form.get(name, '') in ('', form[mark])
         if untouched and advice and advice.suggest:
             form[name] = input_value(advice.suggest)
+        elif untouched:
+            form.pop(name, None)
     return render_template('dashboards/user/fragments/request_more_amounts_htmx.html',
                            form=form, field_errors={}, **ctx)
 

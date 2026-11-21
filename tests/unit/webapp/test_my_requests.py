@@ -558,6 +558,34 @@ class TestTheSuggestedAmounts:
         row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
         assert 'value="5000"' in row and 'disabled' not in row
 
+    @pytest.fixture
+    def covered(self, monkeypatch):
+        """The balance covers the window: SAM suggests nothing."""
+        import sam.queries.supplement_advice as advice
+        from sam.queries.supplement_advice import Advice
+        monkeypatch.setattr(advice, 'suggest_supplements', lambda *a, **k: {530902: Advice(
+            remaining=9_000.0, rate_per_day=50.0, basis='recent', days=30, last_amount=None,
+            suggest=None)})
+
+    def test_an_untouched_suggestion_the_new_date_does_not_need_is_dropped(
+            self, auth_client, on_roster, covered):
+        html = auth_client.get(AMOUNTS, query_string={
+            'amount_530902': '5000', 'suggested_530902': '5000',
+            'amounts_present': '1'}).get_data(as_text=True)
+        row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
+        marker = html.split('name="suggested_530902"')[1].split('>', 1)[0]
+        assert 'disabled' in row and 'value=""' in marker and 'disabled' not in marker
+        assert 'enough through the end date' in html
+
+    def test_an_amount_picked_at_the_default_is_the_leads(self, auth_client, on_roster,
+                                                          covered):
+        """The marker carries only a real suggestion, so a row picked by hand is kept."""
+        html = auth_client.get(AMOUNTS, query_string={
+            'amount_530902': '5000', 'suggested_530902': '',
+            'amounts_present': '1'}).get_data(as_text=True)
+        row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
+        assert 'value="5000"' in row and 'disabled' not in row
+
     def test_a_removed_resource_stays_removed(self, auth_client, on_roster, advised):
         """A removed row posts no marker: it stays under Available, its marker disabled."""
         html = auth_client.get(AMOUNTS, query_string={'amounts_present': '1'}).get_data(

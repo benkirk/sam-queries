@@ -48,7 +48,8 @@
             {%- if adv.remaining is not none %}{{ 'None remaining' if adv.remaining <= 0 else (adv.remaining | fmt_number) ~ ' remaining' }}{% endif %}
             {%- if adv.suggest %}; the suggestion covers {{ adv.days | fmt_plural('day', 'days') }} at the {{ 'recent' if adv.basis == 'recent' else 'last allocation' }} rate
             {%- elif adv.rate_per_day and adv.days %}, enough through the end date{% endif %}</div>
-        <input type="hidden" name="suggested_{{ r.resource_id }}" value="{{ _suggest }}"{% if removed %} disabled{% endif %}>
+        {#- Only a real suggestion, never the type default: an amount picked at the default is the lead's. #}
+        <input type="hidden" name="suggested_{{ r.resource_id }}" value="{{ adv.suggest | fmt_input if adv.suggest else '' }}"{% if removed %} disabled{% endif %}>
         {%- endif %}</td>
     <td class="col-num">
         <button type="button" class="amount-pick" data-amount-move="select"
