@@ -271,7 +271,7 @@ def _preflight_verdicts(reader, session, payload):
 
     No lookback: the caller asked about this one request, so every candidate
     action it carries is checked. A raising preflight counts as ``incomplete``.
-    The actions share one validate-only lookup memo, as the sweep's do.
+    The actions share one validate-only lookup memo, as the Pending Users worklist's do.
     """
     from sam.integration.xras_api.vocabulary import with_named_agencies
     from sam.xras.lookups import batch_lookups

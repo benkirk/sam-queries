@@ -1,9 +1,10 @@
 """The validate-only lookup memo: one dict on ``session.info`` while dispatch only checks.
 
-``dispatch_action(validate_only=True)`` opens it for one action, and the Pending Users
-worklist (``records_from_action_log``) opens it around its whole loop, so the keyed
-reads the handlers repeat per action (resource key, opportunity map, allocation type,
-area of interest, request overrides, users, projects) run once per key. A miss is kept
+``dispatch_action(validate_only=True)`` opens it for one action; three callers open it around
+a loop: the Pending Users worklist (``records_from_action_log``), the card patch's preflight of
+one line (``_preflight_verdicts``) and the "more time or resources" review (``_MoreForm``). The
+keyed reads the handlers repeat per action (resource key, opportunity map, allocation type,
+area of interest, request overrides, users, projects) then run once per key. A miss is kept
 too: nothing writes on that path. Live posts never open one.
 """
 
