@@ -37,7 +37,9 @@
 {% macro _amount_row(r, form, field_errors, selected, order, adv=none, removed=false) -%}
 {%- set _name = 'amount_' ~ r.resource_id -%}
 {%- set _err = (field_errors or {}).get(_name) -%}
-{%- set _default = adv.suggest if adv and adv.suggest else (r.limit.default_amount if r.limit and r.limit.default_amount is not none else none) -%}
+{#- What a pick fills: the suggestion, else the advised start (the lower of the type default and
+    the last allocation), else the type default. -#}
+{%- set _default = adv.suggest if adv and adv.suggest else (adv.start if adv and adv.start else (r.limit.default_amount if r.limit and r.limit.default_amount is not none else none)) -%}
 {%- set _suggest = _default | fmt_input if _default is not none else '' -%}
 {%- set _posted = form.get(_name) if form else none -%}
 <tr class="amount-row{{ ' amount-row-available' if not selected }}" data-amount-row data-order="{{ order }}">
@@ -53,7 +55,7 @@
         {%- endif %}</td>
     <td class="col-num">
         <button type="button" class="amount-pick" data-amount-move="select"
-                aria-label="Request {{ r.name }}{{ (', ' ~ ('suggested ' if adv and adv.suggest else 'default ') ~ (_default | fmt_number)) if _suggest and not r.yes_no }}">
+                aria-label="Request {{ r.name }}{{ (', ' ~ ('suggested ' if adv and adv.suggest else 'starts at ') ~ (_default | fmt_number)) if _suggest and not r.yes_no }}">
             {{- 'Yes' if r.yes_no else (_default | fmt_number if _suggest else '—') }}</button>
         {% if r.yes_no %}
         <span class="amount-yes">Yes</span>

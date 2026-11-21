@@ -605,6 +605,20 @@ class TestTheSuggestedAmounts:
         marker = html.split('name="suggested_530902"')[1].split('>', 1)[0]
         assert 'disabled' in row and 'disabled' in marker
 
+    def test_a_hand_picked_row_starts_at_the_advised_start(self, auth_client, on_roster,
+                                                            monkeypatch):
+        import sam.queries.supplement_advice as advice
+        from sam.queries.supplement_advice import Advice
+        monkeypatch.setattr(advice, 'suggest_supplements', lambda *a, **k: {530902: Advice(
+            remaining=9_000.0, rate_per_day=1.0, basis='recent', days=30, last_amount=1_001.0,
+            suggest=None, start=1_001.0)})
+        html = auth_client.get(MORE).get_data(as_text=True)
+        row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
+        pick = html.split('class="amount-pick"')[1].split('</button>', 1)[0]
+        marker = html.split('name="suggested_530902"')[1].split('>', 1)[0]
+        assert 'data-suggest="1001"' in row and 'disabled' in row
+        assert 'starts at 1,001' in pick and '1,001' in pick and 'value=""' in marker
+
     def test_an_available_row_keeps_its_marker_enabled(self, auth_client, on_roster,
                                                        monkeypatch):
         import sam.queries.supplement_advice as advice
