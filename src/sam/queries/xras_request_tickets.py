@@ -145,11 +145,16 @@ class Episode:
     projcode: Optional[str] = None
 
 
-def _refused():
+def refused_posts():
+    """Filter terms for a post SAM refused (422); the re-post wait reads them too."""
     # A failed Re-check copies the request columns and answers 422 too; it refused nothing.
     return (XrasActionLog.is_post,
             XrasActionLog.status == 'failed',
-            XrasActionLog.http_status == 422,
+            XrasActionLog.http_status == 422)
+
+
+def _refused():
+    return (*refused_posts(),
             XrasActionLog.action_type.in_(TICKET_ACTION_TYPES),
             XrasActionLog.request_id.is_not(None))
 
@@ -272,7 +277,15 @@ def contract_key(request_id: int, grant_number: str) -> str:
     return f'xras_ticket:{request_id}:contract:{grant_number}'
 
 
-_MISSING_CONTRACT = re.compile(r'^Cannot find contract for grant number "(.*)" \("(.*)"\)$')
+#: A contract blocker line: (verb, grant number, core). ``Ambiguous`` carries a candidate tail.
+CONTRACT_BLOCKER = re.compile(
+    r'^(Cannot find|Ambiguous) contract for grant number "(.*)" \("(.*?)"\)(?:: matches .*)?$')
+
+
+def missing_contract(message: str) -> Optional[Tuple[str, str]]:
+    """``(grant, core)`` of a "Cannot find contract" line, else ``None``."""
+    found = CONTRACT_BLOCKER.match(message)
+    return found.group(2, 3) if found and found.group(1) == 'Cannot find' else None
 
 
 def contracts_since_refusal(session: Session, episodes: Sequence[Episode]
@@ -286,10 +299,10 @@ def contracts_since_refusal(session: Session, episodes: Sequence[Episode]
         if episode.applied_at is not None:
             continue
         for message in episode.messages:
-            found = _MISSING_CONTRACT.match(message)
+            found = missing_contract(message)
             if found is None:
                 continue
-            grant, core = found.groups()
+            grant, core = found
             if grant not in state:
                 state[grant] = contract_resolution(session, grant, core or grant)
             if state[grant] == 'resolved':
@@ -401,8 +414,8 @@ def merged_comment(placeholder: str, target: str) -> str:
 
 def only_contracts_left(messages: Sequence[str], grants: Iterable[str]) -> bool:
     """Whether every line of *messages* is a missing contract among *grants*."""
-    found = [_MISSING_CONTRACT.match(m) for m in messages]
-    return all(f is not None and f.group(1) in set(grants) for f in found)
+    found = [missing_contract(m) for m in messages]
+    return all(f is not None and f[0] in set(grants) for f in found)
 
 
 def contract_comment(grant_number: str, *, postable: bool) -> str:
