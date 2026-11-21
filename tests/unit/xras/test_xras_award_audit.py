@@ -70,6 +70,28 @@ class TestFold:
         assert award.amount == 1300.0
         assert (award.begin, award.end) == (date(2026, 1, 1), date(2027, 9, 30))
 
+    def test_a_renewal_inside_the_held_window_adds_and_keeps_the_begin(self):
+        [award] = fold_awards([
+            _line('UXYZ0001', _action(1, 'New', [(RID, 500.0, 'Approved')],
+                                      '2024-08-19', '2029-06-30')),
+            _line('UXYZ0001', _action(9, 'Renewal', [(RID, 2930.0, 'Approved')],
+                                      '2025-05-01', '2029-06-30'), request_id=2)])
+        assert award.amount == 3430.0
+        assert (award.begin, award.end) == (date(2024, 8, 19), date(2029, 6, 30))
+
+    def test_an_overlapping_renewal_ending_earlier_is_refused(self):
+        [award] = fold_awards([_line('UXYZ0001',
+            _action(1, 'New', [(RID, 1000.0, 'Approved')], '2026-01-01', '2027-12-31'),
+            _action(2, 'Renewal', [(RID, 300.0, 'Approved')], '2026-06-01', '2027-06-30'))])
+        assert (award.amount, award.end, award.action_ids) == (1000.0, date(2027, 12, 31), [1])
+
+    def test_a_contingent_renewal_moves_the_end_but_not_the_amount(self):
+        renewal = _action(2, 'Renewal', [(RID, 300.0, 'Approved')], '2026-10-01', '2027-09-30')
+        renewal['resources'][0]['comments'] = 'AUTO_DEFAULT_ALLOCATION_TRANSACTION'
+        [award] = fold_awards([_line('UXYZ0001', _action(
+            1, 'New', [(RID, 1000.0, 'Approved')], '2026-01-01', '2026-12-31'), renewal)])
+        assert (award.amount, award.end) == (1000.0, date(2027, 9, 30))
+
     def test_deleted_lines_and_actions_are_ignored(self):
         deleted = dict(_action(2, 'Supplement', [(RID, 5.0, 'Approved')]), isDeleted=True)
         [award] = fold_awards([_line('UXYZ0001', _action(

@@ -109,11 +109,19 @@ def _amount(line: Mapping[str, Any]) -> Optional[float]:
         return None
 
 
+def _overlaps(award: Award, begin: Optional[date], end: Optional[date]) -> bool:
+    """``is_allocation_overlapping`` on dates: both action dates are required."""
+    if begin is None or end is None:
+        return False
+    return not ((award.begin and award.begin > end) or (award.end and award.end < begin))
+
+
 def fold_awards(lines: Sequence[Mapping[str, Any]]) -> List[Award]:
     """The current award per resource for one projcode's request lines (pure)."""
     from sam.queries.xras_accounts import live_actions
     from sam.queries.xras_actions import canonical_action_type
     from sam.queries.xras_requests import live_lines
+    from sam.xras.handlers.update import CONTINGENT_RESOURCE_COMMENT
     from sam.xras.preflight import best_dates, best_stage_lines
     from sam.xras.wire import resource_label
 
@@ -149,11 +157,14 @@ def fold_awards(lines: Sequence[Mapping[str, Any]]) -> List[Award]:
                 continue
             award = awards.get(rid)
             if kind in _OPENING:
-                # Update's overlap rule: a window touching the held one extends and adds to it.
-                if (award is not None and award.end and begin and award.end >= begin
-                        and end and end > award.end):
-                    award.amount += amount
-                    award.end = end
+                # The Update handler's arms (handlers/update.py): overlapping, an earlier
+                # end is refused; otherwise extend, then add unless the resource is contingent.
+                if award is not None and _overlaps(award, begin, end):
+                    if award.end and end < award.end:
+                        continue
+                    award.end = max(end, award.end or end)
+                    if line.get('comments') != CONTINGENT_RESOURCE_COMMENT:
+                        award.amount += amount
                 else:
                     award = awards[rid] = Award(projcode, rid, resource_label(line, rid),
                                                 units=line.get('resourceUnits') or '',
