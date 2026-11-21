@@ -185,6 +185,7 @@ Duo prompt cannot hang the tick), not a fault. `--no-hosts` skips the hop.
 hosts: lane=prod current=samuel-main-<digest12> (git <sha>)  update 5h ago (unchanged)  via casper
   casper:  rapid 2m exit=0 (collectors=0,jobhist-sync=0) | hourly 25m exit=0 (accounting-comp=0) | daily 22h exit=0 (…)
   spool: casper/casper 2m · casper/jupyterhub 2m · derecho/derecho 2m
+  retries(1h): casper=1 derecho=2 jupyterhub=0
 ```
 
 - **rapid** fires every 5 min on both hosts: older than 12 min is a FAIL (cron on
@@ -197,11 +198,10 @@ hosts: lane=prod current=samuel-main-<digest12> (git <sha>)  update 5h ago (unch
   dev (:47) is the quiet case; `failed` FAILs and names the smoke step; the git
   sha maps to the `cirrus`/`cirrus-dev` pin like `pods: sha=`. A leftover
   `candidate` without a bless is a WARN.
-- **a lock older than 60 min with no completion stamp since** FAILs: a hung job.
-  Lock files persist after release, so age alone means nothing; the holder's
-  stamp landing after the lock's mtime means it finished. csgteam's cron mail
-  carries the same signal (stale-lock line, lock timeouts on `cron`, every
-  non-zero step).
+- **a lock older than 60 min with no completion stamp since** FAILs: a hung job (lock
+  files persist; a stamp newer than the lock means it finished). csgteam's cron mail agrees.
+- **retries(1h)**: collector connect retries, shown when non-zero, 2+ WARNs. A retry exits 0, so it is
+  the early sign of a flaky ingress (1-4/h per host for 36 h before the 2026-11-21 outage).
 - **Never run a deploy subcommand or clear a lock from the watch.** Same rule as
   the CronJob: report it, hand it to Ben, `ncar-hpc-deploy` is csgteam's.
 

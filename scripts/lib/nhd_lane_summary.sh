@@ -11,6 +11,7 @@
 #   run JOB HOST age=N exit=E dur=D [reason=...]        (reason only when exit != 0)
 #   lock NAME age=N                 (past NHD_STALE_S, 3600, with no completion stamp since)
 #   spool HOST SYSTEM age=N
+#   retries SYSTEM n=N              (collector connect retries to SAMuel in the last hour)
 set -u
 lane="${1:?usage: nhd_lane_summary.sh LANE}"
 lanes="${NHD_LANES:-/glade/u/apps/opt/sam-queries/containers/ncar-hpc-deploy/lanes}"
@@ -100,5 +101,17 @@ for d in "${S}"/spool/*/; do
         [[ -L "${s}" && -f "${s}/scrape.meta" ]] || continue
         echo "spool ${host} $(basename "${s}") age=$(age "${s}/scrape.meta")"
     done
+done
+
+# A retried connect still exits 0, so only the log shows the ingress dropping connections:
+# 1-4 an hour per host from 2026-11-19 16:10 MST, a day and a half before the full outage.
+# System logs only (<system>.log); <host>-DATE.log are the run logs. Times are local.
+cutoff=$(date -d "@$(( now - 3600 ))" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -r "$(( now - 3600 ))" '+%Y-%m-%d %H:%M:%S')
+for f in "${L}"/collectors/*.log; do
+    [[ -f "${f}" ]] || continue
+    sys=$(basename "${f}" .log)
+    case "${sys}" in *-[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) continue;; esac
+    n=$(tail -n 20000 "${f}" | awk -v c="[${cutoff}]" '/Network error, retry/ && substr($0, 1, 21) >= c { n++ } END { print n + 0 }')
+    echo "retries ${sys} n=${n}"
 done
 exit 0

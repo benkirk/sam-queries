@@ -87,6 +87,9 @@ cirrus_set_env() {
     NHD_LANE="$SAM_ENV"
     NHD_HOSTS="${WATCH_NHD_HOSTS:-casper derecho}"
     NHD_LANES="${WATCH_NHD_LANES:-/glade/u/apps/opt/sam-queries/containers/ncar-hpc-deploy/lanes}"
+    # The preflight's VPN-only host:port. Never the ingress: a dead ingress must FAIL the
+    # http line, not read as "VPN down" (dev's tick exited 0 through the 2026-11-21 outage).
+    VPN_PROBE="${WATCH_VPN_PROBE:-sam-sql.ucar.edu:3306}"
 }
 cirrus_set_env "${SAM_ENV:-prod}"
 
