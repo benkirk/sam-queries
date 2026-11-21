@@ -137,10 +137,11 @@ def repost_wait_episodes(session: Session, *, since: datetime,
     """Every episode whose first refusal falls in ``[since, until]``, oldest first."""
     from sam.queries.xras_actions import split_error_messages
     until = until or datetime.now()
+    # No lower bound: an episode begun before *since* must keep its real first refusal,
+    # or a later in-window refusal would pose as the start and shorten the wait.
     refused = (session.query(XrasActionLog)
                .filter(XrasActionLog.is_post, XrasActionLog.status == 'failed',
                        XrasActionLog.http_status == 422,
-                       XrasActionLog.received_time >= since,
                        XrasActionLog.received_time <= until)
                .order_by(XrasActionLog.received_time, XrasActionLog.xras_action_log_id)
                .all())
@@ -153,7 +154,6 @@ def repost_wait_episodes(session: Session, *, since: datetime,
         links.append(XrasActionLog.request_id.in_(request_ids))
     applied = (session.query(XrasActionLog)
                .filter(XrasActionLog.is_post, XrasActionLog.status == 'processed',
-                       XrasActionLog.received_time >= since,
                        XrasActionLog.received_time <= until, or_(*links))
                .order_by(XrasActionLog.received_time, XrasActionLog.xras_action_log_id)
                .all()) if links else []
@@ -185,6 +185,7 @@ def repost_wait_episodes(session: Session, *, since: datetime,
                 linked_by=None if hit is None else (
                     'action_id' if hit.action_id in ids else 'request_id'),
                 projcode=hit.projcode_result if hit else None))
+    episodes = [e for e in episodes if e.first_refused >= since]
     _clearings(session, episodes, until)
     _tickets(session, episodes)
     return sorted(episodes, key=lambda e: (e.first_refused, e.request_id or 0))

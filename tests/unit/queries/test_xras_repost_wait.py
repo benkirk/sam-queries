@@ -141,6 +141,18 @@ def test_a_refusal_after_the_apply_opens_a_second_episode(session):
     assert [(e.first_refused, e.applied_at) for e in found] == [(h(0), h(2)), (h(5), None)]
 
 
+def test_an_episode_begun_before_the_window_is_not_cut_short(session):
+    r = rid()
+    lines = [errors.mnemonic_internal_failed('jdoe', 'CISL')]
+    post(session, SINCE - timedelta(days=1), 'failed', request_id=r, action_id=r, errors_=lines)
+    post(session, h(0), 'failed', request_id=r, action_id=r, errors_=lines)
+    post(session, h(10), 'processed', request_id=r, action_id=r)
+    assert [e for e in episodes(session) if e.request_id == r] == []
+    found = [e for e in rw.repost_wait_episodes(session, since=SINCE - timedelta(days=2),
+                                                until=UNTIL) if e.request_id == r]
+    assert [(e.first_refused, e.refusals) for e in found] == [(SINCE - timedelta(days=1), 2)]
+
+
 def test_rechecks_and_duplicates_are_not_refusals(session):
     r = rid()
     first = post(session, h(0), 'failed', request_id=r, action_id=r,
