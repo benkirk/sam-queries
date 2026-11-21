@@ -31,8 +31,10 @@
 {#- One resource row of amounts_table. An Available row is gray and shows its default; its inputs
     are disabled so it posts nothing until request-amounts.js moves it to Selected. *adv* is the
     row's supplement advice (sam.queries.supplement_advice.Advice): its suggestion replaces the
-    default, and suggested_<id> tells the amounts route whether the lead changed it. -#}
-{% macro _amount_row(r, form, field_errors, selected, order, adv=none) -%}
+    default, and suggested_<id> tells the amounts route whether the lead changed it. The marker
+    stays enabled on an Available row the lead never picked; only a *removed* row (one the lead
+    took out, request-amounts.js disables every input) posts none. -#}
+{% macro _amount_row(r, form, field_errors, selected, order, adv=none, removed=false) -%}
 {%- set _name = 'amount_' ~ r.resource_id -%}
 {%- set _err = (field_errors or {}).get(_name) -%}
 {%- set _default = adv.suggest if adv and adv.suggest else (r.limit.default_amount if r.limit and r.limit.default_amount is not none else none) -%}
@@ -46,7 +48,7 @@
             {%- if adv.remaining is not none %}{{ 'None remaining' if adv.remaining <= 0 else (adv.remaining | fmt_number) ~ ' remaining' }}{% endif %}
             {%- if adv.suggest %}; the suggestion covers {{ adv.days | fmt_plural('day', 'days') }} at the {{ 'recent' if adv.basis == 'recent' else 'last allocation' }} rate
             {%- elif adv.rate_per_day and adv.days %}, enough through the end date{% endif %}</div>
-        <input type="hidden" name="suggested_{{ r.resource_id }}" value="{{ _suggest }}"{% if not selected %} disabled{% endif %}>
+        <input type="hidden" name="suggested_{{ r.resource_id }}" value="{{ _suggest }}"{% if removed %} disabled{% endif %}>
         {%- endif %}</td>
     <td class="col-num">
         <button type="button" class="amount-pick" data-amount-move="select"
@@ -102,7 +104,8 @@
     </tbody>
     <tbody data-amount-group="available"{% if not _available %} hidden{% endif %}>
         <tr class="table-subtle fw-semibold amount-group"><td colspan="4">Available</td></tr>
-        {% for order, r in _available %}{{ _amount_row(r, form, field_errors, False, order, (advice or {}).get(r.resource_id)) }}{% endfor %}
+        {% for order, r in _available %}{{ _amount_row(r, form, field_errors, False, order, (advice or {}).get(r.resource_id),
+                                                     removed=_posted and ('suggested_' ~ r.resource_id) not in form) }}{% endfor %}
     </tbody>
 </table>
 <input type="hidden" name="amounts_present" value="1">

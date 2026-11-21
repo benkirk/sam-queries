@@ -568,16 +568,21 @@ def my_request_post(project, kind):
 @login_required
 @require_project_permission(Permission.EDIT_PROJECTS)
 def my_request_more_amounts(project):
-    """The amounts re-suggested for the end date being typed; an amount the lead changed stays."""
+    """The amounts re-suggested for the end date being typed; an amount the lead changed stays.
+
+    A row's ``suggested_<id>`` marker arrives unless the lead removed the row: with no amount it
+    was never picked, and with the amount it shows, the lead left the suggestion alone.
+    """
     try:
         ctx = _form_handler(project, 'more').gate()
     except FormError:
         return '', 204
     form = request.args.to_dict()
     for r in ctx['resources']:
-        name, shown = f'amount_{r["resource_id"]}', form.pop(f'suggested_{r["resource_id"]}', None)
+        name, mark = f'amount_{r["resource_id"]}', f'suggested_{r["resource_id"]}'
         advice = ctx['advice'].get(r['resource_id'])
-        if shown and form.get(name) == shown and advice and advice.suggest:
+        untouched = mark in form and form.get(name, '') in ('', form[mark])
+        if untouched and advice and advice.suggest:
             form[name] = input_value(advice.suggest)
     return render_template('dashboards/user/fragments/request_more_amounts_htmx.html',
                            form=form, field_errors={}, **ctx)

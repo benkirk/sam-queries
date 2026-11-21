@@ -549,11 +549,34 @@ class TestTheSuggestedAmounts:
             'amounts_present': '1'}).get_data(as_text=True)
         assert 'value="1234"' in html
 
+    def test_a_row_never_picked_takes_the_new_suggestion(self, auth_client, on_roster, floor,
+                                                         advised):
+        """An ended window opens with no suggestion; choosing a date then selects the row."""
+        html = auth_client.get(AMOUNTS, query_string={
+            'end_date': (floor + timedelta(days=365)).isoformat(), 'suggested_530902': '',
+            'amounts_present': '1'}).get_data(as_text=True)
+        row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
+        assert 'value="5000"' in row and 'disabled' not in row
+
     def test_a_removed_resource_stays_removed(self, auth_client, on_roster, advised):
+        """A removed row posts no marker: it stays under Available, its marker disabled."""
         html = auth_client.get(AMOUNTS, query_string={'amounts_present': '1'}).get_data(
             as_text=True)
         row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
-        assert 'disabled' in row
+        marker = html.split('name="suggested_530902"')[1].split('>', 1)[0]
+        assert 'disabled' in row and 'disabled' in marker
+
+    def test_an_available_row_keeps_its_marker_enabled(self, auth_client, on_roster,
+                                                       monkeypatch):
+        import sam.queries.supplement_advice as advice
+        from sam.queries.supplement_advice import Advice
+        monkeypatch.setattr(advice, 'suggest_supplements', lambda *a, **k: {530902: Advice(
+            remaining=0.0, rate_per_day=None, basis=None, days=0, last_amount=None,
+            suggest=None)})
+        html = auth_client.get(MORE).get_data(as_text=True)
+        row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
+        marker = html.split('name="suggested_530902"')[1].split('>', 1)[0]
+        assert 'disabled' in row and 'disabled' not in marker
 
     def test_a_date_on_the_floor_asks_for_the_current_window(self, auth_client, on_roster,
                                                              floor, advised):
