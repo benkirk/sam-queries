@@ -13,7 +13,6 @@ Read-only. Runner: scripts/xras_repost_wait.py.
 from __future__ import annotations
 
 import math
-import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -25,8 +24,6 @@ from sam.integration.xras import XrasActionLog
 
 #: ``message_kind`` of a blocker line, plus ``other`` for a line it does not classify.
 BLOCKER_KINDS = ('placeholder', 'person', 'contract', 'mnemonic', 'other')
-
-_CONTRACT = re.compile(r'^(?:Cannot find|Ambiguous) contract for grant number "(.*?)" \("(.*?)"\)')
 
 
 @dataclass
@@ -117,6 +114,7 @@ def _line_key(row) -> Tuple:
 
 
 def _blockers(messages: Iterable[str]) -> List[Blocker]:
+    from sam.queries.xras_request_tickets import CONTRACT_BLOCKER
     from sam.queries.xras_requests import message_kind, person_username
     seen: Dict[Tuple[str, str], Blocker] = {}
     for m in messages:
@@ -124,8 +122,8 @@ def _blockers(messages: Iterable[str]) -> List[Blocker]:
         if kind in ('placeholder', 'person'):
             subject = (person_username(m) or '').lower()
         elif kind == 'contract':
-            found = _CONTRACT.match(m)
-            subject, core = found.groups() if found else ('', '')
+            found = CONTRACT_BLOCKER.match(m)
+            subject, core = found.group(2, 3) if found else ('', '')
         else:
             subject = m
         seen.setdefault((kind, subject), Blocker(kind, subject, core=core))
@@ -136,13 +134,12 @@ def repost_wait_episodes(session: Session, *, since: datetime,
                          until: Optional[datetime] = None) -> List[WaitEpisode]:
     """Every episode whose first refusal falls in ``[since, until]``, oldest first."""
     from sam.queries.xras_actions import split_error_messages
+    from sam.queries.xras_request_tickets import refused_posts
     until = until or datetime.now()
     # No lower bound: an episode begun before *since* must keep its real first refusal,
     # or a later in-window refusal would pose as the start and shorten the wait.
     refused = (session.query(XrasActionLog)
-               .filter(XrasActionLog.is_post, XrasActionLog.status == 'failed',
-                       XrasActionLog.http_status == 422,
-                       XrasActionLog.received_time <= until)
+               .filter(*refused_posts(), XrasActionLog.received_time <= until)
                .order_by(XrasActionLog.received_time, XrasActionLog.xras_action_log_id)
                .all())
     if not refused:
