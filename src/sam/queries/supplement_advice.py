@@ -4,7 +4,8 @@ The need through the chosen end date is the project's daily rate times the days 
 remains. The rate is recent use (the trailing window, when the allocation is live and old enough
 to show one), else the last allocation spread over its length. The suggestion rounds the need up
 to two significant figures and caps it at the lower of the type's limit and the last allocation;
-the lead may still ask for more, up to the type's limit. Compute resources only.
+the lead may still ask for more, up to the type's limit. A resource picked by hand starts at the
+lower of the type's default and the last allocation. Compute resources only.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ class Advice:
     days: int
     last_amount: Optional[float]
     suggest: Optional[float]
+    start: Optional[float] = None       # what a hand-picked row fills when nothing is suggested
 
 
 def round_up_nice(x: float) -> float:
@@ -48,6 +50,12 @@ def suggest_amount(rate: Optional[float], days: int, remaining: Optional[float],
         return None
     caps = [c for c in (ceiling, last_amount) if c]
     return min([round_up_nice(need)] + caps)
+
+
+def start_amount(default: Optional[float], last_amount: Optional[float]) -> Optional[float]:
+    """The lower of the type's default and the last allocation, whichever are known."""
+    known = [v for v in (default, last_amount) if v]
+    return min(known) if known else None
 
 
 def _end_of(day: date) -> datetime:
@@ -124,5 +132,6 @@ def suggest_supplements(session, project, resources: List[Mapping[str, Any]], *,
             remaining=remaining, rate_per_day=rate, basis=basis, days=max(days, 0),
             last_amount=last_amount,
             suggest=suggest_amount(rate, days, remaining, ceiling=ceiling,
-                                   last_amount=last_amount))
+                                   last_amount=last_amount),
+            start=start_amount(getattr(r.get('limit'), 'default_amount', None), last_amount))
     return advice

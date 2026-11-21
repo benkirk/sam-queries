@@ -1372,3 +1372,26 @@ class TestTheStaleClose:
         client.get_person.side_effect = lambda name: {'u': name}
         out = service.close_stale_placeholders(factory, operator='task:t', cap=500, client=client)
         assert out['off_roster'] == 0 and out['closed'] == 0 and out['kept'] >= 2
+
+
+class TestThePreflightRound:
+
+    def test_the_lines_actions_share_one_lookup_memo(self, monkeypatch):
+        """One memo across the line's actions (as the sweep's), closed once the round ends."""
+        from types import SimpleNamespace
+        import sam.xras.preflight as preflight
+        session = SimpleNamespace(info={})
+        memos = []
+
+        def fake(sess, payload, action, **kw):
+            memos.append(id(sess.info.get('xras_lookups')) if 'xras_lookups' in sess.info
+                         else None)
+            return SimpleNamespace(status='ok', action_id=action['actionId'])
+        monkeypatch.setattr(preflight, 'preflight_action', fake)
+        monkeypatch.setattr(preflight, 'verdict_to_dict', lambda v: {'status': v.status})
+        payload = {'requestNumber': 'EXAM0001', 'actions': [
+            {'actionId': 1, 'actionType': 'Extension', 'actionStatus': 'Submitted'},
+            {'actionId': 2, 'actionType': 'Supplement', 'actionStatus': 'Submitted'}]}
+        verdicts, counts = service._preflight_verdicts(MagicMock(), session, payload)
+        assert set(verdicts) == {1, 2} and len(set(memos)) == 1 and None not in memos
+        assert 'xras_lookups' not in session.info

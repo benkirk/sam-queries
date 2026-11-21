@@ -402,6 +402,10 @@ class TestTheMoreForm:
         row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
         assert 'value="5000"' in row and 'disabled' not in row
         assert '200 remaining; the suggestion covers 100 days at the recent rate' in html
+        full = html.split('class="d-none d-sm-inline">')[1].split('</span>', 1)[0]
+        short = html.split('class="d-sm-none">')[1].split('</span>', 1)[0]
+        assert 'the suggestion covers' in full and short == '200 left · 5,000 suggested'
+        assert 'class="small text-muted text-nowrap">Core-hours</span>' in html
 
     @pytest.mark.parametrize('types, shown, hidden', [
         (('Extension',), 'name="end_date"', 'name="amount_530902"'),
@@ -597,6 +601,31 @@ class TestTheSuggestedAmounts:
         row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
         assert 'value="5000"' in row and 'disabled' not in row
 
+    def test_an_amount_the_lead_picked_never_takes_an_equal_suggestion_as_its_marker(
+            self, auth_client, on_roster, monkeypatch):
+        """Picked at 1,901 by hand, then a date whose capped suggestion is also 1,901: the marker
+        stays empty, so the next date the balance covers cannot drop the lead's amount."""
+        import sam.queries.supplement_advice as advice
+        from sam.queries.supplement_advice import Advice
+        monkeypatch.setattr(advice, 'suggest_supplements', lambda *a, **k: {530902: Advice(
+            remaining=1_901.0, rate_per_day=2.0, basis='last_allocation', days=1_400,
+            last_amount=1_901.0, suggest=1_901.0, start=1_901.0)})
+        html = auth_client.get(AMOUNTS, query_string={
+            'amount_530902': '1901', 'suggested_530902': '', 'amounts_present': '1'}).get_data(
+            as_text=True)
+        row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
+        marker = html.split('name="suggested_530902"')[1].split('>', 1)[0]
+        assert 'value="1901"' in row and 'value=""' in marker
+
+    def test_an_applied_suggestion_renders_its_own_marker(self, auth_client, on_roster,
+                                                          advised):
+        """A suggestion the route fills keeps reading as untouched on the next change."""
+        html = auth_client.get(AMOUNTS, query_string={
+            'amount_530902': '1000', 'suggested_530902': '1000',
+            'amounts_present': '1'}).get_data(as_text=True)
+        marker = html.split('name="suggested_530902"')[1].split('>', 1)[0]
+        assert 'value="5000"' in marker
+
     def test_a_removed_resource_stays_removed(self, auth_client, on_roster, advised):
         """A removed row posts no marker: it stays under Available, its marker disabled."""
         html = auth_client.get(AMOUNTS, query_string={'amounts_present': '1'}).get_data(
@@ -604,6 +633,20 @@ class TestTheSuggestedAmounts:
         row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
         marker = html.split('name="suggested_530902"')[1].split('>', 1)[0]
         assert 'disabled' in row and 'disabled' in marker
+
+    def test_a_hand_picked_row_starts_at_the_advised_start(self, auth_client, on_roster,
+                                                            monkeypatch):
+        import sam.queries.supplement_advice as advice
+        from sam.queries.supplement_advice import Advice
+        monkeypatch.setattr(advice, 'suggest_supplements', lambda *a, **k: {530902: Advice(
+            remaining=9_000.0, rate_per_day=1.0, basis='recent', days=30, last_amount=1_001.0,
+            suggest=None, start=1_001.0)})
+        html = auth_client.get(MORE).get_data(as_text=True)
+        row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
+        pick = html.split('class="amount-pick"')[1].split('</button>', 1)[0]
+        marker = html.split('name="suggested_530902"')[1].split('>', 1)[0]
+        assert 'data-suggest="1001"' in row and 'disabled' in row
+        assert 'starts at 1,001' in pick and '1,001' in pick and 'value=""' in marker
 
     def test_an_available_row_keeps_its_marker_enabled(self, auth_client, on_roster,
                                                        monkeypatch):

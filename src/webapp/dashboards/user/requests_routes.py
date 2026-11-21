@@ -511,10 +511,13 @@ class _MoreForm(_RequestForm):
         return out
 
     def _assemble(self, data, ctx):
+        from sam.xras.lookups import batch_lookups
         from sam.xras.submission_preflight import preflight_draft
         data['drafts'] = self.drafts(data)
-        verdicts = [preflight_draft(db.session, ctx['decision'].line, d,
-                                    resource_keys=ctx['resource_keys']) for d in data['drafts']]
+        with batch_lookups(db.session):
+            verdicts = [preflight_draft(db.session, ctx['decision'].line, d,
+                                        resource_keys=ctx['resource_keys'])
+                        for d in data['drafts']]
         # The review shows one verdict: the worst of the two.
         data['verdict'] = next((v for status in ('failed', 'manual') for v in verdicts
                                 if v.status == status), verdicts[0])
@@ -584,7 +587,8 @@ def my_request_more_amounts(project):
         advice = ctx['advice'].get(r['resource_id'])
         untouched = mark in form and form.get(name, '') in ('', form[mark])
         if untouched and advice and advice.suggest:
-            form[name] = input_value(advice.suggest)
+            # The marker moves with it, so the row still reads as untouched when rendered.
+            form[name] = form[mark] = input_value(advice.suggest)
         elif untouched:
             form.pop(name, None)
     return render_template('dashboards/user/fragments/request_more_amounts_htmx.html',

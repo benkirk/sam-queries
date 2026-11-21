@@ -9,7 +9,8 @@ from factories.projects import make_account, make_allocation, make_project
 from factories.resources import make_resource
 from factories.summaries import make_comp_charge_summary
 from sam.queries import supplement_advice as advice_mod
-from sam.queries.supplement_advice import round_up_nice, suggest_amount, suggest_supplements
+from sam.queries.supplement_advice import (round_up_nice, start_amount, suggest_amount,
+                                           suggest_supplements)
 from sam.resources.resources import ResourceType
 
 
@@ -42,6 +43,16 @@ class TestSuggestAmount:
     @pytest.mark.parametrize('rate, days', [(None, 30), (0.0, 30), (100.0, 0), (100.0, -5)])
     def test_no_rate_or_no_window_suggests_nothing(self, rate, days):
         assert suggest_amount(rate, days, 0) is None
+
+
+class TestStartAmount:
+
+    @pytest.mark.parametrize('default, last, start', [(500_000, 1_001, 1_001),
+                                                      (500_000, 2_000_000, 500_000),
+                                                      (None, 1_001, 1_001), (5_000, None, 5_000),
+                                                      (None, None, None), (0, 1_001, 1_001)])
+    def test_the_lower_of_the_default_and_the_last_award(self, default, last, start):
+        assert start_amount(default, last) == start
 
 
 @pytest.fixture
@@ -97,6 +108,17 @@ class TestSuggestSupplements:
         out = suggest_supplements(session, project, _line(hpc, limit=limit),
                                   end_date=(now + timedelta(days=365)).date(), now=now)[7]
         assert out.suggest == 500_000
+
+    def test_a_hand_picked_row_starts_at_the_lower_of_default_and_last(self, session, hpc):
+        now = datetime.now()
+        project = make_project(session)
+        account = make_account(session, project=project, resource=hpc)
+        make_allocation(session, account=account, amount=1_001,
+                        start_date=now - timedelta(days=100), end_date=now + timedelta(days=300))
+        limit = SimpleNamespace(max_amount=2_000_000, default_amount=500_000)
+        out = suggest_supplements(session, project, _line(hpc, limit=limit),
+                                  end_date=(now + timedelta(days=10)).date(), now=now)[7]
+        assert out.suggest is None and out.start == 1_001
 
     def test_a_resource_the_project_never_held_gets_no_advice(self, session, hpc):
         project = make_project(session)
