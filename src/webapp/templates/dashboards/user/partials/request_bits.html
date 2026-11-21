@@ -44,12 +44,18 @@
 {%- set _posted = form.get(_name) if form else none -%}
 <tr class="amount-row{{ ' amount-row-available' if not selected }}" data-amount-row data-order="{{ order }}">
     <td>{{ r.name }}
-        {%- if r.units and not r.yes_no %} <span class="small text-muted">{{ r.units }}</span>{% endif %}
+        {%- if r.units and not r.yes_no %} <span class="small text-muted text-nowrap">{{ r.units }}</span>{% endif %}
         {%- if adv %}
+        {#- The sentence from sm up; a phone's narrow name cell gets the short form. -#}
         <div class="small text-muted amount-advice">
+            <span class="d-none d-sm-inline">
             {%- if adv.remaining is not none %}{{ 'None remaining' if adv.remaining <= 0 else (adv.remaining | fmt_number) ~ ' remaining' }}{% endif %}
             {%- if adv.suggest %}; the suggestion covers {{ adv.days | fmt_plural('day', 'days') }} at the {{ 'recent' if adv.basis == 'recent' else 'last allocation' }} rate
-            {%- elif adv.rate_per_day and adv.days %}, enough through the end date{% endif %}</div>
+            {%- elif adv.rate_per_day and adv.days %}, enough through the end date{% endif %}</span>
+            <span class="d-sm-none">
+            {%- if adv.remaining is not none %}{{ 'None left' if adv.remaining <= 0 else (adv.remaining | fmt_number) ~ ' left' }}{% endif %}
+            {%- if adv.suggest %} · {{ adv.suggest | fmt_number }} suggested
+            {%- elif adv.rate_per_day and adv.days %} · enough{% endif %}</span></div>
         {#- Only a real suggestion, never the type default: an amount picked at the default is the lead's. #}
         <input type="hidden" name="suggested_{{ r.resource_id }}" value="{{ adv.suggest | fmt_input if adv.suggest else '' }}"{% if removed %} disabled{% endif %}>
         {%- endif %}</td>

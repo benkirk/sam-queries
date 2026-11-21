@@ -402,6 +402,10 @@ class TestTheMoreForm:
         row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
         assert 'value="5000"' in row and 'disabled' not in row
         assert '200 remaining; the suggestion covers 100 days at the recent rate' in html
+        full = html.split('class="d-none d-sm-inline">')[1].split('</span>', 1)[0]
+        short = html.split('class="d-sm-none">')[1].split('</span>', 1)[0]
+        assert 'the suggestion covers' in full and short == '200 left · 5,000 suggested'
+        assert 'class="small text-muted text-nowrap">Core-hours</span>' in html
 
     @pytest.mark.parametrize('types, shown, hidden', [
         (('Extension',), 'name="end_date"', 'name="amount_530902"'),
