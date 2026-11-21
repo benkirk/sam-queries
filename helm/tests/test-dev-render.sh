@@ -209,14 +209,23 @@ check_dev() {
   shared=$(comm -12 <(grep -E 'secretName: ' <<<"$prod" | sort -u) <(grep -E 'secretName: ' <<<"$whole" | sort -u))
   [[ -z "$shared" ]] || { red "FAIL: dev and prod share a TLS secret: $shared"; return 1; }
 
-  # --- 5. the ingress controller: both envs on Traefik, one Ingress each -----
-  # (docs/plans/implemented/TRAEFIK_INGRESS.md)
+  # --- 5. the ingress controller: one Ingress each, Traefik or the nginx stopgap
+  # (docs/plans/implemented/TRAEFIK_INGRESS.md, docs/plans/INGRESS_NGINX_STOPGAP.md)
   for env_render in "dev:$whole" "prod:$prod"; do
-    local env="${env_render%%:*}" rendered="${env_render#*:}"
-    grep -qE '^\s+ingressClassName: traefik-external$' <<<"$rendered" || { red "FAIL: $env must render ingressClassName traefik-external"; return 1; }
-    grep -q 'nginx.ingress.kubernetes.io/' <<<"$rendered" && { red "FAIL: $env must carry no nginx.ingress.kubernetes.io/ annotation"; return 1; }
-    grep -qE 'router.entrypoints: "websecure"$' <<<"$rendered" || { red "FAIL: $env must bind the router to websecure (no plaintext on :80)"; return 1; }
+    local env="${env_render%%:*}" rendered="${env_render#*:}" class
     [[ $(grep -c '^kind: Ingress$' <<<"$rendered") -eq 1 ]] || { red "FAIL: $env renders exactly one Ingress (the cutover bridge is gone)"; return 1; }
+    class=$(grep -E '^\s+ingressClassName: ' <<<"$rendered" | sed -E 's/.*: //')
+    case "$class" in
+      traefik-external)
+        grep -q 'nginx.ingress.kubernetes.io/' <<<"$rendered" && { red "FAIL: $env on Traefik must carry no nginx.ingress.kubernetes.io/ annotation"; return 1; }
+        grep -qE 'router.entrypoints: "websecure"$' <<<"$rendered" || { red "FAIL: $env must bind the router to websecure (no plaintext on :80)"; return 1; }
+        ;;
+      nginx-external)
+        grep -q 'traefik.ingress.kubernetes.io/' <<<"$rendered" && { red "FAIL: $env on nginx must carry no traefik annotation"; return 1; }
+        grep -qE 'nginx.ingress.kubernetes.io/proxy-body-size: "16m"$' <<<"$rendered" || { red "FAIL: $env on nginx must lift the 1m body cap to the app's 16m"; return 1; }
+        ;;
+      *) red "FAIL: $env ingressClassName must be traefik-external or nginx-external, got: $class"; return 1 ;;
+    esac
   done
   return 0
 }
