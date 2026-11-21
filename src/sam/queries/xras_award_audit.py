@@ -1,10 +1,10 @@
 """XRAS awarded vs SAM allocated: one row per (projcode, XRAS resource) award, with its mismatches.
 
-The XRAS side folds a request family's approved actions (``GET /v1/reports/requests`` shape)
-in ``actionId`` order: New/Renewal open a period, Supplement and Adjustment add their amount
-(an increment, never a total), Extension and Date Adjustment move dates. The SAM side is the
-non-deleted allocation on the project's account for the mapped resource whose window best
-overlaps the award. ALLOCATED amounts only: no charge table is read. Pure and read-only;
+The XRAS side folds a family's approved actions (``reports/requests`` shape) in ``actionId``
+order, each at its best stage, mirroring the handlers: New/Renewal open or update a period as
+Update does, Supplement and Adjustment add an increment, Extension and Date Adjustment move
+dates. The SAM side is the non-deleted allocation whose window best overlaps the award, on a
+resource still commissioned. ALLOCATED amounts only: no charge table is read. Read-only;
 :func:`fetch_award_lines` is the one network call, kept separate so a caller holding reports
 payloads (the recommender's ``sam_crosscheck``) passes them straight to :func:`audit_awards`.
 """
@@ -12,7 +12,7 @@ payloads (the recommender's ``sam_crosscheck``) passes them straight to :func:`a
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import date
+from datetime import date, datetime, time
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 #: Award-side kinds that mean SAM does not hold what XRAS awarded.
@@ -83,6 +83,7 @@ class AwardAudit:
     today: date
     include_expired: bool = False
     complete: bool = True
+    retired_skipped: int = 0
 
     @property
     def mismatches(self) -> List[AuditRow]:
@@ -99,6 +100,7 @@ class AwardAudit:
         return {'kind': 'xras_award_audit', 'as_of': self.today.isoformat(),
                 'include_expired': self.include_expired, 'complete': self.complete,
                 'checked': len(self.rows), 'mismatched': len(self.mismatches),
+                'retired_skipped': self.retired_skipped,
                 'counts': self.counts(), 'rows': [r.to_dict() for r in self.rows]}
 
 
@@ -230,6 +232,7 @@ def audit_awards(session, payloads: Iterable[Mapping[str, Any]],
     from sam.accounting.allocations import Allocation
     from sam.integration.xras import XrasResourceRepositoryKeyResource
     from sam.projects.projects import Project
+    from sam.xras.handlers._allocations import clamp_start_to_commission
     from sam.xras.submission_preflight import sam_resources_by_xras_id
 
     today = today or date.today()
@@ -263,12 +266,18 @@ def audit_awards(session, payloads: Iterable[Mapping[str, Any]],
             held.setdefault((project_id, resource_id), []).append(alloc)
     mapped_ids = {rid for (rid,) in session.query(XrasResourceRepositoryKeyResource.resource_id)}
 
+    as_of = datetime.combine(today, time.min)
     out: List[AuditRow] = []
+    retired = 0
     for number in sorted(awards):
         project = projects.get(number)
         claimed = set()
         for award in awards[number]:
             resource = sam_resources.get(award.resource_id)
+            # SAM ends allocations at decommission, so a retired resource only adds noise.
+            if resource is not None and not resource.is_active_at(as_of):
+                retired += 1
+                continue
             row = AuditRow(projcode=number, xras_resource=award.resource_label,
                            sam_resource=resource.resource_name if resource else None,
                            issues=[], xras_amount=award.amount, xras_begin=award.begin,
@@ -300,14 +309,16 @@ def audit_awards(session, payloads: Iterable[Mapping[str, Any]],
             row.sam_end = alloc.end_date.date() if alloc.end_date else None
             if abs((alloc.amount or 0.0) - award.amount) > AMOUNT_TOLERANCE:
                 row.issues.append('amount_differs')
-            if award.begin and row.sam_begin != award.begin:
+            # The create branch clamps an early begin to the commission date, silently.
+            if award.begin and row.sam_begin != clamp_start_to_commission(
+                    resource, datetime.combine(award.begin, time.min)).date():
                 row.issues.append('begin_differs')
             if award.end and row.sam_end != award.end:
                 row.issues.append('end_differs')
         if project is not None:
             out.extend(_sam_only(project, number, held, mapped_ids - claimed, today))
     return AwardAudit(rows=out, today=today, include_expired=include_expired,
-                      complete=complete)
+                      complete=complete, retired_skipped=retired)
 
 
 def _sam_only(project, number, held, unclaimed_ids, today) -> List[AuditRow]:

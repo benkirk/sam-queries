@@ -222,6 +222,9 @@ def display_award_audit(ctx, payload) -> None:
     counts = ', '.join(f'{k} {n}' for k, n in payload['counts'].items() if n)
     ctx.console.print(f"{payload['mismatched']} of {fmt.plural(payload['checked'], 'row', 'rows')} "
                       f"mismatched; {counts}")
+    if payload.get('retired_skipped'):
+        ctx.console.print(f"Skipped {fmt.plural(payload['retired_skipped'], 'award', 'awards')} "
+                          'on decommissioned resources.', style='dim')
     if not payload['complete']:
         ctx.console.print('Incomplete: the request page budget ran out.', style='yellow')
 

@@ -184,6 +184,23 @@ class TestAudit:
         assert kinds == ['sam_only']
         assert audit.mismatches == []
 
+    def test_an_award_on_a_decommissioned_resource_is_skipped_and_counted(self, session, mapped):
+        resource, keys = mapped
+        resource.decommission_date = datetime(2023, 12, 31)
+        project = make_project(session)
+        _held(session, project, resource, end=datetime(2023, 12, 31))
+        audit = _audit(session, [_new(project.projcode, end='2027-12-31')], keys)
+        assert audit.rows == [] and audit.retired_skipped == 1
+        assert audit.to_dict()['retired_skipped'] == 1
+
+    def test_an_award_begun_before_commission_matches_the_clamped_start(self, session, mapped):
+        resource, keys = mapped
+        resource.commission_date = datetime(2026, 3, 1)
+        project = make_project(session)
+        _held(session, project, resource, start=datetime(2026, 3, 1))
+        [row] = _audit(session, [_new(project.projcode)], keys).rows
+        assert row.issues == []
+
     def test_the_envelope(self, session, mapped):
         resource, keys = mapped
         project = make_project(session)

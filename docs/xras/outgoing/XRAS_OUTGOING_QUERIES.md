@@ -757,8 +757,10 @@ Extending the existing mode-dispatch in `src/cli/xras/commands.py`
 - `--award-audit [--request PROJCODE]` — what XRAS awarded vs what SAM allocated,
   per project and resource (`kind: xras_award_audit`). Reads `reports/requests`
   (`active=true`; one family with `--request`, expired awards included) and folds
-  each family's approved actions: Supplement and Adjustment add, Extension moves the
-  end. Kinds: `project_missing`, `resource_unmapped`, `allocation_missing`,
+  each family's approved actions at each action's best stage, the way the handlers
+  apply them: New and Renewal follow Update's overlap arms, Supplement and Adjustment
+  add, Extension moves the end. Begin is compared after the commission clamp; an award
+  on a decommissioned resource is skipped and counted (`retired_skipped`). Kinds: `project_missing`, `resource_unmapped`, `allocation_missing`,
   `amount_differs`, `begin_differs`, `end_differs`, plus context (`renamed_pending`,
   `project_inactive`, `approximate`, `sam_only`). Exit 1 on any mismatch, 2 when
   XRAS is unconfigured or down. The logic is `src/sam/queries/xras_award_audit.py`,
