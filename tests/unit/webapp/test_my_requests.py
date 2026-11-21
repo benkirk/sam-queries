@@ -208,7 +208,7 @@ class TestTheRowButtons:
         html = auth_client.get(self.OFFERS).get_data(as_text=True)
         cell = html.split('id="req-offers-UHSS0001"')[1].split('</span>\n', 1)[0]
         assert 'hx-swap-oob' in html.split('id="req-offers-UHSS0001"')[1][:40]
-        for kind, word in (('more', 'More'), ('renewal', 'Renew')):
+        for kind, word in (('more', 'Extend or add'), ('renewal', 'Renew')):
             assert f'/user/requests/UHSS0001/{kind}"' in cell and f'>{word}</span>' in cell
         assert cell.count('<button') == 2
         assert armed.reads.count(('offers', 'benkirk')) == 1
@@ -388,6 +388,7 @@ class TestTheMoreForm:
     def test_the_form_offers_a_date_and_the_lines_resources(self, auth_client, on_roster, floor):
         html = auth_client.get(MORE).get_data(as_text=True)
         assert 'More time or resources' in html and floor.isoformat() in html
+        assert 'Please explain why this is required' in html
         assert 'name="end_date"' in html and 'name="amount_530902"' in html
         assert f'hx-get="{AMOUNTS}"' in html
 
@@ -400,7 +401,7 @@ class TestTheMoreForm:
         html = auth_client.get(MORE).get_data(as_text=True)
         row = html.split('id="xrasRequestAmount530902"')[1].split('>', 1)[0]
         assert 'value="5000"' in row and 'disabled' not in row
-        assert '200 left' in html and 'suggested for 100 days at recent use' in html
+        assert '200 remaining; the suggestion covers 100 days at the recent rate' in html
 
     @pytest.mark.parametrize('types, shown, hidden', [
         (('Extension',), 'name="end_date"', 'name="amount_530902"'),
@@ -414,7 +415,7 @@ class TestTheMoreForm:
 
     def test_neither_half_is_refused(self, auth_client, on_roster, filed):
         html = auth_client.post(MORE, data=_more()).get_data(as_text=True)
-        assert 'Choose a new end date, add a resource, or both.' in html and not filed
+        assert 'Please choose a new end date, add a resource, or both.' in html and not filed
 
     def test_a_date_on_or_before_the_floor_is_refused(self, auth_client, on_roster, floor,
                                                       filed):
@@ -427,7 +428,8 @@ class TestTheMoreForm:
         html = auth_client.post(MORE, data=_more(end=end, amount_530902='1,500')).get_data(
             as_text=True)
         assert 'Review your request' in html and 'name="agree"' in html and _sha() in html
-        assert 'New end date' in html and '1,500' in html and 'two requests' in html
+        assert 'New end date' in html and '1,500' in html and 'reviews each separately' in html
+        assert 'Justification' in html
         assert 'name="amount_530902" value="1500"' in html
         assert f'name="end_date" value="{end.isoformat()}"' in html
         assert not filed
@@ -450,13 +452,15 @@ class TestTheMoreForm:
         end = floor + timedelta(days=365)
         html = auth_client.post(MORE, data=_submit(**_more(end=end, amount_530902='1500'))
                                 ).get_data(as_text=True)
-        assert 'Request filed' in html and html.count('XRAS has your') == 2
+        assert 'Request submitted' in html and html.count('XRAS has your') == 2
+        assert 'Track both on My Requests.' in html
         (ext, kw), (sup, _) = filed
         assert (ext.action_type, ext.request_id, ext.dates, ext.user_comments) == \
             ('Extension', 1449367, (None, end), WHY)
         assert sup.action_type == 'Supplement'
         assert [(r.resource_id, r.amount) for r in sup.resources] == [(530902, 1500.0)]
-        assert sup.user_comments == f'Filed with an Extension to {end.isoformat()}. {WHY}'
+        assert sup.user_comments == \
+            f'Requested together with an Extension to {end.isoformat()}. {WHY}'
         assert ext.bundle and ext.bundle == sup.bundle
         assert (kw['door'], kw['xa_user'], kw['actor'], kw['eula'][0]) == \
             ('pi', 'benkirk', 'benkirk', _sha())
@@ -482,8 +486,8 @@ class TestTheMoreForm:
         monkeypatch.setattr(flow, 'request_action', lambda *a, **k: next(outcomes))
         body = _submit(**_more(end=floor + timedelta(days=365), amount_530902='1500'))
         html = auth_client.post(MORE, data=body).get_data(as_text=True)
-        assert 'Request stopped' in html and 'The Supplement stopped at resource:530902' in html
-        assert 'Your Extension is with XRAS.' in html and 'Resume or discard' in html
+        assert 'Request incomplete' in html and 'The Supplement stopped at resource:530902' in html
+        assert 'Your Extension was submitted.' in html and 'resume or discard it' in html
 
     def test_a_seven_digit_amount_survives_review_back_and_submit(self, auth_client,
                                                                    on_roster, filed):

@@ -7,26 +7,26 @@
 {% if action_type == 'More' %}
 {%- set _outcomes = data.outcomes %}
 {%- set _ok = _outcomes | selectattr('succeeded') | list %}
-{{ request_title('Request filed' if _ok | length == _outcomes | length else 'Request stopped', meta=project.projcode) }}
+{{ request_title('Request submitted' if _ok | length == _outcomes | length else 'Request incomplete', meta=project.projcode) }}
 <div class="modal-body">
     {% for o in _outcomes %}
     {%- set _type = data.drafts[loop.index0].action_type %}
     {% if o.succeeded %}
     {% call outcome_block('success', 'XRAS has your ' ~ _type ~ ' on ' ~ decision.request_number ~ ' for review.') %}{% endcall %}
     {% elif o.submission_id is none %}
-    {% call outcome_block('warning', 'SAM did not file the ' ~ _type ~ ': ' ~ o.error ~ '.') %}
-    <p class="mb-0 small text-muted">{% if _ok %}Your {{ data.drafts[0].action_type }} is with XRAS. {% endif %}Ask for the {{ _type }} again from {{ _where }}.</p>
+    {% call outcome_block('warning', 'The ' ~ _type ~ ' was not submitted: ' ~ o.error ~ '.') %}
+    <p class="mb-0 small text-muted">{% if _ok %}Your {{ data.drafts[0].action_type }} was submitted. {% endif %}Request the {{ _type }} again from {{ _where }}.</p>
     {% endcall %}
     {% else %}
     {% call outcome_block('warning', 'The ' ~ _type ~ ' stopped at ' ~ o.step ~ (': ' ~ o.error if o.error else '') ~ '.') %}
-    <p class="mb-0 small text-muted">{% if _ok %}Your {{ data.drafts[0].action_type }} is with XRAS. {% endif %}What SAM already sent is kept. Resume or discard it from {{ _where }}.</p>
+    <p class="mb-0 small text-muted">{% if _ok %}Your {{ data.drafts[0].action_type }} was submitted. {% endif %}The {{ _type }} is saved where it stopped; resume or discard it from {{ _where }}.</p>
     {% endcall %}
     {% endif %}
     {% endfor %}
     {% if _outcomes | length < data.drafts | length %}
-    <p class="small text-muted mb-0">SAM did not file the {{ data.drafts[_outcomes | length].action_type }}; file it again once the request above is resolved.</p>
+    <p class="small text-muted mb-0">The {{ data.drafts[_outcomes | length].action_type }} was not submitted. Request it again once the request above is resolved.</p>
     {% endif %}
-    <p class="mb-0 small text-muted">{{ _where }} shows their progress.</p>
+    <p class="mb-0 small text-muted">Track {{ 'both' if _outcomes | length > 1 else 'it' }} on {{ _where }}.</p>
 </div>
 {% else %}
 {{ request_title(action_type ~ (' request' if action_type == 'New' else '') ~ (' filed' if outcome.succeeded else ' stopped'), meta=project.projcode if project else None) }}

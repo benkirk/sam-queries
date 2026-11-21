@@ -9,14 +9,14 @@ per-type zero-balance minimums give way to the recommender in § 3.
 
 On My Requests a project row offered **Extend** and **Supplement**, two forms filing one XRAS
 action each. Leads think "more time and/or more hours", and reviewers often answered an
-Extension with "file a Supplement too". Now one **More** button opens one dialog:
+Extension with "file a Supplement too". Now one **Extend or add** button opens one dialog:
 
 - an optional new end date, optional extra resources (at least one), one reason;
 - one review, one submit. SAM files the Extension, then the Supplement
   (`sam.manage.xras_submission.request_actions`), stopping at the first that does not succeed;
 - the outcome lists each action. My Requests keeps one row per action with its own status,
   and notes the pair (`filed_with`, from the shared payload `bundle`);
-- the Supplement's comment opens with "Filed with an Extension to <date>." so its reviewer
+- the Supplement's comment opens with "Requested together with an Extension to <date>." so its reviewer
   sees the pair.
 
 XRAS stays at two actions: the inbound handlers apply an Extension's end date only and a

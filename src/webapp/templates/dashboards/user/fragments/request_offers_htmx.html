@@ -2,7 +2,7 @@
     (GET /user/requests/htmx/offers). Context: projects, offers {projcode: [action types]},
     more_types (the XRAS types one More button files). Openers for #xrasRequestModal, which the
     page hosts. -#}
-{%- set _BUTTONS = {'more': ('calendar-plus', 'More', 'Request more time or resources'),
+{%- set _BUTTONS = {'more': ('calendar-plus', 'Extend or add', 'Request more time or resources'),
                     'renewal': ('arrows-rotate', 'Renew', 'Request a renewal')} -%}
 {% for project in projects %}
 {%- set _types = offers.get(project.projcode, []) %}

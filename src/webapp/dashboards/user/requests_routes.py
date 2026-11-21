@@ -67,6 +67,7 @@ _SCHEMAS = {'More': XrasMoreRequestForm, 'Renewal': XrasRenewalRequestForm}
 #: The XRAS types one "more time or resources" request files, in filing order.
 MORE_TYPES = ('Extension', 'Supplement')
 _LABELS = {'More': 'More time or resources'}
+_REFUSED = {'More': 'Requests for more time or resources'}
 
 
 #: The module's seam for the tests; the plumbing itself is ``webapp.utils.xras``.
@@ -197,8 +198,8 @@ def _refuse_unless_armed(config, action_type):
                         'requests, under their own agreement.')
     types = MORE_TYPES if action_type == 'More' else (action_type,)
     if not any(config.submit_allows(t) for t in types):
-        raise FormError(f'{_LABELS.get(action_type, action_type)} requests through SAM are '
-                        'not enabled here.')
+        raise FormError(f'{_REFUSED.get(action_type, action_type + " requests")} through SAM '
+                        'are not enabled here.')
 
 
 def _read_upload(field, label):
@@ -503,7 +504,7 @@ class _MoreForm(_RequestForm):
             out.append(ActionRequest(action_type='Extension', dates=(None, end),
                                      user_comments=why, **common))
         if amounts:
-            note = f'Filed with an Extension to {end.isoformat()}. ' if end else ''
+            note = f'Requested together with an Extension to {end.isoformat()}. ' if end else ''
             out.append(ActionRequest(
                 action_type='Supplement', user_comments=note + why,
                 resources=tuple(ResourceAmount(rid, a) for rid, a in amounts.items()), **common))

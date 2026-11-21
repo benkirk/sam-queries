@@ -84,17 +84,17 @@ class XrasMoreRequestForm(XrasAgreementMixin):
     end_date = f.Date(load_default=None)
     amounts = f.Dict(keys=f.Int(), values=f.Str(), load_default=dict)
     user_comments = f.Str(required=True, validate=v.Length(max=XRAS_LONGTEXT_MAX),
-                          error_messages={'required': 'Say why the project needs this.'})
+                          error_messages={'required': 'Please explain why this is required.'})
 
     @post_load
     def _halves(self, data, **kwargs):
         data['user_comments'] = clean_text(data.get('user_comments'))
         if len(data['user_comments']) < _COMMENTS_MIN:
             raise ValidationError({'user_comments': [
-                'Say why the project needs this, in a sentence or two.']})
+                'Please explain why this is required, in a sentence or two.']})
         data['amounts'] = _parse_amounts(data['amounts'], required=False)
         if data['end_date'] is None and not data['amounts']:
-            raise ValidationError('Choose a new end date, add a resource, or both.')
+            raise ValidationError('Please choose a new end date, add a resource, or both.')
         return data
 
 

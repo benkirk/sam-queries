@@ -49,13 +49,13 @@
             <dt class="col-sm-4">Abstract</dt>
             <dd class="col-sm-8 text-break">{{ data.abstract | truncate(300) }}</dd>
             {% else %}
-            <dt class="col-sm-4">Why</dt>
+            <dt class="col-sm-4">Justification</dt>
             <dd class="col-sm-8 text-break">{{ data.user_comments }}</dd>
             {% endif %}
         </dl>
         {% if action_type == 'More' and data.end_date and data.amounts %}
         <p class="small text-muted mb-2">XRAS receives this as two requests, an Extension and a
-            Supplement, and its reviewers decide each one.</p>
+            Supplement, and reviews each separately.</p>
         {% endif %}
         {{ verdict_note(data.verdict) }}
         {% for d in documents %}

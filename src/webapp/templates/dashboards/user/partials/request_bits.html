@@ -43,14 +43,14 @@
         {%- if r.units and not r.yes_no %} <span class="small text-muted">{{ r.units }}</span>{% endif %}
         {%- if adv %}
         <div class="small text-muted amount-advice">
-            {%- if adv.remaining is not none %}{{ 'None left' if adv.remaining <= 0 else (adv.remaining | fmt_number) ~ ' left' }}{% endif %}
-            {%- if adv.suggest %} · suggested for {{ adv.days | fmt_plural('day', 'days') }} at {{ 'recent use' if adv.basis == 'recent' else "the last award's pace" }}
-            {%- elif adv.rate_per_day and adv.days %} · enough to the end date{% endif %}</div>
+            {%- if adv.remaining is not none %}{{ 'None remaining' if adv.remaining <= 0 else (adv.remaining | fmt_number) ~ ' remaining' }}{% endif %}
+            {%- if adv.suggest %}; the suggestion covers {{ adv.days | fmt_plural('day', 'days') }} at the {{ 'recent' if adv.basis == 'recent' else 'last allocation' }} rate
+            {%- elif adv.rate_per_day and adv.days %}, enough through the end date{% endif %}</div>
         <input type="hidden" name="suggested_{{ r.resource_id }}" value="{{ _suggest }}"{% if not selected %} disabled{% endif %}>
         {%- endif %}</td>
     <td class="col-num">
         <button type="button" class="amount-pick" data-amount-move="select"
-                aria-label="Request {{ r.name }}{{ (', default ' ~ (_default | fmt_number)) if _suggest and not r.yes_no }}">
+                aria-label="Request {{ r.name }}{{ (', ' ~ ('suggested ' if adv and adv.suggest else 'default ') ~ (_default | fmt_number)) if _suggest and not r.yes_no }}">
             {{- 'Yes' if r.yes_no else (_default | fmt_number if _suggest else '—') }}</button>
         {% if r.yes_no %}
         <span class="amount-yes">Yes</span>

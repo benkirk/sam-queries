@@ -13,25 +13,28 @@
     <input type="hidden" name="stage" value="review">
     {% if decision %}
     <div class="modal-facts small mb-3">
+        {%- if action_type == 'More' %}
+        {%- if floor %}The project's allocations end {{ floor | fmt_date }}.{% else %}The project has no current end date.{% endif %}
+        {%- else %}
         XRAS request <span class="font-monospace">{{ decision.request_number }}</span>
-        {%- if action_type == 'More' and floor %}; the project's allocations end {{ floor | fmt_date }}{% endif %}
-        {%- if action_type == 'Renewal' and offer %}; renews under {{ offer.opportunity_name }}{% endif %}.
+        {%- if offer %}; renews under {{ offer.opportunity_name }}{% endif %}.
+        {%- endif %}
         {%- if action_type == 'Renewal' %}{{ attach_note(documents) }}{% endif %}
     </div>
     {% endif %}
     {% if action_type == 'More' %}
         {% if allow_extension %}
         {{ date_field('end_date', 'New end date', id='xrasRequestEnd', min=end_min,
-                      help='Leave it empty to keep the current end. Every allocation on the project moves to the date you choose.',
+                      help="Leave blank to keep the current end date. All of the project's allocations move to the new date.",
                       attrs={'hx-get': url_for('user_dashboard.my_request_more_amounts', projcode=project.projcode),
                              'hx-trigger': 'change', 'hx-target': '#xrasMoreAmounts', 'hx-swap': 'outerHTML',
                              'hx-include': '#xrasMoreAmounts input'} if allow_supplement else None) }}
         {% endif %}
         {% if allow_supplement %}
-        <p class="form-label mb-1">More resources <span class="text-muted small">(optional)</span></p>
+        <p class="form-label mb-1">Additional resources <span class="text-muted small">(optional)</span></p>
         {% include 'dashboards/user/fragments/request_more_amounts_htmx.html' %}
         {% endif %}
-        {{ textarea_field('user_comments', 'Why the project needs this', required=True,
+        {{ textarea_field('user_comments', 'Please explain why this is required', required=True,
                           rows=4, id='xrasRequestComments') }}
     {% else %}
         {{ textarea_field('abstract', 'Abstract for the coming period', required=True, rows=6,
