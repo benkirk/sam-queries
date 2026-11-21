@@ -19,7 +19,8 @@ class XrasCommand(BaseCommand):
                 validate_mapping=False, validate_opportunities=False,
                 validate_vocabulary=False,
                 accounts=False, readiness=False, mnemonic_report=False,
-                contract_report=False, identity_report=False, person=None,
+                contract_report=False, identity_report=False, award_audit=False,
+                person=None,
                 family=None, enrich=False,
                 status=(), action_type=(), request_number=None, last=None,
                 show_payload=False, limit=50, **_) -> int:
@@ -44,6 +45,8 @@ class XrasCommand(BaseCommand):
                 return self._contract_report()
             if identity_report:
                 return self._identity_report()
+            if award_audit:
+                return self._award_audit(request_number)
             if accounts:
                 return self._accounts(filters, enrich)
             if recheck is not None:
@@ -277,6 +280,34 @@ class XrasCommand(BaseCommand):
             self.session, pending_rows=feed.rows if feed.checked else None,
             enrich=xras_api_configured(), index=self._index(), since=feed.window_start)
         return self.emit(payload, display.display_identity_report)
+
+    def _award_audit(self, projcode) -> int:
+        """XRAS awarded vs SAM allocated. 0 when every award matches, 1 on any mismatch, 2 could-not-ask."""
+        from sam.integration.xras_api import (XrasApiClient, XrasSourceUnavailable,
+                                              get_resources, xras_api_configured)
+        from sam.integration.xras_api.people import resource_key_map
+        from sam.queries.xras_award_audit import audit_awards, fetch_award_lines
+
+        if not xras_api_configured():
+            self.ctx.console.print(
+                '[red]--award-audit needs the XRAS API: set XRAS_OUTGOING_ENABLED=1 '
+                'and XRAS_API_KEY.[/red]')
+            return EXIT_ERROR
+        try:
+            lines, complete = fetch_award_lines(XrasApiClient.from_environment(),
+                                                projcode=projcode, include_expired=bool(projcode))
+            keys = resource_key_map(get_resources())
+        except XrasSourceUnavailable as exc:
+            self.ctx.console.print(f'[red]XRAS unavailable: {exc}[/red]')
+            return EXIT_ERROR
+        if not complete:
+            self.ctx.stderr_console.print(
+                '[yellow]Page budget reached; the audit covers the newest requests only.[/yellow]')
+        audit = audit_awards(self.session, lines, keys, include_expired=bool(projcode),
+                             complete=complete)
+        payload = builders.build_award_audit(audit, projcode)
+        self.emit(payload, display.display_award_audit)
+        return EXIT_NOT_FOUND if payload['mismatched'] else EXIT_SUCCESS
 
     def _index(self):
         """The published request index: its current rosters retire a stale push."""

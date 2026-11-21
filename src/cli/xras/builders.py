@@ -325,6 +325,11 @@ def build_contract_report(session, snapshot) -> dict:
     return contract_unblock_report(session, snapshot)
 
 
+def build_award_audit(audit, projcode=None) -> dict:
+    """The ``xras_award_audit`` envelope; *projcode* echoes the ``--request`` scope."""
+    return dict(audit.to_dict(), projcode=projcode)
+
+
 def build_person_report(username, person) -> dict:
     """The ``xras_person`` envelope — a direct ``/v1/people`` probe.
 
