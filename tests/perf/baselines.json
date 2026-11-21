@@ -253,6 +253,10 @@
         "queries": 18,
         "notes": "measured 14 (2026-10-22) on 40 snapshot projects with a distinct lead and admin, cold; flat in projects. Was 286: Project.lead and Project.admin loaded lazily per project, each User load running its selectin relationships"
     },
+    "xras_more_submit_pair": {
+        "queries": 110,
+        "notes": "measured 94 (2026-11-21) filing an Extension + Supplement onto a line already carrying 8 actions, the same within 5 on a 2-action line: two filings at 31 each, then ONE Remediations card patch whose preflights share one lookup memo. Was 152 (2-action line) / 288 (8-action line): a card patch per filed action, each preflight re-reading the project and its accounts (infer_applied bypassed find_project); 276 on samuel-dev 2026-11-21"
+    },
     "xras_worklist_preflight": {
         "queries": 30,
         "notes": "measured 23 (2026-10-23, MySQL and Postgres): 25 failed Extensions on distinct snapshot projects plus 25 failed News, validated; flat in actions (the test also asserts 50 actions cost at most 5 more than 10). Was 463: each action re-read the resource key, opportunity map, allocation type, area of interest, overrides, users and projcode; now one seeded lookup memo (sam/xras/lookups.py). Before #861 it was 725 for the Extensions alone"
@@ -268,6 +272,10 @@
     "xras_configuration_cards_route": {
         "queries": 20,
         "notes": "measured 15 (2026-10-31, benkirk, 7 guide rows, six resources each): 9 for the signed-in user, then the guide rows, the limited type names, the type ids, the limits (retired too) and the resource map, each once for all the cards. Flat in cards"
+    },
+    "user_my_requests_more_route": {
+        "queries": 40,
+        "notes": "measured 33 (2026-11-20, benkirk, UHSS0001): the user context, the routing's xras_submission read, the extension floor over the accounts, the limits and resource map, then the supplement advice: one usage build and one trailing-window read for the project. Same count with one line resource or two"
     },
     "user_my_requests_new_route": {
         "queries": 32,

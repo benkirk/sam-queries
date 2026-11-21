@@ -298,10 +298,9 @@ from .xras_remediation import (
 )
 from .xras_submission import (
     XrasAddActionAgreementForm,
-    XrasExtensionRequestForm,
+    XrasMoreRequestForm,
     XrasNewRequestForm,
     XrasRenewalRequestForm,
-    XrasSupplementRequestForm,
 )
 from .xras_notes import RecommenderNoteBatchSchema, RecommenderNoteSchema
 # XRAS action ingest — plain marshmallow, deliberately NOT HtmxFormSchema
@@ -428,7 +427,7 @@ __all__ = [
     'XrasAddActionForm',
     'XrasContractCreateForm',
     'XrasRequestOverrideForm',
-    'XrasExtensionRequestForm', 'XrasSupplementRequestForm', 'XrasRenewalRequestForm',
+    'XrasMoreRequestForm', 'XrasRenewalRequestForm',
     'XrasNewRequestForm', 'XrasAddActionAgreementForm',
     'RecommenderNoteBatchSchema', 'RecommenderNoteSchema',
     'XrasActionSchema',

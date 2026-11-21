@@ -594,6 +594,6 @@ any host, localhost included: site `1x00000000000000000000AA` with secret
 | [`../../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md`](../../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md) | § 2: SAM never originates users; the upstream owner |
 | [`../XRAS_ACCOUNT_QUEUE.md`](../XRAS_ACCOUNT_QUEUE.md) | the Pending Users queue this generalizes; the designed `xras_account_event` |
 | [`../../xras/outgoing/XRAS_OUTGOING_QUERIES.md`](../../xras/outgoing/XRAS_OUTGOING_QUERIES.md) | the account worklist and its two feeds |
-| [`../XRAS_SUBMISSION.md`](../XRAS_SUBMISSION.md) | phase 3, the consumer of § 4 |
+| [`XRAS_SUBMISSION.md`](XRAS_SUBMISSION.md) | phase 3, the consumer of § 4 |
 | [`../../xras/outgoing/XRAS_WRITE_PROBES.md`](../../xras/outgoing/XRAS_WRITE_PROBES.md) | the write discipline the person-create verb inherits |
 | [`RATE_LIMITING.md`](RATE_LIMITING.md) | the anonymous and login-POST tiers |

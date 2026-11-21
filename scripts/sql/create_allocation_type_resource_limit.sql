@@ -8,7 +8,7 @@
 --   Postgres (sam_dev): the same two files with _pg.
 --
 -- A pair with no active row has no limit. Amounts are in the resource's own
--- unit. Design: docs/plans/XRAS_SUBMISSION.md § 4.5. ORM:
+-- unit. Design: docs/plans/implemented/XRAS_SUBMISSION.md § 4.5. ORM:
 -- src/sam/accounting/allocation_type_limits.py. Pinned by
 -- tests/integration/test_schema_validation.py.
 --

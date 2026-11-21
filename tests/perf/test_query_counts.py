@@ -503,6 +503,90 @@ def test_xras_worklist_preflight_is_flat_in_projects(session, count_queries):
 
 
 # ---------------------------------------------------------------------------
+# "Extend or add": filing an Extension and its Supplement patches the Remediations card
+# once, and that patch preflights the line's actions through one lookup memo, so the
+# cost is flat in the actions the line already carries (276 statements on dev, 2026-11-21).
+# ---------------------------------------------------------------------------
+
+def _derecho_project(engine):
+    from sqlalchemy.orm import Session
+    from sam.accounting.accounts import Account
+    from sam.integration.xras import XrasResourceRepositoryKeyResource
+    from sam.projects.projects import Project
+    from sam.resources.resources import Resource
+    with Session(engine) as s:
+        row = (s.query(Project.projcode, Project.project_id,
+                       XrasResourceRepositoryKeyResource.resource_repository_key)
+               .join(Account, Account.project_id == Project.project_id)
+               .join(Resource, Resource.resource_id == Account.resource_id)
+               .join(XrasResourceRepositoryKeyResource,
+                     XrasResourceRepositoryKeyResource.resource_id == Resource.resource_id)
+               .filter(Project.is_active, Resource.resource_name == 'Derecho')
+               .order_by(Project.projcode).first())
+    if row is None:
+        pytest.skip('no active project with a keyed Derecho account in this snapshot')
+    return row
+
+
+def _file_pair(engine, count_queries, monkeypatch, existing):
+    """Statements to file an Extension + Supplement onto a line already carrying *existing* actions."""
+    import itertools, os
+    from datetime import date
+    from unittest.mock import MagicMock
+    from xras_commit_helpers import tracking_factory, write_result
+    from sam.integration.xras import XrasRemediationEvent
+    from sam.integration.xras_submission import XrasSubmission
+    from sam.manage import xras_submission as flow
+    from sam.manage.xras_submission import ActionRequest, ResourceAmount, SamRefs
+    from sam.xras.submission_preflight import draft_action
+
+    projcode, project_id, key = _derecho_project(engine)
+    ids = itertools.count(950_000_000 + (os.getpid() % 10_000) * 1_000 + existing * 50)
+    rid = next(ids)
+    common = dict(request_number=projcode, request_id=rid, bundle='perf',
+                  sam=SamRefs(project_id=project_id))
+    ext = ActionRequest(action_type='Extension', dates=(None, date(2031, 9, 30)),
+                        user_comments='perf', **common)
+    sup = ActionRequest(action_type='Supplement', user_comments='perf',
+                        resources=(ResourceAmount(1, 1000.0),), **common)
+    actions = [dict(draft_action(ext if i % 2 else sup), actionId=next(ids),
+                    actionStatus='Submitted') for i in range(existing)]
+    line = {'requestNumber': projcode, 'requestId': rid, 'requestStatus': 'Approved',
+            'requestType': 'New', 'actions': actions,
+            'roles': [{'person': {'username': 'pi1'}, 'roles': [{'roleTypeId': 13}]}]}
+    reader = MagicMock()
+    reader.get_request_family_by_number.return_value = [line]
+    reader.get_resources.return_value = [{'resourceId': 1, 'resourceRepositoryKey': key}]
+    reader.get_opportunities.return_value = []
+    monkeypatch.setattr('sam.integration.xras_api.client.XrasApiClient.from_environment',
+                        classmethod(lambda cls, *a, **k: reader))
+    monkeypatch.setattr(flow, 'submit_armed', lambda *a, **k: True)
+
+    admin = MagicMock()
+    admin.add_action.side_effect = [write_result('add_action', extra={'action_id': next(ids)})
+                                    for _ in range(2)]
+    for op in ('set_action_dates', 'update_resource_amount', 'submit_action'):
+        getattr(admin, op).return_value = write_result(op)
+    with tracking_factory(engine, XrasSubmission, XrasRemediationEvent) as factory:
+        with count_queries() as stats:
+            outcomes = flow.request_actions(factory, [ext, sup], actor='pi1', xa_user='pi1',
+                                            eula=('a' * 40, datetime(2026, 11, 21)),
+                                            client=admin)
+    assert [o.state for o in outcomes] == ['submitted', 'submitted']
+    return stats
+
+
+def test_xras_more_submit_pair_is_flat_in_line_actions(engine, count_queries, monkeypatch):
+    small = _file_pair(engine, count_queries, monkeypatch, existing=2)
+    stats = _file_pair(engine, count_queries, monkeypatch, existing=8)
+    tables = {t: (len(small.by_table.get(t, ())), len(v)) for t, v in stats.by_table.items()}
+    assert stats.count <= small.count + 5, (
+        f"xras_more_submit_pair grows with the line: {small.count} for 2 actions, "
+        f"{stats.count} for 8. Per table (2, 8): {tables}")
+    _assert_within("xras_more_submit_pair", stats)
+
+
+# ---------------------------------------------------------------------------
 # Expiration notices: one usage build and one roster load for every expiring
 # project, so the count is flat in projects (5,068 statements on a 229-project
 # end-date cluster when each project loaded its own).

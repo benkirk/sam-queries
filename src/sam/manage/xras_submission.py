@@ -98,6 +98,8 @@ class ActionRequest:
     #: for an active SAM user XRAS knows (an XRAS User role); the rest are invited at activation.
     roster: Tuple[Dict[str, Any], ...] = ()
     sam: SamRefs = SamRefs()
+    #: Shared by the drafts one form filed together (an Extension and its Supplement).
+    bundle: Optional[str] = None
 
     @property
     def roster_usernames(self) -> Tuple[str, ...]:
@@ -120,6 +122,7 @@ class ActionRequest:
             'eua_attribute_id': self.eua_attribute_id,
             'admin_username': self.admin_username,
             'roster': [dict(e) for e in self.roster], 'sam': vars(self.sam),
+            'bundle': self.bundle,
         }
 
     @classmethod
@@ -146,6 +149,7 @@ class ActionRequest:
             admin_username=payload.get('admin_username'),
             roster=tuple(payload.get('roster') or ()),
             sam=SamRefs(**(payload.get('sam') or {})),
+            bundle=payload.get('bundle'),
         )
 
 
@@ -375,7 +379,7 @@ def _advance(session_factory, view, state) -> None:
 
 
 def _drive(session_factory, draft: ActionRequest, view, *, submit: bool,
-           admin) -> SubmissionOutcome:
+           admin, patch_card: bool = True) -> SubmissionOutcome:
     statuses = _step_statuses(session_factory, view['steps'])
     done = {step for step, status in statuses.items() if status == 'verified'}
 
@@ -428,7 +432,8 @@ def _drive(session_factory, draft: ActionRequest, view, *, submit: bool,
         if not view['request_number']:
             _learn_number(session_factory, view, admin)
 
-    _patch_card(session_factory, view)
+    if patch_card:
+        _patch_card(session_factory, view)
     return SubmissionOutcome(view['id'], view['state'])
 
 
@@ -483,8 +488,11 @@ def _resolved_refs(session, draft: ActionRequest, xa_user: str) -> Dict[str, Opt
 def request_action(session_factory, draft: Optional[ActionRequest], *, actor: str,
                    xa_user: str, eula: Tuple[str, datetime], submit: bool = True,
                    resume_id: Optional[int] = None, door: str = 'pi',
-                   client=None) -> SubmissionOutcome:
+                   client=None, patch_card: bool = True) -> SubmissionOutcome:
     """Open (or resume) a submission and run its steps; ``submit=False`` stops before submit.
+
+    ``patch_card=False`` leaves the Remediations card to the caller (``request_actions``
+    patches it once for the drafts it files together).
 
     The PI door (``xa_user == actor``) needs the submit lever and the type armed; the
     admin door (``door='admin'``, xa_user the request's PI) needs only the write lever; the
@@ -525,7 +533,44 @@ def request_action(session_factory, draft: Optional[ActionRequest], *, actor: st
         view = {**_row_view(row), 'actor': actor}
     logger.info('xras submission %s: opened %s for %s by %s', view['id'],
                 draft.action_type, xa_user, actor)
-    return _drive(session_factory, draft, view, submit=submit, admin=admin)
+    return _drive(session_factory, draft, view, submit=submit, admin=admin,
+                  patch_card=patch_card)
+
+
+def request_actions(session_factory, drafts: List[ActionRequest],
+                    **kwargs) -> List[SubmissionOutcome]:
+    """File *drafts* in order through ``request_action``, stopping at the first that does not succeed.
+
+    The first draft's refusal raises, as a single filing does; a later one's becomes a stopped
+    outcome, since the drafts before it are already with XRAS. The Remediations card is
+    patched once, from the last row submitted: each patch re-reads the line from XRAS and
+    preflights every action on it.
+    """
+    outcomes: List[SubmissionOutcome] = []
+    for draft in drafts:
+        try:
+            outcome = request_action(session_factory, draft, patch_card=False, **kwargs)
+        except SubmissionRefused as exc:
+            if not outcomes:
+                raise
+            outcome = SubmissionOutcome(None, None, step='open', error=str(exc))
+        outcomes.append(outcome)
+        if not outcome.succeeded:
+            break
+    submitted = [o.submission_id for o in outcomes if o.state == 'submitted']
+    if submitted:
+        _patch_card_from(session_factory, submitted[-1])
+    return outcomes
+
+
+def _patch_card_from(session_factory, submission_id: int) -> None:
+    """``_patch_card`` from a stored row; best-effort, since the filings already reached XRAS."""
+    try:
+        view = _with_row(session_factory, submission_id, _row_view)
+    except Exception as exc:                            # noqa: BLE001
+        logger.warning('xras submission %s: card patch skipped (%s)', submission_id, exc)
+        return
+    _patch_card(session_factory, view)
 
 
 def resume_submission(session_factory, submission_id: int, *, actor: str,
