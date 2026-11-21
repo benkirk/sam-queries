@@ -128,8 +128,8 @@ fi
 # not cover that (a bare run took ~1000s). Fast TCP probe first; skip internal
 # reads cleanly if prod's internal net is unreachable (VPN down is not a prod
 # fault, so this is a clean exit 0, not a fail). An env with no DB host probes
-# its ingress instead.
-if [[ -n "$DBHOST" ]]; then PROBE_HOST="$DBHOST"; PROBE_PORT="$DBPORT"; else PROBE_HOST="$INGRESS_HOST"; PROBE_PORT=443; fi
+# VPN_PROBE, never its own ingress (cirrus_common.sh says why).
+if [[ -n "$DBHOST" ]]; then PROBE_HOST="$DBHOST"; PROBE_PORT="$DBPORT"; else PROBE_HOST="${VPN_PROBE%:*}"; PROBE_PORT="${VPN_PROBE##*:}"; fi
 if ! python3 -c "import socket; socket.setdefaulttimeout(4); socket.create_connection(('$PROBE_HOST',$PROBE_PORT),4).close()" 2>/dev/null; then
     echo "OFFLINE: $PROBE_HOST:$PROBE_PORT unreachable in 4s (VPN down?) — skipping internal reads this tick."
     exit 0
@@ -509,6 +509,12 @@ if [[ "$HOSTS_ENABLED" -eq 1 ]]; then
                                      printf "  %-8s %s\n", h":", line } }' <<<"$NHD_OUT" | sort
         sp=$(awk '$1=="spool" { sub("age=","",$4); s=$4+0; a=(s<60)?s"s":((s<3600)?int(s/60)"m":int(s/3600)"h"); printf "%s%s/%s %s", (n++?" · ":""), $2, $3, a }' <<<"$NHD_OUT")
         [[ -n "$sp" ]] && echo "  spool: $sp"
+        # Retries hide an ingress dropping connections behind exit 0 (nhd_lane_summary.sh).
+        rt=$(awk '$1=="retries" { sub("n=","",$3); t+=$3; s=s (s?" ":"") $2"="$3 } END { if (t) print t, s }' <<<"$NHD_OUT")
+        if [[ -n "$rt" ]]; then
+            echo "  retries(1h): ${rt#* }"
+            (( ${rt%% *} >= 2 )) && warn "collectors retried ${rt%% *} connect(s) to ${INGRESS_HOST} in the last hour: the ingress path is dropping connections (exit 0 hides it)"
+        fi
         # verdicts
         rapid_ages=" "   # " host=age host=age " (macOS ships bash 3.2: no associative arrays)
         while read -r kind a b c d e f g; do

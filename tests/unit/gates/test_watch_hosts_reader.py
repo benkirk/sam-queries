@@ -144,3 +144,16 @@ class TestRecords:
         spool = [l for l in read(lanes, 'dev') if l.startswith('spool ')]
         assert len(spool) == 1 and spool[0].startswith('spool casper casper age=')
         assert abs(_age(spool[0]) - 125) <= 2
+
+    def test_retries_count_only_the_last_hour_of_each_system_log(self, lanes):
+        """A retried connect exits 0; only the system log shows it (incident 2026-11-21)."""
+        def at(age_s):
+            return time.strftime('[%Y-%m-%d %H:%M:%S]', time.localtime(time.time() - age_s))
+        retry = " WARNING [lib.api_client] Network error, retry 1/3 in 1s: HTTPSConnectionPool(...)\n"
+        logs = lanes / 'dev' / 'logs' / 'collectors'
+        _touch(logs / 'casper.log', at(7200) + retry + at(1200) + retry + at(600) + retry
+               + at(300) + ' INFO [lib.api_client] POST ok\n', 60)
+        _touch(logs / 'jupyterhub.log', at(300) + ' INFO [lib.api_client] POST ok\n', 60)
+        _touch(logs / 'casper-2026-11-21.log', at(60) + retry, 60)
+        retries = {l.split()[1]: l for l in read(lanes, 'dev') if l.startswith('retries ')}
+        assert retries == {'casper': 'retries casper n=2', 'jupyterhub': 'retries jupyterhub n=0'}
