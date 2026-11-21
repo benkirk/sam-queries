@@ -587,7 +587,8 @@ def my_request_more_amounts(project):
         advice = ctx['advice'].get(r['resource_id'])
         untouched = mark in form and form.get(name, '') in ('', form[mark])
         if untouched and advice and advice.suggest:
-            form[name] = input_value(advice.suggest)
+            # The marker moves with it, so the row still reads as untouched when rendered.
+            form[name] = form[mark] = input_value(advice.suggest)
         elif untouched:
             form.pop(name, None)
     return render_template('dashboards/user/fragments/request_more_amounts_htmx.html',

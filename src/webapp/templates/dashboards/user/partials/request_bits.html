@@ -42,6 +42,9 @@
 {%- set _default = adv.suggest if adv and adv.suggest else (adv.start if adv and adv.start else (r.limit.default_amount if r.limit and r.limit.default_amount is not none else none)) -%}
 {%- set _suggest = _default | fmt_input if _default is not none else '' -%}
 {%- set _posted = form.get(_name) if form else none -%}
+{#- A posted amount that is not the posted suggestion is the lead's: its marker stays empty, so
+    a later suggestion that happens to equal it cannot make it read as untouched. -#}
+{%- set _owned = _posted and _posted != (form.get('suggested_' ~ r.resource_id) if form else none) -%}
 <tr class="amount-row{{ ' amount-row-available' if not selected }}" data-amount-row data-order="{{ order }}">
     <td>{{ r.name }}
         {%- if r.units and not r.yes_no %} <span class="small text-muted text-nowrap">{{ r.units }}</span>{% endif %}
@@ -56,8 +59,8 @@
             {%- if adv.remaining is not none %}{{ 'None left' if adv.remaining <= 0 else (adv.remaining | fmt_number) ~ ' left' }}{% endif %}
             {%- if adv.suggest %} · {{ adv.suggest | fmt_number }} suggested
             {%- elif adv.rate_per_day and adv.days %} · enough{% endif %}</span></div>
-        {#- Only a real suggestion, never the type default: an amount picked at the default is the lead's. #}
-        <input type="hidden" name="suggested_{{ r.resource_id }}" value="{{ adv.suggest | fmt_input if adv.suggest else '' }}"{% if removed %} disabled{% endif %}>
+        {#- Only a real suggestion, never the type default, and none on an amount the lead owns. #}
+        <input type="hidden" name="suggested_{{ r.resource_id }}" value="{{ adv.suggest | fmt_input if adv.suggest and not _owned else '' }}"{% if removed %} disabled{% endif %}>
         {%- endif %}</td>
     <td class="col-num">
         <button type="button" class="amount-pick" data-amount-move="select"
