@@ -138,8 +138,11 @@ def fold_awards(lines: Sequence[Mapping[str, Any]]) -> List[Award]:
                 award.action_ids.append(action.get('actionId'))
                 award.action_types.append(kind)
             continue
-        for rid, (_, line) in best_stage_lines(action).items():
-            if rid is None:
+        staged = best_stage_lines(action)
+        # The action's best stage only: a resource absent from Approved was not awarded.
+        top = min((rank for rank, _ in staged.values()), default=None)
+        for rid, (rank, line) in staged.items():
+            if rid is None or rank != top:
                 continue
             amount = _amount(line)
             if amount is None:

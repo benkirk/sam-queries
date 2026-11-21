@@ -48,6 +48,13 @@ class TestFold:
         assert (award.begin, award.end) == (date(2026, 1, 1), date(2027, 6, 30))
         assert award.action_ids == [1, 2, 3, 4]
 
+    def test_a_resource_requested_but_not_approved_is_not_awarded(self):
+        awards = fold_awards([_line('UXYZ0001',
+            _action(1, 'New', [(RID, 1000.0, 'Approved')], '2026-01-01', '2026-12-31'),
+            _action(2, 'Supplement', [(RID, 500.0, 'Approved'), (RID, 5000.0, 'Requested'),
+                                      (8, 10.0, 'Requested')]))])
+        assert [(a.resource_id, a.amount) for a in awards] == [(RID, 1500.0)]
+
     def test_a_disjoint_renewal_opens_a_new_period(self):
         [award] = fold_awards([
             _line('UXYZ0001', _action(1, 'New', [(RID, 1000.0, 'Approved')],
