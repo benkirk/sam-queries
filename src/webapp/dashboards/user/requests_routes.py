@@ -138,7 +138,7 @@ def my_requests_actions(project):
         offers=action_offers(decision, available, config.submit_allows) if decision else [])
 
 
-# the Extension, Supplement and Renewal forms
+# the row buttons and the forms: more time or resources, and Renewal
 
 @bp.route('/requests/htmx/offers')
 @login_required
@@ -151,7 +151,7 @@ def my_requests_offers():
     index_rows = _index_rows()
     available = None
     # The read feeds the Renewal check alone: a lead of staff-routed projects, or a site with
-    # Renewal off, gets Extend and Supplement with no XRAS round trip.
+    # Renewal off, gets the "Extend or add" button with no XRAS round trip.
     if config.submit_allows('Renewal') and offer_candidates(
             projects, current_user.username, index_rows, armed=True):
         try:

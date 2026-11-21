@@ -26,7 +26,8 @@
     {% if _outcomes | length < data.drafts | length %}
     <p class="small text-muted mb-0">The {{ data.drafts[_outcomes | length].action_type }} was not submitted. Request it again once the request above is resolved.</p>
     {% endif %}
-    <p class="mb-0 small text-muted">Track {{ 'both' if _outcomes | length > 1 else 'it' }} on {{ _where }}.</p>
+    {%- set _rows = _outcomes | rejectattr('submission_id', 'none') | list %}
+    <p class="mb-0 small text-muted">Track {{ 'both' if _rows | length > 1 else 'it' }} on {{ _where }}.</p>
 </div>
 {% else %}
 {{ request_title(action_type ~ (' request' if action_type == 'New' else '') ~ (' filed' if outcome.succeeded else ' stopped'), meta=project.projcode if project else None) }}

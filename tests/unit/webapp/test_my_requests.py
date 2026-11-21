@@ -489,6 +489,17 @@ class TestTheMoreForm:
         assert 'Request incomplete' in html and 'The Supplement stopped at resource:530902' in html
         assert 'Your Extension was submitted.' in html and 'resume or discard it' in html
 
+    def test_a_refused_supplement_leaves_one_row_to_track(self, auth_client, on_roster, floor,
+                                                          monkeypatch):
+        from sam.manage import xras_submission as flow
+        outcomes = iter([flow.SubmissionOutcome(1, 'submitted'),
+                         flow.SubmissionOutcome(None, None, step='open', error='not enabled')])
+        monkeypatch.setattr(flow, 'request_action', lambda *a, **k: next(outcomes))
+        body = _submit(**_more(end=floor + timedelta(days=365), amount_530902='1500'))
+        html = auth_client.post(MORE, data=body).get_data(as_text=True)
+        assert 'The Supplement was not submitted: not enabled.' in html
+        assert 'Track it on My Requests.' in html
+
     def test_a_seven_digit_amount_survives_review_back_and_submit(self, auth_client,
                                                                    on_roster, filed):
         """The review's hidden fields and the figure it shows keep every digit: a '%g'

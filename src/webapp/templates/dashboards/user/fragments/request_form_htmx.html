@@ -27,7 +27,7 @@
         {{ date_field('end_date', 'New end date', id='xrasRequestEnd', min=end_min,
                       help="Leave blank to keep the current end date. All of the project's allocations move to the new date.",
                       attrs={'hx-get': url_for('user_dashboard.my_request_more_amounts', projcode=project.projcode),
-                             'hx-trigger': 'change', 'hx-target': '#xrasMoreAmounts', 'hx-swap': 'outerHTML',
+                             'hx-trigger': 'change delay:400ms', 'hx-target': '#xrasMoreAmounts', 'hx-swap': 'outerHTML',
                              'hx-include': '#xrasMoreAmounts input'} if allow_supplement else None) }}
         {% endif %}
         {% if allow_supplement %}
