@@ -48,6 +48,13 @@ class TestFold:
         assert (award.begin, award.end) == (date(2026, 1, 1), date(2027, 6, 30))
         assert award.action_ids == [1, 2, 3, 4]
 
+    def test_a_resource_requested_but_not_approved_is_not_awarded(self):
+        awards = fold_awards([_line('UXYZ0001',
+            _action(1, 'New', [(RID, 1000.0, 'Approved')], '2026-01-01', '2026-12-31'),
+            _action(2, 'Supplement', [(RID, 500.0, 'Approved'), (RID, 5000.0, 'Requested'),
+                                      (8, 10.0, 'Requested')]))])
+        assert [(a.resource_id, a.amount) for a in awards] == [(RID, 1500.0)]
+
     def test_a_disjoint_renewal_opens_a_new_period(self):
         [award] = fold_awards([
             _line('UXYZ0001', _action(1, 'New', [(RID, 1000.0, 'Approved')],
@@ -62,6 +69,28 @@ class TestFold:
             _action(2, 'Renewal', [(RID, 300.0, 'Approved')], '2026-10-01', '2027-09-30'))])
         assert award.amount == 1300.0
         assert (award.begin, award.end) == (date(2026, 1, 1), date(2027, 9, 30))
+
+    def test_a_renewal_inside_the_held_window_adds_and_keeps_the_begin(self):
+        [award] = fold_awards([
+            _line('UXYZ0001', _action(1, 'New', [(RID, 500.0, 'Approved')],
+                                      '2024-08-19', '2029-06-30')),
+            _line('UXYZ0001', _action(9, 'Renewal', [(RID, 2930.0, 'Approved')],
+                                      '2025-05-01', '2029-06-30'), request_id=2)])
+        assert award.amount == 3430.0
+        assert (award.begin, award.end) == (date(2024, 8, 19), date(2029, 6, 30))
+
+    def test_an_overlapping_renewal_ending_earlier_is_refused(self):
+        [award] = fold_awards([_line('UXYZ0001',
+            _action(1, 'New', [(RID, 1000.0, 'Approved')], '2026-01-01', '2027-12-31'),
+            _action(2, 'Renewal', [(RID, 300.0, 'Approved')], '2026-06-01', '2027-06-30'))])
+        assert (award.amount, award.end, award.action_ids) == (1000.0, date(2027, 12, 31), [1])
+
+    def test_a_contingent_renewal_moves_the_end_but_not_the_amount(self):
+        renewal = _action(2, 'Renewal', [(RID, 300.0, 'Approved')], '2026-10-01', '2027-09-30')
+        renewal['resources'][0]['comments'] = 'AUTO_DEFAULT_ALLOCATION_TRANSACTION'
+        [award] = fold_awards([_line('UXYZ0001', _action(
+            1, 'New', [(RID, 1000.0, 'Approved')], '2026-01-01', '2026-12-31'), renewal)])
+        assert (award.amount, award.end) == (1000.0, date(2027, 9, 30))
 
     def test_deleted_lines_and_actions_are_ignored(self):
         deleted = dict(_action(2, 'Supplement', [(RID, 5.0, 'Approved')]), isDeleted=True)
@@ -154,6 +183,23 @@ class TestAudit:
         kinds = sorted(k for r in audit.rows for k in r.issues)
         assert kinds == ['sam_only']
         assert audit.mismatches == []
+
+    def test_an_award_on_a_decommissioned_resource_is_skipped_and_counted(self, session, mapped):
+        resource, keys = mapped
+        resource.decommission_date = datetime(2023, 12, 31)
+        project = make_project(session)
+        _held(session, project, resource, end=datetime(2023, 12, 31))
+        audit = _audit(session, [_new(project.projcode, end='2027-12-31')], keys)
+        assert audit.rows == [] and audit.retired_skipped == 1
+        assert audit.to_dict()['retired_skipped'] == 1
+
+    def test_an_award_begun_before_commission_matches_the_clamped_start(self, session, mapped):
+        resource, keys = mapped
+        resource.commission_date = datetime(2026, 3, 1)
+        project = make_project(session)
+        _held(session, project, resource, start=datetime(2026, 3, 1))
+        [row] = _audit(session, [_new(project.projcode)], keys).rows
+        assert row.issues == []
 
     def test_the_envelope(self, session, mapped):
         resource, keys = mapped
