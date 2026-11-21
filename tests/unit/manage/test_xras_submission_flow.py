@@ -449,6 +449,38 @@ class TestAPair:
         assert outs[0].state == 'submitted'
         assert outs[1].submission_id is None and 'not enabled' in outs[1].error
 
+    @pytest.fixture
+    def patches(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(flow, '_patch_card', lambda f, view: calls.append(view))
+        return calls
+
+    def test_the_pair_patches_the_card_once_from_the_last_submitted_row(self, factory,
+                                                                        patches):
+        outs = flow.request_actions(factory, list(self._pair()), actor='pi1', xa_user='pi1',
+                                    eula=EULA, client=self._client())
+        assert [v['id'] for v in patches] == [outs[1].submission_id]
+        assert patches[0]['action_type'] == 'Supplement' and patches[0]['state'] == 'submitted'
+
+    def test_a_stopped_supplement_still_patches_once_from_the_extension(self, factory,
+                                                                        patches):
+        client = self._client()
+        client.update_resource_amount.side_effect = XrasWriteRejected('no', status=400)
+        outs = flow.request_actions(factory, list(self._pair()), actor='pi1', xa_user='pi1',
+                                    eula=EULA, client=client)
+        assert [o.state for o in outs] == ['submitted', 'created']
+        assert [v['id'] for v in patches] == [outs[0].submission_id]
+
+    def test_a_card_patch_that_cannot_read_its_row_never_fails_the_filing(self, factory,
+                                                                          patches):
+        flow._patch_card_from(factory, next(_IDS))
+        assert patches == []
+
+    def test_a_single_filing_still_patches_its_own_card(self, factory, patches):
+        out = flow.request_action(factory, _extension(), actor='pi1', xa_user='pi1',
+                                  eula=EULA, client=_client())
+        assert [v['id'] for v in patches] == [out.submission_id]
+
     def test_a_refused_first_draft_still_raises(self, factory, monkeypatch):
         monkeypatch.setattr(flow, 'submit_armed', lambda *a, **k: False)
         with pytest.raises(SubmissionRefused):

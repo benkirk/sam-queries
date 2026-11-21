@@ -246,7 +246,7 @@ def infer_applied(session, synthesis: Synthesis) -> Optional[dict]:
     action = synthesis.action
     if action is None:
         return None
-    from sam.projects.projects import Project
+    from sam.xras.lookups import find_project
     from sam.xras.wire import get_field
     from sam.xras.handlers._allocations import (account_is_extendable,
                                                 effective_end_date,
@@ -256,7 +256,7 @@ def infer_applied(session, synthesis: Synthesis) -> Optional[dict]:
     projcode = (get_field(action, 'requestNumber') or '').strip()
     if not projcode:
         return None
-    project = Project.get_by_projcode(session, projcode)
+    project = find_project(session, projcode)
     if project is None:
         return None
 

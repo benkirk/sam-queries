@@ -511,10 +511,13 @@ class _MoreForm(_RequestForm):
         return out
 
     def _assemble(self, data, ctx):
+        from sam.xras.lookups import batch_lookups
         from sam.xras.submission_preflight import preflight_draft
         data['drafts'] = self.drafts(data)
-        verdicts = [preflight_draft(db.session, ctx['decision'].line, d,
-                                    resource_keys=ctx['resource_keys']) for d in data['drafts']]
+        with batch_lookups(db.session):
+            verdicts = [preflight_draft(db.session, ctx['decision'].line, d,
+                                        resource_keys=ctx['resource_keys'])
+                        for d in data['drafts']]
         # The review shows one verdict: the worst of the two.
         data['verdict'] = next((v for status in ('failed', 'manual') for v in verdicts
                                 if v.status == status), verdicts[0])

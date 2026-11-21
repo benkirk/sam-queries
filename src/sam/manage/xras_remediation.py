@@ -271,8 +271,10 @@ def _preflight_verdicts(reader, session, payload):
 
     No lookback: the caller asked about this one request, so every candidate
     action it carries is checked. A raising preflight counts as ``incomplete``.
+    The actions share one validate-only lookup memo, as the sweep's do.
     """
     from sam.integration.xras_api.vocabulary import with_named_agencies
+    from sam.xras.lookups import batch_lookups
     from sam.xras.preflight import (iter_candidate_actions, log_seen_for,
                                     preflight_action, verdict_to_dict)
 
@@ -287,19 +289,21 @@ def _preflight_verdicts(reader, session, payload):
     resource_keys, opportunities = _preflight_maps(reader, payload)
 
     verdicts = {}
-    for action in candidates:
-        try:
-            verdict = preflight_action(session, with_named_agencies(payload), action,
-                                       resource_keys=resource_keys,
-                                       opportunities=opportunities, enabled=None,
-                                       log_seen=log_seen)
-        except Exception as exc:                        # noqa: BLE001
-            counts['incomplete'] += 1
-            logger.warning('xras recheck: preflight raised (%s)', exc)
-            continue
-        counts[verdict.status] = counts.get(verdict.status, 0) + 1
-        if verdict.action_id is not None:
-            verdicts[verdict.action_id] = verdict_to_dict(verdict)
+    named = with_named_agencies(payload)
+    with batch_lookups(session):
+        for action in candidates:
+            try:
+                verdict = preflight_action(session, named, action,
+                                           resource_keys=resource_keys,
+                                           opportunities=opportunities, enabled=None,
+                                           log_seen=log_seen)
+            except Exception as exc:                    # noqa: BLE001
+                counts['incomplete'] += 1
+                logger.warning('xras recheck: preflight raised (%s)', exc)
+                continue
+            counts[verdict.status] = counts.get(verdict.status, 0) + 1
+            if verdict.action_id is not None:
+                verdicts[verdict.action_id] = verdict_to_dict(verdict)
     return verdicts, counts
 
 
