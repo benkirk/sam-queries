@@ -26,8 +26,8 @@ scripts/cirrus_watch.sh --context nwc1 --env dev
 preflight probes a VPN-only host (`VPN_PROBE`, default `sam-sql.ucar.edu:3306`, no read),
 never the ingress, so a dead ingress FAILs the `http:` line instead of reading as
 `OFFLINE`; that masked dev for six hours on 2026-11-21. The ingress class and VIP are the
-ADDRESS in `kubectl -n sam-queries-dev get ingress samuel-dev -o wide`
-(`docs/plans/INGRESS_NGINX_STOPGAP.md` while on nginx-external).
+ADDRESS in `kubectl -n sam-queries-dev get ingress samuel-dev -o wide`: `traefik-external`
+at 128.117.41.125 (the nginx stopgap: `docs/plans/implemented/INGRESS_NGINX_STOPGAP.md`).
 
 ## 2. What the tick can see
 
