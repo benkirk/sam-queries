@@ -643,6 +643,16 @@ def cache(ctx: Context, refresh: bool, category, base_url):
 @click.option('--award-audit', is_flag=True,
               help='[check] XRAS awarded vs SAM allocated, per project and resource '
                    '(needs the API; --request narrows to one projcode)')
+@click.option('--repost-wait', is_flag=True,
+              help='[rollup] How long refused posts wait for the re-post that applies them')
+@click.option('--days', type=click.IntRange(min=1), default=None,
+              help='[repost-wait] First refusals in the last N days (default 180)')
+@click.option('--since', type=click.DateTime(), default=None,
+              help='[repost-wait] Window start (naive Mountain); overrides --days')
+@click.option('--until', type=click.DateTime(), default=None,
+              help='[repost-wait] Window end and the clock for ages (default now)')
+@click.option('--episodes', is_flag=True,
+              help='[repost-wait] Include every episode')
 @click.option('--enrich', is_flag=True,
               help='[worklist] Add XRAS person detail (requires --accounts and the API)')
 @click.option('--person', type=str, default=None,
@@ -665,7 +675,8 @@ def cache(ctx: Context, refresh: bool, category, base_url):
 @pass_context
 def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mapping,
          validate_opportunities, validate_vocabulary, accounts, readiness,
-         mnemonic_report, contract_report, identity_report, award_audit, enrich,
+         mnemonic_report, contract_report, identity_report, award_audit, repost_wait,
+         days, since, until, episodes, enrich,
          person, family, status, action_type, request_number, last, limit, verbose):
     """Inspect and re-check the XRAS action log.
 
@@ -686,6 +697,7 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
       --contract-report  contracts to create, ranked by the pushes each would unblock
       --identity-report  placeholders to merge, ranked by the pushes each would unblock
       --award-audit  what XRAS awarded vs what SAM allocated (amount, dates, missing)
+      --repost-wait  how long refused posts wait for the re-post that applies them
       --person U   one username in the XRAS directory
       --family P   a projcode's whole allocation lifecycle as a request tree
       --validate-mapping  which resources XRAS and SAM can name each other's
@@ -742,6 +754,8 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
       sam-admin xras --identity-report
       sam-admin xras --award-audit
       sam-admin --format json xras --award-audit --request UCUB0089 | jq .rows
+      sam-admin xras --repost-wait --days 180
+      sam-admin --format json xras --repost-wait --since 2026-09-01 --episodes | jq .by_blocker
       sam-admin xras --person somebody-user-00042
       sam-admin xras --family UCUB0089
       sam-admin --format json xras --family UCUB0089 | jq .timeline
@@ -754,6 +768,9 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
 
     if enrich and not accounts:
         usage_error(ctx, 'Error: --enrich requires --accounts')
+
+    if (days or since or until or episodes) and not repost_wait:
+        usage_error(ctx, 'Error: --days, --since, --until and --episodes require --repost-wait')
 
     # Writes have no JSON contract: the envelope is for consumers reading state,
     # and a machine-readable success receipt for a side-effecting command invites
@@ -775,6 +792,11 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
         contract_report=contract_report,
         identity_report=identity_report,
         award_audit=award_audit,
+        repost_wait=repost_wait,
+        days=days,
+        since=since,
+        until=until,
+        episodes=episodes,
         enrich=enrich,
         person=person,
         family=family,

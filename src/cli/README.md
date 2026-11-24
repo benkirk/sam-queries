@@ -173,6 +173,8 @@ in `core/base.py`; daily-rollup queries work without it.
   `sam-admin contracts --validate` and `project --audit-trees` use 2;
   the `sam-admin xras --validate-mapping/-opportunities/-vocabulary` checks
   and `--award-audit` use 1.
+- **Reports** exit 0, empty or not: the `sam-admin xras` boards and
+  `--repost-wait` (how long refused posts wait for the re-post that applies them).
 
 ## Adding New Commands
 

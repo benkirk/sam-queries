@@ -229,6 +229,98 @@ def display_award_audit(ctx, payload) -> None:
         ctx.console.print('Incomplete: the request page budget ran out.', style='yellow')
 
 
+def _wait_cell(stats) -> str:
+    """``median (n)`` in hours."""
+    from sam import fmt
+    return BLANK if not stats['n'] else f"{fmt.amount(stats['median_h'])} ({stats['n']})"
+
+
+def _wait_table(ctx, title, groups) -> None:
+    from sam import fmt
+    table = Table(title=title, header_style='bold')
+    table.add_column('', no_wrap=True)
+    for name in ('Episodes', 'Applied', 'Waiting'):
+        table.add_column(name, justify='right')
+    table.add_column('a: refused -> cleared', justify='right')
+    table.add_column('b: cleared -> applied', justify='right')
+    table.add_column('c: total', justify='right')
+    table.add_column('c p90', justify='right')
+    table.add_column('c max', justify='right')
+    for name, g in groups.items():
+        table.add_row(name, fmt.number(g['episodes']), fmt.number(g['applied']),
+                      fmt.number(g['waiting']), _wait_cell(g['a']), _wait_cell(g['b']),
+                      _wait_cell(g['c']), fmt.amount(g['c']['p90_h']),
+                      fmt.amount(g['c']['max_h']))
+    print_table(ctx.console, table)
+
+
+def display_repost_wait(ctx, payload) -> None:
+    """The waits overall, by action type and by blocker, then the still-waiting list."""
+    from sam import fmt
+
+    ctx.console.print(f"XRAS re-post wait, first refusals {payload['since']} .. "
+                      f"{payload['until']} (hours: median (n))", style='bold')
+    if not payload['overall']['episodes']:
+        ctx.console.print('No refused posts in the window.', style='green')
+        return
+    _wait_table(ctx, 'Overall', {'all': payload['overall']})
+    _wait_table(ctx, 'By action type', payload['by_action_type'])
+    _wait_table(ctx, 'By blocker (an episode counts under each kind it had)',
+                payload['by_blocker'])
+
+    blockers = Table(title='Each blocker on its own', header_style='bold')
+    blockers.add_column('Kind', no_wrap=True)
+    blockers.add_column('Blockers', justify='right')
+    blockers.add_column('Cleared', justify='right')
+    blockers.add_column('refused -> cleared', justify='right')
+    blockers.add_column('Signals', overflow='fold')
+    for kind, g in payload['by_blocker'].items():
+        blockers.add_row(kind, fmt.number(g['blockers']), fmt.number(g['blockers_cleared']),
+                         _wait_cell(g['blocker_a']),
+                         ', '.join(f'{s} {n}' for s, n in g['sources'].items()) or BLANK)
+    print_table(ctx.console, blockers)
+
+    w, t = payload['waiting'], payload['ticket']
+    ctx.console.print(
+        f"Still waiting: {w['count']} (age median {fmt.amount(w['age']['median_h'])} h); "
+        f"cleared in SAM but not re-posted: {w['cleared_not_reposted']} "
+        f"(median {fmt.amount(w['since_cleared']['median_h'])} h since)")
+    ctx.console.print(
+        f"NUSD tickets: {t['opened']}; 'repost it' comments: {t['repost_asked']}; "
+        f"comment -> applied median {fmt.amount(t['asked_to_applied']['median_h'])} h")
+    linked = ', '.join(f'{k} {n}' for k, n in payload['linked_by'].items())
+    ctx.console.print(f'Linked to the applied post by: {linked}', style='dim')
+    _episode_table(ctx, 'Oldest waiting', w['oldest'])
+    if payload.get('episodes'):
+        _episode_table(ctx, 'Episodes', payload['episodes'])
+
+
+def _episode_table(ctx, title, episodes) -> None:
+    from sam import fmt
+    if not episodes:
+        return
+    table = Table(title=title, header_style='bold')
+    table.add_column('Request', no_wrap=True)
+    table.add_column('Type', no_wrap=True)
+    table.add_column('First refused', no_wrap=True)
+    table.add_column('Refusals', justify='right')
+    table.add_column('Blockers', overflow='fold')
+    table.add_column('a', justify='right')
+    table.add_column('b', justify='right')
+    table.add_column('c / age', justify='right')
+    table.add_column('Ticket', no_wrap=True)
+    for e in episodes:
+        hrs = e['hours']
+        total = fmt.amount(hrs['c']) if hrs['c'] is not None else \
+            f"[yellow]{fmt.amount(hrs['age'])}[/yellow]"
+        table.add_row(text(e['request_number']), text(e['action_type']),
+                      text(e['first_refused']), fmt.number(e['refusals']),
+                      ', '.join(b['kind'] for b in e['blockers']) or BLANK,
+                      fmt.amount(hrs['a']), fmt.amount(hrs['b']), total,
+                      text(e['ticket_key']))
+    print_table(ctx.console, table)
+
+
 def display_action_list(ctx, payload) -> None:
     """Table of recent actions."""
     actions = payload['actions']

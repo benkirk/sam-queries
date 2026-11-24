@@ -20,6 +20,7 @@ class XrasCommand(BaseCommand):
                 validate_vocabulary=False,
                 accounts=False, readiness=False, mnemonic_report=False,
                 contract_report=False, identity_report=False, award_audit=False,
+                repost_wait=False, days=None, since=None, until=None, episodes=False,
                 person=None,
                 family=None, enrich=False,
                 status=(), action_type=(), request_number=None, last=None,
@@ -47,6 +48,8 @@ class XrasCommand(BaseCommand):
                 return self._identity_report()
             if award_audit:
                 return self._award_audit(request_number)
+            if repost_wait:
+                return self._repost_wait(days, since, until, episodes)
             if accounts:
                 return self._accounts(filters, enrich)
             if recheck is not None:
@@ -308,6 +311,14 @@ class XrasCommand(BaseCommand):
         payload = builders.build_award_audit(audit, projcode)
         self.emit(payload, display.display_award_audit)
         return EXIT_NOT_FOUND if payload['mismatched'] else EXIT_SUCCESS
+
+    def _repost_wait(self, days, since, until, episodes) -> int:
+        """Refusal episodes and their waits (read-only). An empty window exits 0."""
+        until = until or datetime.now()
+        since = since or until - timedelta(days=days or 180)
+        payload = builders.build_repost_wait(self.session, since=since, until=until,
+                                             include_episodes=episodes)
+        return self.emit(payload, display.display_repost_wait)
 
     def _index(self):
         """The published request index: its current rosters retire a stale push."""
