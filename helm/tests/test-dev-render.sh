@@ -210,8 +210,9 @@ check_dev() {
   [[ -z "$shared" ]] || { red "FAIL: dev and prod share a TLS secret: $shared"; return 1; }
 
   # --- 5. the ingress controller: one Ingress each, Traefik or the nginx stopgap
-  # (docs/plans/implemented/TRAEFIK_INGRESS.md, docs/plans/INGRESS_NGINX_STOPGAP.md)
-  for env_render in "dev:$whole" "prod:$prod"; do
+  # (docs/plans/implemented/TRAEFIK_INGRESS.md, docs/plans/implemented/INGRESS_NGINX_STOPGAP.md);
+  # the nginx render keeps the stopgap tested while both envs are on Traefik.
+  for env_render in "dev:$whole" "prod:$prod" "prod-nginx:$(render prod --set webapp.ingress.className=nginx-external)"; do
     local env="${env_render%%:*}" rendered="${env_render#*:}" class
     [[ $(grep -c '^kind: Ingress$' <<<"$rendered") -eq 1 ]] || { red "FAIL: $env renders exactly one Ingress (the cutover bridge is gone)"; return 1; }
     class=$(grep -E '^\s+ingressClassName: ' <<<"$rendered" | sed -E 's/.*: //')
