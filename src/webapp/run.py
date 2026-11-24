@@ -58,6 +58,7 @@ from webapp.api.v1.disk_quota import bp as api_disk_quota_bp
 from webapp.api.v1.wallclock_exemption import bp as api_wallclock_exemption_bp
 from webapp.api.v1.admin import bp as api_admin_bp
 from webapp.api.v1.xras_notes import bp as api_xras_notes_bp
+from webapp.api.v1.xras_award_audit import bp as api_xras_award_audit_bp
 from webapp.api.xras import bp as api_xras_bp
 from webapp.api.ldapsync import bp as api_ldapsync_bp
 from webapp.api.heuv import bp as api_heuv_bp
@@ -467,6 +468,7 @@ def create_app(*, config_overrides: dict | None = None):
     app.register_blueprint(api_wallclock_exemption_bp, url_prefix='/api/v1/wallclock_exemption')
     app.register_blueprint(api_admin_bp, url_prefix='/api/v1/admin')
     app.register_blueprint(api_xras_notes_bp, url_prefix='/api/v1/xras')
+    app.register_blueprint(api_xras_award_audit_bp, url_prefix='/api/v1/xras')
     # XRAS's prefix is legacy's, mapped by web.xml to a dedicated DispatcherServlet
     # at /api/xras/*; the identity sync below is the other surface outside /api/v1.
     app.register_blueprint(api_xras_bp, url_prefix='/api/xras/v1')

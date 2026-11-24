@@ -133,6 +133,9 @@ class Permission(Enum):
     # A tool posting its recommendation onto requests (POST /api/v1/xras/notes): a key's
     # permission, granted by name. ``post_`` matches no ALL_* aggregate, so it fails closed.
     POST_XRAS_NOTES = "post_xras_notes"
+    # GET /api/v1/xras/award-audit/<projcode>: XRAS awarded vs SAM allocated, one project.
+    # Its own permission so a key reads the audit without VIEW_XRAS's triage surfaces.
+    VIEW_XRAS_AWARD_AUDIT = "view_xras_award_audit"
     # The HPC account-request queue (Admin -> Accounts) and the project-side
     # invitation surface. ``manage_`` on purpose: SAM never creates accounts,
     # so the holder works a worklist handed to NUSD, and a project's lead or
