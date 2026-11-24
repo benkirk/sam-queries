@@ -1,7 +1,11 @@
 # Ingress stopgap: nginx-external while traefik-external is down
 
-Status: interim. Dev first; prod only after the dev proof. Revert both once CIRRUS
-restores the Traefik VIP.
+Status: reverted. Both envs ran on nginx-external from 2026-11-21 (#967, #969, promoted
+in #968). CIRRUS restored the Traefik VIP by 2026-11-24, when `nc -z 128.117.41.125 443`
+succeeded from outside, and one PR set `helm/values.yaml` back to `traefik-external`
+for both envs, rolled to dev through staging before promotion. The chart still renders
+the nginx class (`test-dev-render.sh` keeps a `prod-nginx` render), so this page is the
+runbook if the VIP fails again.
 
 ## The incident
 
@@ -43,4 +47,17 @@ Prod: the line moves to `helm/values.yaml` (dev inherits it, so `values-dev.yaml
 longer carries one), merged to staging and promoted, then steps 1-5 for `samuel` with
 `samuel.k8s.ucar.edu` (`sam.hpc.ucar.edu` is a CNAME to it).
 Revert: set `helm/values.yaml` back to `traefik-external` once `nc -z 128.117.41.125 443`
-succeeds from outside; DNS follows back, with up to one TTL on the old VIP.
+succeeds from outside; DNS follows back, with up to one TTL on the old VIP. Until our
+Ingress is on the Traefik class, the VIP answers TLS with `TRAEFIK DEFAULT CERT`; that is
+expected, and the open port is the proof.
+
+The revert's proof is the dev proof with the classes swapped, run on dev after the
+staging merge and on prod after promotion:
+
+1. CLASS `traefik-external`, ADDRESS 128.117.41.125.
+2. `curl --resolve <host>:443:128.117.41.125 https://<host>/api/v1/health/ready`: 200 with the
+   InCommon cert (no longer the Traefik default).
+3. `dig +short <host>` reaches 128.117.41.125.
+4. By name: `/ready` 200, an OIDC sign-in, a POST over 1 MiB not refused 413; plain http
+   answers 404 (the router binds `websecure` only), not nginx's 308.
+5. The collectors post again, and the request log shows real client IPs, not 127.0.0.1.

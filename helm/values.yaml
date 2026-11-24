@@ -87,9 +87,9 @@ webapp:
     secretName: incommon-cert-samuel      # one multi-SAN secret covers every host above
   ingress:
     # IngressClass name as CIRRUS gives it: traefik-external, or nginx-external
-    # (retired controller) only as the outage stopgap in
-    # docs/plans/INGRESS_NGINX_STOPGAP.md. No edge rate limit; Flask-Limiter is the limiter.
-    className: nginx-external             # stopgap; revert to traefik-external (docs/plans/INGRESS_NGINX_STOPGAP.md)
+    # (retired controller) only as an outage stopgap, see
+    # docs/plans/implemented/INGRESS_NGINX_STOPGAP.md. No edge rate limit; Flask-Limiter is the limiter.
+    className: traefik-external
     # Traefik does not redirect :80 and the tenant may not create a Middleware,
     # so the router is bound to the TLS entrypoint and plain http answers 404
     # instead of serving the app. Empty binds every entrypoint (plaintext on :80).
