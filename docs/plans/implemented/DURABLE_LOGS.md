@@ -70,11 +70,28 @@ Turning the archiver off never deletes the archive.
 
 ## The loss window
 
-Lines are lost only when a pod starts **and is deleted** while the archiver
-itself is down, or when the archiver is down longer than the kubelet keeps a
-container's log (10 Mi per container by default). An archiver restart alone
-loses nothing: it resumes from each file's tail. The window is stated, not
-closed; the watch flags a down archiver so it stays short.
+Lines are lost when a pod is **deleted** while the archiver itself is down:
+everything that pod wrote after the archiver's last read, which is all of it
+for a pod that also started in that time. They are also lost when the archiver
+is down longer than the kubelet keeps a container's log (10 Mi per container by
+default). An archiver restart during which no pod is deleted loses nothing: it
+resumes from each file's tail. The window is stated, not closed; the watch
+flags a down archiver so it stays short.
+
+**A deploy opens it.** The archiver runs the webapp's image, so every pin roll
+restarts it at the moment the Deployment rolls. Web pods go Ready 10 to 17 s
+after start (measured 2026-11-26) and the first old pod is told to stop then;
+if the archiver is not back before that pod is gone, its last lines are lost.
+Unmeasured until the dev soak, which must roll the pin: a webapp restart alone
+leaves the archiver up and proves nothing here. If lines are lost, the levers
+are `minReadySeconds` on the webapp Deployment or `updateStrategy: OnDelete` on
+the archiver. Not an Argo sync wave: a broken archiver would then hold up a
+webapp deploy, which the isolation rule forbids.
+
+**Checking a resume.** Compare a pod's file with `kubectl logs --timestamps`
+for the same pod: identical for a finished pod, a prefix for a live one.
+`sort | uniq -d` is not a test, because every line of one write carries the
+same stamp: a task pod's whole JSON output shares one, and repeats lines.
 
 ## Size and the guard
 
