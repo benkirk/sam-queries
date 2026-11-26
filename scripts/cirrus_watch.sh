@@ -18,6 +18,8 @@
 #   - redis — memory %, hit rate, and the load-bearing evicted-keys delta
 #   - the tasks CronJob — suspended? heartbeat stale? failed Jobs? (report
 #     only — this script NEVER touches the remote CronJob)
+#   - the log archive — size, fullness, growth per day and newest write, when
+#     the archiver is deployed (helm logArchiver.enabled); `logs: off` otherwise
 #
 # Read-only. Never modifies cluster or DB state. Exit: 0 quiet / 1 warn / 2 fail.
 #
@@ -65,6 +67,13 @@ QUERY_GUARD="${WATCH_QUERY_GUARD:-200}"
 # ingest adds one row per queue/node/job per snapshot (~1.2-1.5k statements on
 # the status DB in ~0.2 s). Extended regex on "METHOD /path".
 QUERY_GUARD_IGNORE="${WATCH_QUERY_GUARD_IGNORE:-^POST /api/v1/status/}"
+# Log-archive guards. A newest write older than STALE_S warns on prod; growth
+# above MB_DAY (about 10x the measured 5.5 MB a day) warns and names the largest
+# live file; the volume warns at WARN_PCT full and fails at FAIL_PCT.
+LOGS_STALE_S="${WATCH_LOGS_STALE_S:-900}"
+LOGS_MB_DAY="${WATCH_LOGS_MB_DAY:-50}"
+LOGS_WARN_PCT="${WATCH_LOGS_WARN_PCT:-60}"
+LOGS_FAIL_PCT="${WATCH_LOGS_FAIL_PCT:-85}"
 DBPORT=3306
 DBHOST_FLAG=""
 STATE_FLAG=""
@@ -98,6 +107,7 @@ build_kctl
 # Each field is carried forward independently so a partial-unreachable tick
 # (e.g. kubectl down but DB up) never zeroes the others.
 LASTID=0; LASTSHA=""; LASTEVICTED=""; LASTHITS=""; LASTMISSES=""; LASTSLOWQ=""; LASTNHDDIGEST=""
+LASTLOGBYTES=""; LASTLOGTS=""
 mkdir -p "$(dirname -- "$STATE")"
 # First run (no state) or an explicit reset seeds a baseline silently rather
 # than reporting every historical row as "new".
@@ -225,18 +235,30 @@ else
                 (nonstatic>0?staticn/nonstatic:0), bytes/1048576;
         }'
     # Anomaly gates -> verdict counters (parse the same access lines once more).
+    # The client is column 1 (%(h)s after ProxyFix, what the limiter keys on). It
+    # precedes every visitor-controlled field: a quote in a User-Agent shifts the
+    # awk fields after it. Private addresses are never named.
     WEB_STATS=$(printf '%s\n' "$LOGS" | awk -F'"' '
         $2 ~ /^(GET|POST|PUT|DELETE|HEAD|PATCH|OPTIONS) / {
             split($2,r," "); path=r[2]; sub(/\?.*/,"",path);
             split($3,s," "); status=s[1];
             total++; code[substr(status,1,1)]++;
             if (path !~ /^\/static\// && path ~ /\/\.env|\/\.git|\/wp-login|\/wp-admin|\/phpmyadmin|\.php([?\/]|$)|\/actuator|\/xmlrpc/) probe++;
+            split($1,a," "); ip=a[1];
+            if (ip ~ /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|::1|fe80|f[cd])/) { if (!(ip in priv)) { priv[ip]=1; npriv++ }; next }
+            if (!(ip in pub)) { pub[ip]=1; npub++ }
+            if (status=="404") n404[ip]++;
         }
-        END{ printf "%d %d %d %d", total, code["5"], (total>0?100*code["4"]/total:0), probe }')
-    read -r WEB_TOTAL WEB_5XX WEB_P4 WEB_PROBE <<<"$WEB_STATS" || true
+        END{ top=""; tn=0; for (i in n404) if (n404[i]>tn) { tn=n404[i]; top=i }
+             printf "%d %d %d %d %d %d %d %s", total, code["5"], (total>0?100*code["4"]/total:0), probe, npub, npriv, tn, (top==""?"-":top) }')
+    read -r WEB_TOTAL WEB_5XX WEB_P4 WEB_PROBE WEB_NPUB WEB_NPRIV WEB_TOP404_N WEB_TOP404_IP <<<"$WEB_STATS" || true
     [[ "${WEB_5XX:-0}"  -gt 0 ]]  && fail "5xx=$WEB_5XX server error(s) this window"
     [[ "${WEB_P4:-0}"   -gt 40 ]] && warn "4xx=${WEB_P4}% of requests (heavy probing/scanning)"
     [[ "${WEB_PROBE:-0}" -gt 0 ]] && warn "$WEB_PROBE probe-path hit(s)"
+    [[ "${WEB_TOP404_N:-0}" -ge 20 ]] && echo "  404 top: ${WEB_TOP404_IP} (${WEB_TOP404_N})"
+    if [[ "${WEB_TOTAL:-0}" -ge 20 && "${WEB_NPUB:-0}" -eq 0 ]]; then
+        warn "client IP collapsed: no public client address in $WEB_TOTAL requests, ${WEB_NPRIV:-0} internal address(es) (per-IP limits share a bucket)"
+    fi
 
     # Non-static latency percentiles (ms) via sort — macOS awk has no asort.
     printf '%s\n' "$LOGS" | awk -F'"' '
@@ -469,12 +491,60 @@ else
     fi
 fi
 
+fmt_age() { local s=$1; if (( s < 60 )); then echo "${s}s"; elif (( s < 3600 )); then echo "$((s/60))m"; elif (( s < 86400 )); then echo "$((s/3600))h"; else echo "$((s/86400))d"; fi; }
+
+# --- 4a. the log archive (read-only: one exec into the archiver pod) ---------
+# The size guard is the point: a verbose logger must not fill the volume
+# unnoticed. Growth is bytes on disk, so the tick after a roll reads low (the old
+# pods' files were just gzipped). Never delete archive files from here.
+CUR_LOGBYTES=""; CUR_LOGTS=""
+LA_RC=0
+[[ "$K8S_OK" -eq 0 ]] || LA_ERR=$("${KCTL_NS[@]}" --request-timeout=10s get statefulset "$LOGS_NAME" -o name 2>&1 >/dev/null) || LA_RC=$?
+if [[ "$K8S_OK" -eq 0 ]]; then
+    :
+elif [[ "$LA_RC" -ne 0 ]] && grep -q NotFound <<<"$LA_ERR"; then
+    echo "logs: off"
+elif [[ "$LA_RC" -ne 0 ]]; then
+    warn "logs: StatefulSet '$LOGS_NAME' unreadable (kubectl timeout/error) — archive state unknown"
+elif ! LA_JSON=$("${KCTL_NS[@]}" --request-timeout=20s exec "${LOGS_NAME}-0" -- python -m logarchive status --json 2>/dev/null) \
+     || ! LA=$(jq -er '[.bytes, .files, .volume_bytes, .volume_free, (.newest_write_age // -1 | floor),
+                        (.heartbeat_age // -1 | floor), (.oldest // "-"), (.largest_live.name // "-"),
+                        (.largest_live.bytes // 0)] | map(tostring) | join(" ")' <<<"$LA_JSON" 2>/dev/null); then
+    warn "logs: archiver pod '${LOGS_NAME}-0' is not answering — nothing is being archived, and a pod deleted meanwhile is lost"
+else
+    read -r LA_BYTES LA_FILES LA_VOL LA_FREE LA_NEW LA_BEAT LA_OLDEST LA_BIG LA_BIGB <<<"$LA"
+    LA_NOW=$(date +%s)
+    LA_PCT=$(( LA_VOL > 0 ? 100 * (LA_VOL - LA_FREE) / LA_VOL : 0 ))
+    LA_NEWSTR="none"; [[ "$LA_NEW" -ge 0 ]] && LA_NEWSTR="$(fmt_age "$LA_NEW") ago"
+    # A rate over less than 10 minutes is noise (one burst projects to a flood), so
+    # an ad-hoc tick close behind another keeps the older baseline.
+    LA_RATE=""; LA_GROWTH="n/a"
+    if [[ -z "$LASTLOGBYTES" || -z "$LASTLOGTS" ]]; then
+        CUR_LOGBYTES="$LA_BYTES"; CUR_LOGTS="$LA_NOW"
+    elif (( LA_NOW - LASTLOGTS >= 600 )); then
+        CUR_LOGBYTES="$LA_BYTES"; CUR_LOGTS="$LA_NOW"
+        LA_RATE=$(awk -v b="$LA_BYTES" -v lb="$LASTLOGBYTES" -v dt="$((LA_NOW - LASTLOGTS))" 'BEGIN{printf "%+.1f", (b-lb)/dt*86400/1048576}')
+        LA_GROWTH="${LA_RATE} MB/day"
+    fi
+    echo "logs: ${LA_FILES} files $(human_bytes "$LA_BYTES")  vol ${LA_PCT}% of $(human_bytes "$LA_VOL")  newest ${LA_NEWSTR}  oldest ${LA_OLDEST}  growth ${LA_GROWTH}"
+    if [[ "$LA_BEAT" -lt 0 || "$LA_BEAT" -gt 120 ]]; then
+        warn "logs: archiver loop stalled (heartbeat $([[ "$LA_BEAT" -lt 0 ]] && echo never || fmt_age "$LA_BEAT")); its liveness probe restarts it"
+    elif [[ "$SAM_ENV" == "prod" && ( "$LA_NEW" -lt 0 || "$LA_NEW" -gt "$LOGS_STALE_S" ) ]]; then
+        warn "logs: newest archived line is ${LA_NEWSTR} (> $((LOGS_STALE_S/60))m) — the archiver is running but not copying"
+    fi
+    if [[ -n "$LA_RATE" ]] && awk -v r="$LA_RATE" -v m="$LOGS_MB_DAY" 'BEGIN{exit !(r>m)}'; then
+        warn "logs: growing ${LA_RATE} MB/day (> ${LOGS_MB_DAY}) — a verbose logger? largest live file: ${LA_BIG} ($(human_bytes "$LA_BIGB"))"
+    fi
+    if   [[ "$LA_PCT" -ge "$LOGS_FAIL_PCT" ]]; then fail "logs: volume ${LA_PCT}% full (>= ${LOGS_FAIL_PCT}%) — the archiver prunes oldest-first at 90%, shortening retention (oldest ${LA_OLDEST})"
+    elif [[ "$LA_PCT" -ge "$LOGS_WARN_PCT" ]]; then warn "logs: volume ${LA_PCT}% full (>= ${LOGS_WARN_PCT}%)"
+    fi
+fi
+
 # --- 4b. HPC lanes: ncar-hpc-deploy on GLADE, read-only over ssh ------------
 # The lane tree is on shared /glade, so one hop to whichever host answers reads
 # both hosts' stamps (scripts/lib/nhd_lane_summary.sh). No ssh = OFFLINE for this
 # line only. This never runs a deploy subcommand and never touches a lock.
 NHD_DIGEST=""
-fmt_age() { local s=$1; if (( s < 60 )); then echo "${s}s"; elif (( s < 3600 )); then echo "$((s/60))m"; elif (( s < 86400 )); then echo "$((s/3600))h"; else echo "$((s/86400))d"; fi; }
 if [[ "$HOSTS_ENABLED" -eq 1 ]]; then
     NHD_OUT=""; NHD_VIA=""
     for h in $NHD_HOSTS; do
@@ -562,6 +632,8 @@ NEW_LASTID="$MAXID"; [[ -z "$NEW_LASTID" || "$NEW_LASTID" == 0 ]] && NEW_LASTID=
     echo "LASTMISSES=${CUR_MISSES:-$LASTMISSES}"
     echo "LASTSLOWQ=${CUR_SLOWQ:-$LASTSLOWQ}"
     echo "LASTNHDDIGEST=\"${NHD_DIGEST:-$LASTNHDDIGEST}\""
+    echo "LASTLOGBYTES=${CUR_LOGBYTES:-$LASTLOGBYTES}"
+    echo "LASTLOGTS=${CUR_LOGTS:-$LASTLOGTS}"
 } > "$STATE"
 
 # --- verdict (compact; exit 0 quiet / 1 warn / 2 fail) ----------------------

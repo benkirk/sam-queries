@@ -11,8 +11,8 @@ description: >-
 # Watch dev
 
 The dev counterpart of `watch-prod`, and deliberately thin: how to read a web,
-split, cache, tasks or hosts line is the same, so read `watch-prod` §2, §5, §6
-and §8 for that. This skill carries only what differs on dev. Dev pages nobody; the usual
+split, cache, tasks, logs or hosts line is the same, so read `watch-prod` §2, §5,
+§5a, §6 and §8 for that. This skill carries only what differs on dev. Dev pages nobody; the usual
 job is a check after a deploy, not a standing watch.
 
 ## 1. Run a tick
@@ -35,6 +35,7 @@ at 128.117.41.125 (the nginx stopgap: `docs/plans/implemented/INGRESS_NGINX_STOP
 |---|---|
 | `http: ready …` | **The outside-in health signal.** `/api/v1/health/ready` over HTTPS: `sam` must be healthy (FAIL otherwise); `system_status` down reads `degraded` (WARN). |
 | `web:` / `pods:` / `cache:` / `tasks:` | As on prod (kubectl RBAC in `sam-queries-dev` landed 2026-09-26). One replica, one Redis, the dev dispatcher. |
+| `logs:` | The log archive (`samuel-dev-logs`; dev runs it first, so the size guard is first proven here). As `watch-prod` §5a, except a stale `newest` is not flagged: dev idles for hours. Read the archive with `scripts/cirrus_logs.sh --env dev --since 7d`. |
 | `k8s: no RBAC in sam-queries-dev` | Printed only for a user without kubectl access there: the four pod-log sections are skipped and `http:` is the one live line. Not a fault on dev. |
 | `xras: skipped` / `dbload: skipped` | Those reads are MySQL-only and dev SAM is Postgres. XRAS's demo instance does post to dev (both directions live since 2026-10-08); read `sam_dev.xras_action_log` with `psql` (`SAM_DEV_PG_*` in `.env`). |
 | `hosts:` | The `dev` lane on GLADE (`:staging`): rapid collectors on both hosts, hourly `accounting-comp`, no `jobhist-sync` rows (job_history is shared with prod). `update` runs hourly, so `current` moves with every staging push; map its git sha like the pin. |

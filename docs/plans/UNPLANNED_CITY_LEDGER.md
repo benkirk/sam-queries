@@ -1605,8 +1605,9 @@ angle, and parity against prod turned up a SAMuel bug.
 - [ ] Wallclock admin edits never invalidate `api/v1/wallclock_exemption.py`'s caches.
 - [ ] `register_error_handlers` discards a 404's text.
 - [ ] Parity: `comparators.py` passes `pct=0.05` to `within_tolerance`, which means 0.05%.
-- [ ] The API-key limiter keys on the ingress pod address (client IPs lost at the ingress), so
-  every key caller shares one bucket per pod.
+- [x] The API-key limiter keys on `ip:`, which was one shared bucket while client IPs were lost
+  at the ingress (to 2026-11-19). Closed 2026-11-26: each caller host has its own bucket. Keying
+  on the unverified key name was rejected as a lockout lever (`RATE_LIMITING.md`).
 - [ ] SAMuel's allocation editor records end-date edits as ADJUSTMENT; legacy's replay applies
   dates only on EXTENSION (shows on legacy surfaces until each cutover).
 - [ ] Legacy rules HEUV reproduces, for Ben's follow-on plan: the parent cascade (a child reports

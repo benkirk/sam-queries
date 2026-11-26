@@ -8,8 +8,9 @@
 # `kubectl logs`, `kubectl get`, and a read-only `redis-cli ZREVRANGE`. It never
 # mutates cluster state.
 #
-# Everything it inspects already exists on the webapp's stdout (≈45-day cluster
-# retention) and in Redis; this script just harvests and summarizes it:
+# Everything it inspects already exists on the webapp's stdout (readable only for
+# the pod's lifetime; a deploy empties it, so --archive reads the log archive
+# instead) and in Redis; this script just harvests and summarizes it:
 #   - gunicorn access logs   (containers/samuel/gunicorn_config.py)
 #   - the app request logger  ("METHOD path -> status (ms) rid=…")
 #   - rate-limit 429 events   (log line + Redis set 'ratelimit:events', DB 1)
@@ -21,6 +22,8 @@
 # Options:
 #       --since DURATION  Log look-back window, e.g. 30m, 6h, 2d  (default: 1h)
 #       --top N           How many rows in each "top N" list       (default: 15)
+#       --archive         Read the window from the log archive (cirrus_logs.sh):
+#                         it outlives a deploy; needs helm logArchiver.enabled
 #       --env        ENV  Which release: prod | dev           (default: $SAM_ENV or prod)
 #   -n, --namespace NS    Namespace the release lives in   (default: per --env)
 #   -r, --release    REL  Helm release name                (default: per --env)
@@ -36,21 +39,22 @@
 # Hardening recommendations (NOT enforced by this script)
 # This audit only surfaces signals; the layered defenses below are follow-ups
 # tracked in docs/plans (see the approved plan). Quick reference:
-#   R1  Edge rate limiting — none at the ingress (traefik-external since
-#       2026-10; the tenant may not create a Traefik Middleware). Flask-Limiter
-#       is the limiter.
-#   R2  Real client IP — Traefik forwards what it sees, and under
-#       externalTrafficPolicy: Cluster that is the node's overlay address
-#       (10.0.x.x), not the client. PROXYFIX_X_FOR must equal the number of
-#       proxies that append to X-Forwarded-For; re-measure from the xff= field
-#       if the controller or its traffic policy changes. Section 2 flags the
-#       collapsed symptom.
+#   R1  Edge rate limiting — none at the ingress, and the tenant cannot create
+#       a Traefik Middleware (can-i: no, 2026-11-26). Flask-Limiter is the limiter.
+#   R2  Real client IP — traefik-external forwards the client in 1 xff hop and
+#       drops a client-supplied X-Forwarded-For (measured 2026-11-26). It depends
+#       on the load balancer preserving the source: under externalTrafficPolicy:
+#       Cluster, Traefik handed the node's overlay address (10.0.x.x), and nginx-
+#       external handed 127.0.0.1. PROXYFIX_X_FOR must equal the hops that append
+#       to X-Forwarded-For; re-measure from xff= if the controller or its traffic
+#       policy changes. Section 2 flags the collapsed symptom.
 #   R3  Scheduling — run on a cron/CI runner with --no-color and alert on a
 #       non-zero exit (wire into scripts/cron/).
 #   R4  CSP reporting — add a report-uri so injection attempts become a
 #       server-side signal.
-#   R5  Durable logs — stdout (~45d) is the only sink; confirm cluster log
-#       shipping for forensics beyond --since reach.
+#   R5  Durable logs — pod stdout dies with the pod, and CIRRUS's cluster store
+#       is outside our RBAC. The in-namespace archiver keeps it (--archive,
+#       scripts/cirrus_logs.sh, docs/plans/implemented/DURABLE_LOGS.md).
 
 set -euo pipefail
 
@@ -63,12 +67,14 @@ source "${_LIBDIR}/cirrus_common.sh"
 
 SINCE="1h"
 TOP=15
+ARCHIVE=0
 
 while [[ $# -gt 0 ]]; do
     if handle_common_arg "$@"; then shift "$_CONSUMED"; continue; fi
     case "$1" in
         --since) SINCE="$2"; shift 2;;
         --top)   TOP="$2";   shift 2;;
+        --archive) ARCHIVE=1; shift;;
         *) echo "Unknown option: $1" >&2; exit 2;;
     esac
 done
@@ -101,9 +107,11 @@ since_to_min() {
 }
 
 # Render "count<TAB>value" rows (from sort|uniq -c) as an indented top-N list.
+# awk, not head: head exits early and SIGPIPEs sort, which pipefail turns
+# into a silent exit 141 once the list outgrows a pipe buffer.
 top_list() {
-    sort | uniq -c | sort -rn | head -n "$TOP" \
-        | awk '{ c=$1; $1=""; sub(/^ /,""); printf "    %8d  %s\n", c, $0 }'
+    sort | uniq -c | sort -rn \
+        | awk -v n="$TOP" 'NR<=n { c=$1; $1=""; sub(/^ /,""); printf "    %8d  %s\n", c, $0 }'
 }
 
 # ============================================================================
@@ -137,7 +145,16 @@ if ! "${KCTL_NS[@]}" get deploy "$WEBAPP_NAME" >/dev/null 2>&1; then
     exit 1
 fi
 pass "Deployment '$WEBAPP_NAME' present"
-explain "Reading the last '$SINCE' of webapp stdout across all '$WEBAPP_NAME' pods."
+if [[ "$ARCHIVE" -eq 1 ]]; then
+    if ! "${KCTL_NS[@]}" get pod "${LOGS_NAME}-0" >/dev/null 2>&1; then
+        fail "--archive: no archiver pod '${LOGS_NAME}-0' in $NAMESPACE (helm logArchiver.enabled=false?)"
+        exit 2
+    fi
+    pass "archiver pod '${LOGS_NAME}-0' present"
+    explain "Reading the last '$SINCE' from the log archive: every '$WEBAPP_NAME' pod, deleted ones included."
+else
+    explain "Reading the last '$SINCE' of webapp stdout across all '$WEBAPP_NAME' pods."
+fi
 
 # --- harvest once -----------------------------------------------------------
 # All signals (gunicorn access + app logger + 429 warnings + auth failures)
@@ -145,8 +162,14 @@ explain "Reading the last '$SINCE' of webapp stdout across all '$WEBAPP_NAME' po
 # --tail=-1 is REQUIRED: with a -l selector kubectl defaults to --tail=10 per
 # pod, which silently caps the harvest at ~10 lines/pod and undercounts every
 # section below (--since alone does NOT lift that cap).
-LOGS=$("${KCTL_NS[@]}" logs -l "app=$WEBAPP_NAME" --since="$SINCE" --tail=-1 \
-       --all-containers=true --timestamps=false 2>/dev/null || true)
+if [[ "$ARCHIVE" -eq 1 ]]; then
+    LOGS_ARGS=(--env "$SAM_ENV" -n "$NAMESPACE" --app webapp --since "$SINCE")
+    [[ -n "$CONTEXT" ]] && LOGS_ARGS+=(--context "$CONTEXT")
+    LOGS=$("${_LIBDIR}/../cirrus_logs.sh" "${LOGS_ARGS[@]}" 2>/dev/null || true)
+else
+    LOGS=$("${KCTL_NS[@]}" logs -l "app=$WEBAPP_NAME" --since="$SINCE" --tail=-1 \
+           --all-containers=true --timestamps=false 2>/dev/null || true)
+fi
 
 # Normalize gunicorn access lines to "ip<TAB>status<TAB>method<TAB>path<TAB>ua".
 # An access line is identified by its quoted request field ("METHOD path HTTP…"),
@@ -156,12 +179,9 @@ ACCESS_TSV=$(printf '%s\n' "$LOGS" | awk -F'"' '
         split($2, r, " "); method = r[1]; path = r[2];
         sub(/\?.*/, "", path);                 # drop query string for grouping
         if (path ~ /^\/api\/v[0-9]+\/health(\/|$)/) next;   # infra probe noise, not traffic
-        # Client IP: prefer the leftmost X-Forwarded-For entry (the real client)
-        # when the access log carries the xff="…" field; else the socket peer
-        # in %(h)s (which behind the ingress is the proxy, not the client).
+        # Client IP: column 1, %(h)s after ProxyFix, the address the limiter keys
+        # on. Not the xff field: a quote in a User-Agent shifts the fields after it.
         split($1, a, " "); ip = a[1];
-        xff = (NF >= 8) ? $8 : "";
-        if (xff != "" && xff != "-") { split(xff, xa, ","); ip = xa[1]; gsub(/[ \t]/, "", ip) }
         split($3, s, " "); status = s[1];
         ua = $6; if (ua == "") ua = "-";
         printf "%s\t%s\t%s\t%s\t%s\n", ip, status, method, path, ua
@@ -248,7 +268,7 @@ else
         warn "$SCAN_UA request(s) from known exploitation/scanner tools"
         if [[ $VERBOSE -eq 1 ]]; then
             printf '%s\n' "$ACCESS_TSV" | awk -F'\t' -v re="$SCANNER_UA_RE" 'tolower($5) ~ re {print $1"\t"$5}' \
-                | sort | uniq -c | sort -rn | head -n "$TOP" | sed 's/^/      /'
+                | sort | uniq -c | sort -rn | awk -v n="$TOP" 'NR<=n { print "      " $0 }'
         fi
     else
         pass "no exploitation/scanner-tool user-agents"
@@ -294,7 +314,7 @@ else
     OFFENDERS=$(printf '%s\n' "$RL_LINES" | grep -oE 'actor=[^ ]+' | sed 's/^actor=//')
     printf '%s\n' "$OFFENDERS" | top_list
     # Concentration check: a single actor dominating 429s is a likely single abuser.
-    TOPN=$(printf '%s\n' "$OFFENDERS" | sort | uniq -c | sort -rn | head -1 | awk '{print $1}')
+    TOPN=$(printf '%s\n' "$OFFENDERS" | sort | uniq -c | sort -rn | awk 'NR==1 {print $1}')
     if [[ "${TOPN:-0}" -ge 10 ]] && awk -v a="$TOPN" -v t="$N_429" 'BEGIN{exit !(a > t/2)}'; then
         warn "one actor accounts for $TOPN/$N_429 of the 429s — inspect /admin/htmx/rate-limits"
     fi
@@ -312,7 +332,7 @@ if [[ -n "$REDIS_POD" ]]; then
         echo
         echo "  Redis 'ratelimit:events' set: $N_EV event(s) retained — top offenders:"
         printf '%s\n' "$EVENTS" \
-            | jq -r 'select(length>0) | fromjson | .actor' 2>/dev/null \
+            | jq -R -r 'fromjson? | .actor // empty' 2>/dev/null \
             | top_list
     else
         explain "Redis 'ratelimit:events' set is empty (no recent 429s, or memory:// fallback in use)."

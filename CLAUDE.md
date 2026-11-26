@@ -86,6 +86,7 @@ sam-queries/
 │   └── tasks/            #   ledger, runner) — no Click/Flask/rich/k8s imports
 │                         #   tasks/: cleanup_status, deactivate_expired,
 │                         #           expiration_notices, xras_notices
+├── src/logarchive/       # Pod-log archiver (own pod; stdlib + requests, no sam/webapp imports)
 ├── src/querykit/         # Faceted-log query facade — SQLAlchemy only, imports
 │                         #   nothing from sam/ or system_status/ (see its README)
 ├── src/cli/              # sam-search / sam-admin (see src/cli/README.md)

@@ -96,12 +96,10 @@ class SAMWebappConfig(SAMConfig):
     # Per-address cap on the registration POST, on top of the per-IP login
     # tier: nobody can flood a stranger's inbox with verification mail.
     RATELIMIT_REGISTER_EMAIL = os.getenv('RATELIMIT_REGISTER_EMAIL', '3 per hour; 5 per day')
-    # Global ceiling on the registration POST across ALL addresses and IPs
-    # (a fixed limiter key) -- the relay blast-radius bound. Deliberately low:
-    # the per-IP tier is blind until the platform forwards the client IP, so
-    # this is the only cap on breadth abuse (one attacker, many victims). Kept
-    # low so enabling the form cannot open an unbounded mailer; raise it by env
-    # once the human check has soaked (docs/plans/implemented/ACCOUNT_REGISTRATION.md 6).
+    # Global ceiling on the registration POST across ALL addresses and IPs (a
+    # fixed limiter key): the relay blast-radius bound, which per-IP tiers cannot
+    # give against an attacker rotating addresses. Raise it by env once the human
+    # check has soaked (docs/plans/implemented/ACCOUNT_REGISTRATION.md 6).
     RATELIMIT_REGISTER_GLOBAL = os.getenv('RATELIMIT_REGISTER_GLOBAL', '10 per hour; 30 per day')
     # Accept-first EULA gate in front of the public form; 1/true/yes or off.
     # docs/plans/implemented/ACCOUNT_REGISTRATION.md 6.2.
@@ -403,8 +401,7 @@ class ProductionConfig(SAMWebappConfig):
 
     # Default OFF in production -- the anonymous registration form ships dark
     # and is enabled per deployment (docs/plans/implemented/ACCOUNT_REGISTRATION.md).
-    # The EULA gate and the human check (HUMAN_CHECK_PROVIDER) ride along;
-    # client-IP forwarding is still a 6.1 precondition for a public prod form.
+    # The EULA gate and the human check (HUMAN_CHECK_PROVIDER) ride along.
     ACCOUNT_REGISTRATION_ENABLED = os.getenv('ACCOUNT_REGISTRATION_ENABLED', '0').lower() in ('1', 'true', 'yes')
     # Default OFF in production; the chart (helm/values.yaml) opts in, like
     # ACCOUNT_REGISTRATION_ENABLED. Production serves this on with the

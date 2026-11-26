@@ -394,6 +394,15 @@ databases — including `expiration_notices` and `xras_notices`, whose audience
 is external PIs. (`NOTIFY_ENABLED` is fail-closed and unset locally, so nothing
 would actually send, but do not rely on that as the only guard.)
 
+### Log archive
+
+With `logArchiver.enabled` (on in `values-dev.yaml`, off in prod) the chart adds a
+one-replica StatefulSet, `samuel-logs` (dev: `samuel-dev-logs`), with its own
+ServiceAccount and a read-only Role on pods and pods/log. It copies every samuel
+pod's stdout to a 5 Gi `ceph-kubepv` claim and keeps it 90 days, because pod stdout
+dies with the pod. Read it with `scripts/cirrus_logs.sh`; the claim outlives the
+flag and `helm uninstall`. Design: `docs/plans/implemented/DURABLE_LOGS.md`.
+
 ### Destroy
 
 ```bash

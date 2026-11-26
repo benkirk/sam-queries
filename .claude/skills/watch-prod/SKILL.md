@@ -63,6 +63,14 @@ Steady state is one line. Raise it only on a real signal:
   404/405 from one anonymous scanner (WordPress, PHP, `.env` families) with
   nothing on a probe path answering 2xx is a WARN to name in one line, not
   escalate; escalate a scanner that recurs across ticks or that finds a 2xx.
+  `404 top: <ip> (<n>)` names the address (20+ 404s in the window; private and
+  loopback addresses are never named); a recurring one goes on known-open by IP.
+  404s never reach Flask-Limiter, so no scanner is throttled: the accepted policy
+  (2026-11-26).
+- **`client IP collapsed`** (WARN): 20+ requests, none from a public address, so
+  per-IP tiers share a bucket. Expected on an nginx fallback; on Traefik the load
+  balancer stopped preserving the source: escalate. First read the internal-address
+  count: one 10.x user alone in a quiet dev window is not a collapse.
 - **a probe-path hit** (`/.env`, `/wp-login`, `.php`, `/actuator`, …).
 - **a NEW slow (>5s) endpoint.**
 - **a query-count hit** — the `queries(>=200)` warn and its `↳` lines. The
@@ -172,6 +180,20 @@ dedups a duplicate dispatch to a no-op — but **deleting a running mail task**
 (`expiration_notices`, `xras_notices`) is UNSAFE: killing it mid-send lets the
 next dispatch reclaim the lease and double-mail every PI. So: report it, hand it
 off, don't automate it.
+
+## 5a. The logs line: the log archive
+
+`logs: off` means the archiver is not deployed in this env (`logArchiver.enabled`, dev
+first): not a finding. Deployed, it reads `logs: 412 files 38.2MB  vol 2% of 4.9GB  newest
+12s ago  oldest 2026-11-26  growth +5.1 MB/day` (`docs/plans/implemented/DURABLE_LOGS.md`).
+
+- **growth above 50 MB/day** (WARN; about 5.5 is normal): a verbose logger. The WARN names
+  the largest live file, which is that pod. Report it; **never delete archive files from the
+  watch**. A roll gzips the old pods' files, so the next tick reads low or negative.
+- **volume** WARNs at 60% full and FAILs at 85%; at 90% the archiver prunes oldest-first, so
+  an `oldest:` date that jumps forward is retention shrinking.
+- **`not answering`, or `newest` over 15 min old on prod** (WARN): the archiver is down or not
+  copying and the loss window is open (a pod deleted meanwhile is gone). Hand it to Ben.
 
 ## 6. The hosts line: the HPC lanes on GLADE
 
