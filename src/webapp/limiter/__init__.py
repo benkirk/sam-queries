@@ -38,7 +38,8 @@ def _key_func() -> str:
     Order matters: M2M API-key callers must never share a bucket with
     interactive users sharing the same source IP. NOTE: limits are checked
     before a view's decorator sets ``g.api_key_user``, so `api_key_required`
-    pins its own ``ip:`` key; the ``apikey:`` branch names the 429 actor.
+    pins its own ``ip:`` key, and a 429 there is recorded under ``ip:`` too;
+    the ``apikey:`` branch applies only where the identity is set first.
     """
     api_user = getattr(g, 'api_key_user', None)
     if api_user:
