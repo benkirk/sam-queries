@@ -1,7 +1,8 @@
 # shellcheck shell=bash
 #
 # cirrus_common.sh — Kubernetes / cirrus layer shared by the SAM cluster
-# scripts (cirrus_healthcheck.sh, cirrus_watch.sh, cirrus_weblog_audit.sh).
+# scripts (cirrus_healthcheck.sh, cirrus_watch.sh, cirrus_weblog_audit.sh,
+# cirrus_logs.sh).
 #
 # Sits ON TOP of common.sh (sourced automatically here) and adds the bits
 # that know about the 'samuel' (prod, namespace sam-queries) and 'samuel-dev'
@@ -59,6 +60,7 @@ cirrus_set_env() {
             WEBAPP_NAME="samuel"
             REDIS_NAME="samuel-redis"
             TASKS_NAME="samuel-tasks"
+            LOGS_NAME="samuel-logs"
             INGRESS_HOST="samuel.k8s.ucar.edu"
             INGRESS_HOSTS=("samuel.k8s.ucar.edu" "sam.hpc.ucar.edu")
             TLS_SECRET="incommon-cert-samuel"
@@ -72,6 +74,7 @@ cirrus_set_env() {
             WEBAPP_NAME="samuel-dev"
             REDIS_NAME="samuel-dev-redis"
             TASKS_NAME="samuel-dev-tasks"
+            LOGS_NAME="samuel-dev-logs"
             INGRESS_HOST="samuel-dev.k8s.ucar.edu"
             INGRESS_HOSTS=("samuel-dev.k8s.ucar.edu")
             TLS_SECRET="incommon-cert-samuel-dev"
