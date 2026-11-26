@@ -63,8 +63,10 @@ Turning the archiver off never deletes the archive.
 - **A container that will restart is not finished.** A terminated container in
   a Deployment pod runs again; only a pod in `Succeeded`/`Failed`, a
   `restartPolicy: Never` container, or a pod that is gone is final.
-- **Log timestamps are UTC from the API** and are stored as they arrive. The
-  naive-Mountain rule for SAM data does not apply here.
+- **Log timestamps are stored as they arrive**, and on nwc1 they carry the
+  node's offset (`...-07:00`), not `Z`. Everything compares the parsed instant
+  and `sinceTime` is sent in UTC. The naive-Mountain rule for SAM data does not
+  apply here.
 - **A torn last line** (a kill or a full disk mid-write) is cut back to the last
   newline before the cursor is read; the stream re-delivers it.
 

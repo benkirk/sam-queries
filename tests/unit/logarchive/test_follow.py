@@ -46,6 +46,19 @@ def test_resume_after_a_restart_writes_no_duplicate_and_loses_no_line(tmp_path, 
     assert client.stream_calls == [('web-1', 'app', '2026-11-26T15:00:02Z')]   # floored to the second
 
 
+def test_resume_inside_a_block_sharing_one_offset_stamp(tmp_path, stop):
+    """nwc1 stamps carry the node's offset, and every line of one write shares a stamp."""
+    block = '2026-11-26T09:37:11.288544171-07:00'
+    path = store.log_path(tmp_path, 'web', 'web-1', 'app')
+    for n in range(3):
+        store.append(path, block, f'line {n}')
+    redelivered = [(block, f'line {n}') for n in range(5)] + [('2026-11-26T09:37:12.5-07:00', 'next')]
+    client = FakeClient(streams=[redelivered], listings=[DONE])
+    follower(client, tmp_path, stop).run()
+    assert lines(tmp_path) == [f'line {n}' for n in range(5)] + ['next']
+    assert client.stream_calls == [('web-1', 'app', '2026-11-26T16:37:11Z')]   # sinceTime is sent in UTC
+
+
 def test_end_of_stream_on_a_live_container_reconnects_and_resumes(tmp_path, stop):
     client = FakeClient(
         streams=[[(stamp(1), 'a'), (stamp(2), 'b')],

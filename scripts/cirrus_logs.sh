@@ -14,7 +14,7 @@
 #       --since WHEN   Start of the window: 48h, 7d, or an RFC3339 time (default: 1h)
 #       --until WHEN   End of the window, same forms                  (default: now)
 #       --app   WHICH  webapp | tasks | all                           (default: webapp)
-#       --timestamps   Keep each line's leading UTC timestamp
+#       --timestamps   Keep each line's leading timestamp (RFC3339, the node's offset)
 #       --env     ENV  Which release: prod | dev            (default: $SAM_ENV or prod)
 #   -n, --namespace NS Namespace the release lives in       (default: per --env)
 #       --context CTX  kubectl context to target            (default: current)
