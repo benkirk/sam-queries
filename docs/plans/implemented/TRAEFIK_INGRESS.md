@@ -4,7 +4,8 @@ Status: implemented. PR 1 (#761) moved dev 2026-10-08 01:40Z; PR 2 (#766, promot
 in #768) moved prod 2026-10-09 00:30Z with no dark window (the bridge served the old
 VIP while CIRRUS's DNS sync followed the Ingress status in under six minutes); PR 3
 removed the bridge and the legacy nginx branch. Prod and dev are on `traefik-external`
-at 128.117.41.125.
+at 128.117.41.125, after a stopgap on `nginx-external` while the VIP was down (2026-11-21
+to 11-24, `INGRESS_NGINX_STOPGAP.md`). The client-IP finding is confirmed below.
 
 ## Why
 
@@ -188,6 +189,37 @@ pods clean: the `llb-128.117.41.x` path in front of both controllers, CIRRUS's.
 - Timeouts: Traefik read 60 s, write none, idle 180 s; gunicorn `timeout=120` stays
   the cap; keepalive 5 s under the idle timeout, as today.
 - Rollback is reverting the values line, for as long as `nginx-external` exists.
+
+## Measured on Traefik (2026-11-26, prod)
+
+- **Hops:** `xff=` carries 1 hop on every line, and gunicorn's client column equals it.
+  `proxyFixForwardedHops: 1` stays.
+- **Spoofing:** three requests carried a forged `X-Forwarded-For: 203.0.113.9`, a
+  forged 2-hop chain plus `X-Real-IP` and `Forwarded`, or nothing. Each logged
+  `xff="128.117.65.10"`, the sender. Traefik drops a client-supplied XFF.
+  - Probe on a logged path: `gunicorn_config.py` drops `/api/v1/health/*` 2xx lines.
+- **Tiers:** measured over 48 h, the whole pod lifetime: 21,161 requests from 346 IPs;
+  128.117/16 sends 41% from 32 IPs, mostly pollers. The table gives the peak per IP and
+  the peak if every request shared one bucket, which is what nginx did.
+
+  | Tier | Limit | Peak per IP | Peak in one bucket |
+  |---|---|---|---|
+  | `RATELIMIT_ANON` | 30/min | 4/min | 5/min |
+  | `RATELIMIT_AUTH_LOGIN` | 5/min; 20/h | 2/min; 2/h | 2/min; 7/h |
+  | `RATELIMIT_M2M` (keyed `ip:`) | 120/min | 22/min | 43/min |
+
+  Every tier keeps its value. No 429 since the move. The Redis ring's 21 events are
+  `ip:127.0.0.1` on `GET /`, 2026-11-21 12:56 MST: a 7-second burst into the nginx-era
+  shared bucket.
+- **Scanners:** four cloud IPs send 94% of the 1,536 404s. All of them are unmatched
+  paths, which Flask-Limiter never counts. `cirrus_watch.sh` names the top 404 IP.
+- **Edge limiter:** `auth can-i create middlewares.traefik.io` is `no`. Flask-Limiter
+  stays the only limiter.
+- **If we fall back to nginx:** client IPs collapse to 127.0.0.1, and `cirrus_watch.sh`
+  warns "client IP collapsed". Normal load fits one bucket (table), but one actor can
+  drain it for everyone: 20 bad logins lock every user out of the OIDC callback for the
+  hour. For a long fallback, raise `RATELIMIT_AUTH_LOGIN` and `RATELIMIT_ANON` by helm
+  env (a deploy decision).
 
 ## The probe
 

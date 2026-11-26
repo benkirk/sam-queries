@@ -22,8 +22,9 @@ prerequisite has shipped:
   Redis-with-graceful-fallback pattern we mirror here.
 - `sam.caching.redis_client.make_redis_client` already handles connectivity
   + PING with timeout.
-- `ProxyFix` is correctly configured in `src/webapp/run.py:62–63`, so
-  `get_remote_address()` returns the real client IP behind nginx/Traefik.
+- `ProxyFix` is configured in `src/webapp/run.py`, so `get_remote_address()`
+  returns the real client IP behind `traefik-external` (1 hop, forged XFF dropped,
+  measured 2026-11-26). `nginx-external` handed every request 127.0.0.1.
 
 Because the storage backend is solved, we ship the whole feature in one
 pass: Redis storage, all endpoints covered, dedicated admin page with
@@ -180,10 +181,12 @@ clients writing well-behaved retry logic.
   by the unblock action.
 
 ### ProxyFix
-Already in place at `src/webapp/run.py:62–63`:
+Already in place in `src/webapp/run.py`:
 `ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)`. No
 change needed. `get_remote_address()` returns the real client IP behind
-nginx/Traefik.
+`traefik-external` (measured 2026-11-26: 1 hop; `docs/plans/implemented/TRAEFIK_INGRESS.md`
+§ Measured on Traefik). Behind `nginx-external` every client was 127.0.0.1, so each
+per-IP tier was one shared bucket.
 
 ### Limit tiers (config, not hardcoded)
 
@@ -215,8 +218,15 @@ parallel test run would trip global limits otherwise.
 | `RATELIMIT_AUTH_LOGIN` (per-IP) | `src/webapp/auth/blueprint.py:45` on POST `/auth/login` | stub login |
 | `RATELIMIT_M2M` | inside `@api_key_required` in `src/webapp/utils/api_auth.py:30` | all `POST /api/v1/status/*` |
 | `RATELIMIT_AUTHED` | `Limiter.default_limits` global default | `/api/v1/projects/*`, `/api/v1/users/*`, `/api/v1/allocations/*`, `/api/v1/charges`, `/api/v1/{directory,project,fstree}_access`, all HTMX `/admin/htmx/*` and `/user/htmx/*` |
-| `RATELIMIT_ANON` | `@limiter.limit(cfg['RATELIMIT_ANON'])` on GET `/`, GET `/auth/login`, OIDC kickoff/callback | unauthenticated GETs |
+| `RATELIMIT_ANON` | `@limiter.limit(cfg['RATELIMIT_ANON'])` on GET `/`, GET `/auth/login`, OIDC kickoff | unauthenticated GETs |
 | Exempt | `@limiter.exempt` | `/api/v1/health/*`, Flask static |
+
+As built: the OIDC callback is on `RATELIMIT_AUTH_LOGIN`, not ANON. It performs the code
+exchange, the same tier as the login POST. `RATELIMIT_M2M` keys on `ip:<caller>`,
+not the API key, because Flask-Limiter runs before `@api_key_required` sets
+`g.api_key_user`. Each caller host has its own bucket (peak 22 of 120/min, 2026-11-26).
+Keying on the unverified Basic-auth name was rejected: anyone who knows a key name could
+drain that poller's bucket with wrong passwords.
 
 The `default_limits=[RATELIMIT_AUTHED]` covers the long tail without
 per-route decoration. We only add explicit decorators for the four routes
@@ -228,7 +238,7 @@ would key on username for an unauthenticated POST (the user isn't logged
 in yet), we override to `key_func=get_remote_address` on the decorator so
 attackers can't sidestep by varying usernames.
 
-OIDC callback, login GET, and `/` redirect get the ANON tier explicitly.
+OIDC kickoff, login GET, and `/` redirect get the ANON tier explicitly.
 This avoids the AUTHED default applying to anon traffic where the actor
 key collapses to `ip:…` — a single shared NAT can chew through 200/min
 quickly.

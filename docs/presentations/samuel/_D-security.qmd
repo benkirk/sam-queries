@@ -90,7 +90,7 @@ moved the first six CDN assets in, 2026-06-13.
 | **Signed-in users** | 200/min | user | everything else |
 | **API keys** | 120/min | IP | every key-only route |
 | **Registration mail** | 3/h each; 10/h in all | email, site | the registration form |
-| **The ingress** | 100/s, 200 open | site | everything |
+| **The ingress** | none | n/a | the app is the only limiter |
 
 *† Counted in Redis; a 429 carries `Retry-After`. Health checks are never limited.*
 
@@ -99,37 +99,32 @@ src/webapp/limiter/__init__.py (Flask-Limiter, fixed window; key order apikey, u
 :35-53; Redis db 1, falls back to per-worker memory if Redis is down; the 429 handler at
 :175-228 logs the actor and records it in ratelimit:events). Defaults = production:
 src/webapp/config.py:85-92,186-192. API keys: src/webapp/utils/api_auth.py:220-224. Ingress:
-helm/values.yaml:96-101, burst x5. #251 (2026-05-11), #316 (2026-06-16). Dev raises every tier
-to 100,000/min except sign-in, so a load test there is real load. The dev load test sustained
-121-180 requests a second from one address with no 429s (DEV_LOAD_CAMPAIGN.md:66-70): nginx
-counts per worker process, so treat the ingress numbers as a floor. Admins can see and clear
-blocks on the admin page.
+traefik-external, and the tenant cannot create a Traefik Middleware (auth can-i: no,
+2026-11-26). #251 (2026-05-11), #316 (2026-06-16). Dev raises every tier to 100,000/min except
+sign-in, so a load test there is real load. Admins can see and clear blocks on the admin page.
 :::
 
-## ⚠︎ We can't see the client's address {.caution .vcenter scale="1.15"}
+## We see the client's address {.vcenter scale="1.15"}
 
-- Every request arrives from 127.0.0.1. The address is lost before the app, and nothing on our
-  side can recover it.
-- So each per-IP limit is one bucket for everyone. One person's failed logins can lock everyone
-  out of sign-in for the window.
-- API keys too: their limit is checked before the key is known, so it counts per IP. All key
-  callers likely share 120 a minute.
-- What still holds: signed-in users count per user; registration has per-email and site-wide
-  caps, and a human check.
+- Every request carries the visitor's real address. One forwarding hop, and a forged header is
+  dropped at the edge (checked 2026-11-26).
+- So each per-IP limit is per visitor. Over two days the busiest address used a seventh of the
+  page limit, and a tenth of the hourly sign-in limit.
+- API keys count per calling host, each with its own 120 a minute. The busiest used 22.
+- If the edge loses the address again, the watch says so on its next tick.
 
-*† The fix is the platform team's, at the ingress, and would help every app behind it.*
+*† Behind the old ingress (to 2026-11-24) every request came from 127.0.0.1: one bucket for all.*
 
 ::: {.notes}
-Confirmed 2026-06-15 with an off-VPN request: X-Forwarded-For arrives as 127.0.0.1, and so does
-the socket peer. ProxyFix (src/webapp/run.py:86-95, PROXYFIX_X_FOR=1) cannot recover it. The fix
-is ingress-nginx's forwarded headers (use-forwarded-headers, compute-full-forwarded-for) or the
-proxy protocol at the load balancer; open, with no ticket found. Ben has no access to the
-ingress logs. The API-key limit: src/webapp/utils/api_auth.py:220-224 keys on the IP because
-Flask-Limiter runs before the decorator sets the key's identity; the limiter docstring and
-RATE_LIMITING.md say per key (on the plan's fix-later list). The request log carries who= only
-for signed-in users and keys (src/webapp/request_timing.py:136-138).
-scripts/cirrus_weblog_audit.sh section 2 shows the symptom. Registration: Cloudflare Turnstile
-on the final submit (#606).
+Measured 2026-11-26 on prod over 48 h: 21,161 requests from 346 addresses; xff= one hop on
+every line, matching gunicorn's client column, so PROXYFIX_X_FOR=1 (src/webapp/run.py) holds.
+Forged X-Forwarded-For, X-Real-IP and Forwarded headers were dropped by traefik-external; each
+probe logged the sender. Peaks per address: 4/min against 30 (pages), 2/h against 20
+(sign-in), 22/min against 120 (keys). The key limit counts per host because Flask-Limiter runs
+before the decorator knows the key (src/webapp/utils/api_auth.py:220-224); keying on the
+unverified name would let anyone lock out a poller. The record is TRAEFIK_INGRESS.md
+§ Measured on Traefik. scripts/cirrus_watch.sh warns "client IP collapsed" when a tick carries
+no public address. Registration: Cloudflare Turnstile on the final submit (#606).
 :::
 
 ## The NRIT review: before we left the VPN {.smaller .fill scale="0.9"}

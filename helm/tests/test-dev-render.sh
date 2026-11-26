@@ -255,7 +255,7 @@ prod_deploy=$(render prod -s templates/deployment.yaml)
 [[ "$(env_value "$prod_cron" XRAS_SUBMIT_ANONYMOUS_ENABLED)" == "1" ]] || {
   red "FAIL: prod tasks must carry XRAS_SUBMIT_ANONYMOUS_ENABLED=1 (the reconcile's placeholder merge)"; exit 1; }
 [[ "$(env_value "$prod_deploy" ACCOUNT_REGISTRATION_LOGIN_REQUIRED)" != "0" ]] || {
-  red "FAIL: prod keeps registration login-gated until client-IP forwarding (ACCOUNT_REGISTRATION_LOGIN_REQUIRED)"; exit 1; }
+  red "FAIL: prod keeps registration login-gated until Ben opens it (ACCOUNT_REGISTRATION_LOGIN_REQUIRED)"; exit 1; }
 [[ "$(env_value "$prod_deploy" ALLOCATION_REQUEST_LOGIN_REQUIRED)" == "0" ]] || {
   red "FAIL: prod serves /request to signed-out visitors (ALLOCATION_REQUEST_LOGIN_REQUIRED=0)"; exit 1; }
 [[ "$(env_value "$prod_deploy" HUMAN_CHECK_PROVIDER)" == "turnstile" ]] || {

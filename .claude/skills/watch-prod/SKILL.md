@@ -59,10 +59,9 @@ Steady state is one line. Raise it only on a real signal:
   status-DB blip with the peer repo's `cnpg_watch.sh` (a `FAILOVER: primary
   X → Y` line during a known roll is the switchover).
 - **p95 > 4000ms** — latency regression.
-- **4xx > 40%** of requests — heavy probing/scanning. A burst that is all
-  404/405 from one anonymous scanner (WordPress, PHP, `.env` families) with
-  nothing on a probe path answering 2xx is a WARN to name in one line, not
-  escalate; escalate a scanner that recurs across ticks or that finds a 2xx.
+- **4xx > 40%** — probing. A 404/405 scanner burst with no 2xx on a probe path is a one-line
+  WARN; escalate one that recurs or finds a 2xx. `404 top: <ip> (<n>)` names it (20+ 404s).
+- **`client IP collapsed`** (WARN): every per-IP tier is one bucket. Nginx fallback only; else escalate.
 - **a probe-path hit** (`/.env`, `/wp-login`, `.php`, `/actuator`, …).
 - **a NEW slow (>5s) endpoint.**
 - **a query-count hit** — the `queries(>=200)` warn and its `↳` lines. The

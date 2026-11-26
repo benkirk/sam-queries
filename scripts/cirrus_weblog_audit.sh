@@ -8,8 +8,9 @@
 # `kubectl logs`, `kubectl get`, and a read-only `redis-cli ZREVRANGE`. It never
 # mutates cluster state.
 #
-# Everything it inspects already exists on the webapp's stdout (≈45-day cluster
-# retention) and in Redis; this script just harvests and summarizes it:
+# Everything it inspects already exists on the webapp's stdout (readable only for
+# the pod's lifetime; a deploy empties it) and in Redis; this script just
+# harvests and summarizes it:
 #   - gunicorn access logs   (containers/samuel/gunicorn_config.py)
 #   - the app request logger  ("METHOD path -> status (ms) rid=…")
 #   - rate-limit 429 events   (log line + Redis set 'ratelimit:events', DB 1)
@@ -36,21 +37,19 @@
 # Hardening recommendations (NOT enforced by this script)
 # This audit only surfaces signals; the layered defenses below are follow-ups
 # tracked in docs/plans (see the approved plan). Quick reference:
-#   R1  Edge rate limiting — none at the ingress (traefik-external since
-#       2026-10; the tenant may not create a Traefik Middleware). Flask-Limiter
-#       is the limiter.
-#   R2  Real client IP — Traefik forwards what it sees, and under
-#       externalTrafficPolicy: Cluster that is the node's overlay address
-#       (10.0.x.x), not the client. PROXYFIX_X_FOR must equal the number of
-#       proxies that append to X-Forwarded-For; re-measure from the xff= field
-#       if the controller or its traffic policy changes. Section 2 flags the
-#       collapsed symptom.
+#   R1  Edge rate limiting — none at the ingress, and the tenant cannot create
+#       a Traefik Middleware (can-i: no, 2026-11-26). Flask-Limiter is the limiter.
+#   R2  Real client IP — traefik-external forwards the client in 1 xff hop and
+#       drops a client-supplied X-Forwarded-For (measured 2026-11-26). nginx-
+#       external collapsed every client to 127.0.0.1. PROXYFIX_X_FOR must equal
+#       the hops that append to X-Forwarded-For; re-measure from xff= if the
+#       controller changes. Section 2 flags the collapsed symptom.
 #   R3  Scheduling — run on a cron/CI runner with --no-color and alert on a
 #       non-zero exit (wire into scripts/cron/).
 #   R4  CSP reporting — add a report-uri so injection attempts become a
 #       server-side signal.
-#   R5  Durable logs — stdout (~45d) is the only sink; confirm cluster log
-#       shipping for forensics beyond --since reach.
+#   R5  Durable logs — pod stdout is the only sink we can read, and a deploy
+#       empties it; CIRRUS's cluster store is outside our RBAC.
 
 set -euo pipefail
 
@@ -101,9 +100,11 @@ since_to_min() {
 }
 
 # Render "count<TAB>value" rows (from sort|uniq -c) as an indented top-N list.
+# awk, not head: head exits early and SIGPIPEs sort, which pipefail turns
+# into a silent exit 141 once the list outgrows a pipe buffer.
 top_list() {
-    sort | uniq -c | sort -rn | head -n "$TOP" \
-        | awk '{ c=$1; $1=""; sub(/^ /,""); printf "    %8d  %s\n", c, $0 }'
+    sort | uniq -c | sort -rn \
+        | awk -v n="$TOP" 'NR<=n { c=$1; $1=""; sub(/^ /,""); printf "    %8d  %s\n", c, $0 }'
 }
 
 # ============================================================================
@@ -248,7 +249,7 @@ else
         warn "$SCAN_UA request(s) from known exploitation/scanner tools"
         if [[ $VERBOSE -eq 1 ]]; then
             printf '%s\n' "$ACCESS_TSV" | awk -F'\t' -v re="$SCANNER_UA_RE" 'tolower($5) ~ re {print $1"\t"$5}' \
-                | sort | uniq -c | sort -rn | head -n "$TOP" | sed 's/^/      /'
+                | sort | uniq -c | sort -rn | awk -v n="$TOP" 'NR<=n { print "      " $0 }'
         fi
     else
         pass "no exploitation/scanner-tool user-agents"
@@ -294,7 +295,7 @@ else
     OFFENDERS=$(printf '%s\n' "$RL_LINES" | grep -oE 'actor=[^ ]+' | sed 's/^actor=//')
     printf '%s\n' "$OFFENDERS" | top_list
     # Concentration check: a single actor dominating 429s is a likely single abuser.
-    TOPN=$(printf '%s\n' "$OFFENDERS" | sort | uniq -c | sort -rn | head -1 | awk '{print $1}')
+    TOPN=$(printf '%s\n' "$OFFENDERS" | sort | uniq -c | sort -rn | awk 'NR==1 {print $1}')
     if [[ "${TOPN:-0}" -ge 10 ]] && awk -v a="$TOPN" -v t="$N_429" 'BEGIN{exit !(a > t/2)}'; then
         warn "one actor accounts for $TOPN/$N_429 of the 429s — inspect /admin/htmx/rate-limits"
     fi
@@ -312,7 +313,7 @@ if [[ -n "$REDIS_POD" ]]; then
         echo
         echo "  Redis 'ratelimit:events' set: $N_EV event(s) retained — top offenders:"
         printf '%s\n' "$EVENTS" \
-            | jq -r 'select(length>0) | fromjson | .actor' 2>/dev/null \
+            | jq -R -r 'fromjson? | .actor // empty' 2>/dev/null \
             | top_list
     else
         explain "Redis 'ratelimit:events' set is empty (no recent 429s, or memory:// fallback in use)."

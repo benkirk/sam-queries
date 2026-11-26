@@ -59,10 +59,10 @@ ticket land in Jira by hand; `sam-admin cache --refresh` after deploy.
 
 **Future work, for a follow-up:**
 
-- **Real client-IP forwarding** -- § 6.1 #2. The human challenge (#1) is in
-  (§ 6.3); the client IP still has to reach the app through the ingress for the
-  per-IP tier to mean anything, and until then `ACCOUNT_REGISTRATION_LOGIN_REQUIRED`
-  stays on in prod.
+- **Real client-IP forwarding** -- § 6.1 #2, met 2026-11-26 (`traefik-external`
+  forwards the client, forged XFF dropped; `TRAEFIK_INGRESS.md` § Measured on Traefik).
+  The human challenge (#1) is in (§ 6.3). `ACCOUNT_REGISTRATION_LOGIN_REQUIRED`
+  stays on in prod by Ben's choice (2026-11-26), not for want of a precondition.
 - ~~The production config switch~~ -- superseded by D21: the event pages ride
   `ACCOUNT_INVITATIONS_ENABLED`, so the creation form stays dark in prod.
 - Phase 3 (§ 4), `reactivation` as a purpose (§ 6), and
@@ -421,10 +421,10 @@ dependency, and required before `ACCOUNT_REGISTRATION_ENABLED=1` in prod:**
 
 1. **A human challenge — DONE (§ 6.3).** Cloudflare Turnstile on the form's
    submit, verified server-side before the write and the mail, failing closed.
-2. **A real client IP** — the per-IP tier is blind behind the load balancer
-   (D12): `get_remote_address()` collapses to the ingress address. Confirm the
-   proxy chain and set `PROXYFIX_X_FOR`, or have the ingress forward a trusted
-   client-IP header. This is the precondition for any per-IP defense.
+2. **A real client IP — DONE on `traefik-external` (2026-11-26).** The proxy chain is
+   1 hop (`PROXYFIX_X_FOR=1`), and a client-supplied X-Forwarded-For is dropped at the
+   edge. On `nginx-external` the address collapsed to 127.0.0.1 (D12); a fallback there
+   reopens this gap, and `cirrus_watch.sh` warns "client IP collapsed".
 
 Notes on the ceiling's limits: it counts POST *attempts* (an upper bound on
 mails, so it fails safe), it weakens to per-worker if the limiter falls back to

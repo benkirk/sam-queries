@@ -28,6 +28,10 @@ follows the Ingress status, which moved both names in under six minutes in 2026-
 
 Costs: nginx-external is retired (CIRRUS, 2026-10) and may be removed without notice;
 every client reaches the app as 127.0.0.1 again; plain http answers nginx's 308 to https.
+With one shared address, a single actor can drain a per-IP tier for everyone (20 bad logins
+lock every user out of the OIDC callback for the hour). `cirrus_watch.sh` warns "client IP
+collapsed". The tier measurements and the fallback lever (raise `RATELIMIT_AUTH_LOGIN` and
+`RATELIMIT_ANON` by helm env) are in `TRAEFIK_INGRESS.md` § Measured on Traefik.
 
 ## Dev proof
 
