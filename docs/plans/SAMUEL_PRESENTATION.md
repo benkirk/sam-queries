@@ -575,8 +575,9 @@ are in the slide notes.
   registry. The template lint started at 41 files and is now 0.
 - **No third-party origins:** vendored, sha384-pinned, re-hashed in CI; the
   `update-vendored-assets` skill (#522–#524).
-- **Rate limits:** a table of the tiers. **The lost client IP** (⚠︎): every per-IP tier is one
-  bucket, API keys included.
+- **Rate limits:** a table of the tiers. **Real client IPs** reach the app (measured
+  2026-11-26: 1 hop, forged XFF dropped), so each per-IP tier is per client. Until 2026-11-19
+  every request came from one internal address and every tier was one shared bucket.
 - **The NRIT review:** requested by Ben before SAMuel left the VPN; one dense page, with what's
   fixed, the ZAP scan, and what's still open. The reviewer is not named (public repo).
 
@@ -1395,18 +1396,16 @@ puts the paragraph on the beamer section page; it is a framework `main` follow-u
 A running list. Deck work surfaces these, but none belongs on this branch. Each gets its own
 branch and PR against `staging`. Tick an item once its fix merges, and note the PR.
 
-- [ ] **API-key rate limit counts per IP, not per key** (found 2026-10-02, Appendix D).
-  - `api_key_required` pins `key_func` to `ip:<remote>` (`src/webapp/utils/api_auth.py:220-224`),
-    because Flask-Limiter runs before the decorator sets `g.api_key_user`.
-  - With the client IP lost at the ingress (every request from 127.0.0.1), all key callers
-    likely share one 120/min bucket. Unconfirmed in prod logs.
-  - The `_key_func` docstring (`limiter/__init__.py:35-53`) and `RATE_LIMITING.md:85-93` say
-    per key.
-  - Fix: key on the Basic-auth username before verifying (bounded, since a wrong key is cheap
-    to reject), or verify first.
+- [x] **API-key rate limit counts per IP, not per key** (found 2026-10-02, Appendix D).
+  Closed 2026-11-26 without code:
+  - on `traefik-external` each caller host has its own 120/min bucket (peak 22);
+  - keying on the unverified Basic-auth name would let anyone who knows a key name drain
+    that poller's bucket.
+
+  `RATE_LIMITING.md` § Where each tier gets applied records it.
 - [ ] **Stale security docs** (found 2026-10-02, Appendix D):
-  - `RATE_LIMITING.md`: ProxyFix "gives the real client IP" (false on nwc1); the OIDC callback
-    is on AUTH_LOGIN, not ANON.
+  - ~~`RATE_LIMITING.md`: ProxyFix "gives the real client IP"; the OIDC callback is on
+    AUTH_LOGIN, not ANON.~~ Corrected 2026-11-26, with the IP measured on Traefik.
   - `PRODUCTION_IMPROVEMENTS.md:38`: "`/database/` → 404", but the read-only browser is mounted
     since #620.
   - `PRODUCTION_IMPROVEMENTS-phase-B.md:206-208`: lists P0-5/6/10 as open; all are fixed.

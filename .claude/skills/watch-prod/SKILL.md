@@ -63,6 +63,14 @@ Steady state is one line. Raise it only on a real signal:
   404/405 from one anonymous scanner (WordPress, PHP, `.env` families) with
   nothing on a probe path answering 2xx is a WARN to name in one line, not
   escalate; escalate a scanner that recurs across ticks or that finds a 2xx.
+  `404 top: <ip> (<n>)` names the address (20+ 404s in the window; private and
+  loopback addresses are never named); a recurring one goes on known-open by IP.
+  404s never reach Flask-Limiter, so no scanner is throttled: the accepted policy
+  (2026-11-26).
+- **`client IP collapsed`** (WARN): 20+ requests, none from a public address, so
+  per-IP tiers share a bucket. Expected on an nginx fallback; on Traefik the load
+  balancer stopped preserving the source: escalate. First read the internal-address
+  count: one 10.x user alone in a quiet dev window is not a collapse.
 - **a probe-path hit** (`/.env`, `/wp-login`, `.php`, `/actuator`, …).
 - **a NEW slow (>5s) endpoint.**
 - **a query-count hit** — the `queries(>=200)` warn and its `↳` lines. The

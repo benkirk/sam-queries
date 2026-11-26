@@ -225,18 +225,30 @@ else
                 (nonstatic>0?staticn/nonstatic:0), bytes/1048576;
         }'
     # Anomaly gates -> verdict counters (parse the same access lines once more).
+    # The client is column 1 (%(h)s after ProxyFix, what the limiter keys on). It
+    # precedes every visitor-controlled field: a quote in a User-Agent shifts the
+    # awk fields after it. Private addresses are never named.
     WEB_STATS=$(printf '%s\n' "$LOGS" | awk -F'"' '
         $2 ~ /^(GET|POST|PUT|DELETE|HEAD|PATCH|OPTIONS) / {
             split($2,r," "); path=r[2]; sub(/\?.*/,"",path);
             split($3,s," "); status=s[1];
             total++; code[substr(status,1,1)]++;
             if (path !~ /^\/static\// && path ~ /\/\.env|\/\.git|\/wp-login|\/wp-admin|\/phpmyadmin|\.php([?\/]|$)|\/actuator|\/xmlrpc/) probe++;
+            split($1,a," "); ip=a[1];
+            if (ip ~ /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|::1|fe80|f[cd])/) { if (!(ip in priv)) { priv[ip]=1; npriv++ }; next }
+            if (!(ip in pub)) { pub[ip]=1; npub++ }
+            if (status=="404") n404[ip]++;
         }
-        END{ printf "%d %d %d %d", total, code["5"], (total>0?100*code["4"]/total:0), probe }')
-    read -r WEB_TOTAL WEB_5XX WEB_P4 WEB_PROBE <<<"$WEB_STATS" || true
+        END{ top=""; tn=0; for (i in n404) if (n404[i]>tn) { tn=n404[i]; top=i }
+             printf "%d %d %d %d %d %d %d %s", total, code["5"], (total>0?100*code["4"]/total:0), probe, npub, npriv, tn, (top==""?"-":top) }')
+    read -r WEB_TOTAL WEB_5XX WEB_P4 WEB_PROBE WEB_NPUB WEB_NPRIV WEB_TOP404_N WEB_TOP404_IP <<<"$WEB_STATS" || true
     [[ "${WEB_5XX:-0}"  -gt 0 ]]  && fail "5xx=$WEB_5XX server error(s) this window"
     [[ "${WEB_P4:-0}"   -gt 40 ]] && warn "4xx=${WEB_P4}% of requests (heavy probing/scanning)"
     [[ "${WEB_PROBE:-0}" -gt 0 ]] && warn "$WEB_PROBE probe-path hit(s)"
+    [[ "${WEB_TOP404_N:-0}" -ge 20 ]] && echo "  404 top: ${WEB_TOP404_IP} (${WEB_TOP404_N})"
+    if [[ "${WEB_TOTAL:-0}" -ge 20 && "${WEB_NPUB:-0}" -eq 0 ]]; then
+        warn "client IP collapsed: no public client address in $WEB_TOTAL requests, ${WEB_NPRIV:-0} internal address(es) (per-IP limits share a bucket)"
+    fi
 
     # Non-static latency percentiles (ms) via sort — macOS awk has no asort.
     printf '%s\n' "$LOGS" | awk -F'"' '

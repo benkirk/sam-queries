@@ -96,10 +96,9 @@ forwarded_allow_ips = os.environ.get('FORWARDED_ALLOW_IPS', '*')
 accesslog = os.environ.get('GUNICORN_ACCESS_LOG', '-')
 errorlog  = os.environ.get('GUNICORN_ERROR_LOG',  '-')
 loglevel  = os.environ.get('GUNICORN_LOG_LEVEL',  'info')
-# %(h)s is the raw socket peer (the in-cluster proxy), so it is NOT the client.
-# The trailing xff="…" logs the full X-Forwarded-For chain: its leftmost entry
-# is the real client, and counting the entries tells us the correct
-# PROXYFIX_X_FOR hop depth (see webapp/run.py).
+# %(h)s is REMOTE_ADDR after ProxyFix rewrote it: the address the limiter keys on.
+# The trailing xff="…" logs the full X-Forwarded-For chain; counting its entries
+# gives the correct PROXYFIX_X_FOR hop depth (see webapp/run.py).
 access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)sµs xff="%({x-forwarded-for}i)s"'
 
 proc_name = 'sam-webapp'

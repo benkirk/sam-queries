@@ -57,7 +57,9 @@ My Requests; there is no lever for the visitor's New alone.
    not mail the requester on submit (or the receipt is a second mail).
 4. **Client IPs.** Read `xff=` in a production pod log. While every request arrives as one
    address the per-IP tiers are one shared bucket, and Turnstile, the per-address tier and
-   `RATELIMIT_REGISTER_GLOBAL` carry the public form. Not verified when this was written.
+   `RATELIMIT_REGISTER_GLOBAL` carry the public form. Verified 2026-11-26 on `traefik-external`:
+   `xff=` is 1 hop with real client IPs, and a forged X-Forwarded-For is dropped
+   (`TRAEFIK_INGRESS.md` § Measured on Traefik).
 5. **Mail:** Turnstile keys present; no stale override of `account_verify`; one verify mail and
    one receipt to an outside address during the preview step.
 6. **Preview pass** on production as staff before the public step.
