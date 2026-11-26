@@ -67,10 +67,10 @@ Steady state is one line. Raise it only on a real signal:
   loopback addresses are never named); a recurring one goes on known-open by IP.
   404s never reach Flask-Limiter, so no scanner is throttled: the accepted policy
   (2026-11-26).
-- **`client IP collapsed`** (WARN): 20+ requests with no public client address.
-  The ingress stopped forwarding the client, so every per-IP tier is one shared
-  bucket. Expected only on an `nginx-external` fallback (`INGRESS_NGINX_STOPGAP.md`);
-  otherwise escalate.
+- **`client IP collapsed`** (WARN): 20+ requests, none from a public address, so
+  per-IP tiers share a bucket. Expected on an nginx fallback; on Traefik the load
+  balancer stopped preserving the source: escalate. First read the internal-address
+  count: one 10.x user alone in a quiet dev window is not a collapse.
 - **a probe-path hit** (`/.env`, `/wp-login`, `.php`, `/actuator`, …).
 - **a NEW slow (>5s) endpoint.**
 - **a query-count hit** — the `queries(>=200)` warn and its `↳` lines. The

@@ -293,9 +293,9 @@ groups pass**; every `user/*` route, `report/project`, `hierarchy`, `search` and
 after F3/F7. Counters a, d, e, g, h, i are 0. Of 139 usage rows, 2 differ: UCUB0188 Derecho
 `totalCharges` +5 of 2,154,256 (prod fetched ~12 min after legacy under pacing: charges posted
 between), and the statement below. The pacer exists because prod's limiter keyed on the ingress
-address behind `nginx-external` (client IPs lost), so every caller shared one 200/min bucket. On
-`traefik-external` the bucket is per caller host (2026-11-26); the pacer stays until a parity run
-proves it can be relaxed.
+pod address (client IPs were lost at the ingress), so every caller shared one 200/min bucket per
+pod. Real client IPs reach the app since 2026-11-19 (`TRAEFIK_INGRESS.md` § Measured on Traefik),
+so the bucket is per caller host; the pacer stays until a parity run proves it can be relaxed.
 
 **Statement (NCIS0001 Campaign_Store DataHoldings, 1 of 139 rows).** Old: `totalHoldings` = bytes at
 **one resource-wide snapshot date** (the latest `<= reportDate`), summed over the subtree: 1,397 TB,

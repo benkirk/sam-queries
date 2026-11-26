@@ -40,10 +40,12 @@
 #   R1  Edge rate limiting — none at the ingress, and the tenant cannot create
 #       a Traefik Middleware (can-i: no, 2026-11-26). Flask-Limiter is the limiter.
 #   R2  Real client IP — traefik-external forwards the client in 1 xff hop and
-#       drops a client-supplied X-Forwarded-For (measured 2026-11-26). nginx-
-#       external collapsed every client to 127.0.0.1. PROXYFIX_X_FOR must equal
-#       the hops that append to X-Forwarded-For; re-measure from xff= if the
-#       controller changes. Section 2 flags the collapsed symptom.
+#       drops a client-supplied X-Forwarded-For (measured 2026-11-26). It depends
+#       on the load balancer preserving the source: under externalTrafficPolicy:
+#       Cluster, Traefik handed the node's overlay address (10.0.x.x), and nginx-
+#       external handed 127.0.0.1. PROXYFIX_X_FOR must equal the hops that append
+#       to X-Forwarded-For; re-measure from xff= if the controller or its traffic
+#       policy changes. Section 2 flags the collapsed symptom.
 #   R3  Scheduling — run on a cron/CI runner with --no-color and alert on a
 #       non-zero exit (wire into scripts/cron/).
 #   R4  CSP reporting — add a report-uri so injection attempts become a

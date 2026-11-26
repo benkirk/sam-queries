@@ -59,8 +59,8 @@ ticket land in Jira by hand; `sam-admin cache --refresh` after deploy.
 
 **Future work, for a follow-up:**
 
-- **Real client-IP forwarding** -- § 6.1 #2, met 2026-11-26 (`traefik-external`
-  forwards the client, forged XFF dropped; `TRAEFIK_INGRESS.md` § Measured on Traefik).
+- **Real client-IP forwarding** -- § 6.1 #2, met 2026-11-26 (the client address
+  arrives, forged XFF dropped; `TRAEFIK_INGRESS.md` § Measured on Traefik).
   The human challenge (#1) is in (§ 6.3). `ACCOUNT_REGISTRATION_LOGIN_REQUIRED`
   stays on in prod by Ben's choice (2026-11-26), not for want of a precondition.
 - ~~The production config switch~~ -- superseded by D21: the event pages ride
@@ -421,10 +421,11 @@ dependency, and required before `ACCOUNT_REGISTRATION_ENABLED=1` in prod:**
 
 1. **A human challenge — DONE (§ 6.3).** Cloudflare Turnstile on the form's
    submit, verified server-side before the write and the mail, failing closed.
-2. **A real client IP — DONE on `traefik-external` (2026-11-26).** The proxy chain is
-   1 hop (`PROXYFIX_X_FOR=1`), and a client-supplied X-Forwarded-For is dropped at the
-   edge. On `nginx-external` the address collapsed to 127.0.0.1 (D12); a fallback there
-   reopens this gap, and `cirrus_watch.sh` warns "client IP collapsed".
+2. **A real client IP — DONE (measured 2026-11-26).** The proxy chain is 1 hop
+   (`PROXYFIX_X_FOR=1`), and a client-supplied X-Forwarded-For is dropped at the edge.
+   The address depends on the platform's load balancer, not on our chart (D12;
+   `TRAEFIK_INGRESS.md` § Measured on Traefik); if it collapses again this gap reopens,
+   and `cirrus_watch.sh` warns "client IP collapsed".
 
 Notes on the ceiling's limits: it counts POST *attempts* (an upper bound on
 mails, so it fails safe), it weakens to per-worker if the limiter falls back to

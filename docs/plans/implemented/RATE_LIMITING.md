@@ -24,7 +24,8 @@ prerequisite has shipped:
   + PING with timeout.
 - `ProxyFix` is configured in `src/webapp/run.py`, so `get_remote_address()`
   returns the real client IP behind `traefik-external` (1 hop, forged XFF dropped,
-  measured 2026-11-26). `nginx-external` handed every request 127.0.0.1.
+  measured 2026-11-26). That holds only while the platform's load balancer preserves
+  the source; until 2026-11-19 every request arrived from one internal address.
 
 Because the storage backend is solved, we ship the whole feature in one
 pass: Redis storage, all endpoints covered, dedicated admin page with
@@ -185,8 +186,9 @@ Already in place in `src/webapp/run.py`:
 `ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)`. No
 change needed. `get_remote_address()` returns the real client IP behind
 `traefik-external` (measured 2026-11-26: 1 hop; `docs/plans/implemented/TRAEFIK_INGRESS.md`
-§ Measured on Traefik). Behind `nginx-external` every client was 127.0.0.1, so each
-per-IP tier was one shared bucket.
+§ Measured on Traefik). Until 2026-11-19 every client arrived as one internal address
+(127.0.0.1 on nginx, the node's 10.0.x.x on Traefik), so each per-IP tier was one shared
+bucket.
 
 ### Limit tiers (config, not hardcoded)
 

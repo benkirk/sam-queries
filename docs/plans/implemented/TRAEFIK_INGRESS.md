@@ -192,6 +192,13 @@ pods clean: the `llb-128.117.41.x` path in front of both controllers, CIRRUS's.
 
 ## Measured on Traefik (2026-11-26, prod)
 
+- **The address did not arrive with the controller.** By the written record (the audit
+  script's R2 header from #771, `INGRESS_NGINX_STOPGAP.md` § The incident; the October
+  pod logs are gone), Traefik handed the app the node's overlay address (10.0.x.x) from
+  2026-10-09 until about 2026-11-19 16:10 MST, when a platform load-balancer change let
+  real client IPs through. `nginx-external` handed 127.0.0.1 (to 10-09, and the 11-21 to
+  11-24 stopgap). So a collapse can return with no change of ours, which is why
+  `cirrus_watch.sh` keys on "no public address", not on 127.0.0.1.
 - **Hops:** `xff=` carries 1 hop on every line, and gunicorn's client column equals it.
   `proxyFixForwardedHops: 1` stays.
 - **Spoofing:** three requests carried a forged `X-Forwarded-For: 203.0.113.9`, a
@@ -215,11 +222,11 @@ pods clean: the `llb-128.117.41.x` path in front of both controllers, CIRRUS's.
   paths, which Flask-Limiter never counts. `cirrus_watch.sh` names the top 404 IP.
 - **Edge limiter:** `auth can-i create middlewares.traefik.io` is `no`. Flask-Limiter
   stays the only limiter.
-- **If we fall back to nginx:** client IPs collapse to 127.0.0.1, and `cirrus_watch.sh`
-  warns "client IP collapsed". Normal load fits one bucket (table), but one actor can
-  drain it for everyone: 20 bad logins lock every user out of the OIDC callback for the
-  hour. For a long fallback, raise `RATELIMIT_AUTH_LOGIN` and `RATELIMIT_ANON` by helm
-  env (a deploy decision).
+- **If the address collapses again** (an nginx fallback, or the load balancer no longer
+  preserving the source under Traefik): `cirrus_watch.sh` warns "client IP collapsed".
+  Normal load fits one bucket (table), but one actor can drain it for everyone: 20 bad
+  logins lock every user out of the OIDC callback for the hour. For a long collapse,
+  raise `RATELIMIT_AUTH_LOGIN` and `RATELIMIT_ANON` by helm env (a deploy decision).
 
 ## The probe
 

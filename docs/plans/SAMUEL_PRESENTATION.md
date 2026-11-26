@@ -575,9 +575,9 @@ are in the slide notes.
   registry. The template lint started at 41 files and is now 0.
 - **No third-party origins:** vendored, sha384-pinned, re-hashed in CI; the
   `update-vendored-assets` skill (#522–#524).
-- **Rate limits:** a table of the tiers. **Real client IPs** on `traefik-external`
-  (measured 2026-11-26: 1 hop, forged XFF dropped), so each per-IP tier is per client. On
-  `nginx-external` every tier was one shared bucket.
+- **Rate limits:** a table of the tiers. **Real client IPs** reach the app (measured
+  2026-11-26: 1 hop, forged XFF dropped), so each per-IP tier is per client. Until 2026-11-19
+  every request came from one internal address and every tier was one shared bucket.
 - **The NRIT review:** requested by Ben before SAMuel left the VPN; one dense page, with what's
   fixed, the ZAP scan, and what's still open. The reviewer is not named (public repo).
 

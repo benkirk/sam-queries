@@ -113,7 +113,7 @@ sign-in, so a load test there is real load. Admins can see and clear blocks on t
 - API keys count per calling host, each with its own 120 a minute. The busiest used 22.
 - If the edge loses the address again, the watch says so on its next tick.
 
-*† Behind the old ingress (to 2026-11-24) every request came from 127.0.0.1: one bucket for all.*
+*† Until 2026-11-19 every request came from one internal address: one bucket for all.*
 
 ::: {.notes}
 Measured 2026-11-26 on prod over 48 h: 21,161 requests from 346 addresses; xff= one hop on
