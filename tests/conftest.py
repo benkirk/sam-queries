@@ -231,6 +231,7 @@ _UNIT_DOMAIN_MARKERS = {
     "manage": "manage",
     "tickets": "tickets",
     "directory": "directory",
+    "logarchive": "logarchive",
 }
 
 
