@@ -98,7 +98,7 @@ moved the first six CDN assets in, 2026-06-13.
 src/webapp/limiter/__init__.py (Flask-Limiter, fixed window; key order apikey, user, ip at
 :35-53; Redis db 1, falls back to per-worker memory if Redis is down; the 429 handler at
 :175-228 logs the actor and records it in ratelimit:events). Defaults = production:
-src/webapp/config.py:85-92,186-192. API keys: src/webapp/utils/api_auth.py:220-224. Ingress:
+src/webapp/config.py:98-103,221-224. API keys: src/webapp/utils/api_auth.py:226-230. Ingress:
 traefik-external, and the tenant cannot create a Traefik Middleware (auth can-i: no,
 2026-11-26). #251 (2026-05-11), #316 (2026-06-16). Dev raises every tier to 100,000/min except
 sign-in, so a load test there is real load. Admins can see and clear blocks on the admin page.
@@ -121,7 +121,7 @@ every line, matching gunicorn's client column, so PROXYFIX_X_FOR=1 (src/webapp/r
 Forged X-Forwarded-For, X-Real-IP and Forwarded headers were dropped by traefik-external; each
 probe logged the sender. Peaks per address: 4/min against 30 (pages), 2/h against 20
 (sign-in), 22/min against 120 (keys). The key limit counts per host because Flask-Limiter runs
-before the decorator knows the key (src/webapp/utils/api_auth.py:220-224); keying on the
+before the decorator knows the key (src/webapp/utils/api_auth.py:226-230); keying on the
 unverified name would let anyone lock out a poller. The record is TRAEFIK_INGRESS.md
 § Measured on Traefik. scripts/cirrus_watch.sh warns "client IP collapsed" when a tick carries
 no public address. Registration: Cloudflare Turnstile on the final submit (#606).

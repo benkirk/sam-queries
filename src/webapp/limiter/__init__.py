@@ -36,7 +36,9 @@ def _key_func() -> str:
     """Identify the request actor for limit accounting.
 
     Order matters: M2M API-key callers must never share a bucket with
-    interactive users sharing the same source IP.
+    interactive users sharing the same source IP. NOTE: limits are checked
+    before a view's decorator sets ``g.api_key_user``, so `api_key_required`
+    pins its own ``ip:`` key; the ``apikey:`` branch names the 429 actor.
     """
     api_user = getattr(g, 'api_key_user', None)
     if api_user:

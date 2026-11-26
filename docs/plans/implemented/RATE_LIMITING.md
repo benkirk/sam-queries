@@ -93,6 +93,8 @@ def _key_func():
     if current_user.is_authenticated:
         return f"user:{current_user.username}"
     return f"ip:{get_remote_address()}"
+# As built: `api_key_required` routes are limited per `ip:`, not per key
+# (see "Where each tier gets applied").
 
 class Limiting:
     """Single facade. Owns the Flask-Limiter instance, resolves the

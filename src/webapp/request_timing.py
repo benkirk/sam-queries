@@ -137,8 +137,8 @@ class RequestProfile:
         (presence-gated — untouched DBs never appear), then ``pool=`` when
         non-zero, then ``rm=served|patched:N|patched-hit:N|live:<reason>`` when the request
         consulted the allocation read-model, then ``who=user:<u>|apikey:<n>``
-        when it authenticated (anonymous requests carry no actor: the client
-        IP is lost at the ingress). ``rest`` (GIL/pool-not-attributed) is
+        when it authenticated (anonymous requests carry no actor; their
+        address is the access line's first column). ``rest`` (GIL/pool-not-attributed) is
         derived by the reader as ``total - cpu - Σdb - pool``, not emitted.
         """
         parts = ['cpu=%.1fms' % self.cpu_ms()]
