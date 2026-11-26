@@ -1,0 +1,144 @@
+{{- if .Values.logArchiver.enabled }}
+{{- $name := .Values.logArchiver.name }}
+# The log archiver: copies every samuel pod's stdout onto a volume, because pod
+# stdout dies with the pod. The webapp never talks to it. Design:
+# docs/plans/implemented/DURABLE_LOGS.md.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ $name }}
+    group: {{ .Values.webapp.group }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ $name }}
+    group: {{ .Values.webapp.group }}
+# Read-only, and nothing else: asserted line for line by test-dev-render.sh.
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ $name }}
+    group: {{ .Values.webapp.group }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+# A StatefulSet, not a Deployment plus a PVC template: a claim made from
+# volumeClaimTemplates is not pruned when logArchiver.enabled goes off or Argo
+# prunes. Turning the archiver off must never delete the archive.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ $name }}
+    group: {{ .Values.webapp.group }}
+spec:
+  replicas: 1
+  serviceName: {{ $name }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit | default 3 }}
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $name }}
+    spec:
+      # The only pod in the chart that talks to the k8s API: it needs the token
+      # every other pod refuses. Its Role above is the whole grant.
+      serviceAccountName: {{ $name }}
+      automountServiceAccountToken: true
+      terminationGracePeriodSeconds: 10
+      securityContext:
+        {{- toYaml .Values.webapp.securityContext.pod | nindent 8 }}
+        # The volume mounts root-owned; fsGroup lets the non-root uid write it.
+        fsGroup: {{ .Values.webapp.securityContext.pod.runAsGroup }}
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+      - name: logs
+        {{- /*
+          .Values.webapp.container.image, never a key of its own: CI sed-rewrites
+          the one pinned image line in values.yaml (see cronjob-tasks.yaml). A Helm
+          comment so the render tests' image-reference count does not see it.
+        */}}
+        image: {{ .Values.webapp.container.image }}
+        imagePullPolicy: IfNotPresent
+        {{- with .Values.webapp.securityContext.container }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        command: ["python", "-m", "logarchive", "run"]
+        # No database credentials, no app secrets, no app config: it needs none.
+        env:
+          - name: LOGARCHIVE_ROOT
+            value: /archive
+          - name: LOGARCHIVE_APPS
+            value: "{{ .Values.webapp.name }},{{ .Values.tasks.name }}"
+          - name: LOGARCHIVE_RETENTION_DAYS
+            value: {{ .Values.logArchiver.retentionDays | quote }}
+          - name: PYTHONUNBUFFERED
+            value: "1"
+        volumeMounts:
+          - name: archive
+            mountPath: /archive
+        # Stale when the poll loop stops touching /archive/.heartbeat (it does
+        # every 10 s). One stat; it never walks the archive.
+        livenessProbe:
+          exec:
+            command: ["python", "-m", "logarchive", "status", "--max-age", "120"]
+          initialDelaySeconds: 30
+          periodSeconds: 60
+          timeoutSeconds: 15
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: {{ .Values.logArchiver.resources.requests.memory }}
+            cpu: {{ .Values.logArchiver.resources.requests.cpu }}
+          limits:
+            memory: {{ .Values.logArchiver.resources.limits.memory }}
+            cpu: {{ .Values.logArchiver.resources.limits.cpu }}
+  volumeClaimTemplates:
+    # apiVersion, kind and volumeMode are the API server's own defaults, written
+    # out so Argo does not read the defaulted object as drift.
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: archive
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        volumeMode: Filesystem
+        {{- with .Values.logArchiver.storage.className }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.logArchiver.storage.size }}
+{{- end }}

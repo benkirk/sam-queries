@@ -47,7 +47,8 @@ assert_contains "$prod_out" '- "--run-due"' \
 # would either be missed (pinned at :main for ever) or silently co-rewritten,
 # giving two sources of truth for one image. The CronJob therefore references
 # .Values.webapp.container.image, and exactly two rendered manifests should
-# carry that image: the Deployment and this CronJob.
+# carry that image: the Deployment and this CronJob (three with the log
+# archiver on, which reuses the same key).
 webapp_image=$(grep -E '^\s+image: ghcr\.io/.*/samuel:' "$CHART_DIR/values.yaml" \
                | awk '{print $2}')
 if [[ -z "$webapp_image" ]]; then
@@ -65,6 +66,12 @@ if [[ "$image_refs" -ne 2 ]]; then
   red "FAIL: expected exactly 2 samuel image refs (Deployment + CronJob), got ${image_refs}"
   red "  A third means someone added a second pinned image line; CI's sed will"
   red "  rewrite all of them or none, and neither is what you want."
+  exit 1
+fi
+archiver_refs=$(helm template "$RELEASE_NAME" "$CHART_DIR" -f "$CHART_DIR/values.yaml" --set logArchiver.enabled=true \
+                | grep -cF "image: ${webapp_image}" || true)
+if [[ "$archiver_refs" -ne 3 ]]; then
+  red "FAIL: with logArchiver.enabled the image must render 3 times (Deployment + CronJob + archiver), got ${archiver_refs}"
   exit 1
 fi
 

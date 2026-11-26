@@ -114,6 +114,10 @@ webapp:
   jiraCredentials:
     enabled: false                        # levers off; do not hold the PAT
 
+logArchiver:
+  enabled: true                           # dev first; prod stays off
+  name: samuel-dev-logs
+
 tasks:
   name: samuel-dev-tasks
   env:
