@@ -157,12 +157,9 @@ ACCESS_TSV=$(printf '%s\n' "$LOGS" | awk -F'"' '
         split($2, r, " "); method = r[1]; path = r[2];
         sub(/\?.*/, "", path);                 # drop query string for grouping
         if (path ~ /^\/api\/v[0-9]+\/health(\/|$)/) next;   # infra probe noise, not traffic
-        # Client IP: prefer the leftmost X-Forwarded-For entry (the real client)
-        # when the access log carries the xff="…" field; else the socket peer
-        # in %(h)s (which behind the ingress is the proxy, not the client).
+        # Client IP: column 1, %(h)s after ProxyFix, the address the limiter keys
+        # on. Not the xff field: a quote in a User-Agent shifts the fields after it.
         split($1, a, " "); ip = a[1];
-        xff = (NF >= 8) ? $8 : "";
-        if (xff != "" && xff != "-") { split(xff, xa, ","); ip = xa[1]; gsub(/[ \t]/, "", ip) }
         split($3, s, " "); status = s[1];
         ua = $6; if (ua == "") ua = "-";
         printf "%s\t%s\t%s\t%s\t%s\n", ip, status, method, path, ua
