@@ -181,6 +181,20 @@ dedups a duplicate dispatch to a no-op — but **deleting a running mail task**
 next dispatch reclaim the lease and double-mail every PI. So: report it, hand it
 off, don't automate it.
 
+## 5a. The logs line: the log archive
+
+`logs: off` means the archiver is not deployed in this env (`logArchiver.enabled`, dev
+first): not a finding. Deployed, it reads `logs: 412 files 38.2MB  vol 2% of 4.9GB  newest
+12s ago  oldest 2026-11-26  growth +5.1 MB/day` (`docs/plans/implemented/DURABLE_LOGS.md`).
+
+- **growth above 50 MB/day** (WARN; about 5.5 is normal): a verbose logger. The WARN names
+  the largest live file, which is that pod. Report it; **never delete archive files from the
+  watch**. A roll gzips the old pods' files, so the next tick reads low or negative.
+- **volume** WARNs at 60% full and FAILs at 85%; at 90% the archiver prunes oldest-first, so
+  an `oldest:` date that jumps forward is retention shrinking.
+- **`not answering`, or `newest` over 15 min old on prod** (WARN): the archiver is down or not
+  copying and the loss window is open (a pod deleted meanwhile is gone). Hand it to Ben.
+
 ## 6. The hosts line: the HPC lanes on GLADE
 
 `hosts:` reads the `ncar-hpc-deploy` lane that feeds this env (prod tracks `:main`,

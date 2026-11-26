@@ -27,7 +27,7 @@ def test_the_queries_package_re_exports_nothing():
 
 
 #: Packages on the ORM side of the layer rule: `webapp` imports them, never the reverse.
-SAM_SIDE = ['sam', 'system_status', 'scheduling', 'querykit', 'dbbrowse']
+SAM_SIDE = ['sam', 'system_status', 'scheduling', 'querykit', 'dbbrowse', 'logarchive']
 
 
 def _module_level_webapp_imports(path: Path):
@@ -57,3 +57,16 @@ def test_importing_the_schemas_needs_no_flask():
     result = subprocess.run([sys.executable, '-c', body], capture_output=True, text=True, env=env)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == 'False'
+
+
+def test_the_log_archiver_imports_none_of_the_application():
+    """It runs in its own pod with no database and no app config."""
+    import subprocess, sys
+    banned = ('flask', 'sqlalchemy', 'sam', 'webapp', 'system_status', 'cli', 'click', 'kubernetes')
+    body = ('import sys\n'
+            'import logarchive.__main__, logarchive.follow, logarchive.kube, logarchive.read, logarchive.store\n'
+            f'print(sorted(m for m in {banned!r} if m in sys.modules))')
+    env = {'PYTHONPATH': str(SRC), 'PATH': ''}
+    result = subprocess.run([sys.executable, '-c', body], capture_output=True, text=True, env=env)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == '[]'

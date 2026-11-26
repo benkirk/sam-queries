@@ -616,6 +616,23 @@ webapp:
 # a task is a code change, not a chart change.
 #
 # Design + rationale: docs/plans/implemented/SCHEDULED_TASKS.md § 8.
+# In-namespace log archiver (templates/log-archiver.yaml): off in production,
+# on in values-dev.yaml. It is never a dependency of the webapp or of /ready.
+logArchiver:
+  enabled: false                          # true | false
+  name: samuel-logs
+  retentionDays: 90                       # finished pods' files older than this are deleted
+  storage:
+    size: 5Gi                             # immutable once the StatefulSet exists
+    className: "ceph-kubepv"              # "" = the cluster's default class
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 25m
+    limits:
+      memory: 256Mi
+      cpu: 250m
+
 tasks:
   enabled: true
   name: samuel-tasks

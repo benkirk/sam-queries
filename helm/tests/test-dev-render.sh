@@ -184,12 +184,30 @@ check_dev() {
   assert_contains "$netpol" "app: samuel-dev-tasks" "the dev task pods reach the dev Redis"
   grep -qE '^[[:space:]]+app: samuel-dev$' <<<"$netpol" || { red "FAIL: the dev webapp pods reach the dev Redis"; return 1; }
 
+  # Deployment, CronJob and the log archiver: one pinned image, three consumers.
   local refs
-  refs=$(grep -cE '^[[:space:]]+image: ghcr\.io/.*/samuel:' <<<"$whole" || true)
-  [[ "$refs" -eq 2 ]] || { red "FAIL: expected exactly 2 samuel image refs in the dev render, got $refs"; return 1; }
+  refs=$(grep -E '^[[:space:]]+image: ghcr\.io/.*/samuel:' <<<"$whole" | sed 's/^ *//' | sort | uniq -c | awk '{print $1}')
+  [[ "$refs" == "3" ]] || { red "FAIL: expected 3 refs to one samuel image in the dev render, got: $refs"; return 1; }
   if grep -qE '^[[:space:]]*image:' "$OVERLAY"; then
     red "FAIL: values-dev.yaml must not carry an image: line (CI pins values.yaml only)"; return 1
   fi
+
+  # --- 3b. the log archiver: on, read-only, and the one pod holding an API token
+  local logs
+  logs=$(render dev -s templates/log-archiver.yaml "$@")
+  [[ "$(objects "$logs" | tr '\n' ',')" == "Role samuel-dev-logs,RoleBinding samuel-dev-logs,ServiceAccount samuel-dev-logs,StatefulSet samuel-dev-logs," ]] \
+    || { red "FAIL: dev must render the archiver's four objects, got: $(objects "$logs" | tr '\n' ',')"; return 1; }
+  local rules
+  rules=$(awk '/^rules:/ { on=1; next } /^---/ { on=0 } on && NF { gsub(/^ +/, ""); print }' <<<"$logs")
+  [[ "$rules" == $'- apiGroups: [""]\nresources: ["pods"]\nverbs: ["get", "list"]\n- apiGroups: [""]\nresources: ["pods/log"]\nverbs: ["get"]' ]] \
+    || { red "FAIL: the archiver's Role must grant get,list on pods and get on pods/log, nothing else:"; red "$rules"; return 1; }
+  [[ $(grep -c 'automountServiceAccountToken: true' <<<"$whole") -eq 1 ]] || { red "FAIL: exactly one pod may mount a service-account token"; return 1; }
+  assert_contains "$logs" "automountServiceAccountToken: true" "the archiver is the pod that mounts the token"
+  assert_contains "$logs" 'value: "samuel-dev,samuel-dev-tasks"' "the archiver follows the dev webapp and task pods"
+  assert_contains "$logs" "storageClassName: ceph-kubepv" "the archive volume names its storage class"
+  assert_contains "$logs" "whenDeleted: Retain" "removing the StatefulSet must keep the archive"
+  assert_not_contains "$logs" "secretKeyRef" "the archiver holds no secret"
+  assert_not_contains "$deploy$cron$netpol" "samuel-dev-logs" "the webapp, tasks and Redis policy never name the archiver"
 
   # --- 4. disjoint from prod -------------------------------------------------
   local shared
@@ -288,6 +306,13 @@ prod_floor=$(env_value "$prod_deploy" SAM_TASKS_XRAS_TICKETS_SINCE)
   red "FAIL: prod must run the Turnstile human check (HUMAN_CHECK_PROVIDER=turnstile)"; exit 1; }
 assert_contains "$prod_deploy" "name: HUMAN_CHECK_SECRET_KEY" "prod injects the human-check secret key"
 assert_contains "$(render prod -s templates/external_secret.yaml)" "key: csg/sam-turnstile" "prod syncs csg/sam-turnstile"
+# The log archiver ships off in prod (Ben's later one-line change) and on local k8s.
+prod_whole=$(render prod)
+for kind in StatefulSet ServiceAccount Role RoleBinding; do
+  assert_not_contains "$prod_whole" "kind: $kind" "prod must not render the log archiver ($kind)"
+done
+assert_not_contains "$prod_whole" "automountServiceAccountToken: true" "no prod pod mounts a service-account token"
+assert_not_contains "$(render local)" "kind: StatefulSet" "local k8s does not render the log archiver"
 local_whole=$(render local)
 assert_not_contains "$local_whole" "human-check-credentials" "local k8s has no OpenBao: no human-check Secret"
 assert_contains "$local_whole" "ingressClassName: nginx" "local k8s uses the plain nginx ingress class"
@@ -344,6 +369,8 @@ expect_reject --set webapp.tls.secretName=incommon-cert-samuel
 expect_reject --set webapp.tls.fqdn=samuel.k8s.ucar.edu
 expect_reject --set tasks.env.SAM_TASKS_DISABLED=xras_notices
 expect_reject --set podDisruptionBudget.enabled=true
+expect_reject --set logArchiver.enabled=false
+expect_reject --set logArchiver.name=samuel-logs
 expect_reject --set-string "webapp.env.API_KEYS_COLLECTOR=${prod_hash}"
 
 green "OK: samuel-dev renders authenticated, mute, on XRAS demo, on its own data, disjoint from prod ($(grep -c '^expect_reject ' "$0") rejections proven)"

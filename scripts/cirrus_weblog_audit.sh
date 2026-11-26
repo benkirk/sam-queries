@@ -9,8 +9,8 @@
 # mutates cluster state.
 #
 # Everything it inspects already exists on the webapp's stdout (readable only for
-# the pod's lifetime; a deploy empties it) and in Redis; this script just
-# harvests and summarizes it:
+# the pod's lifetime; a deploy empties it, so --archive reads the log archive
+# instead) and in Redis; this script just harvests and summarizes it:
 #   - gunicorn access logs   (containers/samuel/gunicorn_config.py)
 #   - the app request logger  ("METHOD path -> status (ms) rid=…")
 #   - rate-limit 429 events   (log line + Redis set 'ratelimit:events', DB 1)
@@ -22,6 +22,8 @@
 # Options:
 #       --since DURATION  Log look-back window, e.g. 30m, 6h, 2d  (default: 1h)
 #       --top N           How many rows in each "top N" list       (default: 15)
+#       --archive         Read the window from the log archive (cirrus_logs.sh):
+#                         it outlives a deploy; needs helm logArchiver.enabled
 #       --env        ENV  Which release: prod | dev           (default: $SAM_ENV or prod)
 #   -n, --namespace NS    Namespace the release lives in   (default: per --env)
 #   -r, --release    REL  Helm release name                (default: per --env)
@@ -50,8 +52,9 @@
 #       non-zero exit (wire into scripts/cron/).
 #   R4  CSP reporting — add a report-uri so injection attempts become a
 #       server-side signal.
-#   R5  Durable logs — pod stdout is the only sink we can read, and a deploy
-#       empties it; CIRRUS's cluster store is outside our RBAC.
+#   R5  Durable logs — pod stdout dies with the pod, and CIRRUS's cluster store
+#       is outside our RBAC. The in-namespace archiver keeps it (--archive,
+#       scripts/cirrus_logs.sh, docs/plans/implemented/DURABLE_LOGS.md).
 
 set -euo pipefail
 
@@ -64,12 +67,14 @@ source "${_LIBDIR}/cirrus_common.sh"
 
 SINCE="1h"
 TOP=15
+ARCHIVE=0
 
 while [[ $# -gt 0 ]]; do
     if handle_common_arg "$@"; then shift "$_CONSUMED"; continue; fi
     case "$1" in
         --since) SINCE="$2"; shift 2;;
         --top)   TOP="$2";   shift 2;;
+        --archive) ARCHIVE=1; shift;;
         *) echo "Unknown option: $1" >&2; exit 2;;
     esac
 done
@@ -140,7 +145,16 @@ if ! "${KCTL_NS[@]}" get deploy "$WEBAPP_NAME" >/dev/null 2>&1; then
     exit 1
 fi
 pass "Deployment '$WEBAPP_NAME' present"
-explain "Reading the last '$SINCE' of webapp stdout across all '$WEBAPP_NAME' pods."
+if [[ "$ARCHIVE" -eq 1 ]]; then
+    if ! "${KCTL_NS[@]}" get pod "${LOGS_NAME}-0" >/dev/null 2>&1; then
+        fail "--archive: no archiver pod '${LOGS_NAME}-0' in $NAMESPACE (helm logArchiver.enabled=false?)"
+        exit 2
+    fi
+    pass "archiver pod '${LOGS_NAME}-0' present"
+    explain "Reading the last '$SINCE' from the log archive: every '$WEBAPP_NAME' pod, deleted ones included."
+else
+    explain "Reading the last '$SINCE' of webapp stdout across all '$WEBAPP_NAME' pods."
+fi
 
 # --- harvest once -----------------------------------------------------------
 # All signals (gunicorn access + app logger + 429 warnings + auth failures)
@@ -148,8 +162,14 @@ explain "Reading the last '$SINCE' of webapp stdout across all '$WEBAPP_NAME' po
 # --tail=-1 is REQUIRED: with a -l selector kubectl defaults to --tail=10 per
 # pod, which silently caps the harvest at ~10 lines/pod and undercounts every
 # section below (--since alone does NOT lift that cap).
-LOGS=$("${KCTL_NS[@]}" logs -l "app=$WEBAPP_NAME" --since="$SINCE" --tail=-1 \
-       --all-containers=true --timestamps=false 2>/dev/null || true)
+if [[ "$ARCHIVE" -eq 1 ]]; then
+    LOGS_ARGS=(--env "$SAM_ENV" -n "$NAMESPACE" --app webapp --since "$SINCE")
+    [[ -n "$CONTEXT" ]] && LOGS_ARGS+=(--context "$CONTEXT")
+    LOGS=$("${_LIBDIR}/../cirrus_logs.sh" "${LOGS_ARGS[@]}" 2>/dev/null || true)
+else
+    LOGS=$("${KCTL_NS[@]}" logs -l "app=$WEBAPP_NAME" --since="$SINCE" --tail=-1 \
+           --all-containers=true --timestamps=false 2>/dev/null || true)
+fi
 
 # Normalize gunicorn access lines to "ip<TAB>status<TAB>method<TAB>path<TAB>ua".
 # An access line is identified by its quoted request field ("METHOD path HTTP…"),
