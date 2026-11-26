@@ -521,6 +521,8 @@ LINE_BUDGETS = {
     # +7 on 2026-09-27: the samuel_role_* RBAC catalog and its RBAC_SOURCE switch.
     # +25 on 2026-10-05: the filter tiers and their macros, and the compose --watch trap.
     ".claude/skills/wire-dashboard-feature/SKILL.md": 275,
+    # +10 on 2026-11-26: the 404-top scanner line and the client-IP-collapsed WARN.
+    ".claude/skills/watch-prod/SKILL.md": 260,
     "CLAUDE.md": 439,
     "CONTRIBUTING.md": 740,
     "README.md": 1070,

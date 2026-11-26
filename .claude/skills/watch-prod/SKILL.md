@@ -59,9 +59,18 @@ Steady state is one line. Raise it only on a real signal:
   status-DB blip with the peer repo's `cnpg_watch.sh` (a `FAILOVER: primary
   X → Y` line during a known roll is the switchover).
 - **p95 > 4000ms** — latency regression.
-- **4xx > 40%** — probing. A 404/405 scanner burst with no 2xx on a probe path is a one-line
-  WARN; escalate one that recurs or finds a 2xx. `404 top: <ip> (<n>)` names it (20+ 404s).
-- **`client IP collapsed`** (WARN): every per-IP tier is one bucket. Nginx fallback only; else escalate.
+- **4xx > 40%** of requests — heavy probing/scanning. A burst that is all
+  404/405 from one anonymous scanner (WordPress, PHP, `.env` families) with
+  nothing on a probe path answering 2xx is a WARN to name in one line, not
+  escalate; escalate a scanner that recurs across ticks or that finds a 2xx.
+  `404 top: <ip> (<n>)` names the address (20+ 404s in the window; private and
+  loopback addresses are never named); a recurring one goes on known-open by IP.
+  404s never reach Flask-Limiter, so no scanner is throttled: the accepted policy
+  (2026-11-26).
+- **`client IP collapsed`** (WARN): 20+ requests with no public client address.
+  The ingress stopped forwarding the client, so every per-IP tier is one shared
+  bucket. Expected only on an `nginx-external` fallback (`INGRESS_NGINX_STOPGAP.md`);
+  otherwise escalate.
 - **a probe-path hit** (`/.env`, `/wp-login`, `.php`, `/actuator`, …).
 - **a NEW slow (>5s) endpoint.**
 - **a query-count hit** — the `queries(>=200)` warn and its `↳` lines. The
