@@ -78,7 +78,14 @@ CMD=("${KCTL_NS[@]}" exec "$POD" -- python -m logarchive cat "${APPS[@]}" --sinc
 [[ "$TIMESTAMPS" -eq 1 ]] && CMD+=(--timestamps)
 
 if [[ ${#GREP_ARGS[@]} -gt 0 ]]; then
-    "${CMD[@]}" | grep "${GREP_ARGS[@]}"
+    # Under pipefail a grep that stops early (-q, -m) kills kubectl with SIGPIPE
+    # and the pipeline reads 141. Report grep's status; else kubectl's real one.
+    "${CMD[@]}" | grep "${GREP_ARGS[@]}" || {
+        RC=("${PIPESTATUS[@]}")
+        [[ "${RC[1]}" -ne 0 ]] && exit "${RC[1]}"
+        [[ "${RC[0]}" -eq 141 ]] && exit 0
+        exit "${RC[0]}"
+    }
 else
     "${CMD[@]}"
 fi
