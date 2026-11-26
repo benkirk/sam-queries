@@ -35,6 +35,8 @@ helm/
 │   ├── service.yaml  ingress.yaml  pdb.yaml  configmap-capacities.yaml
 │   ├── external_secret.yaml # OpenBao-backed credentials (7 ExternalSecrets, prod/dev)
 │   ├── cronjob-tasks.yaml   # Hourly scheduled-task dispatcher (values: tasks.*)
+│   ├── log-archiver.yaml    # Pod-log archiver: SA, Role, RoleBinding, StatefulSet + claim
+│   │                        #   (values: logArchiver.*; on in dev, off in prod)
 │   └── redis-*.yaml         # Redis cache Deployment/Service/NetworkPolicy
 └── tests/
     ├── lib/assert.sh           # Shared helpers + `render <prod|dev|local>` (not a test)

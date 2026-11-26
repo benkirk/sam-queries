@@ -11,6 +11,7 @@ scripts/
 ├── cirrus_watch.sh              # CIRRUS/k8s recurring delta watch tick (report-only)
 ├── tomcat_watch.sh              # legacy SAM on sam-tomcat: health, API callers, cutover trend
 ├── cirrus_weblog_audit.sh       # CIRRUS/k8s traffic + rate-limit + abuse audit
+├── cirrus_logs.sh               # Read the durable pod-log archive (outlives a deploy)
 ├── seed_status_dev.sh           # Reseed system_status_dev from prod (make refresh-dev)
 ├── dev_session_load.py          # Load driver for samuel-dev's authed surface (+ dev_capture_session.py)
 ├── ui_snapshots.py              # Pages x layouts x themes screenshots for before/after review (no baselines); --headers checks sort icons; --modal / --recipes shoot dialogs with their heights; --pages charts shoots every chart host (+ ui_snapshots_modals.json: 42 dialog recipes naming rows of the local dev DB; one whose row is gone prints "not opened" and the run carries on)
@@ -88,6 +89,17 @@ secret), `--no-color`, `-n/--namespace`, `-r/--release`, `--context`,
 
   Its `--help` also lists hardening recommendations (R1–R5: edge rate limiting, ProxyFix,
   scheduling, CSP reporting, durable log shipping) that it surfaces but does not enforce.
+  `--archive` reads the window from the log archive, so it reaches back past a deploy.
+
+- **`cirrus_logs.sh`** — "what did the pods say last week?" Pod stdout dies with the pod;
+  the in-namespace archiver (helm `logArchiver.enabled`, dev first) keeps every samuel
+  pod's lines 90 days. This prints a window of them as `kubectl logs` would, merged across
+  pods in time order. Design: `../docs/plans/implemented/DURABLE_LOGS.md`.
+
+  ```bash
+  scripts/cirrus_logs.sh --env dev --since 7d -- -F rate_limit_exceeded
+  scripts/cirrus_logs.sh --env dev --app tasks --since 3d --timestamps
+  ```
 
 - **`zap_probe_docker.sh`** — Dockerized OWASP ZAP passive/active scan of the
   webapp (local throwaway target by default). See its `--help`.
@@ -112,8 +124,8 @@ layers:
   `--env`), `build_kctl` (KCTL/KCTL_NS arrays), `handle_common_arg` (shared
   flag parsing), and K8s resource-unit converters.
 
-`cirrus_healthcheck.sh`, `cirrus_watch.sh` and `cirrus_weblog_audit.sh` source
-`cirrus_common.sh`; `zap_probe_docker.sh` sources only `common.sh`.
+`cirrus_healthcheck.sh`, `cirrus_watch.sh`, `cirrus_weblog_audit.sh` and
+`cirrus_logs.sh` source `cirrus_common.sh`; `zap_probe_docker.sh` sources only `common.sh`.
 `lib/prereqs.sh` (`require_cmd`, `check_vpn`, `check_docker`, `check_aws_cli`)
 remains the dependency-check helper used by the setup/infra scripts.
 
