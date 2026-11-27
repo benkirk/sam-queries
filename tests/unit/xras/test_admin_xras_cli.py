@@ -1120,3 +1120,61 @@ class TestVocabularyAudit:
         assert payload['drift'] == []
         assert payload['panels']['extra_live'] == ['500099 (Brand New Panel)']
         assert result.exit_code == EXIT_SUCCESS
+
+
+class TestRepostWaitMode:
+    """`--repost-wait`: the read-only wait rollup, one payload for table and JSON."""
+
+    WINDOW = ['--since', '2031-06-01', '--until', '2031-07-01']
+
+    def _refusal(self, session):
+        from datetime import datetime
+
+        from factories import make_xras_action
+        from sam.xras import errors
+        row = make_xras_action(session, status='failed', http_status=422,
+                               errors=[errors.missing_title()],
+                               received_time=datetime(2031, 6, 2, 9, 0))
+        row.request_id = 7_900_000 + row.xras_action_log_id
+        session.flush()
+        return row
+
+    def test_json_envelope(self, runner, cli_session):
+        row = self._refusal(cli_session)
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--repost-wait',
+                                     *self.WINDOW, '--episodes'])
+        assert result.exit_code == EXIT_SUCCESS, result.output
+        payload = json.loads(result.stdout)
+        assert payload['kind'] == 'xras_repost_wait'
+        assert set(payload) >= {'since', 'until', 'overall', 'by_action_type', 'by_blocker',
+                                'linked_by', 'ticket', 'waiting', 'episodes'}
+        assert payload['since'] == '2031-06-01 00:00'
+        assert row.request_id in {e['request_id'] for e in payload['episodes']}
+        assert {'blockers', 'blockers_cleared', 'blocker_a', 'sources'} <= set(
+            payload['by_blocker']['other'])
+
+    def test_table(self, runner, cli_session):
+        self._refusal(cli_session)
+        result = runner.invoke(cli, ['xras', '--repost-wait', *self.WINDOW, '--episodes'])
+        assert result.exit_code == EXIT_SUCCESS, result.output
+        for heading in ('By action type', 'Each blocker on its own', 'Still waiting:',
+                        'Oldest waiting', 'Episodes'):
+            assert heading in result.output
+
+    def test_an_empty_window_exits_0(self, runner, cli_session):
+        result = runner.invoke(cli, ['xras', '--repost-wait',
+                                     '--since', '2040-01-01', '--until', '2040-01-02'])
+        assert result.exit_code == EXIT_SUCCESS
+        assert 'No refused posts in the window.' in result.output
+
+    def test_days_sets_the_window(self, runner, cli_session):
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--repost-wait',
+                                     '--days', '7', '--until', '2040-01-08'])
+        assert json.loads(result.stdout)['since'] == '2040-01-01 00:00'
+
+    @pytest.mark.parametrize('flag', [['--days', '7'], ['--since', '2031-06-01'],
+                                      ['--episodes']])
+    def test_window_flags_require_the_mode(self, runner, cli_session, flag):
+        result = runner.invoke(cli, ['xras', *flag])
+        assert result.exit_code == EXIT_ERROR
+        assert 'require --repost-wait' in result.output

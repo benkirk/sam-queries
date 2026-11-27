@@ -3,16 +3,18 @@
 An episode is one request line's refused posts (``is_post``, ``failed``, 422) up to the
 first ``processed`` post linked to it: the same ``action_id``, else the same ``requestId``
 and action type. Phases: (a) first refusal -> blocker cleared, (b) cleared -> applied,
-(c) the total. A blocker's clearing is the earliest SAM-side signal in the episode: a
-verified ``merge_person``, ``account_request.merged_at``, ``users.creation_time`` or
-``contract.creation_time``. An episode with any blocker SAM records no clearing for
-(mnemonic, inactive person, other) has no ``cleared_at`` and counts in (c) only.
-Read-only. Runner: scripts/xras_repost_wait.py.
+(c) the total. A blocker's clearing is the earliest SAM-side signal in the episode, one
+of ``CLEARING_SOURCES``. An episode with any blocker lacking one has no ``cleared_at``
+and counts in (c) only; ``by_blocker`` also times each blocker on its own. Unmeasured:
+a reactivated user (only ``modified_time``, which any edit moves), a mnemonic fixed by
+an affiliation change or a code edit, unclassified lines. Read-only; ``--repost-wait``.
 """
 
 from __future__ import annotations
 
 import math
+import re
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -24,6 +26,24 @@ from sam.integration.xras import XrasActionLog
 
 #: ``message_kind`` of a blocker line, plus ``other`` for a line it does not classify.
 BLOCKER_KINDS = ('placeholder', 'person', 'contract', 'mnemonic', 'other')
+
+#: The signals that may stamp each kind. ``remove_role`` is a verified roster removal of
+#: the named person; ``roster_change`` any verified add/remove_role on the request, and
+#: it stamps only a role-level line (no username: missing PI role, several in range).
+CLEARING_SOURCES = {
+    'placeholder': ('merge_person', 'account_request.merged_at', 'remove_role'),
+    'person': ('merge_person', 'account_request.merged_at', 'users.creation_time',
+               'remove_role', 'roster_change'),
+    'contract': ('contract.creation_time', 'override.ignore_contract'),
+    'mnemonic': ('override.mnemonic', 'mnemonic_code.creation_time'),
+    'other': (),
+}
+
+# The name a mnemonic line says has no code (sam.xras.errors.mnemonic_*_failed).
+_EXTERNAL_NAME = re.compile(
+    r'current institution "(?P<name>.*?)"(?: \((?P<city>[^)]*)\))? has no mnemonic link')
+_INTERNAL_NAME = re.compile(
+    r'organization "(?P<org>.*?)"(?: \(lab "(?P<lab>.*?)"\))? has no mnemonic link')
 
 
 @dataclass
@@ -211,6 +231,7 @@ def _clearings(session: Session, episodes: Sequence[WaitEpisode], until: datetim
     requests: Dict[str, List[datetime]] = {}
     created: Dict[str, datetime] = {}
     if people:
+        # Lowered on both sides: the action log keeps XRAS's spelling of a username.
         names = sorted(people)
         for username, when in (session.query(
                 XrasRemediationEvent.username,
@@ -222,12 +243,16 @@ def _clearings(session: Session, episodes: Sequence[WaitEpisode], until: datetim
             merges.setdefault(username.lower(), []).append(when)
         for username, when in (session.query(AccountRequest.xras_username,
                                              AccountRequest.merged_at)
-                               .filter(AccountRequest.xras_username.in_(names),
+                               .filter(func.lower(AccountRequest.xras_username).in_(names),
                                        AccountRequest.merged_at.is_not(None))):
             requests.setdefault(username.lower(), []).append(when)
         for username, when in (session.query(User.username, User.creation_time)
-                               .filter(User.username.in_(names))):
-            created[username.lower()] = when
+                               .filter(func.lower(User.username).in_(names))):
+            key = username.lower()
+            created[key] = min(when, created.get(key, when))
+    roster = _roster_events(session, episodes)
+    overrides = _overrides(session, episodes)
+    codes = _new_mnemonic_codes(session, episodes, until)
 
     contracts: Dict[str, Optional[datetime]] = {}
     for e in episodes:
@@ -239,7 +264,29 @@ def _clearings(session: Session, episodes: Sequence[WaitEpisode], until: datetim
                     _stamp(e, b, when, 'account_request.merged_at', until)
                 if b.kind == 'person':
                     _stamp(e, b, created.get(b.subject), 'users.creation_time', until)
-            elif b.kind == 'contract' and b.subject:
+                for op, username, when in roster.get(e.request_id, ()):
+                    if b.subject and op == 'remove_role' and username == b.subject:
+                        _stamp(e, b, when, 'remove_role', until)
+                    elif not b.subject and b.kind == 'person':
+                        _stamp(e, b, when, 'roster_change', until)
+            elif b.kind == 'mnemonic':
+                for when in overrides.get(('mnemonic', e.request_id), ()):
+                    _stamp(e, b, when, 'override.mnemonic', until)
+                for number in (e.request_number, e.projcode):
+                    for when in overrides.get(('mnemonic', number), ()):
+                        _stamp(e, b, when, 'override.mnemonic', until)
+                names, soft = _mnemonic_names(b.subject)
+                for name in names:
+                    _stamp(e, b, codes.get(('exact', name.casefold())),
+                           'mnemonic_code.creation_time', until)
+                    if soft:
+                        _stamp(e, b, codes.get(('soft', _soft_key(name))),
+                               'mnemonic_code.creation_time', until)
+            elif b.kind == 'contract':
+                for key in (e.request_id, e.request_number, e.projcode):
+                    for when in overrides.get(('ignore_contract', key), ()):
+                        _stamp(e, b, when, 'override.ignore_contract', until)
+            if b.kind == 'contract' and b.subject:
                 if b.subject not in contracts:
                     row = Contract.get_by_number(session, b.subject)
                     if row is None and b.core:
@@ -247,6 +294,87 @@ def _clearings(session: Session, episodes: Sequence[WaitEpisode], until: datetim
                         row = found[0] if len(found) == 1 else None
                     contracts[b.subject] = row.creation_time if row is not None else None
                 _stamp(e, b, contracts[b.subject], 'contract.creation_time', until)
+
+
+def _roster_events(session: Session, episodes: Sequence[WaitEpisode]) -> Dict[int, List]:
+    """``{request_id: [(operation, lowered username, when)]}``, verified role writes."""
+    from sam.integration.xras import XrasRemediationEvent
+    rids = sorted({e.request_id for e in episodes if e.request_id is not None
+                   and any(b.kind in ('placeholder', 'person') for b in e.blockers)})
+    found: Dict[int, List] = {}
+    if not rids:
+        return found
+    ev = XrasRemediationEvent
+    for request_id, op, username, when in (session.query(
+            ev.request_id, ev.operation, ev.username,
+            func.coalesce(ev.completed_time, ev.creation_time))
+            .filter(ev.operation.in_(('add_role', 'remove_role')),
+                    ev.status == 'verified', ev.request_id.in_(rids))):
+        found.setdefault(request_id, []).append((op, (username or '').lower(), when))
+    return found
+
+
+def _overrides(session: Session, episodes: Sequence[WaitEpisode]) -> Dict[Tuple, List]:
+    """``{(kind, request_id | request_number): [creation_time]}`` from xras_request_override.
+
+    ``creation_time`` is when the override was first set; a clear and re-set keeps it,
+    so a re-set inside an episode falls outside it and is not counted.
+    """
+    from sam.integration.xras import XrasRequestOverride as O
+    wanted = [e for e in episodes if any(b.kind in ('mnemonic', 'contract') for b in e.blockers)]
+    rids = sorted({e.request_id for e in wanted if e.request_id is not None})
+    numbers = sorted({n for e in wanted for n in (e.request_number, e.projcode) if n})
+    links = ([O.request_id.in_(rids)] if rids else []) + (
+        [O.request_number.in_(numbers)] if numbers else [])
+    found: Dict[Tuple, List] = {}
+    if not links:
+        return found
+    for kind, request_id, number, when in (session.query(
+            O.kind, O.request_id, O.request_number, O.creation_time).filter(or_(*links))):
+        for key in {request_id, number} - {None}:
+            found.setdefault((kind, key), []).append(when)
+    return found
+
+
+def _soft_key(name: str) -> str:
+    from sam.core.organizations import MnemonicCode
+    return MnemonicCode._soft_key(name)
+
+
+def _mnemonic_names(message: str) -> Tuple[List[str], bool]:
+    """The descriptions that would resolve a mnemonic line, and whether the soft match applies.
+
+    An institution resolves "Name, City" then "Name", exactly; an organization resolves
+    the lab (else the org) exactly or by the &/and, Lab/Laboratory soft key.
+    """
+    found = _EXTERNAL_NAME.search(message or '')
+    if found:
+        name, city = found['name'], found['city']
+        return ([f'{name}, {city}', name] if city else [name]), False
+    found = _INTERNAL_NAME.search(message or '')
+    if found:
+        return [found['lab'] or found['org']], True
+    return [], False
+
+
+def _new_mnemonic_codes(session: Session, episodes: Sequence[WaitEpisode],
+                        until: datetime) -> Dict[Tuple[str, str], datetime]:
+    """``{('exact'|'soft', key): creation_time}`` for codes created since the first refusal.
+
+    Only a new code counts: an edited description has no time of its own.
+    """
+    from sam.core.organizations import MnemonicCode
+    starts = [e.first_refused for e in episodes if any(b.kind == 'mnemonic' for b in e.blockers)]
+    found: Dict[Tuple[str, str], datetime] = {}
+    if not starts:
+        return found
+    for description, when in (session.query(MnemonicCode.description,
+                                            MnemonicCode.creation_time)
+                              .filter(MnemonicCode.creation_time >= min(starts),
+                                      MnemonicCode.creation_time <= until)):
+        for key in (('exact', description.casefold()), ('soft', _soft_key(description))):
+            found[key] = min(when, found.get(key, when))
+    return found
 
 
 def _tickets(session: Session, episodes: Sequence[WaitEpisode]) -> None:
@@ -306,6 +434,18 @@ def _group(episodes: Sequence[WaitEpisode], until: datetime) -> Dict[str, Any]:
     }
 
 
+def _blocker_group(episodes: Sequence[WaitEpisode], kind: str) -> Dict[str, Any]:
+    """Each *kind* blocker timed alone: an episode's other blockers can hide its clearing."""
+    mine = [(e, b) for e in episodes for b in e.blockers if b.kind == kind]
+    cleared = [(e, b) for e, b in mine if b.cleared_at is not None]
+    return {
+        'blockers': len(mine),
+        'blockers_cleared': len(cleared),
+        'blocker_a': wait_stats(b.cleared_at - e.first_refused for e, b in cleared),
+        'sources': dict(sorted(Counter(b.source for _, b in cleared).items())),
+    }
+
+
 def repost_wait_report(session: Session, *, since: datetime,
                        until: Optional[datetime] = None,
                        include_episodes: bool = False) -> Dict[str, Any]:
@@ -326,7 +466,8 @@ def repost_wait_report(session: Session, *, since: datetime,
         'until': until.isoformat(sep=' ', timespec='minutes'),
         'overall': _group(episodes, until),
         'by_action_type': {k: _group(v, until) for k, v in sorted(by_type.items())},
-        'by_blocker': {k: _group(by_kind[k], until) for k in BLOCKER_KINDS if k in by_kind},
+        'by_blocker': {k: dict(_group(by_kind[k], until), **_blocker_group(by_kind[k], k))
+                       for k in BLOCKER_KINDS if k in by_kind},
         'linked_by': {how: sum(1 for e in episodes if e.linked_by == how)
                       for how in ('action_id', 'request_id')},
         'ticket': {

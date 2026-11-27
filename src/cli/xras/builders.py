@@ -330,6 +330,14 @@ def build_award_audit(audit, projcode=None) -> dict:
     return dict(audit.to_dict(), projcode=projcode)
 
 
+def build_repost_wait(session, *, since, until, include_episodes=False) -> dict:
+    """The ``xras_repost_wait`` envelope: how long refused posts wait for the applying re-post."""
+    from sam.queries.xras_repost_wait import repost_wait_report
+    return {'kind': 'xras_repost_wait',
+            **repost_wait_report(session, since=since, until=until,
+                                 include_episodes=include_episodes)}
+
+
 def build_person_report(username, person) -> dict:
     """The ``xras_person`` envelope — a direct ``/v1/people`` probe.
 
